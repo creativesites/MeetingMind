@@ -1,0 +1,1381 @@
+package com.example.feature.meetingdetail
+
+import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.QuestionAnswer
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Subject
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.ai.llm.RealMeetingIntelligenceEngine
+import com.example.core.audio.AudioPlayerManager
+import com.example.core.audio.AudioPlayerState
+import com.example.core.common.Formatters
+import com.example.core.database.MeetMindDatabase
+import com.example.core.domain.AskMeetingUseCase
+import com.example.core.model.ActionItem
+import com.example.core.model.ChatMessage
+import com.example.core.model.Decision
+import com.example.core.model.Meeting
+import com.example.core.model.Question
+import com.example.core.model.Topic
+import com.example.core.model.Transcript
+import com.example.core.model.TranscriptSegment
+import com.example.core.repository.ActionItemRepository
+import com.example.core.repository.MeetingRepository
+import com.example.core.repository.TranscriptRepository
+import com.example.core.ui.OfflineShieldBadge
+import com.example.ui.theme.CyanTertiary
+import com.example.ui.theme.DarkSurface
+import com.example.ui.theme.DarkSurfaceVariant
+import com.example.ui.theme.HeroGradientBrush
+import com.example.ui.theme.IndigoPrimary
+import com.example.ui.theme.IndigoPrimaryLight
+import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.VioletSecondary
+import com.example.ui.theme.WarningAmber
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.io.File
+import java.util.UUID
+
+class MeetingDetailViewModel(
+    application: Application,
+    private val meetingId: String
+) : AndroidViewModel(application) {
+    private val database = MeetMindDatabase.getInstance(application)
+    private val meetingRepository = MeetingRepository(application, database)
+    private val transcriptRepository = TranscriptRepository(database)
+    private val actionItemRepository = ActionItemRepository(database)
+    private val askUseCase = AskMeetingUseCase(transcriptRepository, RealMeetingIntelligenceEngine())
+    val audioPlayer = AudioPlayerManager(application)
+
+    val meeting: StateFlow<Meeting?> = meetingRepository.getMeetingById(meetingId).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = null
+    )
+
+    val transcript: StateFlow<Transcript> = transcriptRepository.getTranscript(meetingId).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = Transcript(meetingId, emptyList())
+    )
+
+    val actionItems: StateFlow<List<ActionItem>> = actionItemRepository.getActionItemsForMeeting(meetingId).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val decisions: StateFlow<List<Decision>> = transcriptRepository.getDecisions(meetingId).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val questions: StateFlow<List<Question>> = transcriptRepository.getQuestions(meetingId).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val topics: StateFlow<List<Topic>> = transcriptRepository.getTopics(meetingId).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val chatMessages: StateFlow<List<ChatMessage>> = transcriptRepository.getChatMessages(meetingId).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val playerState: StateFlow<AudioPlayerState> = audioPlayer.playerState
+
+    private val _isAnswering = MutableStateFlow(false)
+    val isAnswering: StateFlow<Boolean> = _isAnswering.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            meeting.collect { m ->
+                val path = m?.audioFilePath
+                if (path != null && audioPlayer.playerState.value.loadedFile == null) {
+                    val file = File(path)
+                    if (file.exists()) {
+                        audioPlayer.loadAudio(file)
+                    }
+                }
+            }
+        }
+    }
+
+    fun updateTitle(newTitle: String) {
+        viewModelScope.launch {
+            meetingRepository.updateMeetingTitle(meetingId, newTitle)
+        }
+    }
+
+    fun renameSpeaker(speakerId: String, newName: String) {
+        viewModelScope.launch {
+            transcriptRepository.renameSpeaker(meetingId, speakerId, newName)
+        }
+    }
+
+    fun toggleActionItem(item: ActionItem) {
+        viewModelScope.launch {
+            actionItemRepository.toggleCompleted(item)
+        }
+    }
+
+    fun addActionItem(task: String, assignee: String, deadline: String) {
+        viewModelScope.launch {
+            actionItemRepository.addActionItem(
+                ActionItem(
+                    id = UUID.randomUUID().toString(),
+                    meetingId = meetingId,
+                    task = task,
+                    assignee = assignee.ifBlank { "Unassigned" },
+                    deadline = deadline.ifBlank { "TBD" },
+                    confidence = 1.0f,
+                    isCompleted = false
+                )
+            )
+        }
+    }
+
+    fun deleteActionItem(id: String) {
+        viewModelScope.launch {
+            actionItemRepository.deleteActionItem(id)
+        }
+    }
+
+    fun askQuestion(questionText: String) {
+        if (questionText.isBlank()) return
+        viewModelScope.launch {
+            _isAnswering.value = true
+            try {
+                askUseCase(meetingId, questionText)
+            } finally {
+                _isAnswering.value = false
+            }
+        }
+    }
+
+    fun generateMarkdownExport(): String {
+        val m = meeting.value ?: return ""
+        val t = transcript.value
+        val decs = decisions.value
+        val actions = actionItems.value
+
+        return buildString {
+            appendLine("# ${m.title}")
+            appendLine("**Date**: ${Formatters.formatDateRelative(m.createdAt)}")
+            appendLine("**Duration**: ${Formatters.formatDurationHms(m.durationMs)}")
+            appendLine("**Source**: ${m.source.name}")
+            appendLine()
+            appendLine("## Executive Summary")
+            appendLine(m.summaryPreview ?: "No summary available.")
+            appendLine()
+            if (decs.isNotEmpty()) {
+                appendLine("## Key Decisions")
+                decs.forEach { appendLine("- ${it.text} *(Confidence: ${(it.confidence * 100).toInt()}%)*") }
+                appendLine()
+            }
+            if (actions.isNotEmpty()) {
+                appendLine("## Action Items")
+                actions.forEach {
+                    val status = if (it.isCompleted) "[x]" else "[ ]"
+                    appendLine("- $status **${it.assignee}**: ${it.task} *(Due: ${it.deadline})*")
+                }
+                appendLine()
+            }
+            if (t.segments.isNotEmpty()) {
+                appendLine("## Transcript")
+                t.segments.forEach {
+                    appendLine("**${it.speakerName}** [${Formatters.formatDurationHms(it.startMs)}]: ${it.text}")
+                }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        audioPlayer.release()
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MeetingDetailScreen(
+    viewModel: MeetingDetailViewModel,
+    onNavigateBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val meeting by viewModel.meeting.collectAsState()
+    val transcript by viewModel.transcript.collectAsState()
+    val actionItems by viewModel.actionItems.collectAsState()
+    val decisions by viewModel.decisions.collectAsState()
+    val questions by viewModel.questions.collectAsState()
+    val topics by viewModel.topics.collectAsState()
+    val chatMessages by viewModel.chatMessages.collectAsState()
+    val playerState by viewModel.playerState.collectAsState()
+    val isAnswering by viewModel.isAnswering.collectAsState()
+
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    val tabTitles = listOf("Overview", "Transcript", "Action Items", "Decisions", "Ask AI")
+
+    var showEditTitleDialog by remember { mutableStateOf(false) }
+    var editTitleText by remember { mutableStateOf("") }
+    var showRenameSpeakerDialog by remember { mutableStateOf(false) }
+    var renameSpeakerTargetId by remember { mutableStateOf("") }
+    var renameSpeakerText by remember { mutableStateOf("") }
+    var showAddActionDialog by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = meeting?.title ?: "Meeting Details",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = onNavigateBack,
+                        modifier = Modifier.testTag("meeting_detail_back_btn")
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    OfflineShieldBadge(modifier = Modifier.padding(end = 4.dp))
+                    IconButton(
+                        onClick = { menuExpanded = true },
+                        modifier = Modifier.testTag("meeting_menu_btn")
+                    ) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                    }
+
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Edit Title") },
+                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                editTitleText = meeting?.title ?: ""
+                                showEditTitleDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Copy Markdown Summary") },
+                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                val md = viewModel.generateMarkdownExport()
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Meeting Summary", md))
+                                Toast.makeText(context, "Copied Markdown summary to clipboard", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Share Summary") },
+                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                val md = viewModel.generateMarkdownExport()
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, meeting?.title ?: "Meeting Notes")
+                                    putExtra(Intent.EXTRA_TEXT, md)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "Share Meeting Notes"))
+                            }
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // Bento Audio Player Card
+            if (playerState.durationMs > 0L) {
+                BentoAudioPlayerCard(
+                    playerState = playerState,
+                    onPlayPause = { viewModel.audioPlayer.togglePlayPause() },
+                    onSeek = { viewModel.audioPlayer.seekTo(it) }
+                )
+            }
+
+            // Tab Bar
+            ScrollableTabRow(
+                selectedTabIndex = selectedTabIndex,
+                containerColor = MaterialTheme.colorScheme.background,
+                contentColor = IndigoPrimaryLight,
+                edgePadding = 16.dp
+            ) {
+                tabTitles.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTabIndex == index,
+                        onClick = { selectedTabIndex = index },
+                        text = {
+                            Text(
+                                text = title,
+                                fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    )
+                }
+            }
+
+            // Tab Pages
+            when (selectedTabIndex) {
+                0 -> BentoOverviewTab(
+                    meeting = meeting,
+                    topics = topics,
+                    decisions = decisions,
+                    actionItems = actionItems,
+                    onNavigateToTranscript = { selectedTabIndex = 1 }
+                )
+                1 -> TranscriptTab(
+                    segments = transcript.segments,
+                    onJumpToTimestamp = { viewModel.audioPlayer.seekTo(it); viewModel.audioPlayer.play() },
+                    onRenameSpeaker = { id, name ->
+                        renameSpeakerTargetId = id
+                        renameSpeakerText = name
+                        showRenameSpeakerDialog = true
+                    }
+                )
+                2 -> ActionItemsTab(
+                    actionItems = actionItems,
+                    onToggle = { viewModel.toggleActionItem(it) },
+                    onDelete = { viewModel.deleteActionItem(it) },
+                    onAddClick = { showAddActionDialog = true },
+                    onJumpToTimestamp = { viewModel.audioPlayer.seekTo(it); viewModel.audioPlayer.play() }
+                )
+                3 -> DecisionsTab(decisions = decisions, questions = questions)
+                4 -> AskAiTab(
+                    chatMessages = chatMessages,
+                    isAnswering = isAnswering,
+                    onSendQuestion = { viewModel.askQuestion(it) },
+                    onJumpToTimestamp = { viewModel.audioPlayer.seekTo(it); viewModel.audioPlayer.play() }
+                )
+            }
+        }
+    }
+
+    // Dialogs
+    if (showEditTitleDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditTitleDialog = false },
+            title = { Text("Edit Meeting Title") },
+            text = {
+                OutlinedTextField(
+                    value = editTitleText,
+                    onValueChange = { editTitleText = it },
+                    label = { Text("Title") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (editTitleText.isNotBlank()) {
+                            viewModel.updateTitle(editTitleText.trim())
+                        }
+                        showEditTitleDialog = false
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditTitleDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showRenameSpeakerDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameSpeakerDialog = false },
+            title = { Text("Rename Speaker") },
+            text = {
+                OutlinedTextField(
+                    value = renameSpeakerText,
+                    onValueChange = { renameSpeakerText = it },
+                    label = { Text("Custom Speaker Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (renameSpeakerText.isNotBlank()) {
+                            viewModel.renameSpeaker(renameSpeakerTargetId, renameSpeakerText.trim())
+                        }
+                        showRenameSpeakerDialog = false
+                    }
+                ) {
+                    Text("Rename")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameSpeakerDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showAddActionDialog) {
+        var taskInput by remember { mutableStateOf("") }
+        var assigneeInput by remember { mutableStateOf("") }
+        var deadlineInput by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showAddActionDialog = false },
+            title = { Text("Add Action Item") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = taskInput,
+                        onValueChange = { taskInput = it },
+                        label = { Text("Task Description") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = assigneeInput,
+                        onValueChange = { assigneeInput = it },
+                        label = { Text("Assignee (optional)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = deadlineInput,
+                        onValueChange = { deadlineInput = it },
+                        label = { Text("Deadline (optional)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (taskInput.isNotBlank()) {
+                            viewModel.addActionItem(taskInput.trim(), assigneeInput.trim(), deadlineInput.trim())
+                        }
+                        showAddActionDialog = false
+                    }
+                ) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddActionDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun BentoAudioPlayerCard(
+    playerState: AudioPlayerState,
+    onPlayPause: () -> Unit,
+    onSeek: (Long) -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(0.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                IconButton(
+                    onClick = onPlayPause,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(IndigoPrimary)
+                ) {
+                    Icon(
+                        imageVector = if (playerState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (playerState.isPlaying) "Pause" else "Play",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                Slider(
+                    value = playerState.currentPositionMs.toFloat(),
+                    onValueChange = { onSeek(it.toLong()) },
+                    valueRange = 0f..playerState.durationMs.toFloat().coerceAtLeast(1f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = IndigoPrimaryLight,
+                        activeTrackColor = IndigoPrimaryLight
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp)
+                )
+
+                Text(
+                    text = "${Formatters.formatDurationHms(playerState.currentPositionMs)} / ${Formatters.formatDurationHms(playerState.durationMs)}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun BentoOverviewTab(
+    meeting: Meeting?,
+    topics: List<Topic>,
+    decisions: List<Decision>,
+    actionItems: List<ActionItem>,
+    onNavigateToTranscript: () -> Unit
+) {
+    if (meeting == null) return
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // 1. Executive Summary Bento Card
+        item {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, IndigoPrimary.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = IndigoPrimary.copy(alpha = 0.15f),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = IndigoPrimaryLight, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        Text(
+                            text = "Executive Summary",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = meeting.summaryPreview ?: "Generating offline meeting notes...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = 22.sp
+                    )
+                }
+            }
+        }
+
+        // 2. Bento Row: Key Decisions & Action Items Counters
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Decisions Bento Tile
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.35f)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.Psychology, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(20.dp))
+                            Text("Decisions", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = SuccessGreen)
+                        }
+                        Text(
+                            text = "${decisions.size}",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (decisions.isNotEmpty()) decisions.first().text else "No decisions flagged",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Action Items Bento Tile
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, WarningAmber.copy(alpha = 0.35f)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.FormatListBulleted, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(20.dp))
+                            Text("Action Items", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = WarningAmber)
+                        }
+                        Text(
+                            text = "${actionItems.size}",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (actionItems.isNotEmpty()) actionItems.first().task else "No pending action items",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. Discussion Topics Bento Cluster
+        if (topics.isNotEmpty()) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Discussion Topic Clusters",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            topics.forEach { topic ->
+                                AssistChip(
+                                    onClick = {},
+                                    label = { Text(topic.name, fontWeight = FontWeight.SemiBold, fontSize = 12.sp) },
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Meeting Metadata Telemetry
+        item {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(14.dp)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Duration", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(Formatters.formatDurationHms(meeting.durationMs), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Speakers", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${meeting.participantCount} detected", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Inference", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("100% On-Device", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = SuccessGreen)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TranscriptTab(
+    segments: List<TranscriptSegment>,
+    onJumpToTimestamp: (Long) -> Unit,
+    onRenameSpeaker: (speakerId: String, currentName: String) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredSegments = remember(segments, searchQuery) {
+        if (searchQuery.isBlank()) segments
+        else segments.filter { it.text.contains(searchQuery, ignoreCase = true) || it.speakerName.contains(searchQuery, ignoreCase = true) }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search keywords in transcript...") },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(filteredSegments, key = { it.id }) { seg ->
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.clickable { onRenameSpeaker(seg.speakerId, seg.speakerName) }
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Formatters.getSpeakerColor(seg.speakerId.hashCode()),
+                                    modifier = Modifier.size(26.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = seg.speakerName.take(1),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = seg.speakerName,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Rename Speaker",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = IndigoPrimary.copy(alpha = 0.12f),
+                                modifier = Modifier.clickable { onJumpToTimestamp(seg.startMs) }
+                            ) {
+                                Text(
+                                    text = Formatters.formatDurationHms(seg.startMs),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                    color = IndigoPrimaryLight,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = seg.text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ActionItemsTab(
+    actionItems: List<ActionItem>,
+    onToggle: (ActionItem) -> Unit,
+    onDelete: (String) -> Unit,
+    onAddClick: () -> Unit,
+    onJumpToTimestamp: (Long) -> Unit
+) {
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onAddClick,
+                containerColor = IndigoPrimary,
+                contentColor = Color.White,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.testTag("fab_add_action_item")
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Action Item")
+            }
+        }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (actionItems.isEmpty()) {
+                item {
+                    Text(
+                        text = "No action items extracted yet. Use the + button to add one.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                items(actionItems, key = { it.id }) { item ->
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(14.dp)
+                                .fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Checkbox(
+                                checked = item.isCompleted,
+                                onCheckedChange = { onToggle(item) },
+                                colors = CheckboxDefaults.colors(checkedColor = SuccessGreen)
+                            )
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.task,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (item.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Assignee: ${item.assignee}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "•",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "Due: ${item.deadline}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            item.sourceTimestampMs?.let { ts ->
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = IndigoPrimary.copy(alpha = 0.12f),
+                                    modifier = Modifier.clickable { onJumpToTimestamp(ts) }
+                                ) {
+                                    Text(
+                                        text = Formatters.formatDurationHms(ts),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                        color = IndigoPrimaryLight,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DecisionsTab(
+    decisions: List<Decision>,
+    questions: List<Question>
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Text(
+                text = "Agreed Decisions",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        if (decisions.isEmpty()) {
+            item {
+                Text(
+                    text = "No explicit decisions detected in this transcript.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            items(decisions, key = { it.id }) { dec ->
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(14.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = SuccessGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Column {
+                            Text(
+                                text = dec.text,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Confidence: ${(dec.confidence * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SuccessGreen,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (questions.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Questions & Inquiries",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            items(questions, key = { it.id }) { q ->
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(14.dp)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.HelpOutline, contentDescription = null, tint = VioletSecondary)
+                            Text(
+                                text = q.text,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        q.answer?.let { ans ->
+                            Text(
+                                text = "Resolution: $ans",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun AskAiTab(
+    chatMessages: List<ChatMessage>,
+    isAnswering: Boolean,
+    onSendQuestion: (String) -> Unit,
+    onJumpToTimestamp: (Long) -> Unit
+) {
+    var inputText by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+
+    val presetChips = listOf(
+        "What did we agree on?",
+        "What are the next steps?",
+        "What was the budget decision?",
+        "Who owns the documentation?"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+    ) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            if (chatMessages.isEmpty()) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = IndigoPrimary.copy(alpha = 0.08f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, IndigoPrimary.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = IndigoPrimaryLight)
+                                Text(
+                                    text = "Grounded Meeting Q&A",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = IndigoPrimaryLight
+                                )
+                            }
+                            Text(
+                                text = "Ask anything about this meeting. Answers are computed locally and strictly anchored in the transcript with timestamp citations.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+
+            items(chatMessages, key = { it.id }) { msg ->
+                ChatMessageBubble(
+                    message = msg,
+                    onJumpToTimestamp = onJumpToTimestamp
+                )
+            }
+
+            if (isAnswering) {
+                item {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = IndigoPrimaryLight
+                        )
+                        Text(
+                            text = "Analyzing transcript offline...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = IndigoPrimaryLight
+                        )
+                    }
+                }
+            }
+        }
+
+        FlowRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            presetChips.forEach { chip ->
+                AssistChip(
+                    onClick = { onSendQuestion(chip) },
+                    label = { Text(chip, fontSize = 12.sp) },
+                    shape = RoundedCornerShape(10.dp)
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = inputText,
+                onValueChange = { inputText = it },
+                placeholder = { Text("Ask about this meeting...") },
+                singleLine = true,
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("ask_ai_input")
+            )
+
+            IconButton(
+                onClick = {
+                    if (inputText.isNotBlank()) {
+                        onSendQuestion(inputText.trim())
+                        inputText = ""
+                    }
+                },
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(IndigoPrimary)
+                    .testTag("ask_ai_send_btn")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ChatMessageBubble(
+    message: ChatMessage,
+    onJumpToTimestamp: (Long) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start
+    ) {
+        Card(
+            shape = RoundedCornerShape(
+                topStart = 18.dp,
+                topEnd = 18.dp,
+                bottomStart = if (message.isUser) 18.dp else 4.dp,
+                bottomEnd = if (message.isUser) 4.dp else 18.dp
+            ),
+            colors = CardDefaults.cardColors(
+                containerColor = if (message.isUser) IndigoPrimary else MaterialTheme.colorScheme.surface
+            ),
+            border = if (!message.isUser) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
+            modifier = Modifier.fillMaxWidth(0.85f)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text(
+                    text = message.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (message.isUser) Color.White else MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 20.sp
+                )
+
+                if (message.sourceTimestamps.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Sources:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        message.sourceTimestamps.forEach { ts ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = IndigoPrimary.copy(alpha = 0.12f),
+                                modifier = Modifier.clickable { onJumpToTimestamp(ts) }
+                            ) {
+                                Text(
+                                    text = Formatters.formatDurationHms(ts),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                    color = IndigoPrimaryLight,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
