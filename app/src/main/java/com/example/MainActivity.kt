@@ -110,6 +110,24 @@ fun MeetMindApp() {
         currentRoute == Routes.MEETING_DETAIL &&
         currentBackStackEntry?.arguments?.getString("meetingId") == playbackState.recordingId
 
+    // Standard bottom-nav-style switch between the app's 4 primary destinations: reuses a saved
+    // instance of the target (and saves the current one) via the app's single Home back-stack
+    // entry, so repeatedly tapping tabs never piles up duplicate entries or re-navigate() is
+    // treated as no-op churn — the usual popUpTo/launchSingleTop/restoreState pattern.
+    val navigateToPrimary: (com.example.core.ui.BottomNavDestination) -> Unit = { destination ->
+        val route = when (destination) {
+            com.example.core.ui.BottomNavDestination.HOME -> Routes.HOME
+            com.example.core.ui.BottomNavDestination.SEARCH -> Routes.SEARCH
+            com.example.core.ui.BottomNavDestination.AI_ENGINE -> Routes.MODELS
+            com.example.core.ui.BottomNavDestination.SETTINGS -> Routes.SETTINGS
+        }
+        navController.navigate(route) {
+            popUpTo(Routes.HOME) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
     NavHost(
         navController = navController,
@@ -134,7 +152,10 @@ fun MeetMindApp() {
             HomeScreen(
                 viewModel = vm,
                 onNavigateToRecord = {
-                    navController.navigate(Routes.RECORDING)
+                    navController.navigate(Routes.recordingRoute())
+                },
+                onNavigateToQuickRecord = {
+                    navController.navigate(Routes.recordingRoute(quickStart = true))
                 },
                 onNavigateToImport = {
                     navController.navigate(Routes.IMPORT)
@@ -142,24 +163,25 @@ fun MeetMindApp() {
                 onNavigateToMeeting = { meetingId ->
                     navController.navigate(Routes.meetingDetailRoute(meetingId))
                 },
-                onNavigateToSearch = {
-                    navController.navigate(Routes.SEARCH)
-                },
-                onNavigateToModels = {
-                    navController.navigate(Routes.MODELS)
-                },
-                onNavigateToSettings = {
-                    navController.navigate(Routes.SETTINGS)
-                }
+                onNavigateToSearch = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SEARCH) },
+                onNavigateToModels = { navigateToPrimary(com.example.core.ui.BottomNavDestination.AI_ENGINE) },
+                onNavigateToSettings = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SETTINGS) }
             )
         }
 
         // RECORDING
-        composable(Routes.RECORDING) {
+        composable(
+            route = Routes.RECORDING,
+            arguments = listOf(
+                navArgument("quickStart") { type = NavType.BoolType; defaultValue = false }
+            )
+        ) { backStackEntry ->
             val vm: RecordingViewModel = viewModel()
+            val quickStart = backStackEntry.arguments?.getBoolean("quickStart") ?: false
             RecordingScreen(
                 viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
+                quickStart = quickStart,
                 onRecordingComplete = { meetingId, audioPath, durationMs ->
                     val route = Routes.processingRoute(meetingId, audioPath, durationMs)
                     navController.navigate(route) {
@@ -246,7 +268,8 @@ fun MeetMindApp() {
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToMeeting = { meetingId, startAtMs ->
                     navController.navigate(Routes.meetingDetailRoute(meetingId, startAtMs))
-                }
+                },
+                onNavigateBottomNav = navigateToPrimary
             )
         }
 
@@ -255,7 +278,8 @@ fun MeetMindApp() {
             val vm: ModelManagerViewModel = viewModel()
             ModelManagerScreen(
                 viewModel = vm,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateBottomNav = navigateToPrimary
             )
         }
 
@@ -265,7 +289,8 @@ fun MeetMindApp() {
             SettingsScreen(
                 viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToModels = { navController.navigate(Routes.MODELS) }
+                onNavigateToModels = { navController.navigate(Routes.MODELS) },
+                onNavigateBottomNav = navigateToPrimary
             )
         }
     }

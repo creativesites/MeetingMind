@@ -60,7 +60,6 @@ class AiAvailabilityTest {
         val engine = UnavailableMeetingIntelligenceEngine()
         val transcript = Transcript(meetingId = "m1", segments = emptyList())
 
-        assertTrue(engine.generateTitle(transcript, "Fallback Title") is AiResult.ModelUnavailable)
         assertTrue(engine.processMeeting(transcript, "Fallback Title") is AiResult.ModelUnavailable)
         assertTrue(engine.askMeeting("What was discussed?", transcript, emptyList()) is AiResult.ModelUnavailable)
     }

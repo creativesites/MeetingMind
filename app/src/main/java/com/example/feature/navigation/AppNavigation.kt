@@ -3,7 +3,7 @@ package com.example.feature.navigation
 object Routes {
     const val ONBOARDING = "onboarding"
     const val HOME = "home"
-    const val RECORDING = "recording"
+    const val RECORDING = "recording?quickStart={quickStart}"
     const val IMPORT = "import"
     const val PROCESSING = "processing/{meetingId}/{audioPath}/{durationMs}"
     const val MEETING_DETAIL = "meeting_detail/{meetingId}?startAtMs={startAtMs}"
@@ -13,6 +13,10 @@ object Routes {
 
     /** Sentinel used when [MEETING_DETAIL]'s optional startAtMs query arg is absent — NavType.LongType has no nullable variant. */
     const val NO_START_AT_MS = -1L
+
+    /** [quickStart] true skips the recording-type picker entirely (General type, "Quick
+     * Recording" title, starts immediately) — the Home FAB's one-tap "just record" shortcut. */
+    fun recordingRoute(quickStart: Boolean = false): String = "recording?quickStart=$quickStart"
 
     fun processingRoute(meetingId: String, audioPath: String, durationMs: Long): String {
         val encodedPath = java.net.URLEncoder.encode(audioPath, "UTF-8")

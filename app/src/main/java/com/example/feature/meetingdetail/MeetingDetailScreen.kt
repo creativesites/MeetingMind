@@ -8,7 +8,16 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +64,7 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Subject
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -76,6 +86,7 @@ import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -83,15 +94,20 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -139,6 +155,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
@@ -153,13 +170,22 @@ class MeetingDetailViewModel(
     private val transcriptRepository = TranscriptRepository(database)
     private val actionItemRepository = ActionItemRepository(database)
     private val modelStorage = com.example.ai.modelmanagement.LocalModelStorage(application)
-    private val askUseCase = AskMeetingUseCase(
-        transcriptRepository,
-        RealMeetingIntelligenceEngine(
-            languageModel = MediaPipeLanguageModel(application, modelStorage),
-            contextLengthTokens = ModelCatalog.qwen25_1_5bInstruct.contextLengthTokens ?: 4096
+    private val userPrefs = com.example.core.datastore.UserPreferencesManager(application)
+
+    /** Built fresh per question (cheap — [MediaPipeLanguageModel] loads nothing eagerly) so Ask
+     * AI always uses whichever LLM the user currently has selected, not whatever was selected the
+     * moment this screen first opened. */
+    private suspend fun buildAskUseCase(): AskMeetingUseCase {
+        val llmModelId = userPrefs.preferencesFlow.first().selectedLlmModelId
+        val contextTokens = ModelCatalog.entries.find { it.id == llmModelId }?.contextLengthTokens ?: 4096
+        return AskMeetingUseCase(
+            transcriptRepository,
+            RealMeetingIntelligenceEngine(
+                languageModel = MediaPipeLanguageModel(getApplication(), modelStorage, modelId = llmModelId),
+                contextLengthTokens = contextTokens
+            )
         )
-    )
+    }
     /** All playback is owned by the single app-level [PlaybackController] — never a per-screen player. */
     val playbackState: StateFlow<PlaybackState> = PlaybackController.state
 
@@ -297,7 +323,7 @@ class MeetingDetailViewModel(
         viewModelScope.launch {
             _isAnswering.value = true
             try {
-                askUseCase(meetingId, questionText)
+                buildAskUseCase()(meetingId, questionText)
             } finally {
                 _isAnswering.value = false
             }
@@ -383,6 +409,19 @@ fun MeetingDetailScreen(
     val playbackState by viewModel.playbackState.collectAsState()
     val isThisRecordingActive = playbackState.recordingId == meeting?.id
     LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
+
+    // The one place "which transcript segment is playing right now" gets computed — shared by the
+    // player's optional lyrics-style preview and the Transcript tab's auto-scroll/highlight, so
+    // there is exactly one observer of playback position driving both, not two independent ones.
+    // derivedStateOf means downstream composables only recompose when the ANSWER changes (i.e.
+    // playback crosses into the next segment), not on every ~200ms position tick.
+    val activeSegmentState: State<TranscriptSegment?> = remember(transcript.segments) {
+        derivedStateOf {
+            if (!isThisRecordingActive) null
+            else com.example.core.common.findActiveTranscriptSegment(transcript.segments, playbackState.positionMs)
+        }
+    }
+    val activeSegment by activeSegmentState
     val isAnswering by viewModel.isAnswering.collectAsState()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -586,6 +625,8 @@ fun MeetingDetailScreen(
             if (audioPath != null) {
                 BentoAudioPlayerCard(
                     playbackState = if (isThisRecordingActive) playbackState else PlaybackState(),
+                    segments = transcript.segments,
+                    activeSegment = activeSegment,
                     onPlayPause = {
                         if (isThisRecordingActive) {
                             viewModel.togglePlayPause()
@@ -689,7 +730,9 @@ fun MeetingDetailScreen(
                         showRenameSpeakerDialog = true
                     },
                     onSaveEdits = { viewModel.saveTranscriptEdits(it) },
-                    highlightedSegmentId = highlightedSegmentId
+                    highlightedSegmentId = highlightedSegmentId,
+                    activePlaybackSegmentId = activeSegment?.id,
+                    isAudioPlaying = isThisRecordingActive && playbackState.isPlaying
                 )
                 2 -> ActionItemsTab(
                     actionItems = actionItems,
@@ -838,10 +881,14 @@ fun MeetingDetailScreen(
 @Composable
 fun BentoAudioPlayerCard(
     playbackState: PlaybackState,
+    segments: List<TranscriptSegment>,
+    activeSegment: TranscriptSegment?,
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit
 ) {
     val playerState = playbackState
+    var showTranscriptPreview by rememberSaveable { mutableStateOf(false) }
+
     Card(
         shape = RoundedCornerShape(0.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
@@ -895,6 +942,54 @@ fun BentoAudioPlayerCard(
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                if (segments.isNotEmpty()) {
+                    IconButton(
+                        onClick = { showTranscriptPreview = !showTranscriptPreview },
+                        modifier = Modifier.testTag("player_transcript_toggle")
+                    ) {
+                        Icon(
+                            Icons.Default.Subject,
+                            contentDescription = if (showTranscriptPreview) "Hide transcript" else "Show transcript",
+                            tint = if (showTranscriptPreview) IndigoPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // Lyrics-style preview: the current segment only, plus the next one dimmed as light
+            // context — never the whole transcript, which belongs to the Transcript tab.
+            AnimatedVisibility(
+                visible = showTranscriptPreview && segments.isNotEmpty(),
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val currentIndex = activeSegment?.let { segments.indexOf(it) } ?: -1
+                    Text(
+                        text = activeSegment?.text
+                            ?: if (playerState.isPlaying) "…" else "Press play to follow along.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (currentIndex in segments.indices && currentIndex + 1 < segments.size) {
+                        Text(
+                            text = segments[currentIndex + 1].text,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
     }
@@ -1041,6 +1136,12 @@ private fun CountTrailing(count: Int) {
     }
 }
 
+/** Segments longer than this default to collapsed (timestamp + speaker + short preview) so a long
+ * transcript stays scannable; anything at or under it defaults to expanded since there's nothing
+ * to gain by hiding a one-line segment behind a tap. Either can always be toggled by tapping. */
+private const val TRANSCRIPT_SEGMENT_COLLAPSE_THRESHOLD_CHARS = 220
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun TranscriptTab(
     segments: List<TranscriptSegment>,
@@ -1050,13 +1151,25 @@ fun TranscriptTab(
     /** Set briefly when this tab is opened via a search-result deep link — scrolls to and tints
      * this one segment so the user immediately sees why it matched, without permanently marking
      * it (a manual tab switch afterward leaves it as an ordinary segment again). */
-    highlightedSegmentId: String? = null
+    highlightedSegmentId: String? = null,
+    /** The segment [PlaybackController]'s current position falls within, for the recording that
+     * is actually loaded — null when nothing is playing or a different recording is loaded. */
+    activePlaybackSegmentId: String? = null,
+    isAudioPlaying: Boolean = false
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var isEditMode by remember { mutableStateOf(false) }
     // segmentId -> in-progress draft text, only while isEditMode is true. Re-seeded from the real
     // segments each time edit mode is entered so a Cancel always throws the drafts away cleanly.
     var drafts by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // Explicit per-segment expand/collapse overrides; a segment not in this map falls back to the
+    // length-based default below.
+    var expandOverrides by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    // "Spotify lyrics"-style following: auto-scrolls to whichever segment is currently playing.
+    // Off by default only makes sense once there's something to follow, so this only matters once
+    // activePlaybackSegmentId is non-null; toggling it back on re-jumps immediately (see the
+    // LaunchedEffect below, keyed on this flag).
+    var syncToAudio by rememberSaveable { mutableStateOf(true) }
 
     val filteredSegments = remember(segments, searchQuery) {
         if (searchQuery.isBlank()) segments
@@ -1067,13 +1180,24 @@ fun TranscriptTab(
     }
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    androidx.compose.runtime.LaunchedEffect(highlightedSegmentId, filteredSegments) {
+
+    // One-shot deep-link scroll (search result), independent of playback sync.
+    LaunchedEffect(highlightedSegmentId, filteredSegments) {
         if (highlightedSegmentId == null) return@LaunchedEffect
         val index = filteredSegments.indexOfFirst { it.id == highlightedSegmentId }
         if (index >= 0) listState.animateScrollToItem(index)
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    // Playback-follow scroll: only re-runs when the ANSWER changes (activePlaybackSegmentId is
+    // itself derived with derivedStateOf upstream), not on every ~200ms position tick, and does
+    // nothing at all while the user has sync switched off.
+    LaunchedEffect(activePlaybackSegmentId, syncToAudio) {
+        if (!syncToAudio || activePlaybackSegmentId == null) return@LaunchedEffect
+        val index = filteredSegments.indexOfFirst { it.id == activePlaybackSegmentId }
+        if (index >= 0) listState.animateScrollToItem(index)
+    }
+
+    Column(modifier = Modifier.fillMaxSize().imePadding()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1122,6 +1246,28 @@ fun TranscriptTab(
             }
         }
 
+        if (activePlaybackSegmentId != null || isAudioPlaying) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Switch(
+                    checked = syncToAudio,
+                    onCheckedChange = { syncToAudio = it },
+                    modifier = Modifier.testTag("transcript_sync_toggle")
+                )
+                Text(
+                    text = "Sync to audio",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -1129,7 +1275,14 @@ fun TranscriptTab(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(filteredSegments, key = { it.id }) { seg ->
-                val isHighlighted = seg.id == highlightedSegmentId
+                val isDeepLinkHighlighted = seg.id == highlightedSegmentId
+                val isPlayingHighlighted = seg.id == activePlaybackSegmentId
+                val isHighlighted = isDeepLinkHighlighted || isPlayingHighlighted
+                val isExpanded = isEditMode || (expandOverrides[seg.id]
+                    ?: (seg.text.length <= TRANSCRIPT_SEGMENT_COLLAPSE_THRESHOLD_CHARS))
+                val bringIntoViewRequester = remember { BringIntoViewRequester() }
+                val coroutineScope = rememberCoroutineScope()
+
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
@@ -1143,9 +1296,23 @@ fun TranscriptTab(
                         if (isHighlighted) 1.5.dp else 1.dp,
                         if (isHighlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
                     ),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .animateContentSize()
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .padding(14.dp)
+                            .then(
+                                if (!isEditMode) {
+                                    Modifier.clickable {
+                                        expandOverrides = expandOverrides + (seg.id to !isExpanded)
+                                    }
+                                } else {
+                                    Modifier
+                                }
+                            )
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1193,6 +1360,14 @@ fun TranscriptTab(
                                         modifier = Modifier.size(14.dp)
                                     )
                                 }
+                                if (isPlayingHighlighted) {
+                                    Icon(
+                                        Icons.Default.VolumeUp,
+                                        contentDescription = "Now playing",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
                             }
 
                             Surface(
@@ -1220,14 +1395,29 @@ fun TranscriptTab(
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .bringIntoViewRequester(bringIntoViewRequester)
+                                    .onFocusEvent { focusState ->
+                                        if (focusState.isFocused) {
+                                            coroutineScope.launch { bringIntoViewRequester.bringIntoView() }
+                                        }
+                                    }
                                     .testTag("transcript_segment_edit_${seg.id}")
+                            )
+                        } else if (isExpanded) {
+                            Text(
+                                text = seg.text,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                lineHeight = 20.sp
                             )
                         } else {
                             Text(
                                 text = seg.text,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
-                                lineHeight = 20.sp
+                                lineHeight = 20.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }

@@ -115,7 +115,8 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 fun SearchScreen(
     viewModel: SearchViewModel,
     onNavigateBack: () -> Unit,
-    onNavigateToMeeting: (meetingId: String, startAtMs: Long?) -> Unit
+    onNavigateToMeeting: (meetingId: String, startAtMs: Long?) -> Unit,
+    onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit = {}
 ) {
     val query by viewModel.query.collectAsState()
     val results by viewModel.results.collectAsState()
@@ -150,6 +151,12 @@ fun SearchScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
+            )
+        },
+        bottomBar = {
+            com.example.core.ui.AppBottomNavigationBar(
+                current = com.example.core.ui.BottomNavDestination.SEARCH,
+                onNavigate = onNavigateBottomNav
             )
         }
     ) { innerPadding ->

@@ -196,6 +196,12 @@ data class ModelFileSpec(
     val archiveEntryPath: String? = null
 )
 
+/** User-facing quality/size tier — currently only meaningful within [ModelCapability.SUMMARIZATION],
+ * where more than one real model exists to choose between. Every other capability has exactly one
+ * real option today, so [ModelTier.RECOMMENDED] on those is just "the only choice," not a claim
+ * that alternatives were compared and this won. */
+enum class ModelTier { RECOMMENDED, LIGHTWEIGHT }
+
 data class AiModelInfo(
     val id: String,
     val name: String,
@@ -212,7 +218,8 @@ data class AiModelInfo(
     val parameterCount: String = "",
     val quantization: String = "q4_0",
     /** Maximum total tokens (prompt + generated) this specific installed model build supports, when known — e.g. an LLM's real KV-cache size. Null for non-LLM models. */
-    val contextLengthTokens: Int? = null
+    val contextLengthTokens: Int? = null,
+    val tier: ModelTier = ModelTier.RECOMMENDED
 ) {
     val sizeBytes: Long get() = files.sumOf { it.sizeBytes }
 

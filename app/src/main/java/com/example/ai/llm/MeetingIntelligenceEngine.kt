@@ -37,8 +37,13 @@ class UnavailableLanguageModel : LanguageModel {
  * integrated, the app uses [UnavailableMeetingIntelligenceEngine]. See docs/AI_ARCHITECTURE.md.
  */
 interface MeetingIntelligenceEngine {
-    suspend fun generateTitle(transcript: Transcript, fallback: String): AiResult<String>
     /**
+     * [meetingTitle] is used as the title fallback if the model's own synthesis doesn't produce
+     * a usable one — see [MeetingSummary.title] and
+     * [com.example.core.common.MeetingTitleGenerator]. There is deliberately no separate
+     * "generate title" method: folding title generation into this one structured-JSON call
+     * avoids a second, purely-for-a-title LLM pass.
+     *
      * [recordingType] and [customContext] only ever narrow what the extraction prompt pays
      * attention to (see [RecordingType.focusGuidance]) — they never weaken the requirement that
      * every extracted item must be grounded in [transcript].
@@ -64,9 +69,6 @@ interface MeetingIntelligenceEngine {
 class UnavailableMeetingIntelligenceEngine(
     private val languageModel: LanguageModel = UnavailableLanguageModel()
 ) : MeetingIntelligenceEngine {
-
-    override suspend fun generateTitle(transcript: Transcript, fallback: String): AiResult<String> =
-        AiResult.ModelUnavailable(modelId = "local-llm", message = "No local language model is installed on this device.")
 
     override suspend fun processMeeting(
         transcript: Transcript,

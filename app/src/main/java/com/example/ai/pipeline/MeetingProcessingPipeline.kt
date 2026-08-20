@@ -32,6 +32,7 @@ import com.example.core.database.QuestionEntity
 import com.example.core.database.SpeakerEntity
 import com.example.core.database.TopicEntity
 import com.example.core.database.TranscriptSegmentEntity
+import com.example.core.common.MeetingTitleGenerator
 import com.example.core.model.MeetingStatus
 import com.example.core.model.MeetingSummary
 import com.example.core.model.ProcessingStage
@@ -88,8 +89,23 @@ class MeetingProcessingPipeline(
         totalDurationMs: Long,
         modelId: String = ModelCatalog.parakeetTdtV3Int8.id,
         expectedSpeakerCount: Int? = null,
+        // Null (the default, and what every existing constructor-injected-fake test uses) keeps
+        // the intelligenceEngine this pipeline was constructed with. A real caller that knows the
+        // user's currently-selected LLM tier passes it explicitly so a lightweight-tier choice
+        // (see ModelCatalog.qwen25_0_5bInstruct) is actually honored instead of always running
+        // whichever model happened to be the constructor default.
+        llmModelId: String? = null,
         onProgress: (step: String, percent: Int, stage: ProcessingStage) -> Unit
     ): MeetingEntity = withContext(Dispatchers.Default) {
+        val effectiveIntelligenceEngine = if (llmModelId != null) {
+            RealMeetingIntelligenceEngine(
+                languageModel = MediaPipeLanguageModel(context, modelStorage, modelId = llmModelId),
+                contextLengthTokens = ModelCatalog.entries.find { it.id == llmModelId }?.contextLengthTokens
+                    ?: DEFAULT_LLM_CONTEXT_TOKENS
+            )
+        } else {
+            intelligenceEngine
+        }
         val meetingDao = database.meetingDao()
         val transcriptDao = database.transcriptDao()
         val speakerDao = database.speakerDao()
@@ -225,12 +241,17 @@ class MeetingProcessingPipeline(
             }
 
             val llmStart = System.currentTimeMillis()
-            val titleResult = intelligenceEngine.generateTitle(transcriptDomain, existingMeeting.title)
-            val generatedTitle = (titleResult as? AiResult.Success)?.value ?: existingMeeting.title
-
-            val summaryResult = intelligenceEngine.processMeeting(transcriptDomain, generatedTitle, recordingType, existingMeeting.customContext)
+            // A deterministic, non-fabricated fallback built only from the recording's real type
+            // and creation date — used both as processMeeting's own synthesis fallback and as the
+            // final title whenever the model is unavailable or its title candidate doesn't
+            // validate. Title generation is folded into this one structured-JSON call (see
+            // RealMeetingIntelligenceEngine's synthesis prompt) instead of running a second,
+            // separate LLM pass purely for a title.
+            val fallbackTitle = MeetingTitleGenerator.deterministicFallbackTitle(recordingType, existingMeeting.createdAt)
+            val summaryResult = effectiveIntelligenceEngine.processMeeting(transcriptDomain, fallbackTitle, recordingType, existingMeeting.customContext)
             val summary = (summaryResult as? AiResult.Success)?.value
-            Log.d(PERF_TAG, "LLM (title+intelligence): ${System.currentTimeMillis() - llmStart}ms")
+            val generatedTitle = MeetingTitleGenerator.sanitizeAndValidate(summary?.title) ?: fallbackTitle
+            Log.d(PERF_TAG, "LLM (intelligence incl. title): ${System.currentTimeMillis() - llmStart}ms")
             // Free the ~1.5GB local LLM allocation as soon as intelligence extraction is done.
             LlmEngineManager.release()
 

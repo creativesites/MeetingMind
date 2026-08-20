@@ -130,16 +130,17 @@ class MeetingProcessingPipelineIntegrationTest {
     }
 
     private val fakeIntelligenceEngine = object : MeetingIntelligenceEngine {
-        override suspend fun generateTitle(transcript: Transcript, fallback: String) = AiResult.Success("Friday Ship Decision")
-
         override suspend fun processMeeting(
             transcript: Transcript,
             meetingTitle: String,
             recordingType: com.example.core.model.RecordingType,
             customContext: String?
         ) = AiResult.Success(
+            // Title generation is folded into this one structured-JSON call — this fake mirrors
+            // that by returning a real, specific title in the same MeetingSummary rather than
+            // via a separate generateTitle() call.
             MeetingSummary(
-                title = meetingTitle,
+                title = "Friday Ship Decision",
                 summary = "The team confirmed the Friday ship date.",
                 topics = listOf("Ship date"),
                 decisions = listOf(
@@ -284,5 +285,86 @@ class MeetingProcessingPipelineIntegrationTest {
         assertEquals(MeetingStatus.ERROR.name, stored?.status)
         val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
         assertTrue("A cancelled run must never persist a transcript", segments.isEmpty())
+    }
+
+    @Test
+    fun `falls back to a deterministic, non-fabricated title when meeting intelligence is unavailable`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val unavailableIntelligence = object : MeetingIntelligenceEngine {
+            override suspend fun processMeeting(
+                transcript: Transcript,
+                meetingTitle: String,
+                recordingType: com.example.core.model.RecordingType,
+                customContext: String?
+            ) = AiResult.ModelUnavailable(modelId = "local-llm", message = "No local meeting intelligence model is installed.")
+
+            override suspend fun askMeeting(question: String, transcript: Transcript, relevantSegments: List<TranscriptSegment>) =
+                AiResult.ModelUnavailable(modelId = "local-llm", message = "No local meeting intelligence model is installed.")
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = fakeDiarizer,
+            intelligenceEngine = unavailableIntelligence,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        val result = pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+
+        // "General" is insertRecordingMeeting's default recordingType — never a guessed name.
+        val expectedFallback = com.example.core.common.MeetingTitleGenerator.deterministicFallbackTitle(
+            com.example.core.model.RecordingType.GENERAL,
+            result.createdAt
+        )
+        assertEquals(expectedFallback, result.title)
+        assertEquals(MeetingStatus.READY.name, result.status)
+    }
+
+    @Test
+    fun `falls back to a deterministic title when the model's own title candidate is generic and unhelpful`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val genericTitleIntelligence = object : MeetingIntelligenceEngine {
+            override suspend fun processMeeting(
+                transcript: Transcript,
+                meetingTitle: String,
+                recordingType: com.example.core.model.RecordingType,
+                customContext: String?
+            ) = AiResult.Success(
+                MeetingSummary(
+                    title = "Meeting Summary",
+                    summary = "",
+                    topics = emptyList(),
+                    decisions = emptyList(),
+                    actionItems = emptyList(),
+                    questions = emptyList()
+                )
+            )
+
+            override suspend fun askMeeting(question: String, transcript: Transcript, relevantSegments: List<TranscriptSegment>) =
+                AiResult.Success(ChatMessage(id = UUID.randomUUID().toString(), meetingId = transcript.meetingId, isUser = false, content = "n/a"))
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = fakeDiarizer,
+            intelligenceEngine = genericTitleIntelligence,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        val result = pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+
+        val expectedFallback = com.example.core.common.MeetingTitleGenerator.deterministicFallbackTitle(
+            com.example.core.model.RecordingType.GENERAL,
+            result.createdAt
+        )
+        assertEquals(expectedFallback, result.title)
     }
 }

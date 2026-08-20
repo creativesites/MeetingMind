@@ -96,7 +96,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigateBack: () -> Unit,
-    onNavigateToModels: () -> Unit = {}
+    onNavigateToModels: () -> Unit = {},
+    onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs by viewModel.preferencesState.collectAsState()
@@ -123,6 +124,12 @@ fun SettingsScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
+            )
+        },
+        bottomBar = {
+            com.example.core.ui.AppBottomNavigationBar(
+                current = com.example.core.ui.BottomNavDestination.SETTINGS,
+                onNavigate = onNavigateBottomNav
             )
         }
     ) { innerPadding ->

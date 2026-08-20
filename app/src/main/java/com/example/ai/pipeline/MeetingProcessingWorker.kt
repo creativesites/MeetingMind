@@ -37,6 +37,7 @@ class MeetingProcessingWorker(
         )
         val durationMs = inputData.getLong(KEY_DURATION_MS, 0L)
         val modelId = inputData.getString(KEY_MODEL_ID) ?: ModelCatalog.parakeetTdtV3Int8.id
+        val llmModelId = inputData.getString(KEY_LLM_MODEL_ID)
         val expectedSpeakerCount = inputData.getInt(KEY_EXPECTED_SPEAKER_COUNT, -1).takeIf { it > 0 }
         val recordingTitle = inputData.getString(KEY_RECORDING_TITLE) ?: "recording"
 
@@ -52,6 +53,7 @@ class MeetingProcessingWorker(
                 totalDurationMs = durationMs,
                 modelId = modelId,
                 expectedSpeakerCount = expectedSpeakerCount,
+                llmModelId = llmModelId,
                 onProgress = { step, percent, stage ->
                     // onProgress is a plain (non-suspend) callback invoked from the pipeline's
                     // coroutine; runBlocking here is safe because we're already off the main
@@ -140,10 +142,18 @@ class MeetingProcessingWorker(
         /** Only one AI-heavy job runs at a time — WorkManager queues subsequent requests under this name. */
         const val UNIQUE_WORK_NAME = "meetmind_ai_processing_queue"
 
+        /** Every enqueued request for [meetingId] carries this as a WorkManager tag, so a screen
+         * that only knows the meetingId (e.g. re-entered after the app was backgrounded/killed
+         * and recreated) can ask "is there already a real job running for THIS recording?" via
+         * [androidx.work.WorkManager.getWorkInfosByTagFlow] instead of blindly enqueuing another
+         * one onto the shared [UNIQUE_WORK_NAME] chain. */
+        fun meetingWorkTag(meetingId: String): String = "meetmind_processing_$meetingId"
+
         const val KEY_MEETING_ID = "meetingId"
         const val KEY_AUDIO_PATH = "audioPath"
         const val KEY_DURATION_MS = "durationMs"
         const val KEY_MODEL_ID = "modelId"
+        const val KEY_LLM_MODEL_ID = "llmModelId"
         const val KEY_EXPECTED_SPEAKER_COUNT = "expectedSpeakerCount"
         const val KEY_RECORDING_TITLE = "recordingTitle"
 

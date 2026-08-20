@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Mic
@@ -54,7 +53,6 @@ import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.Search
@@ -72,9 +70,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -176,7 +171,9 @@ fun HomeScreen(
     onNavigateToMeeting: (String) -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToModels: () -> Unit,
-    onNavigateToSettings: () -> Unit
+    onNavigateToSettings: () -> Unit,
+    /** One tap, no type picker — the fastest path from "I want to record" to actually recording. */
+    onNavigateToQuickRecord: () -> Unit = onNavigateToRecord
 ) {
     val meetings by viewModel.meetings.collectAsState()
     val activeJobs by viewModel.activeJobs.collectAsState()
@@ -229,42 +226,28 @@ fun HomeScreen(
                 )
             )
         },
-        bottomBar = {
-            NavigationBar(
-                modifier = Modifier.navigationBarsPadding(),
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onNavigateToQuickRecord,
+                containerColor = IndigoPrimary,
+                contentColor = Color.White,
+                modifier = Modifier.testTag("home_quick_record_fab")
             ) {
-                NavigationBarItem(
-                    selected = true,
-                    onClick = { /* Home */ },
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                    label = { Text("Dashboard") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color.White,
-                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                        indicatorColor = MaterialTheme.colorScheme.onSurface
-                    )
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onNavigateToSearch,
-                    icon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-                    label = { Text("Search") }
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onNavigateToModels,
-                    icon = { Icon(Icons.Default.Memory, contentDescription = "Models") },
-                    label = { Text("AI Engine") }
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onNavigateToSettings,
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                    label = { Text("Settings") }
-                )
+                Icon(Icons.Default.Mic, contentDescription = "Quick Record")
             }
+        },
+        bottomBar = {
+            com.example.core.ui.AppBottomNavigationBar(
+                current = com.example.core.ui.BottomNavDestination.HOME,
+                onNavigate = { destination ->
+                    when (destination) {
+                        com.example.core.ui.BottomNavDestination.HOME -> Unit
+                        com.example.core.ui.BottomNavDestination.SEARCH -> onNavigateToSearch()
+                        com.example.core.ui.BottomNavDestination.AI_ENGINE -> onNavigateToModels()
+                        com.example.core.ui.BottomNavDestination.SETTINGS -> onNavigateToSettings()
+                    }
+                }
+            )
         },
     ) { innerPadding ->
         LazyColumn(

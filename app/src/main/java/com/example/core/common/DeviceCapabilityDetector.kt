@@ -32,12 +32,9 @@ object DeviceCapabilityDetector {
             else -> "Entry Level / Battery Saver"
         }
 
-        // Only one real on-device model exists per capability (see ModelCatalog) — there is no
-        // lighter/heavier tier to actually recommend between, so both fields just name the one
-        // real model. totalRamGb / devicePerformanceTier remain useful on their own (shown to the
-        // user so they can judge whether their device meets ModelCatalog's minimumRamMb).
+        // Only one real on-device ASR model exists (see ModelCatalog) — nothing to choose between.
         val recommendedAsr = ModelCatalog.parakeetTdtV3Int8.id
-        val recommendedLlm = ModelCatalog.qwen25_1_5bInstruct.id
+        val recommendedLlm = recommendedLlmModelId(totalRamGb)
 
         return DeviceCapabilities(
             totalRamGb = "%.1f".format(totalRamGb).toFloat(),
@@ -48,6 +45,22 @@ object DeviceCapabilityDetector {
             recommendedLlmModelId = recommendedLlm,
             devicePerformanceTier = tier
         )
+    }
+
+    /**
+     * Two real Meeting Intelligence models exist as of Phase 3C: Recommended (1.5B, needs
+     * [ModelCatalog.qwen25_1_5bInstruct]'s recommendedRamMb) and Lightweight (0.5B, for devices
+     * under that bar). This is only ever a starting suggestion the user can override in Model
+     * Manager — it never auto-downloads anything. Pulled out as a pure function (no Context) so
+     * the threshold logic itself is directly unit-testable without Robolectric.
+     */
+    fun recommendedLlmModelId(totalRamGb: Float): String {
+        val totalRamMb = totalRamGb * 1024f
+        return if (totalRamMb < ModelCatalog.qwen25_1_5bInstruct.recommendedRamMb) {
+            ModelCatalog.qwen25_0_5bInstruct.id
+        } else {
+            ModelCatalog.qwen25_1_5bInstruct.id
+        }
     }
 
     fun getAvailableStorageMb(): Long {

@@ -3,6 +3,7 @@ package com.example.ai.modelmanagement
 import com.example.core.model.AiModelInfo
 import com.example.core.model.ModelCapability
 import com.example.core.model.ModelFileSpec
+import com.example.core.model.ModelTier
 
 /**
  * Real, downloadable models for Phase 1 (VAD + ASR only — see docs/AI_ARCHITECTURE.md).
@@ -144,8 +145,58 @@ object ModelCatalog {
         quantization = "q8 (int8 weights)",
         // The "ekv4096" in the chosen .task file's own name is this build's real KV-cache size —
         // its actual max total (prompt + generated) token budget, not an invented figure.
-        contextLengthTokens = 4096
+        contextLengthTokens = 4096,
+        tier = ModelTier.RECOMMENDED
     )
 
-    val entries: List<AiModelInfo> = listOf(sileroVad, parakeetTdtV3Int8, speakerDiarization, qwen25_1_5bInstruct)
+    /**
+     * Lightweight Meeting Intelligence tier for lower-RAM devices (Phase 3C). Same publisher
+     * (Google's litert-community), same Apache-2.0 license, same MediaPipe LlmInference loading
+     * path, and the same Qwen2.5-Instruct prompt format as [qwen25_1_5bInstruct] — chosen
+     * specifically to minimize integration risk over evaluating an unrelated model family.
+     * Candidates considered and rejected: SmolLM2 (360M/1.7B) has no litert-community `.task`
+     * build published as of this writing, so it would require converting/hosting a model
+     * ourselves rather than linking a real existing release — out of scope here. Qwen3-0.6B was
+     * also available but is a different prompt/template generation from what
+     * [com.example.ai.llm.RealMeetingIntelligenceEngine]'s prompts were built against; staying
+     * within the Qwen2.5 family avoids re-validating prompt behavior for two different chat
+     * templates at once.
+     *
+     * Verified 2026-08-20 by downloading the full file and hashing it directly (546,660,344
+     * bytes; sha256 below matches the file's own x-linked-etag from HuggingFace).
+     *
+     * Trade-off to be honest about: this build's KV-cache (see contextLengthTokens) is 1280
+     * tokens — under a third of the 1.5B build's 4096 — so long transcripts need smaller chunks
+     * and more of them. It also has not been validated on-device for structured-JSON extraction
+     * reliability; only the 1.5B model has any device-testing history so far (see docs/AI_ARCHITECTURE.md).
+     */
+    val qwen25_0_5bInstruct = AiModelInfo(
+        id = "llm_qwen2_5_0_5b_instruct",
+        name = "Qwen2.5 0.5B Instruct (Lightweight)",
+        capability = setOf(ModelCapability.SUMMARIZATION),
+        files = listOf(
+            ModelFileSpec(
+                fileName = "qwen2.5-0.5b-instruct-q8-ekv1280.task",
+                downloadUrl = "https://huggingface.co/litert-community/Qwen2.5-0.5B-Instruct/resolve/main/Qwen2.5-0.5B-Instruct_multi-prefill-seq_q8_ekv1280.task",
+                sha256 = "e608953f169aeb1bd7b9155fec2559825e08453fc209b84eda3a781ed0452fd2",
+                sizeBytes = 546_660_344L
+            )
+        ),
+        minimumRamMb = 1536,
+        recommendedRamMb = 2560,
+        version = "Qwen2.5-0.5B-Instruct (litert-community, q8, 1280-token context)",
+        description = "A smaller, faster Meeting Intelligence model for lower-RAM devices — still grounded only in the real transcript, but with a shorter context window and less headroom for very long recordings.",
+        parameterCount = "0.5B",
+        quantization = "q8 (int8 weights, fp32 activations)",
+        contextLengthTokens = 1280,
+        tier = ModelTier.LIGHTWEIGHT
+    )
+
+    val entries: List<AiModelInfo> = listOf(
+        sileroVad,
+        parakeetTdtV3Int8,
+        speakerDiarization,
+        qwen25_1_5bInstruct,
+        qwen25_0_5bInstruct
+    )
 }

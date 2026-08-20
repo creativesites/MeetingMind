@@ -26,20 +26,6 @@ class RealMeetingIntelligenceEngine(
     private val contextLengthTokens: Int
 ) : MeetingIntelligenceEngine {
 
-    override suspend fun generateTitle(transcript: Transcript, fallback: String): AiResult<String> {
-        if (transcript.segments.isEmpty()) return AiResult.Success(fallback)
-        val firstChunk = TranscriptChunker.chunk(transcript.segments, contextLengthTokens).firstOrNull()
-            ?: return AiResult.Success(fallback)
-        val prompt = buildTitlePrompt(firstChunk.segments)
-        return when (val result = languageModel.generate(prompt, maxOutputTokens = TITLE_OUTPUT_TOKENS)) {
-            is AiResult.Success -> {
-                val title = result.value.trim().trim('"').take(MAX_TITLE_LENGTH)
-                AiResult.Success(title.ifBlank { fallback })
-            }
-            else -> result
-        }
-    }
-
     override suspend fun processMeeting(
         transcript: Transcript,
         meetingTitle: String,
@@ -137,16 +123,6 @@ class RealMeetingIntelligenceEngine(
         }
     }
 
-    private fun buildTitlePrompt(segments: List<TranscriptSegment>): String {
-        val excerpt = segments.joinToString("\n") { "${it.speakerName ?: "Unknown"}: ${it.text}" }
-        return """
-            Read this real meeting transcript excerpt and write a short, specific title (under 10 words) describing what the meeting was actually about. Do not use a generic title like "Team Meeting" unless nothing more specific is supported by the text. Respond with only the title, no quotes, no extra text.
-
-            Transcript excerpt:
-            $excerpt
-        """.trimIndent()
-    }
-
     private fun buildExtractionPrompt(segments: List<TranscriptSegment>, focusGuidance: String): String {
         val transcriptText = segments.joinToString("\n") { seg ->
             "[${seg.id}] ${seg.speakerName ?: "Unknown speaker"}: ${seg.text}"
@@ -195,7 +171,9 @@ class RealMeetingIntelligenceEngine(
             if (isEmpty()) appendLine("(No decisions, action items, or notable sections were extracted from this transcript.)")
         }
         return """
-            Based only on the real extracted meeting evidence below — not your own general knowledge — write a concise meeting title and executive summary. Do not invent facts not present below. If the evidence is sparse, keep the summary short rather than padding it with generic statements like "the meeting was productive".
+            Based only on the real extracted meeting evidence below — not your own general knowledge — write a concise, specific title and an executive summary. Do not invent facts not present below. If the evidence is sparse, keep the summary short rather than padding it with generic statements like "the meeting was productive".
+
+            The title must be under 10 words, describe what this recording was actually about, and contain no surrounding quotes. Do not use a generic title like "Team Meeting" or "Meeting Summary" unless nothing more specific is supported by the evidence — a caller-provided fallback title is used automatically when this isn't possible, so an unhelpful generic title here is worse than a short, honest one.
 
             Respond with ONLY a JSON object, no markdown: {"title":string,"summary":string,"keyPoints":[string]}
 
@@ -217,11 +195,9 @@ class RealMeetingIntelligenceEngine(
     }
 
     private companion object {
-        const val TITLE_OUTPUT_TOKENS = 24
         const val EXTRACTION_OUTPUT_TOKENS = 700
         const val SYNTHESIS_OUTPUT_TOKENS = 500
         const val ASK_OUTPUT_TOKENS = 300
-        const val MAX_TITLE_LENGTH = 80
         const val MAX_SOURCE_QUOTES = 3
     }
 }

@@ -235,13 +235,20 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
             userPrefs.setSelectedAsrModel(modelId)
         }
     }
+
+    fun selectActiveLlmModel(modelId: String) {
+        viewModelScope.launch {
+            userPrefs.setSelectedLlmModel(modelId)
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModelManagerScreen(
     viewModel: ModelManagerViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit = {}
 ) {
     val models by viewModel.models.collectAsState()
     val prefs by viewModel.userPrefsState.collectAsState()
@@ -281,6 +288,12 @@ fun ModelManagerScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
+            )
+        },
+        bottomBar = {
+            com.example.core.ui.AppBottomNavigationBar(
+                current = com.example.core.ui.BottomNavDestination.AI_ENGINE,
+                onNavigate = onNavigateBottomNav
             )
         }
     ) { innerPadding ->
@@ -347,6 +360,13 @@ fun ModelManagerScreen(
             CAPABILITY_GROUPS.forEach { group ->
                 val groupModels = models.filter { group.capability in it.capability }
                 if (groupModels.isNotEmpty()) {
+                    // Only SUMMARIZATION has more than one real model to choose between (Phase 3C
+                    // model tiers); every other capability still has exactly one, so its "active"
+                    // selection is moot but harmless to thread through the same way.
+                    val (activeModelId, onSelectActive, recommendedModelId) = when (group.capability) {
+                        ModelCapability.SUMMARIZATION -> Triple(prefs.selectedLlmModelId, { id: String -> viewModel.selectActiveLlmModel(id) }, caps.recommendedLlmModelId)
+                        else -> Triple(prefs.selectedAsrModelId, { id: String -> viewModel.selectActiveAsrModel(id) }, caps.recommendedAsrModelId)
+                    }
                     item(key = "group_${group.capability}") {
                         CapabilityGroupCard(
                             group = group,
@@ -359,8 +379,9 @@ fun ModelManagerScreen(
                                 }
                             },
                             pausedModelIds = pausedModelIds,
-                            activeModelId = prefs.selectedAsrModelId,
-                            onSelectActive = { viewModel.selectActiveAsrModel(it) },
+                            activeModelId = activeModelId,
+                            recommendedModelId = recommendedModelId,
+                            onSelectActive = onSelectActive,
                             onInstall = { viewModel.installModel(it) },
                             onPause = { viewModel.pauseDownload(it) },
                             onCancel = { viewModel.cancelDownload(it) },
@@ -431,6 +452,7 @@ private fun CapabilityGroupCard(
     models: List<AiModelInfo>,
     pausedModelIds: Set<String>,
     activeModelId: String,
+    recommendedModelId: String? = null,
     onSelectActive: (String) -> Unit,
     onInstall: (String) -> Unit,
     onPause: (String) -> Unit,
@@ -487,11 +509,17 @@ private fun CapabilityGroupCard(
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // "Selectable" means the user actually has more than one real model to
+                    // choose between for this capability — showing a radio button when there's
+                    // only one option would imply a choice that doesn't exist.
+                    val isSelectable = models.size > 1
                     models.forEach { model ->
                         BentoModelItemCard(
                             model = model,
                             isActive = activeModelId == model.id,
                             isPaused = model.id in pausedModelIds,
+                            isSelectable = isSelectable,
+                            isRecommendedForDevice = recommendedModelId != null && recommendedModelId == model.id && isSelectable,
                             onSelectActive = { onSelectActive(model.id) },
                             onInstall = { onInstall(model.id) },
                             onPause = { onPause(model.id) },
@@ -510,6 +538,8 @@ fun BentoModelItemCard(
     model: AiModelInfo,
     isActive: Boolean,
     isPaused: Boolean = false,
+    isSelectable: Boolean = model.capability.contains(ModelCapability.TRANSCRIPTION),
+    isRecommendedForDevice: Boolean = false,
     onSelectActive: () -> Unit,
     onInstall: () -> Unit,
     onPause: () -> Unit = {},
@@ -535,7 +565,7 @@ fun BentoModelItemCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    if (model.isInstalled && model.capability.contains(ModelCapability.TRANSCRIPTION)) {
+                    if (model.isInstalled && isSelectable) {
                         RadioButton(
                             selected = isActive,
                             onClick = onSelectActive,
@@ -609,6 +639,36 @@ fun BentoModelItemCard(
                         Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Download", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            // Tier chip + on-device recommendation — only shown when there's an actual choice
+            // to make (isSelectable), so it never implies a comparison that doesn't exist.
+            if (isSelectable) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val tierLabel = when (model.tier) {
+                        com.example.core.model.ModelTier.RECOMMENDED -> "Recommended"
+                        com.example.core.model.ModelTier.LIGHTWEIGHT -> "Lightweight"
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                    ) {
+                        Text(
+                            text = tierLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                    if (isRecommendedForDevice) {
+                        Text(
+                            text = "Suggested for this device",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }

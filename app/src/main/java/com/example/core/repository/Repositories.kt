@@ -615,7 +615,12 @@ class ModelRepository(
         description = description,
         parameterCount = parameterCount,
         quantization = quantization,
-        contextLengthTokens = contextLengthTokens
+        contextLengthTokens = contextLengthTokens,
+        // Tier is a property of the model's static definition, not a stat that changes per
+        // install — resolved from the catalog by id rather than persisted, so it can't drift out
+        // of sync with ModelCatalog after a schema/tier change. Falls back to RECOMMENDED for a
+        // row whose id the current catalog no longer recognizes.
+        tier = ModelCatalog.entries.find { it.id == id }?.tier ?: com.example.core.model.ModelTier.RECOMMENDED
     )
 
     private fun AiModelInfo.toEntity(): AiModelEntity = AiModelEntity(

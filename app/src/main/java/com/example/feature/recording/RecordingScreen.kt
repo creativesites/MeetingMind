@@ -162,7 +162,10 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
 fun RecordingScreen(
     viewModel: RecordingViewModel,
     onNavigateBack: () -> Unit,
-    onRecordingComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit
+    onRecordingComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit,
+    /** True when reached via Home's Quick Record FAB — skips the type picker entirely (General
+     * type, "Quick Recording" title) instead of making the user tap through it first. */
+    quickStart: Boolean = false
 ) {
     val context = LocalContext.current
     var hasAudioPermission by remember {
@@ -171,10 +174,10 @@ fun RecordingScreen(
         )
     }
 
-    var typeChosen by remember { mutableStateOf(false) }
-    var selectedType by remember { mutableStateOf(RecordingType.MEETING) }
+    var typeChosen by remember { mutableStateOf(quickStart) }
+    var selectedType by remember { mutableStateOf(if (quickStart) RecordingType.GENERAL else RecordingType.MEETING) }
     var customContextText by remember { mutableStateOf("") }
-    var meetingTitle by remember { mutableStateOf(RecordingType.MEETING.displayName) }
+    var meetingTitle by remember { mutableStateOf(if (quickStart) "Quick Recording" else RecordingType.MEETING.displayName) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()

@@ -97,6 +97,13 @@ data class ProcessingUiState(
  * instead of a `viewModelScope` coroutine — it survives this screen (and this ViewModel) being
  * destroyed by navigation, app minimization, or the screen locking. This ViewModel only observes
  * [WorkInfo] and reflects real, typed state; it never advances processing itself.
+ *
+ * Critically, [uiState] is not the source of truth for "is this recording being processed" —
+ * WorkManager's own persisted state is. [hasActiveWork] must always be checked before this screen
+ * shows any "start processing" affordance: a plain in-memory/Compose flag reset by the process
+ * being recreated (backgrounding, low memory, a cold reopen landing back on this route) would
+ * otherwise let the user re-trigger [startPipeline] for a recording that is already running in
+ * the background, enqueuing a second real job for the same meeting.
  */
 class ProcessingViewModel(application: Application) : AndroidViewModel(application) {
     private val database = MeetMindDatabase.getInstance(application)
@@ -107,6 +114,34 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
     val uiState: StateFlow<ProcessingUiState> = _uiState.asStateFlow()
 
     private var workId: UUID? = null
+    private var lastMeetingId: String? = null
+
+    /** True when a real, not-yet-finished WorkManager job already exists for [meetingId] —
+     * ENQUEUED, BLOCKED (queued behind another recording), or RUNNING. Checked once (a snapshot,
+     * not a subscription) so the caller can decide, before showing anything, whether to attach to
+     * that job's live progress or offer to start a brand new one. */
+    private suspend fun hasActiveWork(meetingId: String): Boolean {
+        val infos = workManager.getWorkInfosByTagFlow(MeetingProcessingWorker.meetingWorkTag(meetingId)).first()
+        return infos.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED || it.state == WorkInfo.State.RUNNING }
+    }
+
+    /** Entry point for the screen: attaches to an already-running job for [meetingId] if one
+     * exists, without enqueuing anything new; returns false (and does nothing else) when there is
+     * none, letting the caller decide whether to show the speaker-count picker and eventually call
+     * [startPipeline] for a genuinely fresh run. */
+    suspend fun attachIfAlreadyRunning(meetingId: String, onComplete: (String) -> Unit): Boolean {
+        val infos = workManager.getWorkInfosByTagFlow(MeetingProcessingWorker.meetingWorkTag(meetingId)).first()
+        val active = infos.firstOrNull {
+            it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED || it.state == WorkInfo.State.RUNNING
+        } ?: return false
+
+        val meetingTitle = database.meetingDao().getMeetingById(meetingId)?.title ?: "Recording"
+        _uiState.value = _uiState.value.copy(recordingTitle = meetingTitle)
+        lastMeetingId = meetingId
+        workId = active.id
+        viewModelScope.launch { observeWork(active.id, meetingId, onComplete) }
+        return true
+    }
 
     fun startPipeline(
         meetingId: String,
@@ -116,20 +151,30 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
         onComplete: (String) -> Unit
     ) {
         viewModelScope.launch {
+            // Belt-and-suspenders: even if the caller already checked, never enqueue a second
+            // real job for a meeting that already has one in flight.
+            if (hasActiveWork(meetingId)) {
+                attachIfAlreadyRunning(meetingId, onComplete)
+                return@launch
+            }
+
             val prefs = userPrefs.preferencesFlow.first()
             val meetingTitle = database.meetingDao().getMeetingById(meetingId)?.title ?: "Recording"
-            _uiState.value = _uiState.value.copy(recordingTitle = meetingTitle)
+            _uiState.value = ProcessingUiState(recordingTitle = meetingTitle)
+            lastMeetingId = meetingId
 
             val inputData = workDataOf(
                 MeetingProcessingWorker.KEY_MEETING_ID to meetingId,
                 MeetingProcessingWorker.KEY_AUDIO_PATH to audioPath,
                 MeetingProcessingWorker.KEY_DURATION_MS to durationMs,
                 MeetingProcessingWorker.KEY_MODEL_ID to prefs.selectedAsrModelId,
+                MeetingProcessingWorker.KEY_LLM_MODEL_ID to prefs.selectedLlmModelId,
                 MeetingProcessingWorker.KEY_EXPECTED_SPEAKER_COUNT to (expectedSpeakerCount ?: -1),
                 MeetingProcessingWorker.KEY_RECORDING_TITLE to meetingTitle
             )
             val request = OneTimeWorkRequestBuilder<MeetingProcessingWorker>()
                 .setInputData(inputData)
+                .addTag(MeetingProcessingWorker.meetingWorkTag(meetingId))
                 .build()
             workId = request.id
 
@@ -141,64 +186,71 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                 request
             )
 
-            workManager.getWorkInfoByIdFlow(request.id).collect { info ->
-                if (info == null) return@collect
-                when (info.state) {
-                    WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> {
-                        _uiState.value = _uiState.value.copy(isQueued = true, stepTitle = "Waiting for another recording to finish processing...")
-                    }
-                    WorkInfo.State.RUNNING -> {
-                        val step = info.progress.getString(MeetingProcessingWorker.KEY_PROGRESS_STEP)
-                        val percent = info.progress.getInt(MeetingProcessingWorker.KEY_PROGRESS_PERCENT, _uiState.value.progressPercent)
-                        val stageName = info.progress.getString(MeetingProcessingWorker.KEY_PROGRESS_STAGE)
-                        val stage = stageName?.let { runCatching { ProcessingStage.valueOf(it) }.getOrNull() }
-                        if (step != null && stage != null) {
-                            _uiState.value = ProcessingUiState(
-                                stepTitle = step,
-                                recordingTitle = _uiState.value.recordingTitle,
-                                progressPercent = percent,
-                                currentStageIndex = stageIndexFor(stage),
-                                isQueued = false
-                            )
-                        } else {
-                            _uiState.value = _uiState.value.copy(isQueued = false)
-                        }
-                    }
-                    WorkInfo.State.SUCCEEDED -> {
-                        val status = info.outputData.getString(MeetingProcessingWorker.KEY_RESULT_STATUS)
-                        if (status == MeetingStatus.MODEL_REQUIRED.name) {
-                            _uiState.value = ProcessingUiState(
-                                stepTitle = "Recording saved",
-                                recordingTitle = _uiState.value.recordingTitle,
-                                progressPercent = 100,
-                                currentStageIndex = 1,
-                                isComplete = true,
-                                modelRequired = true,
-                                modelRequiredMessage = "Download the offline speech recognition model to transcribe this recording on your device."
-                            )
-                        } else {
-                            _uiState.value = ProcessingUiState(
-                                stepTitle = "All AI tasks completed successfully!",
-                                recordingTitle = _uiState.value.recordingTitle,
-                                progressPercent = 100,
-                                currentStageIndex = 5,
-                                isComplete = true
-                            )
-                            onComplete(meetingId)
-                        }
-                    }
-                    WorkInfo.State.FAILED -> {
-                        val error = info.outputData.getString(MeetingProcessingWorker.KEY_ERROR)
+            observeWork(request.id, meetingId, onComplete)
+        }
+    }
+
+    private suspend fun observeWork(id: UUID, meetingId: String, onComplete: (String) -> Unit) {
+        workManager.getWorkInfoByIdFlow(id).collect { info ->
+            if (info == null) return@collect
+            when (info.state) {
+                WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> {
+                    _uiState.value = _uiState.value.copy(isQueued = true, stepTitle = "Waiting for another recording to finish processing...")
+                }
+                WorkInfo.State.RUNNING -> {
+                    val step = info.progress.getString(MeetingProcessingWorker.KEY_PROGRESS_STEP)
+                    val percent = info.progress.getInt(MeetingProcessingWorker.KEY_PROGRESS_PERCENT, _uiState.value.progressPercent)
+                    val stageName = info.progress.getString(MeetingProcessingWorker.KEY_PROGRESS_STAGE)
+                    val stage = stageName?.let { runCatching { ProcessingStage.valueOf(it) }.getOrNull() }
+                    if (step != null && stage != null) {
                         _uiState.value = ProcessingUiState(
-                            stepTitle = "Processing error",
+                            stepTitle = step,
                             recordingTitle = _uiState.value.recordingTitle,
-                            progressPercent = 0,
-                            error = error ?: "Unknown error"
+                            progressPercent = percent,
+                            currentStageIndex = stageIndexFor(stage),
+                            isQueued = false
                         )
+                    } else {
+                        _uiState.value = _uiState.value.copy(isQueued = false)
                     }
-                    WorkInfo.State.CANCELLED -> {
-                        _uiState.value = _uiState.value.copy(error = "Processing cancelled by user")
+                }
+                WorkInfo.State.SUCCEEDED -> {
+                    val status = info.outputData.getString(MeetingProcessingWorker.KEY_RESULT_STATUS)
+                    if (status == MeetingStatus.MODEL_REQUIRED.name) {
+                        _uiState.value = ProcessingUiState(
+                            stepTitle = "Recording saved",
+                            recordingTitle = _uiState.value.recordingTitle,
+                            progressPercent = 100,
+                            currentStageIndex = 1,
+                            isComplete = true,
+                            modelRequired = true,
+                            modelRequiredMessage = "Download the offline speech recognition model to transcribe this recording on your device."
+                        )
+                    } else {
+                        _uiState.value = ProcessingUiState(
+                            stepTitle = "All AI tasks completed successfully!",
+                            recordingTitle = _uiState.value.recordingTitle,
+                            progressPercent = 100,
+                            currentStageIndex = 5,
+                            isComplete = true
+                        )
+                        onComplete(meetingId)
                     }
+                }
+                WorkInfo.State.FAILED -> {
+                    val error = info.outputData.getString(MeetingProcessingWorker.KEY_ERROR)
+                    _uiState.value = _uiState.value.copy(
+                        stepTitle = "Processing failed",
+                        error = error ?: "Unknown error",
+                        isQueued = false
+                    )
+                }
+                WorkInfo.State.CANCELLED -> {
+                    _uiState.value = _uiState.value.copy(
+                        stepTitle = "Processing cancelled",
+                        error = "Processing cancelled",
+                        isQueued = false
+                    )
                 }
             }
         }
@@ -220,7 +272,21 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
         workId?.let { workManager.cancelWorkById(it) }
         _uiState.value = _uiState.value.copy(error = "Processing cancelled by user")
     }
+
+    /** A deliberate new attempt — only reachable from the FAILED state's Retry action, i.e. only
+     * once WorkManager itself confirms nothing is still active for this meeting. */
+    fun retry(audioPath: String, durationMs: Long, expectedSpeakerCount: Int?, onComplete: (String) -> Unit) {
+        val meetingId = lastMeetingId ?: return
+        _uiState.value = ProcessingUiState(recordingTitle = _uiState.value.recordingTitle)
+        startPipeline(meetingId, audioPath, durationMs, expectedSpeakerCount, onComplete)
+    }
 }
+
+/** [Checking] is a brief, real "is a job for this meeting already running?" lookup — never
+ * skipped — so a screen re-entered after the app was backgrounded/recreated never shows the
+ * speaker-count picker (and its "start processing" action) while a real job is already in flight
+ * for the same recording. Only [Picker] can lead to a fresh [ProcessingViewModel.startPipeline] call. */
+private enum class ProcessingScreenPhase { Checking, Picker, Running }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -234,25 +300,40 @@ fun ProcessingScreen(
     onNavigateToModels: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
-    var speakerCountStarted by remember { mutableStateOf(false) }
+    var phase by remember(meetingId) { mutableStateOf(ProcessingScreenPhase.Checking) }
     var selectedSpeakerCount by remember { mutableStateOf<Int?>(null) } // null = Auto
 
-    LaunchedEffect(meetingId, audioPath, speakerCountStarted) {
-        if (speakerCountStarted) {
-            viewModel.startPipeline(meetingId, audioPath, durationMs, selectedSpeakerCount) { finishedId ->
-                onProcessingComplete(finishedId)
-            }
+    LaunchedEffect(meetingId) {
+        val alreadyRunning = viewModel.attachIfAlreadyRunning(meetingId) { finishedId ->
+            onProcessingComplete(finishedId)
         }
+        phase = if (alreadyRunning) ProcessingScreenPhase.Running else ProcessingScreenPhase.Picker
     }
 
-    if (!speakerCountStarted) {
-        SpeakerCountPickerScreen(
-            selected = selectedSpeakerCount,
-            onSelect = { selectedSpeakerCount = it },
-            onStart = { speakerCountStarted = true },
-            onCancel = onNavigateBack
-        )
-        return
+    when (phase) {
+        ProcessingScreenPhase.Checking -> {
+            Scaffold { innerPadding ->
+                Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+            }
+            return
+        }
+        ProcessingScreenPhase.Picker -> {
+            SpeakerCountPickerScreen(
+                selected = selectedSpeakerCount,
+                onSelect = { selectedSpeakerCount = it },
+                onStart = {
+                    phase = ProcessingScreenPhase.Running
+                    viewModel.startPipeline(meetingId, audioPath, durationMs, selectedSpeakerCount) { finishedId ->
+                        onProcessingComplete(finishedId)
+                    }
+                },
+                onCancel = onNavigateBack
+            )
+            return
+        }
+        ProcessingScreenPhase.Running -> Unit
     }
 
     Scaffold(
@@ -404,6 +485,39 @@ fun ProcessingScreen(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Manage Models")
+                            }
+                        }
+                    }
+                }
+            } else if (state.error != null) {
+                SectionCard {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Processing failed",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = state.error ?: "Unknown error",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = onNavigateBack,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Back")
+                            }
+                            Button(
+                                // A deliberate new attempt: only reachable here, once WorkManager
+                                // itself has already reported this job as finished (FAILED), so
+                                // there is no risk of this creating a second concurrent job.
+                                onClick = { viewModel.retry(audioPath, durationMs, selectedSpeakerCount) { finishedId -> onProcessingComplete(finishedId) } },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Retry")
                             }
                         }
                     }
