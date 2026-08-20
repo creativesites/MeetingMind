@@ -6,6 +6,7 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import com.example.R
 import com.example.core.model.Meeting
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
@@ -137,6 +138,12 @@ class FirebaseAuthManager(private val context: Context) {
             val user = authResult.user?.toUserModel()
                 ?: return@withContext Result.failure(IllegalStateException("Sign-in succeeded but no user was returned."))
             Result.success(user)
+        } catch (e: NoCredentialException) {
+            // The common case: no Google account is set up on this device, or the user
+            // dismissed the account picker. Distinguished from other Credential Manager
+            // failures so the caller can show "add a Google account" rather than a generic error.
+            Log.i(TAG, "No Google credential available for sign-in", e)
+            Result.failure(e)
         } catch (e: GetCredentialException) {
             Log.e(TAG, "Credential Manager sign-in failed", e)
             Result.failure(e)

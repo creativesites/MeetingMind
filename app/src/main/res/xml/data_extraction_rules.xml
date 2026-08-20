@@ -1,19 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MeetMind is local-first and privacy-first: recordings, transcripts, and AI-generated content
+  never leave the device except when the user explicitly shares or exports them (see
+  docs/DATA_SAFETY.md). Excluding them here keeps that promise consistent even with Android's
+  otherwise-automatic cloud backup / device-transfer — a user's recordings should not silently end
+  up in their Google Drive Auto Backup or a new device's transfer without them choosing to.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="file" path="meetings/" />
+        <exclude domain="database" path="meetmind_database" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="file" path="meetings/" />
+        <exclude domain="database" path="meetmind_database" />
     </device-transfer>
-    -->
 </data-extraction-rules>
