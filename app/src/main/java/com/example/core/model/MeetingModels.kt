@@ -35,40 +35,70 @@ data class Transcript(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+/**
+ * A diarized speaker within one meeting. [id] is the stable diarization identity (never shown to
+ * the user, never overwritten by a rename); [customName] is what the user sees and can rename —
+ * keeping these separate means renaming "Speaker 1" to "Winston" never disturbs the underlying
+ * transcript-to-speaker assignment. Null [confidence] means the diarization engine (or the
+ * absence of one) didn't provide a meaningful score — never fabricated.
+ */
 data class Speaker(
     val id: String,
     val meetingId: String,
+    val speakerIndex: Int,
     val originalLabel: String,
     val customName: String,
-    val colorHex: String
+    val colorHex: String,
+    val confidence: Float? = null
 )
+
+/**
+ * Distinguishes a firm agreement from something merely discussed or proposed — collapsing this
+ * distinction is exactly the kind of overclaiming the Meeting Intelligence engine must avoid.
+ * See docs/AI_ARCHITECTURE.md "No-Hallucination Requirement".
+ */
+enum class DecisionType { DECISION, SUGGESTION, DISCUSSION, POSSIBILITY }
 
 data class ActionItem(
     val id: String,
     val meetingId: String,
     val task: String,
-    val assignee: String,
-    val deadline: String,
-    val confidence: Float = 0.9f,
+    val assigneeSpeakerId: String? = null,
+    val assigneeName: String? = null,
+    val deadline: String? = null,
+    // Null when the source (LLM extraction, or a user manually adding one) doesn't provide a
+    // meaningful confidence — never a fabricated default.
+    val confidence: Float? = null,
     val isCompleted: Boolean = false,
-    val sourceTimestampMs: Long? = null
+    val sourceSegmentIds: List<String> = emptyList()
 )
 
 data class Decision(
     val id: String,
     val meetingId: String,
     val text: String,
-    val confidence: Float = 0.92f,
-    val timestampMs: Long? = null
+    val type: DecisionType = DecisionType.DISCUSSION,
+    val confidence: Float? = null,
+    val sourceSegmentIds: List<String> = emptyList()
 )
 
 data class Question(
     val id: String,
     val meetingId: String,
     val text: String,
+    val askedBySpeakerId: String? = null,
     val resolved: Boolean = false,
     val answer: String? = null,
-    val timestampMs: Long? = null
+    val sourceSegmentIds: List<String> = emptyList()
+)
+
+data class FollowUp(
+    val id: String,
+    val meetingId: String,
+    val description: String,
+    val ownerSpeakerId: String? = null,
+    val deadline: String? = null,
+    val sourceSegmentIds: List<String> = emptyList()
 )
 
 data class Topic(
@@ -85,7 +115,7 @@ data class MeetingSummary(
     val decisions: List<Decision>,
     val actionItems: List<ActionItem>,
     val questions: List<Question>,
-    val followUps: List<String> = emptyList()
+    val followUps: List<FollowUp> = emptyList()
 )
 
 data class ChatMessage(
@@ -107,8 +137,14 @@ data class ChatMessage(
 data class ModelFileSpec(
     val fileName: String,
     val downloadUrl: String,
+    /** SHA-256 of the final installed file at [fileName] — of the extracted entry, not the archive, when [archiveEntryPath] is set. */
     val sha256: String,
-    val sizeBytes: Long
+    /** Size of the final installed file at [fileName]. */
+    val sizeBytes: Long,
+    /** Raw HTTP payload size, when it differs from [sizeBytes] (i.e. [downloadUrl] points at an archive). Defaults to [sizeBytes]. */
+    val downloadSizeBytes: Long? = null,
+    /** When set, [downloadUrl] points at a `.tar.bz2` archive; this is the path of the entry to extract and rename to [fileName]. Null means [downloadUrl] is the file itself. */
+    val archiveEntryPath: String? = null
 )
 
 data class AiModelInfo(
@@ -125,7 +161,9 @@ data class AiModelInfo(
     val downloadProgress: Float = 0f,
     val description: String = "",
     val parameterCount: String = "",
-    val quantization: String = "q4_0"
+    val quantization: String = "q4_0",
+    /** Maximum total tokens (prompt + generated) this specific installed model build supports, when known — e.g. an LLM's real KV-cache size. Null for non-LLM models. */
+    val contextLengthTokens: Int? = null
 ) {
     val sizeBytes: Long get() = files.sumOf { it.sizeBytes }
 

@@ -28,3 +28,17 @@ enum class ModelCapability {
     DIARIZATION,
     EMBEDDINGS
 }
+
+/** Real, typed processing stages — never a fabricated percentage. See [com.example.ai.pipeline.MeetingProcessingPipeline]. */
+enum class ProcessingStage {
+    IDLE,
+    PREPARING_AUDIO,
+    DETECTING_SPEECH,
+    TRANSCRIBING,
+    DIARIZING,
+    ANALYZING,
+    SAVING_RESULTS,
+    COMPLETED,
+    FAILED,
+    CANCELLED
+}

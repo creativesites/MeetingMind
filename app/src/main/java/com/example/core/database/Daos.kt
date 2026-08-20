@@ -138,6 +138,15 @@ interface TopicDao {
 }
 
 @Dao
+interface FollowUpDao {
+    @Query("SELECT * FROM follow_ups WHERE meetingId = :meetingId")
+    fun getFollowUpsForMeeting(meetingId: String): Flow<List<FollowUpEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFollowUps(followUps: List<FollowUpEntity>)
+}
+
+@Dao
 interface EmbeddingDao {
     @Query("SELECT * FROM embeddings WHERE meetingId = :meetingId")
     suspend fun getEmbeddingsForMeeting(meetingId: String): List<EmbeddingEntity>

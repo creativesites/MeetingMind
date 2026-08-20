@@ -65,9 +65,11 @@ data class TranscriptSegmentEntity(
 data class SpeakerEntity(
     @PrimaryKey val id: String,
     val meetingId: String,
+    val speakerIndex: Int = 0,
     val originalLabel: String,
     val customName: String,
-    val colorHex: String
+    val colorHex: String,
+    val confidence: Float? = null
 )
 
 @Entity(
@@ -86,11 +88,12 @@ data class ActionItemEntity(
     @PrimaryKey val id: String,
     val meetingId: String,
     val task: String,
-    val assignee: String,
-    val deadline: String,
-    val confidence: Float,
+    val assigneeSpeakerId: String? = null,
+    val assigneeName: String? = null,
+    val deadline: String? = null,
+    val confidence: Float? = null,
     val isCompleted: Boolean,
-    val sourceTimestampMs: Long? = null
+    val sourceSegmentIdsJson: String = "[]"
 )
 
 @Entity(
@@ -109,8 +112,9 @@ data class DecisionEntity(
     @PrimaryKey val id: String,
     val meetingId: String,
     val text: String,
-    val confidence: Float,
-    val timestampMs: Long? = null
+    val type: String = "DISCUSSION",
+    val confidence: Float? = null,
+    val sourceSegmentIdsJson: String = "[]"
 )
 
 @Entity(
@@ -129,9 +133,31 @@ data class QuestionEntity(
     @PrimaryKey val id: String,
     val meetingId: String,
     val text: String,
+    val askedBySpeakerId: String? = null,
     val resolved: Boolean,
     val answer: String? = null,
-    val timestampMs: Long? = null
+    val sourceSegmentIdsJson: String = "[]"
+)
+
+@Entity(
+    tableName = "follow_ups",
+    foreignKeys = [
+        ForeignKey(
+            entity = MeetingEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["meetingId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["meetingId"])]
+)
+data class FollowUpEntity(
+    @PrimaryKey val id: String,
+    val meetingId: String,
+    val description: String,
+    val ownerSpeakerId: String? = null,
+    val deadline: String? = null,
+    val sourceSegmentIdsJson: String = "[]"
 )
 
 @Entity(
@@ -191,7 +217,8 @@ data class AiModelEntity(
     val downloadProgress: Float,
     val description: String,
     val parameterCount: String,
-    val quantization: String
+    val quantization: String,
+    val contextLengthTokens: Int? = null
 )
 
 @Entity(tableName = "processing_jobs")
@@ -204,7 +231,10 @@ data class ProcessingJobEntity(
     val isCompleted: Boolean,
     val isFailed: Boolean,
     val errorMessage: String?,
-    val startedAt: Long
+    val startedAt: Long,
+    // Real typed stage (ProcessingStage.name) alongside the human-readable currentStep label —
+    // never an invented percentage substituting for actual stage identity.
+    val stage: String = "IDLE"
 )
 
 @Entity(

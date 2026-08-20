@@ -104,6 +104,13 @@ dependencies {
   // HTTPS with progress/cancellation/resume — never for any AI inference call. See
   // docs/AI_ARCHITECTURE.md privacy notes.
   implementation(libs.okhttp)
+  // The speaker-segmentation model (pyannote segmentation-3.0) is distributed upstream only as
+  // a .tar.bz2 release asset — this extracts the one .onnx file we need from it after download.
+  // Never used for anything else (no APK asset bundling, no other archive formats).
+  implementation(libs.commons.compress)
+  // On-device LLM runtime for local Meeting Intelligence (see docs/AI_ARCHITECTURE.md). Runs a
+  // downloaded-on-demand .task model fully offline; never makes a network call itself.
+  implementation(libs.mediapipe.tasks.genai)
   testImplementation(libs.okhttp.mockwebserver)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

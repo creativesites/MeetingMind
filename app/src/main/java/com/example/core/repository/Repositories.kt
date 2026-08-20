@@ -171,29 +171,64 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
         Transcript(meetingId = meetingId, segments = segments)
     }
 
+    private val followUpDao = database.followUpDao()
+
     fun getSpeakers(meetingId: String): Flow<List<Speaker>> = speakerDao.getSpeakersForMeeting(meetingId).map { list ->
-        list.map { Speaker(it.id, it.meetingId, it.originalLabel, it.customName, it.colorHex) }
+        list.map { Speaker(it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence) }
     }.flowOn(Dispatchers.IO)
 
+    /**
+     * Renaming only ever touches [SpeakerEntity.customName] / the denormalized display copy on
+     * transcript segments — it must never overwrite [SpeakerEntity.originalLabel] or
+     * [SpeakerEntity.speakerIndex]/[SpeakerEntity.confidence], which are the real diarization
+     * identity a rename must not disturb.
+     */
     suspend fun renameSpeaker(meetingId: String, speakerId: String, newName: String) = withContext(Dispatchers.IO) {
         transcriptDao.updateSpeakerName(meetingId, speakerId, newName)
-        speakerDao.updateSpeaker(
-            SpeakerEntity(
-                id = speakerId,
-                meetingId = meetingId,
-                originalLabel = speakerId,
-                customName = newName,
-                colorHex = "#3B82F6"
-            )
-        )
+        val existing = speakerDao.getSpeakersForMeetingDirect(meetingId).find { it.id == speakerId }
+        if (existing != null) {
+            speakerDao.updateSpeaker(existing.copy(customName = newName))
+        }
     }
 
     fun getDecisions(meetingId: String): Flow<List<Decision>> = decisionDao.getDecisionsForMeeting(meetingId).map { list ->
-        list.map { Decision(it.id, it.meetingId, it.text, it.confidence, it.timestampMs) }
+        list.map {
+            Decision(
+                id = it.id,
+                meetingId = it.meetingId,
+                text = it.text,
+                type = try { com.example.core.model.DecisionType.valueOf(it.type) } catch (e: Exception) { com.example.core.model.DecisionType.DISCUSSION },
+                confidence = it.confidence,
+                sourceSegmentIds = it.sourceSegmentIdsJson.toIdList()
+            )
+        }
     }.flowOn(Dispatchers.IO)
 
     fun getQuestions(meetingId: String): Flow<List<Question>> = questionDao.getQuestionsForMeeting(meetingId).map { list ->
-        list.map { Question(it.id, it.meetingId, it.text, it.resolved, it.answer, it.timestampMs) }
+        list.map {
+            Question(
+                id = it.id,
+                meetingId = it.meetingId,
+                text = it.text,
+                askedBySpeakerId = it.askedBySpeakerId,
+                resolved = it.resolved,
+                answer = it.answer,
+                sourceSegmentIds = it.sourceSegmentIdsJson.toIdList()
+            )
+        }
+    }.flowOn(Dispatchers.IO)
+
+    fun getFollowUps(meetingId: String): Flow<List<com.example.core.model.FollowUp>> = followUpDao.getFollowUpsForMeeting(meetingId).map { list ->
+        list.map {
+            com.example.core.model.FollowUp(
+                id = it.id,
+                meetingId = it.meetingId,
+                description = it.description,
+                ownerSpeakerId = it.ownerSpeakerId,
+                deadline = it.deadline,
+                sourceSegmentIds = it.sourceSegmentIdsJson.toIdList()
+            )
+        }
     }.flowOn(Dispatchers.IO)
 
     fun getTopics(meetingId: String): Flow<List<Topic>> = topicDao.getTopicsForMeeting(meetingId).map { list ->
@@ -235,61 +270,68 @@ class ActionItemRepository(private val database: MeetMindDatabase) {
     private val dao = database.actionItemDao()
 
     fun getActionItemsForMeeting(meetingId: String): Flow<List<ActionItem>> = dao.getActionItemsForMeeting(meetingId).map { list ->
-        list.map { ActionItem(it.id, it.meetingId, it.task, it.assignee, it.deadline, it.confidence, it.isCompleted, it.sourceTimestampMs) }
+        list.map { it.toDomain() }
     }.flowOn(Dispatchers.IO)
 
     fun getAllActionItems(): Flow<List<ActionItem>> = dao.getAllActionItems().map { list ->
-        list.map { ActionItem(it.id, it.meetingId, it.task, it.assignee, it.deadline, it.confidence, it.isCompleted, it.sourceTimestampMs) }
+        list.map { it.toDomain() }
     }.flowOn(Dispatchers.IO)
 
     suspend fun toggleCompleted(item: ActionItem) = withContext(Dispatchers.IO) {
-        dao.updateActionItem(
-            ActionItemEntity(
-                id = item.id,
-                meetingId = item.meetingId,
-                task = item.task,
-                assignee = item.assignee,
-                deadline = item.deadline,
-                confidence = item.confidence,
-                isCompleted = !item.isCompleted,
-                sourceTimestampMs = item.sourceTimestampMs
-            )
-        )
+        dao.updateActionItem(item.copy(isCompleted = !item.isCompleted).toEntity())
     }
 
     suspend fun updateActionItem(item: ActionItem) = withContext(Dispatchers.IO) {
-        dao.updateActionItem(
-            ActionItemEntity(
-                id = item.id,
-                meetingId = item.meetingId,
-                task = item.task,
-                assignee = item.assignee,
-                deadline = item.deadline,
-                confidence = item.confidence,
-                isCompleted = item.isCompleted,
-                sourceTimestampMs = item.sourceTimestampMs
-            )
-        )
+        dao.updateActionItem(item.toEntity())
     }
 
     suspend fun addActionItem(item: ActionItem) = withContext(Dispatchers.IO) {
-        dao.insertActionItem(
-            ActionItemEntity(
-                id = item.id,
-                meetingId = item.meetingId,
-                task = item.task,
-                assignee = item.assignee,
-                deadline = item.deadline,
-                confidence = item.confidence,
-                isCompleted = item.isCompleted,
-                sourceTimestampMs = item.sourceTimestampMs
-            )
-        )
+        dao.insertActionItem(item.toEntity())
     }
 
     suspend fun deleteActionItem(id: String) = withContext(Dispatchers.IO) {
         dao.deleteActionItemById(id)
     }
+
+    private fun ActionItemEntity.toDomain() = ActionItem(
+        id = id,
+        meetingId = meetingId,
+        task = task,
+        assigneeSpeakerId = assigneeSpeakerId,
+        assigneeName = assigneeName,
+        deadline = deadline,
+        confidence = confidence,
+        isCompleted = isCompleted,
+        sourceSegmentIds = sourceSegmentIdsJson.toIdList()
+    )
+
+    private fun ActionItem.toEntity() = ActionItemEntity(
+        id = id,
+        meetingId = meetingId,
+        task = task,
+        assigneeSpeakerId = assigneeSpeakerId,
+        assigneeName = assigneeName,
+        deadline = deadline,
+        confidence = confidence,
+        isCompleted = isCompleted,
+        sourceSegmentIdsJson = sourceSegmentIds.toIdsJson()
+    )
+}
+
+internal fun String.toIdList(): List<String> {
+    if (isBlank()) return emptyList()
+    return try {
+        val array = org.json.JSONArray(this)
+        (0 until array.length()).map { array.getString(it) }
+    } catch (e: Exception) {
+        emptyList()
+    }
+}
+
+internal fun List<String>.toIdsJson(): String {
+    val array = org.json.JSONArray()
+    forEach { array.put(it) }
+    return array.toString()
 }
 
 class SearchRepository(
@@ -433,7 +475,12 @@ class ModelRepository(
         val alreadyPresentBytes = manifest.files.sumOf { spec ->
             File(targetDir, spec.fileName).let { if (it.exists()) it.length().coerceAtMost(spec.sizeBytes) else 0L }
         }
-        val remainingBytes = (manifest.sizeBytes - alreadyPresentBytes).coerceAtLeast(0L)
+        // Archive-packaged files briefly need room for both the downloaded archive and the
+        // extracted target file at once — budget for that peak, not just the final install size.
+        val transientArchiveOverheadBytes = manifest.files.sumOf { spec ->
+            if (spec.archiveEntryPath != null) ((spec.downloadSizeBytes ?: spec.sizeBytes) - spec.sizeBytes).coerceAtLeast(0L) else 0L
+        }
+        val remainingBytes = (manifest.sizeBytes + transientArchiveOverheadBytes - alreadyPresentBytes).coerceAtLeast(0L)
         val availableMb = DeviceCapabilityDetector.getAvailableStorageMb()
         val requiredMb = (remainingBytes / (1024 * 1024)) + 1 // round up, small safety margin
         if (availableMb < requiredMb) {
@@ -449,18 +496,47 @@ class ModelRepository(
             }
 
             val partFile = File(targetDir, "${spec.fileName}.part")
-            val downloadResult = modelDownloader.download(spec, partFile) { fileBytes, _ ->
-                onProgress(bytesDoneBeforeCurrentFile + fileBytes, manifest.sizeBytes)
-            }
-            // Preserve the downloader's own failure variant (e.g. ModelUnavailable when no
-            // source is configured) instead of collapsing everything into a generic Failed.
-            when (downloadResult) {
-                is AiResult.Success -> Unit
-                is AiResult.ModelUnavailable -> return@withContext downloadResult
-                is AiResult.DeviceUnsupported -> return@withContext downloadResult
-                is AiResult.InsufficientMemory -> return@withContext downloadResult
-                is AiResult.InsufficientStorage -> return@withContext downloadResult
-                is AiResult.Failed -> return@withContext downloadResult
+            if (spec.archiveEntryPath != null) {
+                // spec.downloadUrl points at a .tar.bz2 archive; download it to a transient
+                // location (sized per downloadSizeBytes, the real transfer size — not
+                // spec.sizeBytes, which describes the final extracted file), extract the one
+                // entry we need, then discard the archive. Verification below still applies to
+                // the extracted file, never to the raw archive bytes.
+                val archiveFile = File(targetDir, "${spec.fileName}.archive.part")
+                val archiveSpec = spec.copy(sizeBytes = spec.downloadSizeBytes ?: spec.sizeBytes)
+                val downloadResult = modelDownloader.download(archiveSpec, archiveFile) { fileBytes, _ ->
+                    onProgress(bytesDoneBeforeCurrentFile + fileBytes, manifest.sizeBytes)
+                }
+                when (downloadResult) {
+                    is AiResult.Success -> Unit
+                    is AiResult.ModelUnavailable -> return@withContext downloadResult
+                    is AiResult.DeviceUnsupported -> return@withContext downloadResult
+                    is AiResult.InsufficientMemory -> return@withContext downloadResult
+                    is AiResult.InsufficientStorage -> return@withContext downloadResult
+                    is AiResult.Failed -> return@withContext downloadResult
+                }
+                try {
+                    com.example.ai.modelmanagement.ArchiveExtractor.extractTarBz2Entry(archiveFile, spec.archiveEntryPath, partFile)
+                } catch (e: Exception) {
+                    archiveFile.delete()
+                    partFile.delete()
+                    return@withContext AiResult.Failed("Failed to extract \"${spec.fileName}\" from the downloaded archive: ${e.message}", e)
+                }
+                archiveFile.delete()
+            } else {
+                val downloadResult = modelDownloader.download(spec, partFile) { fileBytes, _ ->
+                    onProgress(bytesDoneBeforeCurrentFile + fileBytes, manifest.sizeBytes)
+                }
+                // Preserve the downloader's own failure variant (e.g. ModelUnavailable when no
+                // source is configured) instead of collapsing everything into a generic Failed.
+                when (downloadResult) {
+                    is AiResult.Success -> Unit
+                    is AiResult.ModelUnavailable -> return@withContext downloadResult
+                    is AiResult.DeviceUnsupported -> return@withContext downloadResult
+                    is AiResult.InsufficientMemory -> return@withContext downloadResult
+                    is AiResult.InsufficientStorage -> return@withContext downloadResult
+                    is AiResult.Failed -> return@withContext downloadResult
+                }
             }
 
             if (!modelVerifier.verify(partFile, spec.sha256)) {
@@ -508,7 +584,8 @@ class ModelRepository(
         downloadProgress = downloadProgress,
         description = description,
         parameterCount = parameterCount,
-        quantization = quantization
+        quantization = quantization,
+        contextLengthTokens = contextLengthTokens
     )
 
     private fun AiModelInfo.toEntity(): AiModelEntity = AiModelEntity(
@@ -524,7 +601,8 @@ class ModelRepository(
         downloadProgress = downloadProgress,
         description = description,
         parameterCount = parameterCount,
-        quantization = quantization
+        quantization = quantization,
+        contextLengthTokens = contextLengthTokens
     )
 
     private fun List<com.example.core.model.ModelFileSpec>.toJson(): String {
@@ -536,6 +614,8 @@ class ModelRepository(
                     put("downloadUrl", spec.downloadUrl)
                     put("sha256", spec.sha256)
                     put("sizeBytes", spec.sizeBytes)
+                    spec.downloadSizeBytes?.let { put("downloadSizeBytes", it) }
+                    spec.archiveEntryPath?.let { put("archiveEntryPath", it) }
                 }
             )
         }
@@ -552,7 +632,9 @@ class ModelRepository(
                     fileName = obj.getString("fileName"),
                     downloadUrl = obj.getString("downloadUrl"),
                     sha256 = obj.getString("sha256"),
-                    sizeBytes = obj.getLong("sizeBytes")
+                    sizeBytes = obj.getLong("sizeBytes"),
+                    downloadSizeBytes = if (obj.has("downloadSizeBytes")) obj.getLong("downloadSizeBytes") else null,
+                    archiveEntryPath = if (obj.has("archiveEntryPath")) obj.getString("archiveEntryPath") else null
                 )
             }
         } catch (e: Exception) {

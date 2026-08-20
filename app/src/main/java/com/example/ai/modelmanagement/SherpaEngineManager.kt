@@ -2,6 +2,8 @@ package com.example.ai.modelmanagement
 
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OfflineSpeakerDiarization
+import com.k2fsa.sherpa.onnx.OfflineSpeakerDiarizationConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
 import kotlinx.coroutines.sync.Mutex
@@ -26,6 +28,9 @@ object SherpaEngineManager {
 
     private var vad: Vad? = null
     private var vadModelId: String? = null
+
+    private var diarizer: OfflineSpeakerDiarization? = null
+    private var diarizerModelId: String? = null
 
     suspend fun getOrCreateRecognizer(modelId: String, config: OfflineRecognizerConfig): OfflineRecognizer =
         mutex.withLock {
@@ -53,6 +58,25 @@ object SherpaEngineManager {
             created
         }
 
+    /**
+     * The segmentation/embedding models load once per [modelId] and are reused; per-meeting
+     * clustering settings (e.g. a user-picked expected speaker count) are applied afterward via
+     * [OfflineSpeakerDiarization.setConfig], which the sherpa-onnx API documents as the only
+     * field it re-reads — it never reloads the underlying models.
+     */
+    suspend fun getOrCreateDiarizer(modelId: String, config: OfflineSpeakerDiarizationConfig): OfflineSpeakerDiarization =
+        mutex.withLock {
+            val existing = diarizer
+            if (existing != null && diarizerModelId == modelId) {
+                return@withLock existing
+            }
+            existing?.release()
+            val created = OfflineSpeakerDiarization(config = config)
+            diarizer = created
+            diarizerModelId = modelId
+            created
+        }
+
     /** Releases all native resources. Safe to call even if nothing was ever loaded. */
     suspend fun releaseAll() = mutex.withLock {
         recognizer?.release()
@@ -62,5 +86,9 @@ object SherpaEngineManager {
         vad?.release()
         vad = null
         vadModelId = null
+
+        diarizer?.release()
+        diarizer = null
+        diarizerModelId = null
     }
 }
