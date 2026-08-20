@@ -154,7 +154,8 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
                         startMs = it.startMs,
                         endMs = it.endMs,
                         text = it.text,
-                        confidence = it.confidence
+                        confidence = it.confidence,
+                        isUserEdited = it.isUserEdited
                     )
                 }
             )
@@ -171,10 +172,17 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
                 startMs = it.startMs,
                 endMs = it.endMs,
                 text = it.text,
-                confidence = it.confidence
+                confidence = it.confidence,
+                isUserEdited = it.isUserEdited
             )
         }
         Transcript(meetingId = meetingId, segments = segments)
+    }
+
+    /** Persists a user's hand-correction to one segment's text — the transcript is user-owned
+     * data, never immutable AI output. Speaker/timestamp metadata on the segment is untouched. */
+    suspend fun updateSegmentText(segmentId: String, newText: String) = withContext(Dispatchers.IO) {
+        transcriptDao.updateSegmentText(segmentId, newText)
     }
 
     private val followUpDao = database.followUpDao()
@@ -366,7 +374,9 @@ class SearchRepository(
                     matchSnippet = seg.text,
                     timestampMs = seg.startMs,
                     matchType = SearchMatchType.KEYWORD_TRANSCRIPT,
-                    relevanceScore = 0.95f
+                    relevanceScore = 0.95f,
+                    speakerName = seg.speakerName,
+                    recordingType = meeting.recordingTypeOrGeneral()
                 )
             )
         }
@@ -391,7 +401,9 @@ class SearchRepository(
                                 matchSnippet = emb.textChunk,
                                 timestampMs = emb.startMs,
                                 matchType = SearchMatchType.SEMANTIC_VECTOR,
-                                relevanceScore = similarity
+                                relevanceScore = similarity,
+                                speakerName = emb.segmentId?.let { transcriptDao.getSegmentById(it)?.speakerName },
+                                recordingType = meeting.recordingTypeOrGeneral()
                             )
                         )
                     }
@@ -403,6 +415,15 @@ class SearchRepository(
         results.sortedByDescending { it.relevanceScore }
     }
 }
+
+/** Parses [MeetingEntity.recordingType] defensively — same fallback-to-GENERAL pattern as
+ * [MeetingRepository.toDomain] — so an unrecognized/corrupt stored value never crashes search. */
+private fun MeetingEntity.recordingTypeOrGeneral(): com.example.core.model.RecordingType =
+    try {
+        com.example.core.model.RecordingType.valueOf(recordingType)
+    } catch (e: Exception) {
+        com.example.core.model.RecordingType.GENERAL
+    }
 
 enum class SearchMatchType {
     KEYWORD_TRANSCRIPT,
@@ -416,7 +437,10 @@ data class SearchResultItem(
     val matchSnippet: String,
     val timestampMs: Long,
     val matchType: SearchMatchType,
-    val relevanceScore: Float
+    val relevanceScore: Float,
+    // Null when the matching segment has no diarized speaker — never a fabricated name.
+    val speakerName: String? = null,
+    val recordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.GENERAL
 )
 
 /**

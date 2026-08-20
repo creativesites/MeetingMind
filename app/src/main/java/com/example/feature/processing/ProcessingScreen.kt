@@ -397,7 +397,7 @@ fun ProcessingScreen(
                                 onClick = { onProcessingComplete(meetingId) },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("View Meeting")
+                                Text("View Recording")
                             }
                             Button(
                                 onClick = onNavigateToModels,

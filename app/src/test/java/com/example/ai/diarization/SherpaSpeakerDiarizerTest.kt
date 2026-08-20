@@ -121,4 +121,116 @@ class SherpaSpeakerDiarizerTest {
         assertEquals(first[0].speakerId, second[0].speakerId)
         assertEquals("spk_m1_2", first[0].speakerId)
     }
+
+    // --- buildClusteringConfig: fixed speaker count vs. conservative Auto mode ---
+
+    @Test
+    fun `a fixed speaker count is passed through as numClusters`() {
+        val config = buildClusteringConfig(3)
+        assertEquals(3, config.numClusters)
+    }
+
+    @Test
+    fun `null speaker count (Auto) requests -1 clusters and the conservative threshold`() {
+        val config = buildClusteringConfig(null)
+        assertEquals(-1, config.numClusters)
+        assertEquals(DIARIZATION_CLUSTERING_THRESHOLD, config.threshold)
+    }
+
+    @Test
+    fun `Auto mode threshold is more conservative than sherpa-onnx's own library default`() {
+        // The library's own default is 0.5f; a HIGHER threshold merges more aggressively (fewer,
+        // larger clusters) since cutree_cdist merges anything within `threshold` cosine
+        // dissimilarity. Going below 0.5f here would silently reintroduce the speaker-explosion
+        // bug this constant exists to fix.
+        assertTrue(DIARIZATION_CLUSTERING_THRESHOLD > 0.5f)
+    }
+
+    @Test
+    fun `a zero or negative speaker count is treated as Auto, not a literal cluster count`() {
+        assertEquals(-1, buildClusteringConfig(0).numClusters)
+        assertEquals(-1, buildClusteringConfig(-5).numClusters)
+    }
+
+    // --- mergeShortSandwichedFragments: fragment reconciliation without fabricating identity ---
+
+    @Test
+    fun `two real speakers with no short fragments are left as two speakers`() {
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 3000L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 3000L, endMs = 6000L, speakerIndex = 1),
+            RawSpeakerSegment(startMs = 6000L, endMs = 9000L, speakerIndex = 0)
+        )
+
+        val result = mergeShortSandwichedFragments(segments)
+
+        assertEquals(segments, result)
+    }
+
+    @Test
+    fun `a short fragment sandwiched by the same speaker on both sides is merged into that speaker`() {
+        // The exact scenario from the product spec: Speaker 1 talks, a 300ms fragment gets
+        // misclassified as Speaker 3, then Speaker 1 resumes.
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 2000L, speakerIndex = 1),
+            RawSpeakerSegment(startMs = 2000L, endMs = 2300L, speakerIndex = 3),
+            RawSpeakerSegment(startMs = 2300L, endMs = 5000L, speakerIndex = 1)
+        )
+
+        val result = mergeShortSandwichedFragments(segments)
+
+        assertEquals(listOf(1, 1, 1), result.map { it.speakerIndex })
+    }
+
+    @Test
+    fun `a short fragment between two DIFFERENT surrounding speakers is left alone, not fabricated away`() {
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 2000L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 2000L, endMs = 2300L, speakerIndex = 2),
+            RawSpeakerSegment(startMs = 2300L, endMs = 5000L, speakerIndex = 1)
+        )
+
+        val result = mergeShortSandwichedFragments(segments)
+
+        // No basis to guess which neighbor (if either) the fragment really belongs to, so it's
+        // preserved as its own uncertain segment rather than merged into either one.
+        assertEquals(listOf(0, 2, 1), result.map { it.speakerIndex })
+    }
+
+    @Test
+    fun `a long segment between two same-speaker segments is NOT merged, only short fragments are`() {
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 2000L, speakerIndex = 0),
+            // 5 seconds — a real, sustained turn, not a fragment.
+            RawSpeakerSegment(startMs = 2000L, endMs = 7000L, speakerIndex = 1),
+            RawSpeakerSegment(startMs = 7000L, endMs = 9000L, speakerIndex = 0)
+        )
+
+        val result = mergeShortSandwichedFragments(segments)
+
+        assertEquals(listOf(0, 1, 0), result.map { it.speakerIndex })
+    }
+
+    @Test
+    fun `the first and last segments are never merged, even if short, since they have no two-sided sandwich`() {
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 200L, speakerIndex = 5),
+            RawSpeakerSegment(startMs = 200L, endMs = 3000L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 3000L, endMs = 3200L, speakerIndex = 6)
+        )
+
+        val result = mergeShortSandwichedFragments(segments)
+
+        assertEquals(listOf(5, 0, 6), result.map { it.speakerIndex })
+    }
+
+    @Test
+    fun `fewer than three segments cannot be sandwiched and are returned unchanged`() {
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 200L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 200L, endMs = 400L, speakerIndex = 1)
+        )
+
+        assertEquals(segments, mergeShortSandwichedFragments(segments))
+    }
 }

@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
@@ -247,6 +248,19 @@ class MeetingDetailViewModel(
         }
     }
 
+    /** Persists a batch of hand-corrected segment texts (only the ones that actually changed).
+     * The transcript [StateFlow] above re-emits from Room once these writes land, so every other
+     * consumer of the transcript (Ask AI, export, search) sees the correction immediately —
+     * there is no separate "edited" copy to keep in sync. */
+    fun saveTranscriptEdits(edits: Map<String, String>) {
+        if (edits.isEmpty()) return
+        viewModelScope.launch {
+            edits.forEach { (segmentId, newText) ->
+                transcriptRepository.updateSegmentText(segmentId, newText)
+            }
+        }
+    }
+
     fun toggleActionItem(item: ActionItem) {
         viewModelScope.launch {
             actionItemRepository.toggleCompleted(item)
@@ -340,7 +354,11 @@ fun MeetingDetailScreen(
     viewModel: MeetingDetailViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToModels: () -> Unit = {},
-    onTranscribe: (meetingId: String, audioPath: String, durationMs: Long) -> Unit = { _, _, _ -> }
+    onTranscribe: (meetingId: String, audioPath: String, durationMs: Long) -> Unit = { _, _, _ -> },
+    /** Set when arriving from a search result: jumps straight to the Transcript tab, seeks/plays
+     * audio to this position, and highlights the matching segment — a search result must land the
+     * user in context, not just at the recording's Overview. */
+    initialJumpToMs: Long? = null
 ) {
     val context = LocalContext.current
     val meeting by viewModel.meeting.collectAsState()
@@ -369,6 +387,22 @@ fun MeetingDetailScreen(
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabTitles = listOf("Overview", "Transcript", "Action Items", "Decisions", "Ask AI")
+
+    // Consumed exactly once per screen entry — re-composition or the user manually switching
+    // tabs afterward must not keep forcing them back to this segment.
+    var highlightedSegmentId by remember { mutableStateOf<String?>(null) }
+    var jumpConsumed by remember { mutableStateOf(false) }
+    LaunchedEffect(initialJumpToMs, transcript.segments) {
+        if (jumpConsumed || initialJumpToMs == null || transcript.segments.isEmpty()) return@LaunchedEffect
+        jumpConsumed = true
+        selectedTabIndex = 1
+        viewModel.jumpToTimestamp(initialJumpToMs)
+        highlightedSegmentId = transcript.segments
+            .filter { it.startMs <= initialJumpToMs }
+            .maxByOrNull { it.startMs }
+            ?.id
+            ?: transcript.segments.minByOrNull { kotlin.math.abs(it.startMs - initialJumpToMs) }?.id
+    }
 
     var showEditTitleDialog by remember { mutableStateOf(false) }
     var editTitleText by remember { mutableStateOf("") }
@@ -653,7 +687,9 @@ fun MeetingDetailScreen(
                         renameSpeakerTargetId = id
                         renameSpeakerText = name
                         showRenameSpeakerDialog = true
-                    }
+                    },
+                    onSaveEdits = { viewModel.saveTranscriptEdits(it) },
+                    highlightedSegmentId = highlightedSegmentId
                 )
                 2 -> ActionItemsTab(
                     actionItems = actionItems,
@@ -678,7 +714,7 @@ fun MeetingDetailScreen(
     if (showEditTitleDialog) {
         AlertDialog(
             onDismissRequest = { showEditTitleDialog = false },
-            title = { Text("Edit Meeting Title") },
+            title = { Text("Edit Title") },
             text = {
                 OutlinedTextField(
                     value = editTitleText,
@@ -1009,9 +1045,18 @@ private fun CountTrailing(count: Int) {
 fun TranscriptTab(
     segments: List<TranscriptSegment>,
     onJumpToTimestamp: (Long) -> Unit,
-    onRenameSpeaker: (speakerId: String, currentName: String) -> Unit
+    onRenameSpeaker: (speakerId: String, currentName: String) -> Unit,
+    onSaveEdits: (Map<String, String>) -> Unit = {},
+    /** Set briefly when this tab is opened via a search-result deep link — scrolls to and tints
+     * this one segment so the user immediately sees why it matched, without permanently marking
+     * it (a manual tab switch afterward leaves it as an ordinary segment again). */
+    highlightedSegmentId: String? = null
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var isEditMode by remember { mutableStateOf(false) }
+    // segmentId -> in-progress draft text, only while isEditMode is true. Re-seeded from the real
+    // segments each time edit mode is entered so a Cancel always throws the drafts away cleanly.
+    var drafts by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     val filteredSegments = remember(segments, searchQuery) {
         if (searchQuery.isBlank()) segments
@@ -1021,28 +1066,83 @@ fun TranscriptTab(
         }
     }
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(highlightedSegmentId, filteredSegments) {
+        if (highlightedSegmentId == null) return@LaunchedEffect
+        val index = filteredSegments.indexOfFirst { it.id == highlightedSegmentId }
+        if (index >= 0) listState.animateScrollToItem(index)
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text("Search keywords in transcript...") },
-            singleLine = true,
-            shape = RoundedCornerShape(14.dp),
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-        )
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search transcript...") },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                enabled = !isEditMode,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 4.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            if (isEditMode) {
+                TextButton(
+                    onClick = { isEditMode = false; drafts = emptyMap() },
+                    modifier = Modifier.testTag("transcript_edit_cancel_btn")
+                ) { Text("Cancel") }
+                Button(
+                    onClick = {
+                        val changed = drafts.filter { (id, text) -> segments.find { it.id == id }?.text != text }
+                        onSaveEdits(changed)
+                        isEditMode = false
+                        drafts = emptyMap()
+                    },
+                    modifier = Modifier.testTag("transcript_edit_save_btn")
+                ) { Text("Save") }
+            } else {
+                TextButton(
+                    onClick = {
+                        drafts = segments.associate { it.id to it.text }
+                        isEditMode = true
+                    },
+                    modifier = Modifier.testTag("transcript_edit_btn")
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Edit")
+                }
+            }
+        }
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(filteredSegments, key = { it.id }) { seg ->
+                val isHighlighted = seg.id == highlightedSegmentId
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isHighlighted) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                        } else {
+                            MaterialTheme.colorScheme.surface
+                        }
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        if (isHighlighted) 1.5.dp else 1.dp,
+                        if (isHighlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
@@ -1085,6 +1185,14 @@ fun TranscriptTab(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(14.dp)
                                 )
+                                if (seg.isUserEdited) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = "Edited by you",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
                             }
 
                             Surface(
@@ -1104,12 +1212,24 @@ fun TranscriptTab(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        Text(
-                            text = seg.text,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            lineHeight = 20.sp
-                        )
+                        if (isEditMode) {
+                            OutlinedTextField(
+                                value = drafts[seg.id] ?: seg.text,
+                                onValueChange = { newValue -> drafts = drafts + (seg.id to newValue) },
+                                textStyle = MaterialTheme.typography.bodyMedium,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("transcript_segment_edit_${seg.id}")
+                            )
+                        } else {
+                            Text(
+                                text = seg.text,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                lineHeight = 20.sp
+                            )
+                        }
                     }
                 }
             }

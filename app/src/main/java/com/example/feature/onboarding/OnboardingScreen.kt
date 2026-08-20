@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +32,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -61,8 +59,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.core.common.DeviceCapabilityDetector
 import com.example.core.datastore.UserPreferencesManager
 import com.example.core.model.DeviceCapabilities
+import com.example.core.ui.ListRow
 import com.example.core.ui.SectionCard
-import com.example.core.ui.StatusLine
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.VioletSecondary
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -319,18 +317,28 @@ private fun OnboardingStepOne() {
     }
 }
 
+/**
+ * There is exactly one real on-device speech-to-text model in [com.example.ai.modelmanagement.ModelCatalog]
+ * (Parakeet TDT 0.6B v3 INT8) — no lighter/heavier tier actually exists to offer a choice between,
+ * so this step is informational rather than a picker. [onSelectModel] still runs once (with the
+ * one real model id) so [OnboardingViewModel.completeOnboarding] has something real to persist.
+ */
 @Composable
 private fun OnboardingStepTwo(
     caps: DeviceCapabilities,
     selectedModel: String,
     onSelectModel: (String) -> Unit
 ) {
+    androidx.compose.runtime.LaunchedEffect(caps.recommendedAsrModelId) {
+        onSelectModel(caps.recommendedAsrModelId)
+    }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
-            text = "Choose Speech Model",
+            text = "Your On-Device Speech Model",
             style = MaterialTheme.typography.displayMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
@@ -340,7 +348,7 @@ private fun OnboardingStepTwo(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Detected ${caps.totalRamGb} GB RAM (${caps.cpuArch}). Select your default local transcription model:",
+            text = "Detected ${caps.totalRamGb} GB RAM (${caps.cpuArch}, ${caps.devicePerformanceTier}).",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
@@ -348,87 +356,24 @@ private fun OnboardingStepTwo(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        ModelOptionCard(
-            title = "Whisper Tiny (Recommended)",
-            size = "75 MB",
-            description = "Fastest CPU inference, ideal for battery life and low memory.",
-            isSelected = selectedModel == "whisper_tiny",
-            isRecommended = true,
-            onClick = { onSelectModel("whisper_tiny") }
-        )
+        SectionCard {
+            ListRow(
+                title = "Parakeet TDT 0.6B v3 (INT8)",
+                subtitle = "On-device speech-to-text, ~639 MB — downloaded on the next screen",
+                icon = Icons.Default.Mic,
+                trailing = null,
+                showDivider = false
+            )
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        ModelOptionCard(
-            title = "Whisper Base",
-            size = "142 MB",
-            description = "Higher accuracy and better multi-speaker punctuation.",
-            isSelected = selectedModel == "whisper_base",
-            isRecommended = caps.totalRamGb >= 6.0f,
-            onClick = { onSelectModel("whisper_base") }
+        Text(
+            text = "You'll download this model (and the others you choose to enable) after onboarding, in AI Engine.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
         )
-    }
-}
-
-@Composable
-private fun ModelOptionCard(
-    title: String,
-    size: String,
-    description: String,
-    isSelected: Boolean,
-    isRecommended: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .testTag("model_option_$title")
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RadioButton(
-                selected = isSelected,
-                onClick = onClick
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    if (isRecommended) {
-                        StatusLine(text = "Recommended", color = SuccessGreen)
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Download size: $size",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
     }
 }
 

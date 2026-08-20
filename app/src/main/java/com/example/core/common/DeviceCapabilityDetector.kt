@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import com.example.ai.modelmanagement.ModelCatalog
 import com.example.core.model.DeviceCapabilities
 
 object DeviceCapabilityDetector {
@@ -31,16 +32,12 @@ object DeviceCapabilityDetector {
             else -> "Entry Level / Battery Saver"
         }
 
-        // Recommended Models based on hardware profile
-        val recommendedAsr = when {
-            totalRamGb >= 7.5f -> "whisper_base"
-            else -> "whisper_tiny"
-        }
-
-        val recommendedLlm = when {
-            totalRamGb >= 7.5f -> "mobile_nlp_reasoning"
-            else -> "mobile_nlp_fast"
-        }
+        // Only one real on-device model exists per capability (see ModelCatalog) — there is no
+        // lighter/heavier tier to actually recommend between, so both fields just name the one
+        // real model. totalRamGb / devicePerformanceTier remain useful on their own (shown to the
+        // user so they can judge whether their device meets ModelCatalog's minimumRamMb).
+        val recommendedAsr = ModelCatalog.parakeetTdtV3Int8.id
+        val recommendedLlm = ModelCatalog.qwen25_1_5bInstruct.id
 
         return DeviceCapabilities(
             totalRamGb = "%.1f".format(totalRamGb).toFloat(),

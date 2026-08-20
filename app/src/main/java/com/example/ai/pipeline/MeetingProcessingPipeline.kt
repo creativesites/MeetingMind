@@ -86,7 +86,7 @@ class MeetingProcessingPipeline(
         meetingId: String,
         audioFile: File,
         totalDurationMs: Long,
-        modelId: String = "whisper_tiny",
+        modelId: String = ModelCatalog.parakeetTdtV3Int8.id,
         expectedSpeakerCount: Int? = null,
         onProgress: (step: String, percent: Int, stage: ProcessingStage) -> Unit
     ): MeetingEntity = withContext(Dispatchers.Default) {
@@ -103,6 +103,21 @@ class MeetingProcessingPipeline(
 
         val existingMeeting = meetingDao.getMeetingById(meetingId)
             ?: throw IllegalArgumentException("Meeting $meetingId not found")
+
+        // If the app/process was killed mid-run (e.g. by the OS while backgrounded), WorkManager
+        // restarts this same worker from scratch — it has no way to resume partway through. Every
+        // entity this pipeline writes uses a freshly-generated id, so without this the retry's
+        // fresh writes would land ALONGSIDE whatever the killed run already committed (transcript
+        // segments, decisions, action items, ...) instead of replacing it, silently doubling the
+        // meeting's data. Clearing derived data up front makes every run — first attempt or retry
+        // after a kill — write into a clean slate. The audio file itself is never touched here.
+        transcriptDao.deleteSegmentsForMeeting(meetingId)
+        actionItemDao.deleteActionItemsForMeeting(meetingId)
+        decisionDao.deleteDecisionsForMeeting(meetingId)
+        questionDao.deleteQuestionsForMeeting(meetingId)
+        followUpDao.deleteFollowUpsForMeeting(meetingId)
+        topicDao.deleteTopicsForMeeting(meetingId)
+        embeddingDao.deleteEmbeddingsForMeeting(meetingId)
 
         val jobId = "job_$meetingId"
         val jobStartedAt = System.currentTimeMillis()

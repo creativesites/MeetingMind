@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.ai.modelmanagement.ModelCatalog
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -15,8 +16,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 data class AppPreferencesState(
     val onboardingCompleted: Boolean = false,
-    val selectedAsrModelId: String = "whisper_tiny",
-    val selectedLlmModelId: String = "mobile_nlp_fast",
+    val selectedAsrModelId: String = ModelCatalog.parakeetTdtV3Int8.id,
+    val selectedLlmModelId: String = ModelCatalog.qwen25_1_5bInstruct.id,
     val batterySaverMode: Boolean = false,
     val wifiOnlyDownload: Boolean = true,
     val audioQualitySampleRate: Int = 16000,
@@ -39,8 +40,8 @@ class UserPreferencesManager(private val context: Context) {
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
         AppPreferencesState(
             onboardingCompleted = prefs[ONBOARDING_COMPLETED] ?: false,
-            selectedAsrModelId = prefs[SELECTED_ASR_MODEL] ?: "whisper_tiny",
-            selectedLlmModelId = prefs[SELECTED_LLM_MODEL] ?: "mobile_nlp_fast",
+            selectedAsrModelId = prefs[SELECTED_ASR_MODEL] ?: ModelCatalog.parakeetTdtV3Int8.id,
+            selectedLlmModelId = prefs[SELECTED_LLM_MODEL] ?: ModelCatalog.qwen25_1_5bInstruct.id,
             batterySaverMode = prefs[BATTERY_SAVER] ?: false,
             wifiOnlyDownload = prefs[WIFI_ONLY_DOWNLOAD] ?: true,
             audioQualitySampleRate = prefs[AUDIO_SAMPLE_RATE] ?: 16000,

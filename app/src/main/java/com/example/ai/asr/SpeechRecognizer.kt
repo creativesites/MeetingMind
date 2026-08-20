@@ -1,12 +1,13 @@
 package com.example.ai.asr
 
 import com.example.ai.common.AiResult
+import com.example.ai.modelmanagement.ModelCatalog
 import com.example.ai.vad.SpeechInterval
 import com.example.core.model.TranscriptSegment
 import java.io.File
 
 data class TranscriptionOptions(
-    val modelId: String = "whisper_tiny",
+    val modelId: String = ModelCatalog.parakeetTdtV3Int8.id,
     val language: String = "en",
     val prompt: String = "",
     val temperature: Float = 0.0f,

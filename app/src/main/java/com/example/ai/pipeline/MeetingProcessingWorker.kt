@@ -11,6 +11,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.example.ai.modelmanagement.ModelCatalog
 import com.example.core.database.MeetMindDatabase
 import com.example.core.model.ProcessingStage
 import java.io.File
@@ -35,7 +36,7 @@ class MeetingProcessingWorker(
             workDataOf(KEY_ERROR to "Missing audioPath")
         )
         val durationMs = inputData.getLong(KEY_DURATION_MS, 0L)
-        val modelId = inputData.getString(KEY_MODEL_ID) ?: "whisper_tiny"
+        val modelId = inputData.getString(KEY_MODEL_ID) ?: ModelCatalog.parakeetTdtV3Int8.id
         val expectedSpeakerCount = inputData.getInt(KEY_EXPECTED_SPEAKER_COUNT, -1).takeIf { it > 0 }
         val recordingTitle = inputData.getString(KEY_RECORDING_TITLE) ?: "recording"
 

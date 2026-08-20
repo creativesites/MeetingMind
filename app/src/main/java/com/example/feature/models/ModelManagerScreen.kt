@@ -1,6 +1,9 @@
 package com.example.feature.models
 
 import android.app.Application
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -135,12 +138,40 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch { modelRepository.ensureCatalogSeeded() }
     }
 
+    /** True when the device's active network is Wi-Fi (or there's no usable connectivity info to
+     * say otherwise) — used to honor the "Wi-Fi only downloads" preference for real instead of
+     * just storing it unused. */
+    private fun isOnWifi(): Boolean {
+        val connectivityManager = getApplication<Application>()
+            .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
+        val capabilities = connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
+            ?: return false
+        return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+    }
+
     /** Attempts a real install — or, if [modelId] was previously paused, resumes it from the
      * bytes already on disk via the downloader's HTTP Range support. Honestly reports back when
-     * no downloadable model source exists yet. */
+     * no downloadable model source exists yet. Honors "Wi-Fi only downloads" by actually checking
+     * the active network before starting, rather than only storing the preference. Also refuses a
+     * *fresh* download outright when there isn't enough free storage for it, instead of letting
+     * it fail deep inside a partial write — a resume is allowed through even when storage is
+     * tight, since it only needs the remaining bytes, not the model's full size again. */
     fun installModel(modelId: String) {
         if (modelId in _downloadingModelIds.value) return
+        if (userPrefsState.value.wifiOnlyDownload && !isOnWifi()) {
+            _statusMessage.value = "Connect to Wi-Fi to download models, or turn off \"Wi-Fi only downloads\" in Settings."
+            return
+        }
         val resuming = modelId in _pausedModelIds.value
+        if (!resuming) {
+            val model = models.value.find { it.id == modelId }
+            val requiredMb = (model?.sizeBytes ?: 0L) / (1024 * 1024)
+            if (requiredMb > 0 && availableStorageMb < requiredMb) {
+                _statusMessage.value = "Not enough free storage for this model — needs about " +
+                    "${Formatters.formatBytes(model!!.sizeBytes)}, only ${Formatters.formatBytes(availableStorageMb * 1024 * 1024)} free."
+                return
+            }
+        }
         _pausedModelIds.value = _pausedModelIds.value - modelId
         installJobs[modelId] = viewModelScope.launch {
             _downloadingModelIds.value = _downloadingModelIds.value + modelId
@@ -284,29 +315,17 @@ fun ModelManagerScreen(
                             )
                         }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceAround
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Available RAM", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("${caps.availableRamGb} GB", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                        // A single 4-wide SpaceAround row squeezes each column too narrow on
+                        // typical phone widths — "Free Storage" was breaking mid-word ("Storag/e").
+                        // Two 2-wide rows give every label enough room to stay on one line.
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                DeviceStatColumn("Available RAM", "${caps.availableRamGb} GB")
+                                DeviceStatColumn("Architecture", caps.cpuArch)
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Architecture", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(caps.cpuArch, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Hardware Tier", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(caps.devicePerformanceTier, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = SuccessGreen)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Free Storage", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    Formatters.formatBytes(viewModel.availableStorageMb * 1024 * 1024),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                DeviceStatColumn("Hardware Tier", caps.devicePerformanceTier, valueColor = SuccessGreen)
+                                DeviceStatColumn("Free Storage", Formatters.formatBytes(viewModel.availableStorageMb * 1024 * 1024))
                             }
                         }
                     }
@@ -351,6 +370,14 @@ fun ModelManagerScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DeviceStatColumn(label: String, value: String, valueColor: Color = Color.Unspecified) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
     }
 }
 
@@ -592,6 +619,16 @@ fun BentoModelItemCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 18.sp
             )
+
+            // Storage cost, visible without expanding "Technical details" — while downloading or
+            // paused the progress line below already states the size, so this would be redundant.
+            if (!model.isDownloading && !isPaused) {
+                Text(
+                    text = if (model.isInstalled) "${Formatters.formatBytes(model.sizeBytes)} on this device" else "${Formatters.formatBytes(model.sizeBytes)} download",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             if (model.isDownloading || isPaused) {
                 LinearProgressIndicator(

@@ -201,4 +201,53 @@ class MeetMindDatabaseMigrationTest {
             assertEquals("Quarterly Planning", cursor.getString(2))
         }
     }
+
+    private fun openV3TranscriptSegmentsDatabase(): SupportSQLiteDatabase {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(null) // in-memory
+            .callback(object : SupportSQLiteOpenHelper.Callback(3) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        """
+                        CREATE TABLE transcript_segments (
+                            id TEXT NOT NULL PRIMARY KEY,
+                            meetingId TEXT NOT NULL,
+                            speakerId TEXT,
+                            speakerName TEXT,
+                            startMs INTEGER NOT NULL,
+                            endMs INTEGER NOT NULL,
+                            text TEXT NOT NULL,
+                            confidence REAL
+                        )
+                        """.trimIndent()
+                    )
+                    // Seed one already-transcribed real segment to prove it survives the migration untouched.
+                    db.execSQL(
+                        "INSERT INTO transcript_segments (id, meetingId, speakerId, speakerName, startMs, endMs, text, confidence) " +
+                            "VALUES ('s1', 'm1', 'spk_1', 'Winston', 0, 2000, 'Let''s begin the quarterly review.', 0.92)"
+                    )
+                }
+
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            })
+            .build()
+        helper = FrameworkSQLiteOpenHelperFactory().create(configuration)
+        return helper.writableDatabase
+    }
+
+    @Test
+    fun `migration 3 to 4 adds isUserEdited defaulting to false without disturbing existing segments`() {
+        val db = openV3TranscriptSegmentsDatabase()
+
+        MeetMindDatabase.MIGRATION_3_4.migrate(db)
+
+        val columns = columnNames(db, "transcript_segments")
+        assertTrue(columns.contains("isUserEdited"))
+        db.query("SELECT isUserEdited, text FROM transcript_segments WHERE id = 's1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0, cursor.getInt(0))
+            assertEquals("Let's begin the quarterly review.", cursor.getString(1))
+        }
+    }
 }

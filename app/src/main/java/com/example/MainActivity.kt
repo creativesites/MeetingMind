@@ -218,10 +218,12 @@ fun MeetMindApp() {
         composable(
             route = Routes.MEETING_DETAIL,
             arguments = listOf(
-                navArgument("meetingId") { type = NavType.StringType }
+                navArgument("meetingId") { type = NavType.StringType },
+                navArgument("startAtMs") { type = NavType.LongType; defaultValue = Routes.NO_START_AT_MS }
             )
         ) { backStackEntry ->
             val meetingId = backStackEntry.arguments?.getString("meetingId") ?: ""
+            val startAtMs = backStackEntry.arguments?.getLong("startAtMs") ?: Routes.NO_START_AT_MS
             val app = context.applicationContext as android.app.Application
             val vm = remember(meetingId) { MeetingDetailViewModel(app, meetingId) }
 
@@ -231,7 +233,8 @@ fun MeetMindApp() {
                 onNavigateToModels = { navController.navigate(Routes.MODELS) },
                 onTranscribe = { transcribeMeetingId, audioPath, durationMs ->
                     navController.navigate(Routes.processingRoute(transcribeMeetingId, audioPath, durationMs))
-                }
+                },
+                initialJumpToMs = startAtMs.takeIf { it != Routes.NO_START_AT_MS }
             )
         }
 
@@ -241,8 +244,8 @@ fun MeetMindApp() {
             SearchScreen(
                 viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToMeeting = { meetingId ->
-                    navController.navigate(Routes.meetingDetailRoute(meetingId))
+                onNavigateToMeeting = { meetingId, startAtMs ->
+                    navController.navigate(Routes.meetingDetailRoute(meetingId, startAtMs))
                 }
             )
         }
@@ -261,7 +264,8 @@ fun MeetMindApp() {
             val vm: SettingsViewModel = viewModel()
             SettingsScreen(
                 viewModel = vm,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToModels = { navController.navigate(Routes.MODELS) }
             )
         }
     }

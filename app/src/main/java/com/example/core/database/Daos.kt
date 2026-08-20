@@ -52,8 +52,14 @@ interface TranscriptDao {
     @Query("SELECT * FROM transcript_segments WHERE text LIKE '%' || :query || '%'")
     suspend fun searchTranscriptSegments(query: String): List<TranscriptSegmentEntity>
 
+    @Query("SELECT * FROM transcript_segments WHERE id = :segmentId")
+    suspend fun getSegmentById(segmentId: String): TranscriptSegmentEntity?
+
     @Query("UPDATE transcript_segments SET speakerName = :newName WHERE meetingId = :meetingId AND speakerId = :speakerId")
     suspend fun updateSpeakerName(meetingId: String, speakerId: String, newName: String)
+
+    @Query("UPDATE transcript_segments SET text = :newText, isUserEdited = 1 WHERE id = :segmentId")
+    suspend fun updateSegmentText(segmentId: String, newText: String)
 
     @Query("DELETE FROM transcript_segments WHERE meetingId = :meetingId")
     suspend fun deleteSegmentsForMeeting(meetingId: String)
@@ -96,6 +102,9 @@ interface ActionItemDao {
 
     @Query("DELETE FROM action_items WHERE id = :id")
     suspend fun deleteActionItemById(id: String)
+
+    @Query("DELETE FROM action_items WHERE meetingId = :meetingId")
+    suspend fun deleteActionItemsForMeeting(meetingId: String)
 }
 
 @Dao
@@ -108,6 +117,9 @@ interface DecisionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDecisions(decisions: List<DecisionEntity>)
+
+    @Query("DELETE FROM decisions WHERE meetingId = :meetingId")
+    suspend fun deleteDecisionsForMeeting(meetingId: String)
 }
 
 @Dao
@@ -123,6 +135,9 @@ interface QuestionDao {
 
     @Update
     suspend fun updateQuestion(question: QuestionEntity)
+
+    @Query("DELETE FROM questions WHERE meetingId = :meetingId")
+    suspend fun deleteQuestionsForMeeting(meetingId: String)
 }
 
 @Dao
@@ -135,6 +150,9 @@ interface TopicDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTopics(topics: List<TopicEntity>)
+
+    @Query("DELETE FROM topics WHERE meetingId = :meetingId")
+    suspend fun deleteTopicsForMeeting(meetingId: String)
 }
 
 @Dao
@@ -144,6 +162,9 @@ interface FollowUpDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFollowUps(followUps: List<FollowUpEntity>)
+
+    @Query("DELETE FROM follow_ups WHERE meetingId = :meetingId")
+    suspend fun deleteFollowUpsForMeeting(meetingId: String)
 }
 
 @Dao

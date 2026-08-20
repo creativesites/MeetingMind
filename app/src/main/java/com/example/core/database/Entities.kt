@@ -49,7 +49,8 @@ data class TranscriptSegmentEntity(
     val startMs: Long,
     val endMs: Long,
     val text: String,
-    val confidence: Float?
+    val confidence: Float?,
+    val isUserEdited: Boolean = false
 )
 
 @Entity(

@@ -2,9 +2,7 @@ package com.example.feature.settings
 
 import android.app.Application
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,20 +11,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.BatterySaver
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.VideoCall
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -36,9 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -61,44 +51,31 @@ import androidx.lifecycle.viewModelScope
 import com.example.core.database.MeetMindDatabase
 import com.example.core.datastore.AppPreferencesState
 import com.example.core.datastore.UserPreferencesManager
-import com.example.core.firebase.FirebaseAuthManager
-import com.example.core.firebase.FirebaseUserModel
 import com.example.core.repository.MeetingRepository
 import com.example.core.ui.ListRow
 import com.example.core.ui.SectionCard
 import com.example.ui.theme.SuccessGreen
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/**
+ * [FirebaseAuthManager][com.example.core.firebase.FirebaseAuthManager] itself is untouched and
+ * stays available for future use, but Settings no longer surfaces a user-profile section for it:
+ * recording, import, and local AI processing all work without any account, so a sign-in/profile
+ * UI here would be a real control over nothing an offline-first MVP user needs today.
+ */
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
     private val database = MeetMindDatabase.getInstance(application)
     private val meetingRepository = MeetingRepository(application, database)
-    private val authManager = FirebaseAuthManager(application)
     private val userPrefs = UserPreferencesManager(application)
 
-    val currentUser: StateFlow<FirebaseUserModel?> = authManager.currentUser
-    val authAvailability: com.example.core.firebase.AuthAvailability get() = authManager.authAvailability
     val preferencesState: StateFlow<AppPreferencesState> = userPrefs.preferencesFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = AppPreferencesState()
     )
-
-    private val _signInError = MutableStateFlow<String?>(null)
-    val signInError: StateFlow<String?> = _signInError.asStateFlow()
-
-    private val _isSigningIn = MutableStateFlow(false)
-    val isSigningIn: StateFlow<Boolean> = _isSigningIn.asStateFlow()
-
-    fun toggleBatterySaver(enabled: Boolean) {
-        viewModelScope.launch {
-            userPrefs.setBatterySaverMode(enabled)
-        }
-    }
 
     fun toggleWifiOnly(enabled: Boolean) {
         viewModelScope.launch {
@@ -112,55 +89,25 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             onComplete()
         }
     }
-
-    fun signOut() {
-        viewModelScope.launch {
-            authManager.signOut()
-        }
-    }
-
-    /** [activityContext] must be an Activity context — required to show the Credential Manager UI. */
-    fun signInWithGoogle(activityContext: android.content.Context) {
-        viewModelScope.launch {
-            _isSigningIn.value = true
-            _signInError.value = null
-            val result = authManager.signInWithGoogle(activityContext)
-            result.onFailure { e -> _signInError.value = e.message ?: "Sign-in failed." }
-            _isSigningIn.value = false
-        }
-    }
-
-    fun consumeSignInError() {
-        _signInError.value = null
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToModels: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val currentUser by viewModel.currentUser.collectAsState()
     val prefs by viewModel.preferencesState.collectAsState()
-    val isSigningIn by viewModel.isSigningIn.collectAsState()
-    val signInError by viewModel.signInError.collectAsState()
     var showClearDataDialog by remember { mutableStateOf(false) }
-
-    androidx.compose.runtime.LaunchedEffect(signInError) {
-        signInError?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-            viewModel.consumeSignInError()
-        }
-    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "Settings & Privacy",
+                        text = "Settings",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -186,81 +133,48 @@ fun SettingsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Profile
+            // AI & Models — real, functioning controls only.
+            item {
+                Text(
+                    text = "AI & Models",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
             item {
                 SectionCard {
-                    Row(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Default.AccountCircle,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(28.dp)
-                                    )
-                                }
-                            }
-                            Column {
-                                Text(
-                                    text = currentUser?.displayName ?: "Local User (Offline)",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                val subtitle = when {
-                                    currentUser != null -> currentUser?.email ?: "Signed in with Google"
-                                    viewModel.authAvailability is com.example.core.firebase.AuthAvailability.NotConfigured ->
-                                        (viewModel.authAvailability as com.example.core.firebase.AuthAvailability.NotConfigured).reason
-                                    else -> "Strictly local on-device account"
-                                }
-                                Text(
-                                    text = subtitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                    ListRow(
+                        title = "Manage AI Models",
+                        subtitle = "Download, pause, resume, or remove on-device models",
+                        icon = Icons.Default.Memory,
+                        onClick = onNavigateToModels
+                    )
+                    ListRow(
+                        title = "Download Models Over Wi-Fi Only",
+                        subtitle = "Model downloads pause until you're back on Wi-Fi",
+                        icon = Icons.Default.Wifi,
+                        showDivider = false,
+                        trailing = {
+                            Switch(
+                                checked = prefs.wifiOnlyDownload,
+                                onCheckedChange = { viewModel.toggleWifiOnly(it) },
+                                modifier = Modifier.testTag("settings_wifi_only_switch")
+                            )
                         }
-
-                        if (currentUser != null) {
-                            IconButton(onClick = { viewModel.signOut() }) {
-                                Icon(Icons.Default.Logout, contentDescription = "Sign Out", tint = MaterialTheme.colorScheme.error)
-                            }
-                        } else if (viewModel.authAvailability == com.example.core.firebase.AuthAvailability.Available) {
-                            Button(
-                                onClick = { viewModel.signInWithGoogle(context) },
-                                colors = ButtonDefaults.filledTonalButtonColors(),
-                                enabled = !isSigningIn
-                            ) {
-                                if (isSigningIn) {
-                                    androidx.compose.material3.CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        strokeWidth = 2.dp
-                                    )
-                                } else {
-                                    Text("Sign In with Google")
-                                }
-                            }
-                        }
-                        // When auth is NotConfigured, no button is shown at all — recording,
-                        // import, and (once installed) local AI processing all work without it.
-                    }
+                    )
                 }
             }
 
-            // Privacy Guarantee — quiet, not a shouting green pill/box.
+            // Privacy
+            item {
+                Text(
+                    text = "Privacy",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
             item {
                 SectionCard {
                     Row(
@@ -289,71 +203,15 @@ fun SettingsScreen(
                 }
             }
 
-            // Preferences
+            // Storage
             item {
                 Text(
-                    text = "App Preferences",
+                    text = "Storage",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            item {
-                SectionCard {
-                    ListRow(
-                        title = "Battery Saver Mode",
-                        subtitle = "Uses lightweight Whisper Tiny model",
-                        icon = Icons.Default.BatterySaver,
-                        trailing = {
-                            Switch(
-                                checked = prefs.batterySaverMode,
-                                onCheckedChange = { viewModel.toggleBatterySaver(it) }
-                            )
-                        }
-                    )
-                    ListRow(
-                        title = "Download Models Over Wi-Fi Only",
-                        subtitle = "Saves cellular mobile data",
-                        icon = Icons.Default.Wifi,
-                        showDivider = false,
-                        trailing = {
-                            Switch(
-                                checked = prefs.wifiOnlyDownload,
-                                onCheckedChange = { viewModel.toggleWifiOnly(it) }
-                            )
-                        }
-                    )
-                }
-            }
-
-            // Future Integrations Preview
-            item {
-                Text(
-                    text = "Future Integrations (Phase 2+)",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            item {
-                SectionCard {
-                    ListRow(
-                        title = "Google Calendar Sync",
-                        subtitle = "Auto-detect scheduled meetings (coming in Phase 2)",
-                        icon = Icons.Default.CalendarMonth,
-                        trailing = null
-                    )
-                    ListRow(
-                        title = "Meeting Bots (Zoom / Meet / Teams)",
-                        subtitle = "Automated bot dispatching (coming in Phase 2)",
-                        icon = Icons.Default.VideoCall,
-                        showDivider = false,
-                        trailing = null
-                    )
-                }
-            }
-
-            // Danger Zone: Clear Data
             item {
                 Button(
                     onClick = { showClearDataDialog = true },
@@ -367,7 +225,7 @@ fun SettingsScreen(
                 }
             }
 
-            // About Footer
+            // About
             item {
                 Column(
                     modifier = Modifier

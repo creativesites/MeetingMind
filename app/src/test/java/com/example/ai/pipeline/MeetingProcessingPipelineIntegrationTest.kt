@@ -221,6 +221,36 @@ class MeetingProcessingPipelineIntegrationTest {
     }
 
     @Test
+    fun `re-running the pipeline for the same meeting replaces prior results instead of duplicating them`() = runBlocking {
+        // Simulates WorkManager restarting MeetingProcessingWorker from scratch after the app
+        // process was killed mid-run: every entity this pipeline writes uses a freshly-generated
+        // id, so without an idempotency guard a second full run would double the transcript,
+        // decisions, and action items instead of replacing the first (killed) run's data.
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val pipeline = buildPipeline()
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+        pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        assertEquals(2, segments.size)
+
+        val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId)
+        assertEquals(2, speakers.size)
+
+        val decisions = database.decisionDao().getDecisionsForMeetingDirect(meetingId)
+        assertEquals(1, decisions.size)
+
+        val actionItems = database.actionItemDao().getActionItemsForMeetingDirect(meetingId)
+        assertEquals(1, actionItems.size)
+
+        val embeddings = database.embeddingDao().getEmbeddingsForMeeting(meetingId)
+        // 2 transcript-segment embeddings + 1 summary embedding, not 6.
+        assertEquals(3, embeddings.size)
+    }
+
+    @Test
     fun `cancellation stops the pipeline honestly and marks the meeting as errored, not fabricated`() = runBlocking {
         val meetingId = UUID.randomUUID().toString()
         insertRecordingMeeting(meetingId)

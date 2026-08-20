@@ -115,7 +115,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 fun SearchScreen(
     viewModel: SearchViewModel,
     onNavigateBack: () -> Unit,
-    onNavigateToMeeting: (String) -> Unit
+    onNavigateToMeeting: (meetingId: String, startAtMs: Long?) -> Unit
 ) {
     val query by viewModel.query.collectAsState()
     val results by viewModel.results.collectAsState()
@@ -278,13 +278,13 @@ fun SearchScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    text = "No results found",
+                                    text = "No matching moments found.",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "No meetings matched \"$query\". Try broader keywords or synonyms.",
+                                    text = "Try a broader question or different wording.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -295,7 +295,7 @@ fun SearchScreen(
                     items(results) { item ->
                         BentoSearchResultCard(
                             item = item,
-                            onClick = { onNavigateToMeeting(item.meetingId) }
+                            onClick = { onNavigateToMeeting(item.meetingId, item.timestampMs) }
                         )
                     }
                 }
@@ -338,8 +338,28 @@ fun BentoSearchResultCard(
                 )
             }
 
+            // Where in the recording this matched, and who said it (when known) — so the user
+            // can see WHY this result matched, not just that it did.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = Formatters.formatDurationHms(item.timestampMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                if (item.speakerName != null) {
+                    Text("·", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = item.speakerName,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
             Text(
-                text = item.matchSnippet,
+                text = "“${item.matchSnippet}”",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 3,
@@ -353,13 +373,20 @@ fun BentoSearchResultCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = Formatters.formatDateRelative(item.meetingDate),
+                    text = "${item.recordingType.displayName} · ${Formatters.formatDateRelative(item.meetingDate)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Open Meeting", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text(
+                        // "Recording" reads better than "General" as a verb-phrase object —
+                        // every other type's own name (Meeting, Interview, ...) already works here.
+                        text = "Open " + if (item.recordingType == com.example.core.model.RecordingType.GENERAL) "Recording" else item.recordingType.displayName,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
                 }
             }

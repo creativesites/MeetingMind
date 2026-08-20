@@ -70,7 +70,11 @@ data class TranscriptSegment(
     val endMs: Long,
     val text: String,
     // Null when the ASR engine doesn't provide a confidence score for a segment.
-    val confidence: Float? = null
+    val confidence: Float? = null,
+    // True once the user has hand-corrected this segment's text — the transcript is user-owned
+    // data, and this flag is how the app (and any future reprocess flow) can tell "ASR output"
+    // apart from "a person already fixed this" without ever silently discarding the correction.
+    val isUserEdited: Boolean = false
 )
 
 data class Transcript(
