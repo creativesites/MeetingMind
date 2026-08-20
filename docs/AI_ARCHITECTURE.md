@@ -237,6 +237,33 @@ Verified by `MeetMindDatabaseMigrationTest`, which builds a real v1-schema SQLit
 
 Not implemented, and not started: calendar integration, Zoom/Meet/Teams bots, backend meeting-bot infrastructure, cloud AI of any kind. `AskMeetingUseCase`'s semantic-search grounding improvement (see above) is a known, deliberately deferred follow-up, not a non-goal in the same sense.
 
+## 0d. Status Update — Phase 3A: Recording Type Focus Guidance
+
+Phase 3A added `RecordingType` (Meeting, Interview, Lecture, Voice Memo, Idea, Brainstorm,
+Dictation, Conversation, Research, Journal, Custom, General) as a per-recording attribute, chosen
+before recording starts and persisted on the `Meeting` row (Room migration `MIGRATION_2_3`). This
+only ever affects one thing in the AI layer: `RealMeetingIntelligenceEngine.buildExtractionPrompt()`
+now appends one extra guidance line — `RecordingType.focusGuidance()` for a built-in type (e.g.
+"This is an interview. Focus on the questions asked and the answers given...") or, for `CUSTOM`,
+the user's own free-text focus description, followed immediately by an explicit reiteration that
+this guidance "never overrides" the grounding rule.
+
+**The grounding requirement is unconditional and unchanged by this feature.** The base instruction
+— "Extract ONLY information explicitly supported by the transcript... never invent names, dates,
+deadlines, decisions, or commitments that are not actually stated" — is always present in the
+prompt regardless of recording type or custom context; focus guidance narrows *what to pay
+attention to*, never *what may be reported*. Verified by
+`RealMeetingIntelligenceEngineFocusTest`, which asserts both that a type's/custom context's
+guidance text reaches the prompt and that the grounding instruction is present alongside it in
+every case, including a blank custom-context string (falls back to no extra guidance rather than
+injecting an empty/broken instruction).
+
+This phase's other additions — global playback (`PlaybackService`/`PlaybackController`),
+WorkManager-backed background processing (`MeetingProcessingWorker`), Sharesheet integration,
+and Markdown/CSV/PDF/DOCX export — are productization/UX work, not AI-pipeline changes; they don't
+alter any AI interface's contract or grounding behavior. See `docs/ARCHITECTURE.md` §7 and the
+Phase 3A completion report for those.
+
 ## 1. Historical State (Before This Pass — see `docs/AUDIT.md` for full findings)
 
 | Interface | Then-current implementation | What it did |

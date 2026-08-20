@@ -29,21 +29,30 @@ com.example
 │   │                          ArchiveExtractor
 │   └── pipeline/            — MeetingProcessingPipeline: orchestrates the above
 ├── core/
-│   ├── audio/               — AudioRecorder, AudioPlayerManager, AudioExtractor,
-│   │                          AudioFormatConverter, MeetingRecordingService
+│   ├── audio/               — AudioRecorder, AudioExtractor, AudioFormatConverter,
+│   │                          MeetingRecordingService (foreground recording service),
+│   │                          PlaybackService/PlaybackController/PlaybackState (Phase 3A —
+│   │                          single app-wide Media3 MediaSessionService-backed player;
+│   │                          replaced the old per-screen AudioPlayerManager)
 │   ├── common/               — DeviceCapabilityDetector, Formatters
-│   ├── database/             — Room entities, DAOs, MeetMindDatabase (incl. real Migration_1_2)
+│   ├── database/             — Room entities, DAOs, MeetMindDatabase (real Migrations 1→2, 2→3)
 │   ├── datastore/            — UserPreferencesManager (DataStore Preferences)
 │   ├── domain/                — Use cases (partially wired — see AUDIT.md §F)
-│   ├── firebase/              — FirebaseAuthManager, FirestoreSyncManager
+│   ├── export/                 — MarkdownExporter/CsvExporter/PdfExporter/DocxExporter +
+│   │                               ExportManager (Phase 3A — real export, no fake formatting)
+│   ├── firebase/              — FirebaseAuthManager, FirestoreSyncManager (still dead code —
+│   │                              see docs/DATA_SAFETY.md)
 │   ├── future/                 — MeetingProvider/CalendarProvider — placeholders for a later,
 │   │                              separate backend-integration phase (Calendar/Zoom/Meet/Teams),
 │   │                              unrelated to and not implemented by the local-AI phases above
-│   ├── model/                   — Domain models (Meeting, Transcript, ActionItem, Decision,
-│   │                                Question, FollowUp, Speaker, ...)
+│   ├── model/                   — Domain models (Meeting, RecordingType, Transcript, ActionItem,
+│   │                                Decision, Question, FollowUp, Speaker, ...)
 │   ├── repository/               — MeetingRepository, TranscriptRepository, SearchRepository,
 │   │                                ActionItemRepository, ModelRepository
-│   └── ui/                        — Shared Compose components (OfflineShieldBadge, waveform, ...)
+│   ├── share/                     — ShareHelper/ShareContentFormatter (Phase 3A — Android
+│   │                                 Sharesheet integration, never a hardcoded per-app integration)
+│   └── ui/                        — Shared Compose components (OfflineShieldBadge, MiniPlayerBar,
+│                                     ExportDialog, waveform, ...)
 ├── feature/                        — One package per screen: home, recording, importing,
 │                                      processing, meetingdetail, search, settings, models,
 │                                      onboarding, navigation (Routes)
@@ -100,13 +109,30 @@ This is acceptable at the current scale (a handful of screens, no test doubles n
 
 ## 6. Persistence
 
-`MeetMindDatabase` (Room, version 2 as of Phase 2, `exportSchema = false`) — 12 entities covering meetings, transcript segments, speakers, action items, decisions, questions, follow-ups, topics, embeddings, AI model catalog, processing jobs, and chat messages. Schema is well-normalized with correct `ForeignKey(CASCADE)` relationships and indices (including a text index supporting keyword search). `fallbackToDestructiveMigration()` remains as a safety net for any future untracked version jump, but the version 1 → 2 step itself is a real, explicit `Migration` object (`MeetMindDatabase.MIGRATION_1_2`) that preserves existing on-device `meetings`/`transcript_segments`/`speakers` data rather than wiping it — see `docs/AI_ARCHITECTURE.md` §0c "Room / Persistence Changes". `exportSchema` remaining `false` (see `docs/AUDIT.md` §F) is still an open gap for a real release.
+`MeetMindDatabase` (Room, version 3 as of Phase 3A, `exportSchema = false`) — 12 entities covering meetings, transcript segments, speakers, action items, decisions, questions, follow-ups, topics, embeddings, AI model catalog, processing jobs, and chat messages. Schema is well-normalized with correct `ForeignKey(CASCADE)` relationships and indices (including a text index supporting keyword search). `fallbackToDestructiveMigration()` remains as a safety net for any future untracked version jump, but both real steps so far are explicit `Migration` objects that preserve existing on-device data: `MIGRATION_1_2` (see `docs/AI_ARCHITECTURE.md` §0c) and `MIGRATION_2_3` (adds `meetings.recordingType`/`meetings.customContext`, existing rows default to `GENERAL`). `exportSchema` remaining `false` (see `docs/AUDIT.md` §F) is still an open gap for a real release.
 
 Audio files live in app-private storage: `context.filesDir/meetings/{meetingId}/audio.<ext>` — never in shared/external storage, never uploaded by default.
 
 ## 7. Background Work
 
-Processing currently runs inside a `viewModelScope` coroutine tied to the Compose screen's lifecycle — **not** WorkManager. `ProcessingJobEntity` exists in Room specifically to support resumable/observable jobs but nothing currently reads it back to resume an interrupted job. This is fine for the current near-instant fake/cloud processing paths but becomes a real reliability problem once genuine local inference (slower, several-second-per-segment) replaces them. See the Roadmap for sequencing.
+As of Phase 3A, recording→AI processing runs as real WorkManager background work
+(`MeetingProcessingWorker`, a `CoroutineWorker` wrapping `MeetingProcessingPipeline`), enqueued
+uniquely (`WorkManager.enqueueUniqueWork(..., ExistingWorkPolicy.APPEND_OR_REPLACE, ...)`) so only
+one AI-heavy job runs at a time and a recording requested mid-processing queues behind it rather
+than running concurrently. It survives the `ProcessingScreen`/its ViewModel being destroyed by
+navigation, app minimization, or the screen locking — a real requirement once local
+VAD/ASR/diarization/LLM inference can take minutes. Progress is reported through a real
+stage-based (never fabricated-percentage) low-priority notification that never surfaces
+transcript/summary content, only the recording title and current stage. `ProcessingJobEntity`
+still exists in Room for the same purpose it always had (observable job state), now genuinely
+useful since the underlying work can actually outlive the observing screen.
+
+Audio playback is a separate, always-on-when-active background concern: a single app-wide
+`PlaybackService` (Media3 `MediaSessionService`) owns the one `ExoPlayer` instance the whole app
+shares via `PlaybackController`, giving real Android media-notification/lock-screen/Bluetooth
+controls "for free" and making duplicate/orphaned playback structurally impossible — every screen
+talks to the same player, and starting a new recording or a new playback session stops any
+existing one first. See `docs/ROADMAP.md` for what's still outstanding around either flow.
 
 ## 8. Firebase's Role (as designed vs. as implemented)
 
@@ -125,9 +151,9 @@ Processing currently runs inside a `viewModelScope` coroutine tied to the Compos
 
 ## 10. What Should Change (Foundational, Not Feature Work)
 
-1. Real implementations behind the AI interfaces (see `docs/AI_ARCHITECTURE.md`).
+1. Real implementations behind the AI interfaces (see `docs/AI_ARCHITECTURE.md`) — **done as of Phase 2**.
 2. Wire the dead use-case layer into its intended call sites, or remove it — currently misleading.
-3. Move long-running processing to WorkManager, backed by the already-existing `ProcessingJobEntity`.
+3. Move long-running processing to WorkManager, backed by the already-existing `ProcessingJobEntity` — **done as of Phase 3A** (see §7).
 4. Real Google Sign-In behind the already-present Credential Manager dependencies.
 5. Real model download/install/delete behind the already-existing `AiModelEntity`/`AiModelDao`.
 6. Real audio-track extraction for video import (`MediaExtractor`/`MediaMuxer` — already imported, unused).

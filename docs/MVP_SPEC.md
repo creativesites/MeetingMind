@@ -4,10 +4,17 @@ This document is the reference specification the codebase is being reconciled ag
 
 ## 1. Product
 
-MeetMind is a privacy-first, local-AI Android meeting notetaker. Android-only for this MVP.
+MeetMind is a private, local-AI Android voice capture and understanding app — not a meeting-only
+recorder. As of Phase 3A, recordings carry an explicit `RecordingType` (Meeting, Interview,
+Lecture, Voice Memo, Idea, Brainstorm, Dictation, Conversation, Research, Journal, Custom,
+General), chosen via a "What are you recording?" step before recording starts (with a "Quick
+Record" skip). The type only ever narrows what the local Meeting Intelligence engine pays
+attention to in its extraction prompt — it never changes what recording, transcription, or
+storage do, and it never weakens the grounding requirement (see §2 below and
+`docs/AI_ARCHITECTURE.md`). Android-only for this MVP.
 
 ```
-Record / Import Meeting
+Record / Import (any RecordingType)
         ↓
 Local Audio Processing
         ↓
@@ -17,13 +24,13 @@ Speaker Identification
         ↓
 Transcript
         ↓
-Local AI Intelligence
+Local AI Intelligence (focus guided by RecordingType)
         ↓
 Summary, Decisions, Action Items, Questions
         ↓
-Local Meeting Memory
+Local Memory
         ↓
-Ask Meeting
+Ask [Recording] / Share / Export
 ```
 
 ## 2. Core Principle: Local-First, No Backend Dependency
@@ -62,7 +69,13 @@ Google/Outlook Calendar integration, Zoom/Meet/Teams bots, Slack/Notion/Asana/Sa
 
 **Authentication** — Firebase Auth with real Google Sign-In (Credential Manager), usable but not required for local-only use.
 
-**UX** — onboarding, home, recording, processing, meeting detail, transcript, AI insights, Ask Meeting, search, settings, model manager, dark mode.
+**Playback** — a single app-wide playback session (Media3 `MediaSessionService`) with real Android media-notification/lock-screen/Bluetooth controls; at most one audio stream plays at a time; a persistent mini-player shows when audio is playing and the user has navigated away from that recording's detail screen.
+
+**Sharing** — the standard Android Sharesheet for transcript, summary, action items, and the recording's own audio file — never a hardcoded per-app integration, always an explicit user action.
+
+**Export** — Markdown, CSV, PDF, and Word (.docx) documents for transcript/summary/action items (not every type forced into every format — CSV is tabular-only), written to a location the user picks via the system document picker — a persistent file, distinct from Sharing.
+
+**UX** — onboarding, home, recording (with the Recording Type picker), background processing (WorkManager, survives backgrounding/lock), meeting detail, transcript, AI insights, Ask [Recording], search, settings, AI Engine (capability-first model manager), dark mode.
 
 ## 5. Meeting Source Abstraction
 
