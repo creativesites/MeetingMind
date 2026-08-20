@@ -45,7 +45,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.DarkOutline
 import com.example.ui.theme.ErrorRed
 import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.RecordingRed
@@ -121,91 +120,3 @@ fun LiveWaveformVisualizer(
     }
 }
 
-@Composable
-fun RecordingStatusBadge(
-    isRecording: Boolean,
-    isPaused: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val infiniteTransition = rememberInfiniteTransition(label = "rec_blink")
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0.2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "blink"
-    )
-
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = if (isPaused) MaterialTheme.colorScheme.surfaceVariant else RecordingRed.copy(alpha = 0.15f),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isPaused) MaterialTheme.colorScheme.outline else RecordingRed.copy(alpha = 0.5f)
-        ),
-        modifier = modifier
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(
-                        when {
-                            isPaused -> Color.Gray
-                            isRecording -> RecordingRed.copy(alpha = alpha)
-                            else -> SuccessGreen
-                        }
-                    )
-            )
-            Text(
-                text = when {
-                    isPaused -> "Paused"
-                    isRecording -> "Recording Active"
-                    else -> "Ready"
-                },
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (isPaused) MaterialTheme.colorScheme.onSurfaceVariant else RecordingRed
-                )
-            )
-        }
-    }
-}
-
-@Composable
-fun OfflineShieldBadge(modifier: Modifier = Modifier) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = SuccessGreen.copy(alpha = 0.12f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.35f)),
-        modifier = modifier
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(SuccessGreen)
-            )
-            Text(
-                text = "100% On-Device AI",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = SuccessGreen,
-                    fontSize = 11.sp
-                )
-            )
-        }
-    }
-}

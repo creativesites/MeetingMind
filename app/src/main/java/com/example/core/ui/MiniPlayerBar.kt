@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -55,7 +56,11 @@ fun MiniPlayerBar(
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = 8.dp
     ) {
-        Column {
+        // navigationBarsPadding on the content (not the Surface itself) keeps this bar's
+        // background bleeding under the system nav bar/gesture area while the actual
+        // controls stay above it — previously this had zero inset handling and could render
+        // partly behind/under the system nav bar, making it barely visible or untappable.
+        Column(modifier = Modifier.navigationBarsPadding()) {
             val progress = if (state.durationMs > 0L) (state.positionMs.toFloat() / state.durationMs.toFloat()).coerceIn(0f, 1f) else 0f
             LinearProgressIndicator(
                 progress = { progress },

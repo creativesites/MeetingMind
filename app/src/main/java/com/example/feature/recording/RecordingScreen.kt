@@ -5,12 +5,6 @@ import android.app.Application
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,8 +25,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -88,14 +85,10 @@ import com.example.core.model.MeetingSource
 import com.example.core.model.MeetingStatus
 import com.example.core.model.RecordingType
 import com.example.core.repository.MeetingRepository
-import com.example.core.ui.OfflineShieldBadge
-import com.example.ui.theme.CyanTertiary
-import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.IndigoPrimaryLight
 import com.example.ui.theme.RecordingRed
 import com.example.ui.theme.SuccessGreen
-import com.example.ui.theme.WarningAmber
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.io.File
@@ -236,25 +229,43 @@ fun RecordingScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "Live Intelligence Session",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     IconButton(
                         onClick = { showDiscardDialog = true },
-                        modifier = Modifier.testTag("record_close_btn")
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surface)
+                            .testTag("record_close_btn")
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close & Discard")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close & Discard")
                     }
                 },
                 actions = {
-                    OfflineShieldBadge(modifier = Modifier.padding(end = 12.dp))
+                    if (state == RecorderState.RECORDING || state == RecorderState.PAUSED) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (state == RecorderState.RECORDING) RecordingRed.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.padding(end = 16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (state == RecorderState.RECORDING) {
+                                    Icon(Icons.Default.FiberManualRecord, contentDescription = null, tint = RecordingRed, modifier = Modifier.size(10.dp))
+                                }
+                                Text(
+                                    text = Formatters.formatDurationHms(durationMs),
+                                    style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace),
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (state == RecorderState.RECORDING) RecordingRed else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
@@ -326,197 +337,90 @@ fun RecordingScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
+                    .padding(horizontal = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 1. TOP BENTO CARD: Session Header & Telemetry
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
+                Text(
+                    text = meetingTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                WaveformCenterButton(
+                    amplitude = amplitude,
+                    isRecording = state == RecorderState.RECORDING,
+                    isPaused = state == RecorderState.PAUSED,
+                    onToggle = {
+                        if (state == RecorderState.RECORDING) {
+                            viewModel.pauseRecording()
+                        } else if (state == RecorderState.PAUSED) {
+                            viewModel.resumeRecording()
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text = if (state == RecorderState.RECORDING) "Listening…" else "Paused",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = if (state == RecorderState.RECORDING) {
+                        "Recording safely on your device"
+                    } else {
+                        "Tap the button to resume"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        BentoRecordingPill(
-                            isRecording = state == RecorderState.RECORDING,
-                            isPaused = state == RecorderState.PAUSED
-                        )
-
-                        Text(
-                            text = meetingTitle,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        IconButton(
+                            onClick = { showDiscardDialog = true },
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .testTag("record_discard_btn")
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = IndigoPrimary.copy(alpha = 0.1f)
-                            ) {
-                                Text(
-                                    text = "16 kHz Voice Stream",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = IndigoPrimaryLight,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = SuccessGreen.copy(alpha = 0.1f)
-                            ) {
-                                Text(
-                                    text = "Silero VAD Active",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = SuccessGreen,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = CyanTertiary.copy(alpha = 0.1f)
-                            ) {
-                                Text(
-                                    text = "Lock-Screen Safe",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = CyanTertiary,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
+                            Icon(Icons.Default.Close, contentDescription = "Discard", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        Text("Discard", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                }
 
-                // 2. CENTER BENTO CARD: Big Waveform Visualizer + Glowing Timer
-                Card(
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.2.dp,
-                        if (state == RecorderState.RECORDING) RecordingRed.copy(alpha = 0.4f) else IndigoPrimary.copy(alpha = 0.2f)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(18.dp)
-                    ) {
-                        Text(
-                            text = Formatters.formatDurationHms(durationMs),
-                            style = MaterialTheme.typography.displayMedium.copy(
-                                fontFamily = FontFamily.Monospace,
-                                letterSpacing = 3.sp
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = if (state == RecorderState.RECORDING) RecordingRed else MaterialTheme.colorScheme.onSurface
-                        )
-
-                        BentoWaveformVisualizer(
-                            amplitude = amplitude,
-                            isRecording = state == RecorderState.RECORDING,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Text(
-                            text = if (state == RecorderState.RECORDING) "Listening & Buffering Audio Frames (Offline)" else "Recording Paused",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // 3. BOTTOM BENTO DOCK: Controls
-                Card(
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Discard
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            IconButton(
-                                onClick = { showDiscardDialog = true },
-                                modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .testTag("record_discard_btn")
-                            ) {
-                                Icon(Icons.Default.Close, contentDescription = "Discard", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text("Discard", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        IconButton(
+                            onClick = {
+                                viewModel.finishRecording { meetingId, path, dur ->
+                                    onRecordingComplete(meetingId, path, dur)
+                                }
+                            },
+                            modifier = Modifier
+                                .size(60.dp)
+                                .clip(CircleShape)
+                                .background(SuccessGreen)
+                                .testTag("record_finish_btn")
+                        ) {
+                            Icon(Icons.Default.Done, contentDescription = "Finish", tint = Color.White, modifier = Modifier.size(28.dp))
                         }
-
-                        // Pause / Resume Main CTA
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            IconButton(
-                                onClick = {
-                                    if (state == RecorderState.RECORDING) {
-                                        viewModel.pauseRecording()
-                                    } else if (state == RecorderState.PAUSED) {
-                                        viewModel.resumeRecording()
-                                    }
-                                },
-                                modifier = Modifier
-                                    .size(68.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (state == RecorderState.PAUSED) IndigoPrimary else RecordingRed
-                                    )
-                                    .testTag("record_pause_resume_btn")
-                            ) {
-                                Icon(
-                                    imageVector = if (state == RecorderState.PAUSED) Icons.Default.PlayArrow else Icons.Default.Pause,
-                                    contentDescription = if (state == RecorderState.PAUSED) "Resume" else "Pause",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                            Text(
-                                if (state == RecorderState.PAUSED) "Resume" else "Pause",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        // Finish & Transcribe
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            IconButton(
-                                onClick = {
-                                    viewModel.finishRecording { meetingId, path, dur ->
-                                        onRecordingComplete(meetingId, path, dur)
-                                    }
-                                },
-                                modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(CircleShape)
-                                    .background(SuccessGreen)
-                                    .testTag("record_finish_btn")
-                            ) {
-                                Icon(Icons.Default.Done, contentDescription = "Finish", tint = Color.White, modifier = Modifier.size(26.dp))
-                            }
-                            Text("Transcribe", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = SuccessGreen)
-                        }
+                        Text("Finish", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = SuccessGreen)
                     }
                 }
             }
@@ -674,96 +578,93 @@ private fun RecordingTypeChip(
     }
 }
 
+/**
+ * The recording screen's central visual: waveform bars radiating outward from a single tappable
+ * circular button (pause/resume), matching the reference design's "listening" moment — one
+ * unified focal point rather than a separate telemetry card, pill badge, and controls dock.
+ * Bar heights come from the real single-scalar input amplitude (never fabricated) scaled across a
+ * fixed bar-count pattern, consistent with the efficiency requirement of not computing a full FFT.
+ */
 @Composable
-fun BentoRecordingPill(
-    isRecording: Boolean,
-    isPaused: Boolean
-) {
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(700, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseAlpha"
-    )
-
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = if (isRecording) RecordingRed.copy(alpha = 0.15f) else WarningAmber.copy(alpha = 0.15f),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isRecording) RecordingRed.copy(alpha = 0.4f) else WarningAmber.copy(alpha = 0.4f)
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (isRecording) RecordingRed.copy(alpha = alpha) else WarningAmber
-                    )
-            )
-            Text(
-                text = if (isRecording) "RECORDING LIVE" else "PAUSED",
-                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                fontWeight = FontWeight.Bold,
-                color = if (isRecording) RecordingRed else WarningAmber
-            )
-        }
-    }
-}
-
-@Composable
-fun BentoWaveformVisualizer(
+fun WaveformCenterButton(
     amplitude: Float,
     isRecording: Boolean,
+    isPaused: Boolean,
+    onToggle: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val barCount = 28
+    val barCount = 24
     val normAmp = amplitude.coerceIn(0.08f, 1f)
+    val buttonColor = if (isPaused) IndigoPrimary else RecordingRed
+    val idleBarColor = MaterialTheme.colorScheme.outline
+    val visualizerSize = 260.dp
+    val buttonSize = 84.dp
 
-    Canvas(
-        modifier = modifier
-            .height(90.dp)
-            .padding(horizontal = 4.dp)
+    Box(
+        modifier = modifier.size(visualizerSize),
+        contentAlignment = Alignment.Center
     ) {
-        val totalWidth = size.width
-        val barWidth = (totalWidth / (barCount * 1.6f)).coerceIn(4f, 12f)
-        val gap = (totalWidth - (barWidth * barCount)) / (barCount - 1)
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val centerX = size.width / 2f
+            val centerY = size.height / 2f
+            val excludeRadius = buttonSize.toPx() / 2f + 14.dp.toPx()
+            val barWidth = 5.dp.toPx()
+            val gap = 6.dp.toPx()
 
-        val baseHeights = listOf(
-            0.2f, 0.35f, 0.6f, 0.4f, 0.8f, 0.95f, 0.5f, 0.7f, 0.85f, 0.4f,
-            0.6f, 0.9f, 0.75f, 0.5f, 0.65f, 0.85f, 0.45f, 0.7f, 0.9f, 0.35f,
-            0.55f, 0.75f, 0.9f, 0.45f, 0.6f, 0.75f, 0.4f, 0.25f
-        )
-
-        for (i in 0 until barCount) {
-            val hFactor = baseHeights[i % baseHeights.size]
-            val activeHeight = if (isRecording) {
-                (size.height * hFactor * normAmp * 1.2f).coerceIn(8f, size.height)
-            } else {
-                (size.height * 0.15f).coerceIn(6f, 14f)
-            }
-
-            val x = i * (barWidth + gap)
-            val y = (size.height - activeHeight) / 2f
-
-            drawRoundRect(
-                brush = Brush.verticalGradient(
-                    colors = if (isRecording) listOf(RecordingRed, IndigoPrimaryLight) else listOf(IndigoPrimary.copy(alpha = 0.3f), IndigoPrimary.copy(alpha = 0.1f))
-                ),
-                topLeft = Offset(x, y),
-                size = Size(barWidth, activeHeight),
-                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+            val baseHeights = listOf(
+                0.25f, 0.4f, 0.65f, 0.45f, 0.85f, 1f, 0.55f, 0.75f, 0.9f, 0.45f, 0.65f, 0.35f
             )
+
+            for (side in listOf(-1, 1)) {
+                for (i in 0 until barCount) {
+                    val hFactor = baseHeights[i % baseHeights.size]
+                    val activeHeight = if (isRecording) {
+                        (visualizerSize.toPx() * 0.4f * hFactor * normAmp).coerceIn(8f, visualizerSize.toPx() * 0.42f)
+                    } else {
+                        (visualizerSize.toPx() * 0.08f).coerceIn(6f, 14f)
+                    }
+                    val x = centerX + side * (excludeRadius + i * (barWidth + gap))
+                    if (x < 0 || x > size.width) continue
+                    val y = centerY - activeHeight / 2f
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            colors = if (isRecording) {
+                                listOf(RecordingRed.copy(alpha = 0.85f), IndigoPrimary.copy(alpha = 0.5f))
+                            } else {
+                                listOf(idleBarColor.copy(alpha = 0.4f), idleBarColor.copy(alpha = 0.15f))
+                            }
+                        ),
+                        topLeft = Offset(x, y),
+                        size = Size(barWidth, activeHeight),
+                        cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+                    )
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .size(buttonSize + 24.dp)
+                .background(buttonColor.copy(alpha = 0.16f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            IconButton(
+                onClick = onToggle,
+                modifier = Modifier
+                    .size(buttonSize)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(listOf(buttonColor, buttonColor.copy(alpha = 0.75f)))
+                    )
+                    .testTag("record_pause_resume_btn")
+            ) {
+                Icon(
+                    imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                    contentDescription = if (isPaused) "Resume recording" else "Pause recording",
+                    tint = Color.White,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
         }
     }
 }

@@ -111,15 +111,9 @@ import com.example.core.model.Meeting
 import com.example.core.model.MeetingSource
 import com.example.core.model.MeetingStatus
 import com.example.core.repository.MeetingRepository
-import com.example.core.ui.OfflineShieldBadge
-import com.example.ui.theme.BentoAccentBrush
+import com.example.core.ui.AppHeaderBrand
+import com.example.core.ui.StatusLine
 import com.example.ui.theme.CyanTertiary
-import com.example.ui.theme.DarkBackground
-import com.example.ui.theme.DarkCardBorder
-import com.example.ui.theme.DarkSurface
-import com.example.ui.theme.DarkSurfaceElevated
-import com.example.ui.theme.DarkSurfaceVariant
-import com.example.ui.theme.HeroGradientBrush
 import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.IndigoPrimaryLight
 import com.example.ui.theme.RecordingRed
@@ -208,41 +202,17 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = IndigoPrimary.copy(alpha = 0.18f),
-                            modifier = Modifier.size(38.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.GraphicEq,
-                                    contentDescription = null,
-                                    tint = IndigoPrimaryLight,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        Column {
-                            Text(
-                                text = "MeetingMind",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Text(
-                                text = greeting,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    Column {
+                        AppHeaderBrand()
+                        Text(
+                            text = greeting,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 38.dp)
+                        )
                     }
                 },
                 actions = {
-                    OfflineShieldBadge(modifier = Modifier.padding(end = 6.dp))
                     IconButton(
                         onClick = onNavigateToSearch,
                         modifier = Modifier.testTag("home_search_icon_btn")
@@ -271,9 +241,9 @@ fun HomeScreen(
                     icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
                     label = { Text("Dashboard") },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = IndigoPrimaryLight,
-                        selectedTextColor = IndigoPrimaryLight,
-                        indicatorColor = IndigoPrimary.copy(alpha = 0.18f)
+                        selectedIconColor = Color.White,
+                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                        indicatorColor = MaterialTheme.colorScheme.onSurface
                     )
                 )
                 NavigationBarItem(
@@ -296,24 +266,6 @@ fun HomeScreen(
                 )
             }
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToRecord,
-                containerColor = IndigoPrimary,
-                contentColor = Color.White,
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.testTag("home_fab_record")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(Icons.Default.Mic, contentDescription = "Start Recording", tint = Color.White)
-                    Text("Record", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                }
-            }
-        }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -457,9 +409,8 @@ fun HomeScreen(
                 }
             }
 
-            // Bottom Spacing for FAB
             item {
-                Spacer(modifier = Modifier.height(72.dp))
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
@@ -471,125 +422,45 @@ fun BentoHeroCard(
     totalMeetings: Int
 ) {
     Card(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, IndigoPrimary.copy(alpha = 0.25f)),
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onRecordClick() }
             .testTag("bento_hero_card")
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            IndigoPrimary.copy(alpha = 0.08f),
-                            VioletSecondary.copy(alpha = 0.03f),
-                            Color.Transparent
-                        )
-                    )
-                )
-                .padding(20.dp)
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                // Header with Live Pulse Badge
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = SuccessGreen.copy(alpha = 0.15f),
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(CircleShape)
-                                        .background(SuccessGreen)
-                                )
-                            }
-                        }
-                        Text(
-                            text = "OFFLINE AI ENGINE READY",
-                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                            fontWeight = FontWeight.Bold,
-                            color = SuccessGreen
-                        )
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Text(
-                            text = "$totalMeetings saved",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                // Main Title & Subtitle
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "Capture Anything, Privately",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Meetings, interviews, lectures, or a quick voice memo — record and get a transcript with live speech recognition on your device.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 18.sp
-                    )
-                }
-
-                // CTA Button Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Lock, contentDescription = null, tint = IndigoPrimary, modifier = Modifier.size(14.dp))
-                        Text(
-                            text = "Zero Cloud Leakage",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = IndigoPrimary,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = IndigoPrimary,
-                        modifier = Modifier.clickable { onRecordClick() }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Default.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                            Text("Record", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
-                }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "AI Meeting Assistant",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = if (totalMeetings == 0) {
+                        "Ready to capture your first recording"
+                    } else {
+                        "Ready to capture your next recording"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 18.sp
+                )
             }
+            com.example.core.ui.PrimaryCircleButton(
+                icon = Icons.Default.Mic,
+                contentDescription = "Start Recording",
+                onClick = onRecordClick,
+                size = 56.dp
+            )
         }
     }
 }
@@ -639,27 +510,11 @@ fun BentoImportTile(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Audio & Screen Recs",
+                    text = "Audio & video files",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = VioletSecondary.copy(alpha = 0.1f)
-                ) {
-                    Text(
-                        text = "MP3 / M4A / MP4",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        color = VioletSecondary,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                    )
-                }
             }
         }
     }
@@ -710,27 +565,11 @@ fun BentoSearchTile(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Semantic RAG Queries",
+                    text = "Find anything you've recorded",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = CyanTertiary.copy(alpha = 0.1f)
-                ) {
-                    Text(
-                        text = "64D Embeddings",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        color = CyanTertiary,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                    )
-                }
             }
         }
     }
@@ -783,18 +622,7 @@ fun BentoTelemetryTile(
                 }
             }
 
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = SuccessGreen.copy(alpha = 0.15f)
-            ) {
-                Text(
-                    text = "OPTIMAL",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SuccessGreen,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-            }
+            StatusLine(text = "Optimal", color = SuccessGreen)
         }
     }
 }
@@ -996,30 +824,21 @@ fun BentoMeetingCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = when (meeting.status) {
-                            MeetingStatus.READY -> SuccessGreen.copy(alpha = 0.12f)
-                            MeetingStatus.ERROR -> MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
-                            MeetingStatus.MODEL_REQUIRED -> com.example.ui.theme.WarningAmber.copy(alpha = 0.12f)
-                            else -> IndigoPrimary.copy(alpha = 0.12f)
-                        }
-                    ) {
-                        Text(
-                            text = if (meeting.status == MeetingStatus.MODEL_REQUIRED) "MODEL REQUIRED" else meeting.status.name,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = when (meeting.status) {
-                                MeetingStatus.READY -> SuccessGreen
-                                MeetingStatus.ERROR -> MaterialTheme.colorScheme.error
-                                MeetingStatus.MODEL_REQUIRED -> com.example.ui.theme.WarningAmber
-                                else -> IndigoPrimary
-                            },
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
+                StatusLine(
+                    text = when (meeting.status) {
+                        MeetingStatus.READY -> "Ready"
+                        MeetingStatus.ERROR -> "Failed"
+                        MeetingStatus.MODEL_REQUIRED -> "Model required"
+                        MeetingStatus.RECORDING -> "Recording"
+                        MeetingStatus.PROCESSING -> "Processing"
+                    },
+                    color = when (meeting.status) {
+                        MeetingStatus.READY -> SuccessGreen
+                        MeetingStatus.ERROR -> MaterialTheme.colorScheme.error
+                        MeetingStatus.MODEL_REQUIRED -> com.example.ui.theme.WarningAmber
+                        else -> IndigoPrimary
                     }
-                }
+                )
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

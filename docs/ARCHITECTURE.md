@@ -51,7 +51,7 @@ com.example
 │   │                                ActionItemRepository, ModelRepository
 │   ├── share/                     — ShareHelper/ShareContentFormatter (Phase 3A — Android
 │   │                                 Sharesheet integration, never a hardcoded per-app integration)
-│   └── ui/                        — Shared Compose components (OfflineShieldBadge, MiniPlayerBar,
+│   └── ui/                        — Shared Compose components (DesignSystem primitives, MiniPlayerBar,
 │                                     ExportDialog, waveform, ...)
 ├── feature/                        — One package per screen: home, recording, importing,
 │                                      processing, meetingdetail, search, settings, models,

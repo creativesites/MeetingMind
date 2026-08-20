@@ -3,6 +3,7 @@ package com.example.ai.modelmanagement
 import com.example.ai.common.AiResult
 import com.example.core.model.ModelFileSpec
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -79,6 +80,12 @@ class OkHttpModelDownloader(
                 // Keep partial bytes on disk so the next attempt (or the next call to
                 // download(), e.g. after the user retries) can resume via HTTP Range instead
                 // of starting over — "resume if practical" per docs/AI_ARCHITECTURE.md.
+                if (attempt < maxAttempts - 1) {
+                    // Slow/intermittent connections (this app's primary target) fail in bursts;
+                    // retrying instantly just re-fails against the same congestion. Back off
+                    // exponentially (1s, 2s, 4s, ...) so a later attempt has a real chance.
+                    delay(INITIAL_BACKOFF_MS * (1L shl attempt))
+                }
             }
         }
         return AiResult.Failed(
@@ -139,5 +146,6 @@ class OkHttpModelDownloader(
 
     private companion object {
         const val CHUNK_SIZE_BYTES = 64L * 1024L
+        const val INITIAL_BACKOFF_MS = 1000L
     }
 }

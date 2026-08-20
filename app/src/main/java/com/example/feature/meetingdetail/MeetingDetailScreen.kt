@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -124,10 +125,9 @@ import com.example.core.repository.MeetingRepository
 import com.example.core.repository.TranscriptRepository
 import com.example.core.share.ShareContentFormatter
 import com.example.core.share.ShareHelper
-import com.example.core.ui.OfflineShieldBadge
+import com.example.core.ui.ListRow
+import com.example.core.ui.SectionCard
 import com.example.ui.theme.CyanTertiary
-import com.example.ui.theme.DarkSurface
-import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.HeroGradientBrush
 import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.IndigoPrimaryLight
@@ -437,7 +437,6 @@ fun MeetingDetailScreen(
                     }
                 },
                 actions = {
-                    OfflineShieldBadge(modifier = Modifier.padding(end = 4.dp))
                     IconButton(
                         onClick = { menuExpanded = true },
                         modifier = Modifier.testTag("meeting_menu_btn")
@@ -645,7 +644,7 @@ fun MeetingDetailScreen(
                     topics = topics,
                     decisions = decisions,
                     actionItems = actionItems,
-                    onNavigateToTranscript = { selectedTabIndex = 1 }
+                    onNavigateToTab = { selectedTabIndex = it }
                 )
                 1 -> TranscriptTab(
                     segments = transcript.segments,
@@ -872,46 +871,28 @@ fun BentoOverviewTab(
     topics: List<Topic>,
     decisions: List<Decision>,
     actionItems: List<ActionItem>,
-    onNavigateToTranscript: () -> Unit
+    onNavigateToTab: (Int) -> Unit
 ) {
     if (meeting == null) return
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // 1. Executive Summary Bento Card
+        // 1. Summary — a single quiet container, not a bordered bento card.
         item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.2.dp, IndigoPrimary.copy(alpha = 0.35f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            SectionCard {
                 Column(modifier = Modifier.padding(18.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = IndigoPrimary.copy(alpha = 0.15f),
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = IndigoPrimaryLight, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                        Text(
-                            text = "Executive Summary",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = meeting.summaryPreview ?: "Generating offline meeting notes...",
+                        text = "Summary",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = meeting.summaryPreview ?: "Generating notes on your device...",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         lineHeight = 22.sp
@@ -920,101 +901,61 @@ fun BentoOverviewTab(
             }
         }
 
-        // 2. Bento Row: Key Decisions & Action Items Counters
+        // 2. Grouped list of rows — matches the reference's flat "AI Summary" list exactly.
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Decisions Bento Tile
-                Card(
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.35f)),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Default.Psychology, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(20.dp))
-                            Text("Decisions", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = SuccessGreen)
-                        }
-                        Text(
-                            text = "${decisions.size}",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = if (decisions.isNotEmpty()) decisions.first().text else "No decisions flagged",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                // Action Items Bento Tile
-                Card(
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, WarningAmber.copy(alpha = 0.35f)),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Default.FormatListBulleted, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(20.dp))
-                            Text("Action Items", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = WarningAmber)
-                        }
-                        Text(
-                            text = "${actionItems.size}",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = if (actionItems.isNotEmpty()) actionItems.first().task else "No pending action items",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
+            SectionCard {
+                ListRow(
+                    title = "Decisions",
+                    subtitle = if (decisions.isNotEmpty()) decisions.first().text else "No decisions flagged",
+                    icon = Icons.Default.Psychology,
+                    onClick = { onNavigateToTab(3) },
+                    trailing = { CountTrailing(decisions.size) }
+                )
+                ListRow(
+                    title = "Action Items",
+                    subtitle = if (actionItems.isNotEmpty()) actionItems.first().task else "No pending action items",
+                    icon = Icons.Default.FormatListBulleted,
+                    onClick = { onNavigateToTab(2) },
+                    trailing = { CountTrailing(actionItems.size) }
+                )
+                ListRow(
+                    title = "Transcript",
+                    subtitle = "Full text with speakers and timestamps",
+                    icon = Icons.Default.Subject,
+                    onClick = { onNavigateToTab(1) },
+                    showDivider = false
+                )
             }
         }
 
-        // 3. Discussion Topics Bento Cluster
+        // 3. Discussion topics
         if (topics.isNotEmpty()) {
             item {
-                Card(
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionCard {
+                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            text = "Discussion Topic Clusters",
+                            text = "Topics",
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             topics.forEach { topic ->
-                                AssistChip(
-                                    onClick = {},
-                                    label = { Text(topic.name, fontWeight = FontWeight.SemiBold, fontSize = 12.sp) },
-                                    shape = RoundedCornerShape(10.dp)
-                                )
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                ) {
+                                    Text(
+                                        text = topic.name,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1022,36 +963,45 @@ fun BentoOverviewTab(
             }
         }
 
-        // 4. Meeting Metadata Telemetry
+        // 4. Details — duration / speakers / type, as quiet rows rather than a metric strip.
         item {
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .padding(14.dp)
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceAround,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Duration", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(Formatters.formatDurationHms(meeting.durationMs), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Speakers", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${meeting.participantCount} detected", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Type", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(meeting.recordingType.displayName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    }
-                }
+            SectionCard {
+                ListRow(
+                    title = "Duration",
+                    icon = Icons.Default.Schedule,
+                    trailing = { Text(Formatters.formatDurationHms(meeting.durationMs), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                )
+                ListRow(
+                    title = "Speakers",
+                    icon = Icons.Default.Group,
+                    trailing = { Text("${meeting.participantCount} detected", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                )
+                ListRow(
+                    title = "Type",
+                    icon = Icons.Default.GraphicEq,
+                    showDivider = false,
+                    trailing = { Text(meeting.recordingType.displayName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun CountTrailing(count: Int) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "$count",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Icon(
+            Icons.AutoMirrored.Filled.ArrowForward,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(16.dp)
+        )
     }
 }
 
