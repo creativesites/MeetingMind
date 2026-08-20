@@ -164,8 +164,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             in 12..16 -> "Good afternoon"
             else -> "Good evening"
         }
-        val name = currentUser.value?.displayName?.split(" ")?.firstOrNull() ?: "Winston"
-        return "$greeting, $name"
+        val name = currentUser.value?.displayName?.split(" ")?.firstOrNull()
+        return if (name != null) "$greeting, $name" else greeting
     }
 }
 
@@ -995,16 +995,18 @@ fun BentoMeetingCard(
                         color = when (meeting.status) {
                             MeetingStatus.READY -> SuccessGreen.copy(alpha = 0.12f)
                             MeetingStatus.ERROR -> MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                            MeetingStatus.MODEL_REQUIRED -> com.example.ui.theme.WarningAmber.copy(alpha = 0.12f)
                             else -> IndigoPrimary.copy(alpha = 0.12f)
                         }
                     ) {
                         Text(
-                            text = meeting.status.name,
+                            text = if (meeting.status == MeetingStatus.MODEL_REQUIRED) "MODEL REQUIRED" else meeting.status.name,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = when (meeting.status) {
                                 MeetingStatus.READY -> SuccessGreen
                                 MeetingStatus.ERROR -> MaterialTheme.colorScheme.error
+                                MeetingStatus.MODEL_REQUIRED -> com.example.ui.theme.WarningAmber
                                 else -> IndigoPrimary
                             },
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)

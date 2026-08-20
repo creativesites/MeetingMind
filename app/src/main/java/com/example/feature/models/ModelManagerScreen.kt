@@ -39,13 +39,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,8 +62,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.ai.common.AiResult
+import com.example.ai.common.describeFailure
+import com.example.ai.modelmanagement.LocalModelStorage
 import com.example.core.common.DeviceCapabilityDetector
 import com.example.core.common.Formatters
+import com.example.core.database.MeetMindDatabase
 import com.example.core.datastore.UserPreferencesManager
 import com.example.core.model.AiModelInfo
 import com.example.core.model.DeviceCapabilities
@@ -70,27 +79,55 @@ import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.IndigoPrimaryLight
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.VioletSecondary
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class ModelManagerViewModel(application: Application) : AndroidViewModel(application) {
-    private val modelRepository = ModelRepository()
+    private val database = MeetMindDatabase.getInstance(application)
+    private val modelRepository = ModelRepository(database, LocalModelStorage(application))
     private val userPrefs = UserPreferencesManager(application)
     val deviceCapabilities: DeviceCapabilities = DeviceCapabilityDetector.detect(application)
 
-    val models: StateFlow<List<AiModelInfo>> = modelRepository.models
+    val models: StateFlow<List<AiModelInfo>> = modelRepository.models.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
     val userPrefsState = userPrefs.preferencesFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = com.example.core.datastore.AppPreferencesState()
     )
 
-    fun toggleModel(modelId: String) {
+    private val _statusMessage = MutableStateFlow<String?>(null)
+    val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
+
+    init {
+        viewModelScope.launch { modelRepository.ensureCatalogSeeded() }
+    }
+
+    /** Attempts a real install. Honestly reports back when no downloadable model source exists yet. */
+    fun installModel(modelId: String) {
         viewModelScope.launch {
-            modelRepository.toggleInstall(modelId)
+            when (val result = modelRepository.installModel(modelId)) {
+                is AiResult.Success -> Unit
+                else -> _statusMessage.value = result.describeFailure() ?: "This model could not be installed."
+            }
         }
+    }
+
+    fun deleteModel(modelId: String) {
+        viewModelScope.launch {
+            modelRepository.deleteModel(modelId)
+        }
+    }
+
+    fun consumeStatusMessage() {
+        _statusMessage.value = null
     }
 
     fun selectActiveAsrModel(modelId: String) {
@@ -108,9 +145,19 @@ fun ModelManagerScreen(
 ) {
     val models by viewModel.models.collectAsState()
     val prefs by viewModel.userPrefsState.collectAsState()
+    val statusMessage by viewModel.statusMessage.collectAsState()
     val caps = viewModel.deviceCapabilities
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(statusMessage) {
+        statusMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.consumeStatusMessage()
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -210,7 +257,8 @@ fun ModelManagerScreen(
                     model = model,
                     isActive = prefs.selectedAsrModelId == model.id,
                     onSelectActive = { viewModel.selectActiveAsrModel(model.id) },
-                    onToggleInstall = { viewModel.toggleModel(model.id) }
+                    onInstall = { viewModel.installModel(model.id) },
+                    onDelete = { viewModel.deleteModel(model.id) }
                 )
             }
         }
@@ -222,7 +270,8 @@ fun BentoModelItemCard(
     model: AiModelInfo,
     isActive: Boolean,
     onSelectActive: () -> Unit,
-    onToggleInstall: () -> Unit
+    onInstall: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(20.dp),
@@ -277,21 +326,44 @@ fun BentoModelItemCard(
                         color = IndigoPrimaryLight
                     )
                 } else if (model.isInstalled) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = SuccessGreen.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = "INSTALLED",
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                color = SuccessGreen,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                        IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Delete model",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                } else if (!model.isDownloadable) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = SuccessGreen.copy(alpha = 0.15f)
+                        color = MaterialTheme.colorScheme.surfaceVariant
                     ) {
                         Text(
-                            text = "ACTIVE READY",
+                            text = "NOT YET AVAILABLE",
                             style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                            color = SuccessGreen,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
                     }
                 } else {
                     Button(
-                        onClick = onToggleInstall,
+                        onClick = onInstall,
                         colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
                         shape = RoundedCornerShape(12.dp)
                     ) {

@@ -74,6 +74,7 @@ import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.IndigoPrimaryLight
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.VioletSecondary
+import com.example.ui.theme.WarningAmber
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -87,7 +88,11 @@ data class ProcessingUiState(
     val progressPercent: Int = 0,
     val currentStageIndex: Int = 0,
     val isComplete: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    /** True when processing stopped because a required local AI model isn't installed yet.
+     * The recording itself is always saved regardless — this never means the audio was lost. */
+    val modelRequired: Boolean = false,
+    val modelRequiredMessage: String? = null
 )
 
 class ProcessingViewModel(application: Application) : AndroidViewModel(application) {
@@ -119,7 +124,7 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                     currentStageIndex = 0
                 )
 
-                pipeline.processMeeting(
+                val resultMeeting = pipeline.processMeeting(
                     meetingId = meetingId,
                     audioFile = audioFile,
                     totalDurationMs = durationMs,
@@ -142,14 +147,27 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                     }
                 )
 
-                _uiState.value = ProcessingUiState(
-                    stepTitle = "All AI tasks completed successfully!",
-                    progressPercent = 100,
-                    currentStageIndex = 5,
-                    isComplete = true
-                )
-
-                onComplete(meetingId)
+                if (resultMeeting.status == com.example.core.model.MeetingStatus.MODEL_REQUIRED.name) {
+                    // Never fabricate a transcript: the recording is safely saved, but no local
+                    // speech recognition model is installed, so processing honestly stops here.
+                    _uiState.value = ProcessingUiState(
+                        stepTitle = "Recording saved",
+                        progressPercent = 100,
+                        currentStageIndex = 1,
+                        isComplete = true,
+                        modelRequired = true,
+                        modelRequiredMessage = "Local speech recognition is not installed yet. " +
+                            "Download a speech recognition model to transcribe this meeting."
+                    )
+                } else {
+                    _uiState.value = ProcessingUiState(
+                        stepTitle = "All AI tasks completed successfully!",
+                        progressPercent = 100,
+                        currentStageIndex = 5,
+                        isComplete = true
+                    )
+                    onComplete(meetingId)
+                }
             } catch (e: Exception) {
                 _uiState.value = ProcessingUiState(
                     stepTitle = "Processing error",
@@ -174,7 +192,8 @@ fun ProcessingScreen(
     audioPath: String,
     durationMs: Long,
     onNavigateBack: () -> Unit,
-    onProcessingComplete: (meetingId: String) -> Unit
+    onProcessingComplete: (meetingId: String) -> Unit,
+    onNavigateToModels: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -327,18 +346,57 @@ fun ProcessingScreen(
                 }
             }
 
-            // 3. Bottom Cancel Option
-            OutlinedButton(
-                onClick = {
-                    viewModel.cancelPipeline()
-                    onNavigateBack()
-                },
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-            ) {
-                Text("Cancel Pipeline Processing")
+            // 3. Bottom action(s)
+            if (state.modelRequired) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = WarningAmber.copy(alpha = 0.1f)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, WarningAmber.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Speech recognition model required",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = WarningAmber
+                        )
+                        Text(
+                            text = state.modelRequiredMessage
+                                ?: "Local speech recognition is not installed yet. The recording has been saved.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { onProcessingComplete(meetingId) },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("View Meeting")
+                            }
+                            Button(
+                                onClick = onNavigateToModels,
+                                colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Manage Models")
+                            }
+                        }
+                    }
+                }
+            } else {
+                OutlinedButton(
+                    onClick = {
+                        viewModel.cancelPipeline()
+                        onNavigateBack()
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Text("Cancel Pipeline Processing")
+                }
             }
         }
     }

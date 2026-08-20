@@ -142,10 +142,10 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun test_real_speech_recognizer_offline_fallback() = runBlocking {
-        val recognizer = com.example.ai.asr.RealSpeechRecognizer()
+    fun test_unavailable_speech_recognizer_never_fabricates_a_transcript() = runBlocking {
+        val recognizer = com.example.ai.asr.UnavailableSpeechRecognizer()
         val emptyFile = java.io.File(context.cacheDir, "test_empty.m4a").apply { writeBytes(ByteArray(0)) }
-        val segments = recognizer.transcribe(
+        val result = recognizer.transcribe(
             audioFile = emptyFile,
             totalDurationMs = 5000L,
             meetingId = "test_meeting_1",
@@ -153,14 +153,12 @@ class ExampleRobolectricTest {
             options = com.example.ai.asr.TranscriptionOptions(),
             onProgress = { _, _ -> }
         )
-        assertNotNull(segments)
-        assertTrue(segments.isNotEmpty())
-        assertTrue(segments.first().text.contains("No audible voice") || segments.first().text.contains("No distinct"))
+        assertTrue(result is com.example.ai.common.AiResult.ModelUnavailable)
     }
 
     @Test
-    fun test_real_meeting_intelligence_engine_nlp() = runBlocking {
-        val engine = com.example.ai.llm.RealMeetingIntelligenceEngine()
+    fun test_unavailable_meeting_intelligence_engine_never_fabricates_a_summary() = runBlocking {
+        val engine = com.example.ai.llm.UnavailableMeetingIntelligenceEngine()
         val segments = listOf(
             com.example.core.model.TranscriptSegment(
                 id = "seg_1",
@@ -171,22 +169,10 @@ class ExampleRobolectricTest {
                 endMs = 3000L,
                 text = "We decided to ship the beta release on Wednesday.",
                 confidence = 0.95f
-            ),
-            com.example.core.model.TranscriptSegment(
-                id = "seg_2",
-                meetingId = "m1",
-                speakerId = "spk_2",
-                speakerName = "Bob",
-                startMs = 3500L,
-                endMs = 6000L,
-                text = "I will send the updated design assets tonight.",
-                confidence = 0.92f
             )
         )
         val transcript = com.example.core.model.Transcript("m1", segments)
-        val summary = engine.processMeeting(transcript, "Beta Planning")
-        assertNotNull(summary)
-        assertTrue(summary.decisions.any { it.text.contains("ship the beta release") })
-        assertTrue(summary.actionItems.any { it.task.contains("send the updated design assets") })
+        val result = engine.processMeeting(transcript, "Beta Planning")
+        assertTrue(result is com.example.ai.common.AiResult.ModelUnavailable)
     }
 }

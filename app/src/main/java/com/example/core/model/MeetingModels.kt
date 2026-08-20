@@ -103,7 +103,10 @@ data class AiModelInfo(
     val sizeBytes: Long,
     val minimumRamMb: Int,
     val recommendedRamMb: Int,
-    val downloadUrl: String,
+    /** Null until a specific production model has been selected and hosted. */
+    val downloadUrl: String? = null,
+    /** Expected SHA-256 of the downloaded model file, verified before it is activated. Null until a real model is pinned. */
+    val sha256: String? = null,
     val version: String,
     val isInstalled: Boolean = false,
     val isDownloading: Boolean = false,
@@ -111,7 +114,10 @@ data class AiModelInfo(
     val description: String = "",
     val parameterCount: String = "",
     val quantization: String = "q4_0"
-)
+) {
+    /** A model can only actually be downloaded once it has both a URL and an expected checksum. */
+    val isDownloadable: Boolean get() = !downloadUrl.isNullOrBlank() && !sha256.isNullOrBlank()
+}
 
 data class ProcessingJob(
     val id: String,

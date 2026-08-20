@@ -1,9 +1,19 @@
 package com.example.core.repository
 
 import android.content.Context
+import com.example.ai.common.AiResult
+import com.example.ai.common.describeFailure
 import com.example.ai.embeddings.EmbeddingEngine
 import com.example.ai.embeddings.LocalEmbeddingEngine
+import com.example.ai.modelmanagement.LocalModelStorage
+import com.example.ai.modelmanagement.ModelCatalog
+import com.example.ai.modelmanagement.ModelDownloader
+import com.example.ai.modelmanagement.ModelStorage
+import com.example.ai.modelmanagement.ModelVerifier
+import com.example.ai.modelmanagement.Sha256ModelVerifier
+import com.example.ai.modelmanagement.UnconfiguredModelDownloader
 import com.example.core.database.ActionItemEntity
+import com.example.core.database.AiModelEntity
 import com.example.core.database.ChatMessageEntity
 import com.example.core.database.MeetMindDatabase
 import com.example.core.database.MeetingEntity
@@ -29,6 +39,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -359,102 +370,118 @@ data class SearchResultItem(
     val relevanceScore: Float
 )
 
-class ModelRepository {
-    private val _models = MutableStateFlow<List<AiModelInfo>>(
-        listOf(
-            AiModelInfo(
-                id = "whisper_tiny",
-                name = "Whisper Tiny (Mobile Quantized)",
-                capability = setOf(ModelCapability.TRANSCRIPTION),
-                sizeBytes = 75 * 1024 * 1024L,
-                minimumRamMb = 2048,
-                recommendedRamMb = 4096,
-                downloadUrl = "https://models.meetmind.internal/whisper-tiny-q4.bin",
-                version = "1.2.0",
-                isInstalled = true,
-                description = "Ultra-fast lightweight model optimized for all ARM64 Android devices. Minimal battery consumption.",
-                parameterCount = "39M",
-                quantization = "q4_0"
-            ),
-            AiModelInfo(
-                id = "whisper_base",
-                name = "Whisper Base (High Accuracy)",
-                capability = setOf(ModelCapability.TRANSCRIPTION),
-                sizeBytes = 142 * 1024 * 1024L,
-                minimumRamMb = 4096,
-                recommendedRamMb = 6144,
-                downloadUrl = "https://models.meetmind.internal/whisper-base-q4.bin",
-                version = "1.2.0",
-                isInstalled = false,
-                description = "Balanced speech recognition model with superior speaker separation and punctuation accuracy.",
-                parameterCount = "74M",
-                quantization = "q4_0"
-            ),
-            AiModelInfo(
-                id = "whisper_small",
-                name = "Whisper Small (Studio Quality)",
-                capability = setOf(ModelCapability.TRANSCRIPTION),
-                sizeBytes = 466 * 1024 * 1024L,
-                minimumRamMb = 6144,
-                recommendedRamMb = 8192,
-                downloadUrl = "https://models.meetmind.internal/whisper-small-q4.bin",
-                version = "1.2.0",
-                isInstalled = false,
-                description = "High precision multi-accent model for complex technical and multi-speaker conferences.",
-                parameterCount = "244M",
-                quantization = "q4_0"
-            ),
-            AiModelInfo(
-                id = "mobile_nlp_fast",
-                name = "Mobile Intelligence 1B",
-                capability = setOf(ModelCapability.SUMMARIZATION),
-                sizeBytes = 120 * 1024 * 1024L,
-                minimumRamMb = 3072,
-                recommendedRamMb = 4096,
-                downloadUrl = "https://models.meetmind.internal/nlp-1b-q4.bin",
-                version = "1.0.4",
-                isInstalled = true,
-                description = "On-device language intelligence for fast executive summaries, key decisions, and action item detection.",
-                parameterCount = "1.1B",
-                quantization = "q4_k_m"
-            ),
-            AiModelInfo(
-                id = "dense_embeddings_64d",
-                name = "Semantic Vector Embedding 64D",
-                capability = setOf(ModelCapability.EMBEDDINGS),
-                sizeBytes = 18 * 1024 * 1024L,
-                minimumRamMb = 1024,
-                recommendedRamMb = 2048,
-                downloadUrl = "https://models.meetmind.internal/embed-64d.bin",
-                version = "1.0.0",
-                isInstalled = true,
-                description = "Local semantic indexer enabling offline vector RAG and conversational query retrieval.",
-                parameterCount = "12M",
-                quantization = "fp16"
-            )
-        )
-    )
+/**
+ * Real model-management architecture: the catalog of known model candidates
+ * ([com.example.ai.modelmanagement.ModelCatalog]) merged with actual on-disk install state
+ * ([ModelStorage]) and persisted in Room ([AiModelDao]) — never simulated.
+ *
+ * No model in the catalog is downloadable today (no production model has been selected/hosted
+ * yet — see docs/AI_ARCHITECTURE.md), so [installModel] always returns a real
+ * [com.example.ai.common.AiResult.ModelUnavailable] rather than faking a successful install.
+ * When a real [ModelDownloader] is wired in later, this is the only class that needs to change.
+ */
+class ModelRepository(
+    private val database: MeetMindDatabase,
+    private val modelStorage: ModelStorage,
+    private val modelDownloader: ModelDownloader = UnconfiguredModelDownloader(),
+    private val modelVerifier: ModelVerifier = Sha256ModelVerifier()
+) {
+    private val aiModelDao = database.aiModelDao()
 
-    val models: StateFlow<List<AiModelInfo>> = _models.asStateFlow()
+    val models: Flow<List<AiModelInfo>> = aiModelDao.getAllModels().map { entities ->
+        if (entities.isEmpty()) {
+            ModelCatalog.entries
+        } else {
+            entities.map { it.toDomain() }
+        }
+    }.flowOn(Dispatchers.IO)
 
-    suspend fun toggleInstall(modelId: String) = withContext(Dispatchers.IO) {
-        val current = _models.value.toMutableList()
-        val index = current.indexOfFirst { it.id == modelId }
-        if (index != -1) {
-            val item = current[index]
-            if (item.isInstalled) {
-                current[index] = item.copy(isInstalled = false, downloadProgress = 0f)
-            } else {
-                // Simulate download progress
-                current[index] = item.copy(isDownloading = true, downloadProgress = 0.3f)
-                _models.value = current.toList()
-                kotlinx.coroutines.delay(400)
-                current[index] = item.copy(isDownloading = true, downloadProgress = 0.75f)
-                _models.value = current.toList()
-                kotlinx.coroutines.delay(300)
-                current[index] = item.copy(isInstalled = true, isDownloading = false, downloadProgress = 1.0f)
-            }
-            _models.value = current.toList()
+    /** Ensures the catalog has been written to Room at least once, reflecting real on-disk install state. */
+    suspend fun ensureCatalogSeeded() = withContext(Dispatchers.IO) {
+        val existingIds = aiModelDao.getAllModels().first().map { it.id }.toSet()
+        val missing = ModelCatalog.entries.filter { it.id !in existingIds }
+        if (missing.isNotEmpty()) {
+            aiModelDao.insertModels(missing.map { it.copy(isInstalled = modelStorage.isInstalled(it.id)).toEntity() })
         }
     }
+
+    suspend fun installModel(modelId: String): AiResult<Unit> = withContext(Dispatchers.IO) {
+        val manifest = ModelCatalog.entries.find { it.id == modelId }
+            ?: return@withContext AiResult.ModelUnavailable(modelId, "Unknown model id: $modelId")
+
+        if (!manifest.isDownloadable) {
+            return@withContext AiResult.ModelUnavailable(
+                modelId,
+                "No downloadable model source is configured yet for \"${manifest.name}\"."
+            )
+        }
+
+        val downloadResult = modelDownloader.download(manifest)
+        val downloadedFile = when (downloadResult) {
+            is AiResult.Success -> downloadResult.value
+            else -> return@withContext AiResult.Failed(
+                downloadResult.describeFailure() ?: "Model download failed."
+            )
+        }
+
+        val expectedSha256 = manifest.sha256
+        if (expectedSha256.isNullOrBlank() || !modelVerifier.verify(downloadedFile, expectedSha256)) {
+            downloadedFile.delete()
+            return@withContext AiResult.Failed("Downloaded model failed integrity verification and was discarded.")
+        }
+
+        val targetDir = modelStorage.getModelDirectory(modelId)
+        downloadedFile.copyTo(File(targetDir, downloadedFile.name), overwrite = true)
+        downloadedFile.delete()
+        (modelStorage as? LocalModelStorage)?.markInstalled(modelId)
+
+        aiModelDao.updateModel(manifest.copy(isInstalled = true, isDownloading = false, downloadProgress = 1f).toEntity())
+        AiResult.Success(Unit)
+    }
+
+    suspend fun deleteModel(modelId: String) = withContext(Dispatchers.IO) {
+        modelStorage.delete(modelId)
+        val existing = aiModelDao.getModelById(modelId)
+        if (existing != null) {
+            aiModelDao.updateModel(existing.copy(isInstalled = false, isDownloading = false, downloadProgress = 0f))
+        }
+    }
+
+    private fun AiModelEntity.toDomain(): AiModelInfo = AiModelInfo(
+        id = id,
+        name = name,
+        capability = capabilities.split(",").filter { it.isNotBlank() }.mapNotNull {
+            try { ModelCapability.valueOf(it) } catch (e: Exception) { null }
+        }.toSet(),
+        sizeBytes = sizeBytes,
+        minimumRamMb = minimumRamMb,
+        recommendedRamMb = recommendedRamMb,
+        downloadUrl = downloadUrl,
+        sha256 = sha256,
+        version = version,
+        isInstalled = modelStorage.isInstalled(id) || isInstalled,
+        isDownloading = isDownloading,
+        downloadProgress = downloadProgress,
+        description = description,
+        parameterCount = parameterCount,
+        quantization = quantization
+    )
+
+    private fun AiModelInfo.toEntity(): AiModelEntity = AiModelEntity(
+        id = id,
+        name = name,
+        capabilities = capability.joinToString(",") { it.name },
+        sizeBytes = sizeBytes,
+        minimumRamMb = minimumRamMb,
+        recommendedRamMb = recommendedRamMb,
+        downloadUrl = downloadUrl,
+        sha256 = sha256,
+        version = version,
+        isInstalled = isInstalled,
+        isDownloading = isDownloading,
+        downloadProgress = downloadProgress,
+        description = description,
+        parameterCount = parameterCount,
+        quantization = quantization
+    )
 }

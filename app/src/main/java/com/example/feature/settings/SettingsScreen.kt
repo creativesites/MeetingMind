@@ -77,8 +77,10 @@ import com.example.ui.theme.ErrorRed
 import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.VioletSecondary
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -89,11 +91,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val userPrefs = UserPreferencesManager(application)
 
     val currentUser: StateFlow<FirebaseUserModel?> = authManager.currentUser
+    val authAvailability: com.example.core.firebase.AuthAvailability get() = authManager.authAvailability
     val preferencesState: StateFlow<AppPreferencesState> = userPrefs.preferencesFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = AppPreferencesState()
     )
+
+    private val _signInError = MutableStateFlow<String?>(null)
+    val signInError: StateFlow<String?> = _signInError.asStateFlow()
+
+    private val _isSigningIn = MutableStateFlow(false)
+    val isSigningIn: StateFlow<Boolean> = _isSigningIn.asStateFlow()
 
     fun toggleBatterySaver(enabled: Boolean) {
         viewModelScope.launch {
@@ -120,8 +129,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun signInLocalUser() {
-        authManager.setLocalMockProfile("Winston Chen", "winston.chen@meetmind.local")
+    /** [activityContext] must be an Activity context — required to show the Credential Manager UI. */
+    fun signInWithGoogle(activityContext: android.content.Context) {
+        viewModelScope.launch {
+            _isSigningIn.value = true
+            _signInError.value = null
+            val result = authManager.signInWithGoogle(activityContext)
+            result.onFailure { e -> _signInError.value = e.message ?: "Sign-in failed." }
+            _isSigningIn.value = false
+        }
+    }
+
+    fun consumeSignInError() {
+        _signInError.value = null
     }
 }
 
@@ -134,7 +154,16 @@ fun SettingsScreen(
     val context = LocalContext.current
     val currentUser by viewModel.currentUser.collectAsState()
     val prefs by viewModel.preferencesState.collectAsState()
+    val isSigningIn by viewModel.isSigningIn.collectAsState()
+    val signInError by viewModel.signInError.collectAsState()
     var showClearDataDialog by remember { mutableStateOf(false) }
+
+    androidx.compose.runtime.LaunchedEffect(signInError) {
+        signInError?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.consumeSignInError()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -209,8 +238,14 @@ fun SettingsScreen(
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
+                                val subtitle = when {
+                                    currentUser != null -> currentUser?.email ?: "Signed in with Google"
+                                    viewModel.authAvailability is com.example.core.firebase.AuthAvailability.NotConfigured ->
+                                        (viewModel.authAvailability as com.example.core.firebase.AuthAvailability.NotConfigured).reason
+                                    else -> "Strictly local on-device account"
+                                }
                                 Text(
-                                    text = currentUser?.email ?: "Strictly local on-device account",
+                                    text = subtitle,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -221,14 +256,24 @@ fun SettingsScreen(
                             IconButton(onClick = { viewModel.signOut() }) {
                                 Icon(Icons.Default.Logout, contentDescription = "Sign Out", tint = MaterialTheme.colorScheme.error)
                             }
-                        } else {
+                        } else if (viewModel.authAvailability == com.example.core.firebase.AuthAvailability.Available) {
                             Button(
-                                onClick = { viewModel.signInLocalUser() },
-                                colors = ButtonDefaults.filledTonalButtonColors()
+                                onClick = { viewModel.signInWithGoogle(context) },
+                                colors = ButtonDefaults.filledTonalButtonColors(),
+                                enabled = !isSigningIn
                             ) {
-                                Text("Sign In")
+                                if (isSigningIn) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Text("Sign In with Google")
+                                }
                             }
                         }
+                        // When auth is NotConfigured, no button is shown at all — recording,
+                        // import, and (once installed) local AI processing all work without it.
                     }
                 }
             }

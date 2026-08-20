@@ -2,5 +2,5 @@
   "name": "MeetMind",
   "description": "Offline AI meeting notetaker with local-first on-device speech transcription, speaker diarization, summaries, action items, decisions, and grounded Ask AI chat.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

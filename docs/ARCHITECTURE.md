@@ -65,17 +65,16 @@ RecordingViewModel.finishRecording()
 
 ProcessingViewModel.startPipeline()
   → MeetingProcessingPipeline.processMeeting()
-       1. AudioPreprocessor.analyzeAndSegment()      [FAKE — see AUDIT.md]
-       2. VoiceActivityDetector.detectSpeechIntervals() [FAKE]
-       3. SpeechRecognizer.transcribe()                [cloud or FAKE]
-       4. SpeakerDiarizer.diarize()                     [FAKE heuristic]
-       5. MeetingIntelligenceEngine.processMeeting()     [cloud or rule-based]
-       6. EmbeddingEngine.embed() per segment + summary   [real, primitive]
-       7. Persist all of the above to Room, mark meeting READY
-  → navigate to Meeting Detail
+       1. VoiceActivityDetector.detectSpeechIntervals()  [Unavailable by default — degrades gracefully, doesn't block]
+       2. SpeechRecognizer.transcribe()                   [Unavailable by default — REQUIRED GATE: stops the pipeline honestly]
+       3. SpeakerDiarizer.diarize()                        [Unavailable by default — degrades gracefully, doesn't block]
+       4. MeetingIntelligenceEngine.processMeeting()        [Unavailable by default — degrades gracefully, doesn't block]
+       5. EmbeddingEngine.embed() per segment + summary      [real, primitive — only runs over real transcript text]
+       6. Persist whatever is real to Room; mark meeting READY, or MODEL_REQUIRED if ASR was unavailable
+  → navigate to Meeting Detail (or show "model required" state — see ai/AI_ARCHITECTURE.md)
 ```
 
-Every step in the pipeline is a call against an interface; only the concrete implementations behind steps 1–5 need to change to make this a real local pipeline (step 6 needs a better embedding model; step 7 is already correct).
+Every step in the pipeline is a call against an interface returning `AiResult<T>` (see `ai/common/AiTypes.kt`); only ASR unavailability stops the whole meeting (no transcript = nothing downstream can be real). Diarization and meeting intelligence being unavailable degrade gracefully once a transcript exists — see `docs/AI_ARCHITECTURE.md` §0 for exactly how. The formerly-fake `AudioPreprocessor` step was removed entirely — its output was already dead/unused code even before its `sin()`-based computation was found to be fabricated.
 
 ## 5. Dependency Injection
 
@@ -106,7 +105,9 @@ Processing currently runs inside a `viewModelScope` coroutine tied to the Compos
 
 **As designed** (and correctly reflected in `FirebaseAuthManager`'s null-safe fallback and `FirestoreSyncManager`'s metadata-only payload): Firebase is auth + optional lightweight metadata only, never content.
 
-**As implemented today**: Firebase Auth is wired to the real SDK but never actually invoked by the UI (Settings' "Sign In" sets a hardcoded mock profile instead); `FirestoreSyncManager` is fully dead code (never called). Neither is a correctness problem for local-first use — the app functions entirely offline regardless — but both need to be finished for the "optional Google account" part of the spec to actually work. See `docs/AUDIT.md` §D.8–9.
+**As implemented today**: Firebase Auth now uses a real Credential Manager → Google ID token → `FirebaseAuth.signInWithCredential` flow (`FirebaseAuthManager.signInWithGoogle`), invoked from Settings' "Sign In with Google" button. If Firebase/Google Sign-In isn't configured for a given build (no `google-services.json` and/or no web client ID in `res/values/strings.xml:google_sign_in_web_client_id`), `authAvailability` reports `AuthAvailability.NotConfigured` and the sign-in button is hidden rather than fabricating a signed-in user — recording and local processing are never gated on authentication (see `docs/ARCHITECTURE.md` local-first policy below). `FirestoreSyncManager` is still dead code (never called) — wiring it in behind the existing `cloudSyncEnabled` preference remains a P2 roadmap item, not a correctness problem, since the app functions entirely offline regardless.
+
+**Local-first authentication policy**: sign-in is never required to record, import, or (once installed) locally process a meeting. It exists solely to unlock optional future account/sync features.
 
 ## 9. What Should Not Change
 

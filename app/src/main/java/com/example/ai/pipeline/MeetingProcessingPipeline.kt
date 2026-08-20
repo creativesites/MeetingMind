@@ -1,18 +1,19 @@
 package com.example.ai.pipeline
 
 import android.content.Context
-import com.example.ai.asr.RealSpeechRecognizer
 import com.example.ai.asr.SpeechRecognizer
 import com.example.ai.asr.TranscriptionOptions
-import com.example.ai.diarization.AcousticClusterDiarizer
+import com.example.ai.asr.UnavailableSpeechRecognizer
+import com.example.ai.common.AiResult
+import com.example.ai.common.describeFailure
 import com.example.ai.diarization.SpeakerDiarizer
+import com.example.ai.diarization.UnavailableSpeakerDiarizer
 import com.example.ai.embeddings.EmbeddingEngine
 import com.example.ai.embeddings.LocalEmbeddingEngine
 import com.example.ai.llm.MeetingIntelligenceEngine
-import com.example.ai.llm.RealMeetingIntelligenceEngine
-import com.example.ai.vad.EnergyAndSpectralVad
+import com.example.ai.llm.UnavailableMeetingIntelligenceEngine
+import com.example.ai.vad.UnavailableVoiceActivityDetector
 import com.example.ai.vad.VoiceActivityDetector
-import com.example.core.audio.AudioPreprocessor
 import com.example.core.database.ActionItemEntity
 import com.example.core.database.DecisionEntity
 import com.example.core.database.EmbeddingEntity
@@ -24,21 +25,39 @@ import com.example.core.database.SpeakerEntity
 import com.example.core.database.TopicEntity
 import com.example.core.database.TranscriptSegmentEntity
 import com.example.core.model.MeetingStatus
+import com.example.core.model.MeetingSummary
 import com.example.core.model.Transcript
+import com.example.core.model.TranscriptSegment
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
+/**
+ * Orchestrates the full local meeting-processing pipeline:
+ *
+ * ```
+ * Audio -> VoiceActivityDetector -> SpeechRecognizer -> SpeakerDiarizer
+ *       -> MeetingIntelligenceEngine -> EmbeddingEngine -> Meeting Memory (Room)
+ * ```
+ *
+ * Every AI stage is called through its interface and its [AiResult] is honored honestly:
+ * - If speech recognition is unavailable (no local ASR model installed), the pipeline stops,
+ *   the recorded audio is kept exactly as-is, and the meeting is marked
+ *   [MeetingStatus.MODEL_REQUIRED] — never a fabricated transcript.
+ * - Diarization and meeting intelligence are treated as best-effort refinements once a real
+ *   transcript exists: if either is unavailable, the pipeline degrades gracefully (keeps the
+ *   ASR-assigned segments as-is, leaves summary/decisions/action items/questions empty) rather
+ *   than inventing content or blocking the whole meeting.
+ */
 class MeetingProcessingPipeline(
     private val context: Context,
     private val database: MeetMindDatabase,
-    private val audioPreprocessor: AudioPreprocessor = AudioPreprocessor(),
-    private val vad: VoiceActivityDetector = EnergyAndSpectralVad(),
-    private val speechRecognizer: SpeechRecognizer = RealSpeechRecognizer(),
-    private val diarizer: SpeakerDiarizer = AcousticClusterDiarizer(),
-    private val intelligenceEngine: MeetingIntelligenceEngine = RealMeetingIntelligenceEngine(),
+    private val vad: VoiceActivityDetector = UnavailableVoiceActivityDetector(),
+    private val speechRecognizer: SpeechRecognizer = UnavailableSpeechRecognizer(),
+    private val diarizer: SpeakerDiarizer = UnavailableSpeakerDiarizer(),
+    private val intelligenceEngine: MeetingIntelligenceEngine = UnavailableMeetingIntelligenceEngine(),
     private val embeddingEngine: EmbeddingEngine = LocalEmbeddingEngine()
 ) {
 
@@ -77,37 +96,66 @@ class MeetingProcessingPipeline(
         jobDao.insertOrUpdateJob(initialJob)
 
         try {
-            // STEP 1: Audio Preprocessing & Chunking (10% - 25%)
-            onProgress("Preparing audio...", 15)
-            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Preparing audio...", progressPercent = 15))
-            val audioChunks = audioPreprocessor.analyzeAndSegment(audioFile, totalDurationMs)
+            // STEP 1: Voice Activity Detection (best-effort — unavailable degrades to no filtering)
+            onProgress("Detecting speech intervals (VAD)...", 20)
+            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Detecting speech intervals...", progressPercent = 20))
+            val speechIntervals = when (val vadResult = vad.detectSpeechIntervals(audioFile, totalDurationMs)) {
+                is AiResult.Success -> vadResult.value
+                else -> emptyList() // No VAD model installed: ASR will process the whole clip.
+            }
 
-            // STEP 2: Voice Activity Detection (25% - 35%)
-            onProgress("Detecting speech intervals (VAD)...", 30)
-            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Detecting speech intervals...", progressPercent = 30))
-            val speechIntervals = vad.detectSpeechIntervals(audioFile, totalDurationMs)
-
-            // STEP 3: Local Offline ASR Transcription (35% - 65%)
-            onProgress("Transcribing with local AI...", 40)
-            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Transcribing with local AI...", progressPercent = 40))
-            val rawSegments = speechRecognizer.transcribe(
+            // STEP 2: Local Speech Recognition — the required gate. No model = no fabricated transcript.
+            onProgress("Transcribing with local AI...", 35)
+            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Transcribing with local AI...", progressPercent = 35))
+            val asrResult = speechRecognizer.transcribe(
                 audioFile = audioFile,
                 totalDurationMs = totalDurationMs,
                 meetingId = meetingId,
                 speechIntervals = speechIntervals,
                 options = TranscriptionOptions(modelId = modelId),
                 onProgress = { prog, status ->
-                    val overall = (35 + (prog * 30)).toInt()
+                    val overall = (35 + (prog * 25)).toInt()
                     onProgress(status, overall)
                 }
             )
 
-            // STEP 4: Speaker Diarization (65% - 75%)
-            onProgress("Identifying distinct speakers...", 70)
-            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Identifying distinct speakers...", progressPercent = 70))
-            val diarizedSegments = diarizer.diarize(rawSegments)
+            val rawSegments: List<TranscriptSegment> = when (asrResult) {
+                is AiResult.Success -> asrResult.value
+                else -> {
+                    // No local ASR model installed (or the device/memory can't run it): stop here.
+                    // The audio recording itself is untouched and remains fully accessible.
+                    val message = asrResult.describeFailure() ?: "Local speech recognition is unavailable."
+                    val isCrash = asrResult is AiResult.Failed
+                    jobDao.insertOrUpdateJob(
+                        initialJob.copy(
+                            currentStep = if (isCrash) "Failed" else "Speech recognition model required",
+                            progressPercent = 100,
+                            isCompleted = !isCrash,
+                            isFailed = isCrash,
+                            errorMessage = message
+                        )
+                    )
+                    val updatedMeeting = existingMeeting.copy(
+                        status = (if (isCrash) MeetingStatus.ERROR else MeetingStatus.MODEL_REQUIRED).name,
+                        durationMs = totalDurationMs,
+                        summaryText = null,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    meetingDao.updateMeeting(updatedMeeting)
+                    onProgress(message, 100)
+                    return@withContext updatedMeeting
+                }
+            }
 
-            // STEP 5: Meeting Intelligence Synthesis (75% - 90%)
+            // STEP 3: Speaker Diarization (best-effort — unavailable keeps ASR's own speaker labels)
+            onProgress("Identifying distinct speakers...", 65)
+            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Identifying distinct speakers...", progressPercent = 65))
+            val diarizedSegments = when (val diarizeResult = diarizer.diarize(rawSegments)) {
+                is AiResult.Success -> diarizeResult.value
+                else -> rawSegments // No diarization model installed: keep ASR's segments as-is.
+            }
+
+            // STEP 4: Meeting Intelligence (best-effort — unavailable leaves summary/insights empty)
             onProgress("Generating summary, action items & decisions...", 80)
             jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Extracting decisions and action items...", progressPercent = 80))
             val transcriptDomain = Transcript(
@@ -117,63 +165,47 @@ class MeetingProcessingPipeline(
                 createdAt = existingMeeting.createdAt
             )
 
-            val lastGemini = (speechRecognizer as? RealSpeechRecognizer)?.getLastGeminiResult()
-            val generatedTitle = if (lastGemini?.title?.isNotBlank() == true) {
-                lastGemini.title
-            } else {
-                intelligenceEngine.generateTitle(transcriptDomain, existingMeeting.title)
-            }
+            val titleResult = intelligenceEngine.generateTitle(transcriptDomain, existingMeeting.title)
+            val generatedTitle = (titleResult as? AiResult.Success)?.value ?: existingMeeting.title
 
-            val summary = if (lastGemini != null && lastGemini.summary.isNotBlank()) {
-                com.example.core.model.MeetingSummary(
-                    title = generatedTitle,
-                    summary = lastGemini.summary,
-                    topics = if (lastGemini.topics.isNotEmpty()) lastGemini.topics else listOf("Meeting Discussion"),
-                    decisions = lastGemini.decisions,
-                    actionItems = lastGemini.actionItems,
-                    questions = lastGemini.questions,
-                    followUps = emptyList()
-                )
-            } else {
-                intelligenceEngine.processMeeting(transcriptDomain, generatedTitle)
-            }
+            val summaryResult = intelligenceEngine.processMeeting(transcriptDomain, generatedTitle)
+            val summary = (summaryResult as? AiResult.Success)?.value
 
-            // STEP 6: Semantic Vector Embedding Indexing (90% - 98%)
+            // STEP 5: Local Embeddings (real, on-device — only computed over the real transcript text)
             onProgress("Indexing transcript for semantic search...", 92)
             jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Indexing for semantic search...", progressPercent = 92))
 
             val embeddingEntities = mutableListOf<EmbeddingEntity>()
             for (seg in diarizedSegments) {
                 val vec = embeddingEngine.embed(seg.text)
-                val vecString = vec.joinToString(",")
                 embeddingEntities.add(
                     EmbeddingEntity(
                         id = UUID.randomUUID().toString(),
                         meetingId = meetingId,
                         segmentId = seg.id,
                         textChunk = seg.text,
-                        vectorData = vecString,
+                        vectorData = vec.joinToString(","),
                         startMs = seg.startMs,
                         endMs = seg.endMs
                     )
                 )
             }
-
-            // Also embed the summary for holistic meeting matching
-            val summaryVec = embeddingEngine.embed(summary.summary)
-            embeddingEntities.add(
-                EmbeddingEntity(
-                    id = UUID.randomUUID().toString(),
-                    meetingId = meetingId,
-                    segmentId = null,
-                    textChunk = summary.summary,
-                    vectorData = summaryVec.joinToString(","),
-                    startMs = 0L,
-                    endMs = totalDurationMs
+            if (summary != null && summary.summary.isNotBlank()) {
+                val summaryVec = embeddingEngine.embed(summary.summary)
+                embeddingEntities.add(
+                    EmbeddingEntity(
+                        id = UUID.randomUUID().toString(),
+                        meetingId = meetingId,
+                        segmentId = null,
+                        textChunk = summary.summary,
+                        vectorData = summaryVec.joinToString(","),
+                        startMs = 0L,
+                        endMs = totalDurationMs
+                    )
                 )
-            )
+            }
 
-            // Persist all components in Room database
+            // Persist the real transcript (always — ASR succeeded to reach this point)
             val segmentEntities = diarizedSegments.map {
                 TranscriptSegmentEntity(
                     id = it.id,
@@ -188,8 +220,7 @@ class MeetingProcessingPipeline(
             }
             transcriptDao.insertSegments(segmentEntities)
 
-            // Speakers
-            val uniqueSpeakers = diarizedSegments.distinctBy { it.speakerId }.mapIndexed { idx, seg ->
+            val uniqueSpeakers = diarizedSegments.distinctBy { it.speakerId }.map { seg ->
                 SpeakerEntity(
                     id = seg.speakerId,
                     meetingId = meetingId,
@@ -200,77 +231,31 @@ class MeetingProcessingPipeline(
             }
             speakerDao.insertSpeakers(uniqueSpeakers)
 
-            // Action Items
-            val actionItemEntities = summary.actionItems.map {
-                ActionItemEntity(
-                    id = it.id,
-                    meetingId = meetingId,
-                    task = it.task,
-                    assignee = it.assignee,
-                    deadline = it.deadline,
-                    confidence = it.confidence,
-                    isCompleted = it.isCompleted,
-                    sourceTimestampMs = it.sourceTimestampMs
-                )
+            // Only persist intelligence output when it's real (summary != null)
+            if (summary != null) {
+                persistIntelligence(meetingId, summary, actionItemDao, decisionDao, questionDao, topicDao)
             }
-            actionItemDao.insertActionItems(actionItemEntities)
 
-            // Decisions
-            val decisionEntities = summary.decisions.map {
-                DecisionEntity(
-                    id = it.id,
-                    meetingId = meetingId,
-                    text = it.text,
-                    confidence = it.confidence,
-                    timestampMs = it.timestampMs
-                )
-            }
-            decisionDao.insertDecisions(decisionEntities)
-
-            // Questions
-            val questionEntities = summary.questions.map {
-                QuestionEntity(
-                    id = it.id,
-                    meetingId = meetingId,
-                    text = it.text,
-                    resolved = it.resolved,
-                    answer = it.answer,
-                    timestampMs = it.timestampMs
-                )
-            }
-            questionDao.insertQuestions(questionEntities)
-
-            // Topics
-            val topicEntities = summary.topics.map {
-                TopicEntity(
-                    id = UUID.randomUUID().toString(),
-                    meetingId = meetingId,
-                    name = it,
-                    relevance = 1.0f
-                )
-            }
-            topicDao.insertTopics(topicEntities)
-
-            // Embeddings
             embeddingDao.insertEmbeddings(embeddingEntities)
 
-            // Update Meeting State to READY
             val updatedMeeting = existingMeeting.copy(
                 title = generatedTitle,
                 status = MeetingStatus.READY.name,
                 durationMs = totalDurationMs,
                 participantCount = uniqueSpeakers.size.coerceAtLeast(1),
-                summaryText = summary.summary,
+                summaryText = summary?.summary,
                 updatedAt = System.currentTimeMillis()
             )
             meetingDao.updateMeeting(updatedMeeting)
 
-            // Mark job as completed
             jobDao.insertOrUpdateJob(
                 initialJob.copy(
                     currentStep = "Completed",
                     progressPercent = 100,
-                    isCompleted = true
+                    isCompleted = true,
+                    errorMessage = if (summary == null) {
+                        "Transcript ready. " + (summaryResult.describeFailure() ?: "No local meeting intelligence model is installed.")
+                    } else null
                 )
             )
             onProgress("Complete", 100)
@@ -299,5 +284,62 @@ class MeetingProcessingPipeline(
             meetingDao.updateMeeting(existingMeeting.copy(status = MeetingStatus.ERROR.name))
             throw e
         }
+    }
+
+    private suspend fun persistIntelligence(
+        meetingId: String,
+        summary: MeetingSummary,
+        actionItemDao: com.example.core.database.ActionItemDao,
+        decisionDao: com.example.core.database.DecisionDao,
+        questionDao: com.example.core.database.QuestionDao,
+        topicDao: com.example.core.database.TopicDao
+    ) {
+        actionItemDao.insertActionItems(
+            summary.actionItems.map {
+                ActionItemEntity(
+                    id = it.id,
+                    meetingId = meetingId,
+                    task = it.task,
+                    assignee = it.assignee,
+                    deadline = it.deadline,
+                    confidence = it.confidence,
+                    isCompleted = it.isCompleted,
+                    sourceTimestampMs = it.sourceTimestampMs
+                )
+            }
+        )
+        decisionDao.insertDecisions(
+            summary.decisions.map {
+                DecisionEntity(
+                    id = it.id,
+                    meetingId = meetingId,
+                    text = it.text,
+                    confidence = it.confidence,
+                    timestampMs = it.timestampMs
+                )
+            }
+        )
+        questionDao.insertQuestions(
+            summary.questions.map {
+                QuestionEntity(
+                    id = it.id,
+                    meetingId = meetingId,
+                    text = it.text,
+                    resolved = it.resolved,
+                    answer = it.answer,
+                    timestampMs = it.timestampMs
+                )
+            }
+        )
+        topicDao.insertTopics(
+            summary.topics.map {
+                TopicEntity(
+                    id = UUID.randomUUID().toString(),
+                    meetingId = meetingId,
+                    name = it,
+                    relevance = 1.0f
+                )
+            }
+        )
     }
 }

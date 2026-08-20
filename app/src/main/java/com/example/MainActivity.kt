@@ -193,7 +193,8 @@ fun MeetMindApp() {
                     navController.navigate(Routes.meetingDetailRoute(finishedMeetingId)) {
                         popUpTo(Routes.PROCESSING) { inclusive = true }
                     }
-                }
+                },
+                onNavigateToModels = { navController.navigate(Routes.MODELS) }
             )
         }
 
@@ -210,7 +211,8 @@ fun MeetMindApp() {
 
             MeetingDetailScreen(
                 viewModel = vm,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToModels = { navController.navigate(Routes.MODELS) }
             )
         }
 

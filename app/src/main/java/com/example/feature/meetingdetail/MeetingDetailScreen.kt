@@ -98,7 +98,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.ai.llm.RealMeetingIntelligenceEngine
+import com.example.ai.llm.UnavailableMeetingIntelligenceEngine
 import com.example.core.audio.AudioPlayerManager
 import com.example.core.audio.AudioPlayerState
 import com.example.core.common.Formatters
@@ -108,6 +108,7 @@ import com.example.core.model.ActionItem
 import com.example.core.model.ChatMessage
 import com.example.core.model.Decision
 import com.example.core.model.Meeting
+import com.example.core.model.MeetingStatus
 import com.example.core.model.Question
 import com.example.core.model.Topic
 import com.example.core.model.Transcript
@@ -142,7 +143,7 @@ class MeetingDetailViewModel(
     private val meetingRepository = MeetingRepository(application, database)
     private val transcriptRepository = TranscriptRepository(database)
     private val actionItemRepository = ActionItemRepository(database)
-    private val askUseCase = AskMeetingUseCase(transcriptRepository, RealMeetingIntelligenceEngine())
+    private val askUseCase = AskMeetingUseCase(transcriptRepository, UnavailableMeetingIntelligenceEngine())
     val audioPlayer = AudioPlayerManager(application)
 
     val meeting: StateFlow<Meeting?> = meetingRepository.getMeetingById(meetingId).stateIn(
@@ -305,7 +306,8 @@ class MeetingDetailViewModel(
 @Composable
 fun MeetingDetailScreen(
     viewModel: MeetingDetailViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToModels: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val meeting by viewModel.meeting.collectAsState()
@@ -416,6 +418,41 @@ fun MeetingDetailScreen(
                     onPlayPause = { viewModel.audioPlayer.togglePlayPause() },
                     onSeek = { viewModel.audioPlayer.seekTo(it) }
                 )
+            }
+
+            // Honest "model required" banner — never shown alongside a fabricated transcript.
+            if (meeting?.status == MeetingStatus.MODEL_REQUIRED) {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = WarningAmber.copy(alpha = 0.1f)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, WarningAmber.copy(alpha = 0.4f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Speech recognition model required",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = WarningAmber
+                            )
+                            Text(
+                                text = "This recording is saved but has not been transcribed. Install a local speech recognition model to process it.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        TextButton(onClick = onNavigateToModels) {
+                            Text("Manage Models")
+                        }
+                    }
+                }
             }
 
             // Tab Bar

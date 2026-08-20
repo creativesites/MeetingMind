@@ -1,6 +1,8 @@
 package com.example.core.domain
 
 import android.net.Uri
+import com.example.ai.common.AiResult
+import com.example.ai.common.describeFailure
 import com.example.ai.pipeline.MeetingProcessingPipeline
 import com.example.core.audio.AudioExtractor
 import com.example.core.audio.AudioRecorder
@@ -80,7 +82,8 @@ class TranscribeMeetingUseCase(
 
 class AskMeetingUseCase(
     private val transcriptRepository: TranscriptRepository,
-    private val pipelineIntelligence: com.example.ai.llm.MeetingIntelligenceEngine = com.example.ai.llm.RealMeetingIntelligenceEngine()
+    private val pipelineIntelligence: com.example.ai.llm.MeetingIntelligenceEngine =
+        com.example.ai.llm.UnavailableMeetingIntelligenceEngine()
 ) {
     suspend operator fun invoke(
         meetingId: String,
@@ -97,8 +100,20 @@ class AskMeetingUseCase(
         )
         transcriptRepository.saveChatMessage(userMsg)
 
-        // Process with local intelligence
-        val aiResponse = pipelineIntelligence.askMeeting(question, transcript, emptyList())
+        // Process with local intelligence — never fabricate an answer. If no local LLM is
+        // installed, or nothing has been transcribed yet, say so explicitly instead of
+        // inventing a grounded-sounding response.
+        val aiResponse = when (val result = pipelineIntelligence.askMeeting(question, transcript, emptyList())) {
+            is AiResult.Success -> result.value
+            else -> ChatMessage(
+                id = UUID.randomUUID().toString(),
+                meetingId = meetingId,
+                isUser = false,
+                content = result.describeFailure()
+                    ?: "Ask Meeting is unavailable: no local meeting intelligence model is installed.",
+                timestamp = System.currentTimeMillis()
+            )
+        }
         transcriptRepository.saveChatMessage(aiResponse)
         return aiResponse
     }
@@ -123,7 +138,7 @@ class DeleteMeetingUseCase(
 class DownloadModelUseCase(
     private val modelRepository: ModelRepository
 ) {
-    suspend operator fun invoke(modelId: String) {
-        modelRepository.toggleInstall(modelId)
+    suspend operator fun invoke(modelId: String): AiResult<Unit> {
+        return modelRepository.installModel(modelId)
     }
 }

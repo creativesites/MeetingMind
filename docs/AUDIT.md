@@ -1,7 +1,22 @@
 # MeetMind — Repository Audit
 
-**Date:** 2026-08-19
+**Date:** 2026-08-19 (original audit); **updated 2026-08-20** with a P0 privacy/architecture reconciliation pass — see the update note immediately below.
 **Scope:** Full inspection of the codebase delivered as a Google AI Studio ("Gemini")-generated Android project, imported into this repository as the starting point for the MeetMind MVP. This document reports only verified findings — every claim below was confirmed by reading the actual source, running the build, or both.
+
+---
+
+## Update — 2026-08-20 P0 Privacy Reconciliation
+
+Everything in sections A–J below reflects the state of the repository **as originally audited on 2026-08-19**, before any fixes. It is kept intact as the historical record. Since then, a dedicated pass removed the cloud AI path and every fake/fabricated AI implementation identified below, and replaced them with an honest, privacy-safe, model-ready architecture (no real local models were integrated yet — that remains future work). Concretely:
+
+- `GeminiApiClient` was deleted; no code path uploads audio or transcripts anywhere. Verified by `PrivacyNoCloudPathTest` (reflection-based: the class must not exist; the pipeline's default AI implementations must be the local `Unavailable*` classes).
+- The `sin(time)` VAD, placeholder ASR text, turn-alternation "diarization," and regex-based "intelligence" were all removed. Every AI interface now returns `AiResult<T>` and defaults to an `Unavailable*` implementation that honestly reports `ModelUnavailable` instead of fabricating output. Covered by `AiAvailabilityTest`.
+- `MeetingProcessingPipeline` now stops honestly (new `MeetingStatus.MODEL_REQUIRED`, audio preserved, no transcript persisted) when no ASR model is installed, instead of writing fake segments. Covered by `MeetingProcessingPipelineTest`.
+- Model management (`ai/modelmanagement/`) is now a real architecture — real file storage, real SHA-256 verification, a static catalog with `downloadUrl/sha256 = null` (no invented URLs) — wired to `AiModelEntity`/`AiModelDao`. The only unimplemented piece is `ModelDownloader` itself, which honestly fails since no production model source has been selected yet. Covered by `ModelRepositoryTest`.
+- The hardcoded "Winston Chen" mock sign-in is gone. Real Google Sign-In (Credential Manager → Firebase Auth) is implemented; when unconfigured, it reports `AuthAvailability.NotConfigured` rather than fabricating a signed-in user. Covered by `FirebaseAuthManagerTest`.
+- `GEMINI_API_KEY` and the secrets-gradle-plugin/`.env` machinery were removed — the app requires no API key or cloud configuration to build or run.
+
+See `docs/AI_ARCHITECTURE.md` §0 for the full technical breakdown and `docs/ROADMAP.md` for what's next (integrating real local VAD/ASR/diarization/LLM models is still entirely outstanding). The MVP completion estimate in §A below (~30–35%) predates this pass; the foundation and privacy posture are now sound, but no new AI *capability* was added — that estimate should not be revised upward until real local models are integrated.
 
 ---
 
