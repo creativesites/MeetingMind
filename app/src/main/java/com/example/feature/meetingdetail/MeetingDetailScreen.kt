@@ -98,7 +98,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.ai.llm.UnavailableMeetingIntelligenceEngine
+import com.example.ai.llm.MediaPipeLanguageModel
+import com.example.ai.llm.RealMeetingIntelligenceEngine
+import com.example.ai.modelmanagement.ModelCatalog
 import com.example.core.audio.AudioPlayerManager
 import com.example.core.audio.AudioPlayerState
 import com.example.core.common.Formatters
@@ -143,8 +145,14 @@ class MeetingDetailViewModel(
     private val meetingRepository = MeetingRepository(application, database)
     private val transcriptRepository = TranscriptRepository(database)
     private val actionItemRepository = ActionItemRepository(database)
-    private val askUseCase = AskMeetingUseCase(transcriptRepository, UnavailableMeetingIntelligenceEngine())
     private val modelStorage = com.example.ai.modelmanagement.LocalModelStorage(application)
+    private val askUseCase = AskMeetingUseCase(
+        transcriptRepository,
+        RealMeetingIntelligenceEngine(
+            languageModel = MediaPipeLanguageModel(application, modelStorage),
+            contextLengthTokens = ModelCatalog.qwen25_1_5bInstruct.contextLengthTokens ?: 4096
+        )
+    )
     val audioPlayer = AudioPlayerManager(application)
 
     private val _asrModelInstalled = MutableStateFlow(
@@ -244,9 +252,12 @@ class MeetingDetailViewModel(
                     id = UUID.randomUUID().toString(),
                     meetingId = meetingId,
                     task = task,
-                    assignee = assignee.ifBlank { "Unassigned" },
-                    deadline = deadline.ifBlank { "TBD" },
-                    confidence = 1.0f,
+                    assigneeSpeakerId = null,
+                    assigneeName = assignee.ifBlank { null },
+                    deadline = deadline.ifBlank { null },
+                    // A manually-added action item is a direct user statement, not an AI
+                    // inference — there is no meaningful "confidence" to attach to it.
+                    confidence = null,
                     isCompleted = false
                 )
             )
@@ -288,14 +299,17 @@ class MeetingDetailViewModel(
             appendLine()
             if (decs.isNotEmpty()) {
                 appendLine("## Key Decisions")
-                decs.forEach { appendLine("- ${it.text} *(Confidence: ${(it.confidence * 100).toInt()}%)*") }
+                decs.forEach {
+                    val confidenceSuffix = it.confidence?.let { c -> " *(Confidence: ${(c * 100).toInt()}%)*" } ?: ""
+                    appendLine("- [${it.type.name}] ${it.text}$confidenceSuffix")
+                }
                 appendLine()
             }
             if (actions.isNotEmpty()) {
                 appendLine("## Action Items")
                 actions.forEach {
                     val status = if (it.isCompleted) "[x]" else "[ ]"
-                    appendLine("- $status **${it.assignee}**: ${it.task} *(Due: ${it.deadline})*")
+                    appendLine("- $status **${it.assigneeName ?: "Unassigned"}**: ${it.task} *(Due: ${it.deadline ?: "TBD"})*")
                 }
                 appendLine()
             }
@@ -539,12 +553,13 @@ fun MeetingDetailScreen(
                 )
                 2 -> ActionItemsTab(
                     actionItems = actionItems,
+                    segments = transcript.segments,
                     onToggle = { viewModel.toggleActionItem(it) },
                     onDelete = { viewModel.deleteActionItem(it) },
                     onAddClick = { showAddActionDialog = true },
                     onJumpToTimestamp = { viewModel.audioPlayer.seekTo(it); viewModel.audioPlayer.play() }
                 )
-                3 -> DecisionsTab(decisions = decisions, questions = questions)
+                3 -> DecisionsTab(decisions = decisions, questions = questions, segments = transcript.segments, onJumpToTimestamp = { viewModel.audioPlayer.seekTo(it); viewModel.audioPlayer.play() })
                 4 -> AskAiTab(
                     chatMessages = chatMessages,
                     isAnswering = isAnswering,
@@ -1033,11 +1048,13 @@ fun TranscriptTab(
 @Composable
 fun ActionItemsTab(
     actionItems: List<ActionItem>,
+    segments: List<TranscriptSegment>,
     onToggle: (ActionItem) -> Unit,
     onDelete: (String) -> Unit,
     onAddClick: () -> Unit,
     onJumpToTimestamp: (Long) -> Unit
 ) {
+    val segmentStartMsById = remember(segments) { segments.associate { it.id to it.startMs } }
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
@@ -1100,7 +1117,7 @@ fun ActionItemsTab(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "Assignee: ${item.assignee}",
+                                        text = "Assignee: ${item.assigneeName ?: "Unassigned"}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1110,14 +1127,14 @@ fun ActionItemsTab(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
-                                        text = "Due: ${item.deadline}",
+                                        text = "Due: ${item.deadline ?: "TBD"}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
 
-                            item.sourceTimestampMs?.let { ts ->
+                            item.sourceSegmentIds.firstOrNull()?.let { segmentStartMsById[it] }?.let { ts ->
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
                                     color = IndigoPrimary.copy(alpha = 0.12f),
@@ -1143,8 +1160,11 @@ fun ActionItemsTab(
 @Composable
 fun DecisionsTab(
     decisions: List<Decision>,
-    questions: List<Question>
+    questions: List<Question>,
+    segments: List<TranscriptSegment> = emptyList(),
+    onJumpToTimestamp: (Long) -> Unit = {}
 ) {
+    val segmentStartMsById = remember(segments) { segments.associate { it.id to it.startMs } }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -1168,10 +1188,16 @@ fun DecisionsTab(
             }
         } else {
             items(decisions, key = { it.id }) { dec ->
+                val typeColor = when (dec.type) {
+                    com.example.core.model.DecisionType.DECISION -> SuccessGreen
+                    com.example.core.model.DecisionType.SUGGESTION -> IndigoPrimaryLight
+                    com.example.core.model.DecisionType.POSSIBILITY -> WarningAmber
+                    com.example.core.model.DecisionType.DISCUSSION -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.4f)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, typeColor.copy(alpha = 0.4f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1184,10 +1210,10 @@ fun DecisionsTab(
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = SuccessGreen,
+                            tint = typeColor,
                             modifier = Modifier.size(20.dp)
                         )
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = dec.text,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -1195,12 +1221,37 @@ fun DecisionsTab(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Confidence: ${(dec.confidence * 100).toInt()}%",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = SuccessGreen,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = dec.type.name.lowercase().replaceFirstChar { it.uppercase() },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = typeColor,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                // Never a fabricated percentage: only shown when the extraction actually provided one.
+                                dec.confidence?.let { c ->
+                                    Text(
+                                        text = "• Confidence: ${(c * 100).toInt()}%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        dec.sourceSegmentIds.firstOrNull()?.let { segmentStartMsById[it] }?.let { ts ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = typeColor.copy(alpha = 0.12f),
+                                modifier = Modifier.clickable { onJumpToTimestamp(ts) }
+                            ) {
+                                Text(
+                                    text = Formatters.formatDurationHms(ts),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                    color = typeColor,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
                 }

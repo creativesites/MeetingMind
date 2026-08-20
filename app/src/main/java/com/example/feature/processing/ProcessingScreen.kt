@@ -9,6 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +51,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +70,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.ai.pipeline.MeetingProcessingPipeline
 import com.example.core.database.MeetMindDatabase
 import com.example.core.datastore.UserPreferencesManager
+import com.example.core.model.ProcessingStage
 import com.example.core.ui.OfflineShieldBadge
 import com.example.ui.theme.CyanTertiary
 import com.example.ui.theme.DarkSurface
@@ -109,6 +114,7 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
         meetingId: String,
         audioPath: String,
         durationMs: Long,
+        expectedSpeakerCount: Int?,
         onComplete: (String) -> Unit
     ) {
         pipelineJob?.cancel()
@@ -129,14 +135,16 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                     audioFile = audioFile,
                     totalDurationMs = durationMs,
                     modelId = selectedModel,
-                    onProgress = { step, percent ->
-                        val stageIdx = when {
-                            percent < 25 -> 0
-                            percent < 35 -> 1
-                            percent < 65 -> 2
-                            percent < 75 -> 3
-                            percent < 90 -> 4
-                            else -> 5
+                    expectedSpeakerCount = expectedSpeakerCount,
+                    onProgress = { step, percent, stage ->
+                        val stageIdx = when (stage) {
+                            ProcessingStage.IDLE, ProcessingStage.PREPARING_AUDIO -> 0
+                            ProcessingStage.DETECTING_SPEECH -> 1
+                            ProcessingStage.TRANSCRIBING -> 2
+                            ProcessingStage.DIARIZING -> 3
+                            ProcessingStage.ANALYZING -> 4
+                            ProcessingStage.SAVING_RESULTS, ProcessingStage.COMPLETED -> 5
+                            ProcessingStage.FAILED, ProcessingStage.CANCELLED -> 5
                         }
                         _uiState.value = ProcessingUiState(
                             stepTitle = step,
@@ -195,11 +203,25 @@ fun ProcessingScreen(
     onNavigateToModels: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
+    var speakerCountStarted by remember { mutableStateOf(false) }
+    var selectedSpeakerCount by remember { mutableStateOf<Int?>(null) } // null = Auto
 
-    LaunchedEffect(meetingId, audioPath) {
-        viewModel.startPipeline(meetingId, audioPath, durationMs) { finishedId ->
-            onProcessingComplete(finishedId)
+    LaunchedEffect(meetingId, audioPath, speakerCountStarted) {
+        if (speakerCountStarted) {
+            viewModel.startPipeline(meetingId, audioPath, durationMs, selectedSpeakerCount) { finishedId ->
+                onProcessingComplete(finishedId)
+            }
         }
+    }
+
+    if (!speakerCountStarted) {
+        SpeakerCountPickerScreen(
+            selected = selectedSpeakerCount,
+            onSelect = { selectedSpeakerCount = it },
+            onStart = { speakerCountStarted = true },
+            onCancel = onNavigateBack
+        )
+        return
     }
 
     Scaffold(
@@ -397,6 +419,88 @@ fun ProcessingScreen(
                     Text("Cancel Pipeline Processing")
                 }
             }
+        }
+    }
+}
+
+/**
+ * Lets the user optionally tell the diarization engine how many speakers to expect. "Auto" (the
+ * default) lets sherpa-onnx's clustering detect the count itself; a specific count forces exactly
+ * that many speakers, which sherpa-onnx's FastClusteringConfig genuinely supports. Kept to a
+ * single row of choices — the underlying engine only reliably benefits from small-meeting counts,
+ * so there is no reason to expose more than this.
+ */
+@Composable
+private fun SpeakerCountPickerScreen(
+    selected: Int?,
+    onSelect: (Int?) -> Unit,
+    onStart: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Scaffold { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(Icons.Default.Group, contentDescription = null, tint = IndigoPrimary, modifier = Modifier.size(40.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "How many speakers?",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Optional — telling the on-device speaker detector how many people spoke can improve accuracy for small meetings. Leave it on Auto if you're not sure.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SpeakerCountChip(label = "Auto", isSelected = selected == null) { onSelect(null) }
+                for (count in 2..6) {
+                    SpeakerCountChip(label = "$count", isSelected = selected == count) { onSelect(count) }
+                }
+            }
+            Spacer(modifier = Modifier.height(28.dp))
+            Button(
+                onClick = onStart,
+                colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
+                modifier = Modifier.fillMaxWidth().height(48.dp)
+            ) {
+                Text("Start Processing")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+                Text("Cancel")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeakerCountChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSelected) IndigoPrimary else MaterialTheme.colorScheme.surfaceVariant,
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) IndigoPrimary else MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

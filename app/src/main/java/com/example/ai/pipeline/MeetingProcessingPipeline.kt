@@ -1,24 +1,30 @@
 package com.example.ai.pipeline
 
 import android.content.Context
+import android.util.Log
 import com.example.ai.asr.SherpaParakeetSpeechRecognizer
 import com.example.ai.asr.SpeechRecognizer
 import com.example.ai.asr.TranscriptionOptions
 import com.example.ai.common.AiResult
 import com.example.ai.common.describeFailure
+import com.example.ai.diarization.SherpaSpeakerDiarizer
 import com.example.ai.diarization.SpeakerDiarizer
-import com.example.ai.diarization.UnavailableSpeakerDiarizer
 import com.example.ai.embeddings.EmbeddingEngine
 import com.example.ai.embeddings.LocalEmbeddingEngine
+import com.example.ai.llm.MediaPipeLanguageModel
 import com.example.ai.llm.MeetingIntelligenceEngine
-import com.example.ai.llm.UnavailableMeetingIntelligenceEngine
+import com.example.ai.llm.RealMeetingIntelligenceEngine
+import com.example.ai.modelmanagement.LlmEngineManager
 import com.example.ai.modelmanagement.LocalModelStorage
+import com.example.ai.modelmanagement.ModelCatalog
 import com.example.ai.modelmanagement.ModelStorage
+import com.example.ai.modelmanagement.SherpaEngineManager
 import com.example.ai.vad.SileroVadDetector
 import com.example.ai.vad.VoiceActivityDetector
 import com.example.core.database.ActionItemEntity
 import com.example.core.database.DecisionEntity
 import com.example.core.database.EmbeddingEntity
+import com.example.core.database.FollowUpEntity
 import com.example.core.database.MeetMindDatabase
 import com.example.core.database.MeetingEntity
 import com.example.core.database.ProcessingJobEntity
@@ -28,6 +34,7 @@ import com.example.core.database.TopicEntity
 import com.example.core.database.TranscriptSegmentEntity
 import com.example.core.model.MeetingStatus
 import com.example.core.model.MeetingSummary
+import com.example.core.model.ProcessingStage
 import com.example.core.model.Transcript
 import com.example.core.model.TranscriptSegment
 import kotlinx.coroutines.CancellationException
@@ -52,19 +59,26 @@ import java.util.UUID
  *   transcript exists: if either is unavailable, the pipeline degrades gracefully (keeps the
  *   ASR-assigned segments as-is, leaves summary/decisions/action items/questions empty) rather
  *   than inventing content or blocking the whole meeting.
+ *
+ * Resource management: ASR, diarization, and LLM inference never run concurrently — each stage's
+ * native models are released before the next stage's are loaded, so at most one "heavy" model
+ * family (Parakeet, or the diarization pair, or the local LLM) is resident at a time. See
+ * docs/AI_ARCHITECTURE.md "Resource Management".
  */
 class MeetingProcessingPipeline(
     private val context: Context,
     private val database: MeetMindDatabase,
     private val modelStorage: ModelStorage = LocalModelStorage(context),
-    // Both real implementations honestly self-report AiResult.ModelUnavailable when their
-    // model isn't installed yet — see SileroVadDetector / SherpaParakeetSpeechRecognizer. There
-    // is deliberately no separate "Unavailable" default here to switch between: the real
-    // implementation *is* the unavailable-aware implementation.
+    // Every real implementation below honestly self-reports AiResult.ModelUnavailable when its
+    // model isn't installed yet — there is deliberately no separate "Unavailable" default to
+    // switch between: the real implementation *is* the unavailable-aware implementation.
     private val vad: VoiceActivityDetector = SileroVadDetector(modelStorage),
     private val speechRecognizer: SpeechRecognizer = SherpaParakeetSpeechRecognizer(modelStorage),
-    private val diarizer: SpeakerDiarizer = UnavailableSpeakerDiarizer(),
-    private val intelligenceEngine: MeetingIntelligenceEngine = UnavailableMeetingIntelligenceEngine(),
+    private val diarizer: SpeakerDiarizer = SherpaSpeakerDiarizer(modelStorage),
+    private val intelligenceEngine: MeetingIntelligenceEngine = RealMeetingIntelligenceEngine(
+        languageModel = MediaPipeLanguageModel(context, modelStorage),
+        contextLengthTokens = ModelCatalog.qwen25_1_5bInstruct.contextLengthTokens ?: DEFAULT_LLM_CONTEXT_TOKENS
+    ),
     private val embeddingEngine: EmbeddingEngine = LocalEmbeddingEngine()
 ) {
 
@@ -73,7 +87,8 @@ class MeetingProcessingPipeline(
         audioFile: File,
         totalDurationMs: Long,
         modelId: String = "whisper_tiny",
-        onProgress: (step: String, percent: Int) -> Unit
+        expectedSpeakerCount: Int? = null,
+        onProgress: (step: String, percent: Int, stage: ProcessingStage) -> Unit
     ): MeetingEntity = withContext(Dispatchers.Default) {
         val meetingDao = database.meetingDao()
         val transcriptDao = database.transcriptDao()
@@ -81,6 +96,7 @@ class MeetingProcessingPipeline(
         val actionItemDao = database.actionItemDao()
         val decisionDao = database.decisionDao()
         val questionDao = database.questionDao()
+        val followUpDao = database.followUpDao()
         val topicDao = database.topicDao()
         val embeddingDao = database.embeddingDao()
         val jobDao = database.processingJobDao()
@@ -89,31 +105,40 @@ class MeetingProcessingPipeline(
             ?: throw IllegalArgumentException("Meeting $meetingId not found")
 
         val jobId = "job_$meetingId"
-        val initialJob = ProcessingJobEntity(
-            id = jobId,
-            meetingId = meetingId,
-            meetingTitle = existingMeeting.title,
-            currentStep = "Preparing audio...",
-            progressPercent = 10,
-            isCompleted = false,
-            isFailed = false,
-            errorMessage = null,
-            startedAt = System.currentTimeMillis()
-        )
-        jobDao.insertOrUpdateJob(initialJob)
+        val jobStartedAt = System.currentTimeMillis()
+        suspend fun updateJob(step: String, percent: Int, stage: ProcessingStage, failed: Boolean = false, completed: Boolean = false, error: String? = null) {
+            jobDao.insertOrUpdateJob(
+                ProcessingJobEntity(
+                    id = jobId,
+                    meetingId = meetingId,
+                    meetingTitle = existingMeeting.title,
+                    currentStep = step,
+                    progressPercent = percent,
+                    isCompleted = completed,
+                    isFailed = failed,
+                    errorMessage = error,
+                    startedAt = jobStartedAt,
+                    stage = stage.name
+                )
+            )
+            onProgress(step, percent, stage)
+        }
 
         try {
+            updateJob("Preparing audio...", 10, ProcessingStage.PREPARING_AUDIO)
+
             // STEP 1: Voice Activity Detection (best-effort — unavailable degrades to no filtering)
-            onProgress("Detecting speech intervals (VAD)...", 20)
-            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Detecting speech intervals...", progressPercent = 20))
+            updateJob("Detecting speech intervals (VAD)...", 20, ProcessingStage.DETECTING_SPEECH)
+            val vadStart = System.currentTimeMillis()
             val speechIntervals = when (val vadResult = vad.detectSpeechIntervals(audioFile, totalDurationMs)) {
                 is AiResult.Success -> vadResult.value
                 else -> emptyList() // No VAD model installed: ASR will process the whole clip.
             }
+            Log.d(PERF_TAG, "VAD: ${System.currentTimeMillis() - vadStart}ms, ${speechIntervals.size} intervals")
 
             // STEP 2: Local Speech Recognition — the required gate. No model = no fabricated transcript.
-            onProgress("Transcribing with local AI...", 35)
-            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Transcribing with local AI...", progressPercent = 35))
+            updateJob("Transcribing with local AI...", 35, ProcessingStage.TRANSCRIBING)
+            val asrStart = System.currentTimeMillis()
             val asrResult = speechRecognizer.transcribe(
                 audioFile = audioFile,
                 totalDurationMs = totalDurationMs,
@@ -121,10 +146,16 @@ class MeetingProcessingPipeline(
                 speechIntervals = speechIntervals,
                 options = TranscriptionOptions(modelId = modelId),
                 onProgress = { prog, status ->
-                    val overall = (35 + (prog * 25)).toInt()
-                    onProgress(status, overall)
+                    val overall = (35 + (prog * 20)).toInt()
+                    onProgress(status, overall, ProcessingStage.TRANSCRIBING)
                 }
             )
+            val asrDurationMs = System.currentTimeMillis() - asrStart
+            val rtf = if (totalDurationMs > 0) asrDurationMs.toDouble() / totalDurationMs.toDouble() else null
+            Log.d(PERF_TAG, "ASR: ${asrDurationMs}ms for ${totalDurationMs}ms audio (RTF=${rtf?.let { "%.3f".format(it) } ?: "n/a"})")
+            // Free the ~650MB Parakeet allocation before diarization's models load — never keep
+            // two heavy model families resident at once.
+            SherpaEngineManager.releaseAll()
 
             val rawSegments: List<TranscriptSegment> = when (asrResult) {
                 is AiResult.Success -> asrResult.value
@@ -133,14 +164,13 @@ class MeetingProcessingPipeline(
                     // The audio recording itself is untouched and remains fully accessible.
                     val message = asrResult.describeFailure() ?: "Local speech recognition is unavailable."
                     val isCrash = asrResult is AiResult.Failed
-                    jobDao.insertOrUpdateJob(
-                        initialJob.copy(
-                            currentStep = if (isCrash) "Failed" else "Speech recognition model required",
-                            progressPercent = 100,
-                            isCompleted = !isCrash,
-                            isFailed = isCrash,
-                            errorMessage = message
-                        )
+                    updateJob(
+                        step = if (isCrash) "Failed" else "Speech recognition model required",
+                        percent = 100,
+                        stage = if (isCrash) ProcessingStage.FAILED else ProcessingStage.FAILED,
+                        failed = isCrash,
+                        completed = !isCrash,
+                        error = message
                     )
                     val updatedMeeting = existingMeeting.copy(
                         status = (if (isCrash) MeetingStatus.ERROR else MeetingStatus.MODEL_REQUIRED).name,
@@ -149,22 +179,23 @@ class MeetingProcessingPipeline(
                         updatedAt = System.currentTimeMillis()
                     )
                     meetingDao.updateMeeting(updatedMeeting)
-                    onProgress(message, 100)
                     return@withContext updatedMeeting
                 }
             }
 
             // STEP 3: Speaker Diarization (best-effort — unavailable keeps ASR's own speaker labels)
-            onProgress("Identifying distinct speakers...", 65)
-            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Identifying distinct speakers...", progressPercent = 65))
-            val diarizedSegments = when (val diarizeResult = diarizer.diarize(rawSegments)) {
+            updateJob("Identifying distinct speakers...", 55, ProcessingStage.DIARIZING)
+            val diarizeStart = System.currentTimeMillis()
+            val diarizedSegments = when (val diarizeResult = diarizer.diarize(audioFile, totalDurationMs, rawSegments, expectedSpeakerCount = expectedSpeakerCount)) {
                 is AiResult.Success -> diarizeResult.value
                 else -> rawSegments // No diarization model installed: keep ASR's segments as-is.
             }
+            Log.d(PERF_TAG, "Diarization: ${System.currentTimeMillis() - diarizeStart}ms")
+            // Free the segmentation+embedding models before the LLM's much larger allocation loads.
+            SherpaEngineManager.releaseAll()
 
             // STEP 4: Meeting Intelligence (best-effort — unavailable leaves summary/insights empty)
-            onProgress("Generating summary, action items & decisions...", 80)
-            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Extracting decisions and action items...", progressPercent = 80))
+            updateJob("Generating summary, action items & decisions...", 70, ProcessingStage.ANALYZING)
             val transcriptDomain = Transcript(
                 meetingId = meetingId,
                 segments = diarizedSegments,
@@ -172,15 +203,18 @@ class MeetingProcessingPipeline(
                 createdAt = existingMeeting.createdAt
             )
 
+            val llmStart = System.currentTimeMillis()
             val titleResult = intelligenceEngine.generateTitle(transcriptDomain, existingMeeting.title)
             val generatedTitle = (titleResult as? AiResult.Success)?.value ?: existingMeeting.title
 
             val summaryResult = intelligenceEngine.processMeeting(transcriptDomain, generatedTitle)
             val summary = (summaryResult as? AiResult.Success)?.value
+            Log.d(PERF_TAG, "LLM (title+intelligence): ${System.currentTimeMillis() - llmStart}ms")
+            // Free the ~1.5GB local LLM allocation as soon as intelligence extraction is done.
+            LlmEngineManager.release()
 
             // STEP 5: Local Embeddings (real, on-device — only computed over the real transcript text)
-            onProgress("Indexing transcript for semantic search...", 92)
-            jobDao.insertOrUpdateJob(initialJob.copy(currentStep = "Indexing for semantic search...", progressPercent = 92))
+            updateJob("Indexing transcript for semantic search...", 92, ProcessingStage.SAVING_RESULTS)
 
             val embeddingEntities = mutableListOf<EmbeddingEntity>()
             for (seg in diarizedSegments) {
@@ -228,25 +262,28 @@ class MeetingProcessingPipeline(
             transcriptDao.insertSegments(segmentEntities)
 
             // Only real, non-null speaker IDs become Speaker rows — with diarization unavailable
-            // in this phase, every segment's speakerId is null, so this is correctly empty
-            // rather than inventing a "Speaker 1" identity for a single-track transcript.
+            // this is correctly empty rather than inventing a "Speaker 1" identity for a
+            // single-track transcript.
             val uniqueSpeakers = diarizedSegments
                 .filter { it.speakerId != null }
                 .distinctBy { it.speakerId }
                 .map { seg ->
+                    val speakerIndex = seg.speakerId!!.substringAfterLast('_').toIntOrNull() ?: 0
                     SpeakerEntity(
-                        id = seg.speakerId!!,
+                        id = seg.speakerId,
                         meetingId = meetingId,
-                        originalLabel = seg.speakerName ?: seg.speakerId!!,
-                        customName = seg.speakerName ?: seg.speakerId!!,
-                        colorHex = "#3B82F6"
+                        speakerIndex = speakerIndex,
+                        originalLabel = seg.speakerName ?: seg.speakerId,
+                        customName = seg.speakerName ?: seg.speakerId,
+                        colorHex = SPEAKER_COLORS[speakerIndex % SPEAKER_COLORS.size],
+                        confidence = null // sherpa-onnx's diarization API doesn't provide a per-speaker confidence score.
                     )
                 }
             speakerDao.insertSpeakers(uniqueSpeakers)
 
             // Only persist intelligence output when it's real (summary != null)
             if (summary != null) {
-                persistIntelligence(meetingId, summary, actionItemDao, decisionDao, questionDao, topicDao)
+                persistIntelligence(meetingId, summary, actionItemDao, decisionDao, questionDao, followUpDao, topicDao)
             }
 
             embeddingDao.insertEmbeddings(embeddingEntities)
@@ -261,40 +298,35 @@ class MeetingProcessingPipeline(
             )
             meetingDao.updateMeeting(updatedMeeting)
 
-            jobDao.insertOrUpdateJob(
-                initialJob.copy(
-                    currentStep = "Completed",
-                    progressPercent = 100,
-                    isCompleted = true,
-                    errorMessage = if (summary == null) {
-                        "Transcript ready. " + (summaryResult.describeFailure() ?: "No local meeting intelligence model is installed.")
-                    } else null
-                )
+            updateJob(
+                step = "Completed",
+                percent = 100,
+                stage = ProcessingStage.COMPLETED,
+                completed = true,
+                error = if (summary == null) {
+                    "Transcript ready. " + (summaryResult.describeFailure() ?: "No local meeting intelligence model is installed.")
+                } else null
             )
-            onProgress("Complete", 100)
 
             updatedMeeting
         } catch (e: CancellationException) {
-            jobDao.insertOrUpdateJob(
-                initialJob.copy(
-                    currentStep = "Cancelled",
-                    isCompleted = false,
-                    isFailed = true,
-                    errorMessage = "Processing was cancelled by user"
-                )
-            )
-            meetingDao.updateMeeting(existingMeeting.copy(status = MeetingStatus.ERROR.name))
+            // Once a coroutine is cancelled, any further suspend call (Room writes included) can
+            // throw CancellationException immediately instead of running — without NonCancellable
+            // this cleanup could silently no-op and leave the meeting stuck mid-processing.
+            withContext(kotlinx.coroutines.NonCancellable) {
+                SherpaEngineManager.releaseAll()
+                LlmEngineManager.release()
+                updateJob("Cancelled", 0, ProcessingStage.CANCELLED, failed = true, error = "Processing was cancelled by user")
+                meetingDao.updateMeeting(existingMeeting.copy(status = MeetingStatus.ERROR.name))
+            }
             throw e
         } catch (e: Exception) {
-            jobDao.insertOrUpdateJob(
-                initialJob.copy(
-                    currentStep = "Failed",
-                    isCompleted = false,
-                    isFailed = true,
-                    errorMessage = e.localizedMessage ?: "Unknown processing error"
-                )
-            )
-            meetingDao.updateMeeting(existingMeeting.copy(status = MeetingStatus.ERROR.name))
+            withContext(kotlinx.coroutines.NonCancellable) {
+                SherpaEngineManager.releaseAll()
+                LlmEngineManager.release()
+                updateJob("Failed", 0, ProcessingStage.FAILED, failed = true, error = e.localizedMessage ?: "Unknown processing error")
+                meetingDao.updateMeeting(existingMeeting.copy(status = MeetingStatus.ERROR.name))
+            }
             throw e
         }
     }
@@ -305,6 +337,7 @@ class MeetingProcessingPipeline(
         actionItemDao: com.example.core.database.ActionItemDao,
         decisionDao: com.example.core.database.DecisionDao,
         questionDao: com.example.core.database.QuestionDao,
+        followUpDao: com.example.core.database.FollowUpDao,
         topicDao: com.example.core.database.TopicDao
     ) {
         actionItemDao.insertActionItems(
@@ -313,11 +346,12 @@ class MeetingProcessingPipeline(
                     id = it.id,
                     meetingId = meetingId,
                     task = it.task,
-                    assignee = it.assignee,
+                    assigneeSpeakerId = it.assigneeSpeakerId,
+                    assigneeName = it.assigneeName,
                     deadline = it.deadline,
                     confidence = it.confidence,
                     isCompleted = it.isCompleted,
-                    sourceTimestampMs = it.sourceTimestampMs
+                    sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString()
                 )
             }
         )
@@ -327,8 +361,9 @@ class MeetingProcessingPipeline(
                     id = it.id,
                     meetingId = meetingId,
                     text = it.text,
+                    type = it.type.name,
                     confidence = it.confidence,
-                    timestampMs = it.timestampMs
+                    sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString()
                 )
             }
         )
@@ -338,9 +373,22 @@ class MeetingProcessingPipeline(
                     id = it.id,
                     meetingId = meetingId,
                     text = it.text,
+                    askedBySpeakerId = it.askedBySpeakerId,
                     resolved = it.resolved,
                     answer = it.answer,
-                    timestampMs = it.timestampMs
+                    sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString()
+                )
+            }
+        )
+        followUpDao.insertFollowUps(
+            summary.followUps.map {
+                FollowUpEntity(
+                    id = it.id,
+                    meetingId = meetingId,
+                    description = it.description,
+                    ownerSpeakerId = it.ownerSpeakerId,
+                    deadline = it.deadline,
+                    sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString()
                 )
             }
         )
@@ -354,5 +402,17 @@ class MeetingProcessingPipeline(
                 )
             }
         )
+    }
+
+    private fun List<String>.toJsonArrayString(): String {
+        val array = org.json.JSONArray()
+        forEach { array.put(it) }
+        return array.toString()
+    }
+
+    private companion object {
+        const val PERF_TAG = "MeetMindPerf"
+        const val DEFAULT_LLM_CONTEXT_TOKENS = 4096
+        val SPEAKER_COLORS = listOf("#3B82F6", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#06B6D4")
     }
 }

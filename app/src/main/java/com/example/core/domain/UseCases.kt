@@ -74,9 +74,10 @@ class TranscribeMeetingUseCase(
         audioFile: File,
         totalDurationMs: Long,
         modelId: String,
-        onProgress: (step: String, percent: Int) -> Unit
+        expectedSpeakerCount: Int? = null,
+        onProgress: (step: String, percent: Int, stage: com.example.core.model.ProcessingStage) -> Unit
     ) {
-        pipeline.processMeeting(meetingId, audioFile, totalDurationMs, modelId, onProgress)
+        pipeline.processMeeting(meetingId, audioFile, totalDurationMs, modelId, expectedSpeakerCount, onProgress)
     }
 }
 
