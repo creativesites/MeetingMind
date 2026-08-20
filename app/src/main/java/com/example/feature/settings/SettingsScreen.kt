@@ -24,17 +24,13 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.VideoCall
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,14 +51,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.core.database.MeetMindDatabase
@@ -71,12 +64,9 @@ import com.example.core.datastore.UserPreferencesManager
 import com.example.core.firebase.FirebaseAuthManager
 import com.example.core.firebase.FirebaseUserModel
 import com.example.core.repository.MeetingRepository
-import com.example.core.ui.OfflineShieldBadge
-import com.example.ui.theme.DarkSurfaceVariant
-import com.example.ui.theme.ErrorRed
-import com.example.ui.theme.IndigoPrimary
+import com.example.core.ui.ListRow
+import com.example.core.ui.SectionCard
 import com.example.ui.theme.SuccessGreen
-import com.example.ui.theme.VioletSecondary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -183,9 +173,6 @@ fun SettingsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                actions = {
-                    OfflineShieldBadge(modifier = Modifier.padding(end = 12.dp))
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
@@ -199,14 +186,9 @@ fun SettingsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Profile Card
+            // Profile
             item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                SectionCard {
                     Row(
                         modifier = Modifier
                             .padding(16.dp)
@@ -220,14 +202,14 @@ fun SettingsScreen(
                         ) {
                             Surface(
                                 shape = CircleShape,
-                                color = IndigoPrimary.copy(alpha = 0.15f),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                                 modifier = Modifier.size(48.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         Icons.Default.AccountCircle,
                                         contentDescription = null,
-                                        tint = IndigoPrimary,
+                                        tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(28.dp)
                                     )
                                 }
@@ -278,14 +260,9 @@ fun SettingsScreen(
                 }
             }
 
-            // Privacy Guarantee Box
+            // Privacy Guarantee — quiet, not a shouting green pill/box.
             item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = SuccessGreen.copy(alpha = 0.08f)),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.3f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                SectionCard {
                     Row(
                         modifier = Modifier
                             .padding(16.dp)
@@ -299,14 +276,13 @@ fun SettingsScreen(
                                 text = "Zero-Knowledge Offline Privacy",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = SuccessGreen
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "Audio recordings and full transcripts never leave your device. All ASR transcription, diarization, summarization, and vector search execute on your local CPU.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                lineHeight = 18.sp
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -323,57 +299,30 @@ fun SettingsScreen(
             }
 
             item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.BatterySaver, contentDescription = null, tint = IndigoPrimary)
-                                Column {
-                                    Text("Battery Saver Mode", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                    Text("Uses lightweight Whisper Tiny model", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
+                SectionCard {
+                    ListRow(
+                        title = "Battery Saver Mode",
+                        subtitle = "Uses lightweight Whisper Tiny model",
+                        icon = Icons.Default.BatterySaver,
+                        trailing = {
                             Switch(
                                 checked = prefs.batterySaverMode,
-                                onCheckedChange = { viewModel.toggleBatterySaver(it) },
-                                colors = SwitchDefaults.colors(checkedThumbColor = IndigoPrimary)
+                                onCheckedChange = { viewModel.toggleBatterySaver(it) }
                             )
                         }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Wifi, contentDescription = null, tint = IndigoPrimary)
-                                Column {
-                                    Text("Download Models Over Wi-Fi Only", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                    Text("Saves cellular mobile data", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
+                    )
+                    ListRow(
+                        title = "Download Models Over Wi-Fi Only",
+                        subtitle = "Saves cellular mobile data",
+                        icon = Icons.Default.Wifi,
+                        showDivider = false,
+                        trailing = {
                             Switch(
                                 checked = prefs.wifiOnlyDownload,
-                                onCheckedChange = { viewModel.toggleWifiOnly(it) },
-                                colors = SwitchDefaults.colors(checkedThumbColor = IndigoPrimary)
+                                onCheckedChange = { viewModel.toggleWifiOnly(it) }
                             )
                         }
-                    }
+                    )
                 }
             }
 
@@ -387,35 +336,20 @@ fun SettingsScreen(
             }
 
             item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = VioletSecondary)
-                            Column {
-                                Text("Google Calendar Sync", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                Text("Auto-detect scheduled meetings (Coming in Phase 2)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Icon(Icons.Default.VideoCall, contentDescription = null, tint = IndigoPrimary)
-                            Column {
-                                Text("Meeting Bots (Zoom / Meet / Teams)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                Text("Automated bot dispatching (Coming in Phase 2)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
+                SectionCard {
+                    ListRow(
+                        title = "Google Calendar Sync",
+                        subtitle = "Auto-detect scheduled meetings (coming in Phase 2)",
+                        icon = Icons.Default.CalendarMonth,
+                        trailing = null
+                    )
+                    ListRow(
+                        title = "Meeting Bots (Zoom / Meet / Teams)",
+                        subtitle = "Automated bot dispatching (coming in Phase 2)",
+                        icon = Icons.Default.VideoCall,
+                        showDivider = false,
+                        trailing = null
+                    )
                 }
             }
 

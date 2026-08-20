@@ -28,21 +28,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AudioFile
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.PlayCircleOutline
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.VideoFile
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -61,11 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -78,13 +64,7 @@ import com.example.core.database.MeetMindDatabase
 import com.example.core.model.Meeting
 import com.example.core.model.MeetingSource
 import com.example.core.repository.MeetingRepository
-import com.example.core.ui.OfflineShieldBadge
-import com.example.ui.theme.CyanTertiary
-import com.example.ui.theme.DarkSurface
-import com.example.ui.theme.IndigoPrimary
-import com.example.ui.theme.IndigoPrimaryLight
-import com.example.ui.theme.SuccessGreen
-import com.example.ui.theme.VioletSecondary
+import com.example.core.ui.SectionCard
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -220,9 +200,6 @@ fun ImportScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                actions = {
-                    OfflineShieldBadge(modifier = Modifier.padding(end = 12.dp))
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
@@ -238,13 +215,9 @@ fun ImportScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Bento Upload Dropzone Card
-            Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, VioletSecondary.copy(alpha = 0.4f)),
+            // 1. Upload dropzone — one flat, borderless, tappable surface.
+            SectionCard(
                 modifier = Modifier
-                    .fillMaxWidth()
                     .clickable { filePickerLauncher.launch("*/*") }
                     .testTag("import_picker_card")
             ) {
@@ -257,14 +230,14 @@ fun ImportScreen(
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = VioletSecondary.copy(alpha = 0.15f),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                         modifier = Modifier.size(68.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.CloudUpload,
                                 contentDescription = null,
-                                tint = VioletSecondary,
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(36.dp)
                             )
                         }
@@ -285,47 +258,27 @@ fun ImportScreen(
                         )
                     }
 
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        formats.forEach { fmt ->
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = VioletSecondary.copy(alpha = 0.08f)
-                            ) {
-                                Text(
-                                    text = fmt,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = VioletSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
+                    Text(
+                        text = formats.joinToString("  ·  "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
 
                     Button(
                         onClick = { filePickerLauncher.launch("*/*") },
-                        colors = ButtonDefaults.buttonColors(containerColor = VioletSecondary),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.testTag("import_browse_btn")
                     ) {
-                        Icon(Icons.Default.FileUpload, contentDescription = null, tint = Color.White)
+                        Icon(Icons.Default.FileUpload, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Browse Device Files", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Browse Device Files", fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            // 2. Bento Quick Demo Tile
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            // 2. Quick demo tile
+            SectionCard {
                 Row(
                     modifier = Modifier
                         .padding(16.dp)
@@ -340,11 +293,11 @@ fun ImportScreen(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = IndigoPrimary.copy(alpha = 0.15f),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                             modifier = Modifier.size(42.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.AudioFile, contentDescription = null, tint = IndigoPrimaryLight, modifier = Modifier.size(22.dp))
+                                Icon(Icons.Default.AudioFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                             }
                         }
                         Column {
@@ -372,33 +325,23 @@ fun ImportScreen(
                 }
             }
 
-            // 3. Extraction Progress
+            // 3. Extraction progress
             if (state.isExtracting) {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = IndigoPrimary.copy(alpha = 0.08f)),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, IndigoPrimary.copy(alpha = 0.3f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                SectionCard {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(16.dp)
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = IndigoPrimaryLight)
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.primary)
                         Text("Extracting audio stream into 16kHz PCM offline...", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
 
-            // 4. Selected Media Bento Card & Transcribe CTA
+            // 4. Selected media & transcribe CTA
             state.fileName?.let { name ->
-                Card(
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.5.dp, SuccessGreen.copy(alpha = 0.5f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                SectionCard {
                     Column(
                         modifier = Modifier.padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -409,14 +352,14 @@ fun ImportScreen(
                         ) {
                             Surface(
                                 shape = CircleShape,
-                                color = SuccessGreen.copy(alpha = 0.15f),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                                 modifier = Modifier.size(44.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = if (state.isVideo) Icons.Default.VideoFile else Icons.Default.AudioFile,
                                         contentDescription = null,
-                                        tint = SuccessGreen,
+                                        tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(24.dp)
                                     )
                                 }
@@ -431,7 +374,7 @@ fun ImportScreen(
                                 )
                                 Text(
                                     text = "${Formatters.formatDurationSummary(state.durationMs)} • ${Formatters.formatBytes(state.sizeBytes)}",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -445,7 +388,6 @@ fun ImportScreen(
                                     onStartProcessing(mId, file.absolutePath, state.durationMs)
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -453,10 +395,9 @@ fun ImportScreen(
                                 .testTag("import_transcribe_btn")
                         ) {
                             Text(
-                                "Transcribe & Process Meeting",
+                                "Transcribe & Process ${if (state.isVideo) "Video" else "Recording"}",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = Color.White
+                                fontSize = 15.sp
                             )
                         }
                     }

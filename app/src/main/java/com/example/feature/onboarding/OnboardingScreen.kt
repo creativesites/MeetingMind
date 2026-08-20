@@ -31,8 +31,6 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -63,9 +61,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.core.common.DeviceCapabilityDetector
 import com.example.core.datastore.UserPreferencesManager
 import com.example.core.model.DeviceCapabilities
-import com.example.core.ui.OfflineShieldBadge
-import com.example.ui.theme.CyanTertiary
-import com.example.ui.theme.IndigoPrimary
+import com.example.core.ui.SectionCard
+import com.example.core.ui.StatusLine
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.VioletSecondary
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -114,15 +111,12 @@ fun OnboardingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top Badge
+            // Step Indicators
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OfflineShieldBadge()
-
-                // Step Indicators
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     repeat(3) { index ->
                         Box(
@@ -130,7 +124,7 @@ fun OnboardingScreen(
                                 .size(width = if (index == currentStep) 24.dp else 8.dp, height = 8.dp)
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(
-                                    if (index == currentStep) IndigoPrimary else MaterialTheme.colorScheme.outlineVariant
+                                    if (index == currentStep) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
                                 )
                         )
                     }
@@ -178,7 +172,6 @@ fun OnboardingScreen(
                             viewModel.completeOnboarding(onFinishOnboarding)
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.testTag("onboarding_next_btn")
                 ) {
@@ -208,14 +201,14 @@ private fun OnboardingStepZero() {
     ) {
         Surface(
             shape = CircleShape,
-            color = IndigoPrimary.copy(alpha = 0.15f),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
             modifier = Modifier.size(100.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Default.Security,
                     contentDescription = null,
-                    tint = IndigoPrimary,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(48.dp)
                 )
             }
@@ -243,11 +236,7 @@ private fun OnboardingStepZero() {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        SectionCard {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -310,11 +299,7 @@ private fun OnboardingStepOne() {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        SectionCard {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -394,15 +379,10 @@ private fun ModelOptionCard(
     isRecommended: Boolean,
     onClick: () -> Unit
 ) {
-    Card(
+    Surface(
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) IndigoPrimary.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface
-        ),
-        border = androidx.compose.foundation.BorderStroke(
-            1.5.dp,
-            if (isSelected) IndigoPrimary else MaterialTheme.colorScheme.outlineVariant
-        ),
+        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface,
+        shadowElevation = 1.dp,
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
@@ -431,20 +411,7 @@ private fun ModelOptionCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     if (isRecommended) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = SuccessGreen.copy(alpha = 0.2f)
-                        ) {
-                            Text(
-                                text = "RECOMMENDED",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = SuccessGreen
-                                ),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
+                        StatusLine(text = "Recommended", color = SuccessGreen)
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
@@ -457,7 +424,7 @@ private fun ModelOptionCard(
                 Text(
                     text = "Download size: $size",
                     style = MaterialTheme.typography.labelSmall,
-                    color = IndigoPrimary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold
                 )
             }

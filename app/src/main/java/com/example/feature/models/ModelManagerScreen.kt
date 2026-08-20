@@ -30,13 +30,12 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -83,10 +82,8 @@ import com.example.core.model.AiModelInfo
 import com.example.core.model.DeviceCapabilities
 import com.example.core.model.ModelCapability
 import com.example.core.repository.ModelRepository
-import com.example.core.ui.OfflineShieldBadge
+import com.example.core.ui.SectionCard
 import com.example.ui.theme.CyanTertiary
-import com.example.ui.theme.DarkSurfaceVariant
-import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.IndigoPrimaryLight
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.VioletSecondary
@@ -125,6 +122,11 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
     private val _downloadingModelIds = MutableStateFlow<Set<String>>(emptySet())
     val downloadingModelIds: StateFlow<Set<String>> = _downloadingModelIds.asStateFlow()
 
+    // Stopped mid-download with bytes still on disk — the next installModel() call for this id
+    // resumes via HTTP Range instead of restarting, so "Resume" here is never a lie.
+    private val _pausedModelIds = MutableStateFlow<Set<String>>(emptySet())
+    val pausedModelIds: StateFlow<Set<String>> = _pausedModelIds.asStateFlow()
+
     private val installJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
 
     val availableStorageMb: Long get() = DeviceCapabilityDetector.getAvailableStorageMb()
@@ -133,12 +135,16 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch { modelRepository.ensureCatalogSeeded() }
     }
 
-    /** Attempts a real install. Honestly reports back when no downloadable model source exists yet. */
+    /** Attempts a real install — or, if [modelId] was previously paused, resumes it from the
+     * bytes already on disk via the downloader's HTTP Range support. Honestly reports back when
+     * no downloadable model source exists yet. */
     fun installModel(modelId: String) {
         if (modelId in _downloadingModelIds.value) return
+        val resuming = modelId in _pausedModelIds.value
+        _pausedModelIds.value = _pausedModelIds.value - modelId
         installJobs[modelId] = viewModelScope.launch {
             _downloadingModelIds.value = _downloadingModelIds.value + modelId
-            _downloadProgress.value = _downloadProgress.value + (modelId to 0f)
+            if (!resuming) _downloadProgress.value = _downloadProgress.value + (modelId to 0f)
             try {
                 val result = modelRepository.installModel(modelId) { bytesDownloaded, totalBytes ->
                     val progress = if (totalBytes > 0) (bytesDownloaded.toFloat() / totalBytes.toFloat()) else 0f
@@ -150,19 +156,37 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
                 }
             } finally {
                 _downloadingModelIds.value = _downloadingModelIds.value - modelId
-                _downloadProgress.value = _downloadProgress.value - modelId
+                // A pause (or a cancel, which clears progress itself) already set the state it
+                // wants — don't let this cleanup stomp a paused row's saved progress.
+                if (modelId !in _pausedModelIds.value) {
+                    _downloadProgress.value = _downloadProgress.value - modelId
+                }
                 installJobs.remove(modelId)
             }
         }
     }
 
-    /** Real cancellation — stops the in-flight download coroutine. Already-verified sibling files
-     * are left in place so a later retry can resume from there instead of starting over. */
+    /** Stops the in-flight download but keeps every byte written so far on disk — a slow or
+     * intermittent connection (this app's primary target) shouldn't force a user to either sit
+     * and wait or lose their progress. [installModel] on the same id later resumes via HTTP
+     * Range instead of restarting. */
+    fun pauseDownload(modelId: String) {
+        installJobs[modelId]?.cancel()
+        installJobs.remove(modelId)
+        _downloadingModelIds.value = _downloadingModelIds.value - modelId
+        _pausedModelIds.value = _pausedModelIds.value + modelId
+        // _downloadProgress intentionally left as-is so the paused row keeps showing "how far".
+    }
+
+    /** Fully abandons a download: stops it (if running) and deletes whatever partial bytes are
+     * on disk, reclaiming the space. Distinct from [pauseDownload], which keeps those bytes. */
     fun cancelDownload(modelId: String) {
         installJobs[modelId]?.cancel()
         installJobs.remove(modelId)
         _downloadingModelIds.value = _downloadingModelIds.value - modelId
+        _pausedModelIds.value = _pausedModelIds.value - modelId
         _downloadProgress.value = _downloadProgress.value - modelId
+        viewModelScope.launch { modelRepository.deleteModel(modelId) }
     }
 
     fun deleteModel(modelId: String) {
@@ -192,6 +216,8 @@ fun ModelManagerScreen(
     val prefs by viewModel.userPrefsState.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
+    val downloadingModelIds by viewModel.downloadingModelIds.collectAsState()
+    val pausedModelIds by viewModel.pausedModelIds.collectAsState()
     val caps = viewModel.deviceCapabilities
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -221,9 +247,6 @@ fun ModelManagerScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                actions = {
-                    OfflineShieldBadge(modifier = Modifier.padding(end = 12.dp))
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
@@ -237,14 +260,9 @@ fun ModelManagerScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Bento Telemetry Card
+            // 1. Device performance profile — one flat, borderless container.
             item {
-                Card(
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.2.dp, IndigoPrimary.copy(alpha = 0.35f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                SectionCard {
                     Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -252,11 +270,11 @@ fun ModelManagerScreen(
                         ) {
                             Surface(
                                 shape = CircleShape,
-                                color = IndigoPrimary.copy(alpha = 0.15f),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.Speed, contentDescription = null, tint = IndigoPrimaryLight, modifier = Modifier.size(20.dp))
+                                    Icon(Icons.Default.Speed, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                 }
                             }
                             Text(
@@ -315,11 +333,17 @@ fun ModelManagerScreen(
                             group = group,
                             models = groupModels.map { model ->
                                 val liveProgress = downloadProgress[model.id]
-                                if (liveProgress != null) model.copy(isDownloading = true, downloadProgress = liveProgress) else model
+                                if (liveProgress != null) {
+                                    model.copy(isDownloading = model.id in downloadingModelIds, downloadProgress = liveProgress)
+                                } else {
+                                    model
+                                }
                             },
+                            pausedModelIds = pausedModelIds,
                             activeModelId = prefs.selectedAsrModelId,
                             onSelectActive = { viewModel.selectActiveAsrModel(it) },
                             onInstall = { viewModel.installModel(it) },
+                            onPause = { viewModel.pauseDownload(it) },
                             onCancel = { viewModel.cancelDownload(it) },
                             onDelete = { viewModel.deleteModel(it) }
                         )
@@ -361,12 +385,14 @@ private val CAPABILITY_GROUPS = listOf(
 private enum class CapabilityStatus(val label: String, val color: @Composable () -> Color) {
     READY("Ready", { SuccessGreen }),
     DOWNLOADING("Downloading", { IndigoPrimaryLight }),
-    NEEDS_DOWNLOAD("Needs Download", { WarningAmber }),
+    PAUSED("Paused", { MaterialTheme.colorScheme.onSurfaceVariant }),
+    NEEDS_DOWNLOAD("Needs download", { WarningAmber }),
     UNAVAILABLE("Unavailable", { CyanTertiary })
 }
 
-private fun statusFor(models: List<AiModelInfo>): CapabilityStatus = when {
+private fun statusFor(models: List<AiModelInfo>, pausedModelIds: Set<String>): CapabilityStatus = when {
     models.any { it.isDownloading } -> CapabilityStatus.DOWNLOADING
+    models.any { it.id in pausedModelIds } -> CapabilityStatus.PAUSED
     models.all { it.isInstalled } -> CapabilityStatus.READY
     models.any { it.isDownloadable } -> CapabilityStatus.NEEDS_DOWNLOAD
     else -> CapabilityStatus.UNAVAILABLE
@@ -376,21 +402,18 @@ private fun statusFor(models: List<AiModelInfo>): CapabilityStatus = when {
 private fun CapabilityGroupCard(
     group: CapabilityGroupInfo,
     models: List<AiModelInfo>,
+    pausedModelIds: Set<String>,
     activeModelId: String,
     onSelectActive: (String) -> Unit,
     onInstall: (String) -> Unit,
+    onPause: (String) -> Unit,
     onCancel: (String) -> Unit,
     onDelete: (String) -> Unit
 ) {
     var expanded by remember(group.capability) { mutableStateOf(true) }
-    val status = statusFor(models)
+    val status = statusFor(models, pausedModelIds)
 
-    Card(
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    SectionCard {
         Column {
             Row(
                 modifier = Modifier
@@ -402,28 +425,22 @@ private fun CapabilityGroupCard(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = IndigoPrimary.copy(alpha = 0.15f),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                     modifier = Modifier.size(40.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(group.icon, contentDescription = null, tint = IndigoPrimaryLight, modifier = Modifier.size(20.dp))
+                        Icon(group.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     }
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(group.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = status.color().copy(alpha = 0.15f)
-                        ) {
-                            Text(
-                                text = status.label,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = status.color(),
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
+                        Text(
+                            text = status.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = status.color(),
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                     Text(
                         text = group.plainDescription,
@@ -447,8 +464,10 @@ private fun CapabilityGroupCard(
                         BentoModelItemCard(
                             model = model,
                             isActive = activeModelId == model.id,
+                            isPaused = model.id in pausedModelIds,
                             onSelectActive = { onSelectActive(model.id) },
                             onInstall = { onInstall(model.id) },
+                            onPause = { onPause(model.id) },
                             onCancel = { onCancel(model.id) },
                             onDelete = { onDelete(model.id) }
                         )
@@ -463,22 +482,19 @@ private fun CapabilityGroupCard(
 fun BentoModelItemCard(
     model: AiModelInfo,
     isActive: Boolean,
+    isPaused: Boolean = false,
     onSelectActive: () -> Unit,
     onInstall: () -> Unit,
+    onPause: () -> Unit = {},
     onCancel: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     var showTechnicalDetails by remember(model.id) { mutableStateOf(false) }
 
-    Card(
+    Surface(
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isActive) IndigoPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
-        ),
-        border = androidx.compose.foundation.BorderStroke(
-            1.2.dp,
-            if (isActive) IndigoPrimary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
-        ),
+        color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.06f) else MaterialTheme.colorScheme.surface,
+        shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -496,7 +512,7 @@ fun BentoModelItemCard(
                         RadioButton(
                             selected = isActive,
                             onClick = onSelectActive,
-                            colors = RadioButtonDefaults.colors(selectedColor = IndigoPrimaryLight)
+                            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
                         )
                     }
                     Text(
@@ -513,26 +529,35 @@ fun BentoModelItemCard(
                             progress = { model.downloadProgress },
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.5.dp,
-                            color = IndigoPrimaryLight
+                            color = MaterialTheme.colorScheme.primary
                         )
+                        IconButton(onClick = onPause, modifier = Modifier.size(28.dp).testTag("model_pause_${model.id}")) {
+                            Icon(Icons.Default.Pause, contentDescription = "Pause download", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                } else if (isPaused) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Button(
+                            onClick = onInstall,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.testTag("model_resume_${model.id}")
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Resume", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
                         IconButton(onClick = onCancel, modifier = Modifier.size(28.dp).testTag("model_cancel_${model.id}")) {
-                            Icon(Icons.Default.Close, contentDescription = "Cancel download", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Close, contentDescription = "Cancel and discard download", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                         }
                     }
                 } else if (model.isInstalled) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = SuccessGreen.copy(alpha = 0.15f)
-                        ) {
-                            Text(
-                                text = "Installed",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = SuccessGreen,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Installed",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = SuccessGreen,
+                            fontWeight = FontWeight.SemiBold
+                        )
                         IconButton(onClick = onDelete, modifier = Modifier.size(28.dp).testTag("model_delete_${model.id}")) {
                             Icon(
                                 Icons.Default.Delete,
@@ -543,28 +568,20 @@ fun BentoModelItemCard(
                         }
                     }
                 } else if (!model.isDownloadable) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Text(
-                            text = "Not yet available",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
+                    Text(
+                        text = "Not yet available",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
                     Button(
                         onClick = onInstall,
-                        colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.testTag("model_install_${model.id}")
                     ) {
-                        Icon(Icons.Default.Download, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Download", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Download", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -576,17 +593,21 @@ fun BentoModelItemCard(
                 lineHeight = 18.sp
             )
 
-            if (model.isDownloading) {
+            if (model.isDownloading || isPaused) {
                 LinearProgressIndicator(
                     progress = { model.downloadProgress },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(6.dp)
                         .clip(RoundedCornerShape(3.dp)),
-                    color = IndigoPrimaryLight
+                    color = if (isPaused) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "${(model.downloadProgress * 100).toInt()}% of ${Formatters.formatBytes(model.sizeBytes)}",
+                    text = if (isPaused) {
+                        "Paused at ${(model.downloadProgress * 100).toInt()}% of ${Formatters.formatBytes(model.sizeBytes)} — resumes from here, not from the start"
+                    } else {
+                        "${(model.downloadProgress * 100).toInt()}% of ${Formatters.formatBytes(model.sizeBytes)}"
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -600,13 +621,13 @@ fun BentoModelItemCard(
                 Text(
                     text = if (showTechnicalDetails) "Hide technical details" else "Technical details",
                     style = MaterialTheme.typography.labelSmall,
-                    color = IndigoPrimaryLight,
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold
                 )
                 Icon(
                     imageVector = if (showTechnicalDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     contentDescription = null,
-                    tint = IndigoPrimaryLight,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(16.dp)
                 )
             }

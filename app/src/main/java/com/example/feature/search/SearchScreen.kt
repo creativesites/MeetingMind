@@ -26,11 +26,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -50,10 +47,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -66,12 +61,8 @@ import com.example.core.domain.SearchMeetingsUseCase
 import com.example.core.repository.SearchMatchType
 import com.example.core.repository.SearchResultItem
 import com.example.core.repository.SearchRepository
-import com.example.core.ui.OfflineShieldBadge
-import com.example.ui.theme.CyanTertiary
-import com.example.ui.theme.IndigoPrimary
-import com.example.ui.theme.IndigoPrimaryLight
-import com.example.ui.theme.SuccessGreen
-import com.example.ui.theme.VioletSecondary
+import com.example.core.ui.SectionCard
+import com.example.core.ui.StatusLine
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -156,9 +147,6 @@ fun SearchScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                actions = {
-                    OfflineShieldBadge(modifier = Modifier.padding(end = 12.dp))
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
@@ -176,7 +164,7 @@ fun SearchScreen(
                 onValueChange = { viewModel.onQueryChange(it) },
                 placeholder = { Text("Search by topic, speaker, decision, or keyword...") },
                 leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = IndigoPrimaryLight)
+                    Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 },
                 trailingIcon = {
                     if (query.isNotBlank()) {
@@ -206,8 +194,8 @@ fun SearchScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = IndigoPrimaryLight)
-                        Text("Searching semantic vectors offline...", style = MaterialTheme.typography.labelSmall, color = IndigoPrimaryLight)
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                        Text("Searching semantic vectors offline...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     }
                 } else if (query.isNotBlank()) {
                     Text(
@@ -226,12 +214,7 @@ fun SearchScreen(
             ) {
                 if (query.isBlank()) {
                     item {
-                        Card(
-                            shape = RoundedCornerShape(22.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = androidx.compose.foundation.BorderStroke(1.2.dp, CyanTertiary.copy(alpha = 0.35f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                        SectionCard {
                             Column(
                                 modifier = Modifier.padding(20.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -242,11 +225,11 @@ fun SearchScreen(
                                 ) {
                                     Surface(
                                         shape = CircleShape,
-                                        color = CyanTertiary.copy(alpha = 0.15f),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                                         modifier = Modifier.size(36.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = CyanTertiary, modifier = Modifier.size(20.dp))
+                                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                         }
                                     }
                                     Text(
@@ -287,13 +270,11 @@ fun SearchScreen(
                     }
                 } else if (results.isEmpty() && !isSearching) {
                     item {
-                        Card(
-                            shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                        SectionCard {
                             Column(
-                                modifier = Modifier.padding(24.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
@@ -328,14 +309,7 @@ fun BentoSearchResultCard(
     item: SearchResultItem,
     onClick: () -> Unit
 ) {
-    Card(
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-    ) {
+    SectionCard(modifier = Modifier.clickable { onClick() }) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -352,27 +326,16 @@ fun BentoSearchResultCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
+                StatusLine(
+                    text = when (item.matchType) {
+                        SearchMatchType.SEMANTIC_VECTOR -> "Vector match"
+                        SearchMatchType.KEYWORD_TRANSCRIPT -> "Exact keyword"
+                    },
                     color = when (item.matchType) {
-                        SearchMatchType.SEMANTIC_VECTOR -> CyanTertiary.copy(alpha = 0.12f)
-                        SearchMatchType.KEYWORD_TRANSCRIPT -> SuccessGreen.copy(alpha = 0.12f)
+                        SearchMatchType.SEMANTIC_VECTOR -> MaterialTheme.colorScheme.tertiary
+                        SearchMatchType.KEYWORD_TRANSCRIPT -> MaterialTheme.colorScheme.primary
                     }
-                ) {
-                    Text(
-                        text = when (item.matchType) {
-                            SearchMatchType.SEMANTIC_VECTOR -> "VECTOR MATCH"
-                            SearchMatchType.KEYWORD_TRANSCRIPT -> "EXACT KEYWORD"
-                        },
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        fontWeight = FontWeight.Bold,
-                        color = when (item.matchType) {
-                            SearchMatchType.SEMANTIC_VECTOR -> CyanTertiary
-                            SearchMatchType.KEYWORD_TRANSCRIPT -> SuccessGreen
-                        },
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
+                )
             }
 
             Text(
@@ -396,8 +359,8 @@ fun BentoSearchResultCard(
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Open Meeting", style = MaterialTheme.typography.labelSmall, color = IndigoPrimaryLight, fontWeight = FontWeight.Bold)
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = IndigoPrimaryLight, modifier = Modifier.size(14.dp))
+                    Text("Open Meeting", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
                 }
             }
         }

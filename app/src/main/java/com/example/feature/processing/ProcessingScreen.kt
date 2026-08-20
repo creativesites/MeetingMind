@@ -23,20 +23,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -58,9 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -77,15 +69,8 @@ import com.example.core.database.MeetMindDatabase
 import com.example.core.datastore.UserPreferencesManager
 import com.example.core.model.MeetingStatus
 import com.example.core.model.ProcessingStage
-import com.example.core.ui.OfflineShieldBadge
-import com.example.ui.theme.CyanTertiary
-import com.example.ui.theme.DarkSurface
-import com.example.ui.theme.DarkSurfaceVariant
-import com.example.ui.theme.IndigoPrimary
-import com.example.ui.theme.IndigoPrimaryLight
+import com.example.core.ui.SectionCard
 import com.example.ui.theme.SuccessGreen
-import com.example.ui.theme.VioletSecondary
-import com.example.ui.theme.WarningAmber
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -95,6 +80,7 @@ import java.util.UUID
 
 data class ProcessingUiState(
     val stepTitle: String = "Initializing AI Pipeline...",
+    val recordingTitle: String = "",
     val progressPercent: Int = 0,
     val currentStageIndex: Int = 0,
     val isComplete: Boolean = false,
@@ -131,7 +117,8 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
     ) {
         viewModelScope.launch {
             val prefs = userPrefs.preferencesFlow.first()
-            val meetingTitle = database.meetingDao().getMeetingById(meetingId)?.title ?: "recording"
+            val meetingTitle = database.meetingDao().getMeetingById(meetingId)?.title ?: "Recording"
+            _uiState.value = _uiState.value.copy(recordingTitle = meetingTitle)
 
             val inputData = workDataOf(
                 MeetingProcessingWorker.KEY_MEETING_ID to meetingId,
@@ -168,6 +155,7 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                         if (step != null && stage != null) {
                             _uiState.value = ProcessingUiState(
                                 stepTitle = step,
+                                recordingTitle = _uiState.value.recordingTitle,
                                 progressPercent = percent,
                                 currentStageIndex = stageIndexFor(stage),
                                 isQueued = false
@@ -181,15 +169,17 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                         if (status == MeetingStatus.MODEL_REQUIRED.name) {
                             _uiState.value = ProcessingUiState(
                                 stepTitle = "Recording saved",
+                                recordingTitle = _uiState.value.recordingTitle,
                                 progressPercent = 100,
                                 currentStageIndex = 1,
                                 isComplete = true,
                                 modelRequired = true,
-                                modelRequiredMessage = "Download the offline speech recognition model to transcribe this meeting on your device."
+                                modelRequiredMessage = "Download the offline speech recognition model to transcribe this recording on your device."
                             )
                         } else {
                             _uiState.value = ProcessingUiState(
                                 stepTitle = "All AI tasks completed successfully!",
+                                recordingTitle = _uiState.value.recordingTitle,
                                 progressPercent = 100,
                                 currentStageIndex = 5,
                                 isComplete = true
@@ -201,6 +191,7 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                         val error = info.outputData.getString(MeetingProcessingWorker.KEY_ERROR)
                         _uiState.value = ProcessingUiState(
                             stepTitle = "Processing error",
+                            recordingTitle = _uiState.value.recordingTitle,
                             progressPercent = 0,
                             error = error ?: "Unknown error"
                         )
@@ -269,9 +260,10 @@ fun ProcessingScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Local Neural Engine Pipeline",
+                        text = state.recordingTitle.ifBlank { "Processing Recording" },
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
                     )
                 },
                 navigationIcon = {
@@ -284,9 +276,6 @@ fun ProcessingScreen(
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "Cancel")
                     }
-                },
-                actions = {
-                    OfflineShieldBadge(modifier = Modifier.padding(end = 12.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
@@ -302,13 +291,8 @@ fun ProcessingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 1. TOP BENTO CARD: Live Progress Gauge & Stage
-            Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.2.dp, IndigoPrimary.copy(alpha = 0.4f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            // 1. Live progress gauge & stage — one quiet container.
+            SectionCard {
                 Column(
                     modifier = Modifier.padding(22.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -316,12 +300,9 @@ fun ProcessingScreen(
                 ) {
                     Text(
                         text = "${state.progressPercent}%",
-                        style = MaterialTheme.typography.displayMedium.copy(
-                            fontFamily = FontFamily.Monospace,
-                            letterSpacing = 2.sp
-                        ),
+                        style = MaterialTheme.typography.displayMedium,
                         fontWeight = FontWeight.ExtraBold,
-                        color = IndigoPrimaryLight
+                        color = MaterialTheme.colorScheme.primary
                     )
 
                     LinearProgressIndicator(
@@ -330,7 +311,7 @@ fun ProcessingScreen(
                             .fillMaxWidth()
                             .height(8.dp)
                             .clip(RoundedCornerShape(4.dp)),
-                        color = IndigoPrimaryLight,
+                        color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
 
@@ -344,89 +325,72 @@ fun ProcessingScreen(
                 }
             }
 
-            // 2. CENTER BENTO CARD: 6-Stage Pipeline Checklist
-            Card(
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
+            // 2. 6-stage pipeline checklist — a grouped list, not stacked bento tiles.
+            SectionCard {
+                Column(modifier = Modifier.padding(top = 18.dp, start = 18.dp, end = 18.dp, bottom = 4.dp)) {
                     Text(
                         text = "Multi-Stage On-Device Execution",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-
-                    BentoPipelineStageItem(
-                        stageNumber = 1,
-                        name = "Audio Preprocessing & Framing",
-                        icon = Icons.Default.GraphicEq,
-                        isActive = state.currentStageIndex == 0,
-                        isDone = state.currentStageIndex > 0
-                    )
-                    BentoPipelineStageItem(
-                        stageNumber = 2,
-                        name = "Voice Activity Detection (VAD)",
-                        icon = Icons.Default.Memory,
-                        isActive = state.currentStageIndex == 1,
-                        isDone = state.currentStageIndex > 1
-                    )
-                    BentoPipelineStageItem(
-                        stageNumber = 3,
-                        name = "Speech-to-Text Transcription",
-                        icon = Icons.Default.AutoAwesome,
-                        isActive = state.currentStageIndex == 2,
-                        isDone = state.currentStageIndex > 2
-                    )
-                    BentoPipelineStageItem(
-                        stageNumber = 4,
-                        name = "Speaker Diarization (Multi-Voice)",
-                        icon = Icons.Default.Group,
-                        isActive = state.currentStageIndex == 3,
-                        isDone = state.currentStageIndex > 3
-                    )
-                    BentoPipelineStageItem(
-                        stageNumber = 5,
-                        name = "Decisions & Action Items Extraction",
-                        icon = Icons.Default.Psychology,
-                        isActive = state.currentStageIndex == 4,
-                        isDone = state.currentStageIndex > 4
-                    )
-                    BentoPipelineStageItem(
-                        stageNumber = 6,
-                        name = "Local Vector Embeddings & Indexing",
-                        icon = Icons.Default.Search,
-                        isActive = state.currentStageIndex == 5,
-                        isDone = state.isComplete
-                    )
                 }
+                Spacer(modifier = Modifier.height(4.dp))
+
+                PipelineStageRow(
+                    stageNumber = 1,
+                    name = "Audio Preprocessing & Framing",
+                    isActive = state.currentStageIndex == 0,
+                    isDone = state.currentStageIndex > 0
+                )
+                PipelineStageRow(
+                    stageNumber = 2,
+                    name = "Voice Activity Detection (VAD)",
+                    isActive = state.currentStageIndex == 1,
+                    isDone = state.currentStageIndex > 1
+                )
+                PipelineStageRow(
+                    stageNumber = 3,
+                    name = "Speech-to-Text Transcription",
+                    isActive = state.currentStageIndex == 2,
+                    isDone = state.currentStageIndex > 2
+                )
+                PipelineStageRow(
+                    stageNumber = 4,
+                    name = "Speaker Diarization (Multi-Voice)",
+                    isActive = state.currentStageIndex == 3,
+                    isDone = state.currentStageIndex > 3
+                )
+                PipelineStageRow(
+                    stageNumber = 5,
+                    name = "Decisions & Action Items Extraction",
+                    isActive = state.currentStageIndex == 4,
+                    isDone = state.currentStageIndex > 4
+                )
+                PipelineStageRow(
+                    stageNumber = 6,
+                    name = "Local Vector Embeddings & Indexing",
+                    isActive = state.currentStageIndex == 5,
+                    isDone = state.isComplete,
+                    showDivider = false
+                )
             }
 
             // 3. Bottom action(s)
             if (state.modelRequired) {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = WarningAmber.copy(alpha = 0.1f)),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, WarningAmber.copy(alpha = 0.4f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                SectionCard {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
                             text = "Speech recognition model required",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = WarningAmber
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = state.modelRequiredMessage
                                 ?: "Local speech recognition is not installed yet. The recording has been saved.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                             OutlinedButton(
@@ -437,7 +401,6 @@ fun ProcessingScreen(
                             }
                             Button(
                                 onClick = onNavigateToModels,
-                                colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Manage Models")
@@ -486,7 +449,7 @@ private fun SpeakerCountPickerScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(Icons.Default.Group, contentDescription = null, tint = IndigoPrimary, modifier = Modifier.size(40.dp))
+            Icon(Icons.Default.Group, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "How many speakers?",
@@ -510,7 +473,6 @@ private fun SpeakerCountPickerScreen(
             Spacer(modifier = Modifier.height(28.dp))
             Button(
                 onClick = onStart,
-                colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
                 modifier = Modifier.fillMaxWidth().height(48.dp)
             ) {
                 Text("Start Processing")
@@ -527,8 +489,7 @@ private fun SpeakerCountPickerScreen(
 private fun SpeakerCountChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) IndigoPrimary else MaterialTheme.colorScheme.surfaceVariant,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) IndigoPrimary else MaterialTheme.colorScheme.outlineVariant),
+        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier
             .size(48.dp)
             .clip(RoundedCornerShape(12.dp))
@@ -545,62 +506,78 @@ private fun SpeakerCountChip(label: String, isSelected: Boolean, onClick: () -> 
     }
 }
 
+/**
+ * One row of the pipeline checklist inside a [SectionCard]: a leading status circle (number,
+ * spinner, or checkmark) plus the stage name — matching [ListRow]'s spacing/divider rhythm even
+ * though the leading slot needs a custom composable rather than a static icon.
+ */
 @Composable
-private fun BentoPipelineStageItem(
+private fun PipelineStageRow(
     stageNumber: Int,
     name: String,
-    icon: ImageVector,
     isActive: Boolean,
-    isDone: Boolean
+    isDone: Boolean,
+    showDivider: Boolean = true
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = when {
-                isDone -> SuccessGreen
-                isActive -> IndigoPrimary.copy(alpha = 0.2f)
-                else -> MaterialTheme.colorScheme.surfaceVariant
-            },
-            modifier = Modifier.size(28.dp)
+    Column {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 12.dp)
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                if (isDone) {
-                    Icon(
-                        Icons.Default.Check,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                } else if (isActive) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = IndigoPrimaryLight
-                    )
-                } else {
-                    Text(
-                        text = "$stageNumber",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Bold
-                    )
+            Surface(
+                shape = CircleShape,
+                color = when {
+                    isDone -> SuccessGreen
+                    isActive -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                },
+                modifier = Modifier.size(28.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    if (isDone) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    } else if (isActive) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Text(
+                            text = "$stageNumber",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
-        }
 
-        Text(
-            text = name,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (isActive || isDone) FontWeight.SemiBold else FontWeight.Normal,
-            color = when {
-                isDone -> MaterialTheme.colorScheme.onSurface
-                isActive -> IndigoPrimaryLight
-                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-            }
-        )
+            Text(
+                text = name,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isActive || isDone) FontWeight.SemiBold else FontWeight.Normal,
+                color = when {
+                    isDone -> MaterialTheme.colorScheme.onSurface
+                    isActive -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                }
+            )
+        }
+        if (showDivider) {
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 18.dp, end = 18.dp),
+                thickness = 0.75.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+        }
     }
 }
