@@ -18,23 +18,23 @@ Recording, persistence, and the meeting-detail UI already work today. Everything
 
 ## P0 — Required for the Core MVP
 
-1. **Resolve the privacy violation** (`docs/AI_ARCHITECTURE.md` §2). This is the single most urgent item: the app currently ships a false "never leaves your device" claim while uploading audio/transcripts to a cloud API by default. Decide and implement one of the three options in `AI_ARCHITECTURE.md` before any further AI work — everything else builds on top of whichever path is chosen.
-2. **Fix `debugConfig` signing** so a fresh clone builds without a manual step (use AGP's default debug signing instead of a missing custom keystore file). Low effort, removes a real onboarding-friction bug for every future contributor.
-3. **Real local VAD** — replace `EnergyAndSpectralVad`'s sine-wave fabrication with actual PCM decode + energy/spectral analysis (or integrate Silero VAD). Every downstream stage (ASR segmentation, diarization) currently depends on VAD output that means nothing today.
-4. **Real local ASR** — bundle a quantized model (Whisper tiny/base recommended) and an inference runtime (whisper.cpp/NDK or ONNX Runtime Mobile). This is the single highest-value, highest-effort item — nothing about "meeting notetaker" works without real transcription.
-5. **Real model management** — wire `ModelRepository` to `AiModelEntity`/`AiModelDao`, implement real download/progress/checksum/delete. Required before item 4 is usable by an actual user (they need to be able to install the model item 4 needs).
-6. **Real local LLM for summary/action items/decisions/questions** — replace the regex/keyword fallback with a real small quantized instruction model. Can land after ASR (3–5) since it consumes the transcript ASR produces.
-7. **WorkManager-backed processing** — once real local ASR/LLM inference replaces the current near-instant fake/cloud paths, processing will take real wall-clock time (potentially minutes for a long meeting); it must survive the app being backgrounded. Wire to the already-existing `ProcessingJobEntity`.
+1. ✅ **DONE (P0 pass)** — **Resolve the privacy violation** (`docs/AI_ARCHITECTURE.md` §0). Cloud Gemini path removed entirely; every AI interface honestly reports `AiResult.ModelUnavailable` instead of fabricating output.
+2. ✅ **DONE** — **Fix `debugConfig` signing**.
+3. ✅ **DONE (Phase 1)** — **Real local VAD** — Silero VAD via sherpa-onnx's `Vad`. See `docs/AI_ARCHITECTURE.md` §0b.
+4. ✅ **DONE (Phase 1)** — **Real local ASR** — NVIDIA Parakeet TDT 0.6B v3 (INT8) via sherpa-onnx's `OfflineRecognizer`, not Whisper (a materially stronger model was available at comparable size — see §0b for why). Real-device inference verification status is tracked in the Phase 1/Phase 2 completion reports, not assumed from a successful build.
+5. ✅ **DONE (Phase 1)** — **Real model management** — `OkHttpModelDownloader`, real SHA-256 verification, real on-disk + Room install state.
+6. ✅ **DONE (Phase 2)** — **Real local LLM for summary/action items/decisions/questions** — Qwen2.5-1.5B-Instruct via MediaPipe's `LlmInference`, with structured JSON extraction (never free-form regex) and explicit decision/suggestion/discussion/possibility classification. See `docs/AI_ARCHITECTURE.md` §0c.
+7. **WorkManager-backed processing** — still open. Real local ASR/diarization/LLM inference now takes real wall-clock time (potentially minutes for a long meeting); processing still runs in a `viewModelScope` coroutine tied to the Compose screen's lifecycle, not `WorkManager`, so it does not yet survive the app being fully backgrounded/killed. Wire to the already-existing `ProcessingJobEntity` (which now also carries a real `ProcessingStage`, see §0c).
 
 ## P1 — Important, Follows the Core MVP
 
-8. **Real speaker diarization** — replace the turn-alternation heuristic with embeddings + clustering. Depends on VAD (3) and benefits from ASR (4) landing first.
-9. **Real local embeddings** — replace the hash-based bag-of-words vector with a small local sentence-embedding model; this directly improves both semantic search and Ask Meeting quality.
-10. **Real RAG for Ask Meeting** — retrieval (top-k relevant chunks via the improved embeddings from item 9) → local LLM (item 6) → grounded answer with timestamp references, replacing both the cloud full-transcript-stuffing path and the offline keyword-quote fallback.
-11. **Real video audio extraction** — use `MediaExtractor`/`MediaMuxer` (already imported, unused) to actually demux the audio track instead of copying the whole video file.
-12. **Real Google Sign-In** — wire the already-present Credential Manager/`googleid` dependencies to `FirebaseAuth.signInWithCredential`, replacing the hardcoded mock-profile button in Settings.
-13. **Resolve the dead use-case layer** — wire `StartRecordingUseCase`, `StopRecordingUseCase`, `ImportRecordingUseCase`, `TranscribeMeetingUseCase`, `DeleteMeetingUseCase`, `DownloadModelUseCase` into the ViewModels that currently duplicate their logic (or delete them if intentionally abandoning the pattern — wiring them in is preferred, since they're already correctly written).
-14. **Real automated tests** — unit tests for the AI interfaces (with fakes), repositories, and the processing pipeline; replace/supplement the default AI-Studio boilerplate tests, which currently test nothing about this app.
+8. ✅ **DONE (Phase 2)** — **Real speaker diarization** — pyannote/segmentation-3.0 + 3D-Speaker CAM++ via sherpa-onnx's `OfflineSpeakerDiarization`, reconciled against ASR segments by real timestamp overlap. See `docs/AI_ARCHITECTURE.md` §0c.
+9. **Real local embeddings** — still open. The hash-based bag-of-words vector (`LocalEmbeddingEngine`) is unchanged; this directly improves both semantic search and Ask Meeting quality.
+10. **Real RAG for Ask Meeting** — partially done. `RealMeetingIntelligenceEngine.askMeeting()` (Phase 2) is real and grounded, but `AskMeetingUseCase` still passes an empty `relevantSegments` list rather than doing top-k retrieval via item 9's embeddings first, so grounding is limited to one transcript chunk for long meetings — see `docs/AI_ARCHITECTURE.md` §0c "Ask Meeting limitation".
+11. **Real video audio extraction** — still open.
+12. ✅ **DONE (P0 pass)** — **Real Google Sign-In** — Credential Manager → Google ID token → `FirebaseAuth.signInWithCredential`.
+13. **Resolve the dead use-case layer** — still open (`StartRecordingUseCase`, `StopRecordingUseCase`, `ImportRecordingUseCase`, `DeleteMeetingUseCase`, `DownloadModelUseCase` remain unwired; `TranscribeMeetingUseCase`'s signature was kept current with the pipeline in Phase 2 but it is still not called from any ViewModel).
+14. ✅ **DONE, ongoing** — **Real automated tests** — 85 unit tests as of Phase 2 (up from 46 after Phase 1), covering AI-unavailable paths, diarization reconciliation, LLM JSON validation/hallucination-rejection, pipeline stage sequencing (via fakes), Room migrations, and speaker-rename persistence. Native inference itself remains untestable on the JVM — see `docs/AI_ARCHITECTURE.md` "Known Limitations".
 
 ## P2 — Polish / Secondary
 

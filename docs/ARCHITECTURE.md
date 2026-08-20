@@ -17,23 +17,30 @@ This describes the actual architecture of the codebase as of the audit/reconcili
 ```
 com.example
 ├── ai/                     — AI subsystem, interface-first
-│   ├── asr/                — SpeechRecognizer interface + implementation(s)
-│   ├── diarization/        — SpeakerDiarizer interface + implementation(s)
+│   ├── asr/                — SpeechRecognizer interface + real SherpaParakeetSpeechRecognizer
+│   ├── diarization/        — SpeakerDiarizer interface + real SherpaSpeakerDiarizer
 │   ├── embeddings/         — EmbeddingEngine interface + implementation(s)
-│   ├── llm/                — MeetingIntelligenceEngine interface + implementation(s)
-│   ├── vad/                — VoiceActivityDetector interface + implementation(s)
-│   ├── gemini/              — Gemini cloud API client (see AI_ARCHITECTURE.md)
+│   ├── llm/                — MeetingIntelligenceEngine/LanguageModel interfaces + real
+│   │                          RealMeetingIntelligenceEngine/MediaPipeLanguageModel, plus
+│   │                          TranscriptChunker/MeetingIntelligenceJsonParser
+│   ├── vad/                — VoiceActivityDetector interface + real SileroVadDetector
+│   ├── modelmanagement/     — ModelStorage/ModelVerifier/ModelDownloader/ModelCatalog,
+│   │                          SherpaEngineManager/LlmEngineManager (native engine reuse),
+│   │                          ArchiveExtractor
 │   └── pipeline/            — MeetingProcessingPipeline: orchestrates the above
 ├── core/
 │   ├── audio/               — AudioRecorder, AudioPlayerManager, AudioExtractor,
-│   │                          AudioPreprocessor, MeetingRecordingService
+│   │                          AudioFormatConverter, MeetingRecordingService
 │   ├── common/               — DeviceCapabilityDetector, Formatters
-│   ├── database/             — Room entities, DAOs, MeetMindDatabase
+│   ├── database/             — Room entities, DAOs, MeetMindDatabase (incl. real Migration_1_2)
 │   ├── datastore/            — UserPreferencesManager (DataStore Preferences)
 │   ├── domain/                — Use cases (partially wired — see AUDIT.md §F)
 │   ├── firebase/              — FirebaseAuthManager, FirestoreSyncManager
-│   ├── future/                 — MeetingProvider/CalendarProvider — Phase 2 placeholders only
-│   ├── model/                   — Domain models (Meeting, Transcript, ActionItem, ...)
+│   ├── future/                 — MeetingProvider/CalendarProvider — placeholders for a later,
+│   │                              separate backend-integration phase (Calendar/Zoom/Meet/Teams),
+│   │                              unrelated to and not implemented by the local-AI phases above
+│   ├── model/                   — Domain models (Meeting, Transcript, ActionItem, Decision,
+│   │                                Question, FollowUp, Speaker, ...)
 │   ├── repository/               — MeetingRepository, TranscriptRepository, SearchRepository,
 │   │                                ActionItemRepository, ModelRepository
 │   └── ui/                        — Shared Compose components (OfflineShieldBadge, waveform, ...)
@@ -67,14 +74,14 @@ ProcessingViewModel.startPipeline()
   → MeetingProcessingPipeline.processMeeting()
        1. VoiceActivityDetector.detectSpeechIntervals()  [REAL: SileroVadDetector once installed, else honestly ModelUnavailable — degrades gracefully, doesn't block]
        2. SpeechRecognizer.transcribe()                   [REAL: SherpaParakeetSpeechRecognizer once installed, else honestly ModelUnavailable — REQUIRED GATE: stops the pipeline honestly]
-       3. SpeakerDiarizer.diarize()                        [Unavailable by default — degrades gracefully, doesn't block; not implemented until a future phase]
-       4. MeetingIntelligenceEngine.processMeeting()        [Unavailable by default — degrades gracefully, doesn't block; not implemented until a future phase]
+       3. SpeakerDiarizer.diarize()                        [REAL: SherpaSpeakerDiarizer once installed, else honestly ModelUnavailable — degrades gracefully, keeps ASR's own segments]
+       4. MeetingIntelligenceEngine.processMeeting()        [REAL: RealMeetingIntelligenceEngine (MediaPipe + Qwen2.5) once installed, else honestly ModelUnavailable — degrades gracefully, doesn't block]
        5. EmbeddingEngine.embed() per segment + summary      [real, primitive — only runs over real transcript text]
        6. Persist whatever is real to Room; mark meeting READY, or MODEL_REQUIRED if ASR was unavailable
   → navigate to Meeting Detail (or show "model required" state — see docs/AI_ARCHITECTURE.md)
 ```
 
-Every step in the pipeline is a call against an interface returning `AiResult<T>` (see `ai/common/AiTypes.kt`); only ASR unavailability stops the whole meeting (no transcript = nothing downstream can be real). Diarization and meeting intelligence being unavailable degrade gracefully once a transcript exists. As of Phase 1 (see `docs/AI_ARCHITECTURE.md` §0b), VAD and ASR are backed by real sherpa-onnx models (Silero VAD, Parakeet TDT 0.6B v3) the moment the user downloads them via the Model Manager — both implementations self-report `AiResult.ModelUnavailable` honestly when the model isn't installed, so there is no separate "unavailable" default to switch between. The formerly-fake `AudioPreprocessor` step was removed entirely — its output was already dead/unused code even before its `sin()`-based computation was found to be fabricated.
+Every step in the pipeline is a call against an interface returning `AiResult<T>` (see `ai/common/AiTypes.kt`); only ASR unavailability stops the whole meeting (no transcript = nothing downstream can be real). Diarization and meeting intelligence being unavailable degrade gracefully once a transcript exists. As of Phase 2 (see `docs/AI_ARCHITECTURE.md` §0b/§0c), all four AI stages — VAD, ASR, diarization, and meeting intelligence — are backed by real local models (Silero VAD, Parakeet TDT 0.6B v3, sherpa-onnx speaker diarization, Qwen2.5-1.5B-Instruct via MediaPipe) the moment the user downloads them via the Model Manager; every implementation self-reports `AiResult.ModelUnavailable` honestly when its model isn't installed, so there is no separate "unavailable" default to switch between. The formerly-fake `AudioPreprocessor` step was removed entirely — its output was already dead/unused code even before its `sin()`-based computation was found to be fabricated.
 
 ## 5. Dependency Injection
 
@@ -93,7 +100,7 @@ This is acceptable at the current scale (a handful of screens, no test doubles n
 
 ## 6. Persistence
 
-`MeetMindDatabase` (Room, version 1, `fallbackToDestructiveMigration()`, `exportSchema = false`) — 11 entities covering meetings, transcript segments, speakers, action items, decisions, questions, topics, embeddings, AI model catalog, processing jobs, and chat messages. Schema is well-normalized with correct `ForeignKey(CASCADE)` relationships and indices (including a text index supporting keyword search). See `docs/AUDIT.md` §F for migration/schema-export gaps that need closing before a real release.
+`MeetMindDatabase` (Room, version 2 as of Phase 2, `exportSchema = false`) — 12 entities covering meetings, transcript segments, speakers, action items, decisions, questions, follow-ups, topics, embeddings, AI model catalog, processing jobs, and chat messages. Schema is well-normalized with correct `ForeignKey(CASCADE)` relationships and indices (including a text index supporting keyword search). `fallbackToDestructiveMigration()` remains as a safety net for any future untracked version jump, but the version 1 → 2 step itself is a real, explicit `Migration` object (`MeetMindDatabase.MIGRATION_1_2`) that preserves existing on-device `meetings`/`transcript_segments`/`speakers` data rather than wiping it — see `docs/AI_ARCHITECTURE.md` §0c "Room / Persistence Changes". `exportSchema` remaining `false` (see `docs/AUDIT.md` §F) is still an open gap for a real release.
 
 Audio files live in app-private storage: `context.filesDir/meetings/{meetingId}/audio.<ext>` — never in shared/external storage, never uploaded by default.
 

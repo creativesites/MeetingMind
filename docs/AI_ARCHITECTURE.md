@@ -104,6 +104,139 @@ The original recording file is only ever read, never modified. Implementation: `
 
 Not implemented, and not started: speaker diarization (still `UnavailableSpeakerDiarizer`), local LLM / summaries / action-item extraction / decisions (still `UnavailableMeetingIntelligenceEngine`), embeddings beyond the existing hash-based placeholder, Ask Meeting, calendar integration, Zoom/Meet/Teams, backend meeting bots. These remain exactly as documented in §0/§3 below.
 
+## 0c. Status Update — Phase 2: Real Speaker Diarization + Local Meeting Intelligence
+
+This phase adds the two remaining "unavailable-by-default" AI stages from §0b: real speaker diarization and a real local LLM behind `MeetingIntelligenceEngine`. Nothing here touches calendar/Zoom/Meet/Teams/backend bots — those remain entirely unimplemented, per the task's non-goals.
+
+**Baseline before this phase**: commit `39236b2`. Verified on a physical Android phone: app install/launch/navigation, recording lifecycle, audio import, model management UI, and Silero VAD download all work; Parakeet TDT real-device inference had **not yet** been verified at the start of this phase (~639MB model not yet downloaded on the test device). This phase does not change that status — see "Real Device Validation Status" below.
+
+### Pipeline (updated)
+
+```
+Recorded/imported audio file
+  -> AudioFormatConverter (unchanged from Phase 1)
+  -> 16 kHz mono Float32 PCM
+  -> SileroVadDetector                                    -> speech intervals
+  -> SherpaParakeetSpeechRecognizer                        -> TranscriptSegment[] (speakerId=null)
+  -> SherpaSpeakerDiarizer (real sherpa-onnx OfflineSpeakerDiarization, run on the same PCM)
+       -> raw (start, end, speakerIndex) segments
+       -> reconcileTranscriptWithSpeakers(): timestamp-overlap reconciliation against the ASR segments
+       -> TranscriptSegment[] (speakerId="spk_{meetingId}_{index}", speakerName="Speaker {index+1}")
+  -> RealMeetingIntelligenceEngine (MediaPipe LlmInference, Qwen2.5-1.5B-Instruct)
+       -> TranscriptChunker splits by real model context length
+       -> per-chunk strict-JSON extraction (decisions/actionItems/questions/followUps)
+       -> MeetingIntelligenceJsonParser validates + drops anything malformed or ungrounded
+       -> one synthesis call -> title/summary/keyPoints
+  -> Room (transcript_segments with real speakerId, speakers, decisions, action_items, questions, follow_ups)
+  -> Meeting Detail UI (Transcript/Overview/Action Items/Decisions tabs)
+```
+
+Every stage's native models are released before the next stage's load (`SherpaEngineManager.releaseAll()` after ASR and again after diarization; `LlmEngineManager.release()` after the LLM step) — at most one heavy model family (Parakeet, or the diarization pair, or the 1.5B LLM) is resident in memory at a time. See "Resource Management" below.
+
+### Speaker Diarization: sherpa-onnx `OfflineSpeakerDiarization`
+
+Inspected directly from the sherpa-onnx 1.13.6 source tree (`android/SherpaOnnxAar/.../OfflineSpeakerDiarization.kt`, `android/SherpaOnnxSpeakerDiarization/` example app, `sherpa-onnx/c-api/docs/speaker-diarization.dox`) rather than assumed — the same AAR already integrated in Phase 1 bundles this class; no new native dependency was needed.
+
+Real API: `OfflineSpeakerDiarization(config: OfflineSpeakerDiarizationConfig)`, where `config` combines a **segmentation model** (finds speaker-change boundaries), an **embedding model** (turns each segment into a vector), and a **clustering config**. `diarizer.process(samples: FloatArray): Array<OfflineSpeakerDiarizationSegment>` returns `(start: Float sec, end: Float sec, speaker: Int)` triples. `FastClusteringConfig.numClusters`: `-1` lets the engine auto-detect the speaker count via threshold-based clustering; a positive value forces exactly that many speakers — this is what backs the Processing screen's Auto/2/3/4/5/6 picker.
+
+Models selected (verified 2026-08-20 by downloading each file and hashing it directly, not trusting HTTP headers):
+
+| Model | Role | File | Size (bytes) | SHA-256 | License |
+|---|---|---|---|---|---|
+| pyannote/segmentation-3.0 (sherpa-onnx int8 export) | Segmentation | `segmentation.onnx` (extracted from `sherpa-onnx-pyannote-segmentation-3-0.tar.bz2`, 6,958,444 bytes) | 1,540,506 | `d582f4b4c6b48205de7e0643c57df0df5615a3c176189be3fc461e9d18827b5d` | MIT (Copyright 2022 CNRS) |
+| 3D-Speaker CAM++ (English, VoxCeleb-trained) | Speaker embedding | `3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx` → `embedding.onnx` | 29,596,978 | `357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b` | Apache-2.0 (Alibaba DAMO Academy) |
+
+Combined install size: ~31.1MB — far smaller than Parakeet, chosen deliberately (§ "MODEL MANAGEMENT" of the task explicitly wants no surprise hundreds-of-MB downloads; this one is small enough to not need its own storage warning threshold beyond the existing generic check).
+
+**Why English CAM++ over the example app's default Chinese embedding model**: sherpa-onnx's own example (`SpeakerDiarizationObject.kt`) defaults to `3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx` (Chinese-trained) purely as its demo choice — not a recommendation. The `speaker-recongition-models` release also publishes English-trained options (`3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx`, several `wespeaker_en_voxceleb_*` variants, NeMo TitaNet variants); CAM++ was chosen for its small size (~29.6MB vs. 60–100+MB for the WeSpeaker ResNet variants) with strong VoxCeleb benchmark accuracy for its size class.
+
+**Distribution-format wrinkle, handled honestly, not worked around**: the segmentation model ships only as a `.tar.bz2` archive (scripts + LICENSE + both fp32 and int8 `.onnx` variants bundled together) — there is no bare per-file download URL for it. Rather than mirror the extracted file to a different host, `ModelFileSpec` gained two new optional fields (`downloadSizeBytes`, `archiveEntryPath`) and a real `ArchiveExtractor` (`ai/modelmanagement/ArchiveExtractor.kt`, backed by `org.apache.commons:commons-compress` — the standard library for exactly this) was added so `ModelRepository.installModel()` can download the real official tarball, extract only `model.int8.onnx`, verify its SHA-256, and discard the rest. The archive itself is never trusted as "installed" — only the extracted, verified file is.
+
+**Implementation**: `ai/diarization/SherpaSpeakerDiarizer.kt`. Checks `ModelStorage.isInstalled()` before touching any sherpa-onnx class (same testability pattern as Phase 1's VAD/ASR). `SherpaEngineManager.getOrCreateDiarizer()` reuses the loaded segmentation+embedding models across calls; `diarizer.setConfig()` re-applies only the clustering settings (the one thing that legitimately varies per meeting) without reloading the underlying models, per the sherpa-onnx API's own documented behavior ("Only config.clustering is used... All other fields in config are ignored" by `setConfig`).
+
+**Reconciliation** (`reconcileTranscriptWithSpeakers()`, same file, pure and unit-tested independent of any native code): for each real ASR `TranscriptSegment`, finds the raw diarization interval with the greatest millisecond overlap and assigns `speakerId = "spk_{meetingId}_{index}"` / `speakerName = "Speaker {index+1}"`. A segment with zero overlap against any diarization interval is left exactly as it was (`speakerId` stays `null`) — uncertainty is preserved, never guessed at. No turn-alternation, no pause-length heuristic, no random assignment anywhere in this path.
+
+**Speaker identity vs. display name**: `Speaker.id`/`speakerIndex`/`originalLabel` (the raw diarization identity) are never modified by a rename — `TranscriptRepository.renameSpeaker()` only ever updates `customName` (and the denormalized `speakerName` copy on transcript segments), verified by `TranscriptRepositorySpeakerTest`.
+
+### Local Meeting Intelligence: MediaPipe LlmInference + Qwen2.5-1.5B-Instruct
+
+**What existed before this phase**: nothing. `LanguageModel`/`UnavailableLanguageModel` and `MeetingIntelligenceEngine`/`UnavailableMeetingIntelligenceEngine` were interface scaffolding introduced in the P0 pass (§0) with no real backing implementation — `UnavailableMeetingIntelligenceEngine` was the only thing ever wired into `MeetingProcessingPipeline`. There was no existing model to evaluate for suitability; this phase is a from-scratch selection, not a replacement.
+
+**Runtime chosen**: MediaPipe's `com.google.mediapipe:tasks-genai:0.10.35` (Google's official on-device LLM inference API for Android, published on Google's Maven repository — `google()`, already declared in `settings.gradle.kts`). Inspected directly by downloading the AAR and running `javap` against its real classes (`LlmInference`, `LlmInference.LlmInferenceOptions`, `LlmInferenceSession`) rather than assumed. Chosen over llama.cpp because MediaPipe ships a prebuilt AAR with no custom native build required — the same "consume a verified prebuilt artifact, don't compile from source" discipline used for sherpa-onnx in Phase 1 — and it is the current, documented, Google-maintained API for this purpose. Note: `LlmInference` is marked `@Deprecated` in bytecode in this AAR version with no message text embedded and no newer inference class present anywhere else in the same artifact; it remains the only shipped, functional API for this purpose and was used as-is — worth re-checking on a future MediaPipe version bump.
+
+Real API surface used: `LlmInference.createFromOptions(context, LlmInferenceOptions.builder().setModelPath(path).setMaxTokens(contextLength).setPreferredBackend(Backend.CPU).build())`, then the synchronous `engine.generateResponse(prompt): String`. `Backend.CPU` was chosen explicitly over `GPU`/`DEFAULT` for predictable behavior across "ordinary Android phones," where GPU delegate support varies a lot by device/driver.
+
+**Model chosen**: `litert-community/Qwen2.5-1.5B-Instruct` on Hugging Face, the `Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task` file — q8 quantized, 4096-token KV cache (context length). Verified 2026-08-20 by downloading the full 1.49GB file and hashing it directly:
+
+| Field | Value |
+|---|---|
+| Size | 1,598,556,720 bytes (~1.49 GiB) |
+| SHA-256 | `82968d0a6c3872cf016fdbcfc591571605f4c7fd2b0f64d2533df502cc6596b3` |
+| License | Apache-2.0 |
+| Context length | 4096 tokens (from the file's own `ekv4096` designation — the real KV-cache size of this specific build, not an invented number) |
+
+**Why this model over Gemma**: several `litert-community/Gemma*` `.task` builds were checked first (the natural first choice, being Google's own flagship small model family for this exact runtime) but every one is a **gated Hugging Face repository** requiring an authenticated, logged-in user to accept Google's Gemma Terms of Use before download — confirmed via a direct HTTP request returning `401 GatedRepo`. An unattended in-app download cannot satisfy a click-through license gate, so Gemma was ruled out for this phase specifically on that basis (not quality). Qwen2.5-1.5B-Instruct's litert-community build is public, ungated, and Apache-2.0 licensed with no separate model-use terms — the same "real, ungated, on-demand download" bar every other model in this app already meets.
+
+**Structured output schema** (`core/model/MeetingModels.kt`):
+```
+Decision(id, meetingId, text, type: DECISION|SUGGESTION|DISCUSSION|POSSIBILITY, confidence: Float?, sourceSegmentIds: List<String>)
+ActionItem(id, meetingId, task, assigneeSpeakerId: String?, assigneeName: String?, deadline: String?, confidence: Float?, isCompleted, sourceSegmentIds)
+Question(id, meetingId, text, askedBySpeakerId: String?, resolved, answer: String?, sourceSegmentIds)
+FollowUp(id, meetingId, description, ownerSpeakerId: String?, deadline: String?, sourceSegmentIds)
+MeetingSummary(title, summary, topics: List<String> [key points], decisions, actionItems, questions, followUps)
+```
+`confidence` is nullable everywhere and is never populated with an invented number — the extraction prompt/parser has no mechanism to produce one, so it is always `null` today (never a fabricated `0.9f`-style default, unlike the pre-Phase-1 domain model). Every extracted item carries `sourceSegmentIds`, cross-checked against the real segment ids the model was actually shown in that chunk's prompt (`MeetingIntelligenceJsonParser.toValidIds()`) — a citation the model invents that wasn't in its own prompt is silently dropped, never trusted.
+
+**No-hallucination handling**: the extraction prompt (`RealMeetingIntelligenceEngine.buildExtractionPrompt()`) explicitly instructs the model to classify DECISION vs. SUGGESTION vs. DISCUSSION vs. POSSIBILITY, gives the exact "I think we should launch around the 15th" → POSSIBILITY (never DECISION) example from the task spec, and instructs empty arrays over invented content. This is prompt-level guidance, not a hard guarantee — a 1.5B model can still misclassify — but the JSON validation layer catches structural hallucination (invented segment ids, blank required fields, invalid enum values) regardless of the model's own judgment.
+
+**Chunking** (`ai/llm/TranscriptChunker.kt`): splits only at transcript-segment boundaries (never mid-sentence — a single segment is never divided), sized to a real model-derived token budget (`contextLengthTokens` from the model's own catalog entry, 4096 here — never hardcoded independent of that value), using a conservative chars-per-token approximation (3.5, biased toward smaller chunks) since no tokenizer is available outside a loaded engine instance. A single segment exceeding the whole chunk budget isn't specially handled because VAD already caps every spoken interval at 30 seconds (`SileroVadDetector.MAX_SPEECH_DURATION_SEC`), far shorter than any reasonable chunk budget in characters.
+
+**Multi-chunk meetings**: each chunk is independently extracted (decisions/actionItems/questions/followUps + a brief per-chunk summary); one final synthesis call combines the chunk summaries plus the already-extracted decisions/action items into a title + executive summary + key points — never re-feeding the full original transcript a second time, which keeps the synthesis call's own prompt small regardless of total meeting length.
+
+**JSON validation, not free-form parsing**: MediaPipe's `LlmInferenceSession` exposes a `constraintHandle` option suggesting some constrained-decoding support exists in principle, but nothing in the inspected AAR documents how to construct one from the Kotlin API, so this phase uses strict JSON prompting + robust parsing instead (explicitly an accepted fallback per the task spec). `MeetingIntelligenceJsonParser` strips markdown code fences, trims to the outermost `{...}`, parses via `org.json`, and drops (never guesses at) any item with blank required text, an unrecognized decision type (falls back to DISCUSSION), or `sourceSegmentIds` not in the real set shown to the model. Malformed output at the top level yields an empty `ChunkExtraction`, never a crash and never invented content.
+
+**Implementation files**: `ai/modelmanagement/LlmEngineManager.kt` (singleton engine reuse, mirrors `SherpaEngineManager`), `ai/llm/MediaPipeLanguageModel.kt` (`LanguageModel` implementation, checks install state before touching any MediaPipe class), `ai/llm/TranscriptChunker.kt`, `ai/llm/MeetingIntelligenceJsonParser.kt`, `ai/llm/RealMeetingIntelligenceEngine.kt` (`MeetingIntelligenceEngine` implementation — title generation, chunked extraction + synthesis, and grounded Ask-Meeting, all built on `LanguageModel`, never depending on MediaPipe types directly).
+
+**Ask Meeting limitation**: `RealMeetingIntelligenceEngine.askMeeting()` is grounded only in whatever fits one `TranscriptChunker` chunk. `AskMeetingUseCase` currently always calls it with an empty `relevantSegments` list, so for a meeting longer than ~4096 tokens' worth of transcript, an answer sourced from later parts of the meeting may be missed. Wiring `AskMeetingUseCase` to the existing `SearchRepository`/`EmbeddingEngine` semantic-search infrastructure to pre-select genuinely relevant segments (rather than "first chunk") is a good next-phase improvement, not implemented here.
+
+### Resource Management (real, not just documented intent)
+
+Per the task's explicit "ASR → release/reuse → diarization → release/reuse → LLM → release" sequencing: `MeetingProcessingPipeline.processMeeting()` calls `SherpaEngineManager.releaseAll()` immediately after ASR completes (frees the ~650MB Parakeet allocation before diarization's much smaller models load) and again after diarization completes (frees the ~31MB diarization pair before the ~1.5GB LLM loads), then `LlmEngineManager.release()` once the intelligence stage finishes. All of VAD, ASR, diarization, and LLM inference run strictly sequentially within one coroutine — never concurrently — which is inherent to the pipeline's structure (each stage's result feeds the next), not a separately-enforced constraint. Both cancellation and unexpected-failure cleanup paths run their release calls inside `withContext(NonCancellable) { ... }` — without this, a cancelled coroutine's cleanup Room writes could silently no-op instead of running, a real bug caught by `MeetingProcessingPipelineIntegrationTest`'s cancellation test during this phase's own development.
+
+`MediaPipeLanguageModel.generate()` catches `OutOfMemoryError` specifically and reports `AiResult.InsufficientMemory` rather than letting a failed 1.5GB allocation crash the app — this is a best-effort measure (recovering cleanly from OOM is inherently unreliable on the JVM/Android), not a guarantee.
+
+### Processing States (real, typed)
+
+`core/model/Enums.kt` adds `ProcessingStage`: `IDLE, PREPARING_AUDIO, DETECTING_SPEECH, TRANSCRIBING, DIARIZING, ANALYZING, SAVING_RESULTS, COMPLETED, FAILED, CANCELLED`. `MeetingProcessingPipeline.processMeeting()`'s `onProgress` callback now carries `(step: String, percent: Int, stage: ProcessingStage)` instead of just a string+percent pair, and `ProcessingJobEntity` persists `stage` alongside the existing human-readable `currentStep`/`progressPercent` fields (a real Room migration column, not a UI-only concept) so a resumed/observed job has real typed state, not just a display string. `MeetingProcessingPipelineIntegrationTest` asserts the exact real stage sequence using fake (non-native) AI implementations.
+
+### Performance Instrumentation
+
+`MeetingProcessingPipeline` logs (tag `MeetMindPerf`, `Log.d`) VAD duration, ASR duration + `RTF = asrDurationMs / totalDurationMs`, diarization duration, and combined title+intelligence LLM duration for every processed meeting. This is debug-log-only, not a user-facing diagnostics screen (none existed to extend, and the task said not to expose technical diagnostics beyond what's already appropriate). **No real RTF/timing numbers are reported in this document** — they require running on a physical device, which is the same "REAL DEVICE INFERENCE VERIFIED" gap described below and in the Phase 2 completion report.
+
+### Room / Persistence Changes
+
+`MeetMindDatabase` bumped to version 2 with an explicit `MIGRATION_1_2` (not a destructive fallback) — real on-device data (`meetings`, `transcript_segments`) is preserved:
+- `speakers`: gains `speakerIndex INTEGER NOT NULL DEFAULT 0`, `confidence REAL` (nullable) via `ALTER TABLE ADD COLUMN` — no rows existed yet in practice (diarization was always `UnavailableSpeakerDiarizer` before this phase), but the migration is additive and safe regardless.
+- `action_items`, `decisions`, `questions`: rebuilt (old tables guaranteed empty — `UnavailableMeetingIntelligenceEngine` never persisted a row) with nullable `confidence`, `sourceSegmentIdsJson` (JSON array of transcript segment ids, `org.json`-encoded, same pattern as `AiModelEntity.filesJson`), `assigneeSpeakerId`/`assigneeName` replacing the old single `assignee` string, `type` on decisions, `askedBySpeakerId` on questions.
+- `follow_ups`: new table, FK to `meetings(id) ON DELETE CASCADE`, same `sourceSegmentIdsJson` pattern.
+- `ai_models`: gains `contextLengthTokens INTEGER` (nullable — populated only for LLM-capable catalog entries).
+- `processing_jobs`: gains `stage TEXT NOT NULL DEFAULT 'IDLE'`.
+
+Verified by `MeetMindDatabaseMigrationTest`, which builds a real v1-schema SQLite database via `FrameworkSQLiteOpenHelperFactory` (no `room-testing` schema-export artifact needed, since this project keeps `exportSchema = false`), runs the real `MIGRATION_1_2` object against it, and inspects the resulting schema via `PRAGMA table_info`.
+
+### Known Limitations — Phase 2
+
+- **No Android device or emulator was available in this development environment for Phase 2 either.** Every claim above about the sherpa-onnx diarization API, the MediaPipe LlmInference API, and every model file's size/checksum was verified directly (source inspection via `javap`/reading the real AAR classes, and downloading + hashing every model file) — but real on-device diarization accuracy, real LLM extraction quality, real latency, and real memory/thermal/battery behavior for this phase's new stages **have not been run and are not claimed as verified.**
+- **Parakeet TDT real-device inference remains unverified as of the start of this phase** (per the task's explicit status: BUILD VERIFIED = yes, REAL DEVICE APP VERIFIED = yes, REAL DEVICE PARAKEET INFERENCE VERIFIED = not yet). This phase does not change that — see the Phase 2 completion report for current status.
+- Robolectric cannot load the sherpa-onnx or MediaPipe native libraries, so `SherpaSpeakerDiarizerTest` and `MediaPipeLanguageModelTest` only cover the "no model installed" honest-failure path — the one path reachable without native code. The pure reconciliation logic (`reconcileTranscriptWithSpeakers`), the JSON parsing/validation logic, and the chunking logic are fully unit-tested with synthetic data since none of them touch native code.
+- `MeetingProcessingPipelineIntegrationTest` exercises real pipeline orchestration (stage sequencing, Room persistence, cancellation) using fake VAD/ASR/diarizer/intelligence implementations — this proves the *plumbing* is correct, not that the *real models* produce good output.
+- Diarization/LLM RAM estimates in `ModelCatalog` (diarization: 512/1024MB min/recommended; LLM: 3072/4608MB min/recommended) are estimates based on model file size + typical runtime overhead, not measured on-device figures.
+- Ask Meeting's grounding is limited to one chunk's worth of transcript for long meetings — see "Ask Meeting limitation" above.
+
+### Critical Non-Goals for This Phase (unchanged from the task scope)
+
+Not implemented, and not started: calendar integration, Zoom/Meet/Teams bots, backend meeting-bot infrastructure, cloud AI of any kind. `AskMeetingUseCase`'s semantic-search grounding improvement (see above) is a known, deliberately deferred follow-up, not a non-goal in the same sense.
+
 ## 1. Historical State (Before This Pass — see `docs/AUDIT.md` for full findings)
 
 | Interface | Then-current implementation | What it did |
@@ -157,8 +290,8 @@ Of the three options previously weighed here, **option 1 was chosen**: `GeminiAp
 
 - **ASR — DECIDED (Phase 1)**: NVIDIA Parakeet TDT 0.6B v3, INT8 ONNX export, via sherpa-onnx `OfflineRecognizer`. See §0b for the verified model files/checksums and runtime config.
 - **VAD — DECIDED (Phase 1)**: Silero VAD via sherpa-onnx's bundled `Vad` class. See §0b.
-- **Diarization — still guidance, not implemented**: realistic target is a lightweight speaker-embedding model (d-vector/x-vector class) + simple clustering (e.g., agglomerative) over VAD segments — full state-of-the-art diarization is out of scope for a phone. sherpa-onnx also ships speaker-diarization support (`OfflineSpeakerDiarization`), which should be evaluated first before sourcing a separate runtime, since it would reuse the AAR/native libs already integrated in Phase 1.
-- **LLM — still guidance, not implemented**: a small (1–3B parameter) instruction-tuned, quantized (Q4) model runnable via `llama.cpp` (GGUF) or the MediaPipe LLM Inference API. Expect materially lower summary/extraction quality than Gemini; set product expectations accordingly (see `docs/AUDIT.md` §J).
+- **Diarization — DECIDED (Phase 2)**: pyannote/segmentation-3.0 (int8) + 3D-Speaker CAM++ (English) via sherpa-onnx's `OfflineSpeakerDiarization`, exactly the path this section previously flagged as worth evaluating first. See §0c.
+- **LLM — DECIDED (Phase 2)**: Qwen2.5-1.5B-Instruct (q8, litert-community `.task` build) via MediaPipe's LlmInference API. See §0c for why Gemma (gated) was ruled out. Expect materially lower summary/extraction quality than a cloud model of this scale; set product expectations accordingly (see `docs/AUDIT.md` §J).
 - **Embeddings — still guidance, not implemented**: a small sentence-embedding model (e.g., a distilled/quantized MiniLM-class model) via ONNX Runtime Mobile, replacing the current hash-based placeholder.
 
 **Before integrating any specific model, re-verify its license terms** — `THIRD_PARTY_NOTICES.md` currently pre-declares licenses for models that aren't actually integrated; treat it as a template to complete once real choices are made, not a source of truth today.
