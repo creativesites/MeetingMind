@@ -119,6 +119,8 @@ import com.example.core.model.TranscriptSegment
 import com.example.core.repository.ActionItemRepository
 import com.example.core.repository.MeetingRepository
 import com.example.core.repository.TranscriptRepository
+import com.example.core.share.ShareContentFormatter
+import com.example.core.share.ShareHelper
 import com.example.core.ui.OfflineShieldBadge
 import com.example.ui.theme.CyanTertiary
 import com.example.ui.theme.DarkSurface
@@ -426,18 +428,58 @@ fun MeetingDetailScreen(
                                 Toast.makeText(context, "Copied Markdown summary to clipboard", Toast.LENGTH_SHORT).show()
                             }
                         )
+                        androidx.compose.material3.HorizontalDivider()
                         DropdownMenuItem(
                             text = { Text("Share Summary") },
                             leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
-                                val md = viewModel.generateMarkdownExport()
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, meeting?.title ?: "Recording Notes")
-                                    putExtra(Intent.EXTRA_TEXT, md)
-                                }
-                                context.startActivity(Intent.createChooser(intent, "Share Recording Notes"))
+                                val m = meeting ?: return@DropdownMenuItem
+                                ShareHelper.shareText(
+                                    context = context,
+                                    subject = m.title,
+                                    text = ShareContentFormatter.summaryText(m, m.summaryPreview, decisions, actionItems),
+                                    chooserTitle = "Share Summary"
+                                )
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Share Transcript") },
+                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                val m = meeting ?: return@DropdownMenuItem
+                                ShareHelper.shareText(
+                                    context = context,
+                                    subject = m.title,
+                                    text = ShareContentFormatter.transcriptText(m, transcript.segments),
+                                    chooserTitle = "Share Transcript"
+                                )
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Share Action Items") },
+                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                val m = meeting ?: return@DropdownMenuItem
+                                ShareHelper.shareText(
+                                    context = context,
+                                    subject = "Action Items — ${m.title}",
+                                    text = ShareContentFormatter.actionItemsText(m, actionItems),
+                                    chooserTitle = "Share Action Items"
+                                )
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Share Audio") },
+                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                            enabled = meeting?.audioFilePath != null,
+                            onClick = {
+                                menuExpanded = false
+                                val m = meeting ?: return@DropdownMenuItem
+                                val path = m.audioFilePath ?: return@DropdownMenuItem
+                                ShareHelper.shareAudio(context, java.io.File(path), m.title)
                             }
                         )
                     }

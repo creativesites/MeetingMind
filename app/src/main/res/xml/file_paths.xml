@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Exposes only the app's private recordings directory (context.filesDir/meetings/*) through the
+  FileProvider content:// scheme, so a recording's audio file can be shared via the Android
+  Sharesheet without granting broad file access. Nothing else under filesDir is exposed.
+-->
+<paths>
+    <files-path name="recordings" path="meetings/" />
+</paths>
