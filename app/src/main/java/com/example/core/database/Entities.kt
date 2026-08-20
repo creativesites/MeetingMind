@@ -42,12 +42,12 @@ data class MeetingEntity(
 data class TranscriptSegmentEntity(
     @PrimaryKey val id: String,
     val meetingId: String,
-    val speakerId: String,
-    val speakerName: String,
+    val speakerId: String?,
+    val speakerName: String?,
     val startMs: Long,
     val endMs: Long,
     val text: String,
-    val confidence: Float
+    val confidence: Float?
 )
 
 @Entity(
@@ -180,11 +180,11 @@ data class AiModelEntity(
     @PrimaryKey val id: String,
     val name: String,
     val capabilities: String, // comma-separated ModelCapability
-    val sizeBytes: Long,
+    // JSON array of {fileName,downloadUrl,sha256,sizeBytes} — a model may need multiple files
+    // (e.g. a transducer ASR model = encoder + decoder + joiner + tokens). See ModelFileSpec.
+    val filesJson: String,
     val minimumRamMb: Int,
     val recommendedRamMb: Int,
-    val downloadUrl: String?,
-    val sha256: String?,
     val version: String,
     val isInstalled: Boolean,
     val isDownloading: Boolean,

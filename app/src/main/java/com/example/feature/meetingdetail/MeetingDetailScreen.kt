@@ -144,7 +144,19 @@ class MeetingDetailViewModel(
     private val transcriptRepository = TranscriptRepository(database)
     private val actionItemRepository = ActionItemRepository(database)
     private val askUseCase = AskMeetingUseCase(transcriptRepository, UnavailableMeetingIntelligenceEngine())
+    private val modelStorage = com.example.ai.modelmanagement.LocalModelStorage(application)
     val audioPlayer = AudioPlayerManager(application)
+
+    private val _asrModelInstalled = MutableStateFlow(
+        modelStorage.isInstalled(com.example.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8.id)
+    )
+    val asrModelInstalled: StateFlow<Boolean> = _asrModelInstalled.asStateFlow()
+
+    /** Re-checks real on-disk install state — call when the screen becomes visible again
+     * (e.g. returning from the Model Manager), since a download may have finished meanwhile. */
+    fun refreshModelAvailability() {
+        _asrModelInstalled.value = modelStorage.isInstalled(com.example.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8.id)
+    }
 
     val meeting: StateFlow<Meeting?> = meetingRepository.getMeetingById(meetingId).stateIn(
         scope = viewModelScope,
@@ -290,7 +302,7 @@ class MeetingDetailViewModel(
             if (t.segments.isNotEmpty()) {
                 appendLine("## Transcript")
                 t.segments.forEach {
-                    appendLine("**${it.speakerName}** [${Formatters.formatDurationHms(it.startMs)}]: ${it.text}")
+                    appendLine("**${it.speakerName ?: "Unlabeled speaker"}** [${Formatters.formatDurationHms(it.startMs)}]: ${it.text}")
                 }
             }
         }
@@ -307,7 +319,8 @@ class MeetingDetailViewModel(
 fun MeetingDetailScreen(
     viewModel: MeetingDetailViewModel,
     onNavigateBack: () -> Unit,
-    onNavigateToModels: () -> Unit = {}
+    onNavigateToModels: () -> Unit = {},
+    onTranscribe: (meetingId: String, audioPath: String, durationMs: Long) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
     val meeting by viewModel.meeting.collectAsState()
@@ -317,6 +330,18 @@ fun MeetingDetailScreen(
     val questions by viewModel.questions.collectAsState()
     val topics by viewModel.topics.collectAsState()
     val chatMessages by viewModel.chatMessages.collectAsState()
+    val asrModelInstalled by viewModel.asrModelInstalled.collectAsState()
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshModelAvailability()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val playerState by viewModel.playerState.collectAsState()
     val isAnswering by viewModel.isAnswering.collectAsState()
 
@@ -443,13 +468,31 @@ fun MeetingDetailScreen(
                                 color = WarningAmber
                             )
                             Text(
-                                text = "This recording is saved but has not been transcribed. Install a local speech recognition model to process it.",
+                                text = if (asrModelInstalled) {
+                                    "The speech recognition model is now installed — transcribe this meeting on your device."
+                                } else {
+                                    "Download the offline speech recognition model to transcribe this meeting on your device."
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
-                        TextButton(onClick = onNavigateToModels) {
-                            Text("Manage Models")
+                        if (asrModelInstalled) {
+                            val currentMeeting = meeting
+                            TextButton(
+                                onClick = {
+                                    val audioPath = currentMeeting?.audioFilePath
+                                    if (currentMeeting != null && audioPath != null) {
+                                        onTranscribe(currentMeeting.id, audioPath, currentMeeting.durationMs)
+                                    }
+                                }
+                            ) {
+                                Text("Transcribe")
+                            }
+                        } else {
+                            TextButton(onClick = onNavigateToModels) {
+                                Text("Manage Models")
+                            }
                         }
                     }
                 }
@@ -885,7 +928,10 @@ fun TranscriptTab(
 
     val filteredSegments = remember(segments, searchQuery) {
         if (searchQuery.isBlank()) segments
-        else segments.filter { it.text.contains(searchQuery, ignoreCase = true) || it.speakerName.contains(searchQuery, ignoreCase = true) }
+        else segments.filter {
+            it.text.contains(searchQuery, ignoreCase = true) ||
+                (it.speakerName?.contains(searchQuery, ignoreCase = true) == true)
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -921,16 +967,19 @@ fun TranscriptTab(
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.clickable { onRenameSpeaker(seg.speakerId, seg.speakerName) }
+                                modifier = seg.speakerId?.let { spkId ->
+                                    Modifier.clickable { onRenameSpeaker(spkId, seg.speakerName ?: "") }
+                                } ?: Modifier
                             ) {
                                 Surface(
                                     shape = CircleShape,
-                                    color = Formatters.getSpeakerColor(seg.speakerId.hashCode()),
+                                    color = seg.speakerId?.let { Formatters.getSpeakerColor(it.hashCode()) }
+                                        ?: MaterialTheme.colorScheme.outlineVariant,
                                     modifier = Modifier.size(26.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Text(
-                                            text = seg.speakerName.take(1),
+                                            text = seg.speakerName?.take(1) ?: "?",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = Color.White,
                                             fontWeight = FontWeight.Bold
@@ -938,7 +987,7 @@ fun TranscriptTab(
                                     }
                                 }
                                 Text(
-                                    text = seg.speakerName,
+                                    text = seg.speakerName ?: "Unlabeled speaker",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface

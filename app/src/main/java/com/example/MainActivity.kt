@@ -212,7 +212,10 @@ fun MeetMindApp() {
             MeetingDetailScreen(
                 viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToModels = { navController.navigate(Routes.MODELS) }
+                onNavigateToModels = { navController.navigate(Routes.MODELS) },
+                onTranscribe = { transcribeMeetingId, audioPath, durationMs ->
+                    navController.navigate(Routes.processingRoute(transcribeMeetingId, audioPath, durationMs))
+                }
             )
         }
 

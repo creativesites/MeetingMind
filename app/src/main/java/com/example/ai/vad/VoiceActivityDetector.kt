@@ -6,7 +6,9 @@ import java.io.File
 data class SpeechInterval(
     val startMs: Long,
     val endMs: Long,
-    val confidence: Float
+    // Null when the VAD engine only gives a binary speech/non-speech boundary (e.g. Silero VAD
+    // via sherpa-onnx) rather than a real per-segment confidence score.
+    val confidence: Float? = null
 )
 
 /**

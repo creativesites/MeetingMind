@@ -119,7 +119,7 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                 val audioFile = File(audioPath)
 
                 _uiState.value = ProcessingUiState(
-                    stepTitle = "Starting on-device pipeline...",
+                    stepTitle = "Preparing audio...",
                     progressPercent = 5,
                     currentStageIndex = 0
                 )
@@ -156,8 +156,7 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                         currentStageIndex = 1,
                         isComplete = true,
                         modelRequired = true,
-                        modelRequiredMessage = "Local speech recognition is not installed yet. " +
-                            "Download a speech recognition model to transcribe this meeting."
+                        modelRequiredMessage = "Download the offline speech recognition model to transcribe this meeting on your device."
                     )
                 } else {
                     _uiState.value = ProcessingUiState(

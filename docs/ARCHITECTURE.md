@@ -65,16 +65,16 @@ RecordingViewModel.finishRecording()
 
 ProcessingViewModel.startPipeline()
   → MeetingProcessingPipeline.processMeeting()
-       1. VoiceActivityDetector.detectSpeechIntervals()  [Unavailable by default — degrades gracefully, doesn't block]
-       2. SpeechRecognizer.transcribe()                   [Unavailable by default — REQUIRED GATE: stops the pipeline honestly]
-       3. SpeakerDiarizer.diarize()                        [Unavailable by default — degrades gracefully, doesn't block]
-       4. MeetingIntelligenceEngine.processMeeting()        [Unavailable by default — degrades gracefully, doesn't block]
+       1. VoiceActivityDetector.detectSpeechIntervals()  [REAL: SileroVadDetector once installed, else honestly ModelUnavailable — degrades gracefully, doesn't block]
+       2. SpeechRecognizer.transcribe()                   [REAL: SherpaParakeetSpeechRecognizer once installed, else honestly ModelUnavailable — REQUIRED GATE: stops the pipeline honestly]
+       3. SpeakerDiarizer.diarize()                        [Unavailable by default — degrades gracefully, doesn't block; not implemented until a future phase]
+       4. MeetingIntelligenceEngine.processMeeting()        [Unavailable by default — degrades gracefully, doesn't block; not implemented until a future phase]
        5. EmbeddingEngine.embed() per segment + summary      [real, primitive — only runs over real transcript text]
        6. Persist whatever is real to Room; mark meeting READY, or MODEL_REQUIRED if ASR was unavailable
-  → navigate to Meeting Detail (or show "model required" state — see ai/AI_ARCHITECTURE.md)
+  → navigate to Meeting Detail (or show "model required" state — see docs/AI_ARCHITECTURE.md)
 ```
 
-Every step in the pipeline is a call against an interface returning `AiResult<T>` (see `ai/common/AiTypes.kt`); only ASR unavailability stops the whole meeting (no transcript = nothing downstream can be real). Diarization and meeting intelligence being unavailable degrade gracefully once a transcript exists — see `docs/AI_ARCHITECTURE.md` §0 for exactly how. The formerly-fake `AudioPreprocessor` step was removed entirely — its output was already dead/unused code even before its `sin()`-based computation was found to be fabricated.
+Every step in the pipeline is a call against an interface returning `AiResult<T>` (see `ai/common/AiTypes.kt`); only ASR unavailability stops the whole meeting (no transcript = nothing downstream can be real). Diarization and meeting intelligence being unavailable degrade gracefully once a transcript exists. As of Phase 1 (see `docs/AI_ARCHITECTURE.md` §0b), VAD and ASR are backed by real sherpa-onnx models (Silero VAD, Parakeet TDT 0.6B v3) the moment the user downloads them via the Model Manager — both implementations self-report `AiResult.ModelUnavailable` honestly when the model isn't installed, so there is no separate "unavailable" default to switch between. The formerly-fake `AudioPreprocessor` step was removed entirely — its output was already dead/unused code even before its `sin()`-based computation was found to be fabricated.
 
 ## 5. Dependency Injection
 

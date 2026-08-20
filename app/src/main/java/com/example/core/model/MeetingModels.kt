@@ -18,12 +18,14 @@ data class Meeting(
 data class TranscriptSegment(
     val id: String,
     val meetingId: String,
-    val speakerId: String = "speaker_1",
-    val speakerName: String = "Speaker 1",
+    // Null until real speaker diarization is implemented — never a fabricated "Speaker 1" label.
+    val speakerId: String? = null,
+    val speakerName: String? = null,
     val startMs: Long,
     val endMs: Long,
     val text: String,
-    val confidence: Float = 0.95f
+    // Null when the ASR engine doesn't provide a confidence score for a segment.
+    val confidence: Float? = null
 )
 
 data class Transcript(
@@ -96,17 +98,27 @@ data class ChatMessage(
     val sourceQuotes: List<String> = emptyList()
 )
 
+/**
+ * One downloadable component of a model (e.g. a Transducer ASR model is encoder + decoder +
+ * joiner + tokens — four separate files, all required before the model can be considered
+ * installed). [fileName] is the name it is stored under inside
+ * `ModelStorage.getModelDirectory(modelId)`.
+ */
+data class ModelFileSpec(
+    val fileName: String,
+    val downloadUrl: String,
+    val sha256: String,
+    val sizeBytes: Long
+)
+
 data class AiModelInfo(
     val id: String,
     val name: String,
     val capability: Set<ModelCapability>,
-    val sizeBytes: Long,
+    /** One or more files that together make up this model. Empty only for not-yet-sourced candidates. */
+    val files: List<ModelFileSpec> = emptyList(),
     val minimumRamMb: Int,
     val recommendedRamMb: Int,
-    /** Null until a specific production model has been selected and hosted. */
-    val downloadUrl: String? = null,
-    /** Expected SHA-256 of the downloaded model file, verified before it is activated. Null until a real model is pinned. */
-    val sha256: String? = null,
     val version: String,
     val isInstalled: Boolean = false,
     val isDownloading: Boolean = false,
@@ -115,8 +127,11 @@ data class AiModelInfo(
     val parameterCount: String = "",
     val quantization: String = "q4_0"
 ) {
-    /** A model can only actually be downloaded once it has both a URL and an expected checksum. */
-    val isDownloadable: Boolean get() = !downloadUrl.isNullOrBlank() && !sha256.isNullOrBlank()
+    val sizeBytes: Long get() = files.sumOf { it.sizeBytes }
+
+    /** A model can only actually be downloaded once every one of its files has a real URL + checksum. */
+    val isDownloadable: Boolean
+        get() = files.isNotEmpty() && files.all { it.downloadUrl.isNotBlank() && it.sha256.isNotBlank() }
 }
 
 data class ProcessingJob(

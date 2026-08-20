@@ -10,8 +10,9 @@ import com.example.ai.modelmanagement.ModelCatalog
 import com.example.ai.modelmanagement.ModelDownloader
 import com.example.ai.modelmanagement.ModelStorage
 import com.example.ai.modelmanagement.ModelVerifier
+import com.example.ai.modelmanagement.OkHttpModelDownloader
 import com.example.ai.modelmanagement.Sha256ModelVerifier
-import com.example.ai.modelmanagement.UnconfiguredModelDownloader
+import com.example.core.common.DeviceCapabilityDetector
 import com.example.core.database.ActionItemEntity
 import com.example.core.database.AiModelEntity
 import com.example.core.database.ChatMessageEntity
@@ -383,7 +384,10 @@ data class SearchResultItem(
 class ModelRepository(
     private val database: MeetMindDatabase,
     private val modelStorage: ModelStorage,
-    private val modelDownloader: ModelDownloader = UnconfiguredModelDownloader(),
+    // Real, network-capable by default now that ModelCatalog contains real downloadable models
+    // (Silero VAD, Parakeet TDT). Pass UnconfiguredModelDownloader() explicitly for any future
+    // catalog entry that has no production source yet.
+    private val modelDownloader: ModelDownloader = OkHttpModelDownloader(),
     private val modelVerifier: ModelVerifier = Sha256ModelVerifier()
 ) {
     private val aiModelDao = database.aiModelDao()
@@ -405,7 +409,16 @@ class ModelRepository(
         }
     }
 
-    suspend fun installModel(modelId: String): AiResult<Unit> = withContext(Dispatchers.IO) {
+    /**
+     * Downloads every file in the model's manifest (streaming, resumable per-file, SHA-256
+     * verified), then — only if every file verified successfully — atomically marks the model
+     * installed. A failure partway through leaves already-verified sibling files in place so a
+     * retry can resume from there instead of re-downloading everything.
+     */
+    suspend fun installModel(
+        modelId: String,
+        onProgress: (bytesDownloaded: Long, totalBytes: Long) -> Unit = { _, _ -> }
+    ): AiResult<Unit> = withContext(Dispatchers.IO) {
         val manifest = ModelCatalog.entries.find { it.id == modelId }
             ?: return@withContext AiResult.ModelUnavailable(modelId, "Unknown model id: $modelId")
 
@@ -416,25 +429,58 @@ class ModelRepository(
             )
         }
 
-        val downloadResult = modelDownloader.download(manifest)
-        val downloadedFile = when (downloadResult) {
-            is AiResult.Success -> downloadResult.value
-            else -> return@withContext AiResult.Failed(
-                downloadResult.describeFailure() ?: "Model download failed."
-            )
-        }
-
-        val expectedSha256 = manifest.sha256
-        if (expectedSha256.isNullOrBlank() || !modelVerifier.verify(downloadedFile, expectedSha256)) {
-            downloadedFile.delete()
-            return@withContext AiResult.Failed("Downloaded model failed integrity verification and was discarded.")
-        }
-
         val targetDir = modelStorage.getModelDirectory(modelId)
-        downloadedFile.copyTo(File(targetDir, downloadedFile.name), overwrite = true)
-        downloadedFile.delete()
-        (modelStorage as? LocalModelStorage)?.markInstalled(modelId)
+        val alreadyPresentBytes = manifest.files.sumOf { spec ->
+            File(targetDir, spec.fileName).let { if (it.exists()) it.length().coerceAtMost(spec.sizeBytes) else 0L }
+        }
+        val remainingBytes = (manifest.sizeBytes - alreadyPresentBytes).coerceAtLeast(0L)
+        val availableMb = DeviceCapabilityDetector.getAvailableStorageMb()
+        val requiredMb = (remainingBytes / (1024 * 1024)) + 1 // round up, small safety margin
+        if (availableMb < requiredMb) {
+            return@withContext AiResult.InsufficientStorage(requiredMb = requiredMb, availableMb = availableMb)
+        }
 
+        var bytesDoneBeforeCurrentFile = alreadyPresentBytes
+        for (spec in manifest.files) {
+            val finalFile = File(targetDir, spec.fileName)
+            if (finalFile.exists() && finalFile.length() == spec.sizeBytes && modelVerifier.verify(finalFile, spec.sha256)) {
+                onProgress(bytesDoneBeforeCurrentFile, manifest.sizeBytes)
+                continue
+            }
+
+            val partFile = File(targetDir, "${spec.fileName}.part")
+            val downloadResult = modelDownloader.download(spec, partFile) { fileBytes, _ ->
+                onProgress(bytesDoneBeforeCurrentFile + fileBytes, manifest.sizeBytes)
+            }
+            // Preserve the downloader's own failure variant (e.g. ModelUnavailable when no
+            // source is configured) instead of collapsing everything into a generic Failed.
+            when (downloadResult) {
+                is AiResult.Success -> Unit
+                is AiResult.ModelUnavailable -> return@withContext downloadResult
+                is AiResult.DeviceUnsupported -> return@withContext downloadResult
+                is AiResult.InsufficientMemory -> return@withContext downloadResult
+                is AiResult.InsufficientStorage -> return@withContext downloadResult
+                is AiResult.Failed -> return@withContext downloadResult
+            }
+
+            if (!modelVerifier.verify(partFile, spec.sha256)) {
+                partFile.delete() // corrupted-download cleanup — never activate an unverified file
+                return@withContext AiResult.Failed(
+                    "\"${spec.fileName}\" failed SHA-256 verification after download and was discarded."
+                )
+            }
+
+            if (finalFile.exists()) finalFile.delete()
+            if (!partFile.renameTo(finalFile)) {
+                partFile.delete()
+                return@withContext AiResult.Failed("Failed to install \"${spec.fileName}\" after verification.")
+            }
+            bytesDoneBeforeCurrentFile += spec.sizeBytes
+            onProgress(bytesDoneBeforeCurrentFile, manifest.sizeBytes)
+        }
+
+        // Only reachable once every file above is present and verified.
+        (modelStorage as? LocalModelStorage)?.markInstalled(modelId)
         aiModelDao.updateModel(manifest.copy(isInstalled = true, isDownloading = false, downloadProgress = 1f).toEntity())
         AiResult.Success(Unit)
     }
@@ -453,11 +499,9 @@ class ModelRepository(
         capability = capabilities.split(",").filter { it.isNotBlank() }.mapNotNull {
             try { ModelCapability.valueOf(it) } catch (e: Exception) { null }
         }.toSet(),
-        sizeBytes = sizeBytes,
+        files = filesJson.toModelFiles(),
         minimumRamMb = minimumRamMb,
         recommendedRamMb = recommendedRamMb,
-        downloadUrl = downloadUrl,
-        sha256 = sha256,
         version = version,
         isInstalled = modelStorage.isInstalled(id) || isInstalled,
         isDownloading = isDownloading,
@@ -471,11 +515,9 @@ class ModelRepository(
         id = id,
         name = name,
         capabilities = capability.joinToString(",") { it.name },
-        sizeBytes = sizeBytes,
+        filesJson = files.toJson(),
         minimumRamMb = minimumRamMb,
         recommendedRamMb = recommendedRamMb,
-        downloadUrl = downloadUrl,
-        sha256 = sha256,
         version = version,
         isInstalled = isInstalled,
         isDownloading = isDownloading,
@@ -484,4 +526,37 @@ class ModelRepository(
         parameterCount = parameterCount,
         quantization = quantization
     )
+
+    private fun List<com.example.core.model.ModelFileSpec>.toJson(): String {
+        val array = org.json.JSONArray()
+        for (spec in this) {
+            array.put(
+                org.json.JSONObject().apply {
+                    put("fileName", spec.fileName)
+                    put("downloadUrl", spec.downloadUrl)
+                    put("sha256", spec.sha256)
+                    put("sizeBytes", spec.sizeBytes)
+                }
+            )
+        }
+        return array.toString()
+    }
+
+    private fun String.toModelFiles(): List<com.example.core.model.ModelFileSpec> {
+        if (isBlank()) return emptyList()
+        return try {
+            val array = org.json.JSONArray(this)
+            (0 until array.length()).map { i ->
+                val obj = array.getJSONObject(i)
+                com.example.core.model.ModelFileSpec(
+                    fileName = obj.getString("fileName"),
+                    downloadUrl = obj.getString("downloadUrl"),
+                    sha256 = obj.getString("sha256"),
+                    sizeBytes = obj.getLong("sizeBytes")
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 }

@@ -2,91 +2,83 @@ package com.example.ai.modelmanagement
 
 import com.example.core.model.AiModelInfo
 import com.example.core.model.ModelCapability
+import com.example.core.model.ModelFileSpec
 
 /**
- * The set of AI capabilities MeetMind's model manager knows about. These are **candidates**
- * under consideration for future local AI integration (see docs/AI_ARCHITECTURE.md), not models
- * that are actually installed or downloadable today: every entry has `downloadUrl = null` and
- * `sha256 = null` until a specific production model is selected, hosted, and its checksum
- * pinned here. `isInstalled` is never set from this catalog — [ModelRepository] determines real
+ * Real, downloadable models for Phase 1 (VAD + ASR only — see docs/AI_ARCHITECTURE.md).
+ * Every URL/size/SHA-256 below was verified by actually downloading each file and computing
+ * its checksum during development of this phase; nothing here is invented. `isInstalled` is
+ * never set from this catalog — [com.example.core.repository.ModelRepository] determines real
  * install state from [ModelStorage] and the database, not from this static list.
  */
 object ModelCatalog {
-    val entries: List<AiModelInfo> = listOf(
-        AiModelInfo(
-            id = "asr_whisper_tiny",
-            name = "Speech Recognition (Whisper Tiny class)",
-            capability = setOf(ModelCapability.TRANSCRIPTION),
-            sizeBytes = 0L,
-            minimumRamMb = 2048,
-            recommendedRamMb = 4096,
-            downloadUrl = null,
-            sha256 = null,
-            version = "not-yet-selected",
-            isInstalled = false,
-            description = "Candidate lightweight on-device transcription model. Not yet integrated — see docs/AI_ARCHITECTURE.md.",
-            parameterCount = "unselected",
-            quantization = "unselected"
+
+    /**
+     * Silero VAD, distributed by the sherpa-onnx project itself (re-exported ONNX build of
+     * https://github.com/snakers4/silero-vad). Verified 2026-08-20.
+     */
+    val sileroVad = AiModelInfo(
+        id = "vad_silero",
+        name = "Silero Voice Activity Detection",
+        capability = setOf(ModelCapability.TRANSCRIPTION),
+        files = listOf(
+            ModelFileSpec(
+                fileName = "silero_vad.onnx",
+                downloadUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+                sha256 = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+                sizeBytes = 643_854L
+            )
         ),
-        AiModelInfo(
-            id = "vad_default",
-            name = "Voice Activity Detection",
-            capability = setOf(ModelCapability.TRANSCRIPTION),
-            sizeBytes = 0L,
-            minimumRamMb = 512,
-            recommendedRamMb = 1024,
-            downloadUrl = null,
-            sha256 = null,
-            version = "not-yet-selected",
-            isInstalled = false,
-            description = "Candidate on-device voice activity detector (e.g. Silero VAD). Not yet integrated.",
-            parameterCount = "unselected",
-            quantization = "unselected"
-        ),
-        AiModelInfo(
-            id = "diarization_default",
-            name = "Speaker Diarization",
-            capability = setOf(ModelCapability.DIARIZATION),
-            sizeBytes = 0L,
-            minimumRamMb = 1024,
-            recommendedRamMb = 2048,
-            downloadUrl = null,
-            sha256 = null,
-            version = "not-yet-selected",
-            isInstalled = false,
-            description = "Candidate speaker-embedding + clustering model. Not yet integrated.",
-            parameterCount = "unselected",
-            quantization = "unselected"
-        ),
-        AiModelInfo(
-            id = "llm_local_intelligence",
-            name = "Meeting Intelligence (Local LLM)",
-            capability = setOf(ModelCapability.SUMMARIZATION),
-            sizeBytes = 0L,
-            minimumRamMb = 3072,
-            recommendedRamMb = 6144,
-            downloadUrl = null,
-            sha256 = null,
-            version = "not-yet-selected",
-            isInstalled = false,
-            description = "Candidate small quantized instruction model for summaries, decisions, and action items. Not yet integrated.",
-            parameterCount = "unselected",
-            quantization = "unselected"
-        ),
-        AiModelInfo(
-            id = "embeddings_semantic",
-            name = "Semantic Embeddings",
-            capability = setOf(ModelCapability.EMBEDDINGS),
-            sizeBytes = 0L,
-            minimumRamMb = 1024,
-            recommendedRamMb = 2048,
-            downloadUrl = null,
-            sha256 = null,
-            version = "not-yet-selected",
-            isInstalled = false,
-            description = "Candidate small sentence-embedding model to eventually replace the current hash-based placeholder embeddings. Not yet integrated.",
-            parameterCount = "unselected",
-            quantization = "unselected"
-        )
+        minimumRamMb = 256,
+        recommendedRamMb = 512,
+        version = "silero-vad (sherpa-onnx export)",
+        description = "Detects speech vs. silence in the recording so only spoken audio is sent to transcription. Runs via sherpa-onnx.",
+        parameterCount = "~1.8M",
+        quantization = "fp32"
     )
+
+    /**
+     * NVIDIA Parakeet TDT 0.6B v3, INT8-quantized NeMo transducer ONNX export
+     * (csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 on Hugging Face, converted from
+     * nvidia/parakeet-tdt-0.6b-v3). English + 24 European languages. Verified 2026-08-20.
+     */
+    val parakeetTdtV3Int8 = AiModelInfo(
+        id = "asr_parakeet_tdt_0_6b_v3_int8",
+        name = "Parakeet TDT 0.6B v3 (INT8)",
+        capability = setOf(ModelCapability.TRANSCRIPTION),
+        files = listOf(
+            ModelFileSpec(
+                fileName = "encoder.int8.onnx",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/encoder.int8.onnx",
+                sha256 = "acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247",
+                sizeBytes = 652_184_281L
+            ),
+            ModelFileSpec(
+                fileName = "decoder.int8.onnx",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/decoder.int8.onnx",
+                sha256 = "179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e",
+                sizeBytes = 11_845_275L
+            ),
+            ModelFileSpec(
+                fileName = "joiner.int8.onnx",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/joiner.int8.onnx",
+                sha256 = "3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3",
+                sizeBytes = 6_355_277L
+            ),
+            ModelFileSpec(
+                fileName = "tokens.txt",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/tokens.txt",
+                sha256 = "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
+                sizeBytes = 93_939L
+            )
+        ),
+        minimumRamMb = 2048,
+        recommendedRamMb = 4096,
+        version = "parakeet-tdt-0.6b-v3-int8",
+        description = "On-device speech-to-text (English + 24 European languages). Real NeMo transducer model run via sherpa-onnx OfflineRecognizer — no cloud call.",
+        parameterCount = "0.6B",
+        quantization = "int8"
+    )
+
+    val entries: List<AiModelInfo> = listOf(sileroVad, parakeetTdtV3Int8)
 }

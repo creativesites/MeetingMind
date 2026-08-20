@@ -20,9 +20,10 @@ import org.robolectric.annotation.Config
 
 /**
  * Verifies the real (non-simulated) model-management architecture: catalog seeding reflects
- * actual on-disk install state, and installing a model honestly fails (no production model
- * source is configured yet — see docs/AI_ARCHITECTURE.md) instead of faking a successful
- * install with delay() calls.
+ * actual on-disk install state, and — for a model whose downloader isn't configured — install
+ * honestly fails instead of faking success with delay() calls. Tests here never hit the live
+ * internet: [OkHttpModelDownloader] network behavior is covered separately by
+ * [OkHttpModelDownloaderTest] against a local MockWebServer.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -30,7 +31,6 @@ class ModelRepositoryTest {
 
     private lateinit var context: Context
     private lateinit var database: MeetMindDatabase
-    private lateinit var repository: ModelRepository
 
     @Before
     fun setup() {
@@ -38,7 +38,6 @@ class ModelRepositoryTest {
         database = Room.inMemoryDatabaseBuilder(context, MeetMindDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        repository = ModelRepository(database, LocalModelStorage(context))
     }
 
     @After
@@ -48,6 +47,8 @@ class ModelRepositoryTest {
 
     @Test
     fun `catalog seeding reflects the known model candidates with none installed`() = runBlocking {
+        // No network involved in seeding, so the real default downloader is fine here.
+        val repository = ModelRepository(database, LocalModelStorage(context))
         repository.ensureCatalogSeeded()
         val models = repository.models.first()
 
@@ -56,15 +57,29 @@ class ModelRepositoryTest {
     }
 
     @Test
-    fun `installing a model honestly reports unavailable instead of faking success`() = runBlocking {
+    fun `installing with no downloader configured honestly reports failure, not fake success`() = runBlocking {
+        val repository = ModelRepository(
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            modelDownloader = UnconfiguredModelDownloader()
+        )
         val modelId = ModelCatalog.entries.first().id
+
         val result = repository.installModel(modelId)
 
-        assertTrue("Install must not silently succeed with no configured model source", result is AiResult.ModelUnavailable)
+        // Either honest failure is acceptable here (ModelUnavailable from the downloader, or
+        // InsufficientStorage if the test environment's simulated free space is exhausted) —
+        // what matters is that it is never AiResult.Success.
+        assertFalse("Install must not silently succeed with no configured downloader", result is AiResult.Success)
+        assertTrue(
+            "Expected an honest failure variant, got $result",
+            result is AiResult.ModelUnavailable || result is AiResult.InsufficientStorage
+        )
     }
 
     @Test
     fun `unknown model id is reported as unavailable, not silently ignored`() = runBlocking {
+        val repository = ModelRepository(database, LocalModelStorage(context))
         val result = repository.installModel("does-not-exist")
         assertTrue(result is AiResult.ModelUnavailable)
     }

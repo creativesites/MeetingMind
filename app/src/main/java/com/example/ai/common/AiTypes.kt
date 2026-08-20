@@ -19,6 +19,9 @@ sealed interface AiResult<out T> {
     /** The device does not have enough free RAM to load the required model. */
     data class InsufficientMemory(val requiredMb: Int, val availableMb: Int) : AiResult<Nothing>
 
+    /** The device does not have enough free disk space to download/install the required model. */
+    data class InsufficientStorage(val requiredMb: Long, val availableMb: Long) : AiResult<Nothing>
+
     /** The model was available but inference failed at runtime. */
     data class Failed(val message: String, val cause: Throwable? = null) : AiResult<Nothing>
 }
@@ -28,6 +31,7 @@ inline fun <T, R> AiResult<T>.map(transform: (T) -> R): AiResult<R> = when (this
     is AiResult.ModelUnavailable -> this
     is AiResult.DeviceUnsupported -> this
     is AiResult.InsufficientMemory -> this
+    is AiResult.InsufficientStorage -> this
     is AiResult.Failed -> this
 }
 
@@ -37,6 +41,7 @@ fun AiResult<*>.describeFailure(): String? = when (this) {
     is AiResult.ModelUnavailable -> message
     is AiResult.DeviceUnsupported -> "This device is not supported: $reason"
     is AiResult.InsufficientMemory -> "Not enough free memory (${availableMb}MB available, ${requiredMb}MB required)."
+    is AiResult.InsufficientStorage -> "Not enough free storage (${availableMb}MB available, ${requiredMb}MB required)."
     is AiResult.Failed -> message
 }
 

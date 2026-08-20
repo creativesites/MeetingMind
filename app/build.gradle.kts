@@ -95,6 +95,16 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   // implementation(libs.play.services.location)
+  // sherpa-onnx: on-device speech recognition (VAD + Parakeet TDT ASR). Prebuilt AAR from
+  // GitHub Releases — see settings.gradle.kts ivy repository and docs/AI_ARCHITECTURE.md.
+  // Declared with an explicit "@aar" artifact type since the ivy repo pattern resolves a
+  // release-asset file, not a Maven/Ivy module with its own descriptor.
+  implementation("k2-fsa:sherpa-onnx:${libs.versions.sherpaOnnx.get()}@aar")
+  // Used only for streaming the (optional, user-initiated) local AI model download over
+  // HTTPS with progress/cancellation/resume — never for any AI inference call. See
+  // docs/AI_ARCHITECTURE.md privacy notes.
+  implementation(libs.okhttp)
+  testImplementation(libs.okhttp.mockwebserver)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

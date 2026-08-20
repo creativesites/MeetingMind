@@ -106,16 +106,37 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
 
+    // modelId -> 0f..1f real download progress, reported live by ModelRepository/ModelDownloader.
+    private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
+    val downloadProgress: StateFlow<Map<String, Float>> = _downloadProgress.asStateFlow()
+
+    private val _downloadingModelIds = MutableStateFlow<Set<String>>(emptySet())
+    val downloadingModelIds: StateFlow<Set<String>> = _downloadingModelIds.asStateFlow()
+
+    val availableStorageMb: Long get() = DeviceCapabilityDetector.getAvailableStorageMb()
+
     init {
         viewModelScope.launch { modelRepository.ensureCatalogSeeded() }
     }
 
     /** Attempts a real install. Honestly reports back when no downloadable model source exists yet. */
     fun installModel(modelId: String) {
+        if (modelId in _downloadingModelIds.value) return
         viewModelScope.launch {
-            when (val result = modelRepository.installModel(modelId)) {
-                is AiResult.Success -> Unit
-                else -> _statusMessage.value = result.describeFailure() ?: "This model could not be installed."
+            _downloadingModelIds.value = _downloadingModelIds.value + modelId
+            _downloadProgress.value = _downloadProgress.value + (modelId to 0f)
+            try {
+                val result = modelRepository.installModel(modelId) { bytesDownloaded, totalBytes ->
+                    val progress = if (totalBytes > 0) (bytesDownloaded.toFloat() / totalBytes.toFloat()) else 0f
+                    _downloadProgress.value = _downloadProgress.value + (modelId to progress.coerceIn(0f, 1f))
+                }
+                when (result) {
+                    is AiResult.Success -> Unit
+                    else -> _statusMessage.value = result.describeFailure() ?: "This model could not be installed."
+                }
+            } finally {
+                _downloadingModelIds.value = _downloadingModelIds.value - modelId
+                _downloadProgress.value = _downloadProgress.value - modelId
             }
         }
     }
@@ -146,6 +167,7 @@ fun ModelManagerScreen(
     val models by viewModel.models.collectAsState()
     val prefs by viewModel.userPrefsState.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
+    val downloadProgress by viewModel.downloadProgress.collectAsState()
     val caps = viewModel.deviceCapabilities
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -236,6 +258,14 @@ fun ModelManagerScreen(
                                 Text("Hardware Tier", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(caps.devicePerformanceTier, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = SuccessGreen)
                             }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Free Storage", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    Formatters.formatBytes(viewModel.availableStorageMb * 1024 * 1024),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
@@ -253,8 +283,9 @@ fun ModelManagerScreen(
 
             // 3. Model Bento Items
             items(models, key = { it.id }) { model ->
+                val liveProgress = downloadProgress[model.id]
                 BentoModelItemCard(
-                    model = model,
+                    model = if (liveProgress != null) model.copy(isDownloading = true, downloadProgress = liveProgress) else model,
                     isActive = prefs.selectedAsrModelId == model.id,
                     onSelectActive = { viewModel.selectActiveAsrModel(model.id) },
                     onInstall = { viewModel.installModel(model.id) },

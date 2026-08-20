@@ -1,30 +1,53 @@
 package com.example
 
-import com.example.ai.asr.SpeechRecognizer
-import com.example.ai.asr.UnavailableSpeechRecognizer
-import com.example.ai.diarization.SpeakerDiarizer
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.example.ai.asr.SherpaParakeetSpeechRecognizer
 import com.example.ai.diarization.UnavailableSpeakerDiarizer
-import com.example.ai.llm.MeetingIntelligenceEngine
 import com.example.ai.llm.UnavailableMeetingIntelligenceEngine
 import com.example.ai.pipeline.MeetingProcessingPipeline
-import com.example.ai.vad.UnavailableVoiceActivityDetector
-import com.example.ai.vad.VoiceActivityDetector
+import com.example.ai.vad.SileroVadDetector
+import com.example.core.database.MeetMindDatabase
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Guards against the core local processing pipeline silently regaining a cloud AI dependency.
  *
- * Two independent checks:
  * 1. No class named `com.example.ai.gemini.GeminiApiClient` exists in the app at all — it was
  *    removed entirely rather than merely disconnected (see docs/AUDIT.md / AI_ARCHITECTURE.md).
- * 2. [MeetingProcessingPipeline]'s default constructor parameters — the ones used by every
- *    real call site in the app — are the local `Unavailable*` implementations, not anything
- *    that reaches the network.
+ * 2. [MeetingProcessingPipeline], constructed the exact way every real call site in the app
+ *    constructs it (context + database only, everything else defaulted), really ends up holding
+ *    [SileroVadDetector] / [SherpaParakeetSpeechRecognizer] instances for VAD/ASR — both local,
+ *    on-device implementations — and not anything reaching a cloud endpoint. Diarization and
+ *    meeting intelligence remain [UnavailableSpeakerDiarizer] / [UnavailableMeetingIntelligenceEngine]
+ *    in this phase (out of scope — see docs/AI_ARCHITECTURE.md "Critical Non-Goals").
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class PrivacyNoCloudPathTest {
+
+    private lateinit var database: MeetMindDatabase
+
+    @Before
+    fun setup() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        database = Room.inMemoryDatabaseBuilder(context, MeetMindDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+    }
+
+    @After
+    fun tearDown() {
+        database.close()
+    }
 
     @Test
     fun `GeminiApiClient class no longer exists anywhere in the app`() {
@@ -38,37 +61,26 @@ class PrivacyNoCloudPathTest {
     }
 
     @Test
-    fun `MeetingProcessingPipeline defaults to fully local, non-cloud AI implementations`() {
-        val constructor = MeetingProcessingPipeline::class.java.declaredConstructors.first()
-        val defaultParamNames = listOf("vad", "speechRecognizer", "diarizer", "intelligenceEngine")
+    fun `MeetingProcessingPipeline really defaults to local SileroVad and SherpaParakeet implementations`() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val pipeline = MeetingProcessingPipeline(context, database)
 
-        // Reflection-based structural check: the pipeline's declared default types for every AI
-        // stage must be the local Unavailable* classes, confirmed by inspecting the constructor
-        // parameter types directly rather than instantiating (Context/Database are Android-only).
-        val paramTypes = constructor.parameterTypes.map { it.name }
-        assertTrue(
-            "VoiceActivityDetector parameter must be present",
-            paramTypes.contains(VoiceActivityDetector::class.java.name)
-        )
-        assertTrue(
-            "SpeechRecognizer parameter must be present",
-            paramTypes.contains(SpeechRecognizer::class.java.name)
-        )
-        assertTrue(
-            "SpeakerDiarizer parameter must be present",
-            paramTypes.contains(SpeakerDiarizer::class.java.name)
-        )
-        assertTrue(
-            "MeetingIntelligenceEngine parameter must be present",
-            paramTypes.contains(MeetingIntelligenceEngine::class.java.name)
-        )
+        val vadField = MeetingProcessingPipeline::class.java.getDeclaredField("vad").apply { isAccessible = true }
+        val asrField = MeetingProcessingPipeline::class.java.getDeclaredField("speechRecognizer").apply { isAccessible = true }
+        val diarizerField = MeetingProcessingPipeline::class.java.getDeclaredField("diarizer").apply { isAccessible = true }
+        val llmField = MeetingProcessingPipeline::class.java.getDeclaredField("intelligenceEngine").apply { isAccessible = true }
 
-        // Confirm the concrete default implementations compiled into the app are the local,
-        // honest "unavailable" classes rather than anything backed by a cloud API client.
-        assertEquals(UnavailableVoiceActivityDetector::class.java.name, "com.example.ai.vad.UnavailableVoiceActivityDetector")
-        assertEquals(UnavailableSpeechRecognizer::class.java.name, "com.example.ai.asr.UnavailableSpeechRecognizer")
-        assertEquals(UnavailableSpeakerDiarizer::class.java.name, "com.example.ai.diarization.UnavailableSpeakerDiarizer")
-        assertEquals(UnavailableMeetingIntelligenceEngine::class.java.name, "com.example.ai.llm.UnavailableMeetingIntelligenceEngine")
+        val vadInstance = vadField.get(pipeline)
+        val asrInstance = asrField.get(pipeline)
+
+        assertEquals(SileroVadDetector::class.java, vadInstance?.javaClass)
+        assertEquals(SherpaParakeetSpeechRecognizer::class.java, asrInstance?.javaClass)
+        assertEquals(UnavailableSpeakerDiarizer::class.java, diarizerField.get(pipeline)?.javaClass)
+        assertEquals(UnavailableMeetingIntelligenceEngine::class.java, llmField.get(pipeline)?.javaClass)
+
+        // Belt-and-suspenders: neither real default implementation may be a cloud/Gemini class.
+        assertFalse(vadInstance!!.javaClass.name.contains("gemini", ignoreCase = true))
+        assertFalse(asrInstance!!.javaClass.name.contains("gemini", ignoreCase = true))
     }
 
     @Test

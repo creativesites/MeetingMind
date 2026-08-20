@@ -1,9 +1,9 @@
 package com.example.ai.pipeline
 
 import android.content.Context
+import com.example.ai.asr.SherpaParakeetSpeechRecognizer
 import com.example.ai.asr.SpeechRecognizer
 import com.example.ai.asr.TranscriptionOptions
-import com.example.ai.asr.UnavailableSpeechRecognizer
 import com.example.ai.common.AiResult
 import com.example.ai.common.describeFailure
 import com.example.ai.diarization.SpeakerDiarizer
@@ -12,7 +12,9 @@ import com.example.ai.embeddings.EmbeddingEngine
 import com.example.ai.embeddings.LocalEmbeddingEngine
 import com.example.ai.llm.MeetingIntelligenceEngine
 import com.example.ai.llm.UnavailableMeetingIntelligenceEngine
-import com.example.ai.vad.UnavailableVoiceActivityDetector
+import com.example.ai.modelmanagement.LocalModelStorage
+import com.example.ai.modelmanagement.ModelStorage
+import com.example.ai.vad.SileroVadDetector
 import com.example.ai.vad.VoiceActivityDetector
 import com.example.core.database.ActionItemEntity
 import com.example.core.database.DecisionEntity
@@ -54,8 +56,13 @@ import java.util.UUID
 class MeetingProcessingPipeline(
     private val context: Context,
     private val database: MeetMindDatabase,
-    private val vad: VoiceActivityDetector = UnavailableVoiceActivityDetector(),
-    private val speechRecognizer: SpeechRecognizer = UnavailableSpeechRecognizer(),
+    private val modelStorage: ModelStorage = LocalModelStorage(context),
+    // Both real implementations honestly self-report AiResult.ModelUnavailable when their
+    // model isn't installed yet — see SileroVadDetector / SherpaParakeetSpeechRecognizer. There
+    // is deliberately no separate "Unavailable" default here to switch between: the real
+    // implementation *is* the unavailable-aware implementation.
+    private val vad: VoiceActivityDetector = SileroVadDetector(modelStorage),
+    private val speechRecognizer: SpeechRecognizer = SherpaParakeetSpeechRecognizer(modelStorage),
     private val diarizer: SpeakerDiarizer = UnavailableSpeakerDiarizer(),
     private val intelligenceEngine: MeetingIntelligenceEngine = UnavailableMeetingIntelligenceEngine(),
     private val embeddingEngine: EmbeddingEngine = LocalEmbeddingEngine()
@@ -220,15 +227,21 @@ class MeetingProcessingPipeline(
             }
             transcriptDao.insertSegments(segmentEntities)
 
-            val uniqueSpeakers = diarizedSegments.distinctBy { it.speakerId }.map { seg ->
-                SpeakerEntity(
-                    id = seg.speakerId,
-                    meetingId = meetingId,
-                    originalLabel = seg.speakerName,
-                    customName = seg.speakerName,
-                    colorHex = "#3B82F6"
-                )
-            }
+            // Only real, non-null speaker IDs become Speaker rows — with diarization unavailable
+            // in this phase, every segment's speakerId is null, so this is correctly empty
+            // rather than inventing a "Speaker 1" identity for a single-track transcript.
+            val uniqueSpeakers = diarizedSegments
+                .filter { it.speakerId != null }
+                .distinctBy { it.speakerId }
+                .map { seg ->
+                    SpeakerEntity(
+                        id = seg.speakerId!!,
+                        meetingId = meetingId,
+                        originalLabel = seg.speakerName ?: seg.speakerId!!,
+                        customName = seg.speakerName ?: seg.speakerId!!,
+                        colorHex = "#3B82F6"
+                    )
+                }
             speakerDao.insertSpeakers(uniqueSpeakers)
 
             // Only persist intelligence output when it's real (summary != null)
