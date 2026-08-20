@@ -19,12 +19,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,11 +57,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -71,6 +81,7 @@ import com.example.core.database.MeetMindDatabase
 import com.example.core.datastore.UserPreferencesManager
 import com.example.core.model.AiModelInfo
 import com.example.core.model.DeviceCapabilities
+import com.example.core.model.ModelCapability
 import com.example.core.repository.ModelRepository
 import com.example.core.ui.OfflineShieldBadge
 import com.example.ui.theme.CyanTertiary
@@ -79,6 +90,7 @@ import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.IndigoPrimaryLight
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.VioletSecondary
+import com.example.ui.theme.WarningAmber
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -113,6 +125,8 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
     private val _downloadingModelIds = MutableStateFlow<Set<String>>(emptySet())
     val downloadingModelIds: StateFlow<Set<String>> = _downloadingModelIds.asStateFlow()
 
+    private val installJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+
     val availableStorageMb: Long get() = DeviceCapabilityDetector.getAvailableStorageMb()
 
     init {
@@ -122,7 +136,7 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
     /** Attempts a real install. Honestly reports back when no downloadable model source exists yet. */
     fun installModel(modelId: String) {
         if (modelId in _downloadingModelIds.value) return
-        viewModelScope.launch {
+        installJobs[modelId] = viewModelScope.launch {
             _downloadingModelIds.value = _downloadingModelIds.value + modelId
             _downloadProgress.value = _downloadProgress.value + (modelId to 0f)
             try {
@@ -137,8 +151,18 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
             } finally {
                 _downloadingModelIds.value = _downloadingModelIds.value - modelId
                 _downloadProgress.value = _downloadProgress.value - modelId
+                installJobs.remove(modelId)
             }
         }
+    }
+
+    /** Real cancellation — stops the in-flight download coroutine. Already-verified sibling files
+     * are left in place so a later retry can resume from there instead of starting over. */
+    fun cancelDownload(modelId: String) {
+        installJobs[modelId]?.cancel()
+        installJobs.remove(modelId)
+        _downloadingModelIds.value = _downloadingModelIds.value - modelId
+        _downloadProgress.value = _downloadProgress.value - modelId
     }
 
     fun deleteModel(modelId: String) {
@@ -184,7 +208,7 @@ fun ModelManagerScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "AI Neural Engine Manager",
+                        text = "MeetMind Intelligence",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -271,26 +295,165 @@ fun ModelManagerScreen(
                 }
             }
 
-            // 2. Models Section Header
+            // 2. Header
             item {
                 Text(
-                    text = "On-Device Speech & LLM Models",
+                    text = "MeetMind's Intelligence",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
             }
 
-            // 3. Model Bento Items
-            items(models, key = { it.id }) { model ->
-                val liveProgress = downloadProgress[model.id]
-                BentoModelItemCard(
-                    model = if (liveProgress != null) model.copy(isDownloading = true, downloadProgress = liveProgress) else model,
-                    isActive = prefs.selectedAsrModelId == model.id,
-                    onSelectActive = { viewModel.selectActiveAsrModel(model.id) },
-                    onInstall = { viewModel.installModel(model.id) },
-                    onDelete = { viewModel.deleteModel(model.id) }
+            // 3. Capability groups — what MeetMind can do, in plain language first. Technical
+            // model details (size, quantization, storage) are one tap away, never dumped up front.
+            CAPABILITY_GROUPS.forEach { group ->
+                val groupModels = models.filter { group.capability in it.capability }
+                if (groupModels.isNotEmpty()) {
+                    item(key = "group_${group.capability}") {
+                        CapabilityGroupCard(
+                            group = group,
+                            models = groupModels.map { model ->
+                                val liveProgress = downloadProgress[model.id]
+                                if (liveProgress != null) model.copy(isDownloading = true, downloadProgress = liveProgress) else model
+                            },
+                            activeModelId = prefs.selectedAsrModelId,
+                            onSelectActive = { viewModel.selectActiveAsrModel(it) },
+                            onInstall = { viewModel.installModel(it) },
+                            onCancel = { viewModel.cancelDownload(it) },
+                            onDelete = { viewModel.deleteModel(it) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class CapabilityGroupInfo(
+    val capability: ModelCapability,
+    val title: String,
+    val plainDescription: String,
+    val icon: ImageVector
+)
+
+private val CAPABILITY_GROUPS = listOf(
+    CapabilityGroupInfo(
+        ModelCapability.TRANSCRIPTION,
+        "Speech Recognition",
+        "Converts your recordings into text — entirely on this device, never sent anywhere.",
+        Icons.Default.RecordVoiceOver
+    ),
+    CapabilityGroupInfo(
+        ModelCapability.DIARIZATION,
+        "Speaker Detection",
+        "Figures out who said what when more than one person is speaking.",
+        Icons.Default.Groups
+    ),
+    CapabilityGroupInfo(
+        ModelCapability.SUMMARIZATION,
+        "Meeting Intelligence & Ask",
+        "Extracts decisions and action items, and answers questions about your recordings — grounded only in what was actually said.",
+        Icons.Default.Psychology
+    )
+)
+
+private enum class CapabilityStatus(val label: String, val color: @Composable () -> Color) {
+    READY("Ready", { SuccessGreen }),
+    DOWNLOADING("Downloading", { IndigoPrimaryLight }),
+    NEEDS_DOWNLOAD("Needs Download", { WarningAmber }),
+    UNAVAILABLE("Unavailable", { CyanTertiary })
+}
+
+private fun statusFor(models: List<AiModelInfo>): CapabilityStatus = when {
+    models.any { it.isDownloading } -> CapabilityStatus.DOWNLOADING
+    models.all { it.isInstalled } -> CapabilityStatus.READY
+    models.any { it.isDownloadable } -> CapabilityStatus.NEEDS_DOWNLOAD
+    else -> CapabilityStatus.UNAVAILABLE
+}
+
+@Composable
+private fun CapabilityGroupCard(
+    group: CapabilityGroupInfo,
+    models: List<AiModelInfo>,
+    activeModelId: String,
+    onSelectActive: (String) -> Unit,
+    onInstall: (String) -> Unit,
+    onCancel: (String) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    var expanded by remember(group.capability) { mutableStateOf(true) }
+    val status = statusFor(models)
+
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = IndigoPrimary.copy(alpha = 0.15f),
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(group.icon, contentDescription = null, tint = IndigoPrimaryLight, modifier = Modifier.size(20.dp))
+                    }
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(group.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = status.color().copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = status.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = status.color(),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = group.plainDescription,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            if (expanded) {
+                Column(
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    models.forEach { model ->
+                        BentoModelItemCard(
+                            model = model,
+                            isActive = activeModelId == model.id,
+                            onSelectActive = { onSelectActive(model.id) },
+                            onInstall = { onInstall(model.id) },
+                            onCancel = { onCancel(model.id) },
+                            onDelete = { onDelete(model.id) }
+                        )
+                    }
+                }
             }
         }
     }
@@ -302,8 +465,11 @@ fun BentoModelItemCard(
     isActive: Boolean,
     onSelectActive: () -> Unit,
     onInstall: () -> Unit,
+    onCancel: () -> Unit = {},
     onDelete: () -> Unit
 ) {
+    var showTechnicalDetails by remember(model.id) { mutableStateOf(false) }
+
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
@@ -315,7 +481,7 @@ fun BentoModelItemCard(
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -326,36 +492,33 @@ fun BentoModelItemCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    if (model.isInstalled && model.capability.contains(com.example.core.model.ModelCapability.TRANSCRIPTION)) {
+                    if (model.isInstalled && model.capability.contains(ModelCapability.TRANSCRIPTION)) {
                         RadioButton(
                             selected = isActive,
                             onClick = onSelectActive,
                             colors = RadioButtonDefaults.colors(selectedColor = IndigoPrimaryLight)
                         )
                     }
-                    Column {
-                        Text(
-                            text = model.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "${model.parameterCount} • ${model.quantization} • ${Formatters.formatBytes(model.sizeBytes)}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    Text(
+                        text = model.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
                 }
 
                 if (model.isDownloading) {
-                    CircularProgressIndicator(
-                        progress = { model.downloadProgress },
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.5.dp,
-                        color = IndigoPrimaryLight
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        CircularProgressIndicator(
+                            progress = { model.downloadProgress },
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.5.dp,
+                            color = IndigoPrimaryLight
+                        )
+                        IconButton(onClick = onCancel, modifier = Modifier.size(28.dp).testTag("model_cancel_${model.id}")) {
+                            Icon(Icons.Default.Close, contentDescription = "Cancel download", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                        }
+                    }
                 } else if (model.isInstalled) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Surface(
@@ -363,14 +526,14 @@ fun BentoModelItemCard(
                             color = SuccessGreen.copy(alpha = 0.15f)
                         ) {
                             Text(
-                                text = "INSTALLED",
-                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                text = "Installed",
+                                style = MaterialTheme.typography.labelSmall,
                                 color = SuccessGreen,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
-                        IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                        IconButton(onClick = onDelete, modifier = Modifier.size(28.dp).testTag("model_delete_${model.id}")) {
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "Delete model",
@@ -385,8 +548,8 @@ fun BentoModelItemCard(
                         color = MaterialTheme.colorScheme.surfaceVariant
                     ) {
                         Text(
-                            text = "NOT YET AVAILABLE",
-                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                            text = "Not yet available",
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -396,11 +559,12 @@ fun BentoModelItemCard(
                     Button(
                         onClick = onInstall,
                         colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("model_install_${model.id}")
                     ) {
                         Icon(Icons.Default.Download, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Get", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Download", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -421,6 +585,50 @@ fun BentoModelItemCard(
                         .clip(RoundedCornerShape(3.dp)),
                     color = IndigoPrimaryLight
                 )
+                Text(
+                    text = "${(model.downloadProgress * 100).toInt()}% of ${Formatters.formatBytes(model.sizeBytes)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Row(
+                modifier = Modifier.clickable { showTechnicalDetails = !showTechnicalDetails },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = if (showTechnicalDetails) "Hide technical details" else "Technical details",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = IndigoPrimaryLight,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Icon(
+                    imageVector = if (showTechnicalDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = IndigoPrimaryLight,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            if (showTechnicalDetails) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "${model.parameterCount} parameters • ${model.quantization} • ${Formatters.formatBytes(model.sizeBytes)} on disk",
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = model.version,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Stored on-device only, deletable at any time",
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
