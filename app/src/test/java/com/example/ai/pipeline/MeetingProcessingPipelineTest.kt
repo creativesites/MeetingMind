@@ -70,7 +70,7 @@ class MeetingProcessingPipelineTest {
             meetingId = meetingId,
             audioFile = audioFile,
             totalDurationMs = 5000L,
-            onProgress = { _, _ -> }
+            onProgress = { _, _, _ -> }
         )
 
         assertEquals(MeetingStatus.MODEL_REQUIRED.name, result.status)

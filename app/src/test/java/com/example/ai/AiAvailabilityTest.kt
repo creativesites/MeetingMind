@@ -41,7 +41,11 @@ class AiAvailabilityTest {
 
     @Test
     fun `diarizer reports model unavailable rather than guessing speaker turns`() = runBlocking {
-        val result = UnavailableSpeakerDiarizer().diarize(segments = emptyList())
+        val result = UnavailableSpeakerDiarizer().diarize(
+            audioFile = File("nonexistent.m4a"),
+            totalDurationMs = 10_000L,
+            segments = emptyList()
+        )
         assertTrue(result is AiResult.ModelUnavailable)
     }
 

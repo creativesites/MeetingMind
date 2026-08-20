@@ -4,8 +4,8 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.ai.asr.SherpaParakeetSpeechRecognizer
-import com.example.ai.diarization.UnavailableSpeakerDiarizer
-import com.example.ai.llm.UnavailableMeetingIntelligenceEngine
+import com.example.ai.diarization.SherpaSpeakerDiarizer
+import com.example.ai.llm.RealMeetingIntelligenceEngine
 import com.example.ai.pipeline.MeetingProcessingPipeline
 import com.example.ai.vad.SileroVadDetector
 import com.example.core.database.MeetMindDatabase
@@ -26,9 +26,11 @@ import org.robolectric.annotation.Config
  * 2. [MeetingProcessingPipeline], constructed the exact way every real call site in the app
  *    constructs it (context + database only, everything else defaulted), really ends up holding
  *    [SileroVadDetector] / [SherpaParakeetSpeechRecognizer] instances for VAD/ASR — both local,
- *    on-device implementations — and not anything reaching a cloud endpoint. Diarization and
- *    meeting intelligence remain [UnavailableSpeakerDiarizer] / [UnavailableMeetingIntelligenceEngine]
- *    in this phase (out of scope — see docs/AI_ARCHITECTURE.md "Critical Non-Goals").
+ *    on-device implementations. As of Phase 2, diarization and meeting intelligence are also
+ *    real local implementations — [SherpaSpeakerDiarizer] (sherpa-onnx) and
+ *    [RealMeetingIntelligenceEngine] (MediaPipe LlmInference) — and neither reaches a cloud
+ *    endpoint; both honestly self-report AiResult.ModelUnavailable until their models are
+ *    installed. See docs/AI_ARCHITECTURE.md.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -61,7 +63,7 @@ class PrivacyNoCloudPathTest {
     }
 
     @Test
-    fun `MeetingProcessingPipeline really defaults to local SileroVad and SherpaParakeet implementations`() {
+    fun `MeetingProcessingPipeline really defaults to local sherpa-onnx and MediaPipe implementations`() {
         val context: Context = ApplicationProvider.getApplicationContext()
         val pipeline = MeetingProcessingPipeline(context, database)
 
@@ -72,15 +74,19 @@ class PrivacyNoCloudPathTest {
 
         val vadInstance = vadField.get(pipeline)
         val asrInstance = asrField.get(pipeline)
+        val diarizerInstance = diarizerField.get(pipeline)
+        val llmInstance = llmField.get(pipeline)
 
         assertEquals(SileroVadDetector::class.java, vadInstance?.javaClass)
         assertEquals(SherpaParakeetSpeechRecognizer::class.java, asrInstance?.javaClass)
-        assertEquals(UnavailableSpeakerDiarizer::class.java, diarizerField.get(pipeline)?.javaClass)
-        assertEquals(UnavailableMeetingIntelligenceEngine::class.java, llmField.get(pipeline)?.javaClass)
+        assertEquals(SherpaSpeakerDiarizer::class.java, diarizerInstance?.javaClass)
+        assertEquals(RealMeetingIntelligenceEngine::class.java, llmInstance?.javaClass)
 
-        // Belt-and-suspenders: neither real default implementation may be a cloud/Gemini class.
+        // Belt-and-suspenders: none of the real default implementations may be a cloud/Gemini class.
         assertFalse(vadInstance!!.javaClass.name.contains("gemini", ignoreCase = true))
         assertFalse(asrInstance!!.javaClass.name.contains("gemini", ignoreCase = true))
+        assertFalse(diarizerInstance!!.javaClass.name.contains("gemini", ignoreCase = true))
+        assertFalse(llmInstance!!.javaClass.name.contains("gemini", ignoreCase = true))
     }
 
     @Test

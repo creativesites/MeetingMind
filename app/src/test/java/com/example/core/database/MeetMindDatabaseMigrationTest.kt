@@ -1,0 +1,150 @@
+package com.example.core.database
+
+import android.content.Context
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import androidx.test.core.app.ApplicationProvider
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/**
+ * Verifies [MeetMindDatabase.MIGRATION_1_2] transforms the real v1 on-device schema correctly,
+ * without relying on Room's schema-export testing artifact (this project keeps
+ * `exportSchema = false`). Builds a minimal v1 database with the framework SQLite helper
+ * directly, runs the real migration object against it, then inspects the resulting schema via
+ * `PRAGMA table_info`. This is schema-shape verification, not a full Room round-trip — the
+ * broader Room-backed test suite (e.g. [com.example.ai.pipeline.MeetingProcessingPipelineIntegrationTest])
+ * separately exercises the post-migration entities end-to-end.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class MeetMindDatabaseMigrationTest {
+
+    private lateinit var helper: SupportSQLiteOpenHelper
+
+    private fun columnNames(db: SupportSQLiteDatabase, table: String): Set<String> {
+        val names = mutableSetOf<String>()
+        db.query("PRAGMA table_info($table)").use { cursor ->
+            val nameIndex = cursor.getColumnIndex("name")
+            while (cursor.moveToNext()) {
+                names.add(cursor.getString(nameIndex))
+            }
+        }
+        return names
+    }
+
+    private fun tableExists(db: SupportSQLiteDatabase, table: String): Boolean {
+        db.query("SELECT name FROM sqlite_master WHERE type='table' AND name=?", arrayOf(table)).use { cursor ->
+            return cursor.count > 0
+        }
+    }
+
+    @After
+    fun tearDown() {
+        helper.close()
+    }
+
+    private fun openV1Database(): SupportSQLiteDatabase {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(null) // in-memory
+            .callback(object : SupportSQLiteOpenHelper.Callback(1) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    db.execSQL("CREATE TABLE speakers (id TEXT NOT NULL PRIMARY KEY, meetingId TEXT NOT NULL, originalLabel TEXT NOT NULL, customName TEXT NOT NULL, colorHex TEXT NOT NULL)")
+                    db.execSQL("CREATE TABLE action_items (id TEXT NOT NULL PRIMARY KEY, meetingId TEXT NOT NULL, task TEXT NOT NULL, assignee TEXT NOT NULL, deadline TEXT NOT NULL, confidence REAL NOT NULL, isCompleted INTEGER NOT NULL, sourceTimestampMs INTEGER)")
+                    db.execSQL("CREATE TABLE decisions (id TEXT NOT NULL PRIMARY KEY, meetingId TEXT NOT NULL, text TEXT NOT NULL, confidence REAL NOT NULL, timestampMs INTEGER)")
+                    db.execSQL("CREATE TABLE questions (id TEXT NOT NULL PRIMARY KEY, meetingId TEXT NOT NULL, text TEXT NOT NULL, resolved INTEGER NOT NULL, answer TEXT, timestampMs INTEGER)")
+                    db.execSQL("CREATE TABLE ai_models (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, capabilities TEXT NOT NULL, filesJson TEXT NOT NULL, minimumRamMb INTEGER NOT NULL, recommendedRamMb INTEGER NOT NULL, version TEXT NOT NULL, isInstalled INTEGER NOT NULL, isDownloading INTEGER NOT NULL, downloadProgress REAL NOT NULL, description TEXT NOT NULL, parameterCount TEXT NOT NULL, quantization TEXT NOT NULL)")
+                    db.execSQL("CREATE TABLE processing_jobs (id TEXT NOT NULL PRIMARY KEY, meetingId TEXT NOT NULL, meetingTitle TEXT NOT NULL, currentStep TEXT NOT NULL, progressPercent INTEGER NOT NULL, isCompleted INTEGER NOT NULL, isFailed INTEGER NOT NULL, errorMessage TEXT, startedAt INTEGER NOT NULL)")
+                    // Seed one real speaker row to prove existing on-device data survives the migration.
+                    db.execSQL("INSERT INTO speakers (id, meetingId, originalLabel, customName, colorHex) VALUES ('spk_1', 'm1', 'Speaker 1', 'Winston', '#3B82F6')")
+                }
+
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            })
+            .build()
+        helper = FrameworkSQLiteOpenHelperFactory().create(configuration)
+        return helper.writableDatabase
+    }
+
+    @Test
+    fun `migration adds speakerIndex and confidence columns to speakers without losing existing rows`() {
+        val db = openV1Database()
+
+        MeetMindDatabase.MIGRATION_1_2.migrate(db)
+
+        val columns = columnNames(db, "speakers")
+        assertTrue(columns.contains("speakerIndex"))
+        assertTrue(columns.contains("confidence"))
+        db.query("SELECT customName FROM speakers WHERE id = 'spk_1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Winston", cursor.getString(0))
+        }
+    }
+
+    @Test
+    fun `migration rebuilds action_items with nullable confidence and sourceSegmentIdsJson`() {
+        val db = openV1Database()
+
+        MeetMindDatabase.MIGRATION_1_2.migrate(db)
+
+        val columns = columnNames(db, "action_items")
+        assertTrue(columns.contains("assigneeSpeakerId"))
+        assertTrue(columns.contains("assigneeName"))
+        assertTrue(columns.contains("sourceSegmentIdsJson"))
+        assertTrue("Old fixed 'assignee' column must be gone after the rebuild", !columns.contains("assignee"))
+        // A NOT NULL confidence column would reject this insert; nullable is what real (non-fabricated) confidence requires.
+        db.execSQL("INSERT INTO action_items (id, meetingId, task, isCompleted) VALUES ('a1', 'm1', 'Do the thing', 0)")
+    }
+
+    @Test
+    fun `migration rebuilds decisions with a type column and nullable confidence`() {
+        val db = openV1Database()
+
+        MeetMindDatabase.MIGRATION_1_2.migrate(db)
+
+        val columns = columnNames(db, "decisions")
+        assertTrue(columns.contains("type"))
+        assertTrue(columns.contains("sourceSegmentIdsJson"))
+        assertTrue(!columns.contains("timestampMs"))
+    }
+
+    @Test
+    fun `migration rebuilds questions with askedBySpeakerId`() {
+        val db = openV1Database()
+
+        MeetMindDatabase.MIGRATION_1_2.migrate(db)
+
+        val columns = columnNames(db, "questions")
+        assertTrue(columns.contains("askedBySpeakerId"))
+        assertTrue(columns.contains("sourceSegmentIdsJson"))
+    }
+
+    @Test
+    fun `migration creates the new follow_ups table`() {
+        val db = openV1Database()
+
+        MeetMindDatabase.MIGRATION_1_2.migrate(db)
+
+        assertTrue(tableExists(db, "follow_ups"))
+        val columns = columnNames(db, "follow_ups")
+        assertTrue(columns.contains("ownerSpeakerId"))
+        assertTrue(columns.contains("deadline"))
+    }
+
+    @Test
+    fun `migration adds contextLengthTokens to ai_models and stage to processing_jobs`() {
+        val db = openV1Database()
+
+        MeetMindDatabase.MIGRATION_1_2.migrate(db)
+
+        assertTrue(columnNames(db, "ai_models").contains("contextLengthTokens"))
+        assertTrue(columnNames(db, "processing_jobs").contains("stage"))
+    }
+}
