@@ -6,6 +6,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,6 +38,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.GraphicEq
@@ -373,7 +376,45 @@ fun MeetingDetailScreen(
     var renameSpeakerTargetId by remember { mutableStateOf("") }
     var renameSpeakerText by remember { mutableStateOf("") }
     var showAddActionDialog by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+
+    var pendingExportContentType by remember { mutableStateOf<com.example.core.export.ExportContentType?>(null) }
+    fun writeExport(uri: android.net.Uri?, format: com.example.core.export.ExportFormat) {
+        val m = meeting ?: return
+        val contentType = pendingExportContentType ?: return
+        if (uri == null) return
+        context.contentResolver.openOutputStream(uri)?.use { out ->
+            com.example.core.export.ExportManager.write(
+                format = format,
+                contentType = contentType,
+                meeting = m,
+                segments = transcript.segments,
+                decisions = decisions,
+                actionItems = actionItems,
+                summaryText = m.summaryPreview,
+                out = out
+            )
+        }
+        Toast.makeText(context, "Saved ${contentType.displayName} as ${format.displayName}", Toast.LENGTH_SHORT).show()
+    }
+    val createMarkdownLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { writeExport(it, com.example.core.export.ExportFormat.MARKDOWN) }
+    val createCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { writeExport(it, com.example.core.export.ExportFormat.CSV) }
+    val createPdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { writeExport(it, com.example.core.export.ExportFormat.PDF) }
+    val createDocxLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(com.example.core.export.ExportFormat.DOCX.mimeType)) { writeExport(it, com.example.core.export.ExportFormat.DOCX) }
+
+    fun startExport(contentType: com.example.core.export.ExportContentType, format: com.example.core.export.ExportFormat) {
+        pendingExportContentType = contentType
+        showExportDialog = false
+        val baseName = (meeting?.title ?: "recording").take(40).ifBlank { "recording" }
+        val fileName = "${baseName}_${contentType.name.lowercase()}.${format.extension}"
+        when (format) {
+            com.example.core.export.ExportFormat.MARKDOWN -> createMarkdownLauncher.launch(fileName)
+            com.example.core.export.ExportFormat.CSV -> createCsvLauncher.launch(fileName)
+            com.example.core.export.ExportFormat.PDF -> createPdfLauncher.launch(fileName)
+            com.example.core.export.ExportFormat.DOCX -> createDocxLauncher.launch(fileName)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -480,6 +521,15 @@ fun MeetingDetailScreen(
                                 val m = meeting ?: return@DropdownMenuItem
                                 val path = m.audioFilePath ?: return@DropdownMenuItem
                                 ShareHelper.shareAudio(context, java.io.File(path), m.title)
+                            }
+                        )
+                        androidx.compose.material3.HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Export…") },
+                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                showExportDialog = true
                             }
                         )
                     }
@@ -739,6 +789,13 @@ fun MeetingDetailScreen(
                     Text("Cancel")
                 }
             }
+        )
+    }
+
+    if (showExportDialog) {
+        com.example.core.ui.ExportDialog(
+            onDismiss = { showExportDialog = false },
+            onExport = { contentType, format -> startExport(contentType, format) }
         )
     }
 }
