@@ -101,8 +101,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.ai.llm.MediaPipeLanguageModel
 import com.example.ai.llm.RealMeetingIntelligenceEngine
 import com.example.ai.modelmanagement.ModelCatalog
-import com.example.core.audio.AudioPlayerManager
-import com.example.core.audio.AudioPlayerState
+import com.example.core.audio.PlaybackController
+import com.example.core.audio.PlaybackPhase
+import com.example.core.audio.PlaybackState
 import com.example.core.common.Formatters
 import com.example.core.database.MeetMindDatabase
 import com.example.core.domain.AskMeetingUseCase
@@ -153,7 +154,25 @@ class MeetingDetailViewModel(
             contextLengthTokens = ModelCatalog.qwen25_1_5bInstruct.contextLengthTokens ?: 4096
         )
     )
-    val audioPlayer = AudioPlayerManager(application)
+    /** All playback is owned by the single app-level [PlaybackController] — never a per-screen player. */
+    val playbackState: StateFlow<PlaybackState> = PlaybackController.state
+
+    fun playAudio(file: File) {
+        PlaybackController.play(getApplication(), meetingId, meeting.value?.title ?: "Recording", file)
+    }
+
+    fun togglePlayPause() = PlaybackController.togglePlayPause()
+    fun seekPlayback(positionMs: Long) = PlaybackController.seekTo(positionMs)
+
+    /** Used by "jump to timestamp" actions (transcript/decisions/action items). Loads this recording into the shared player if it isn't already, then seeks and plays. */
+    fun jumpToTimestamp(positionMs: Long) {
+        val path = meeting.value?.audioFilePath
+        if (PlaybackController.state.value.recordingId != meetingId && path != null) {
+            playAudio(File(path))
+        }
+        PlaybackController.seekTo(positionMs)
+        if (!PlaybackController.state.value.isPlaying) PlaybackController.togglePlayPause()
+    }
 
     private val _asrModelInstalled = MutableStateFlow(
         modelStorage.isInstalled(com.example.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8.id)
@@ -208,24 +227,8 @@ class MeetingDetailViewModel(
         initialValue = emptyList()
     )
 
-    val playerState: StateFlow<AudioPlayerState> = audioPlayer.playerState
-
     private val _isAnswering = MutableStateFlow(false)
     val isAnswering: StateFlow<Boolean> = _isAnswering.asStateFlow()
-
-    init {
-        viewModelScope.launch {
-            meeting.collect { m ->
-                val path = m?.audioFilePath
-                if (path != null && audioPlayer.playerState.value.loadedFile == null) {
-                    val file = File(path)
-                    if (file.exists()) {
-                        audioPlayer.loadAudio(file)
-                    }
-                }
-            }
-        }
-    }
 
     fun updateTitle(newTitle: String) {
         viewModelScope.launch {
@@ -322,10 +325,8 @@ class MeetingDetailViewModel(
         }
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        audioPlayer.release()
-    }
+    // Deliberately no onCleared() playback cleanup — playback is owned by PlaybackController /
+    // PlaybackService, not this ViewModel, and must keep running after this screen is destroyed.
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -356,7 +357,9 @@ fun MeetingDetailScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val playerState by viewModel.playerState.collectAsState()
+    val playbackState by viewModel.playbackState.collectAsState()
+    val isThisRecordingActive = playbackState.recordingId == meeting?.id
+    LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
     val isAnswering by viewModel.isAnswering.collectAsState()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -450,12 +453,22 @@ fun MeetingDetailScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Bento Audio Player Card
-            if (playerState.durationMs > 0L) {
+            // Bento Audio Player Card — reflects the one shared playback session, not a
+            // screen-owned player. Shows real live progress only when this recording is the one
+            // actually loaded; otherwise a simple "Play" affordance that loads it into the
+            // shared session (replacing whatever else was loaded, never running alongside it).
+            val audioPath = meeting?.audioFilePath
+            if (audioPath != null) {
                 BentoAudioPlayerCard(
-                    playerState = playerState,
-                    onPlayPause = { viewModel.audioPlayer.togglePlayPause() },
-                    onSeek = { viewModel.audioPlayer.seekTo(it) }
+                    playbackState = if (isThisRecordingActive) playbackState else PlaybackState(),
+                    onPlayPause = {
+                        if (isThisRecordingActive) {
+                            viewModel.togglePlayPause()
+                        } else {
+                            viewModel.playAudio(File(audioPath))
+                        }
+                    },
+                    onSeek = { viewModel.seekPlayback(it) }
                 )
             }
 
@@ -544,7 +557,7 @@ fun MeetingDetailScreen(
                 )
                 1 -> TranscriptTab(
                     segments = transcript.segments,
-                    onJumpToTimestamp = { viewModel.audioPlayer.seekTo(it); viewModel.audioPlayer.play() },
+                    onJumpToTimestamp = { viewModel.jumpToTimestamp(it) },
                     onRenameSpeaker = { id, name ->
                         renameSpeakerTargetId = id
                         renameSpeakerText = name
@@ -557,14 +570,14 @@ fun MeetingDetailScreen(
                     onToggle = { viewModel.toggleActionItem(it) },
                     onDelete = { viewModel.deleteActionItem(it) },
                     onAddClick = { showAddActionDialog = true },
-                    onJumpToTimestamp = { viewModel.audioPlayer.seekTo(it); viewModel.audioPlayer.play() }
+                    onJumpToTimestamp = { viewModel.jumpToTimestamp(it) }
                 )
-                3 -> DecisionsTab(decisions = decisions, questions = questions, segments = transcript.segments, onJumpToTimestamp = { viewModel.audioPlayer.seekTo(it); viewModel.audioPlayer.play() })
+                3 -> DecisionsTab(decisions = decisions, questions = questions, segments = transcript.segments, onJumpToTimestamp = { viewModel.jumpToTimestamp(it) })
                 4 -> AskAiTab(
                     chatMessages = chatMessages,
                     isAnswering = isAnswering,
                     onSendQuestion = { viewModel.askQuestion(it) },
-                    onJumpToTimestamp = { viewModel.audioPlayer.seekTo(it); viewModel.audioPlayer.play() }
+                    onJumpToTimestamp = { viewModel.jumpToTimestamp(it) }
                 )
             }
         }
@@ -690,10 +703,11 @@ fun MeetingDetailScreen(
 
 @Composable
 fun BentoAudioPlayerCard(
-    playerState: AudioPlayerState,
+    playbackState: PlaybackState,
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit
 ) {
+    val playerState = playbackState
     Card(
         shape = RoundedCornerShape(0.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
@@ -712,18 +726,27 @@ fun BentoAudioPlayerCard(
                         .clip(CircleShape)
                         .background(IndigoPrimary)
                 ) {
-                    Icon(
-                        imageVector = if (playerState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (playerState.isPlaying) "Pause" else "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    if (playerState.phase == PlaybackPhase.LOADING) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (playerState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (playerState.isPlaying) "Pause" else "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
 
                 Slider(
-                    value = playerState.currentPositionMs.toFloat(),
+                    value = playerState.positionMs.toFloat(),
                     onValueChange = { onSeek(it.toLong()) },
                     valueRange = 0f..playerState.durationMs.toFloat().coerceAtLeast(1f),
+                    enabled = playerState.canSeek,
                     colors = SliderDefaults.colors(
                         thumbColor = IndigoPrimaryLight,
                         activeTrackColor = IndigoPrimaryLight
@@ -734,7 +757,7 @@ fun BentoAudioPlayerCard(
                 )
 
                 Text(
-                    text = "${Formatters.formatDurationHms(playerState.currentPositionMs)} / ${Formatters.formatDurationHms(playerState.durationMs)}",
+                    text = "${Formatters.formatDurationHms(playerState.positionMs)} / ${Formatters.formatDurationHms(playerState.durationMs)}",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

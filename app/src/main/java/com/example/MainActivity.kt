@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -17,12 +18,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.core.audio.PlaybackController
+import com.example.core.ui.MiniPlayerBar
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.core.datastore.AppPreferencesState
@@ -95,6 +100,17 @@ fun MeetMindApp() {
 
     val startRoute = if (prefsState?.onboardingCompleted == true) Routes.HOME else Routes.ONBOARDING
 
+    LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
+    val playbackState by PlaybackController.state.collectAsState()
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
+    // Suppress the mini-player on the detail screen for the exact recording that's playing —
+    // that screen already shows full playback controls, so this would just be a duplicate.
+    val isOnActiveRecordingDetail = playbackState.recordingId != null &&
+        currentRoute == Routes.MEETING_DETAIL &&
+        currentBackStackEntry?.arguments?.getString("meetingId") == playbackState.recordingId
+
+    Box(modifier = Modifier.fillMaxSize()) {
     NavHost(
         navController = navController,
         startDestination = startRoute
@@ -248,5 +264,18 @@ fun MeetMindApp() {
                 onNavigateBack = { navController.popBackStack() }
             )
         }
+    }
+
+    if (playbackState.isActive && !isOnActiveRecordingDetail) {
+        MiniPlayerBar(
+            state = playbackState,
+            onTogglePlayPause = { PlaybackController.togglePlayPause() },
+            onStop = { PlaybackController.stop() },
+            onOpen = {
+                playbackState.recordingId?.let { navController.navigate(Routes.meetingDetailRoute(it)) }
+            },
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
+    }
     }
 }

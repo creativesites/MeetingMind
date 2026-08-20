@@ -111,6 +111,13 @@ dependencies {
   // On-device LLM runtime for local Meeting Intelligence (see docs/AI_ARCHITECTURE.md). Runs a
   // downloaded-on-demand .task model fully offline; never makes a network call itself.
   implementation(libs.mediapipe.tasks.genai)
+  // Global playback architecture: a single MediaSessionService-backed player, exposing standard
+  // Android media controls (notification/lock-screen/Bluetooth). See docs/ARCHITECTURE.md.
+  implementation(libs.androidx.media3.session)
+  implementation(libs.androidx.media3.exoplayer)
+  // Background AI processing survives app minimization/backgrounding — see MeetingProcessingWorker.
+  implementation(libs.androidx.work.runtime.ktx)
+  testImplementation(libs.androidx.work.testing)
   testImplementation(libs.okhttp.mockwebserver)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
