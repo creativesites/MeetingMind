@@ -1,5 +1,47 @@
 package com.example.core.model
 
+/**
+ * What the user is actually capturing. MeetMind is a general-purpose voice capture tool, not a
+ * meeting-only recorder — this drives both UI copy (no hardcoded "Meeting" language) and the
+ * focus guidance given to [com.example.ai.llm.RealMeetingIntelligenceEngine]'s extraction prompt.
+ * [GENERAL] is the default for "Quick Record" when the user skips picking a type.
+ */
+enum class RecordingType(val displayName: String, val shortDescription: String) {
+    MEETING("Meeting", "Track decisions and action items"),
+    INTERVIEW("Interview", "Capture questions, answers, and notable quotes"),
+    LECTURE("Lecture", "Capture key concepts and structure"),
+    VOICE_MEMO("Voice Memo", "A quick personal note"),
+    IDEA("Idea", "A single thought worth keeping"),
+    BRAINSTORM("Brainstorm", "Capture generated ideas, even unfinished ones"),
+    DICTATION("Dictation", "Clean transcription, minimal analysis"),
+    CONVERSATION("Conversation", "General conversation summary"),
+    RESEARCH("Research", "Notes and findings"),
+    JOURNAL("Journal", "A personal, private entry"),
+    CUSTOM("Custom", "Tell MeetMind what to focus on"),
+    GENERAL("General", "No specific focus");
+
+    /**
+     * Additional guidance appended to the Meeting Intelligence extraction prompt. This only ever
+     * narrows *what to pay attention to* — it never weakens the grounding requirement that the
+     * model may only report what the transcript actually supports. See
+     * [com.example.ai.llm.RealMeetingIntelligenceEngine.buildExtractionPrompt].
+     */
+    fun focusGuidance(): String = when (this) {
+        MEETING -> "This is a meeting. Focus on decisions made, action items assigned, and who is responsible for what."
+        INTERVIEW -> "This is an interview. Focus on the questions asked and the answers given, and note any particularly notable quotes or assessment-relevant statements."
+        LECTURE -> "This is a lecture or class. Focus on the key concepts taught, the structure of the material, and important facts stated — not on decisions or action items, which are unlikely to apply."
+        VOICE_MEMO -> "This is a personal voice memo. Focus on the notes, reminders, or ideas the speaker recorded for themselves."
+        IDEA -> "This is a single recorded idea. Focus on clearly capturing what the idea actually is."
+        BRAINSTORM -> "This is a brainstorming session. Focus on capturing every idea generated, including unfinished or exploratory ones — do not discard an idea just because it wasn't fully resolved."
+        DICTATION -> "This is dictation. Prioritize an accurate, clean transcript over heavy analysis; keep extraction minimal unless the content clearly contains real decisions or action items."
+        CONVERSATION -> "This is a general conversation. Summarize what was actually discussed without forcing it into a formal meeting structure."
+        RESEARCH -> "This is a research recording. Focus on findings, sources, and open questions actually stated."
+        JOURNAL -> "This is a personal journal entry. Focus on summarizing what the speaker actually said, respectfully and without embellishment."
+        CUSTOM -> "" // Replaced by the user's own custom context text, see below.
+        GENERAL -> ""
+    }
+}
+
 data class Meeting(
     val id: String,
     val title: String,
@@ -12,7 +54,10 @@ data class Meeting(
     val language: String = "en",
     val summaryPreview: String? = null,
     val actionItemsCount: Int = 0,
-    val decisionsCount: Int = 0
+    val decisionsCount: Int = 0,
+    val recordingType: RecordingType = RecordingType.GENERAL,
+    /** Free-text focus guidance the user typed for [RecordingType.CUSTOM]. Null otherwise. */
+    val customContext: String? = null
 )
 
 data class TranscriptSegment(

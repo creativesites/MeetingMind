@@ -132,7 +132,12 @@ class MeetingProcessingPipelineIntegrationTest {
     private val fakeIntelligenceEngine = object : MeetingIntelligenceEngine {
         override suspend fun generateTitle(transcript: Transcript, fallback: String) = AiResult.Success("Friday Ship Decision")
 
-        override suspend fun processMeeting(transcript: Transcript, meetingTitle: String) = AiResult.Success(
+        override suspend fun processMeeting(
+            transcript: Transcript,
+            meetingTitle: String,
+            recordingType: com.example.core.model.RecordingType,
+            customContext: String?
+        ) = AiResult.Success(
             MeetingSummary(
                 title = meetingTitle,
                 summary = "The team confirmed the Friday ship date.",

@@ -203,11 +203,17 @@ class MeetingProcessingPipeline(
                 createdAt = existingMeeting.createdAt
             )
 
+            val recordingType = try {
+                com.example.core.model.RecordingType.valueOf(existingMeeting.recordingType)
+            } catch (e: Exception) {
+                com.example.core.model.RecordingType.GENERAL
+            }
+
             val llmStart = System.currentTimeMillis()
             val titleResult = intelligenceEngine.generateTitle(transcriptDomain, existingMeeting.title)
             val generatedTitle = (titleResult as? AiResult.Success)?.value ?: existingMeeting.title
 
-            val summaryResult = intelligenceEngine.processMeeting(transcriptDomain, generatedTitle)
+            val summaryResult = intelligenceEngine.processMeeting(transcriptDomain, generatedTitle, recordingType, existingMeeting.customContext)
             val summary = (summaryResult as? AiResult.Success)?.value
             Log.d(PERF_TAG, "LLM (title+intelligence): ${System.currentTimeMillis() - llmStart}ms")
             // Free the ~1.5GB local LLM allocation as soon as intelligence extraction is done.

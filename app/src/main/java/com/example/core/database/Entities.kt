@@ -20,7 +20,9 @@ data class MeetingEntity(
     val participantCount: Int,
     val language: String,
     val summaryText: String?,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val recordingType: String = "GENERAL",
+    val customContext: String? = null
 )
 
 @Entity(

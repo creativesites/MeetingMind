@@ -3,6 +3,7 @@ package com.example.ai.llm
 import com.example.ai.common.AiResult
 import com.example.core.model.ChatMessage
 import com.example.core.model.MeetingSummary
+import com.example.core.model.RecordingType
 import com.example.core.model.Transcript
 import com.example.core.model.TranscriptSegment
 
@@ -37,7 +38,17 @@ class UnavailableLanguageModel : LanguageModel {
  */
 interface MeetingIntelligenceEngine {
     suspend fun generateTitle(transcript: Transcript, fallback: String): AiResult<String>
-    suspend fun processMeeting(transcript: Transcript, meetingTitle: String): AiResult<MeetingSummary>
+    /**
+     * [recordingType] and [customContext] only ever narrow what the extraction prompt pays
+     * attention to (see [RecordingType.focusGuidance]) — they never weaken the requirement that
+     * every extracted item must be grounded in [transcript].
+     */
+    suspend fun processMeeting(
+        transcript: Transcript,
+        meetingTitle: String,
+        recordingType: RecordingType = RecordingType.GENERAL,
+        customContext: String? = null
+    ): AiResult<MeetingSummary>
     suspend fun askMeeting(
         question: String,
         transcript: Transcript,
@@ -57,7 +68,12 @@ class UnavailableMeetingIntelligenceEngine(
     override suspend fun generateTitle(transcript: Transcript, fallback: String): AiResult<String> =
         AiResult.ModelUnavailable(modelId = "local-llm", message = "No local language model is installed on this device.")
 
-    override suspend fun processMeeting(transcript: Transcript, meetingTitle: String): AiResult<MeetingSummary> =
+    override suspend fun processMeeting(
+        transcript: Transcript,
+        meetingTitle: String,
+        recordingType: RecordingType,
+        customContext: String?
+    ): AiResult<MeetingSummary> =
         AiResult.ModelUnavailable(modelId = "local-llm", message = "No local meeting intelligence model is installed on this device.")
 
     override suspend fun askMeeting(

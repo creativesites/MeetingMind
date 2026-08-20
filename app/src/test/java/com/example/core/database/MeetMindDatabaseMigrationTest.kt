@@ -147,4 +147,58 @@ class MeetMindDatabaseMigrationTest {
         assertTrue(columnNames(db, "ai_models").contains("contextLengthTokens"))
         assertTrue(columnNames(db, "processing_jobs").contains("stage"))
     }
+
+    private fun openV2MeetingsDatabase(): SupportSQLiteDatabase {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(null) // in-memory
+            .callback(object : SupportSQLiteOpenHelper.Callback(2) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        """
+                        CREATE TABLE meetings (
+                            id TEXT NOT NULL PRIMARY KEY,
+                            title TEXT NOT NULL,
+                            createdAt INTEGER NOT NULL,
+                            durationMs INTEGER NOT NULL,
+                            source TEXT NOT NULL,
+                            audioFilePath TEXT,
+                            status TEXT NOT NULL,
+                            participantCount INTEGER NOT NULL,
+                            language TEXT NOT NULL,
+                            summaryText TEXT,
+                            updatedAt INTEGER NOT NULL
+                        )
+                        """.trimIndent()
+                    )
+                    // Seed one real, already-processed meeting to prove it survives the migration untouched.
+                    db.execSQL(
+                        "INSERT INTO meetings (id, title, createdAt, durationMs, source, audioFilePath, status, participantCount, language, summaryText, updatedAt) " +
+                            "VALUES ('m1', 'Quarterly Planning', 1700000000000, 600000, 'LOCAL_RECORDING', '/data/m1.wav', 'READY', 2, 'en', 'Discussed roadmap', 1700000600000)"
+                    )
+                }
+
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            })
+            .build()
+        helper = FrameworkSQLiteOpenHelperFactory().create(configuration)
+        return helper.writableDatabase
+    }
+
+    @Test
+    fun `migration 2 to 3 adds recordingType defaulting to GENERAL and nullable customContext`() {
+        val db = openV2MeetingsDatabase()
+
+        MeetMindDatabase.MIGRATION_2_3.migrate(db)
+
+        val columns = columnNames(db, "meetings")
+        assertTrue(columns.contains("recordingType"))
+        assertTrue(columns.contains("customContext"))
+        db.query("SELECT recordingType, customContext, title FROM meetings WHERE id = 'm1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("GENERAL", cursor.getString(0))
+            assertTrue(cursor.isNull(1))
+            assertEquals("Quarterly Planning", cursor.getString(2))
+        }
+    }
 }

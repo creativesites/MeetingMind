@@ -4,6 +4,7 @@ import com.example.ai.common.AiResult
 import com.example.ai.common.describeFailure
 import com.example.core.model.ChatMessage
 import com.example.core.model.MeetingSummary
+import com.example.core.model.RecordingType
 import com.example.core.model.Transcript
 import com.example.core.model.TranscriptSegment
 import java.util.UUID
@@ -39,7 +40,12 @@ class RealMeetingIntelligenceEngine(
         }
     }
 
-    override suspend fun processMeeting(transcript: Transcript, meetingTitle: String): AiResult<MeetingSummary> {
+    override suspend fun processMeeting(
+        transcript: Transcript,
+        meetingTitle: String,
+        recordingType: RecordingType,
+        customContext: String?
+    ): AiResult<MeetingSummary> {
         if (transcript.segments.isEmpty()) {
             return AiResult.Failed("No transcript is available to analyze.")
         }
@@ -47,6 +53,15 @@ class RealMeetingIntelligenceEngine(
         val speakerNameToId = transcript.segments
             .mapNotNull { seg -> seg.speakerName?.let { it.lowercase() to (seg.speakerId ?: return@mapNotNull null) } }
             .toMap()
+
+        // The user's own focus guidance for CUSTOM always takes precedence over the generic
+        // per-type guidance when both could apply; the grounding rules in buildExtractionPrompt
+        // are never affected by either.
+        val focusGuidance = if (recordingType == RecordingType.CUSTOM && !customContext.isNullOrBlank()) {
+            "The user described what to focus on: \"${customContext.trim()}\". Use this to decide what matters most, but it never overrides the grounding rule above — still only extract what the transcript actually supports."
+        } else {
+            recordingType.focusGuidance()
+        }
 
         val decisions = mutableListOf<com.example.core.model.Decision>()
         val actionItems = mutableListOf<com.example.core.model.ActionItem>()
@@ -57,7 +72,7 @@ class RealMeetingIntelligenceEngine(
 
         for (chunk in chunks) {
             val validSegmentIds = chunk.segments.map { it.id }.toSet()
-            val prompt = buildExtractionPrompt(chunk.segments)
+            val prompt = buildExtractionPrompt(chunk.segments, focusGuidance)
             val result = languageModel.generate(prompt, maxOutputTokens = EXTRACTION_OUTPUT_TOKENS)
             val rawText = (result as? AiResult.Success)?.value ?: continue
             anyChunkSucceeded = true
@@ -132,13 +147,14 @@ class RealMeetingIntelligenceEngine(
         """.trimIndent()
     }
 
-    private fun buildExtractionPrompt(segments: List<TranscriptSegment>): String {
+    private fun buildExtractionPrompt(segments: List<TranscriptSegment>, focusGuidance: String): String {
         val transcriptText = segments.joinToString("\n") { seg ->
             "[${seg.id}] ${seg.speakerName ?: "Unknown speaker"}: ${seg.text}"
         }
+        val focusLine = if (focusGuidance.isNotBlank()) "\n            $focusGuidance\n" else ""
         return """
-            You are analyzing a real meeting transcript excerpt. Extract ONLY information explicitly supported by the transcript below. Never invent names, dates, deadlines, decisions, or commitments that are not actually stated.
-
+            You are analyzing a real transcript excerpt. Extract ONLY information explicitly supported by the transcript below. Never invent names, dates, deadlines, decisions, or commitments that are not actually stated.
+            $focusLine
             Classify every candidate decision carefully:
             - DECISION: the group explicitly agreed on or finalized something.
             - SUGGESTION: something proposed but not confirmed as final.

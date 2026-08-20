@@ -13,6 +13,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,8 +25,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Done
@@ -41,6 +44,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -81,6 +86,7 @@ import com.example.core.database.MeetMindDatabase
 import com.example.core.model.Meeting
 import com.example.core.model.MeetingSource
 import com.example.core.model.MeetingStatus
+import com.example.core.model.RecordingType
 import com.example.core.repository.MeetingRepository
 import com.example.core.ui.OfflineShieldBadge
 import com.example.ui.theme.CyanTertiary
@@ -107,9 +113,13 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private var currentMeetingId: String = UUID.randomUUID().toString()
     private var currentOutputFile: File? = null
     private var meetingTitle: String = "In-Person Discussion"
+    private var recordingType: RecordingType = RecordingType.GENERAL
+    private var customContext: String? = null
 
-    fun startRecording(title: String) {
+    fun startRecording(title: String, recordingType: RecordingType = RecordingType.GENERAL, customContext: String? = null) {
         meetingTitle = title
+        this.recordingType = recordingType
+        this.customContext = customContext
         currentMeetingId = UUID.randomUUID().toString()
         currentOutputFile = recorder.startRecording(currentMeetingId)
         MeetingRecordingService.startService(getApplication(), meetingTitle)
@@ -140,7 +150,9 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                 id = currentMeetingId,
                 title = meetingTitle,
                 source = MeetingSource.LOCAL_RECORDING,
-                audioFilePath = file.absolutePath
+                audioFilePath = file.absolutePath,
+                recordingType = recordingType,
+                customContext = customContext
             )
             onComplete(currentMeetingId, file.absolutePath, finalDuration)
         }
@@ -166,12 +178,21 @@ fun RecordingScreen(
         )
     }
 
+    var typeChosen by remember { mutableStateOf(false) }
+    var selectedType by remember { mutableStateOf(RecordingType.MEETING) }
+    var customContextText by remember { mutableStateOf("") }
+    var meetingTitle by remember { mutableStateOf(RecordingType.MEETING.displayName) }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasAudioPermission = isGranted
         if (isGranted) {
-            viewModel.startRecording("Live Strategy Review")
+            viewModel.startRecording(
+                meetingTitle,
+                selectedType,
+                customContextText.trim().ifBlank { null }.takeIf { selectedType == RecordingType.CUSTOM }
+            )
         }
     }
 
@@ -179,14 +200,37 @@ fun RecordingScreen(
     val amplitude by viewModel.amplitude.collectAsState()
     val durationMs by viewModel.durationMs.collectAsState()
     var showDiscardDialog by remember { mutableStateOf(false) }
-    var meetingTitle by remember { mutableStateOf("Live Strategy Review") }
     var hasStarted by remember { mutableStateOf(false) }
 
-    LaunchedEffect(hasAudioPermission) {
-        if (hasAudioPermission && !hasStarted) {
+    LaunchedEffect(hasAudioPermission, typeChosen) {
+        if (typeChosen && hasAudioPermission && !hasStarted) {
             hasStarted = true
-            viewModel.startRecording(meetingTitle)
+            viewModel.startRecording(
+                meetingTitle,
+                selectedType,
+                customContextText.trim().ifBlank { null }.takeIf { selectedType == RecordingType.CUSTOM }
+            )
         }
+    }
+
+    if (!typeChosen) {
+        RecordingTypePickerScreen(
+            selected = selectedType,
+            customContext = customContextText,
+            onSelect = {
+                selectedType = it
+                meetingTitle = it.displayName
+            },
+            onCustomContextChange = { customContextText = it },
+            onStart = { typeChosen = true },
+            onQuickRecord = {
+                selectedType = RecordingType.GENERAL
+                meetingTitle = "Quick Recording"
+                typeChosen = true
+            },
+            onCancel = onNavigateBack
+        )
+        return
     }
 
     Scaffold(
@@ -332,7 +376,7 @@ fun RecordingScreen(
                                 color = SuccessGreen.copy(alpha = 0.1f)
                             ) {
                                 Text(
-                                    text = "Whisper VAD Active",
+                                    text = "Silero VAD Active",
                                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                                     color = SuccessGreen,
                                     fontWeight = FontWeight.Bold,
@@ -503,6 +547,130 @@ fun RecordingScreen(
                 }
             }
         )
+    }
+}
+
+/**
+ * "What are you recording?" — shown before the mic starts. MeetMind is a general voice-capture
+ * tool, not a meeting-only recorder, so this never forces a choice: Quick Record skips straight to
+ * [RecordingType.GENERAL]. The choice only ever adds focus guidance to the AI extraction prompt
+ * later (see [RecordingType.focusGuidance]) — it never changes what recording itself does.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RecordingTypePickerScreen(
+    selected: RecordingType,
+    customContext: String,
+    onSelect: (RecordingType) -> Unit,
+    onCustomContextChange: (String) -> Unit,
+    onStart: () -> Unit,
+    onQuickRecord: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("What are you recording?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onCancel) {
+                        Icon(Icons.Default.Close, contentDescription = "Cancel")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(20.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "This helps MeetMind know what to pay attention to. You can always skip and just record.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            val types = RecordingType.entries.filter { it != RecordingType.GENERAL }
+            types.chunked(2).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    row.forEach { type ->
+                        RecordingTypeChip(
+                            type = type,
+                            isSelected = selected == type,
+                            onClick = { onSelect(type) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+
+            if (selected == RecordingType.CUSTOM) {
+                OutlinedTextField(
+                    value = customContext,
+                    onValueChange = onCustomContextChange,
+                    label = { Text("What should MeetMind focus on?") },
+                    placeholder = { Text("e.g. Focus on pricing objections and next steps") },
+                    modifier = Modifier.fillMaxWidth().testTag("custom_context_field")
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Button(
+                onClick = onStart,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("record_type_start_btn")
+            ) {
+                Text("Start Recording")
+            }
+            OutlinedButton(
+                onClick = onQuickRecord,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth().testTag("record_type_quick_btn")
+            ) {
+                Text("Quick Record")
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordingTypeChip(
+    type: RecordingType,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (isSelected) IndigoPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) IndigoPrimary else MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = type.displayName,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                color = if (isSelected) IndigoPrimaryLight else MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = type.shortDescription,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2
+            )
+        }
     }
 }
 

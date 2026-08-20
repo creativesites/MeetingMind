@@ -71,7 +71,9 @@ class MeetingRepository(
         id: String = UUID.randomUUID().toString(),
         title: String,
         source: MeetingSource,
-        audioFilePath: String? = null
+        audioFilePath: String? = null,
+        recordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.GENERAL,
+        customContext: String? = null
     ): Meeting = withContext(Dispatchers.IO) {
         val entity = MeetingEntity(
             id = id,
@@ -83,7 +85,9 @@ class MeetingRepository(
             status = MeetingStatus.RECORDING.name,
             participantCount = 1,
             language = "en",
-            summaryText = null
+            summaryText = null,
+            recordingType = recordingType.name,
+            customContext = customContext
         )
         meetingDao.insertMeeting(entity)
         entity.toDomain()
@@ -122,7 +126,9 @@ class MeetingRepository(
             status = try { MeetingStatus.valueOf(status) } catch (e: Exception) { MeetingStatus.READY },
             participantCount = participantCount,
             language = language,
-            summaryPreview = summaryText
+            summaryPreview = summaryText,
+            recordingType = try { com.example.core.model.RecordingType.valueOf(recordingType) } catch (e: Exception) { com.example.core.model.RecordingType.GENERAL },
+            customContext = customContext
         )
     }
 }

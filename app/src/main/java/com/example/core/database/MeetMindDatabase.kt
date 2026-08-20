@@ -22,7 +22,7 @@ import androidx.room.migration.Migration
         ProcessingJobEntity::class,
         ChatMessageEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class MeetMindDatabase : RoomDatabase() {
@@ -128,6 +128,17 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds the Recording Type / custom AI focus context fields (Phase 3A) — existing meetings
+         * default to GENERAL (no fabricated type is inferred for past recordings).
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE meetings ADD COLUMN recordingType TEXT NOT NULL DEFAULT 'GENERAL'")
+                db.execSQL("ALTER TABLE meetings ADD COLUMN customContext TEXT")
+            }
+        }
+
         fun getInstance(context: Context): MeetMindDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -135,7 +146,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

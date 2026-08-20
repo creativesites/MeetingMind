@@ -23,14 +23,20 @@ class StartRecordingUseCase(
     private val audioRecorder: AudioRecorder,
     private val meetingRepository: MeetingRepository
 ) {
-    suspend operator fun invoke(meetingTitle: String = "In-Person Meeting"): Pair<Meeting, File> {
+    suspend operator fun invoke(
+        meetingTitle: String = "In-Person Meeting",
+        recordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.GENERAL,
+        customContext: String? = null
+    ): Pair<Meeting, File> {
         val meetingId = UUID.randomUUID().toString()
         val audioFile = audioRecorder.startRecording(meetingId)
         val meeting = meetingRepository.createInitialMeeting(
             id = meetingId,
             title = meetingTitle,
             source = MeetingSource.LOCAL_RECORDING,
-            audioFilePath = audioFile.absolutePath
+            audioFilePath = audioFile.absolutePath,
+            recordingType = recordingType,
+            customContext = customContext
         )
         return Pair(meeting, audioFile)
     }
