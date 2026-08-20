@@ -378,7 +378,7 @@ fun MeetingDetailScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = meeting?.title ?: "Meeting Details",
+                        text = meeting?.title ?: "Recording Details",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -422,7 +422,7 @@ fun MeetingDetailScreen(
                                 menuExpanded = false
                                 val md = viewModel.generateMarkdownExport()
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("Meeting Summary", md))
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Recording Notes", md))
                                 Toast.makeText(context, "Copied Markdown summary to clipboard", Toast.LENGTH_SHORT).show()
                             }
                         )
@@ -434,10 +434,10 @@ fun MeetingDetailScreen(
                                 val md = viewModel.generateMarkdownExport()
                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, meeting?.title ?: "Meeting Notes")
+                                    putExtra(Intent.EXTRA_SUBJECT, meeting?.title ?: "Recording Notes")
                                     putExtra(Intent.EXTRA_TEXT, md)
                                 }
-                                context.startActivity(Intent.createChooser(intent, "Share Meeting Notes"))
+                                context.startActivity(Intent.createChooser(intent, "Share Recording Notes"))
                             }
                         )
                     }
@@ -947,8 +947,8 @@ fun BentoOverviewTab(
                         Text("${meeting.participantCount} detected", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Inference", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("100% On-Device", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = SuccessGreen)
+                        Text("Type", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(meeting.recordingType.displayName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }

@@ -249,7 +249,7 @@ fun HomeScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Search,
-                            contentDescription = "Search Meetings",
+                            contentDescription = "Search Recordings",
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -309,8 +309,8 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(Icons.Default.Mic, contentDescription = "Record Meeting", tint = Color.White)
-                    Text("Start Meeting", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Icon(Icons.Default.Mic, contentDescription = "Start Recording", tint = Color.White)
+                    Text("Record", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
             }
         }
@@ -374,7 +374,7 @@ fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Meeting Intelligence Feed",
+                            text = "Your Recordings",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground
@@ -542,13 +542,13 @@ fun BentoHeroCard(
                 // Main Title & Subtitle
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "Instant Meeting Transcription",
+                        text = "Capture Anything, Privately",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Tap to record in-person meetings with live speech recognition and speaker separation on your device.",
+                        text = "Meetings, interviews, lectures, or a quick voice memo — record and get a transcript with live speech recognition on your device.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 18.sp
@@ -923,13 +923,20 @@ fun BentoMeetingCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
+                                text = meeting.recordingType.displayName,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(text = "•", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
                                 text = Formatters.formatDurationSummary(meeting.durationMs),
                                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(text = "•", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
-                                text = "${meeting.participantCount} speakers",
+                                text = Formatters.formatDateRelative(meeting.createdAt),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -954,7 +961,7 @@ fun BentoMeetingCard(
                         onDismissRequest = { menuExpanded = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Delete Meeting", color = MaterialTheme.colorScheme.error) },
+                            text = { Text("Delete Recording", color = MaterialTheme.colorScheme.error) },
                             leadingIcon = {
                                 Icon(
                                     Icons.Default.Delete,
@@ -1072,19 +1079,52 @@ fun BentoEmptyStateCard(
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Your Workspace is Ready",
+                text = "Capture your first thought.",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Record live in-person conversations or import pre-recorded media to generate automatic offline summaries and speaker transcripts.",
+                text = "Record a meeting, interview, lecture, or a quick voice memo — or import pre-recorded media — to get an automatic offline transcript and summary.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 lineHeight = 18.sp
             )
+            Spacer(modifier = Modifier.height(20.dp))
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = IndigoPrimary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onRecordClick() }
+                    .testTag("empty_state_record_btn")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Start Recording", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .clickable { onImportClick() }
+                    .padding(8.dp)
+                    .testTag("empty_state_import_btn"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(Icons.Default.FileUpload, contentDescription = null, tint = IndigoPrimaryLight, modifier = Modifier.size(16.dp))
+                Text("Or import a recording", style = MaterialTheme.typography.labelMedium, color = IndigoPrimaryLight, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
