@@ -305,7 +305,7 @@ fun RecordingScreen(
                         )
 
                         Text(
-                            text = "MeetMind processes all speech 100% on your device with no internet connection needed. Please grant microphone access to capture real-time audio.",
+                            text = "MeetingMind processes all speech 100% on your device with no internet connection needed. Please grant microphone access to capture real-time audio.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -551,7 +551,7 @@ fun RecordingScreen(
 }
 
 /**
- * "What are you recording?" — shown before the mic starts. MeetMind is a general voice-capture
+ * "What are you recording?" — shown before the mic starts. MeetingMind is a general voice-capture
  * tool, not a meeting-only recorder, so this never forces a choice: Quick Record skips straight to
  * [RecordingType.GENERAL]. The choice only ever adds focus guidance to the AI extraction prompt
  * later (see [RecordingType.focusGuidance]) — it never changes what recording itself does.
@@ -589,7 +589,7 @@ private fun RecordingTypePickerScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = "This helps MeetMind know what to pay attention to. You can always skip and just record.",
+                text = "This helps MeetingMind know what to pay attention to. You can always skip and just record.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -616,7 +616,7 @@ private fun RecordingTypePickerScreen(
                 OutlinedTextField(
                     value = customContext,
                     onValueChange = onCustomContextChange,
-                    label = { Text("What should MeetMind focus on?") },
+                    label = { Text("What should MeetingMind focus on?") },
                     placeholder = { Text("e.g. Focus on pricing objections and next steps") },
                     modifier = Modifier.fillMaxWidth().testTag("custom_context_field")
                 )

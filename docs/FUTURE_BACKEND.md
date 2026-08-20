@@ -1,9 +1,9 @@
-# MeetMind — Future Backend & Cloud Architecture
+# MeetingMind — Future Backend & Cloud Architecture
 
-This document describes the planned cloud meeting agent and cross-device sync architecture for subsequent phases of MeetMind. **None of this is implemented today.** It exists so the current MVP architecture doesn't have to be reworked later — see `MeetingSource.REMOTE_BOT` and `core/future/FutureMeetingInterfaces.kt` in the codebase, which are inert placeholders for exactly this phase. For what is actually implemented in the MVP right now, see `docs/AUDIT.md`; for the local-first AI target this Phase 1 assumes, see `docs/AI_ARCHITECTURE.md`.
+This document describes the planned cloud meeting agent and cross-device sync architecture for subsequent phases of MeetingMind. **None of this is implemented today.** It exists so the current MVP architecture doesn't have to be reworked later — see `MeetingSource.REMOTE_BOT` and `core/future/FutureMeetingInterfaces.kt` in the codebase, which are inert placeholders for exactly this phase. For what is actually implemented in the MVP right now, see `docs/AUDIT.md`; for the local-first AI target this Phase 1 assumes, see `docs/AI_ARCHITECTURE.md`.
 
 ## 1. Architectural Philosophy
-In Phase 1 (MVP), MeetMind is **100% local-first**: all audio recording, ASR transcription, speaker diarization, NLP summarization, action item extraction, embeddings, and vector RAG run on the device.
+In Phase 1 (MVP), MeetingMind is **100% local-first**: all audio recording, ASR transcription, speaker diarization, NLP summarization, action item extraction, embeddings, and vector RAG run on the device.
 
 In future phases, users can optionally opt-in to cloud-assisted meeting bots and workflow sync while preserving on-device privacy controls.
 

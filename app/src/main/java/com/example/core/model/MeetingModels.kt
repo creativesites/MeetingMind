@@ -1,7 +1,7 @@
 package com.example.core.model
 
 /**
- * What the user is actually capturing. MeetMind is a general-purpose voice capture tool, not a
+ * What the user is actually capturing. MeetingMind is a general-purpose voice capture tool, not a
  * meeting-only recorder — this drives both UI copy (no hardcoded "Meeting" language) and the
  * focus guidance given to [com.example.ai.llm.RealMeetingIntelligenceEngine]'s extraction prompt.
  * [GENERAL] is the default for "Quick Record" when the user skips picking a type.
@@ -17,7 +17,7 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
     CONVERSATION("Conversation", "General conversation summary"),
     RESEARCH("Research", "Notes and findings"),
     JOURNAL("Journal", "A personal, private entry"),
-    CUSTOM("Custom", "Tell MeetMind what to focus on"),
+    CUSTOM("Custom", "Tell MeetingMind what to focus on"),
     GENERAL("General", "No specific focus");
 
     /**

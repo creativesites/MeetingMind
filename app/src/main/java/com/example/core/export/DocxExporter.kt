@@ -21,7 +21,7 @@ object DocxExporter {
     private fun writeHeader(doc: DocxBody, meeting: Meeting) {
         doc.title(meeting.title)
         doc.meta(
-            "MeetMind  •  ${Formatters.formatDateRelative(meeting.createdAt)}  •  " +
+            "MeetingMind  •  ${Formatters.formatDateRelative(meeting.createdAt)}  •  " +
                 "${Formatters.formatDurationHms(meeting.durationMs)}  •  ${meeting.recordingType.displayName}"
         )
     }

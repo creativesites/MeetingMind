@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  MeetMind is local-first and privacy-first: recordings, transcripts, and AI-generated content
+  MeetingMind is local-first and privacy-first: recordings, transcripts, and AI-generated content
   never leave the device except when the user explicitly shares or exports them (see
   docs/DATA_SAFETY.md). Excluding them here keeps that promise consistent even with Android's
   otherwise-automatic cloud backup / device-transfer — a user's recordings should not silently end

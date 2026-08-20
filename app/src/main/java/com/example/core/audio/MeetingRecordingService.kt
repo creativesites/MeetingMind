@@ -159,7 +159,7 @@ class MeetingRecordingService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "MeetMind Active Recording",
+                "MeetingMind Active Recording",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Shows persistent status while recording a meeting in background or locked screen"
@@ -185,7 +185,7 @@ class MeetingRecordingService : Service() {
         val statusText = if (isPaused) "Recording paused (offline)" else "Continuous recording active • Tap to open"
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("MeetMind • $currentTitle")
+            .setContentTitle("MeetingMind • $currentTitle")
             .setContentText(statusText)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)

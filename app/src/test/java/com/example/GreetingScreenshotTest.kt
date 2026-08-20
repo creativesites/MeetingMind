@@ -24,7 +24,7 @@ class GreetingScreenshotTest {
   fun greeting_screenshot() {
     composeTestRule.setContent {
       MeetMindTheme {
-        Text("MeetMind Offline AI Notetaker")
+        Text("MeetingMind Offline AI Notetaker")
       }
     }
 

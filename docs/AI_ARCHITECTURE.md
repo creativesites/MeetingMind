@@ -1,4 +1,4 @@
-# MeetMind — AI Architecture
+# MeetingMind — AI Architecture
 
 This documents the **actual** AI runtimes/models present in the codebase today, and the **target** local-first architecture they need to be replaced with.
 
@@ -211,18 +211,18 @@ Per the task's explicit "ASR → release/reuse → diarization → release/reuse
 
 ### Performance Instrumentation
 
-`MeetingProcessingPipeline` logs (tag `MeetMindPerf`, `Log.d`) VAD duration, ASR duration + `RTF = asrDurationMs / totalDurationMs`, diarization duration, and combined title+intelligence LLM duration for every processed meeting. This is debug-log-only, not a user-facing diagnostics screen (none existed to extend, and the task said not to expose technical diagnostics beyond what's already appropriate). **No real RTF/timing numbers are reported in this document** — they require running on a physical device, which is the same "REAL DEVICE INFERENCE VERIFIED" gap described below and in the Phase 2 completion report.
+`MeetingProcessingPipeline` logs (tag `MeetingMindPerf`, `Log.d`) VAD duration, ASR duration + `RTF = asrDurationMs / totalDurationMs`, diarization duration, and combined title+intelligence LLM duration for every processed meeting. This is debug-log-only, not a user-facing diagnostics screen (none existed to extend, and the task said not to expose technical diagnostics beyond what's already appropriate). **No real RTF/timing numbers are reported in this document** — they require running on a physical device, which is the same "REAL DEVICE INFERENCE VERIFIED" gap described below and in the Phase 2 completion report.
 
 ### Room / Persistence Changes
 
-`MeetMindDatabase` bumped to version 2 with an explicit `MIGRATION_1_2` (not a destructive fallback) — real on-device data (`meetings`, `transcript_segments`) is preserved:
+`MeetingMindDatabase` bumped to version 2 with an explicit `MIGRATION_1_2` (not a destructive fallback) — real on-device data (`meetings`, `transcript_segments`) is preserved:
 - `speakers`: gains `speakerIndex INTEGER NOT NULL DEFAULT 0`, `confidence REAL` (nullable) via `ALTER TABLE ADD COLUMN` — no rows existed yet in practice (diarization was always `UnavailableSpeakerDiarizer` before this phase), but the migration is additive and safe regardless.
 - `action_items`, `decisions`, `questions`: rebuilt (old tables guaranteed empty — `UnavailableMeetingIntelligenceEngine` never persisted a row) with nullable `confidence`, `sourceSegmentIdsJson` (JSON array of transcript segment ids, `org.json`-encoded, same pattern as `AiModelEntity.filesJson`), `assigneeSpeakerId`/`assigneeName` replacing the old single `assignee` string, `type` on decisions, `askedBySpeakerId` on questions.
 - `follow_ups`: new table, FK to `meetings(id) ON DELETE CASCADE`, same `sourceSegmentIdsJson` pattern.
 - `ai_models`: gains `contextLengthTokens INTEGER` (nullable — populated only for LLM-capable catalog entries).
 - `processing_jobs`: gains `stage TEXT NOT NULL DEFAULT 'IDLE'`.
 
-Verified by `MeetMindDatabaseMigrationTest`, which builds a real v1-schema SQLite database via `FrameworkSQLiteOpenHelperFactory` (no `room-testing` schema-export artifact needed, since this project keeps `exportSchema = false`), runs the real `MIGRATION_1_2` object against it, and inspects the resulting schema via `PRAGMA table_info`.
+Verified by `MeetingMindDatabaseMigrationTest`, which builds a real v1-schema SQLite database via `FrameworkSQLiteOpenHelperFactory` (no `room-testing` schema-export artifact needed, since this project keeps `exportSchema = false`), runs the real `MIGRATION_1_2` object against it, and inspects the resulting schema via `PRAGMA table_info`.
 
 ### Known Limitations — Phase 2
 

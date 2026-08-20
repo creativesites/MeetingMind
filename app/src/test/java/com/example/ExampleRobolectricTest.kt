@@ -48,7 +48,7 @@ class ExampleRobolectricTest {
     @Test
     fun read_appName_from_context() {
         val appName = context.getString(R.string.app_name)
-        assertEquals("MeetMind", appName)
+        assertEquals("MeetingMind", appName)
     }
 
     @Test

@@ -228,7 +228,7 @@ fun HomeScreen(
                         }
                         Column {
                             Text(
-                                text = "MeetMind",
+                                text = "MeetingMind",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.onBackground

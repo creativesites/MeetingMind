@@ -18,7 +18,7 @@ import java.io.OutputStream
 /**
  * Renders a professional, paginated PDF via [PdfDocument] — Android's own PDF writer, no external
  * library needed. A single reusable page-flowing writer handles headings/body/page breaks so every
- * export (summary, action items, transcript) gets consistent MeetMind-branded formatting instead
+ * export (summary, action items, transcript) gets consistent MeetingMind-branded formatting instead
  * of an unformatted wall of text.
  */
 object PdfExporter {
@@ -90,7 +90,7 @@ object PdfExporter {
     private fun writeHeader(writer: PageWriter, meeting: Meeting) {
         writer.title(meeting.title)
         writer.metaLine(
-            "MeetMind  •  ${Formatters.formatDateRelative(meeting.createdAt)}  •  " +
+            "MeetingMind  •  ${Formatters.formatDateRelative(meeting.createdAt)}  •  " +
                 "${Formatters.formatDurationHms(meeting.durationMs)}  •  ${meeting.recordingType.displayName}"
         )
     }

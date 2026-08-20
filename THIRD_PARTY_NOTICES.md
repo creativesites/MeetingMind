@@ -1,6 +1,6 @@
 # Third-Party Notices & Model Licenses
 
-MeetMind incorporates the following open-source runtimes, models, and libraries. This list reflects what is actually integrated in the codebase today — not aspirational or planned components.
+MeetingMind incorporates the following open-source runtimes, models, and libraries. This list reflects what is actually integrated in the codebase today — not aspirational or planned components.
 
 ## 1. On-Device Speech Recognition (ASR)
 

@@ -8,7 +8,7 @@ import java.io.File
 /**
  * All sharing goes through the standard Android Sharesheet (ACTION_SEND) — never a hardcoded
  * integration with a specific app. Whatever the user has installed that can handle text or audio
- * shows up automatically; MeetMind never claims a particular app will always appear, and never
+ * shows up automatically; MeetingMind never claims a particular app will always appear, and never
  * shares anything without the user explicitly choosing to. This is an intentional privacy
  * boundary: nothing leaves the device except through this user-initiated flow.
  */

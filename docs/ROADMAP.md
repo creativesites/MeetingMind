@@ -1,4 +1,4 @@
-# MeetMind — Roadmap
+# MeetingMind — Roadmap
 
 Prioritized work remaining, based on the findings in `docs/AUDIT.md`. Priorities: **P0** (required for core MVP), **P1** (important, follows P0), **P2** (polish/secondary), **FUTURE** (explicitly out of scope — see `docs/FUTURE_BACKEND.md`).
 

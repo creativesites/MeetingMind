@@ -301,7 +301,7 @@ private fun OnboardingStepOne() {
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
-            text = "MeetMind transcribes your meetings, identifies speakers, extracts key decisions, assigns action items, and allows grounded Q&A.",
+            text = "MeetingMind transcribes your meetings, identifies speakers, extracts key decisions, assigns action items, and allows grounded Q&A.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

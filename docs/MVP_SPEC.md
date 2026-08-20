@@ -1,10 +1,10 @@
-# MeetMind — MVP Product Specification
+# MeetingMind — MVP Product Specification
 
 This document is the reference specification the codebase is being reconciled against. It is intentionally scoped tightly — see `docs/FUTURE_BACKEND.md` for everything explicitly deferred.
 
 ## 1. Product
 
-MeetMind is a private, local-AI Android voice capture and understanding app — not a meeting-only
+MeetingMind is a private, local-AI Android voice capture and understanding app — not a meeting-only
 recorder. As of Phase 3A, recordings carry an explicit `RecordingType` (Meeting, Interview,
 Lecture, Voice Memo, Idea, Brainstorm, Dictation, Conversation, Research, Journal, Custom,
 General), chosen via a "What are you recording?" step before recording starts (with a "Quick

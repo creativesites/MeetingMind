@@ -208,7 +208,7 @@ fun ModelManagerScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "MeetMind Intelligence",
+                        text = "MeetingMind Intelligence",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -298,14 +298,14 @@ fun ModelManagerScreen(
             // 2. Header
             item {
                 Text(
-                    text = "MeetMind's Intelligence",
+                    text = "MeetingMind's Intelligence",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
             }
 
-            // 3. Capability groups — what MeetMind can do, in plain language first. Technical
+            // 3. Capability groups — what MeetingMind can do, in plain language first. Technical
             // model details (size, quantization, storage) are one tap away, never dumped up front.
             CAPABILITY_GROUPS.forEach { group ->
                 val groupModels = models.filter { group.capability in it.capability }

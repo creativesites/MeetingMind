@@ -98,7 +98,7 @@ class MeetingProcessingWorker(
 
     private fun buildNotification(step: String, percent: Int, recordingTitle: String): Notification {
         val builder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setContentTitle("MeetMind")
+            .setContentTitle("MeetingMind")
             // Privacy: never surface transcript/summary content in a notification —
             // only the generic recording title and current processing stage.
             .setContentText("Processing \"$recordingTitle\" — $step")
@@ -121,10 +121,10 @@ class MeetingProcessingWorker(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "MeetMind Processing",
+                "MeetingMind Processing",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Shows progress while MeetMind analyzes a recording in the background"
+                description = "Shows progress while MeetingMind analyzes a recording in the background"
                 setShowBadge(false)
             }
             val manager = applicationContext.getSystemService(NotificationManager::class.java)

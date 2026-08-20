@@ -442,7 +442,7 @@ fun SettingsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "MeetMind v1.0.0 (Local-First Offline MVP)",
+                        text = "MeetingMind v1.0.0 (Local-First Offline MVP)",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

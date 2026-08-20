@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">MeetMind</string>
+    <string name="app_name">MeetingMind</string>
     <!--
       Firebase/Google Sign-In "Web client ID" (OAuth client, type "Web application") from the
       Firebase console — this is a public identifier, not a secret, and is safe to commit.

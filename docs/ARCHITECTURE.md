@@ -1,4 +1,4 @@
-# MeetMind — Architecture
+# MeetingMind — Architecture
 
 This describes the actual architecture of the codebase as of the audit/reconciliation pass in `docs/AUDIT.md`. It documents what exists, not an aspirational design.
 
@@ -35,7 +35,7 @@ com.example
 │   │                          single app-wide Media3 MediaSessionService-backed player;
 │   │                          replaced the old per-screen AudioPlayerManager)
 │   ├── common/               — DeviceCapabilityDetector, Formatters
-│   ├── database/             — Room entities, DAOs, MeetMindDatabase (real Migrations 1→2, 2→3)
+│   ├── database/             — Room entities, DAOs, MeetingMindDatabase (real Migrations 1→2, 2→3)
 │   ├── datastore/            — UserPreferencesManager (DataStore Preferences)
 │   ├── domain/                — Use cases (partially wired — see AUDIT.md §F)
 │   ├── export/                 — MarkdownExporter/CsvExporter/PdfExporter/DocxExporter +
@@ -98,7 +98,7 @@ There is no DI framework (no Hilt, no Koin). Every `AndroidViewModel` constructs
 
 ```kotlin
 class RecordingViewModel(application: Application) : AndroidViewModel(application) {
-    private val database = MeetMindDatabase.getInstance(application)
+    private val database = MeetingMindDatabase.getInstance(application)
     private val meetingRepository = MeetingRepository(application, database)
     val recorder = AudioRecorder(application)
     ...
@@ -109,7 +109,7 @@ This is acceptable at the current scale (a handful of screens, no test doubles n
 
 ## 6. Persistence
 
-`MeetMindDatabase` (Room, version 3 as of Phase 3A, `exportSchema = false`) — 12 entities covering meetings, transcript segments, speakers, action items, decisions, questions, follow-ups, topics, embeddings, AI model catalog, processing jobs, and chat messages. Schema is well-normalized with correct `ForeignKey(CASCADE)` relationships and indices (including a text index supporting keyword search). `fallbackToDestructiveMigration()` remains as a safety net for any future untracked version jump, but both real steps so far are explicit `Migration` objects that preserve existing on-device data: `MIGRATION_1_2` (see `docs/AI_ARCHITECTURE.md` §0c) and `MIGRATION_2_3` (adds `meetings.recordingType`/`meetings.customContext`, existing rows default to `GENERAL`). `exportSchema` remaining `false` (see `docs/AUDIT.md` §F) is still an open gap for a real release.
+`MeetingMindDatabase` (Room, version 3 as of Phase 3A, `exportSchema = false`) — 12 entities covering meetings, transcript segments, speakers, action items, decisions, questions, follow-ups, topics, embeddings, AI model catalog, processing jobs, and chat messages. Schema is well-normalized with correct `ForeignKey(CASCADE)` relationships and indices (including a text index supporting keyword search). `fallbackToDestructiveMigration()` remains as a safety net for any future untracked version jump, but both real steps so far are explicit `Migration` objects that preserve existing on-device data: `MIGRATION_1_2` (see `docs/AI_ARCHITECTURE.md` §0c) and `MIGRATION_2_3` (adds `meetings.recordingType`/`meetings.customContext`, existing rows default to `GENERAL`). `exportSchema` remaining `false` (see `docs/AUDIT.md` §F) is still an open gap for a real release.
 
 Audio files live in app-private storage: `context.filesDir/meetings/{meetingId}/audio.<ext>` — never in shared/external storage, never uploaded by default.
 
