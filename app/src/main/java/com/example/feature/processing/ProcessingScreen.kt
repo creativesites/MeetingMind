@@ -67,9 +67,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.ai.pipeline.MeetingProcessingPipeline
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import com.example.ai.pipeline.MeetingProcessingWorker
 import com.example.core.database.MeetMindDatabase
 import com.example.core.datastore.UserPreferencesManager
+import com.example.core.model.MeetingStatus
 import com.example.core.model.ProcessingStage
 import com.example.core.ui.OfflineShieldBadge
 import com.example.ui.theme.CyanTertiary
@@ -80,19 +86,19 @@ import com.example.ui.theme.IndigoPrimaryLight
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.VioletSecondary
 import com.example.ui.theme.WarningAmber
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.io.File
+import java.util.UUID
 
 data class ProcessingUiState(
     val stepTitle: String = "Initializing AI Pipeline...",
     val progressPercent: Int = 0,
     val currentStageIndex: Int = 0,
     val isComplete: Boolean = false,
+    val isQueued: Boolean = false,
     val error: String? = null,
     /** True when processing stopped because a required local AI model isn't installed yet.
      * The recording itself is always saved regardless — this never means the audio was lost. */
@@ -100,15 +106,21 @@ data class ProcessingUiState(
     val modelRequiredMessage: String? = null
 )
 
+/**
+ * Processing now runs as real background work ([MeetingProcessingWorker] via [WorkManager])
+ * instead of a `viewModelScope` coroutine — it survives this screen (and this ViewModel) being
+ * destroyed by navigation, app minimization, or the screen locking. This ViewModel only observes
+ * [WorkInfo] and reflects real, typed state; it never advances processing itself.
+ */
 class ProcessingViewModel(application: Application) : AndroidViewModel(application) {
     private val database = MeetMindDatabase.getInstance(application)
-    private val pipeline = MeetingProcessingPipeline(application, database)
     private val userPrefs = UserPreferencesManager(application)
+    private val workManager = WorkManager.getInstance(application)
 
     private val _uiState = MutableStateFlow(ProcessingUiState())
     val uiState: StateFlow<ProcessingUiState> = _uiState.asStateFlow()
 
-    private var pipelineJob: Job? = null
+    private var workId: UUID? = null
 
     fun startPipeline(
         meetingId: String,
@@ -117,76 +129,104 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
         expectedSpeakerCount: Int?,
         onComplete: (String) -> Unit
     ) {
-        pipelineJob?.cancel()
-        pipelineJob = viewModelScope.launch {
-            try {
-                val prefs = userPrefs.preferencesFlow.first()
-                val selectedModel = prefs.selectedAsrModelId
-                val audioFile = File(audioPath)
+        viewModelScope.launch {
+            val prefs = userPrefs.preferencesFlow.first()
+            val meetingTitle = database.meetingDao().getMeetingById(meetingId)?.title ?: "recording"
 
-                _uiState.value = ProcessingUiState(
-                    stepTitle = "Preparing audio...",
-                    progressPercent = 5,
-                    currentStageIndex = 0
-                )
+            val inputData = workDataOf(
+                MeetingProcessingWorker.KEY_MEETING_ID to meetingId,
+                MeetingProcessingWorker.KEY_AUDIO_PATH to audioPath,
+                MeetingProcessingWorker.KEY_DURATION_MS to durationMs,
+                MeetingProcessingWorker.KEY_MODEL_ID to prefs.selectedAsrModelId,
+                MeetingProcessingWorker.KEY_EXPECTED_SPEAKER_COUNT to (expectedSpeakerCount ?: -1),
+                MeetingProcessingWorker.KEY_RECORDING_TITLE to meetingTitle
+            )
+            val request = OneTimeWorkRequestBuilder<MeetingProcessingWorker>()
+                .setInputData(inputData)
+                .build()
+            workId = request.id
 
-                val resultMeeting = pipeline.processMeeting(
-                    meetingId = meetingId,
-                    audioFile = audioFile,
-                    totalDurationMs = durationMs,
-                    modelId = selectedModel,
-                    expectedSpeakerCount = expectedSpeakerCount,
-                    onProgress = { step, percent, stage ->
-                        val stageIdx = when (stage) {
-                            ProcessingStage.IDLE, ProcessingStage.PREPARING_AUDIO -> 0
-                            ProcessingStage.DETECTING_SPEECH -> 1
-                            ProcessingStage.TRANSCRIBING -> 2
-                            ProcessingStage.DIARIZING -> 3
-                            ProcessingStage.ANALYZING -> 4
-                            ProcessingStage.SAVING_RESULTS, ProcessingStage.COMPLETED -> 5
-                            ProcessingStage.FAILED, ProcessingStage.CANCELLED -> 5
+            // Only one AI-heavy job runs at a time; a recording requested while another is
+            // still processing is queued behind it rather than running concurrently.
+            workManager.enqueueUniqueWork(
+                MeetingProcessingWorker.UNIQUE_WORK_NAME,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                request
+            )
+
+            workManager.getWorkInfoByIdFlow(request.id).collect { info ->
+                if (info == null) return@collect
+                when (info.state) {
+                    WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> {
+                        _uiState.value = _uiState.value.copy(isQueued = true, stepTitle = "Waiting for another recording to finish processing...")
+                    }
+                    WorkInfo.State.RUNNING -> {
+                        val step = info.progress.getString(MeetingProcessingWorker.KEY_PROGRESS_STEP)
+                        val percent = info.progress.getInt(MeetingProcessingWorker.KEY_PROGRESS_PERCENT, _uiState.value.progressPercent)
+                        val stageName = info.progress.getString(MeetingProcessingWorker.KEY_PROGRESS_STAGE)
+                        val stage = stageName?.let { runCatching { ProcessingStage.valueOf(it) }.getOrNull() }
+                        if (step != null && stage != null) {
+                            _uiState.value = ProcessingUiState(
+                                stepTitle = step,
+                                progressPercent = percent,
+                                currentStageIndex = stageIndexFor(stage),
+                                isQueued = false
+                            )
+                        } else {
+                            _uiState.value = _uiState.value.copy(isQueued = false)
                         }
+                    }
+                    WorkInfo.State.SUCCEEDED -> {
+                        val status = info.outputData.getString(MeetingProcessingWorker.KEY_RESULT_STATUS)
+                        if (status == MeetingStatus.MODEL_REQUIRED.name) {
+                            _uiState.value = ProcessingUiState(
+                                stepTitle = "Recording saved",
+                                progressPercent = 100,
+                                currentStageIndex = 1,
+                                isComplete = true,
+                                modelRequired = true,
+                                modelRequiredMessage = "Download the offline speech recognition model to transcribe this meeting on your device."
+                            )
+                        } else {
+                            _uiState.value = ProcessingUiState(
+                                stepTitle = "All AI tasks completed successfully!",
+                                progressPercent = 100,
+                                currentStageIndex = 5,
+                                isComplete = true
+                            )
+                            onComplete(meetingId)
+                        }
+                    }
+                    WorkInfo.State.FAILED -> {
+                        val error = info.outputData.getString(MeetingProcessingWorker.KEY_ERROR)
                         _uiState.value = ProcessingUiState(
-                            stepTitle = step,
-                            progressPercent = percent,
-                            currentStageIndex = stageIdx,
-                            isComplete = percent >= 100
+                            stepTitle = "Processing error",
+                            progressPercent = 0,
+                            error = error ?: "Unknown error"
                         )
                     }
-                )
-
-                if (resultMeeting.status == com.example.core.model.MeetingStatus.MODEL_REQUIRED.name) {
-                    // Never fabricate a transcript: the recording is safely saved, but no local
-                    // speech recognition model is installed, so processing honestly stops here.
-                    _uiState.value = ProcessingUiState(
-                        stepTitle = "Recording saved",
-                        progressPercent = 100,
-                        currentStageIndex = 1,
-                        isComplete = true,
-                        modelRequired = true,
-                        modelRequiredMessage = "Download the offline speech recognition model to transcribe this meeting on your device."
-                    )
-                } else {
-                    _uiState.value = ProcessingUiState(
-                        stepTitle = "All AI tasks completed successfully!",
-                        progressPercent = 100,
-                        currentStageIndex = 5,
-                        isComplete = true
-                    )
-                    onComplete(meetingId)
+                    WorkInfo.State.CANCELLED -> {
+                        _uiState.value = _uiState.value.copy(error = "Processing cancelled by user")
+                    }
                 }
-            } catch (e: Exception) {
-                _uiState.value = ProcessingUiState(
-                    stepTitle = "Processing error",
-                    progressPercent = 0,
-                    error = e.localizedMessage ?: "Unknown error"
-                )
             }
         }
     }
 
+    private fun stageIndexFor(stage: ProcessingStage): Int = when (stage) {
+        ProcessingStage.IDLE, ProcessingStage.PREPARING_AUDIO -> 0
+        ProcessingStage.DETECTING_SPEECH -> 1
+        ProcessingStage.TRANSCRIBING -> 2
+        ProcessingStage.DIARIZING -> 3
+        ProcessingStage.ANALYZING -> 4
+        ProcessingStage.SAVING_RESULTS, ProcessingStage.COMPLETED -> 5
+        ProcessingStage.FAILED, ProcessingStage.CANCELLED -> 5
+    }
+
+    /** Cancels the real background work — WorkManager propagates this as coroutine
+     * cancellation inside the worker, which the pipeline's NonCancellable cleanup honors. */
     fun cancelPipeline() {
-        pipelineJob?.cancel()
+        workId?.let { workManager.cancelWorkById(it) }
         _uiState.value = _uiState.value.copy(error = "Processing cancelled by user")
     }
 }
