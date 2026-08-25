@@ -367,4 +367,117 @@ class MeetingProcessingPipelineIntegrationTest {
         )
         assertEquals(expectedFallback, result.title)
     }
+
+    // --- Single-speaker fast path: a confirmed solo recording must never run diarization ---
+
+    @Test
+    fun `a confirmed single speaker skips diarization entirely - the model is never even invoked`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        var diarizerWasInvoked = false
+        val explodingDiarizer = object : SpeakerDiarizer {
+            override suspend fun diarize(
+                audioFile: File,
+                totalDurationMs: Long,
+                segments: List<TranscriptSegment>,
+                knownSpeakers: List<Speaker>,
+                expectedSpeakerCount: Int?
+            ): AiResult<List<TranscriptSegment>> {
+                diarizerWasInvoked = true
+                error("Diarization must never run for a confirmed single speaker")
+            }
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = explodingDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        val result = pipeline.processMeeting(meetingId, audioFile, 4000L, expectedSpeakerCount = 1) { _, _, _ -> }
+
+        assertTrue("Pipeline must complete without ever invoking the diarizer", !diarizerWasInvoked)
+        assertEquals(MeetingStatus.READY.name, result.status)
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        // The two ASR fragments share no speakerId (both null) and sit back-to-back, so
+        // TranscriptParagraphBuilder correctly merges them into one paragraph — exactly the
+        // "treat an undiarized transcript as one speaker" behavior a skipped diarization should
+        // produce.
+        assertEquals(1, segments.size)
+        // ASR never assigns a speakerId itself — with diarization genuinely skipped (not run and
+        // discarded), the segment must still have none, never a fabricated "Speaker 1".
+        assertEquals(null, segments[0].speakerId)
+        assertTrue(segments[0].text.contains("ship on Friday"))
+        assertTrue(segments[0].text.contains("Sounds good"))
+    }
+
+    @Test
+    fun `an unspecified speaker count still runs diarization normally`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        var diarizerWasInvoked = false
+        val trackingDiarizer = object : SpeakerDiarizer {
+            override suspend fun diarize(
+                audioFile: File,
+                totalDurationMs: Long,
+                segments: List<TranscriptSegment>,
+                knownSpeakers: List<Speaker>,
+                expectedSpeakerCount: Int?
+            ): AiResult<List<TranscriptSegment>> {
+                diarizerWasInvoked = true
+                return AiResult.Success(segments)
+            }
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = trackingDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L, expectedSpeakerCount = null) { _, _, _ -> }
+
+        assertTrue("Diarization must still run when the speaker count is unspecified", diarizerWasInvoked)
+    }
+
+    @Test
+    fun `a confirmed multi-person count still runs diarization normally`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        var receivedExpectedCount: Int? = -999
+        val trackingDiarizer = object : SpeakerDiarizer {
+            override suspend fun diarize(
+                audioFile: File,
+                totalDurationMs: Long,
+                segments: List<TranscriptSegment>,
+                knownSpeakers: List<Speaker>,
+                expectedSpeakerCount: Int?
+            ): AiResult<List<TranscriptSegment>> {
+                receivedExpectedCount = expectedSpeakerCount
+                return AiResult.Success(segments)
+            }
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = trackingDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L, expectedSpeakerCount = 3) { _, _, _ -> }
+
+        assertEquals(3, receivedExpectedCount)
+    }
 }

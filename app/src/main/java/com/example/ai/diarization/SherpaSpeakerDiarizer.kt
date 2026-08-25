@@ -1,5 +1,6 @@
 package com.example.ai.diarization
 
+import android.util.Log
 import com.example.ai.common.AiResult
 import com.example.ai.modelmanagement.ModelCatalog
 import com.example.ai.modelmanagement.ModelStorage
@@ -86,7 +87,21 @@ class SherpaSpeakerDiarizer(
             // Sub-second segments sandwiched between two same-speaker segments are almost always
             // segmentation/clustering noise (a breath, overlap bleed, a misclassified word) rather
             // than a real third speaker — see mergeShortSandwichedFragments doc for the reasoning.
-            val reconciledSegments = mergeShortSandwichedFragments(rawSegments)
+            val sandwichMerged = mergeShortSandwichedFragments(rawSegments)
+
+            // A second, broader pass: a handful of speaker indices that barely speak at all next
+            // to one or two that dominate the recording is the classic fingerprint of clustering
+            // noise rather than real extra participants — see reconcileFragmentedSpeakers's doc.
+            // Only reassigns segments that were flagged as noise-like; genuinely balanced
+            // multi-speaker output is never touched.
+            val fragmentationAnalysis = analyzeSpeakerFragmentation(sandwichMerged)
+            if (fragmentationAnalysis.isNotEmpty()) {
+                Log.d(
+                    DIARIZATION_QUALITY_TAG,
+                    "Suspicious fragmentation detected — reassigning noise-like speaker indices $fragmentationAnalysis to their nearest real speaker"
+                )
+            }
+            val reconciledSegments = reconcileFragmentedSpeakers(sandwichMerged, fragmentationAnalysis)
 
             AiResult.Success(reconcileTranscriptWithSpeakers(segments, reconciledSegments))
         } catch (e: Exception) {
@@ -95,6 +110,7 @@ class SherpaSpeakerDiarizer(
     }
 
     private companion object {
+        const val DIARIZATION_QUALITY_TAG = "MeetMindDiarizationQuality"
         const val SEGMENTATION_MODEL_FILE_NAME = "segmentation.onnx"
         const val EMBEDDING_MODEL_FILE_NAME = "embedding.onnx"
         const val NUM_THREADS = 2
@@ -172,6 +188,89 @@ internal fun mergeShortSandwichedFragments(
 
 /** A raw (start, end, speaker-index) interval as produced by the diarization engine — decoupled from the sherpa-onnx type so the reconciliation logic below is unit-testable without loading any native library. */
 internal data class RawSpeakerSegment(val startMs: Long, val endMs: Long, val speakerIndex: Int)
+
+/** A speaker index's aggregate footprint across the recording — the raw material the
+ * fragmentation-quality check reasons about instead of trusting cluster count alone. */
+internal data class SpeakerFootprint(val speakerIndex: Int, val totalDurationMs: Long, val turnCount: Int)
+
+// A speaker index responsible for less than this share of total real speaking time is a
+// candidate for "noise-like" — not yet a verdict on its own (see MIN_NOISE_SPEAKERS_TO_FLAG and
+// MAX_NOISE_SHARE_WHEN_FLAGGING below, both of which must also hold).
+internal const val NOISE_SHARE_THRESHOLD = 0.08
+
+// Flagging requires at least this many distinct noise-like speaker indices — a single minor
+// speaker is exactly the kind of real (if brief) participant diarization is supposed to catch,
+// not something to second-guess. Two or more near-silent "speakers" appearing together is the
+// actual fragmentation fingerprint.
+internal const val MIN_NOISE_SPEAKERS_TO_FLAG = 2
+
+// ...and even then, only when those noise-like speakers together still account for a small
+// slice of the recording. A wider spread of many real participants can absolutely occur (the
+// share threshold alone would false-positive there); this second gate protects that case.
+internal const val MAX_NOISE_SHARE_WHEN_FLAGGING = 0.15
+
+/**
+ * Flags speaker indices that look like clustering/segmentation noise rather than real
+ * participants: several speaker indices that together barely speak (see the threshold constants
+ * above), sitting alongside one or more indices that account for the great majority of the
+ * recording. This is the "Speaker 1: 42%, Speaker 2: 3%, Speaker 3: 2%, Speaker 4: 1%, Speaker 5:
+ * 52%" pattern — plausible-looking cluster output that is actually one or two real speakers
+ * shredded by acoustic noise (breaths, room echo, a misheard word) into extra phantom speakers.
+ *
+ * Deliberately conservative: a recording with several genuinely balanced speakers, or with only
+ * one small-but-real speaker, is never flagged — both of [MIN_NOISE_SPEAKERS_TO_FLAG] and
+ * [MAX_NOISE_SHARE_WHEN_FLAGGING] must hold before anything is touched. Returns the empty set
+ * (never anything flagged) when the input is empty, so callers can treat "no result" and "no
+ * fragmentation found" identically.
+ */
+internal fun analyzeSpeakerFragmentation(segments: List<RawSpeakerSegment>): Set<Int> {
+    if (segments.isEmpty()) return emptySet()
+    val totalDurationMs = segments.sumOf { it.endMs - it.startMs }
+    if (totalDurationMs <= 0L) return emptySet()
+
+    val footprints = segments.groupBy { it.speakerIndex }.map { (index, segs) ->
+        SpeakerFootprint(index, segs.sumOf { it.endMs - it.startMs }, segs.size)
+    }
+    // Only one speaker index exists at all — nothing to distinguish "noise" from "the speaker".
+    if (footprints.size < 2) return emptySet()
+
+    val noiseLike = footprints.filter { it.totalDurationMs.toDouble() / totalDurationMs < NOISE_SHARE_THRESHOLD }
+    if (noiseLike.size < MIN_NOISE_SPEAKERS_TO_FLAG) return emptySet()
+    if (noiseLike.size == footprints.size) return emptySet() // Every speaker is "noise" — degenerate, not a real verdict.
+
+    val noiseShare = noiseLike.sumOf { it.totalDurationMs }.toDouble() / totalDurationMs
+    return if (noiseShare < MAX_NOISE_SHARE_WHEN_FLAGGING) {
+        noiseLike.map { it.speakerIndex }.toSet()
+    } else {
+        emptySet()
+    }
+}
+
+/**
+ * Reassigns every segment whose speaker index was flagged by [analyzeSpeakerFragmentation] to
+ * whichever non-flagged ("real") speaker is temporally nearest to it — never to an arbitrary or
+ * majority speaker, since the nearest real speaker in time is the one a noise blip most plausibly
+ * actually belongs to. A no-op when nothing was flagged. If every speaker was somehow flagged
+ * (analyzeSpeakerFragmentation already refuses to return that case, but this stays defensive
+ * against a future change to that function), the input is returned unchanged rather than
+ * guessing at a fallback.
+ */
+internal fun reconcileFragmentedSpeakers(
+    segments: List<RawSpeakerSegment>,
+    flaggedSpeakerIndices: Set<Int>
+): List<RawSpeakerSegment> {
+    if (flaggedSpeakerIndices.isEmpty()) return segments
+    val sorted = segments.sortedBy { it.startMs }
+    val real = sorted.filter { it.speakerIndex !in flaggedSpeakerIndices }
+    if (real.isEmpty()) return segments
+
+    return sorted.map { seg ->
+        if (seg.speakerIndex !in flaggedSpeakerIndices) return@map seg
+        val segMidMs = (seg.startMs + seg.endMs) / 2
+        val nearest = real.minBy { kotlin.math.abs((it.startMs + it.endMs) / 2 - segMidMs) }
+        seg.copy(speakerIndex = nearest.speakerIndex)
+    }
+}
 
 /**
  * Assigns each ASR transcript segment the speaker whose raw diarization interval overlaps it the

@@ -131,9 +131,11 @@ import com.example.core.domain.AskMeetingUseCase
 import com.example.core.model.ActionItem
 import com.example.core.model.ChatMessage
 import com.example.core.model.Decision
+import com.example.core.model.IntelligenceProfile
 import com.example.core.model.Meeting
 import com.example.core.model.MeetingStatus
 import com.example.core.model.Question
+import com.example.core.model.RecordingType
 import com.example.core.model.Topic
 import com.example.core.model.Transcript
 import com.example.core.model.TranscriptSegment
@@ -397,6 +399,11 @@ class MeetingDetailViewModel(
     // PlaybackService, not this ViewModel, and must keep running after this screen is destroyed.
 }
 
+/** Which of Meeting Detail's tabs exist for a given recording — Action Items/Decisions only
+ * appear when [IntelligenceProfile] actually enables them for this recording type. */
+private enum class DetailTabKind { OVERVIEW, TRANSCRIPT, ACTION_ITEMS, DECISIONS, ASK_AI }
+private data class DetailTab(val kind: DetailTabKind, val title: String)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MeetingDetailScreen(
@@ -449,8 +456,23 @@ fun MeetingDetailScreen(
     val activeSegment by activeSegmentState
     val isAnswering by viewModel.isAnswering.collectAsState()
 
+    // Which AI tabs make sense is driven by the recording's own IntelligenceProfile — a Lecture
+    // or Idea never gets an empty "Decisions"/"Action Items" tab dangling around implying content
+    // that was never even asked for. Overview and Transcript are always first (in that order, so
+    // TRANSCRIPT is always index 1), Ask AI is always last.
+    val intelligenceProfile = (meeting?.recordingType ?: RecordingType.GENERAL).intelligenceProfile()
+    val tabs = remember(intelligenceProfile) {
+        buildList {
+            add(DetailTab(DetailTabKind.OVERVIEW, "Overview"))
+            add(DetailTab(DetailTabKind.TRANSCRIPT, "Transcript"))
+            if (intelligenceProfile.extractActionItems) add(DetailTab(DetailTabKind.ACTION_ITEMS, "Action Items"))
+            if (intelligenceProfile.extractDecisions) add(DetailTab(DetailTabKind.DECISIONS, "Decisions"))
+            add(DetailTab(DetailTabKind.ASK_AI, "Ask AI"))
+        }
+    }
+    fun tabIndexOf(kind: DetailTabKind): Int = tabs.indexOfFirst { it.kind == kind }.coerceAtLeast(0)
+
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabTitles = listOf("Overview", "Transcript", "Action Items", "Decisions", "Ask AI")
 
     // Consumed exactly once per screen entry — re-composition or the user manually switching
     // tabs afterward must not keep forcing them back to this segment.
@@ -459,7 +481,7 @@ fun MeetingDetailScreen(
     LaunchedEffect(initialJumpToMs, transcript.segments) {
         if (jumpConsumed || initialJumpToMs == null || transcript.segments.isEmpty()) return@LaunchedEffect
         jumpConsumed = true
-        selectedTabIndex = 1
+        selectedTabIndex = tabIndexOf(DetailTabKind.TRANSCRIPT)
         viewModel.jumpToTimestamp(initialJumpToMs)
         highlightedSegmentId = transcript.segments
             .filter { it.startMs <= initialJumpToMs }
@@ -723,13 +745,13 @@ fun MeetingDetailScreen(
                 contentColor = IndigoPrimaryLight,
                 edgePadding = 16.dp
             ) {
-                tabTitles.forEachIndexed { index, title ->
+                tabs.forEachIndexed { index, tab ->
                     Tab(
                         selected = selectedTabIndex == index,
                         onClick = { selectedTabIndex = index },
                         text = {
                             Text(
-                                text = title,
+                                text = tab.title,
                                 fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal
                             )
                         }
@@ -738,16 +760,19 @@ fun MeetingDetailScreen(
             }
 
             // Tab Pages
-            when (selectedTabIndex) {
-                0 -> BentoOverviewTab(
+            when (tabs.getOrNull(selectedTabIndex)?.kind) {
+                DetailTabKind.OVERVIEW -> BentoOverviewTab(
                     meeting = meeting,
                     topics = topics,
                     decisions = decisions,
                     actionItems = actionItems,
-                    onNavigateToTab = { selectedTabIndex = it },
+                    intelligenceProfile = intelligenceProfile,
+                    onNavigateToTranscript = { selectedTabIndex = tabIndexOf(DetailTabKind.TRANSCRIPT) },
+                    onNavigateToActionItems = { selectedTabIndex = tabIndexOf(DetailTabKind.ACTION_ITEMS) },
+                    onNavigateToDecisions = { selectedTabIndex = tabIndexOf(DetailTabKind.DECISIONS) },
                     llmModelInstalled = llmModelInstalled
                 )
-                1 -> TranscriptTab(
+                DetailTabKind.TRANSCRIPT -> TranscriptTab(
                     segments = transcript.segments,
                     onJumpToTimestamp = { viewModel.jumpToTimestamp(it) },
                     onRenameSpeaker = { id, name ->
@@ -761,7 +786,7 @@ fun MeetingDetailScreen(
                     isAudioPlaying = isThisRecordingActive && playbackState.isPlaying,
                     cleanFillerWords = cleanFillerWords
                 )
-                2 -> ActionItemsTab(
+                DetailTabKind.ACTION_ITEMS -> ActionItemsTab(
                     actionItems = actionItems,
                     segments = transcript.segments,
                     onToggle = { viewModel.toggleActionItem(it) },
@@ -769,13 +794,14 @@ fun MeetingDetailScreen(
                     onAddClick = { showAddActionDialog = true },
                     onJumpToTimestamp = { viewModel.jumpToTimestamp(it) }
                 )
-                3 -> DecisionsTab(decisions = decisions, questions = questions, segments = transcript.segments, onJumpToTimestamp = { viewModel.jumpToTimestamp(it) })
-                4 -> AskAiTab(
+                DetailTabKind.DECISIONS -> DecisionsTab(decisions = decisions, questions = questions, segments = transcript.segments, onJumpToTimestamp = { viewModel.jumpToTimestamp(it) })
+                DetailTabKind.ASK_AI -> AskAiTab(
                     chatMessages = chatMessages,
                     isAnswering = isAnswering,
                     onSendQuestion = { viewModel.askQuestion(it) },
                     onJumpToTimestamp = { viewModel.jumpToTimestamp(it) }
                 )
+                null -> Unit
             }
         }
     }
@@ -1029,7 +1055,12 @@ fun BentoOverviewTab(
     topics: List<Topic>,
     decisions: List<Decision>,
     actionItems: List<ActionItem>,
-    onNavigateToTab: (Int) -> Unit,
+    onNavigateToTranscript: () -> Unit,
+    onNavigateToActionItems: () -> Unit,
+    onNavigateToDecisions: () -> Unit,
+    /** Which categories this recording type actually produces — a Lecture or Idea shows no
+     * Decisions/Action Items rows at all, rather than a row pointing at a tab that doesn't exist. */
+    intelligenceProfile: IntelligenceProfile = RecordingType.GENERAL.intelligenceProfile(),
     /** Real on-disk state, used only to explain an absent summary honestly. */
     llmModelInstalled: Boolean = true
 ) {
@@ -1078,42 +1109,49 @@ fun BentoOverviewTab(
         }
 
         // 2. Grouped list of rows — matches the reference's flat "AI Summary" list exactly.
+        // Decisions/Action Items rows only appear when this recording type actually produces
+        // them (IntelligenceProfile) — never a row pointing at empty, meaningless content.
         item {
             SectionCard {
                 // An empty list is a legitimate result, not a malfunction — plenty of recordings
                 // are notes or chats with nothing decided and nothing assigned. Say that plainly
                 // instead of using wording that reads like the analysis fell over.
-                ListRow(
-                    title = "Decisions",
-                    subtitle = decisions.firstOrNull()?.text ?: "Nothing was decided in this recording",
-                    icon = Icons.Default.Psychology,
-                    onClick = { onNavigateToTab(3) },
-                    trailing = { CountTrailing(decisions.size) }
-                )
-                ListRow(
-                    title = "Action Items",
-                    subtitle = actionItems.firstOrNull()?.task ?: "No tasks came out of this recording",
-                    icon = Icons.Default.FormatListBulleted,
-                    onClick = { onNavigateToTab(2) },
-                    trailing = { CountTrailing(actionItems.size) }
-                )
+                if (intelligenceProfile.extractDecisions) {
+                    ListRow(
+                        title = "Decisions",
+                        subtitle = decisions.firstOrNull()?.text ?: "Nothing was decided in this recording",
+                        icon = Icons.Default.Psychology,
+                        onClick = onNavigateToDecisions,
+                        trailing = { CountTrailing(decisions.size) }
+                    )
+                }
+                if (intelligenceProfile.extractActionItems) {
+                    ListRow(
+                        title = "Action Items",
+                        subtitle = actionItems.firstOrNull()?.task ?: "No tasks came out of this recording",
+                        icon = Icons.Default.FormatListBulleted,
+                        onClick = onNavigateToActionItems,
+                        trailing = { CountTrailing(actionItems.size) }
+                    )
+                }
                 ListRow(
                     title = "Transcript",
                     subtitle = "Full text with speakers and timestamps",
                     icon = Icons.Default.Subject,
-                    onClick = { onNavigateToTab(1) },
+                    onClick = onNavigateToTranscript,
                     showDivider = false
                 )
             }
         }
 
-        // 3. Discussion topics
+        // 3. Key points/concepts/topics — labeled to match what this recording type actually is
+        // (e.g. "Key Concepts" for a Lecture, "Key Points" for an Idea), not generic "Topics".
         if (topics.isNotEmpty()) {
             item {
                 SectionCard {
                     Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            text = "Topics",
+                            text = intelligenceProfile.topicsLabel,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant

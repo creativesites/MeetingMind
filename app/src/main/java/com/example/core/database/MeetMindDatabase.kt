@@ -22,7 +22,7 @@ import androidx.room.migration.Migration
         ProcessingJobEntity::class,
         ChatMessageEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class MeetMindDatabase : RoomDatabase() {
@@ -150,6 +150,19 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds real speaker-count context (Phase 4): what the user actually told MeetingMind about
+         * expected speakers, captured at recording/import time or via the before-processing prompt,
+         * so it can be reused instead of asked for twice and so the pipeline can skip diarization
+         * entirely for a confirmed single-speaker recording. Nullable with no default — existing
+         * meetings correctly have no stated preference, never a fabricated one.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE meetings ADD COLUMN speakerCountPreference INTEGER")
+            }
+        }
+
         fun getInstance(context: Context): MeetMindDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -157,7 +170,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

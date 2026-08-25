@@ -73,7 +73,8 @@ class MeetingRepository(
         source: MeetingSource,
         audioFilePath: String? = null,
         recordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.GENERAL,
-        customContext: String? = null
+        customContext: String? = null,
+        speakerCountPreference: Int? = null
     ): Meeting = withContext(Dispatchers.IO) {
         val entity = MeetingEntity(
             id = id,
@@ -87,7 +88,8 @@ class MeetingRepository(
             language = "en",
             summaryText = null,
             recordingType = recordingType.name,
-            customContext = customContext
+            customContext = customContext,
+            speakerCountPreference = speakerCountPreference
         )
         meetingDao.insertMeeting(entity)
         entity.toDomain()
@@ -96,6 +98,30 @@ class MeetingRepository(
     suspend fun updateMeetingTitle(id: String, newTitle: String) = withContext(Dispatchers.IO) {
         val existing = meetingDao.getMeetingById(id) ?: return@withContext
         meetingDao.updateMeeting(existing.copy(title = newTitle, updatedAt = System.currentTimeMillis()))
+    }
+
+    /** Persists the user's answer to the before-processing "How many speakers?" prompt — reached
+     * only when [com.example.core.model.RecordingContext.speakerCountPreference] wasn't already
+     * captured at recording/import time, so the pipeline can skip diarization for a confirmed
+     * single speaker and never has to ask again. */
+    suspend fun updateSpeakerCountPreference(id: String, speakerCount: Int?) = withContext(Dispatchers.IO) {
+        val existing = meetingDao.getMeetingById(id) ?: return@withContext
+        meetingDao.updateMeeting(existing.copy(speakerCountPreference = speakerCount, updatedAt = System.currentTimeMillis()))
+    }
+
+    /** Applies a [com.example.core.model.RecordingContext] captured after the meeting row already
+     * exists — e.g. import, which creates the meeting the moment a file is selected but only
+     * collects type/speaker context afterward, once there's something real to attach it to. */
+    suspend fun updateRecordingContext(id: String, context: com.example.core.model.RecordingContext) = withContext(Dispatchers.IO) {
+        val existing = meetingDao.getMeetingById(id) ?: return@withContext
+        meetingDao.updateMeeting(
+            existing.copy(
+                recordingType = context.recordingType.name,
+                customContext = context.customContext,
+                speakerCountPreference = context.speakerCountPreference,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
     }
 
     suspend fun deleteMeeting(id: String) = withContext(Dispatchers.IO) {
@@ -128,7 +154,8 @@ class MeetingRepository(
             language = language,
             summaryPreview = summaryText,
             recordingType = try { com.example.core.model.RecordingType.valueOf(recordingType) } catch (e: Exception) { com.example.core.model.RecordingType.GENERAL },
-            customContext = customContext
+            customContext = customContext,
+            speakerCountPreference = speakerCountPreference
         )
     }
 }

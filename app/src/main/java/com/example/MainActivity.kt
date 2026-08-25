@@ -152,10 +152,14 @@ fun MeetMindApp() {
             HomeScreen(
                 viewModel = vm,
                 onNavigateToRecord = {
-                    navController.navigate(Routes.recordingRoute())
+                    navController.navigate(Routes.RECORDING)
                 },
+                // "Quick Record" is a faster button to reach, not a different flow — it lands on
+                // exactly the same type/speaker picker as the regular Record entry (see
+                // RecordingScreen). Recording type and speaker count are first-class inputs to
+                // processing and are never silently skipped.
                 onNavigateToQuickRecord = {
-                    navController.navigate(Routes.recordingRoute(quickStart = true))
+                    navController.navigate(Routes.RECORDING)
                 },
                 onNavigateToImport = {
                     navController.navigate(Routes.IMPORT)
@@ -170,18 +174,11 @@ fun MeetMindApp() {
         }
 
         // RECORDING
-        composable(
-            route = Routes.RECORDING,
-            arguments = listOf(
-                navArgument("quickStart") { type = NavType.BoolType; defaultValue = false }
-            )
-        ) { backStackEntry ->
+        composable(route = Routes.RECORDING) {
             val vm: RecordingViewModel = viewModel()
-            val quickStart = backStackEntry.arguments?.getBoolean("quickStart") ?: false
             RecordingScreen(
                 viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
-                quickStart = quickStart,
                 onRecordingComplete = { meetingId, audioPath, durationMs ->
                     val route = Routes.processingRoute(meetingId, audioPath, durationMs)
                     navController.navigate(route) {

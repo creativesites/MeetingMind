@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -106,13 +107,11 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private var currentMeetingId: String = UUID.randomUUID().toString()
     private var currentOutputFile: File? = null
     private var meetingTitle: String = "In-Person Discussion"
-    private var recordingType: RecordingType = RecordingType.GENERAL
-    private var customContext: String? = null
+    private var recordingContext: com.example.core.model.RecordingContext = com.example.core.model.RecordingContext()
 
-    fun startRecording(title: String, recordingType: RecordingType = RecordingType.GENERAL, customContext: String? = null) {
+    fun startRecording(title: String, context: com.example.core.model.RecordingContext) {
         meetingTitle = title
-        this.recordingType = recordingType
-        this.customContext = customContext
+        this.recordingContext = context
         currentMeetingId = UUID.randomUUID().toString()
         currentOutputFile = recorder.startRecording(currentMeetingId)
         MeetingRecordingService.startService(getApplication(), meetingTitle)
@@ -144,8 +143,9 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                 title = meetingTitle,
                 source = MeetingSource.LOCAL_RECORDING,
                 audioFilePath = file.absolutePath,
-                recordingType = recordingType,
-                customContext = customContext
+                recordingType = recordingContext.recordingType,
+                customContext = recordingContext.customContext,
+                speakerCountPreference = recordingContext.speakerCountPreference
             )
             onComplete(currentMeetingId, file.absolutePath, finalDuration)
         }
@@ -162,10 +162,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
 fun RecordingScreen(
     viewModel: RecordingViewModel,
     onNavigateBack: () -> Unit,
-    onRecordingComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit,
-    /** True when reached via Home's Quick Record FAB — skips the type picker entirely (General
-     * type, "Quick Recording" title) instead of making the user tap through it first. */
-    quickStart: Boolean = false
+    onRecordingComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit
 ) {
     val context = LocalContext.current
     var hasAudioPermission by remember {
@@ -174,21 +171,32 @@ fun RecordingScreen(
         )
     }
 
-    var typeChosen by remember { mutableStateOf(quickStart) }
-    var selectedType by remember { mutableStateOf(if (quickStart) RecordingType.GENERAL else RecordingType.MEETING) }
+    // Home's Quick Record FAB and the main Record entry both land here and both go through this
+    // same picker — "quick" only ever meant "fewer taps to reach the button", never "skip telling
+    // MeetingMind what this recording is." Recording type and speaker count are first-class inputs
+    // to the whole processing pipeline (see RecordingContext); silently defaulting them was exactly
+    // the "treats every recording like a meeting" problem this phase exists to fix.
+    var typeChosen by remember { mutableStateOf(false) }
+    var selectedType by remember { mutableStateOf(RecordingType.MEETING) }
     var customContextText by remember { mutableStateOf("") }
-    var meetingTitle by remember { mutableStateOf(if (quickStart) "Quick Recording" else RecordingType.MEETING.displayName) }
+    var meetingTitle by remember { mutableStateOf(RecordingType.MEETING.displayName) }
+    // Null = unspecified/"Not sure". Tracks whether the user has touched this control themselves
+    // so a type-based suggestion never silently overwrites a choice they already made.
+    var selectedSpeakerCount by remember { mutableStateOf(RecordingType.MEETING.suggestedSpeakerCount()) }
+    var speakerCountTouched by remember { mutableStateOf(false) }
+
+    fun recordingContext() = com.example.core.model.RecordingContext(
+        recordingType = selectedType,
+        speakerCountPreference = selectedSpeakerCount,
+        customContext = customContextText.trim().ifBlank { null }.takeIf { selectedType == RecordingType.CUSTOM }
+    )
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasAudioPermission = isGranted
         if (isGranted) {
-            viewModel.startRecording(
-                meetingTitle,
-                selectedType,
-                customContextText.trim().ifBlank { null }.takeIf { selectedType == RecordingType.CUSTOM }
-            )
+            viewModel.startRecording(meetingTitle, recordingContext())
         }
     }
 
@@ -201,11 +209,7 @@ fun RecordingScreen(
     LaunchedEffect(hasAudioPermission, typeChosen) {
         if (typeChosen && hasAudioPermission && !hasStarted) {
             hasStarted = true
-            viewModel.startRecording(
-                meetingTitle,
-                selectedType,
-                customContextText.trim().ifBlank { null }.takeIf { selectedType == RecordingType.CUSTOM }
-            )
+            viewModel.startRecording(meetingTitle, recordingContext())
         }
     }
 
@@ -213,15 +217,22 @@ fun RecordingScreen(
         RecordingTypePickerScreen(
             selected = selectedType,
             customContext = customContextText,
+            selectedSpeakerCount = selectedSpeakerCount,
             onSelect = {
                 selectedType = it
                 meetingTitle = it.displayName
+                if (!speakerCountTouched) selectedSpeakerCount = it.suggestedSpeakerCount()
             },
             onCustomContextChange = { customContextText = it },
+            onSelectSpeakerCount = {
+                speakerCountTouched = true
+                selectedSpeakerCount = it
+            },
             onStart = { typeChosen = true },
             onQuickRecord = {
                 selectedType = RecordingType.GENERAL
                 meetingTitle = "Quick Recording"
+                if (!speakerCountTouched) selectedSpeakerCount = RecordingType.GENERAL.suggestedSpeakerCount()
                 typeChosen = true
             },
             onCancel = onNavigateBack
@@ -468,8 +479,10 @@ fun RecordingScreen(
 private fun RecordingTypePickerScreen(
     selected: RecordingType,
     customContext: String,
+    selectedSpeakerCount: Int?,
     onSelect: (RecordingType) -> Unit,
     onCustomContextChange: (String) -> Unit,
+    onSelectSpeakerCount: (Int?) -> Unit,
     onStart: () -> Unit,
     onQuickRecord: () -> Unit,
     onCancel: () -> Unit
@@ -501,23 +514,7 @@ private fun RecordingTypePickerScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            val types = RecordingType.entries.filter { it != RecordingType.GENERAL }
-            types.chunked(2).forEach { row ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    row.forEach { type ->
-                        RecordingTypeChip(
-                            type = type,
-                            isSelected = selected == type,
-                            onClick = { onSelect(type) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
-                }
-            }
+            com.example.core.ui.RecordingTypeGrid(selected = selected, onSelect = onSelect)
 
             if (selected == RecordingType.CUSTOM) {
                 OutlinedTextField(
@@ -527,6 +524,20 @@ private fun RecordingTypePickerScreen(
                     placeholder = { Text("e.g. Focus on pricing objections and next steps") },
                     modifier = Modifier.fillMaxWidth().testTag("custom_context_field")
                 )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Who is speaking? (optional)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Helps the on-device speaker detector — skip it if you're not sure.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                com.example.core.ui.SpeakerCountRow(selected = selectedSpeakerCount, onSelect = onSelectSpeakerCount)
             }
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -545,38 +556,6 @@ private fun RecordingTypePickerScreen(
             ) {
                 Text("Quick Record")
             }
-        }
-    }
-}
-
-@Composable
-private fun RecordingTypeChip(
-    type: RecordingType,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = if (isSelected) IndigoPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) IndigoPrimary else MaterialTheme.colorScheme.outlineVariant),
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .clickable { onClick() }
-    ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = type.displayName,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                color = if (isSelected) IndigoPrimaryLight else MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = type.shortDescription,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2
-            )
         }
     }
 }

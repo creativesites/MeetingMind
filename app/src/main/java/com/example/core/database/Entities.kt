@@ -22,7 +22,10 @@ data class MeetingEntity(
     val summaryText: String?,
     val updatedAt: Long = System.currentTimeMillis(),
     val recordingType: String = "GENERAL",
-    val customContext: String? = null
+    val customContext: String? = null,
+    /** What the user told MeetingMind about expected speakers — see
+     * [com.example.core.model.RecordingContext]. Null means unspecified. */
+    val speakerCountPreference: Int? = null
 )
 
 @Entity(

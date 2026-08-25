@@ -35,9 +35,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -48,6 +50,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,7 +73,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
-import java.io.FileOutputStream
 import java.util.UUID
 
 data class ImportMediaState(
@@ -82,7 +84,13 @@ data class ImportMediaState(
     val isExtracting: Boolean = false,
     val meetingId: String? = null,
     val extractedAudioFile: File? = null,
-    val error: String? = null
+    val error: String? = null,
+    /** Import creates the meeting the instant a file is picked (so extraction can start right
+     * away), before there's been any chance to ask what it is — this is filled in afterward,
+     * once a real file exists to attach context to. Defaults mirror RecordingContext's own. */
+    val recordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.GENERAL,
+    val customContextText: String = "",
+    val speakerCountPreference: Int? = null
 )
 
 class ImportViewModel(application: Application) : AndroidViewModel(application) {
@@ -126,42 +134,32 @@ class ImportViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun createSampleDemoRecording(title: String = "Client Architecture Strategy Session") {
-        viewModelScope.launch {
-            _importState.value = _importState.value.copy(isExtracting = true, error = null)
-            try {
-                val meetingId = UUID.randomUUID().toString()
-                val meetingDir = File(getApplication<Application>().filesDir, "meetings/$meetingId").apply { mkdirs() }
-                val sampleFile = File(meetingDir, "audio.m4a")
+    fun selectRecordingType(type: com.example.core.model.RecordingType) {
+        _importState.value = _importState.value.copy(recordingType = type)
+    }
 
-                FileOutputStream(sampleFile).use { out ->
-                    out.write(ByteArray(1024 * 128))
-                }
+    fun updateCustomContext(text: String) {
+        _importState.value = _importState.value.copy(customContextText = text)
+    }
 
-                val meeting = meetingRepository.createInitialMeeting(
-                    id = meetingId,
-                    title = title,
-                    source = MeetingSource.IMPORTED_AUDIO,
-                    audioFilePath = sampleFile.absolutePath
-                )
+    fun selectSpeakerCount(count: Int?) {
+        _importState.value = _importState.value.copy(speakerCountPreference = count)
+    }
 
-                _importState.value = ImportMediaState(
-                    uri = Uri.fromFile(sampleFile),
-                    fileName = "$title.m4a",
-                    durationMs = 180000L,
-                    sizeBytes = sampleFile.length(),
-                    isVideo = false,
-                    isExtracting = false,
-                    meetingId = meeting.id,
-                    extractedAudioFile = sampleFile
-                )
-            } catch (e: Exception) {
-                _importState.value = _importState.value.copy(
-                    isExtracting = false,
-                    error = "Failed to generate sample recording"
-                )
-            }
-        }
+    /** Persists the type/speaker context the user just chose onto the meeting row import already
+     * created, then hands off to processing — called right before [onStartProcessing] so the
+     * pipeline sees the real context on its very first read, never a stale GENERAL default. */
+    suspend fun applyRecordingContext() {
+        val meetingId = _importState.value.meetingId ?: return
+        val state = _importState.value
+        meetingRepository.updateRecordingContext(
+            meetingId,
+            com.example.core.model.RecordingContext(
+                recordingType = state.recordingType,
+                speakerCountPreference = state.speakerCountPreference,
+                customContext = state.customContextText.trim().ifBlank { null }.takeIf { state.recordingType == com.example.core.model.RecordingType.CUSTOM }
+            )
+        )
     }
 }
 
@@ -173,6 +171,7 @@ fun ImportScreen(
     onStartProcessing: (meetingId: String, audioPath: String, durationMs: Long) -> Unit
 ) {
     val state by viewModel.importState.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -277,55 +276,7 @@ fun ImportScreen(
                 }
             }
 
-            // 2. Quick demo tile
-            SectionCard {
-                Row(
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            modifier = Modifier.size(42.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.AudioFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                            }
-                        }
-                        Column {
-                            Text(
-                                text = "Sample Architecture Sync",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "3-minute multi-speaker sample audio",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Button(
-                        onClick = { viewModel.createSampleDemoRecording() },
-                        colors = ButtonDefaults.filledTonalButtonColors(),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.testTag("import_sample_demo_btn")
-                    ) {
-                        Text("Load Sample", fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-
-            // 3. Extraction progress
+            // 2. Extraction progress
             if (state.isExtracting) {
                 SectionCard {
                     Row(
@@ -380,12 +331,49 @@ fun ImportScreen(
                             }
                         }
 
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        // What is this? / Who's speaking? — recording type and expected speaker
+                        // count are first-class inputs to the whole processing pipeline (see
+                        // RecordingContext); import must never silently default to a generic
+                        // recording the way it used to.
+                        Text(
+                            text = "What is this?",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        com.example.core.ui.RecordingTypeGrid(
+                            selected = state.recordingType,
+                            onSelect = { viewModel.selectRecordingType(it) }
+                        )
+                        if (state.recordingType == com.example.core.model.RecordingType.CUSTOM) {
+                            OutlinedTextField(
+                                value = state.customContextText,
+                                onValueChange = { viewModel.updateCustomContext(it) },
+                                label = { Text("What should MeetingMind focus on?") },
+                                placeholder = { Text("e.g. Focus on pricing objections and next steps") },
+                                modifier = Modifier.fillMaxWidth().testTag("import_custom_context_field")
+                            )
+                        }
+                        Text(
+                            text = "Who's speaking? (optional)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        com.example.core.ui.SpeakerCountRow(
+                            selected = state.speakerCountPreference,
+                            onSelect = { viewModel.selectSpeakerCount(it) }
+                        )
+
                         Button(
                             onClick = {
                                 val mId = state.meetingId
                                 val file = state.extractedAudioFile
                                 if (mId != null && file != null) {
-                                    onStartProcessing(mId, file.absolutePath, state.durationMs)
+                                    coroutineScope.launch {
+                                        viewModel.applyRecordingContext()
+                                        onStartProcessing(mId, file.absolutePath, state.durationMs)
+                                    }
                                 }
                             },
                             shape = RoundedCornerShape(14.dp),

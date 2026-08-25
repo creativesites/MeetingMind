@@ -1,6 +1,7 @@
 package com.example.ai.llm
 
 import com.example.ai.common.AiResult
+import com.example.core.model.RecordingType
 import com.example.core.model.Transcript
 import com.example.core.model.TranscriptSegment
 import kotlinx.coroutines.runBlocking
@@ -154,5 +155,83 @@ class MeetingIntelligenceGroundingTest {
         val result = engine.processMeeting(transcriptOf("Anything at all."), "Fallback")
 
         assertTrue("A total model failure must not be dressed up as a summary", result is AiResult.Failed)
+    }
+
+    // --- Type-specific extraction schema: MeetingMind is not a meeting-only tool ---
+
+    @Test
+    fun `a lecture is never asked for decisions or action items`() = runBlocking {
+        val model = ScriptedLanguageModel(
+            listOf(
+                AiResult.Success("""{"briefSummary":"ok"}"""),
+                AiResult.Success("""{"title":"T","summary":"S","keyPoints":[]}""")
+            )
+        )
+        val engine = RealMeetingIntelligenceEngine(model, contextLengthTokens = 4096)
+
+        engine.processMeeting(transcriptOf("Today we cover Newton's laws."), "Fallback", RecordingType.LECTURE)
+
+        val extractionPrompt = model.prompts.first()
+        assertFalse("Lecture schema must not request decisions:\n$extractionPrompt", extractionPrompt.contains("\"decisions\""))
+        assertFalse("Lecture schema must not request actionItems:\n$extractionPrompt", extractionPrompt.contains("\"actionItems\""))
+        assertTrue("Lecture schema should still ask for questions:\n$extractionPrompt", extractionPrompt.contains("\"questions\""))
+    }
+
+    @Test
+    fun `a meeting is asked for the full schema`() = runBlocking {
+        val model = ScriptedLanguageModel(
+            listOf(
+                AiResult.Success("""{"briefSummary":"ok"}"""),
+                AiResult.Success("""{"title":"T","summary":"S","keyPoints":[]}""")
+            )
+        )
+        val engine = RealMeetingIntelligenceEngine(model, contextLengthTokens = 4096)
+
+        engine.processMeeting(transcriptOf("We agreed to ship Friday."), "Fallback", RecordingType.MEETING)
+
+        val extractionPrompt = model.prompts.first()
+        assertTrue(extractionPrompt.contains("\"decisions\""))
+        assertTrue(extractionPrompt.contains("\"actionItems\""))
+        assertTrue(extractionPrompt.contains("\"questions\""))
+        assertTrue(extractionPrompt.contains("\"followUps\""))
+    }
+
+    @Test
+    fun `an idea is never asked for decisions, action items, questions, or follow-ups`() = runBlocking {
+        val model = ScriptedLanguageModel(
+            listOf(
+                AiResult.Success("""{"briefSummary":"ok"}"""),
+                AiResult.Success("""{"title":"T","summary":"S","keyPoints":[]}""")
+            )
+        )
+        val engine = RealMeetingIntelligenceEngine(model, contextLengthTokens = 4096)
+
+        engine.processMeeting(transcriptOf("What if we built an offline recorder?"), "Fallback", RecordingType.IDEA)
+
+        val extractionPrompt = model.prompts.first()
+        listOf("\"decisions\"", "\"actionItems\"", "\"questions\"", "\"followUps\"").forEach {
+            assertFalse("Idea schema must not request $it:\n$extractionPrompt", extractionPrompt.contains(it))
+        }
+        assertTrue(extractionPrompt.contains("\"briefSummary\""))
+    }
+
+    @Test
+    fun `a model that ignores the schema and returns decisions anyway has them dropped for a lecture`() = runBlocking {
+        val model = ScriptedLanguageModel(
+            listOf(
+                // The model was not asked for "decisions" but returns one anyway.
+                AiResult.Success("""{"briefSummary":"Covered thermodynamics.","decisions":[{"text":"We decided X","type":"DECISION","sourceSegmentIds":["seg0"]}]}"""),
+                AiResult.Success("""{"title":"T","summary":"S","keyPoints":[]}""")
+            )
+        )
+        val engine = RealMeetingIntelligenceEngine(model, contextLengthTokens = 4096)
+
+        val result = engine.processMeeting(transcriptOf("Today: thermodynamics."), "Fallback", RecordingType.LECTURE)
+
+        val summary = (result as AiResult.Success).value
+        assertTrue(
+            "A disobedient model's decisions must be dropped, not trusted, for a Lecture",
+            summary.decisions.isEmpty()
+        )
     }
 }

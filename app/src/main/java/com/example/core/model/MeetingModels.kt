@@ -40,7 +40,130 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
         CUSTOM -> "" // Replaced by the user's own custom context text, see below.
         GENERAL -> ""
     }
+
+    /**
+     * A soft starting suggestion for the speaker-count picker (recording start and the
+     * before-processing prompt) — never a forced value. Types that are almost always recorded
+     * solo default to "Just me" so the common case needs zero taps; everything else defaults to
+     * unspecified ("Not sure"), which the user can always override either way.
+     */
+    fun suggestedSpeakerCount(): Int? = when (this) {
+        IDEA, VOICE_MEMO, DICTATION, JOURNAL -> 1
+        else -> null
+    }
+
+    /**
+     * What kind of AI output actually makes sense for this recording type — the single source of
+     * truth for the LLM's extraction schema, which Meeting Detail tabs/sections appear, and what
+     * the processing screen says it's doing. See [IntelligenceProfile] for what each flag controls.
+     */
+    fun intelligenceProfile(): IntelligenceProfile = when (this) {
+        MEETING -> IntelligenceProfile(
+            extractDecisions = true, extractActionItems = true, extractQuestions = true, extractFollowUps = true,
+            sectionTitle = "Meeting Intelligence", topicsLabel = "Key Topics",
+            analyzingStageLabel = "Extracting decisions & action items..."
+        )
+        INTERVIEW -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = true, extractFollowUps = true,
+            sectionTitle = "Interview Insights", topicsLabel = "Key Topics",
+            analyzingStageLabel = "Extracting key answers & highlights..."
+        )
+        LECTURE -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = true, extractFollowUps = false,
+            sectionTitle = "Lecture Notes", topicsLabel = "Key Concepts",
+            analyzingStageLabel = "Extracting key concepts & study notes..."
+        )
+        VOICE_MEMO -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = false, extractFollowUps = false,
+            sectionTitle = "Voice Memo Insights", topicsLabel = "Key Points",
+            analyzingStageLabel = "Organizing your thoughts..."
+        )
+        IDEA -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = false, extractFollowUps = false,
+            sectionTitle = "Idea Insights", topicsLabel = "Key Points",
+            analyzingStageLabel = "Organizing thoughts & generating insights..."
+        )
+        BRAINSTORM -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = false, extractFollowUps = false,
+            sectionTitle = "Brainstorm Insights", topicsLabel = "Ideas Generated",
+            analyzingStageLabel = "Collecting generated ideas..."
+        )
+        DICTATION -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = false, extractFollowUps = false,
+            sectionTitle = "Notes", topicsLabel = "Key Points",
+            analyzingStageLabel = "Generating notes..."
+        )
+        CONVERSATION -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = true, extractFollowUps = false,
+            sectionTitle = "Conversation Insights", topicsLabel = "Topics",
+            analyzingStageLabel = "Summarizing the conversation..."
+        )
+        RESEARCH -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = true, extractFollowUps = false,
+            sectionTitle = "Research Notes", topicsLabel = "Key Findings",
+            analyzingStageLabel = "Extracting findings & open questions..."
+        )
+        JOURNAL -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = false, extractFollowUps = false,
+            sectionTitle = "Reflections", topicsLabel = "Themes",
+            analyzingStageLabel = "Summarizing your entry..."
+        )
+        // The user told MeetingMind what to focus on directly — leave every category available
+        // rather than guessing which ones their own instructions might need.
+        CUSTOM -> IntelligenceProfile(
+            extractDecisions = true, extractActionItems = true, extractQuestions = true, extractFollowUps = true,
+            sectionTitle = "AI Insights", topicsLabel = "Key Topics",
+            analyzingStageLabel = "Analyzing your recording..."
+        )
+        // Genuinely unknown content — nothing is suppressed pre-emptively, since doing so risks
+        // hiding a real decision or task the recording actually contains.
+        GENERAL -> IntelligenceProfile(
+            extractDecisions = true, extractActionItems = true, extractQuestions = true, extractFollowUps = true,
+            sectionTitle = "AI Insights", topicsLabel = "Key Topics",
+            analyzingStageLabel = "Analyzing your recording..."
+        )
+    }
 }
+
+/**
+ * Drives what MeetingMind actually asks the LLM to extract, which Meeting Detail
+ * tabs/sections show up, and what the processing screen's "Analyzing" step says — one source of
+ * truth instead of the three independently-hardcoded copies this replaces. Every flag here must
+ * correspond to a real extraction/UI path; a flag with nothing behind it would just be a
+ * different way of lying about what the app does. See [RecordingType.intelligenceProfile].
+ */
+data class IntelligenceProfile(
+    val extractDecisions: Boolean,
+    val extractActionItems: Boolean,
+    val extractQuestions: Boolean,
+    val extractFollowUps: Boolean,
+    /** Heading shown over the AI-generated sections on Meeting Detail's Overview tab. */
+    val sectionTitle: String,
+    /** Label for the always-present "key points/concepts/topics" list (MeetingSummary.topics). */
+    val topicsLabel: String,
+    /** What the processing screen's Analyzing step says it's doing, for this recording type. */
+    val analyzingStageLabel: String
+)
+
+/**
+ * What the user told MeetingMind about a recording before AI processing starts: what kind of
+ * recording this is, how many people are expected to speak, and (for [RecordingType.CUSTOM]) what
+ * to focus on. Captured once — at recording start, on import, or via the one-time "before
+ * processing" prompt if skipped — and persisted on the [Meeting] itself (see
+ * [Meeting.speakerCountPreference]) so it is never asked for twice and never scattered across
+ * separate ViewModel fields. This is the first-class input the whole processing pipeline is built
+ * around, not an afterthought bolted onto individual stages.
+ */
+data class RecordingContext(
+    val recordingType: RecordingType = RecordingType.GENERAL,
+    /** Null = unspecified ("Not sure") — the diarization engine decides the speaker count for
+     *  itself via automatic clustering. 1 = exactly one speaker — diarization is skipped entirely
+     *  rather than run and discarded (see MeetingProcessingPipeline). 2+ = a specific count the
+     *  user is confident about, forcing the diarization engine's clustering to exactly that many. */
+    val speakerCountPreference: Int? = null,
+    val customContext: String? = null,
+    val title: String? = null
+)
 
 data class Meeting(
     val id: String,
@@ -57,7 +180,10 @@ data class Meeting(
     val decisionsCount: Int = 0,
     val recordingType: RecordingType = RecordingType.GENERAL,
     /** Free-text focus guidance the user typed for [RecordingType.CUSTOM]. Null otherwise. */
-    val customContext: String? = null
+    val customContext: String? = null,
+    /** What the user told MeetingMind about expected speakers — see [RecordingContext]. Null means
+     * unspecified; the diarization engine (if one runs) decides for itself. */
+    val speakerCountPreference: Int? = null
 )
 
 data class TranscriptSegment(

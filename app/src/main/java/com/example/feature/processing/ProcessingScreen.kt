@@ -15,11 +15,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -109,12 +111,34 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
     private val database = MeetMindDatabase.getInstance(application)
     private val userPrefs = UserPreferencesManager(application)
     private val workManager = WorkManager.getInstance(application)
+    private val meetingRepository = com.example.core.repository.MeetingRepository(application, database)
 
     private val _uiState = MutableStateFlow(ProcessingUiState())
     val uiState: StateFlow<ProcessingUiState> = _uiState.asStateFlow()
 
     private var workId: UUID? = null
     private var lastMeetingId: String? = null
+
+    /** What MeetingMind already knows about this recording — type and any speaker-count
+     * preference already captured at recording/import time (or a previous attempt at this
+     * screen). Used to decide whether the second-chance speaker-count prompt is needed at all. */
+    suspend fun loadRecordingContext(meetingId: String): com.example.core.model.RecordingContext {
+        val entity = database.meetingDao().getMeetingById(meetingId)
+        val recordingType = entity?.recordingType?.let {
+            runCatching { com.example.core.model.RecordingType.valueOf(it) }.getOrNull()
+        } ?: com.example.core.model.RecordingType.GENERAL
+        return com.example.core.model.RecordingContext(
+            recordingType = recordingType,
+            speakerCountPreference = entity?.speakerCountPreference,
+            customContext = entity?.customContext
+        )
+    }
+
+    /** Persists the second-chance prompt's answer so a retry (or reopening this screen) never
+     * has to ask again. */
+    fun persistSpeakerCountPreference(meetingId: String, speakerCount: Int?) {
+        viewModelScope.launch { meetingRepository.updateSpeakerCountPreference(meetingId, speakerCount) }
+    }
 
     /** True when a real, not-yet-finished WorkManager job already exists for [meetingId] —
      * ENQUEUED, BLOCKED (queued behind another recording), or RUNNING. Checked once (a snapshot,
@@ -306,13 +330,32 @@ fun ProcessingScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var phase by remember(meetingId) { mutableStateOf(ProcessingScreenPhase.Checking) }
-    var selectedSpeakerCount by remember { mutableStateOf<Int?>(null) } // null = Auto
+    var selectedSpeakerCount by remember { mutableStateOf<Int?>(null) } // null = Auto/"Not sure"
+    var recordingType by remember { mutableStateOf(com.example.core.model.RecordingType.GENERAL) }
 
     LaunchedEffect(meetingId) {
         val alreadyRunning = viewModel.attachIfAlreadyRunning(meetingId) { finishedId ->
             onProcessingComplete(finishedId)
         }
-        phase = if (alreadyRunning) ProcessingScreenPhase.Running else ProcessingScreenPhase.Picker
+        if (alreadyRunning) {
+            phase = ProcessingScreenPhase.Running
+            return@LaunchedEffect
+        }
+
+        val context = viewModel.loadRecordingContext(meetingId)
+        recordingType = context.recordingType
+        if (context.speakerCountPreference != null) {
+            // Already told MeetingMind this — at recording start, on import, or on a previous
+            // attempt at this very screen — so it is never asked for twice.
+            selectedSpeakerCount = context.speakerCountPreference
+            phase = ProcessingScreenPhase.Running
+            viewModel.startPipeline(meetingId, audioPath, durationMs, context.speakerCountPreference) { finishedId ->
+                onProcessingComplete(finishedId)
+            }
+        } else {
+            selectedSpeakerCount = context.recordingType.suggestedSpeakerCount()
+            phase = ProcessingScreenPhase.Picker
+        }
     }
 
     when (phase) {
@@ -326,9 +369,11 @@ fun ProcessingScreen(
         }
         ProcessingScreenPhase.Picker -> {
             SpeakerCountPickerScreen(
+                recordingType = recordingType,
                 selected = selectedSpeakerCount,
                 onSelect = { selectedSpeakerCount = it },
                 onStart = {
+                    viewModel.persistSpeakerCountPreference(meetingId, selectedSpeakerCount)
                     phase = ProcessingScreenPhase.Running
                     viewModel.startPipeline(meetingId, audioPath, durationMs, selectedSpeakerCount) { finishedId ->
                         onProcessingComplete(finishedId)
@@ -443,13 +488,16 @@ fun ProcessingScreen(
                 )
                 PipelineStageRow(
                     stageNumber = 4,
-                    name = "Speaker Diarization (Multi-Voice)",
+                    // Honest about what's actually happening: a confirmed single speaker skips
+                    // diarization entirely (see MeetingProcessingPipeline) rather than running
+                    // — and this must never claim otherwise.
+                    name = if (selectedSpeakerCount == 1) "Speaker Detection (Skipped — Just One Speaker)" else "Speaker Diarization (Multi-Voice)",
                     isActive = state.currentStageIndex == 3,
                     isDone = state.currentStageIndex > 3
                 )
                 PipelineStageRow(
                     stageNumber = 5,
-                    name = "Decisions & Action Items Extraction",
+                    name = recordingType.intelligenceProfile().analyzingStageLabel.removeSuffix("..."),
                     isActive = state.currentStageIndex == 4,
                     isDone = state.currentStageIndex > 4
                 )
@@ -554,11 +602,16 @@ fun ProcessingScreen(
  */
 @Composable
 private fun SpeakerCountPickerScreen(
+    recordingType: com.example.core.model.RecordingType,
     selected: Int?,
     onSelect: (Int?) -> Unit,
     onStart: () -> Unit,
     onCancel: () -> Unit
 ) {
+    // A one-person-leaning type (Idea, Voice Memo, Dictation, Journal) gets copy that matches
+    // what's actually about to happen — running full multi-speaker clustering on a recording
+    // that's almost certainly solo would be wasted work, not just wasted words.
+    val leansSolo = recordingType.suggestedSpeakerCount() == 1
     Scaffold { innerPadding ->
         Column(
             modifier = Modifier
@@ -571,20 +624,28 @@ private fun SpeakerCountPickerScreen(
             Icon(Icons.Default.Group, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "How many speakers?",
+                text = "Who's speaking?",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Optional — telling the on-device speaker detector how many people spoke can improve accuracy for small meetings. Leave it on Auto if you're not sure.",
+                text = if (leansSolo) {
+                    "A ${recordingType.displayName.lowercase()} like this is usually just one person — confirming skips speaker detection entirely and processes faster. Pick a different option if others spoke too."
+                } else {
+                    "Optional — telling the on-device speaker detector how many people spoke can improve accuracy for small meetings. Leave it on \"Not sure\" if you don't know."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(20.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SpeakerCountChip(label = "Auto", isSelected = selected == null) { onSelect(null) }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())
+            ) {
+                SpeakerCountChip(label = "Not sure", isSelected = selected == null) { onSelect(null) }
+                SpeakerCountChip(label = "Just me", isSelected = selected == 1) { onSelect(1) }
                 for (count in 2..6) {
                     SpeakerCountChip(label = "$count", isSelected = selected == count) { onSelect(count) }
                 }
@@ -610,11 +671,11 @@ private fun SpeakerCountChip(label: String, isSelected: Boolean, onClick: () -> 
         shape = RoundedCornerShape(12.dp),
         color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier
-            .size(48.dp)
+            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,

@@ -4,6 +4,7 @@ import com.example.ai.common.AiResult
 import com.example.ai.common.describeFailure
 import com.example.core.common.FillerWordCleaner
 import com.example.core.model.ChatMessage
+import com.example.core.model.IntelligenceProfile
 import com.example.core.model.MeetingSummary
 import com.example.core.model.RecordingType
 import com.example.core.model.Transcript
@@ -50,6 +51,12 @@ class RealMeetingIntelligenceEngine(
             recordingType.focusGuidance()
         }
 
+        // What kind of output actually makes sense for this recording — MeetingMind is not a
+        // meeting-only tool, so a Lecture or Idea is never asked for decisions/action items in
+        // the first place, rather than asked and told (unreliably, via prose alone) to leave
+        // them empty. See IntelligenceProfile's doc for why this exists.
+        val profile = recordingType.intelligenceProfile()
+
         val decisions = mutableListOf<com.example.core.model.Decision>()
         val actionItems = mutableListOf<com.example.core.model.ActionItem>()
         val questions = mutableListOf<com.example.core.model.Question>()
@@ -59,11 +66,21 @@ class RealMeetingIntelligenceEngine(
 
         for (chunk in chunks) {
             val validSegmentIds = chunk.segments.map { it.id }.toSet()
-            val prompt = buildExtractionPrompt(chunk.segments, focusGuidance)
+            val prompt = buildExtractionPrompt(chunk.segments, focusGuidance, profile)
             val result = languageModel.generate(prompt, maxOutputTokens = EXTRACTION_OUTPUT_TOKENS)
             val rawText = (result as? AiResult.Success)?.value ?: continue
             anyChunkSucceeded = true
-            val extraction = MeetingIntelligenceJsonParser.parseExtraction(rawText, transcript.meetingId, validSegmentIds, speakerNameToId)
+            val rawExtraction = MeetingIntelligenceJsonParser.parseExtraction(rawText, transcript.meetingId, validSegmentIds, speakerNameToId)
+            // Defense in depth: the prompt above never asks for a disabled category, but a model
+            // that ignores instructions must never be trusted to have actually left it out —
+            // dropped here rather than assumed, the same discipline already applied to
+            // hallucinated source-segment-id citations.
+            val extraction = rawExtraction.copy(
+                decisions = if (profile.extractDecisions) rawExtraction.decisions else emptyList(),
+                actionItems = if (profile.extractActionItems) rawExtraction.actionItems else emptyList(),
+                questions = if (profile.extractQuestions) rawExtraction.questions else emptyList(),
+                followUps = if (profile.extractFollowUps) rawExtraction.followUps else emptyList()
+            )
             decisions += extraction.decisions
             actionItems += extraction.actionItems
             questions += extraction.questions
@@ -90,7 +107,7 @@ class RealMeetingIntelligenceEngine(
         // items, so the evidence block came back empty and the model — having never been shown
         // what was actually said — could only produce "nothing specific was discussed" about a
         // recording with perfectly good content in it.
-        val synthesisPrompt = buildSynthesisPrompt(transcript.segments, chunkSummaries, decisions, actionItems, focusGuidance)
+        val synthesisPrompt = buildSynthesisPrompt(transcript.segments, chunkSummaries, decisions, actionItems, focusGuidance, profile)
         val synthesis = when (val result = languageModel.generate(synthesisPrompt, maxOutputTokens = SYNTHESIS_OUTPUT_TOKENS)) {
             is AiResult.Success -> MeetingIntelligenceJsonParser.parseSynthesis(result.value, meetingTitle)
             else -> SynthesisResult(meetingTitle, "", emptyList())
@@ -144,15 +161,36 @@ class RealMeetingIntelligenceEngine(
         }
     }
 
-    private fun buildExtractionPrompt(segments: List<TranscriptSegment>, focusGuidance: String): String {
+    /**
+     * The extraction schema is built to match [profile] — a Lecture or Idea is never asked for
+     * "decisions"/"actionItems" in the first place, rather than asked for them and relied on to
+     * leave the arrays empty via prose instruction alone (a small model following a schema it was
+     * actually given is far more reliable than one asked to selectively ignore part of it). See
+     * [MeetingIntelligenceGroundingTest] for the parsing side of this contract.
+     */
+    private fun buildExtractionPrompt(segments: List<TranscriptSegment>, focusGuidance: String, profile: IntelligenceProfile): String {
         val transcriptText = renderSegments(segments, includeIds = true)
         val focusLine = if (focusGuidance.isNotBlank()) "\n            $focusGuidance\n" else ""
-        return """
-            You are analyzing a real transcript excerpt. Extract ONLY information explicitly supported by the transcript below. Never invent names, dates, deadlines, decisions, or commitments that are not actually stated.
-            $focusLine
-            "briefSummary" is REQUIRED and must always be filled in: 2-3 plain sentences saying what this excerpt is actually about, in the speaker's own subject matter. Write it even when nothing was decided and nothing was assigned — a personal note, a passing idea, or a casual chat still has real content to describe. Never write that nothing was discussed.
 
-            The four lists below are different: they may legitimately be empty. Many recordings are notes or conversations with no decisions and no assigned tasks, and empty arrays are the correct, honest answer there. Never invent an item to fill a list.
+        val schemaFields = mutableListOf("\"briefSummary\":string")
+        if (profile.extractDecisions) schemaFields += "\"decisions\":[{\"text\":string,\"type\":\"DECISION\"|\"SUGGESTION\"|\"DISCUSSION\"|\"POSSIBILITY\",\"sourceSegmentIds\":[string]}]"
+        if (profile.extractActionItems) schemaFields += "\"actionItems\":[{\"task\":string,\"assigneeName\":string|null,\"deadline\":string|null,\"sourceSegmentIds\":[string]}]"
+        if (profile.extractQuestions) schemaFields += "\"questions\":[{\"question\":string,\"askedBy\":string|null,\"sourceSegmentIds\":[string]}]"
+        if (profile.extractFollowUps) schemaFields += "\"followUps\":[{\"description\":string,\"owner\":string|null,\"deadline\":string|null,\"sourceSegmentIds\":[string]}]"
+        val schema = "{${schemaFields.joinToString(",")}}"
+
+        val listCategories = listOfNotNull(
+            "decisions".takeIf { profile.extractDecisions },
+            "action items".takeIf { profile.extractActionItems },
+            "questions".takeIf { profile.extractQuestions },
+            "follow-ups".takeIf { profile.extractFollowUps }
+        )
+        val listsGuidance = if (listCategories.isNotEmpty()) {
+            "\n            The ${listCategories.joinToString(", ")} list(s) above may legitimately be empty — many recordings have none, and an empty array is the correct, honest answer there. Never invent an item to fill a list.\n"
+        } else ""
+
+        val decisionGuidance = if (profile.extractDecisions) {
+            """
 
             Classify every candidate decision carefully:
             - DECISION: the group explicitly agreed on or finalized something.
@@ -160,11 +198,20 @@ class RealMeetingIntelligenceEngine(
             - DISCUSSION: a topic discussed without resolution.
             - POSSIBILITY: a tentative idea, guess, or "maybe"/"probably" statement.
             A statement like "I think we should launch around the 15th" is a POSSIBILITY, never a DECISION.
+            """.trimIndent()
+        } else ""
 
-            For every item, list the transcript line ids it came from in "sourceSegmentIds", copied exactly from the [id] markers below — never invent an id.
+        val sourceIdGuidance = if (schemaFields.size > 1) {
+            "\n            For every item, list the transcript line ids it came from in \"sourceSegmentIds\", copied exactly from the [id] markers below — never invent an id.\n"
+        } else ""
 
+        return """
+            You are analyzing a real transcript excerpt. Extract ONLY information explicitly supported by the transcript below. Never invent names, dates, deadlines, decisions, or commitments that are not actually stated.
+            $focusLine
+            "briefSummary" is REQUIRED and must always be filled in: 2-3 plain sentences saying what this excerpt is actually about, in the speaker's own subject matter. Write it even when nothing was decided and nothing was assigned — a personal note, a passing idea, or a casual chat still has real content to describe. Never write that nothing was discussed.
+            $listsGuidance$decisionGuidance$sourceIdGuidance
             Respond with ONLY a single JSON object, no markdown, no commentary, matching exactly this shape:
-            {"briefSummary":string,"decisions":[{"text":string,"type":"DECISION"|"SUGGESTION"|"DISCUSSION"|"POSSIBILITY","sourceSegmentIds":[string]}],"actionItems":[{"task":string,"assigneeName":string|null,"deadline":string|null,"sourceSegmentIds":[string]}],"questions":[{"question":string,"askedBy":string|null,"sourceSegmentIds":[string]}],"followUps":[{"description":string,"owner":string|null,"deadline":string|null,"sourceSegmentIds":[string]}]}
+            $schema
 
             Transcript excerpt:
             $transcriptText
@@ -189,7 +236,8 @@ class RealMeetingIntelligenceEngine(
         chunkSummaries: List<String>,
         decisions: List<com.example.core.model.Decision>,
         actionItems: List<com.example.core.model.ActionItem>,
-        focusGuidance: String
+        focusGuidance: String,
+        profile: IntelligenceProfile
     ): String {
         val evidence = buildString {
             if (chunkSummaries.isNotEmpty()) {
@@ -204,7 +252,7 @@ class RealMeetingIntelligenceEngine(
                 appendLine("Action items found:")
                 actionItems.forEach { item -> appendLine("- ${item.task}" + (item.assigneeName?.let { " (assignee: $it)" } ?: "")) }
             }
-            if (isEmpty()) appendLine("(No decisions or action items were extracted — summarize from the transcript below.)")
+            if (isEmpty()) appendLine("(Summarize from the transcript below.)")
         }
         val transcriptExcerpt = renderTranscriptWithinBudget(allSegments, evidence.length)
         val focusLine = if (focusGuidance.isNotBlank()) "\n            $focusGuidance\n" else ""
@@ -215,7 +263,7 @@ class RealMeetingIntelligenceEngine(
 
             The title must be under 10 words, describe what this recording was actually about, and contain no surrounding quotes. Do not use a generic title like "Team Meeting" or "Meeting Summary" unless nothing more specific is supported — a caller-provided fallback title is used automatically when this isn't possible, so an unhelpful generic title here is worse than a short, honest one.
 
-            "keyPoints" should be the few concrete points actually raised, or an empty array if the recording is too short to have distinct points.
+            "keyPoints" should be the few real ${profile.topicsLabel.lowercase()} actually raised, or an empty array if the recording is too short to have distinct points.
 
             Respond with ONLY a JSON object, no markdown: {"title":string,"summary":string,"keyPoints":[string]}
 

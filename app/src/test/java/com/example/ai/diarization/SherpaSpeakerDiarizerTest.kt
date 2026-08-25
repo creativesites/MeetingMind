@@ -233,4 +233,104 @@ class SherpaSpeakerDiarizerTest {
 
         assertEquals(segments, mergeShortSandwichedFragments(segments))
     }
+
+    // --- analyzeSpeakerFragmentation / reconcileFragmentedSpeakers: the "5-speaker but really
+    // 2" fingerprint from the product spec, without falsely flagging real multi-speaker output ---
+
+    @Test
+    fun `flags the exact spec example - two dominant speakers plus three near-silent noise speakers`() {
+        // Speaker 0: 42%, Speaker 4: 52%, speakers 1-3: 3%+2%+1% = 6% combined — the product
+        // spec's own illustrative "may be legitimate, may be fragmentation" case, which really
+        // is fragmentation once you look at the distribution rather than the raw cluster count.
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 4200L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 4200L, endMs = 4500L, speakerIndex = 1),
+            RawSpeakerSegment(startMs = 4500L, endMs = 4700L, speakerIndex = 2),
+            RawSpeakerSegment(startMs = 4700L, endMs = 4800L, speakerIndex = 3),
+            RawSpeakerSegment(startMs = 4800L, endMs = 10000L, speakerIndex = 4)
+        )
+
+        val flagged = analyzeSpeakerFragmentation(segments)
+
+        assertEquals(setOf(1, 2, 3), flagged)
+    }
+
+    @Test
+    fun `reconciliation reassigns flagged noise speakers to their nearest real neighbor in time`() {
+        // Two real speakers of deliberately different lengths (so their midpoints land far apart
+        // and each noise fragment has an unambiguous nearest neighbor), with one noise fragment
+        // bordering each side.
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 2000L, speakerIndex = 0),        // real, mid=1000
+            RawSpeakerSegment(startMs = 2000L, endMs = 2100L, speakerIndex = 1),     // noise, nearer to 0
+            RawSpeakerSegment(startMs = 2100L, endMs = 20100L, speakerIndex = 2),    // real, mid=11100
+            RawSpeakerSegment(startMs = 20100L, endMs = 20200L, speakerIndex = 3)    // noise, nearer to 2
+        )
+        val flagged = analyzeSpeakerFragmentation(segments)
+        assertEquals(setOf(1, 3), flagged)
+
+        val result = reconcileFragmentedSpeakers(segments, flagged)
+
+        assertEquals(listOf(0, 0, 2, 2), result.map { it.speakerIndex })
+    }
+
+    @Test
+    fun `two genuinely balanced speakers are never flagged`() {
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 5000L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 5000L, endMs = 10000L, speakerIndex = 1)
+        )
+
+        assertEquals(emptySet<Int>(), analyzeSpeakerFragmentation(segments))
+    }
+
+    @Test
+    fun `a single small but real minority speaker is not flagged alone`() {
+        // Only ONE speaker index falls under the noise-share threshold — MIN_NOISE_SPEAKERS_TO_FLAG
+        // requires at least two before anything is second-guessed, since a lone quiet participant
+        // is exactly the kind of real speaker diarization exists to catch.
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 9000L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 9000L, endMs = 9500L, speakerIndex = 1)
+        )
+
+        assertEquals(emptySet<Int>(), analyzeSpeakerFragmentation(segments))
+    }
+
+    @Test
+    fun `several genuinely balanced speakers (a real small meeting) are never flagged`() {
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 3000L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 3000L, endMs = 6000L, speakerIndex = 1),
+            RawSpeakerSegment(startMs = 6000L, endMs = 9000L, speakerIndex = 2),
+            RawSpeakerSegment(startMs = 9000L, endMs = 12000L, speakerIndex = 3)
+        )
+
+        assertEquals(emptySet<Int>(), analyzeSpeakerFragmentation(segments))
+    }
+
+    @Test
+    fun `a single speaker throughout is never flagged - nothing to compare it against`() {
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 1000L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 1000L, endMs = 2000L, speakerIndex = 0)
+        )
+
+        assertEquals(emptySet<Int>(), analyzeSpeakerFragmentation(segments))
+    }
+
+    @Test
+    fun `empty input is never flagged`() {
+        assertEquals(emptySet<Int>(), analyzeSpeakerFragmentation(emptyList()))
+    }
+
+    @Test
+    fun `reconciliation is a no-op when nothing was flagged`() {
+        val segments = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 5000L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 5000L, endMs = 10000L, speakerIndex = 1)
+        )
+
+        assertEquals(segments, reconcileFragmentedSpeakers(segments, emptySet()))
+    }
 }

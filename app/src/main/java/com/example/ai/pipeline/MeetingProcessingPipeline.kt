@@ -214,14 +214,28 @@ class MeetingProcessingPipeline(
                 }
             }
 
-            // STEP 3: Speaker Diarization (best-effort — unavailable keeps ASR's own speaker labels)
-            updateJob("Identifying distinct speakers...", 55, ProcessingStage.DIARIZING)
-            val diarizeStart = System.currentTimeMillis()
-            val speakerLabelledSegments = when (val diarizeResult = diarizer.diarize(audioFile, totalDurationMs, rawSegments, expectedSpeakerCount = expectedSpeakerCount)) {
-                is AiResult.Success -> diarizeResult.value
-                else -> rawSegments // No diarization model installed: keep ASR's segments as-is.
+            // STEP 3: Speaker Diarization — skipped entirely for a confirmed single speaker.
+            // Running full multi-speaker clustering on a recording the user already told
+            // MeetingMind is solo (Idea, Voice Memo, a "Just me" pick) wastes the segmentation +
+            // embedding models' load/inference cost for a result that would only ever be thrown
+            // away, and exposes the transcript to exactly the fragmentation risk diarization
+            // exists to avoid: a real single-speaker recording getting split into several
+            // fabricated "speakers" from acoustic noise alone. ASR's segments already carry no
+            // speakerId, which correctly renders as no speaker label — nothing is invented here.
+            val speakerLabelledSegments: List<TranscriptSegment>
+            if (expectedSpeakerCount == 1) {
+                updateJob("Single speaker confirmed — skipping speaker detection...", 55, ProcessingStage.DIARIZING)
+                speakerLabelledSegments = rawSegments
+                Log.d(PERF_TAG, "Diarization: skipped (confirmed single speaker)")
+            } else {
+                updateJob("Identifying distinct speakers...", 55, ProcessingStage.DIARIZING)
+                val diarizeStart = System.currentTimeMillis()
+                speakerLabelledSegments = when (val diarizeResult = diarizer.diarize(audioFile, totalDurationMs, rawSegments, expectedSpeakerCount = expectedSpeakerCount)) {
+                    is AiResult.Success -> diarizeResult.value
+                    else -> rawSegments // No diarization model installed: keep ASR's segments as-is.
+                }
+                Log.d(PERF_TAG, "Diarization: ${System.currentTimeMillis() - diarizeStart}ms")
             }
-            Log.d(PERF_TAG, "Diarization: ${System.currentTimeMillis() - diarizeStart}ms")
 
             // Regroup the VAD-sized fragments into readable paragraphs. This runs *after*
             // diarization on purpose: speaker identity is what decides where a paragraph may
@@ -233,19 +247,21 @@ class MeetingProcessingPipeline(
             SherpaEngineManager.releaseAll()
 
             // STEP 4: Meeting Intelligence (best-effort — unavailable leaves summary/insights empty)
-            updateJob("Generating summary, action items & decisions...", 70, ProcessingStage.ANALYZING)
+            val recordingType = try {
+                com.example.core.model.RecordingType.valueOf(existingMeeting.recordingType)
+            } catch (e: Exception) {
+                com.example.core.model.RecordingType.GENERAL
+            }
+            val intelligenceProfile = recordingType.intelligenceProfile()
+            // What this step is actually doing depends on what this recording type actually
+            // produces — a Lecture never claims to be "extracting decisions & action items".
+            updateJob(intelligenceProfile.analyzingStageLabel, 70, ProcessingStage.ANALYZING)
             val transcriptDomain = Transcript(
                 meetingId = meetingId,
                 segments = diarizedSegments,
                 language = "en",
                 createdAt = existingMeeting.createdAt
             )
-
-            val recordingType = try {
-                com.example.core.model.RecordingType.valueOf(existingMeeting.recordingType)
-            } catch (e: Exception) {
-                com.example.core.model.RecordingType.GENERAL
-            }
 
             val llmStart = System.currentTimeMillis()
             // A deterministic, non-fabricated fallback built only from the recording's real type
