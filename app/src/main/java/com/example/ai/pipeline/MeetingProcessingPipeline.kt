@@ -217,11 +217,18 @@ class MeetingProcessingPipeline(
             // STEP 3: Speaker Diarization (best-effort — unavailable keeps ASR's own speaker labels)
             updateJob("Identifying distinct speakers...", 55, ProcessingStage.DIARIZING)
             val diarizeStart = System.currentTimeMillis()
-            val diarizedSegments = when (val diarizeResult = diarizer.diarize(audioFile, totalDurationMs, rawSegments, expectedSpeakerCount = expectedSpeakerCount)) {
+            val speakerLabelledSegments = when (val diarizeResult = diarizer.diarize(audioFile, totalDurationMs, rawSegments, expectedSpeakerCount = expectedSpeakerCount)) {
                 is AiResult.Success -> diarizeResult.value
                 else -> rawSegments // No diarization model installed: keep ASR's segments as-is.
             }
             Log.d(PERF_TAG, "Diarization: ${System.currentTimeMillis() - diarizeStart}ms")
+
+            // Regroup the VAD-sized fragments into readable paragraphs. This runs *after*
+            // diarization on purpose: speaker identity is what decides where a paragraph may
+            // legitimately continue, so grouping earlier would risk merging across a speaker
+            // change that diarization hadn't reported yet.
+            val diarizedSegments = TranscriptParagraphBuilder.buildParagraphs(speakerLabelledSegments)
+            Log.d(PERF_TAG, "Paragraphs: ${speakerLabelledSegments.size} fragments -> ${diarizedSegments.size} paragraphs")
             // Free the segmentation+embedding models before the LLM's much larger allocation loads.
             SherpaEngineManager.releaseAll()
 

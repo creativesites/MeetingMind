@@ -23,7 +23,11 @@ data class AppPreferencesState(
     val audioQualitySampleRate: Int = 16000,
     val autoStopSilenceMinutes: Int = 15,
     val cloudSyncEnabled: Boolean = false,
-    val themeMode: String = "SYSTEM"
+    val themeMode: String = "SYSTEM",
+    /** Display-only: hides "uh"/"um"-style hesitation noise in the transcript. The verbatim ASR
+     * text is always what's stored, so toggling this back off restores it exactly, with no
+     * reprocessing. See [com.example.core.common.FillerWordCleaner]. */
+    val cleanFillerWords: Boolean = true
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -36,6 +40,7 @@ class UserPreferencesManager(private val context: Context) {
     private val AUTO_STOP_MINUTES = intPreferencesKey("auto_stop_minutes")
     private val CLOUD_SYNC_ENABLED = booleanPreferencesKey("cloud_sync_enabled")
     private val THEME_MODE = stringPreferencesKey("theme_mode")
+    private val CLEAN_FILLER_WORDS = booleanPreferencesKey("clean_filler_words")
 
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
         AppPreferencesState(
@@ -47,7 +52,8 @@ class UserPreferencesManager(private val context: Context) {
             audioQualitySampleRate = prefs[AUDIO_SAMPLE_RATE] ?: 16000,
             autoStopSilenceMinutes = prefs[AUTO_STOP_MINUTES] ?: 15,
             cloudSyncEnabled = prefs[CLOUD_SYNC_ENABLED] ?: false,
-            themeMode = prefs[THEME_MODE] ?: "SYSTEM"
+            themeMode = prefs[THEME_MODE] ?: "SYSTEM",
+            cleanFillerWords = prefs[CLEAN_FILLER_WORDS] ?: true
         )
     }
 
@@ -77,5 +83,9 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setThemeMode(mode: String) {
         context.dataStore.edit { it[THEME_MODE] = mode }
+    }
+
+    suspend fun setCleanFillerWords(enabled: Boolean) {
+        context.dataStore.edit { it[CLEAN_FILLER_WORDS] = enabled }
     }
 }

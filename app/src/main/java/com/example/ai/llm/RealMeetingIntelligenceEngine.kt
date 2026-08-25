@@ -2,6 +2,7 @@ package com.example.ai.llm
 
 import com.example.ai.common.AiResult
 import com.example.ai.common.describeFailure
+import com.example.core.common.FillerWordCleaner
 import com.example.core.model.ChatMessage
 import com.example.core.model.MeetingSummary
 import com.example.core.model.RecordingType
@@ -67,23 +68,43 @@ class RealMeetingIntelligenceEngine(
             actionItems += extraction.actionItems
             questions += extraction.questions
             followUps += extraction.followUps
-            if (extraction.briefSummary.isNotBlank()) chunkSummaries += extraction.briefSummary
+            if (extraction.briefSummary.isNotBlank()) {
+                chunkSummaries += extraction.briefSummary
+            } else {
+                // The model answered but its JSON didn't parse (a very common failure mode for
+                // small on-device models faced with a nested schema). Its prose is still real,
+                // transcript-grounded output — salvaging it as this chunk's summary is strictly
+                // better than discarding a real answer and reporting nothing.
+                MeetingIntelligenceJsonParser.salvagePlainSummary(rawText)
+                    ?.let { chunkSummaries += it }
+            }
         }
 
         if (!anyChunkSucceeded) {
             return AiResult.Failed("Local meeting intelligence could not analyze this transcript (the local language model produced no usable output).")
         }
 
-        val synthesisPrompt = buildSynthesisPrompt(chunkSummaries, decisions, actionItems)
+        // Synthesis is shown the REAL transcript, not just the extracted items. Deriving the
+        // summary purely from extraction output was the single biggest quality bug in this
+        // engine: a short or casual recording legitimately contains no decisions and no action
+        // items, so the evidence block came back empty and the model — having never been shown
+        // what was actually said — could only produce "nothing specific was discussed" about a
+        // recording with perfectly good content in it.
+        val synthesisPrompt = buildSynthesisPrompt(transcript.segments, chunkSummaries, decisions, actionItems, focusGuidance)
         val synthesis = when (val result = languageModel.generate(synthesisPrompt, maxOutputTokens = SYNTHESIS_OUTPUT_TOKENS)) {
             is AiResult.Success -> MeetingIntelligenceJsonParser.parseSynthesis(result.value, meetingTitle)
             else -> SynthesisResult(meetingTitle, "", emptyList())
         }
 
+        // If synthesis itself failed or returned an empty summary, the per-chunk summaries are
+        // still real model output grounded in the transcript — use them rather than showing the
+        // user an empty summary for a recording that was analyzed successfully.
+        val summaryText = synthesis.summary.ifBlank { chunkSummaries.joinToString(" ").trim() }
+
         return AiResult.Success(
             MeetingSummary(
                 title = synthesis.title,
-                summary = synthesis.summary,
+                summary = summaryText,
                 topics = synthesis.keyPoints,
                 decisions = decisions,
                 actionItems = actionItems,
@@ -124,13 +145,15 @@ class RealMeetingIntelligenceEngine(
     }
 
     private fun buildExtractionPrompt(segments: List<TranscriptSegment>, focusGuidance: String): String {
-        val transcriptText = segments.joinToString("\n") { seg ->
-            "[${seg.id}] ${seg.speakerName ?: "Unknown speaker"}: ${seg.text}"
-        }
+        val transcriptText = renderSegments(segments, includeIds = true)
         val focusLine = if (focusGuidance.isNotBlank()) "\n            $focusGuidance\n" else ""
         return """
             You are analyzing a real transcript excerpt. Extract ONLY information explicitly supported by the transcript below. Never invent names, dates, deadlines, decisions, or commitments that are not actually stated.
             $focusLine
+            "briefSummary" is REQUIRED and must always be filled in: 2-3 plain sentences saying what this excerpt is actually about, in the speaker's own subject matter. Write it even when nothing was decided and nothing was assigned — a personal note, a passing idea, or a casual chat still has real content to describe. Never write that nothing was discussed.
+
+            The four lists below are different: they may legitimately be empty. Many recordings are notes or conversations with no decisions and no assigned tasks, and empty arrays are the correct, honest answer there. Never invent an item to fill a list.
+
             Classify every candidate decision carefully:
             - DECISION: the group explicitly agreed on or finalized something.
             - SUGGESTION: something proposed but not confirmed as final.
@@ -140,20 +163,33 @@ class RealMeetingIntelligenceEngine(
 
             For every item, list the transcript line ids it came from in "sourceSegmentIds", copied exactly from the [id] markers below — never invent an id.
 
-            If there is no clear evidence for a category, return an empty array for it. Do not pad with generic filler.
-
             Respond with ONLY a single JSON object, no markdown, no commentary, matching exactly this shape:
-            {"decisions":[{"text":string,"type":"DECISION"|"SUGGESTION"|"DISCUSSION"|"POSSIBILITY","sourceSegmentIds":[string]}],"actionItems":[{"task":string,"assigneeName":string|null,"deadline":string|null,"sourceSegmentIds":[string]}],"questions":[{"question":string,"askedBy":string|null,"sourceSegmentIds":[string]}],"followUps":[{"description":string,"owner":string|null,"deadline":string|null,"sourceSegmentIds":[string]}],"briefSummary":string}
+            {"briefSummary":string,"decisions":[{"text":string,"type":"DECISION"|"SUGGESTION"|"DISCUSSION"|"POSSIBILITY","sourceSegmentIds":[string]}],"actionItems":[{"task":string,"assigneeName":string|null,"deadline":string|null,"sourceSegmentIds":[string]}],"questions":[{"question":string,"askedBy":string|null,"sourceSegmentIds":[string]}],"followUps":[{"description":string,"owner":string|null,"deadline":string|null,"sourceSegmentIds":[string]}]}
 
             Transcript excerpt:
             $transcriptText
         """.trimIndent()
     }
 
+    /**
+     * Renders transcript segments into prompt text. Filler words are always stripped here (see
+     * [FillerWordCleaner]) regardless of the user's display preference: hesitation noise costs
+     * prompt tokens that a small context window cannot spare and measurably degrades a small
+     * model's ability to follow the surrounding instructions. This never touches stored text.
+     */
+    private fun renderSegments(segments: List<TranscriptSegment>, includeIds: Boolean): String =
+        segments.joinToString("\n") { seg ->
+            val speaker = seg.speakerName ?: "Unknown speaker"
+            val text = FillerWordCleaner.clean(seg.text)
+            if (includeIds) "[${seg.id}] $speaker: $text" else "$speaker: $text"
+        }
+
     private fun buildSynthesisPrompt(
+        allSegments: List<TranscriptSegment>,
         chunkSummaries: List<String>,
         decisions: List<com.example.core.model.Decision>,
-        actionItems: List<com.example.core.model.ActionItem>
+        actionItems: List<com.example.core.model.ActionItem>,
+        focusGuidance: String
     ): String {
         val evidence = buildString {
             if (chunkSummaries.isNotEmpty()) {
@@ -168,22 +204,53 @@ class RealMeetingIntelligenceEngine(
                 appendLine("Action items found:")
                 actionItems.forEach { item -> appendLine("- ${item.task}" + (item.assigneeName?.let { " (assignee: $it)" } ?: "")) }
             }
-            if (isEmpty()) appendLine("(No decisions, action items, or notable sections were extracted from this transcript.)")
+            if (isEmpty()) appendLine("(No decisions or action items were extracted — summarize from the transcript below.)")
         }
+        val transcriptExcerpt = renderTranscriptWithinBudget(allSegments, evidence.length)
+        val focusLine = if (focusGuidance.isNotBlank()) "\n            $focusGuidance\n" else ""
         return """
-            Based only on the real extracted meeting evidence below — not your own general knowledge — write a concise, specific title and an executive summary. Do not invent facts not present below. If the evidence is sparse, keep the summary short rather than padding it with generic statements like "the meeting was productive".
+            Write a concise, specific title and summary of the recording below. Use ONLY what the transcript and evidence actually contain — never your own general knowledge, and never invented facts.
+            $focusLine
+            The summary must describe what was actually said, in its real subject matter. A recording with no decisions and no assigned tasks is still summarizable — a quick note, an idea, or a casual conversation all have real content. Never respond that nothing specific was discussed, and never pad with filler like "the meeting was productive". If the recording is short, a single accurate sentence is the right answer.
 
-            The title must be under 10 words, describe what this recording was actually about, and contain no surrounding quotes. Do not use a generic title like "Team Meeting" or "Meeting Summary" unless nothing more specific is supported by the evidence — a caller-provided fallback title is used automatically when this isn't possible, so an unhelpful generic title here is worse than a short, honest one.
+            The title must be under 10 words, describe what this recording was actually about, and contain no surrounding quotes. Do not use a generic title like "Team Meeting" or "Meeting Summary" unless nothing more specific is supported — a caller-provided fallback title is used automatically when this isn't possible, so an unhelpful generic title here is worse than a short, honest one.
+
+            "keyPoints" should be the few concrete points actually raised, or an empty array if the recording is too short to have distinct points.
 
             Respond with ONLY a JSON object, no markdown: {"title":string,"summary":string,"keyPoints":[string]}
 
             Evidence:
             $evidence
+            Transcript:
+            $transcriptExcerpt
         """.trimIndent()
     }
 
+    /**
+     * Renders as much of the real transcript into the synthesis prompt as the model's actual
+     * context window allows, after accounting for the instruction text, the evidence block, and
+     * the model's own generated output. Short recordings — by far the most common case, and the
+     * ones the old evidence-only prompt failed hardest on — fit whole.
+     *
+     * When a long transcript doesn't fit, the beginning and end are kept and the middle is
+     * elided with an explicit marker, so the model is never misled into thinking it has been
+     * shown the complete recording.
+     */
+    private fun renderTranscriptWithinBudget(segments: List<TranscriptSegment>, evidenceChars: Int): String {
+        val availableChars = ((contextLengthTokens - SYNTHESIS_OUTPUT_TOKENS - SYNTHESIS_PROMPT_OVERHEAD_TOKENS)
+            .coerceAtLeast(0) * APPROX_CHARS_PER_TOKEN).toInt() - evidenceChars
+        if (availableChars < MIN_TRANSCRIPT_EXCERPT_CHARS) return ""
+
+        val full = renderSegments(segments, includeIds = false)
+        if (full.length <= availableChars) return full
+
+        val half = (availableChars - ELISION_MARKER.length) / 2
+        if (half <= 0) return full.take(availableChars)
+        return full.take(half) + ELISION_MARKER + full.takeLast(half)
+    }
+
     private fun buildAskPrompt(question: String, segments: List<TranscriptSegment>): String {
-        val excerpt = segments.joinToString("\n") { "${it.speakerName ?: "Unknown"}: ${it.text}" }
+        val excerpt = renderSegments(segments, includeIds = false)
         return """
             Answer the question below using ONLY the real meeting transcript excerpt provided. If the transcript does not contain the answer, say so plainly instead of guessing.
 
@@ -199,5 +266,14 @@ class RealMeetingIntelligenceEngine(
         const val SYNTHESIS_OUTPUT_TOKENS = 500
         const val ASK_OUTPUT_TOKENS = 300
         const val MAX_SOURCE_QUOTES = 3
+        /** Rough token cost of the synthesis prompt's fixed instruction text. */
+        const val SYNTHESIS_PROMPT_OVERHEAD_TOKENS = 400
+        /** Same conservative estimate [TranscriptChunker] uses — no tokenizer is reachable
+         * outside a loaded engine instance, so both places approximate the same way. */
+        const val APPROX_CHARS_PER_TOKEN = 3.5
+        /** Below this there isn't enough room for a transcript excerpt to be worth including at
+         * all; the evidence block alone is used instead of a misleading few words. */
+        const val MIN_TRANSCRIPT_EXCERPT_CHARS = 200
+        const val ELISION_MARKER = "\n[...transcript continues...]\n"
     }
 }

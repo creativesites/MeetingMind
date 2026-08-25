@@ -156,6 +156,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
@@ -176,7 +177,10 @@ class MeetingDetailViewModel(
      * AI always uses whichever LLM the user currently has selected, not whatever was selected the
      * moment this screen first opened. */
     private suspend fun buildAskUseCase(): AskMeetingUseCase {
-        val llmModelId = userPrefs.preferencesFlow.first().selectedLlmModelId
+        val llmModelId = com.example.ai.modelmanagement.LlmModelResolver.resolve(
+            selectedModelId = userPrefs.preferencesFlow.first().selectedLlmModelId,
+            modelStorage = modelStorage
+        )
         val contextTokens = ModelCatalog.entries.find { it.id == llmModelId }?.contextLengthTokens ?: 4096
         return AskMeetingUseCase(
             transcriptRepository,
@@ -186,6 +190,12 @@ class MeetingDetailViewModel(
             )
         )
     }
+    /** Display-only filler-word cleanup preference. The stored transcript is always verbatim; this
+     * only decides how it is rendered, so flipping it takes effect immediately with no reprocessing. */
+    val cleanFillerWords: StateFlow<Boolean> = userPrefs.preferencesFlow
+        .map { it.cleanFillerWords }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     /** All playback is owned by the single app-level [PlaybackController] — never a per-screen player. */
     val playbackState: StateFlow<PlaybackState> = PlaybackController.state
 
@@ -211,10 +221,23 @@ class MeetingDetailViewModel(
     )
     val asrModelInstalled: StateFlow<Boolean> = _asrModelInstalled.asStateFlow()
 
+    private val _llmModelInstalled = MutableStateFlow(anySummarizationModelInstalled())
+    /** Whether *any* Meeting Intelligence model is really on disk. Needed so a finished recording
+     * with no summary can say why — "no model installed" and "the model ran and found little" are
+     * very different messages, and claiming to still be generating is a third thing that is
+     * simply untrue once processing has ended. */
+    val llmModelInstalled: StateFlow<Boolean> = _llmModelInstalled.asStateFlow()
+
+    private fun anySummarizationModelInstalled(): Boolean =
+        ModelCatalog.entries
+            .filter { com.example.core.model.ModelCapability.SUMMARIZATION in it.capability }
+            .any { modelStorage.isInstalled(it.id) }
+
     /** Re-checks real on-disk install state — call when the screen becomes visible again
      * (e.g. returning from the Model Manager), since a download may have finished meanwhile. */
     fun refreshModelAvailability() {
         _asrModelInstalled.value = modelStorage.isInstalled(com.example.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8.id)
+        _llmModelInstalled.value = anySummarizationModelInstalled()
     }
 
     val meeting: StateFlow<Meeting?> = meetingRepository.getMeetingById(meetingId).stateIn(
@@ -395,6 +418,8 @@ fun MeetingDetailScreen(
     val topics by viewModel.topics.collectAsState()
     val chatMessages by viewModel.chatMessages.collectAsState()
     val asrModelInstalled by viewModel.asrModelInstalled.collectAsState()
+    val llmModelInstalled by viewModel.llmModelInstalled.collectAsState()
+    val cleanFillerWords by viewModel.cleanFillerWords.collectAsState()
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
@@ -719,7 +744,8 @@ fun MeetingDetailScreen(
                     topics = topics,
                     decisions = decisions,
                     actionItems = actionItems,
-                    onNavigateToTab = { selectedTabIndex = it }
+                    onNavigateToTab = { selectedTabIndex = it },
+                    llmModelInstalled = llmModelInstalled
                 )
                 1 -> TranscriptTab(
                     segments = transcript.segments,
@@ -732,7 +758,8 @@ fun MeetingDetailScreen(
                     onSaveEdits = { viewModel.saveTranscriptEdits(it) },
                     highlightedSegmentId = highlightedSegmentId,
                     activePlaybackSegmentId = activeSegment?.id,
-                    isAudioPlaying = isThisRecordingActive && playbackState.isPlaying
+                    isAudioPlaying = isThisRecordingActive && playbackState.isPlaying,
+                    cleanFillerWords = cleanFillerWords
                 )
                 2 -> ActionItemsTab(
                     actionItems = actionItems,
@@ -1002,7 +1029,9 @@ fun BentoOverviewTab(
     topics: List<Topic>,
     decisions: List<Decision>,
     actionItems: List<ActionItem>,
-    onNavigateToTab: (Int) -> Unit
+    onNavigateToTab: (Int) -> Unit,
+    /** Real on-disk state, used only to explain an absent summary honestly. */
+    llmModelInstalled: Boolean = true
 ) {
     if (meeting == null) return
 
@@ -1022,10 +1051,26 @@ fun BentoOverviewTab(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
+                    val summary = meeting.summaryPreview
+                    // Never claim to still be generating once processing has actually finished —
+                    // a READY recording with no summary is a real outcome with a real cause, and
+                    // a permanent "Generating..." would be a progress indicator for work that
+                    // already stopped.
+                    val summaryPlaceholder = when {
+                        meeting.status == MeetingStatus.PROCESSING -> "Generating notes on your device..."
+                        meeting.status == MeetingStatus.MODEL_REQUIRED || !llmModelInstalled ->
+                            "No summary yet — the Meeting Intelligence model isn't installed. Your recording and transcript are safe; install it in AI Engine to generate notes."
+                        meeting.status == MeetingStatus.ERROR -> "Processing didn't finish, so no summary was generated."
+                        else -> "No summary was generated for this recording."
+                    }
                     Text(
-                        text = meeting.summaryPreview ?: "Generating notes on your device...",
+                        text = summary?.takeIf { it.isNotBlank() } ?: summaryPlaceholder,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = if (summary.isNullOrBlank()) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
                         lineHeight = 22.sp
                     )
                 }
@@ -1035,16 +1080,19 @@ fun BentoOverviewTab(
         // 2. Grouped list of rows — matches the reference's flat "AI Summary" list exactly.
         item {
             SectionCard {
+                // An empty list is a legitimate result, not a malfunction — plenty of recordings
+                // are notes or chats with nothing decided and nothing assigned. Say that plainly
+                // instead of using wording that reads like the analysis fell over.
                 ListRow(
                     title = "Decisions",
-                    subtitle = if (decisions.isNotEmpty()) decisions.first().text else "No decisions flagged",
+                    subtitle = decisions.firstOrNull()?.text ?: "Nothing was decided in this recording",
                     icon = Icons.Default.Psychology,
                     onClick = { onNavigateToTab(3) },
                     trailing = { CountTrailing(decisions.size) }
                 )
                 ListRow(
                     title = "Action Items",
-                    subtitle = if (actionItems.isNotEmpty()) actionItems.first().task else "No pending action items",
+                    subtitle = actionItems.firstOrNull()?.task ?: "No tasks came out of this recording",
                     icon = Icons.Default.FormatListBulleted,
                     onClick = { onNavigateToTab(2) },
                     trailing = { CountTrailing(actionItems.size) }
@@ -1155,7 +1203,11 @@ fun TranscriptTab(
     /** The segment [PlaybackController]'s current position falls within, for the recording that
      * is actually loaded — null when nothing is playing or a different recording is loaded. */
     activePlaybackSegmentId: String? = null,
-    isAudioPlaying: Boolean = false
+    isAudioPlaying: Boolean = false,
+    /** Display-only hesitation-word cleanup. Never applied in edit mode: the user edits and saves
+     * the real stored text, so showing them a cleaned version to type over would quietly turn a
+     * display preference into a permanent rewrite of their transcript. */
+    cleanFillerWords: Boolean = true
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var isEditMode by remember { mutableStateOf(false) }
@@ -1403,21 +1455,17 @@ fun TranscriptTab(
                                     }
                                     .testTag("transcript_segment_edit_${seg.id}")
                             )
-                        } else if (isExpanded) {
-                            Text(
-                                text = seg.text,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                lineHeight = 20.sp
-                            )
                         } else {
+                            val displayText = remember(seg.text, cleanFillerWords) {
+                                com.example.core.common.FillerWordCleaner.cleanIf(cleanFillerWords, seg.text)
+                            }
                             Text(
-                                text = seg.text,
+                                text = displayText,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 lineHeight = 20.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
+                                maxLines = if (isExpanded) Int.MAX_VALUE else 2,
+                                overflow = if (isExpanded) TextOverflow.Clip else TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -1460,7 +1508,7 @@ fun ActionItemsTab(
             if (actionItems.isEmpty()) {
                 item {
                     Text(
-                        text = "No action items extracted yet. Use the + button to add one.",
+                        text = "No tasks came out of this recording. Not every conversation has one — tap + to add your own.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1563,7 +1611,7 @@ fun DecisionsTab(
         if (decisions.isEmpty()) {
             item {
                 Text(
-                    text = "No explicit decisions detected in this transcript.",
+                    text = "Nothing was decided in this recording. That's a normal result for notes and open-ended conversations.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

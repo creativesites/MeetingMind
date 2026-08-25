@@ -120,6 +120,44 @@ object MeetingIntelligenceJsonParser {
         return SynthesisResult(title, summary, keyPoints)
     }
 
+    /**
+     * Last-resort recovery of a chunk summary from model output whose JSON could not be parsed.
+     *
+     * Small on-device models frequently answer a nested-schema prompt with correct, well-grounded
+     * prose wrapped in broken JSON (or no JSON at all). Discarding that entirely was making whole
+     * recordings look unanalyzable when the model had in fact described them fine. This recovers
+     * only free prose: code fences, any brace/bracket structure, and JSON key syntax are stripped,
+     * and what remains is accepted only if it still looks like real sentences.
+     *
+     * Returns null when nothing usable survives — never a placeholder, and never a claim that the
+     * recording contained nothing.
+     */
+    fun salvagePlainSummary(raw: String): String? {
+        val withoutFences = raw.replace("```json", "", ignoreCase = true).replace("```", "")
+        // Drop anything that is recognizably JSON structure rather than prose.
+        val prose = withoutFences
+            .replace(Regex("""[\[\]{}]"""), " ")
+            .replace(Regex(""""\s*\w+\s*"\s*:"""), " ")
+            .replace(Regex("""["']"""), "")
+            // Stripping the structure out of e.g. {"summary":"...","decisions":[],"questions":[]}
+            // leaves the separators behind as a trail of ", , ,". Collapse any run of separators
+            // into a single one, then drop the ones now dangling at either end.
+            .replace(Regex("""(\s*[,;:]\s*){2,}"""), ", ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+            .trim(',', ':', ';', '-', ' ')
+            .trim()
+
+        if (prose.length < MIN_SALVAGED_SUMMARY_CHARS) return null
+        // Require actual words, not a residue of field names and punctuation.
+        if (prose.count { it == ' ' } < MIN_SALVAGED_SUMMARY_WORDS - 1) return null
+        return prose.take(MAX_SALVAGED_SUMMARY_CHARS).trim()
+    }
+
+    private const val MIN_SALVAGED_SUMMARY_CHARS = 40
+    private const val MIN_SALVAGED_SUMMARY_WORDS = 8
+    private const val MAX_SALVAGED_SUMMARY_CHARS = 600
+
     /** Strips markdown code fences and any leading/trailing chatter outside the outermost braces — the standard, minimal "repair" for LLM JSON output; a real parse failure after this is treated as no evidence, never guessed at. */
     private fun extractJsonObject(raw: String): JSONObject? {
         val cleaned = raw.replace("```json", "", ignoreCase = true).replace("```", "").trim()

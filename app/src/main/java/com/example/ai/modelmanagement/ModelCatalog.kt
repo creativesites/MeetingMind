@@ -192,11 +192,56 @@ object ModelCatalog {
         tier = ModelTier.LIGHTWEIGHT
     )
 
+    /**
+     * Highest-quality Meeting Intelligence tier (Phase 3D). Microsoft's Phi-4-mini-instruct
+     * (3.8B), MIT licensed and ungated, published by Google's litert-community in the same
+     * MediaPipe `.task` format the other two LLM entries use — so it loads through exactly the
+     * same [com.example.ai.llm.MediaPipeLanguageModel] path with no new runtime work.
+     *
+     * Why this one: the Qwen2.5 1.5B/0.5B tiers are small enough that strict-JSON extraction is
+     * their weakest point, which is the single most common cause of a recording coming back with
+     * an empty summary and no action items. Phi-4-mini is roughly 2.5x the parameters of the
+     * Recommended tier and is specifically strong at instruction-following and structured output,
+     * which is exactly the failure this tier exists to address. Gemma remains ruled out for the
+     * same reason as in Phase 2 — every `litert-community/Gemma*` repo is gated behind a
+     * click-through licence an unattended in-app download cannot accept.
+     *
+     * Verified 2026-08-25 by downloading the full file and hashing it directly (3,910,050,199
+     * bytes; the sha256 below matches HuggingFace's own x-linked-etag for the file).
+     *
+     * Be honest about the cost: this is a ~3.6 GiB download and needs a genuinely high-RAM device
+     * to load. It has NOT been validated on real hardware for load time or tokens/sec, so the RAM
+     * figures below are derived from the file size plus MediaPipe's KV-cache overhead rather than
+     * from measurement — see docs/AI_ARCHITECTURE.md.
+     */
+    val phi4MiniInstruct = AiModelInfo(
+        id = "llm_phi_4_mini_instruct",
+        name = "Phi-4 Mini Instruct (Highest quality)",
+        capability = setOf(ModelCapability.SUMMARIZATION),
+        files = listOf(
+            ModelFileSpec(
+                fileName = "phi-4-mini-instruct-q8-ekv4096.task",
+                downloadUrl = "https://huggingface.co/litert-community/Phi-4-mini-instruct/resolve/main/Phi-4-mini-instruct_multi-prefill-seq_q8_ekv4096.task",
+                sha256 = "88665a75f6a0b5083ce65255139212ff6da705d5f682edbbd109eae784b2173c",
+                sizeBytes = 3_910_050_199L
+            )
+        ),
+        minimumRamMb = 6144,
+        recommendedRamMb = 8192,
+        version = "Phi-4-mini-instruct (litert-community, q8, 4096-token context)",
+        description = "The most capable on-device model here — noticeably better at pulling real decisions and action items out of a messy conversation. Large download, and only worth choosing on a recent phone with plenty of memory.",
+        parameterCount = "3.8B",
+        quantization = "q8 (int8 weights)",
+        contextLengthTokens = 4096,
+        tier = ModelTier.HIGH_QUALITY
+    )
+
     val entries: List<AiModelInfo> = listOf(
         sileroVad,
         parakeetTdtV3Int8,
         speakerDiarization,
         qwen25_1_5bInstruct,
-        qwen25_0_5bInstruct
+        qwen25_0_5bInstruct,
+        phi4MiniInstruct
     )
 }

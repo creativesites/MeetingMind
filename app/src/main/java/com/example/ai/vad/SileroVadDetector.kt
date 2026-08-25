@@ -88,7 +88,16 @@ class SileroVadDetector(
     private companion object {
         const val VAD_MODEL_FILE_NAME = "silero_vad.onnx"
         const val SPEECH_THRESHOLD = 0.5f
-        const val MIN_SILENCE_DURATION_SEC = 0.25f
+        // How long silence must persist before the current speech interval is closed. The
+        // library/example default (0.25s) is tuned for short voice commands and is far too eager
+        // for continuous speech: people pause a few hundred milliseconds mid-sentence constantly,
+        // so at 0.25s a single spoken thought was being cut into a stack of fragments — sometimes
+        // a couple of words each — since one VAD interval becomes exactly one transcript segment
+        // (see SherpaParakeetSpeechRecognizer). 0.7s sits above ordinary mid-thought hesitation
+        // but still below a real turn-taking pause. Fragments that survive this are additionally
+        // regrouped by TranscriptParagraphBuilder after diarization; both layers matter, because
+        // longer intervals also give the ASR more acoustic context per decode.
+        const val MIN_SILENCE_DURATION_SEC = 0.7f
         const val MIN_SPEECH_DURATION_SEC = 0.25f
         const val WINDOW_SIZE_SAMPLES = 512
         // Meeting speech turns run much longer than short voice-command style utterances;

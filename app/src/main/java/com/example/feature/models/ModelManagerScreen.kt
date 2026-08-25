@@ -510,13 +510,31 @@ private fun CapabilityGroupCard(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // "Selectable" means the user actually has more than one real model to
-                    // choose between for this capability — showing a radio button when there's
-                    // only one option would imply a choice that doesn't exist.
+                    // choose between for this capability — offering a choice when there's only
+                    // one option would imply a decision that doesn't exist.
                     val isSelectable = models.size > 1
-                    models.forEach { model ->
+                    // Mirrors LlmModelResolver: the model that will really be used is the
+                    // selected one when it's installed, otherwise the best one that is. Showing
+                    // "Active" on a model whose files the user already deleted would be a lie.
+                    val effectiveActiveId = remember(models, activeModelId) {
+                        models.find { it.id == activeModelId && it.isInstalled }?.id
+                            ?: models.filter { it.isInstalled }.maxByOrNull { it.tier.ordinal }?.id
+                    }
+                    if (isSelectable) {
+                        Text(
+                            text = if (effectiveActiveId == null) {
+                                "Download one of these to turn this on. You can switch at any time."
+                            } else {
+                                "Pick the one that suits your phone — whichever is marked Active is the one being used."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    models.sortedBy { it.tier.ordinal }.forEach { model ->
                         BentoModelItemCard(
                             model = model,
-                            isActive = activeModelId == model.id,
+                            isActive = effectiveActiveId == model.id,
                             isPaused = model.id in pausedModelIds,
                             isSelectable = isSelectable,
                             isRecommendedForDevice = recommendedModelId != null && recommendedModelId == model.id && isSelectable,
@@ -569,7 +587,8 @@ fun BentoModelItemCard(
                         RadioButton(
                             selected = isActive,
                             onClick = onSelectActive,
-                            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
+                            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.testTag("model_select_${model.id}")
                         )
                     }
                     Text(
@@ -609,12 +628,45 @@ fun BentoModelItemCard(
                     }
                 } else if (model.isInstalled) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "Installed",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = SuccessGreen,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        // With more than one model installed, "Installed" alone left the user
+                        // unable to tell which one was actually running. State the real answer.
+                        when {
+                            !isSelectable -> Text(
+                                text = "Installed",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = SuccessGreen,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            isActive -> Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = SuccessGreen.copy(alpha = 0.14f)
+                            ) {
+                                Text(
+                                    text = "Active",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = SuccessGreen,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        .testTag("model_active_badge_${model.id}")
+                                )
+                            }
+                            else -> Button(
+                                onClick = onSelectActive,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.testTag("model_use_${model.id}")
+                            ) {
+                                Text("Use this", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                         IconButton(onClick = onDelete, modifier = Modifier.size(28.dp).testTag("model_delete_${model.id}")) {
                             Icon(
                                 Icons.Default.Delete,
@@ -647,16 +699,12 @@ fun BentoModelItemCard(
             // to make (isSelectable), so it never implies a comparison that doesn't exist.
             if (isSelectable) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    val tierLabel = when (model.tier) {
-                        com.example.core.model.ModelTier.RECOMMENDED -> "Recommended"
-                        com.example.core.model.ModelTier.LIGHTWEIGHT -> "Lightweight"
-                    }
                     Surface(
                         shape = RoundedCornerShape(6.dp),
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
                     ) {
                         Text(
-                            text = tierLabel,
+                            text = model.tier.displayName,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.SemiBold,
@@ -665,12 +713,18 @@ fun BentoModelItemCard(
                     }
                     if (isRecommendedForDevice) {
                         Text(
-                            text = "Suggested for this device",
+                            text = "Best fit for your phone",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
+                Text(
+                    text = model.tier.shortDescription,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 18.sp
+                )
             }
 
             Text(

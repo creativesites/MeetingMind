@@ -168,7 +168,12 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                 MeetingProcessingWorker.KEY_AUDIO_PATH to audioPath,
                 MeetingProcessingWorker.KEY_DURATION_MS to durationMs,
                 MeetingProcessingWorker.KEY_MODEL_ID to prefs.selectedAsrModelId,
-                MeetingProcessingWorker.KEY_LLM_MODEL_ID to prefs.selectedLlmModelId,
+                // Resolved (not raw) so a model the user selected and later deleted falls back to
+                // one they still have installed, instead of failing with "no model installed".
+                MeetingProcessingWorker.KEY_LLM_MODEL_ID to com.example.ai.modelmanagement.LlmModelResolver.resolve(
+                    selectedModelId = prefs.selectedLlmModelId,
+                    modelStorage = com.example.ai.modelmanagement.LocalModelStorage(getApplication())
+                ),
                 MeetingProcessingWorker.KEY_EXPECTED_SPEAKER_COUNT to (expectedSpeakerCount ?: -1),
                 MeetingProcessingWorker.KEY_RECORDING_TITLE to meetingTitle
             )

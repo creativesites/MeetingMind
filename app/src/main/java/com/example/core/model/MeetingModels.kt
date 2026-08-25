@@ -196,11 +196,19 @@ data class ModelFileSpec(
     val archiveEntryPath: String? = null
 )
 
-/** User-facing quality/size tier — currently only meaningful within [ModelCapability.SUMMARIZATION],
+/**
+ * User-facing quality/size tier — currently only meaningful within [ModelCapability.SUMMARIZATION],
  * where more than one real model exists to choose between. Every other capability has exactly one
  * real option today, so [ModelTier.RECOMMENDED] on those is just "the only choice," not a claim
- * that alternatives were compared and this won. */
-enum class ModelTier { RECOMMENDED, LIGHTWEIGHT }
+ * that alternatives were compared and this won.
+ *
+ * Declared smallest-first so `sortedBy { it.tier.ordinal }` gives a natural ladder in the UI.
+ */
+enum class ModelTier(val displayName: String, val shortDescription: String) {
+    LIGHTWEIGHT("Lightweight", "Smallest download, works on older phones. Best for short notes."),
+    RECOMMENDED("Recommended", "The best balance of quality and size for most phones."),
+    HIGH_QUALITY("Highest quality", "Noticeably better summaries and action items. Large download, needs a recent high-RAM phone.")
+}
 
 data class AiModelInfo(
     val id: String,

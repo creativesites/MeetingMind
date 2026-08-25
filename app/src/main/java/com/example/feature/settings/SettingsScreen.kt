@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
@@ -80,6 +81,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun toggleWifiOnly(enabled: Boolean) {
         viewModelScope.launch {
             userPrefs.setWifiOnlyDownload(enabled)
+        }
+    }
+
+    fun toggleCleanFillerWords(enabled: Boolean) {
+        viewModelScope.launch {
+            userPrefs.setCleanFillerWords(enabled)
         }
     }
 
@@ -167,6 +174,33 @@ fun SettingsScreen(
                                 checked = prefs.wifiOnlyDownload,
                                 onCheckedChange = { viewModel.toggleWifiOnly(it) },
                                 modifier = Modifier.testTag("settings_wifi_only_switch")
+                            )
+                        }
+                    )
+                }
+            }
+
+            // Transcripts
+            item {
+                Text(
+                    text = "Transcripts",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            item {
+                SectionCard {
+                    ListRow(
+                        title = "Tidy Up Filler Words",
+                        subtitle = "Hides \"uh\" and \"um\" when reading. Your transcript is always stored word-for-word, so turning this off brings them straight back.",
+                        icon = Icons.AutoMirrored.Filled.Notes,
+                        showDivider = false,
+                        trailing = {
+                            Switch(
+                                checked = prefs.cleanFillerWords,
+                                onCheckedChange = { viewModel.toggleCleanFillerWords(it) },
+                                modifier = Modifier.testTag("settings_clean_filler_switch")
                             )
                         }
                     )
