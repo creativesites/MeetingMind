@@ -209,19 +209,41 @@ internal const val MIN_NOISE_SPEAKERS_TO_FLAG = 2
 // share threshold alone would false-positive there); this second gate protects that case.
 internal const val MAX_NOISE_SHARE_WHEN_FLAGGING = 0.15
 
+// A second, independent noise signal alongside share-of-total: a speaker index with many turns
+// that are each individually very brief is the fingerprint of a "chattering" clustering artifact
+// (rapid misclassification flicker) even on a recording long enough that its summed duration
+// alone wouldn't cross NOISE_SHARE_THRESHOLD. Both figures are deliberately tight — a real
+// participant who mostly gives short backchannel responses ("yeah", "right") still tends to have
+// a higher average turn length than acoustic-noise flicker once VAD/segmentation's own minimum
+// duration floor (see MIN_DURATION_ON_SEC) is accounted for.
+internal const val MIN_TURNS_FOR_ALTERNATION_SIGNAL = 4
+internal const val AVG_TURN_NOISE_MS = 500L
+
 /**
  * Flags speaker indices that look like clustering/segmentation noise rather than real
- * participants: several speaker indices that together barely speak (see the threshold constants
- * above), sitting alongside one or more indices that account for the great majority of the
- * recording. This is the "Speaker 1: 42%, Speaker 2: 3%, Speaker 3: 2%, Speaker 4: 1%, Speaker 5:
- * 52%" pattern — plausible-looking cluster output that is actually one or two real speakers
- * shredded by acoustic noise (breaths, room echo, a misheard word) into extra phantom speakers.
+ * participants, using two independent signals — either is sufficient to make a speaker index a
+ * *candidate*, but candidacy alone never removes anyone (see the gates below):
  *
- * Deliberately conservative: a recording with several genuinely balanced speakers, or with only
- * one small-but-real speaker, is never flagged — both of [MIN_NOISE_SPEAKERS_TO_FLAG] and
- * [MAX_NOISE_SHARE_WHEN_FLAGGING] must hold before anything is touched. Returns the empty set
- * (never anything flagged) when the input is empty, so callers can treat "no result" and "no
- * fragmentation found" identically.
+ * 1. Share-of-total: several speaker indices that together barely speak (see the threshold
+ *    constants above), sitting alongside one or more indices that account for the great majority
+ *    of the recording. This is the "Speaker 1: 42%, Speaker 2: 3%, Speaker 3: 2%, Speaker 4: 1%,
+ *    Speaker 5: 52%" pattern — plausible-looking cluster output that is actually one or two real
+ *    speakers shredded by acoustic noise (breaths, room echo, a misheard word) into extra phantom
+ *    speakers.
+ * 2. Turn-count/alternation: a speaker index with many turns ([MIN_TURNS_FOR_ALTERNATION_SIGNAL]+)
+ *    whose average turn is very short ([AVG_TURN_NOISE_MS]) — rapid flicker between two real
+ *    speakers being misclassified as a third, distinct from a genuine participant's occasional
+ *    brief interjections.
+ *
+ * Both signals feed the SAME two safety gates, so a candidate flagged by either one is treated
+ * identically: [MIN_NOISE_SPEAKERS_TO_FLAG] (a single minor speaker, however it was flagged, is
+ * exactly the kind of real if brief participant diarization is supposed to catch — never
+ * second-guessed alone) and [MAX_NOISE_SHARE_WHEN_FLAGGING] (candidates that together still
+ * account for a substantial share of the recording are left alone even if their per-speaker
+ * pattern looks noise-like — a real speaker at, say, 28% of total audio is never removed just
+ * because they happen to speak in many short bursts). Returns the empty set (never anything
+ * flagged) when the input is empty, so callers can treat "no result" and "no fragmentation found"
+ * identically.
  */
 internal fun analyzeSpeakerFragmentation(segments: List<RawSpeakerSegment>): Set<Int> {
     if (segments.isEmpty()) return emptySet()
@@ -234,13 +256,18 @@ internal fun analyzeSpeakerFragmentation(segments: List<RawSpeakerSegment>): Set
     // Only one speaker index exists at all — nothing to distinguish "noise" from "the speaker".
     if (footprints.size < 2) return emptySet()
 
-    val noiseLike = footprints.filter { it.totalDurationMs.toDouble() / totalDurationMs < NOISE_SHARE_THRESHOLD }
-    if (noiseLike.size < MIN_NOISE_SPEAKERS_TO_FLAG) return emptySet()
-    if (noiseLike.size == footprints.size) return emptySet() // Every speaker is "noise" — degenerate, not a real verdict.
+    val candidates = footprints.filter { footprint ->
+        val shareLike = footprint.totalDurationMs.toDouble() / totalDurationMs < NOISE_SHARE_THRESHOLD
+        val alternationLike = footprint.turnCount >= MIN_TURNS_FOR_ALTERNATION_SIGNAL &&
+            footprint.totalDurationMs.toDouble() / footprint.turnCount < AVG_TURN_NOISE_MS
+        shareLike || alternationLike
+    }
+    if (candidates.size < MIN_NOISE_SPEAKERS_TO_FLAG) return emptySet()
+    if (candidates.size == footprints.size) return emptySet() // Every speaker is "noise" — degenerate, not a real verdict.
 
-    val noiseShare = noiseLike.sumOf { it.totalDurationMs }.toDouble() / totalDurationMs
-    return if (noiseShare < MAX_NOISE_SHARE_WHEN_FLAGGING) {
-        noiseLike.map { it.speakerIndex }.toSet()
+    val candidateShare = candidates.sumOf { it.totalDurationMs }.toDouble() / totalDurationMs
+    return if (candidateShare < MAX_NOISE_SHARE_WHEN_FLAGGING) {
+        candidates.map { it.speakerIndex }.toSet()
     } else {
         emptySet()
     }

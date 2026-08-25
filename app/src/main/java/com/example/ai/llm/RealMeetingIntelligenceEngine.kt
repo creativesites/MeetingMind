@@ -219,15 +219,20 @@ class RealMeetingIntelligenceEngine(
     }
 
     /**
-     * Renders transcript segments into prompt text. Filler words are always stripped here (see
-     * [FillerWordCleaner]) regardless of the user's display preference: hesitation noise costs
-     * prompt tokens that a small context window cannot spare and measurably degrades a small
+     * Renders transcript segments into prompt text. Prefers each segment's own
+     * [TranscriptSegment.cleanedText] — the cached, already-validated output of
+     * [com.example.ai.pipeline.TranscriptCleanupEngine] — over recomputing a live filler-word pass
+     * here; falling back to a live [FillerWordCleaner.clean] pass only for a segment that has no
+     * cached cleanup yet (older data processed before this stage existed, or a candidate
+     * [com.example.ai.pipeline.TranscriptQualityValidator] rejected). Either way, hesitation noise
+     * is always stripped before it reaches the prompt regardless of the user's display preference:
+     * it costs prompt tokens a small context window cannot spare and measurably degrades a small
      * model's ability to follow the surrounding instructions. This never touches stored text.
      */
     private fun renderSegments(segments: List<TranscriptSegment>, includeIds: Boolean): String =
         segments.joinToString("\n") { seg ->
             val speaker = seg.speakerName ?: "Unknown speaker"
-            val text = FillerWordCleaner.clean(seg.text)
+            val text = seg.cleanedText ?: FillerWordCleaner.clean(seg.text)
             if (includeIds) "[${seg.id}] $speaker: $text" else "$speaker: $text"
         }
 

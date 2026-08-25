@@ -186,6 +186,7 @@ class MeetingProcessingPipelineIntegrationTest {
             ProcessingStage.DETECTING_SPEECH,
             ProcessingStage.TRANSCRIBING,
             ProcessingStage.DIARIZING,
+            ProcessingStage.CLEANING_TRANSCRIPT,
             ProcessingStage.ANALYZING,
             ProcessingStage.SAVING_RESULTS,
             ProcessingStage.COMPLETED
@@ -219,6 +220,22 @@ class MeetingProcessingPipelineIntegrationTest {
         val actionItems = database.actionItemDao().getActionItemsForMeetingDirect(meetingId)
         assertEquals(1, actionItems.size)
         assertEquals("Speaker 1", actionItems[0].assigneeName)
+    }
+
+    @Test
+    fun `full pipeline runs the cleanup stage and persists a validated cleanedText per segment`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val pipeline = buildPipeline()
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        // Neither fake ASR segment contains filler words, so the rule-based cleanup engine's
+        // candidate is identical to the raw text — it must still be validated and persisted as
+        // cleanedText, not left null, proving the stage actually ran rather than being skipped.
+        assertEquals("We will ship on Friday.", segments.first { it.id == "seg1" }.cleanedText)
+        assertEquals("Sounds good to me.", segments.first { it.id == "seg2" }.cleanedText)
     }
 
     @Test

@@ -53,7 +53,13 @@ data class TranscriptSegmentEntity(
     val endMs: Long,
     val text: String,
     val confidence: Float?,
-    val isUserEdited: Boolean = false
+    val isUserEdited: Boolean = false,
+    /** Output of [com.example.ai.pipeline.TranscriptCleanupEngine], cached so cleanup only runs
+     * once per segment instead of being recomputed on every LLM prompt render. Null means cleanup
+     * hasn't run yet (or was rejected by [com.example.ai.pipeline.TranscriptQualityValidator]) —
+     * callers fall back to [text]. Never written to when [isUserEdited] is true: the user's own
+     * correction always wins over a cached cleanup of the text it replaced. */
+    val cleanedText: String? = null
 )
 
 @Entity(

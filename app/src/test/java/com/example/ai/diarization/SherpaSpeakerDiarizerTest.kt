@@ -333,4 +333,54 @@ class SherpaSpeakerDiarizerTest {
 
         assertEquals(segments, reconcileFragmentedSpeakers(segments, emptySet()))
     }
+
+    // --- analyzeSpeakerFragmentation: turn-count/alternation signal (Stage B4) ---
+
+    @Test
+    fun `a speaker with many very short turns is flagged even when its share alone would not trigger`() {
+        // Speaker 1: 9% of total duration (above NOISE_SHARE_THRESHOLD, so share alone would NOT
+        // flag it) but spread across 40 turns averaging 450ms each — the "chattering" clustering-
+        // flicker fingerprint. Speaker 2 is a genuine low-share noise speaker (3.5%) so
+        // MIN_NOISE_SPEAKERS_TO_FLAG is met without changing what's being tested about speaker 1.
+        val speaker0 = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 87_500L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 87_500L, endMs = 175_000L, speakerIndex = 0)
+        )
+        val speaker1 = (0 until 40).map { i ->
+            RawSpeakerSegment(startMs = 200_000L + i * 450L, endMs = 200_000L + (i + 1) * 450L, speakerIndex = 1)
+        }
+        val speaker2 = (0 until 20).map { i ->
+            RawSpeakerSegment(startMs = 300_000L + i * 350L, endMs = 300_000L + (i + 1) * 350L, speakerIndex = 2)
+        }
+
+        val flagged = analyzeSpeakerFragmentation(speaker0 + speaker1 + speaker2)
+
+        assertEquals(setOf(1, 2), flagged)
+    }
+
+    @Test
+    fun `a real speaker at 28 percent of total audio is never flagged, even in many short bursts`() {
+        // Speaker 1 legitimately talks in quick bursts (60 short turns, avg 466ms — well under
+        // AVG_TURN_NOISE_MS, so the alternation signal alone WOULD mark it a candidate) but still
+        // accounts for 28% of the whole recording. Speaker 2 is a genuine tiny noise speaker (5%)
+        // so MIN_NOISE_SPEAKERS_TO_FLAG is reached and the share-sum gate is actually exercised —
+        // together candidates would total 33%, over MAX_NOISE_SHARE_WHEN_FLAGGING, so NEITHER is
+        // reassigned. A real, if bursty, participant must never be silently removed this way.
+        val speaker0 = listOf(
+            RawSpeakerSegment(startMs = 0L, endMs = 33_500L, speakerIndex = 0),
+            RawSpeakerSegment(startMs = 33_500L, endMs = 67_000L, speakerIndex = 0)
+        )
+        val speaker1 = (0 until 60).map { i ->
+            RawSpeakerSegment(startMs = 100_000L + i * 466L, endMs = 100_000L + (i + 1) * 466L, speakerIndex = 1)
+        }
+        val speaker2 = listOf(
+            RawSpeakerSegment(startMs = 300_000L, endMs = 301_667L, speakerIndex = 2),
+            RawSpeakerSegment(startMs = 301_667L, endMs = 303_333L, speakerIndex = 2),
+            RawSpeakerSegment(startMs = 303_333L, endMs = 305_000L, speakerIndex = 2)
+        )
+
+        val flagged = analyzeSpeakerFragmentation(speaker0 + speaker1 + speaker2)
+
+        assertEquals(emptySet<Int>(), flagged)
+    }
 }

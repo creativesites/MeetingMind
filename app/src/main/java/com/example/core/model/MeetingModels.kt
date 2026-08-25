@@ -200,7 +200,13 @@ data class TranscriptSegment(
     // True once the user has hand-corrected this segment's text — the transcript is user-owned
     // data, and this flag is how the app (and any future reprocess flow) can tell "ASR output"
     // apart from "a person already fixed this" without ever silently discarding the correction.
-    val isUserEdited: Boolean = false
+    val isUserEdited: Boolean = false,
+    // Cached output of TranscriptCleanupEngine — never the source of truth, never persisted over
+    // [text]. Null when cleanup hasn't run yet, was rejected by TranscriptQualityValidator, or
+    // this segment is user-edited (a cleanup of text the user has since corrected is stale and is
+    // never generated for or shown over an edited segment). Callers that want the best available
+    // reading text should use [cleanedText] ?: [text], never the reverse.
+    val cleanedText: String? = null
 )
 
 data class Transcript(

@@ -36,6 +36,8 @@ enum class ProcessingStage {
     DETECTING_SPEECH,
     TRANSCRIBING,
     DIARIZING,
+    /** Rule-based (today) transcript cleanup — see [com.example.ai.pipeline.TranscriptCleanupEngine]. */
+    CLEANING_TRANSCRIPT,
     ANALYZING,
     SAVING_RESULTS,
     COMPLETED,

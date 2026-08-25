@@ -58,8 +58,16 @@ interface TranscriptDao {
     @Query("UPDATE transcript_segments SET speakerName = :newName WHERE meetingId = :meetingId AND speakerId = :speakerId")
     suspend fun updateSpeakerName(meetingId: String, speakerId: String, newName: String)
 
-    @Query("UPDATE transcript_segments SET text = :newText, isUserEdited = 1 WHERE id = :segmentId")
+    // Clears cleanedText along with the edit: a cached cleanup of the text being replaced is
+    // stale the instant the user's correction lands, and a stale cached value must never keep
+    // being shown/used in place of the fresh edit.
+    @Query("UPDATE transcript_segments SET text = :newText, isUserEdited = 1, cleanedText = NULL WHERE id = :segmentId")
     suspend fun updateSegmentText(segmentId: String, newText: String)
+
+    // Never touches a segment the user has hand-corrected — isUserEdited = 1 always wins over a
+    // cleanup pass, no matter when that pass runs relative to the edit.
+    @Query("UPDATE transcript_segments SET cleanedText = :cleanedText WHERE id = :segmentId AND isUserEdited = 0")
+    suspend fun updateCleanedText(segmentId: String, cleanedText: String?)
 
     @Query("DELETE FROM transcript_segments WHERE meetingId = :meetingId")
     suspend fun deleteSegmentsForMeeting(meetingId: String)

@@ -250,4 +250,56 @@ class MeetMindDatabaseMigrationTest {
             assertEquals("Let's begin the quarterly review.", cursor.getString(1))
         }
     }
+
+    private fun openV5TranscriptSegmentsDatabase(): SupportSQLiteDatabase {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(null) // in-memory
+            .callback(object : SupportSQLiteOpenHelper.Callback(5) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        """
+                        CREATE TABLE transcript_segments (
+                            id TEXT NOT NULL PRIMARY KEY,
+                            meetingId TEXT NOT NULL,
+                            speakerId TEXT,
+                            speakerName TEXT,
+                            startMs INTEGER NOT NULL,
+                            endMs INTEGER NOT NULL,
+                            text TEXT NOT NULL,
+                            confidence REAL,
+                            isUserEdited INTEGER NOT NULL DEFAULT 0
+                        )
+                        """.trimIndent()
+                    )
+                    // A real, already-hand-corrected segment — must survive the migration untouched,
+                    // and must never gain a fabricated cleanedText value.
+                    db.execSQL(
+                        "INSERT INTO transcript_segments (id, meetingId, speakerId, speakerName, startMs, endMs, text, confidence, isUserEdited) " +
+                            "VALUES ('s1', 'm1', 'spk_1', 'Winston', 0, 2000, 'Let''s begin the quarterly review.', 0.92, 1)"
+                    )
+                }
+
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            })
+            .build()
+        helper = FrameworkSQLiteOpenHelperFactory().create(configuration)
+        return helper.writableDatabase
+    }
+
+    @Test
+    fun `migration 5 to 6 adds a nullable cleanedText column without disturbing existing segments`() {
+        val db = openV5TranscriptSegmentsDatabase()
+
+        MeetMindDatabase.MIGRATION_5_6.migrate(db)
+
+        val columns = columnNames(db, "transcript_segments")
+        assertTrue(columns.contains("cleanedText"))
+        db.query("SELECT cleanedText, text, isUserEdited FROM transcript_segments WHERE id = 's1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertTrue("Existing segments must get no fabricated cleanedText value", cursor.isNull(0))
+            assertEquals("Let's begin the quarterly review.", cursor.getString(1))
+            assertEquals(1, cursor.getInt(2))
+        }
+    }
 }

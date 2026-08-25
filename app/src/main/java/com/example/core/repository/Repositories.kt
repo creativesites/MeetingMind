@@ -182,7 +182,8 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
                         endMs = it.endMs,
                         text = it.text,
                         confidence = it.confidence,
-                        isUserEdited = it.isUserEdited
+                        isUserEdited = it.isUserEdited,
+                        cleanedText = it.cleanedText
                     )
                 }
             )
@@ -210,6 +211,12 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
      * data, never immutable AI output. Speaker/timestamp metadata on the segment is untouched. */
     suspend fun updateSegmentText(segmentId: String, newText: String) = withContext(Dispatchers.IO) {
         transcriptDao.updateSegmentText(segmentId, newText)
+    }
+
+    /** Persists [com.example.ai.pipeline.TranscriptCleanupEngine]'s output for one segment — a
+     * no-op if that segment has since been hand-edited by the user (see [TranscriptDao.updateCleanedText]). */
+    suspend fun updateCleanedText(segmentId: String, cleanedText: String?) = withContext(Dispatchers.IO) {
+        transcriptDao.updateCleanedText(segmentId, cleanedText)
     }
 
     private val followUpDao = database.followUpDao()

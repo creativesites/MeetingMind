@@ -289,7 +289,7 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
         ProcessingStage.IDLE, ProcessingStage.PREPARING_AUDIO -> 0
         ProcessingStage.DETECTING_SPEECH -> 1
         ProcessingStage.TRANSCRIBING -> 2
-        ProcessingStage.DIARIZING -> 3
+        ProcessingStage.DIARIZING, ProcessingStage.CLEANING_TRANSCRIPT -> 3
         ProcessingStage.ANALYZING -> 4
         ProcessingStage.SAVING_RESULTS, ProcessingStage.COMPLETED -> 5
         ProcessingStage.FAILED, ProcessingStage.CANCELLED -> 5

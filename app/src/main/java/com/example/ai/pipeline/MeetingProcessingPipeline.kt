@@ -80,7 +80,8 @@ class MeetingProcessingPipeline(
         languageModel = MediaPipeLanguageModel(context, modelStorage),
         contextLengthTokens = ModelCatalog.qwen25_1_5bInstruct.contextLengthTokens ?: DEFAULT_LLM_CONTEXT_TOKENS
     ),
-    private val embeddingEngine: EmbeddingEngine = LocalEmbeddingEngine()
+    private val embeddingEngine: EmbeddingEngine = LocalEmbeddingEngine(),
+    private val cleanupEngine: TranscriptCleanupEngine = RuleBasedTranscriptCleanupEngine()
 ) {
 
     suspend fun processMeeting(
@@ -241,10 +242,20 @@ class MeetingProcessingPipeline(
             // diarization on purpose: speaker identity is what decides where a paragraph may
             // legitimately continue, so grouping earlier would risk merging across a speaker
             // change that diarization hadn't reported yet.
-            val diarizedSegments = TranscriptParagraphBuilder.buildParagraphs(speakerLabelledSegments)
-            Log.d(PERF_TAG, "Paragraphs: ${speakerLabelledSegments.size} fragments -> ${diarizedSegments.size} paragraphs")
+            val paragraphedSegments = TranscriptParagraphBuilder.buildParagraphs(speakerLabelledSegments)
+            Log.d(PERF_TAG, "Paragraphs: ${speakerLabelledSegments.size} fragments -> ${paragraphedSegments.size} paragraphs")
             // Free the segmentation+embedding models before the LLM's much larger allocation loads.
             SherpaEngineManager.releaseAll()
+
+            // STEP 3.5: Transcript cleanup (best-effort — a rejected/unavailable candidate simply
+            // leaves the real ASR/diarized text as-is). Every candidate is validated before it's
+            // ever attached; the raw text a paragraph carries is never overwritten, only offered a
+            // separate cleanedText alongside it. Never run for an already-user-edited segment —
+            // that can't happen on this first-run path (nothing has been edited yet at this point
+            // in a brand-new meeting's life), but the check is here so this stage stays correct if
+            // this pipeline is ever reused for a reprocess-after-edit flow.
+            updateJob("Cleaning up your transcript...", 60, ProcessingStage.CLEANING_TRANSCRIPT)
+            val diarizedSegments = applyTranscriptCleanup(paragraphedSegments, cleanupEngine)
 
             // STEP 4: Meeting Intelligence (best-effort — unavailable leaves summary/insights empty)
             val recordingType = try {
@@ -321,7 +332,8 @@ class MeetingProcessingPipeline(
                     startMs = it.startMs,
                     endMs = it.endMs,
                     text = it.text,
-                    confidence = it.confidence
+                    confidence = it.confidence,
+                    cleanedText = it.cleanedText
                 )
             }
             transcriptDao.insertSegments(segmentEntities)
