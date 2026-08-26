@@ -97,3 +97,37 @@ val CleanMacSubtleCardBrush = Brush.linearGradient(
 val HeroGradientBrush = CleanMacCosmicBrush
 val WaveformGradientBrush = CleanMacAquaBrush
 val BentoAccentBrush = CleanMacCosmicBrush
+
+// ─────────────────────────────────────────────────────────────
+// Recording page redesign tokens (see docs/recording-page-implementation.md §1.1)
+// Purple is confined to: the dial ring, speaker 1 identity, active timestamps,
+// citation chips, selection wash, and the "Show original"/scope text buttons.
+// Every primary button/surface elsewhere uses the Ink scale, not purple.
+// Aliased onto the existing CleanMyMac tokens above where the hex already matches,
+// so this is additive — nothing above is renamed or removed.
+// ─────────────────────────────────────────────────────────────
+
+// Ink / text
+val Ink = LightTextPrimary          // 0xFF0F172A — primary text, primary buttons, active tab
+val InkSecondary = LightTextSecondary // 0xFF475569 — secondary text, inactive controls
+val InkMuted = LightTextMuted       // 0xFF94A3B8 — metadata, captions, inactive tabs
+val InkFaint = Color(0xFFCBD5E1)    // chevrons, gutter timestamps, disabled
+
+// Lines / surfaces
+val Line = LightBorderColor         // 0xFFE2E8F0 — borders on interactive surfaces
+val LineSoft = LightBorderSubtle    // 0xFFEEF2F6 — section dividers, timeline spine
+val LineFaint = Color(0xFFF5F7FA)   // list-row dividers
+val SurfaceSunk = Color(0xFFFAFBFD) // inline panels (word editor, notes, cleanup)
+val SurfaceCanvas = LightCanvasBackground // 0xFFF4F6FB — only where a non-white canvas is used
+val SurfaceTrack = LightPillSurface // 0xFFEBF1F9 — segmented-control track, meter track
+
+// Accent — player, identity, citations
+val Accent = CleanMacIndigo         // 0xFF6366F1 — progress ring, speaker 1, timestamps, links
+val AccentWash = Color(0x1A6366F1)  // 10% — citation chips, selection highlight
+
+// Speaker colours — cycle Accent -> Speaker2 -> Speaker3 -> Speaker4 by first appearance,
+// then persist per speaker id (never reshuffle). Speaker3 doubles as the diff "kept/changed"
+// underline; Speaker4 doubles as the low-confidence flag colour.
+val Speaker2 = CleanMacPurple       // 0xFFA855F7
+val Speaker3 = CleanMacEmerald      // 0xFF10B981
+val Speaker4 = CleanMacAmber        // 0xFFF59E0B
