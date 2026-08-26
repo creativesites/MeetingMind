@@ -185,7 +185,8 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
                         confidence = it.confidence,
                         isUserEdited = it.isUserEdited,
                         cleanedText = it.cleanedText,
-                        sourceSegmentIds = it.sourceSegmentIdsJson.toIdList()
+                        sourceSegmentIds = it.sourceSegmentIdsJson.toIdList(),
+                        words = it.wordsJson.toWordList()
                     )
                 }
             )
@@ -257,8 +258,11 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
         val duration = (original.endMs - original.startMs).coerceAtLeast(0)
         val splitMs = original.startMs + duration * charOffset / text.length.coerceAtLeast(1)
         val newId = java.util.UUID.randomUUID().toString()
-        val newEntity = original.copy(id = newId, startMs = splitMs, text = secondText, isUserEdited = true, cleanedText = null)
-        val updatedOriginal = original.copy(endMs = splitMs, text = firstText, isUserEdited = true, cleanedText = null)
+        // wordsJson is cleared on both halves: a character-offset split doesn't know which
+        // original words landed on which side, so the old per-word timing is no longer trustworthy
+        // for either resulting segment.
+        val newEntity = original.copy(id = newId, startMs = splitMs, text = secondText, isUserEdited = true, cleanedText = null, wordsJson = "[]")
+        val updatedOriginal = original.copy(endMs = splitMs, text = firstText, isUserEdited = true, cleanedText = null, wordsJson = "[]")
         transcriptDao.insertSegments(listOf(updatedOriginal, newEntity))
         TranscriptSegment(
             id = newId,
@@ -301,7 +305,8 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
             endMs = current.endMs,
             text = (previous.text.trimEnd() + " " + current.text.trimStart()).trim(),
             isUserEdited = true,
-            cleanedText = null
+            cleanedText = null,
+            wordsJson = "[]"
         )
         transcriptDao.insertSegments(listOf(merged))
         transcriptDao.deleteSegmentById(current.id)
@@ -525,6 +530,35 @@ internal fun String.toIdList(): List<String> {
 internal fun List<String>.toIdsJson(): String {
     val array = org.json.JSONArray()
     forEach { array.put(it) }
+    return array.toString()
+}
+
+internal fun String.toWordList(): List<com.example.core.model.TranscriptWord> {
+    if (isBlank()) return emptyList()
+    return try {
+        val array = org.json.JSONArray(this)
+        (0 until array.length()).map { i ->
+            val obj = array.getJSONObject(i)
+            com.example.core.model.TranscriptWord(
+                text = obj.getString("text"),
+                startMs = obj.getLong("startMs"),
+                endMs = obj.getLong("endMs")
+            )
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+}
+
+internal fun List<com.example.core.model.TranscriptWord>.toWordsJson(): String {
+    val array = org.json.JSONArray()
+    forEach { word ->
+        val obj = org.json.JSONObject()
+        obj.put("text", word.text)
+        obj.put("startMs", word.startMs)
+        obj.put("endMs", word.endMs)
+        array.put(obj)
+    }
     return array.toString()
 }
 

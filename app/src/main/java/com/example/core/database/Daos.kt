@@ -60,8 +60,9 @@ interface TranscriptDao {
 
     // Clears cleanedText along with the edit: a cached cleanup of the text being replaced is
     // stale the instant the user's correction lands, and a stale cached value must never keep
-    // being shown/used in place of the fresh edit.
-    @Query("UPDATE transcript_segments SET text = :newText, isUserEdited = 1, cleanedText = NULL WHERE id = :segmentId")
+    // being shown/used in place of the fresh edit. wordsJson is cleared for the same reason — the
+    // real per-word timestamps only ever corresponded to the pre-edit ASR text.
+    @Query("UPDATE transcript_segments SET text = :newText, isUserEdited = 1, cleanedText = NULL, wordsJson = '[]' WHERE id = :segmentId")
     suspend fun updateSegmentText(segmentId: String, newText: String)
 
     // Never touches a segment the user has hand-corrected — isUserEdited = 1 always wins over a

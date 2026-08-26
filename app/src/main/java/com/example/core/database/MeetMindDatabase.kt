@@ -22,7 +22,7 @@ import androidx.room.migration.Migration
         ProcessingJobEntity::class,
         ChatMessageEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class MeetMindDatabase : RoomDatabase() {
@@ -189,6 +189,21 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds [TranscriptSegmentEntity.wordsJson] (Recording page redesign, phase 5): real
+         * per-word timestamps from sherpa-onnx's `OfflineRecognizerResult.tokens`/`.timestamps`
+         * (both genuinely present — see ai/asr/SherpaParakeetSpeechRecognizer), enabling tap-to-
+         * seek at word granularity. Defaults every existing row to `'[]'` — an honest "this
+         * segment predates word-level timing" rather than a fabricated guess. Deliberately not a
+         * confidence field: sherpa-onnx's result type has no score/confidence at all, verified
+         * against the actual v1.13.6 Kotlin API, so this phase does not attempt one.
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE transcript_segments ADD COLUMN wordsJson TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
+
         fun getInstance(context: Context): MeetMindDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -196,7 +211,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

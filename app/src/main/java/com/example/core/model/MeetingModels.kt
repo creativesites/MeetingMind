@@ -372,7 +372,23 @@ data class TranscriptSegment(
     // so provenance survives a merge even though the original per-fragment rows are never
     // persisted individually — and so a future word-level-timestamp feature has something to
     // anchor to.
-    val sourceSegmentIds: List<String> = emptyList()
+    val sourceSegmentIds: List<String> = emptyList(),
+    // Real per-word timestamps from the ASR engine (sherpa-onnx's OfflineRecognizerResult exposes
+    // `tokens`/`timestamps`, both genuinely populated — see ai/asr/SherpaParakeetSpeechRecognizer).
+    // Empty for a segment transcribed before this field existed, or if the ASR engine in use
+    // doesn't provide word-level timing — callers must treat that as "not available", never assume
+    // one word per whitespace-split token. Deliberately NOT a substitute for per-word confidence:
+    // sherpa-onnx's result type has no confidence/score field at all (verified against the actual
+    // v1.13.6 Kotlin API), so nothing here claims to know how sure the model was about any word —
+    // only when it was said.
+    val words: List<TranscriptWord> = emptyList()
+)
+
+/** One ASR-recognized word/token with its real timing — see [TranscriptSegment.words]. */
+data class TranscriptWord(
+    val text: String,
+    val startMs: Long,
+    val endMs: Long
 )
 
 data class Transcript(

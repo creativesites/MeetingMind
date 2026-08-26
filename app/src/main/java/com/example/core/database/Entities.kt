@@ -62,7 +62,11 @@ data class TranscriptSegmentEntity(
     val cleanedText: String? = null,
     /** JSON array of the raw ASR fragment ids this paragraph was built from — see
      * [com.example.core.model.TranscriptSegment.sourceSegmentIds]. */
-    val sourceSegmentIdsJson: String = "[]"
+    val sourceSegmentIdsJson: String = "[]",
+    /** JSON array of `{"text","startMs","endMs"}` objects — see
+     * [com.example.core.model.TranscriptSegment.words]. `"[]"` for a segment transcribed before
+     * this existed, or whose ASR engine doesn't provide word-level timing. */
+    val wordsJson: String = "[]"
 )
 
 @Entity(

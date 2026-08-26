@@ -7,6 +7,7 @@ import com.example.ai.modelmanagement.SherpaEngineManager
 import com.example.ai.vad.SpeechInterval
 import com.example.core.audio.AudioFormatConverter
 import com.example.core.model.TranscriptSegment
+import com.example.core.model.TranscriptWord
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
@@ -107,7 +108,8 @@ class SherpaParakeetSpeechRecognizer(
                                 startMs = interval.startMs,
                                 endMs = interval.endMs,
                                 text = text,
-                                confidence = null
+                                confidence = null,
+                                words = buildWords(result.tokens, result.timestamps, interval.startMs, interval.endMs)
                             )
                         )
                     }
@@ -123,10 +125,54 @@ class SherpaParakeetSpeechRecognizer(
         }
     }
 
+    /**
+     * Groups sherpa-onnx's raw sub-word tokens into real words with real timestamps. NeMo's
+     * default (SentencePiece) tokenizer marks the start of a new word with a leading "▁" —
+     * standard NeMo/Conformer/Parakeet convention — so a token carrying that marker starts a new
+     * [TranscriptWord] and one without continues the word in progress. If a particular tokens.txt
+     * turns out not to use that convention, every token folds into a single word spanning the
+     * whole segment rather than mis-segmenting — a real, honest degradation, never a guess dressed
+     * up as a boundary. [OfflineRecognizerResult.timestamps] are seconds from the start of this
+     * stream's own audio, so they're offset by [segmentStartMs] to become absolute recording time.
+     */
+    private fun buildWords(
+        tokens: Array<String>,
+        timestamps: FloatArray,
+        segmentStartMs: Long,
+        segmentEndMs: Long
+    ): List<com.example.core.model.TranscriptWord> {
+        if (tokens.isEmpty()) return emptyList()
+        val words = mutableListOf<com.example.core.model.TranscriptWord>()
+        var current = StringBuilder()
+        var currentStartMs = -1L
+
+        fun flush(endMs: Long) {
+            if (current.isNotEmpty() && currentStartMs >= 0) {
+                words.add(com.example.core.model.TranscriptWord(current.toString(), currentStartMs, endMs))
+            }
+            current = StringBuilder()
+            currentStartMs = -1L
+        }
+
+        for (i in tokens.indices) {
+            val raw = tokens[i]
+            val tokenStartMs = segmentStartMs + (timestamps.getOrElse(i) { 0f } * 1000).toLong()
+            val isWordStart = raw.startsWith(WORD_START_MARKER) || raw.startsWith(" ")
+            if (isWordStart || current.isEmpty()) {
+                flush(tokenStartMs)
+                currentStartMs = tokenStartMs
+            }
+            current.append(raw.removePrefix(WORD_START_MARKER).removePrefix(" "))
+        }
+        flush(segmentEndMs)
+        return words.filter { it.text.isNotBlank() }
+    }
+
     private companion object {
         // sherpa-onnx's own NeMo transducer example uses the library default of 80 mel bins;
         // no --num-mel-bins override is documented for Parakeet TDT models.
         const val FEATURE_DIM = 80
         const val NUM_THREADS = 2
+        const val WORD_START_MARKER = "▁" // SentencePiece "▁"
     }
 }

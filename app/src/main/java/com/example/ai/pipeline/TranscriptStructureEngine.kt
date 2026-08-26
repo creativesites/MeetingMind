@@ -138,7 +138,12 @@ object DeterministicTranscriptStructureEngine : TranscriptStructureEngine {
             // Any prior cached cleanup was computed against different (pre-merge) text and is
             // stale the moment structuring changes what a paragraph actually contains.
             cleanedText = null,
-            sourceSegmentIds = group.flatMap { it.sourceSegmentIds.ifEmpty { listOf(it.id) } }
+            sourceSegmentIds = group.flatMap { it.sourceSegmentIds.ifEmpty { listOf(it.id) } },
+            // Real per-fragment word timing survives a structuring merge in fragment order — this
+            // never invents timing for the synthetic '.' joinFragmentTexts sometimes inserts
+            // between fragments, so `words` can legitimately have one fewer entry than a naive
+            // whitespace split of the merged `text`.
+            words = group.flatMap { it.words }
         )
     }
 

@@ -393,7 +393,8 @@ class MeetingProcessingPipeline(
                     text = it.text,
                     confidence = it.confidence,
                     cleanedText = it.cleanedText,
-                    sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString()
+                    sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString(),
+                    wordsJson = it.words.toWordsJsonArrayString()
                 )
             }
             transcriptDao.insertSegments(segmentEntities)
@@ -608,6 +609,18 @@ class MeetingProcessingPipeline(
     private fun List<String>.toJsonArrayString(): String {
         val array = org.json.JSONArray()
         forEach { array.put(it) }
+        return array.toString()
+    }
+
+    private fun List<com.example.core.model.TranscriptWord>.toWordsJsonArrayString(): String {
+        val array = org.json.JSONArray()
+        forEach { word ->
+            val obj = org.json.JSONObject()
+            obj.put("text", word.text)
+            obj.put("startMs", word.startMs)
+            obj.put("endMs", word.endMs)
+            array.put(obj)
+        }
         return array.toString()
     }
 
