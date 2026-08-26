@@ -43,6 +43,46 @@ enum class ModelCapability {
     ASK_MEETING
 }
 
+/**
+ * How interventionist [com.example.ai.pipeline.TranscriptAiCleanupEngine] is allowed to be — a
+ * real, first-class domain concept (not a raw string spliced into a prompt) because it drives
+ * three separate things that must stay consistent with each other: the cleanup prompt's own
+ * permissiveness rules, [com.example.ai.pipeline.TranscriptQualityValidator]'s acceptance
+ * thresholds, and (see [com.example.core.model.TranscriptCleanupProfile]) model selection. See
+ * `docs/AI_ARCHITECTURE.md` §8 for what each mode is allowed and forbidden to do.
+ */
+enum class TranscriptCleanupMode {
+    /** Smallest possible semantic changes: fillers, exact repeats, obvious punctuation. Close to
+     * the pre-mode v11 behavior. */
+    CONSERVATIVE,
+    /** A naturally readable transcript while staying strongly grounded — resolves self-corrections,
+     * collapses accidental repetition, restructures awkward spoken grammar into written prose. */
+    MODERATE,
+    /** A polished, professional transcript — substantial restructuring and likely-ASR-mistake
+     * correction using surrounding context allowed, but still never a summary and never inventing
+     * information. The most interventionist mode this session ships. */
+    AGGRESSIVE
+}
+
+/**
+ * Which engine decides "who said what." A real, persisted, user-facing choice — never silently
+ * hardcoded to one behavior. See `docs/AI_ARCHITECTURE.md` §8 "Diarization strategy scaffolding."
+ */
+enum class DiarizationStrategy {
+    /** sherpa-onnx diarization + the existing deterministic fragmentation reconciliation — today's
+     * only real implementation. */
+    DETERMINISTIC,
+    /** After deterministic diarization runs, use the local intelligence layer to inspect the
+     * transcript + speaker segments for suspicious assignments. Scaffolded as a real, selectable
+     * setting this pass; the actual AI reconciliation logic is not implemented yet and this value
+     * currently behaves identically to [DETERMINISTIC] (see [com.example.ai.pipeline.MeetingProcessingPipeline]) —
+     * never silently claimed as having run when it didn't. */
+    AI_ASSISTED,
+    /** MeetingMind decides based on recording context (today: runs deterministic diarization
+     * normally, honoring `speakerCount == 1`'s existing skip-diarization path). */
+    AUTO
+}
+
 /** Real, typed processing stages — never a fabricated percentage. See [com.example.ai.pipeline.MeetingProcessingPipeline]. */
 enum class ProcessingStage {
     IDLE,

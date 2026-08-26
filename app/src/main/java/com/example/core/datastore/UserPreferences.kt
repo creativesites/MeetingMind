@@ -9,8 +9,21 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.ai.modelmanagement.ModelCatalog
+import com.example.core.model.DiarizationStrategy
+import com.example.core.model.TranscriptCleanupMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+
+/**
+ * The starting default for a fresh install — deliberately a single, easy-to-change constant
+ * rather than something baked into multiple call sites. Set to MODERATE, not CONSERVATIVE: v11's
+ * real-device testing showed Conservative-equivalent behavior reads as "too conservative" for the
+ * product's actual goal, and the whole point of this pass is to measure all three modes against
+ * real recordings before committing to a production default — starting fresh installs on
+ * Conservative would bias that comparison before it even begins. Change this one line to change
+ * the default; no other code needs to move.
+ */
+val DEFAULT_TRANSCRIPT_CLEANUP_MODE = TranscriptCleanupMode.MODERATE
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "meetmind_preferences")
 
@@ -27,7 +40,11 @@ data class AppPreferencesState(
     /** Display-only: hides "uh"/"um"-style hesitation noise in the transcript. The verbatim ASR
      * text is always what's stored, so toggling this back off restores it exactly, with no
      * reprocessing. See [com.example.core.common.FillerWordCleaner]. */
-    val cleanFillerWords: Boolean = true
+    val cleanFillerWords: Boolean = true,
+    /** How interventionist AI transcript cleanup is allowed to be. See [TranscriptCleanupMode]. */
+    val transcriptCleanupMode: TranscriptCleanupMode = DEFAULT_TRANSCRIPT_CLEANUP_MODE,
+    /** Which engine decides speaker assignments. See [DiarizationStrategy]. */
+    val diarizationStrategy: DiarizationStrategy = DiarizationStrategy.AUTO
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -41,6 +58,8 @@ class UserPreferencesManager(private val context: Context) {
     private val CLOUD_SYNC_ENABLED = booleanPreferencesKey("cloud_sync_enabled")
     private val THEME_MODE = stringPreferencesKey("theme_mode")
     private val CLEAN_FILLER_WORDS = booleanPreferencesKey("clean_filler_words")
+    private val TRANSCRIPT_CLEANUP_MODE = stringPreferencesKey("transcript_cleanup_mode")
+    private val DIARIZATION_STRATEGY = stringPreferencesKey("diarization_strategy")
 
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
         AppPreferencesState(
@@ -53,7 +72,16 @@ class UserPreferencesManager(private val context: Context) {
             autoStopSilenceMinutes = prefs[AUTO_STOP_MINUTES] ?: 15,
             cloudSyncEnabled = prefs[CLOUD_SYNC_ENABLED] ?: false,
             themeMode = prefs[THEME_MODE] ?: "SYSTEM",
-            cleanFillerWords = prefs[CLEAN_FILLER_WORDS] ?: true
+            cleanFillerWords = prefs[CLEAN_FILLER_WORDS] ?: true,
+            // A stored value from a future/renamed enum constant falls back to the current default
+            // rather than crashing — the same defensive parse pattern already used throughout this
+            // codebase for RecordingType/MeetingStatus.
+            transcriptCleanupMode = prefs[TRANSCRIPT_CLEANUP_MODE]?.let {
+                runCatching { TranscriptCleanupMode.valueOf(it) }.getOrNull()
+            } ?: DEFAULT_TRANSCRIPT_CLEANUP_MODE,
+            diarizationStrategy = prefs[DIARIZATION_STRATEGY]?.let {
+                runCatching { DiarizationStrategy.valueOf(it) }.getOrNull()
+            } ?: DiarizationStrategy.AUTO
         )
     }
 
@@ -87,5 +115,13 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setCleanFillerWords(enabled: Boolean) {
         context.dataStore.edit { it[CLEAN_FILLER_WORDS] = enabled }
+    }
+
+    suspend fun setTranscriptCleanupMode(mode: TranscriptCleanupMode) {
+        context.dataStore.edit { it[TRANSCRIPT_CLEANUP_MODE] = mode.name }
+    }
+
+    suspend fun setDiarizationStrategy(strategy: DiarizationStrategy) {
+        context.dataStore.edit { it[DIARIZATION_STRATEGY] = strategy.name }
     }
 }
