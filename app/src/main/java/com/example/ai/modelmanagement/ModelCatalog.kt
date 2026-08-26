@@ -128,7 +128,17 @@ object ModelCatalog {
     val qwen25_1_5bInstruct = AiModelInfo(
         id = "llm_qwen2_5_1_5b_instruct",
         name = "Qwen2.5 1.5B Instruct (Meeting Intelligence)",
-        capability = setOf(ModelCapability.SUMMARIZATION),
+        // A general-purpose instruct LLM genuinely can serve every one of these tasks — this
+        // isn't claiming anything new, just naming at a finer grain what SUMMARIZATION already
+        // covered. Kept alongside SUMMARIZATION rather than replacing it: LlmModelResolver's
+        // existing call sites/stored preferences filter on SUMMARIZATION and must keep working.
+        capability = setOf(
+            ModelCapability.SUMMARIZATION,
+            ModelCapability.TRANSCRIPT_CLEANUP,
+            ModelCapability.EXTRACTION,
+            ModelCapability.SYNTHESIS,
+            ModelCapability.ASK_MEETING
+        ),
         files = listOf(
             ModelFileSpec(
                 fileName = "qwen2.5-1.5b-instruct-q8-ekv4096.task",
@@ -173,7 +183,17 @@ object ModelCatalog {
     val qwen25_0_5bInstruct = AiModelInfo(
         id = "llm_qwen2_5_0_5b_instruct",
         name = "Qwen2.5 0.5B Instruct (Lightweight)",
-        capability = setOf(ModelCapability.SUMMARIZATION),
+        // A general-purpose instruct LLM genuinely can serve every one of these tasks — this
+        // isn't claiming anything new, just naming at a finer grain what SUMMARIZATION already
+        // covered. Kept alongside SUMMARIZATION rather than replacing it: LlmModelResolver's
+        // existing call sites/stored preferences filter on SUMMARIZATION and must keep working.
+        capability = setOf(
+            ModelCapability.SUMMARIZATION,
+            ModelCapability.TRANSCRIPT_CLEANUP,
+            ModelCapability.EXTRACTION,
+            ModelCapability.SYNTHESIS,
+            ModelCapability.ASK_MEETING
+        ),
         files = listOf(
             ModelFileSpec(
                 fileName = "qwen2.5-0.5b-instruct-q8-ekv1280.task",
@@ -217,7 +237,17 @@ object ModelCatalog {
     val phi4MiniInstruct = AiModelInfo(
         id = "llm_phi_4_mini_instruct",
         name = "Phi-4 Mini Instruct (Highest quality)",
-        capability = setOf(ModelCapability.SUMMARIZATION),
+        // A general-purpose instruct LLM genuinely can serve every one of these tasks — this
+        // isn't claiming anything new, just naming at a finer grain what SUMMARIZATION already
+        // covered. Kept alongside SUMMARIZATION rather than replacing it: LlmModelResolver's
+        // existing call sites/stored preferences filter on SUMMARIZATION and must keep working.
+        capability = setOf(
+            ModelCapability.SUMMARIZATION,
+            ModelCapability.TRANSCRIPT_CLEANUP,
+            ModelCapability.EXTRACTION,
+            ModelCapability.SYNTHESIS,
+            ModelCapability.ASK_MEETING
+        ),
         files = listOf(
             ModelFileSpec(
                 fileName = "phi-4-mini-instruct-q8-ekv4096.task",

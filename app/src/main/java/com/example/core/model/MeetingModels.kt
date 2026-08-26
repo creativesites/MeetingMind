@@ -125,6 +125,27 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
     }
 
     /**
+     * Type-specific guidance appended to [com.example.ai.pipeline.TranscriptAiCleanupEngine]'s
+     * cleanup prompt — same profile-driven-policy pattern as [focusGuidance] and
+     * [transcriptMergePolicy], never a separate implementation per type. This only ever narrows
+     * *how to read paragraph/turn structure*; the MUST/MAY/MUST NOT fidelity contract in the
+     * cleanup prompt itself is identical for every recording type and is never weakened here.
+     */
+    fun cleanupGuidance(): String = when (this) {
+        IDEA, VOICE_MEMO, JOURNAL, DICTATION, RESEARCH ->
+            "This is solo narration. Prioritize natural paragraphs and preserve the speaker's first-person voice; a pause within one thought is not a reason to break it into separate paragraphs."
+        LECTURE ->
+            "This is an explanatory monologue. Prioritize coherent paragraphs; preserve definitions and examples exactly as stated."
+        MEETING ->
+            "This is a multi-speaker meeting. Preserve each speaker's turn boundaries; only merge fragments within one person's own turn."
+        INTERVIEW ->
+            "This is an interview. Preserve the question/answer structure and each speaker's turn boundaries."
+        CONVERSATION, BRAINSTORM ->
+            "This is a multi-speaker conversation. Preserve genuine speaker changes; only eliminate meaningless micro-fragmentation within one person's turn."
+        CUSTOM, GENERAL -> ""
+    }
+
+    /**
      * How aggressively [com.example.ai.pipeline.TranscriptStructureEngine] should merge raw ASR
      * fragments into readable paragraphs for this recording type. Distinct from
      * [intelligenceProfile] — this governs the transcript's own shape, not what the LLM is asked

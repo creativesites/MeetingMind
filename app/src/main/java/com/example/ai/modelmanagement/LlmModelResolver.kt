@@ -24,14 +24,34 @@ object LlmModelResolver {
      * "model not installed" error names the model the user actually chose rather than something
      * they never asked for.
      */
-    fun resolve(selectedModelId: String, modelStorage: ModelStorage): String {
+    fun resolve(
+        selectedModelId: String,
+        modelStorage: ModelStorage,
+        capability: ModelCapability = ModelCapability.SUMMARIZATION
+    ): String {
         if (modelStorage.isInstalled(selectedModelId)) return selectedModelId
 
         return ModelCatalog.entries
-            .filter { ModelCapability.SUMMARIZATION in it.capability }
+            .filter { capability in it.capability }
             .filter { modelStorage.isInstalled(it.id) }
             .maxByOrNull { it.tier.ordinal }
             ?.id
             ?: selectedModelId
     }
+
+    /**
+     * The smallest INSTALLED model capable of [capability], regardless of what the user has
+     * selected for the (usually larger) intelligence-extraction tier — a dedicated transcript
+     * cleanup pass has no reason to default to the biggest thing installed. Returns null when
+     * nothing capable is installed at all, distinct from [resolve]'s "fall back to the selected
+     * id anyway" behavior: a caller doing capability-gated selection needs to know "truly
+     * unavailable" rather than being handed back an id that still won't have the capability it
+     * asked for.
+     */
+    fun resolveSmallestInstalled(modelStorage: ModelStorage, capability: ModelCapability): String? =
+        ModelCatalog.entries
+            .filter { capability in it.capability }
+            .filter { modelStorage.isInstalled(it.id) }
+            .minByOrNull { it.tier.ordinal }
+            ?.id
 }

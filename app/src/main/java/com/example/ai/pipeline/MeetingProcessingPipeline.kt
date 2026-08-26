@@ -15,10 +15,12 @@ import com.example.ai.llm.MediaPipeLanguageModel
 import com.example.ai.llm.MeetingIntelligenceEngine
 import com.example.ai.llm.RealMeetingIntelligenceEngine
 import com.example.ai.modelmanagement.LlmEngineManager
+import com.example.ai.modelmanagement.LlmModelResolver
 import com.example.ai.modelmanagement.LocalModelStorage
 import com.example.ai.modelmanagement.ModelCatalog
 import com.example.ai.modelmanagement.ModelStorage
 import com.example.ai.modelmanagement.SherpaEngineManager
+import com.example.core.model.ModelCapability
 import com.example.ai.vad.SileroVadDetector
 import com.example.ai.vad.VoiceActivityDetector
 import com.example.core.database.ActionItemEntity
@@ -265,8 +267,43 @@ class MeetingProcessingPipeline(
             // that can't happen on this first-run path (nothing has been edited yet at this point
             // in a brand-new meeting's life), but the check is here so this stage stays correct if
             // this pipeline is ever reused for a reprocess-after-edit flow.
-            updateJob("Cleaning up your transcript...", 60, ProcessingStage.CLEANING_TRANSCRIPT)
-            val diarizedSegments = applyTranscriptCleanup(paragraphedSegments, cleanupEngine)
+            updateJob("Cleaning up your transcript...", 58, ProcessingStage.CLEANING_TRANSCRIPT)
+            val ruleCleanedSegments = applyTranscriptCleanup(paragraphedSegments, cleanupEngine)
+
+            // STEP 3.6: AI transcript cleanup — a validated *upgrade* over the rule-based pass
+            // above, never a replacement for it: this only ever overwrites a segment's cleanedText
+            // when it finds a real cleanup-capable model installed AND that model's candidate
+            // passes TranscriptQualityValidator against the real raw text. No model installed, no
+            // candidate accepted, or a user-edited segment (never even offered) all fall back to
+            // exactly what the rule-based pass already produced — never a fabricated status.
+            val aiCleanupModelId = LlmModelResolver.resolveSmallestInstalled(modelStorage, ModelCapability.TRANSCRIPT_CLEANUP)
+            val diarizedSegments = if (aiCleanupModelId != null) {
+                updateJob("Refining transcript with AI...", 60, ProcessingStage.CLEANING_TRANSCRIPT)
+                val aiStart = System.currentTimeMillis()
+                val aiCleanupEngine = RealTranscriptAiCleanupEngine(
+                    languageModel = MediaPipeLanguageModel(context, modelStorage, modelId = aiCleanupModelId),
+                    contextLengthTokens = ModelCatalog.entries.find { it.id == aiCleanupModelId }?.contextLengthTokens
+                        ?: DEFAULT_LLM_CONTEXT_TOKENS
+                )
+                val aiResult = aiCleanupEngine.clean(ruleCleanedSegments, recordingType, singleSpeakerMode = expectedSpeakerCount == 1)
+                // Free the cleanup model before the (possibly different) intelligence model loads —
+                // at most one LLM allocation resident at a time, same discipline as every other stage.
+                LlmEngineManager.release()
+                when (aiResult) {
+                    is AiResult.Success -> {
+                        val r = aiResult.value
+                        Log.d(PERF_TAG, "AI cleanup: ${System.currentTimeMillis() - aiStart}ms, ${r.chunksAttempted} chunks, ${r.paragraphsAccepted} accepted, ${r.paragraphsFallback} fallback")
+                        r.segments
+                    }
+                    else -> {
+                        Log.d(PERF_TAG, "AI cleanup: unavailable (${aiResult.describeFailure() ?: "no reason given"}) — using rule-based cleanup only")
+                        ruleCleanedSegments
+                    }
+                }
+            } else {
+                Log.d(PERF_TAG, "AI cleanup: skipped — no installed model has TRANSCRIPT_CLEANUP capability")
+                ruleCleanedSegments
+            }
 
             // STEP 4: Meeting Intelligence (best-effort — unavailable leaves summary/insights empty)
             val intelligenceProfile = recordingType.intelligenceProfile()

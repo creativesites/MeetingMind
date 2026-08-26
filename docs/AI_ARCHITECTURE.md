@@ -342,6 +342,71 @@ Not implemented, and not started: calendar integration, Zoom/Meet/Teams bots, ba
 
 **Known limitation**: this fix is deterministic-layer-only, exactly as scoped — the ASR model and VAD threshold were deliberately left untouched, and no LLM-assisted restructuring was added. Real-device transcript readability with this change has not yet been re-verified on hardware (see Known Limitations below); the adversarial test suite proves the decision logic itself is correct against synthetic timing data, not that real Parakeet output on a real device produces the exact gap/punctuation patterns these tests assume.
 
+## 7. AI-Assisted Transcript Cleanup: Stage B's deterministic pass gets a validated LLM upgrade
+
+**Why this exists**: real-device testing of §6's fix showed the deterministic structure/merge layer alone was still insufficient — a purely rule-based/gap-threshold approach cannot reconstruct genuinely disfluent speech (false starts, self-corrections, mid-thought fragments) the way a real language model can. Per the explicit direction for this pass, no VAD/ASR change and no new merge heuristics were attempted; instead, a real on-device LLM was added as a *second, validated pass* on top of the existing deterministic cleanup — never a replacement for it.
+
+### Model research and selection
+
+**Selected: `qwen25_0_5bInstruct`, already in `ModelCatalog`** — Qwen2.5-0.5B-Instruct (litert-community build, `.task` format, runs through the existing `MediaPipeLanguageModel`/`LlmEngineManager` runtime). Nothing new was downloaded or integrated to make this choice — it was already a verified, downloadable, Apache-2.0, ungated catalog entry from Phase 3C (see §0c/Phase 3C above for its original verification). Reused here for transcript cleanup rather than only intelligence extraction because:
+- It is genuinely small (546,660,344 bytes / ~546 MB) and already the lightest tier in the catalog, satisfying "prefer the smallest installed model capable of the task" without adding a new download.
+- It runs through the exact same MediaPipe LlmInference runtime already integrated — zero new native dependencies, zero new runtime code, directly satisfying "reuse existing model management, do not create another disconnected model registry."
+- A user who already installed it for Lightweight-tier intelligence extraction gets transcript cleanup for free, with no additional download at all.
+- SHA-256: `e608953f169aeb1bd7b9155fec2559825e08453fc209b84eda3a781ed0452fd2`. Source: `https://huggingface.co/litert-community/Qwen2.5-0.5B-Instruct/resolve/main/Qwen2.5-0.5B-Instruct_multi-prefill-seq_q8_ekv1280.task`. License: Apache 2.0. Context: 1280 tokens (this build's real KV-cache size). RAM: 1536 MB minimum / 2560 MB recommended.
+
+**Candidates researched and rejected** (via live web search this pass, not from memory):
+- **S1-mini (superwhisper/s1-mini)** — genuinely real and purpose-built exactly for this use case: a 0.6B fine-tune of Qwen3-0.6B whose sole job is ASR-transcript cleanup (fillers, false starts, self-corrections, spoken-number normalization), 462 MiB quantized, Apache 2.0 + naming clause. **Rejected for this pass**: confirmed via the model's own Hugging Face repo that it is distributed only as safetensors and GGUF (llama.cpp/Ollama/LM Studio ecosystem) — no LiteRT/`.task`/MediaPipe build exists. Integrating it would require adding an entirely new native inference runtime (llama.cpp Android bindings) alongside the existing MediaPipe stack, which directly violates the standing "do not create another disconnected model registry/runtime" constraint and is a much larger change than "make the deterministic layer excellent, then add one validated model call." Worth revisiting as a dedicated `TRANSCRIPT_CLEANUP`-tier model **if and when** a LiteRT/MediaPipe-compatible build appears, or if the app ever adds a second on-device runtime deliberately.
+- **SmolLM2-360M** — confirmed (again via live search) that no `litert-community` `.task` build exists, consistent with what Phase 3C's own research already found for the 1.7B/360M variants. Still rejected for the same reason.
+- **BERT-tiny/RoBERTa-tiny token-classification (KEEP/DELETE tagging) and Gramformer/Mini-T5 GEC models** — genuine, real categories of tiny models that exist, but no specific verified LiteRT/MediaPipe-compatible artifact was identified for either during this pass's research, and both would need a *different* inference pathway (a token-classification head, not next-token generation) than `LanguageModel`/MediaPipe LlmInference already provides. Not pursued now; `TranscriptAiCleanupEngine` is an interface specifically so a future implementation backed by either approach can plug in without touching the pipeline.
+
+### Architecture
+
+**`TranscriptAiCleanupEngine`** (`ai/pipeline/TranscriptAiCleanupEngine.kt`) — a new interface, deliberately separate from `MeetingIntelligenceEngine` (summarization/extraction/synthesis/Ask Meeting): its only job is `raw/structured transcript -> more faithful, readable transcript`. `RealTranscriptAiCleanupEngine` is the only implementation: reuses `TranscriptChunker` (now parameterized with smaller, cleanup-specific overhead reservations — the cleanup prompt is far terser than the extraction/synthesis schema prompts that chunker's defaults were tuned for) to pack already-structured paragraphs into calls sized to the real selected model's context length.
+
+**Model capability system extended, not replaced**: `ModelCapability` gains `TRANSCRIPT_CLEANUP`, `EXTRACTION`, `SYNTHESIS`, `ASK_MEETING` alongside the existing `TRANSCRIPTION`/`SUMMARIZATION`/`DIARIZATION`/`EMBEDDINGS` — `SUMMARIZATION` is kept on every LLM catalog entry unchanged (so existing `LlmModelResolver` call sites/stored preferences keep working), with the new granular flags added alongside it since a general-purpose instruct LLM genuinely can serve all of these tasks. `LlmModelResolver.resolve()` gained an optional `capability` parameter (default `SUMMARIZATION`, so every existing call site is unaffected); a new `LlmModelResolver.resolveSmallestInstalled(modelStorage, capability)` returns the lightest-tier *installed* model with a given capability, or null if none — this is the actual "prefer the smallest model capable of the task" policy, and it is deliberately independent of whatever the user has selected for the (usually larger) intelligence-extraction tier. `ModelCatalog` remains the single source of truth; no second registry was created.
+
+**Prompt contract**: every cleanup call states the fidelity rules explicitly — MUST preserve meaning/chronology/names/numbers/dates/amounts/commitments/uncertainty/contradictions/speaker identity; MAY remove fillers/repeats, repair false starts, join fragments, improve punctuation, resolve an explicitly-present immediate self-correction; MUST NOT invent, summarize, infer, or reorder. Recording-type guidance (`RecordingType.cleanupGuidance()`, same profile-driven-policy pattern as `focusGuidance()`/`transcriptMergePolicy()` — one engine, not a per-type implementation) and a single-speaker-mode note are appended, never weakening the fidelity contract itself. The model is asked for a JSON array (`[{"id":string,"text":string}]`, one entry per input paragraph) — parsed with a salvage-tolerant reader (first `[` to last `]`) that returns null (triggering a whole-chunk fallback) on anything unparseable, never a guessed partial result.
+
+**Every candidate is validated** by the existing (Stage B) `TranscriptQualityValidator` against the segment's real raw text — never against the rule-based-cleaned text used as the model's *input*, so drift introduced at either stage is caught the same way. A rejected, unparseable, or never-attempted (user-edited, or a lone paragraph too large for the model's real budget) paragraph simply keeps whatever cleanup already produced it — never a fabricated replacement, and never destroying the rest of the transcript over one bad chunk.
+
+### Pipeline
+
+```
+... -> TranscriptStructureEngine -> rule-based cleanup (Stage B, unchanged)
+    -> [NEW] AI cleanup: resolve smallest installed TRANSCRIPT_CLEANUP model
+         -> none installed: skip, log "no installed model has TRANSCRIPT_CLEANUP capability"
+         -> installed: chunk -> prompt -> parse -> validate per paragraph
+              -> accepted candidates overwrite cleanedText; everything else keeps the
+                 rule-based result -> release the LLM engine
+    -> Meeting Intelligence (unchanged) -> embeddings -> persistence
+```
+
+Implemented as a validated *upgrade* over the rule-based pass rather than a strict "AI first, deterministic as pure fallback" ordering — functionally equivalent to the requested `structure -> AI cleanup -> validation -> persist` flow (the final `cleanedText` is always the best available *validated* version), but reuses Stage B's already-tested `applyTranscriptCleanup`/`RuleBasedTranscriptCleanupEngine` machinery as-is instead of restructuring it. `MeetingProcessingPipeline` resolves `recordingType` earlier (already done in §6) and now also resolves the cleanup model id per run via `LlmModelResolver.resolveSmallestInstalled`, builds a fresh `MediaPipeLanguageModel` for it, and releases the LLM engine (`LlmEngineManager.release()`) immediately after — at most one LLM allocation resident at a time, matching every other stage's discipline. Processing-stage copy stays honest: `"Cleaning up your transcript..."` for the rule-based pass, `"Refining transcript with AI..."` only when a capable model was actually found and is really about to run; no stage claims AI cleanup happened when it didn't. Instrumentation (`Log.d(MeetMindPerf, ...)`) records duration, chunks attempted, paragraphs accepted, and paragraphs that fell back.
+
+### Fallback behavior (three tiers, never fabricated)
+
+1. **Best**: AI cleanup produces a validated candidate → used.
+2. **No cleanup-capable model installed, or the model reports unavailable on the first attempt**: the whole AI stage is skipped (or short-circuits) → the rule-based cleanup result (already computed) is used.
+3. **A specific chunk's candidate is rejected, unparseable, or too large for the model's budget**: that paragraph alone falls back to whatever it already had (rule-based cleaned text, or raw) → every other paragraph in the transcript is unaffected.
+
+### Database
+
+Room migration 6→7 was *not* needed for this stage — no new persisted column. AI cleanup writes into the same `cleanedText`/`sourceSegmentIdsJson` shape Stage B (migration 5→6) and §6 (migration 6→7, `sourceSegmentIdsJson`) already established; a validated AI candidate is persisted exactly like a rule-based one.
+
+### Re-run support
+
+The underlying capability already supports "clean again later without re-transcribing," by construction: `TranscriptAiCleanupEngine.clean()` takes only the already-persisted `List<TranscriptSegment>` plus `RecordingType`/single-speaker flag — no audio file, no ASR dependency. Calling it again on data already retrieved via `TranscriptRepository.getTranscriptDirect()` (e.g. after the user installs a better cleanup model later) works today with no additional plumbing. **Not built this pass**: the UI entry point (a "Clean transcript" / "Re-clean transcript" action on the transcript screen) — deliberately deferred per the explicit "implement the underlying architecture now, polished UI can follow" instruction.
+
+### Tests
+
+15 new tests in `TranscriptAiCleanupEngineTest`, run against a deterministic fake `LanguageModel` (no live model inference in any JVM test) — covers: a validated candidate being accepted; a `ModelUnavailable` first response short-circuiting the whole call; zero eligible (all user-edited) segments never touching the model at all; a validator-rejected candidate falling back without failing the whole call; malformed JSON falling back a whole chunk; a response missing an id falling back only that paragraph; a single oversized paragraph falling back without even calling the model; one failed chunk not blocking a later chunk's success; a user-edited segment never being sent to the model; recording-type-specific and single-speaker-mode prompt content; the fidelity contract always being present regardless of type; chunking splitting a long transcript into multiple calls under a small budget; and re-running cleanup purely from already-cleaned segments. 274 tests total project-wide, 0 failures. `lintDebug`/`assembleDebug` both clean.
+
+### Known limitations
+
+- **Not device/model-inference verified.** Every claim above about chunking, prompt construction, and validation is proven against synthetic fixtures on the JVM — real Qwen2.5-0.5B-Instruct output on real device hardware (its actual JSON-following reliability at this size, actual latency, actual acceptance rate against the fidelity validator) has not been observed. This is the single most important open question before declaring "transcript quality solved" — see the final report's explicit BUILD/UNIT-TEST/DEVICE/MODEL-INFERENCE-VERIFIED breakdown.
+- The redundant-reload micro-optimization noted in-code (avoiding an unnecessary engine reload when the cleanup model and the later intelligence-extraction model happen to be identical) was not implemented — correctness (never two models resident at once) was prioritized over this speed optimization, consistent with the stated priority order (correctness > fidelity > speed > RAM > battery).
+- The "clean up filler words" live display toggle in `MeetingDetailScreen` (noted as a known limitation in §5 too) still does not read from the AI-upgraded `cleanedText` path any differently than the rule-based one — no change needed there since both are stored in the same field, but worth confirming visually on-device.
+
 ## 0d. Status Update — Phase 3A: Recording Type Focus Guidance
 
 Phase 3A added `RecordingType` (Meeting, Interview, Lecture, Voice Memo, Idea, Brainstorm,

@@ -24,9 +24,23 @@ enum class MeetingStatus {
 
 enum class ModelCapability {
     TRANSCRIPTION,
+    // Retained for backward compatibility with existing LlmModelResolver call sites and stored
+    // preferences — every current LLM catalog entry still carries this alongside the more granular
+    // capabilities below, which describe the same underlying "general-purpose instruct LLM"
+    // ability at a finer grain rather than claiming something new.
     SUMMARIZATION,
     DIARIZATION,
-    EMBEDDINGS
+    EMBEDDINGS,
+    /** Reconstructs raw ASR output into a faithful, readable transcript — never summarizes, never
+     * infers missing content. See [com.example.ai.pipeline.TranscriptAiCleanupEngine]. */
+    TRANSCRIPT_CLEANUP,
+    /** Structured decisions/action items/questions/follow-ups extraction. See
+     * [com.example.ai.llm.RealMeetingIntelligenceEngine]. */
+    EXTRACTION,
+    /** Title/summary/key-points synthesis. See [com.example.ai.llm.RealMeetingIntelligenceEngine]. */
+    SYNTHESIS,
+    /** Grounded question-answering over a transcript. See [com.example.ai.llm.MeetingIntelligenceEngine.askMeeting]. */
+    ASK_MEETING
 }
 
 /** Real, typed processing stages — never a fabricated percentage. See [com.example.ai.pipeline.MeetingProcessingPipeline]. */
