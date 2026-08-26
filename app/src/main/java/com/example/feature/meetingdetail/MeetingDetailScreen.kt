@@ -242,6 +242,74 @@ class MeetingDetailViewModel(
         }
     }
 
+    /** One AI-tool rewrite proposal, awaiting review (docs/recording-page-implementation.md §2.7 /
+     * §3.4 item 21 — "never auto-apply"). [engineLabel] is either "rule-based" or a real installed
+     * model id, whichever actually produced [segments] — never a guessed/hardcoded model name. */
+    data class CleanupProposal(val toolLabel: String, val segments: List<TranscriptSegment>, val engineLabel: String, val elapsedMs: Long)
+
+    private val _cleanupProposal = MutableStateFlow<CleanupProposal?>(null)
+    val cleanupProposal: StateFlow<CleanupProposal?> = _cleanupProposal.asStateFlow()
+
+    private val _isProposingCleanup = MutableStateFlow(false)
+    val isProposingCleanup: StateFlow<Boolean> = _isProposingCleanup.asStateFlow()
+
+    private val _cleanupProposalEmpty = MutableStateFlow(false)
+    /** One-shot signal that the last [proposeCleanup] run found nothing to change — the caller
+     * should say so and not open an empty review screen. Consumed via [consumeCleanupProposalEmpty]. */
+    val cleanupProposalEmpty: StateFlow<Boolean> = _cleanupProposalEmpty.asStateFlow()
+    fun consumeCleanupProposalEmpty() { _cleanupProposalEmpty.value = false }
+
+    /** Runs the "Clean transcript" AI tool without writing anything — every AI rewrite in the
+     * redesign lands as a proposal the user reviews (Keep/Discard) before anything is persisted. */
+    fun proposeCleanup() {
+        viewModelScope.launch {
+            _isProposingCleanup.value = true
+            try {
+                val meetingNow = meeting.value ?: return@launch
+                val currentSegments = transcript.value.segments
+                if (currentSegments.isEmpty()) return@launch
+                val mode = userPrefs.preferencesFlow.first().transcriptCleanupMode
+                var engineLabel = "rule-based"
+                val start = System.currentTimeMillis()
+                val proposed = pipeline.cleanTranscript(
+                    structuredSegments = currentSegments,
+                    recordingType = meetingNow.recordingType,
+                    cleanupMode = mode,
+                    singleSpeakerMode = meetingNow.speakerCountPreference == 1,
+                    onEngineUsed = { engineLabel = it }
+                )
+                val elapsed = System.currentTimeMillis() - start
+                // Only segments the tool actually proposes a real change for — a review screen
+                // with nothing different in it would be a confusing no-op.
+                val changed = proposed.filter { it.cleanedText != null && it.cleanedText != it.text }
+                if (changed.isEmpty()) {
+                    _cleanupProposalEmpty.value = true
+                    return@launch
+                }
+                val friendlyEngineLabel = if (engineLabel == "rule-based") "Rule-based"
+                    else ModelCatalog.entries.find { it.id == engineLabel }?.name ?: engineLabel
+                _cleanupProposal.value = CleanupProposal("Clean transcript", changed, friendlyEngineLabel, elapsed)
+            } finally {
+                _isProposingCleanup.value = false
+            }
+        }
+    }
+
+    fun discardCleanupProposal() {
+        _cleanupProposal.value = null
+    }
+
+    /** Applies the current proposal — the same [com.example.core.repository.TranscriptRepository.updateCleanedText]
+     * every other cleanup write goes through, so a segment the user has since hand-edited is
+     * silently skipped rather than overwritten (§3.4 item 22, "edit preservation"). */
+    fun applyCleanupProposal() {
+        val proposal = _cleanupProposal.value ?: return
+        viewModelScope.launch {
+            proposal.segments.forEach { seg -> transcriptRepository.updateCleanedText(seg.id, seg.cleanedText) }
+            _cleanupProposal.value = null
+        }
+    }
+
     /** All playback is owned by the single app-level [PlaybackController] — never a per-screen player. */
     val playbackState: StateFlow<PlaybackState> = PlaybackController.state
 
@@ -626,6 +694,17 @@ fun MeetingDetailScreen(
     var currentTab by remember { mutableStateOf(RecordingDetailTab.OVERVIEW) }
     var overlay by remember { mutableStateOf<DetailOverlay?>(null) }
     var showFullPlayer by remember { mutableStateOf(false) }
+    var showAiToolsSheet by remember { mutableStateOf(false) }
+    var showOriginalInCleanupReview by remember { mutableStateOf(false) }
+    val cleanupProposal by viewModel.cleanupProposal.collectAsState()
+    val isProposingCleanup by viewModel.isProposingCleanup.collectAsState()
+    val cleanupProposalEmpty by viewModel.cleanupProposalEmpty.collectAsState()
+    LaunchedEffect(cleanupProposalEmpty) {
+        if (cleanupProposalEmpty) {
+            Toast.makeText(context, "Nothing to clean up — this transcript already reads the way this mode would produce it", Toast.LENGTH_LONG).show()
+            viewModel.consumeCleanupProposalEmpty()
+        }
+    }
 
     // Consumed exactly once per screen entry — re-composition or the user manually switching
     // tabs afterward must not keep forcing them back to this segment.
@@ -997,6 +1076,7 @@ fun MeetingDetailScreen(
                     canRedo = canRedo,
                     onUndo = { viewModel.undo() },
                     onRedo = { viewModel.redo() },
+                    onOpenToolsSheet = { showAiToolsSheet = true },
                     highlightedSegmentId = highlightedSegmentId,
                     activePlaybackSegmentId = activeSegment?.id,
                     isAudioPlaying = isThisRecordingActive && playbackState.isPlaying,
@@ -1050,6 +1130,74 @@ fun MeetingDetailScreen(
                 }
             }
         }
+    }
+
+    if (showAiToolsSheet) {
+        com.example.feature.meetingdetail.components.AiToolsSheet(
+            onDismiss = { showAiToolsSheet = false },
+            onRunCleanTranscript = {
+                showAiToolsSheet = false
+                viewModel.proposeCleanup()
+            },
+            onDataAlreadyAvailable = {
+                showAiToolsSheet = false
+                Toast.makeText(context, "Already shown on Overview — this is a menu entry away, not a new AI pass", Toast.LENGTH_LONG).show()
+            },
+            onNotBuiltYet = {
+                showAiToolsSheet = false
+                Toast.makeText(context, "Not built yet", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (isProposingCleanup) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(shape = RoundedCornerShape(20.dp), color = Color.White, shadowElevation = 8.dp) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Ink)
+                    Text("Cleaning up your transcript…", fontSize = 13.5.sp, color = InkSecondary)
+                }
+            }
+        }
+    }
+
+    cleanupProposal?.let { proposal ->
+        com.example.feature.meetingdetail.components.CleanupReviewScreen(
+            toolLabel = proposal.toolLabel,
+            segments = proposal.segments.map {
+                com.example.feature.meetingdetail.components.CleanupReviewSegment(
+                    startMs = it.startMs,
+                    speakerName = it.speakerName,
+                    original = it.text,
+                    proposed = it.cleanedText ?: it.text
+                )
+            },
+            engineLabel = proposal.engineLabel,
+            elapsedMs = proposal.elapsedMs,
+            showOriginal = showOriginalInCleanupReview,
+            onToggleShowOriginal = { showOriginalInCleanupReview = !showOriginalInCleanupReview },
+            onBack = {
+                showOriginalInCleanupReview = false
+                viewModel.discardCleanupProposal()
+            },
+            onDiscard = {
+                showOriginalInCleanupReview = false
+                viewModel.discardCleanupProposal()
+            },
+            onKeep = {
+                showOriginalInCleanupReview = false
+                viewModel.applyCleanupProposal()
+            }
+        )
     }
     }
 
@@ -1496,6 +1644,7 @@ fun TranscriptTab(
     canRedo: Boolean,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
+    onOpenToolsSheet: () -> Unit,
     /** Set briefly when this tab is opened via a search-result deep link — scrolls to and tints
      * this one segment so the user immediately sees why it matched, without permanently marking
      * it (a manual tab switch afterward leaves it as an ordinary segment again). */
@@ -1912,12 +2061,9 @@ fun TranscriptTab(
                 TranscriptToolbarWord(
                     label = "Tools",
                     active = !showSearch,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    // The AI tools sheet (docs/recording-page-implementation.md §2.4) is a later
-                    // phase of this redesign — say so honestly rather than a dead tap target.
-                    Toast.makeText(context, "AI tools are coming in a later phase", Toast.LENGTH_SHORT).show()
-                }
+                    modifier = Modifier.weight(1f).testTag("transcript_tools_btn"),
+                    onClick = onOpenToolsSheet
+                )
             }
         }
     }

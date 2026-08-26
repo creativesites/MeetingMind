@@ -486,7 +486,13 @@ class MeetingProcessingPipeline(
         recordingType: com.example.core.model.RecordingType,
         cleanupMode: com.example.core.model.TranscriptCleanupMode,
         singleSpeakerMode: Boolean,
-        onStatus: suspend (String) -> Unit = {}
+        onStatus: suspend (String) -> Unit = {},
+        /** Reports which engine actually produced the returned segments — "rule-based" if no
+         * capable model was installed or its output was rejected by validation, or the model id
+         * that really ran. Callers that show an honest footprint line (recording page redesign
+         * §2.7/§3.4 item 27 — "record model name, on-device flag, elapsed time... never let the
+         * model self-report what it changed") need this instead of guessing from context. */
+        onEngineUsed: (String) -> Unit = {}
     ): List<TranscriptSegment> = withContext(Dispatchers.Default) {
         val profile = recordingType.transcriptCleanupProfile(cleanupMode)
 
@@ -502,6 +508,7 @@ class MeetingProcessingPipeline(
         val aiCleanupModelId = LlmModelResolver.resolveForModeOrNull(modelStorage, ModelCapability.TRANSCRIPT_CLEANUP, profile.preferredModelTier)
         if (aiCleanupModelId == null) {
             Log.d(PERF_TAG, "AI cleanup: skipped — no installed model has TRANSCRIPT_CLEANUP capability")
+            onEngineUsed("rule-based")
             return@withContext ruleCleanedSegments
         }
 
@@ -524,10 +531,16 @@ class MeetingProcessingPipeline(
                     "AI cleanup: ${System.currentTimeMillis() - aiStart}ms, mode=${cleanupMode.name}, model=$aiCleanupModelId, " +
                         "${r.chunksAttempted} chunks, ${r.paragraphsAccepted} accepted, ${r.paragraphsFallback} fallback"
                 )
+                // paragraphsFallback > 0 alongside paragraphsAccepted == 0 means every candidate
+                // was rejected by validation — real output is still all rule-based despite a model
+                // having run, and the footprint line must say so, not claim an AI pass that made no
+                // accepted change.
+                onEngineUsed(if (r.paragraphsAccepted > 0) aiCleanupModelId else "rule-based")
                 r.segments
             }
             else -> {
                 Log.d(PERF_TAG, "AI cleanup: unavailable (${aiResult.describeFailure() ?: "no reason given"}) — using rule-based cleanup only")
+                onEngineUsed("rule-based")
                 ruleCleanedSegments
             }
         }

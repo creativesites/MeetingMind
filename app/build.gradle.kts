@@ -117,6 +117,10 @@ dependencies {
   implementation(libs.androidx.media3.exoplayer)
   // Background AI processing survives app minimization/backgrounding — see MeetingProcessingWorker.
   implementation(libs.androidx.work.runtime.ktx)
+  // Real word-level diffing for the AI-tools result review screen (recording page redesign
+  // phase 6) — per docs/recording-page-implementation.md §4, a real diff library, not a
+  // hand-rolled one.
+  implementation(libs.java.diff.utils)
   testImplementation(libs.androidx.work.testing)
   testImplementation(libs.okhttp.mockwebserver)
   testImplementation(libs.androidx.compose.ui.test.junit4)

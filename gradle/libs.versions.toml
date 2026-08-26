@@ -40,6 +40,7 @@ commonsCompress = "1.28.0"
 mediapipeTasksGenai = "0.10.35"
 media3 = "1.11.0"
 workRuntimeKtx = "2.11.2"
+javaDiffUtils = "4.12"
 
 
 [libraries]
@@ -97,6 +98,7 @@ androidx-media3-session = { group = "androidx.media3", name = "media3-session", 
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntimeKtx" }
 androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "workRuntimeKtx" }
+java-diff-utils = { group = "io.github.java-diff-utils", name = "java-diff-utils", version.ref = "javaDiffUtils" }
 
 
 [plugins]
