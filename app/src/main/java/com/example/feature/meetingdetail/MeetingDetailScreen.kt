@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,15 +21,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,42 +37,23 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.QuestionAnswer
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Subject
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -88,8 +65,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -108,7 +83,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -132,7 +106,6 @@ import com.example.core.domain.ReprocessTranscriptCleanupUseCase
 import com.example.core.model.ActionItem
 import com.example.core.model.ChatMessage
 import com.example.core.model.Decision
-import com.example.core.model.IntelligenceProfile
 import com.example.core.model.Meeting
 import com.example.core.model.MeetingStatus
 import com.example.core.model.Question
@@ -145,15 +118,11 @@ import com.example.core.repository.MeetingRepository
 import com.example.core.repository.TranscriptRepository
 import com.example.core.share.ShareContentFormatter
 import com.example.core.share.ShareHelper
-import com.example.core.ui.ListRow
-import com.example.core.ui.SectionCard
 import com.example.feature.meetingdetail.components.BottomTabBar
 import com.example.feature.meetingdetail.components.MiniDialPlayer
 import com.example.feature.meetingdetail.components.RecordingDetailTab
 import com.example.ui.theme.Accent
 import com.example.ui.theme.AccentWash
-import com.example.ui.theme.CyanTertiary
-import com.example.ui.theme.HeroGradientBrush
 import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.IndigoPrimaryLight
 import com.example.ui.theme.Ink
@@ -164,8 +133,6 @@ import com.example.ui.theme.LineSoft
 import com.example.ui.theme.Speaker2
 import com.example.ui.theme.Speaker3
 import com.example.ui.theme.Speaker4
-import com.example.ui.theme.SuccessGreen
-import com.example.ui.theme.VioletSecondary
 import com.example.ui.theme.WarningAmber
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -750,6 +717,8 @@ fun MeetingDetailScreen(
     val createCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { writeExport(it, com.example.core.export.ExportFormat.CSV) }
     val createPdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { writeExport(it, com.example.core.export.ExportFormat.PDF) }
     val createDocxLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(com.example.core.export.ExportFormat.DOCX.mimeType)) { writeExport(it, com.example.core.export.ExportFormat.DOCX) }
+    val createSrtLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(com.example.core.export.ExportFormat.SRT.mimeType)) { writeExport(it, com.example.core.export.ExportFormat.SRT) }
+    val createVttLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(com.example.core.export.ExportFormat.VTT.mimeType)) { writeExport(it, com.example.core.export.ExportFormat.VTT) }
 
     fun startExport(contentType: com.example.core.export.ExportContentType, format: com.example.core.export.ExportFormat) {
         pendingExportContentType = contentType
@@ -761,6 +730,8 @@ fun MeetingDetailScreen(
             com.example.core.export.ExportFormat.CSV -> createCsvLauncher.launch(fileName)
             com.example.core.export.ExportFormat.PDF -> createPdfLauncher.launch(fileName)
             com.example.core.export.ExportFormat.DOCX -> createDocxLauncher.launch(fileName)
+            com.example.core.export.ExportFormat.SRT -> createSrtLauncher.launch(fileName)
+            com.example.core.export.ExportFormat.VTT -> createVttLauncher.launch(fileName)
         }
     }
 

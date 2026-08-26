@@ -52,6 +52,8 @@ object ExportManager {
                 ExportContentType.SUMMARY -> DocxExporter.summary(meeting, summaryText, decisions, actionItems, out)
                 ExportContentType.ACTION_ITEMS -> DocxExporter.actionItems(meeting, actionItems, out)
             }
+            ExportFormat.SRT -> out.write(SubtitleExporter.srt(segments).toByteArray(Charsets.UTF_8))
+            ExportFormat.VTT -> out.write(SubtitleExporter.vtt(segments).toByteArray(Charsets.UTF_8))
         }
     }
 }

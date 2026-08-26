@@ -11,12 +11,16 @@ enum class ExportFormat(val displayName: String, val extension: String, val mime
     MARKDOWN("Markdown", "md", "text/markdown"),
     CSV("CSV", "csv", "text/csv"),
     PDF("PDF", "pdf", "application/pdf"),
-    DOCX("Word Document", "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    DOCX("Word Document", "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    SRT("SRT Subtitles", "srt", "application/x-subrip"),
+    VTT("WebVTT", "vtt", "text/vtt");
 
     /** Not every type is forced into every format — CSV is tabular and only makes sense for
-     * row-shaped data (transcript lines, action items), never a prose summary. */
+     * row-shaped data (transcript lines, action items), never a prose summary. SRT/VTT are
+     * subtitle formats and only make sense for the transcript itself. */
     fun supportedFor(contentType: ExportContentType): Boolean = when (this) {
         CSV -> contentType != ExportContentType.SUMMARY
+        SRT, VTT -> contentType == ExportContentType.TRANSCRIPT
         else -> true
     }
 }
