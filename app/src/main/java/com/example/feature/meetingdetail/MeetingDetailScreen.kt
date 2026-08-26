@@ -625,12 +625,6 @@ class MeetingDetailViewModel(
     // PlaybackService, not this ViewModel, and must keep running after this screen is destroyed.
 }
 
-/** Full-screen overlays reachable from the Overview tab's Decisions/Action Items rows now that
- * those are no longer persistent tabs (docs/recording-page-implementation.md §2.1: "Tabs are
- * Overview · Transcript · Ask AI only — the current dynamic tab list ... is removed"). Phase 8 of
- * the redesign replaces these with the Overview stepper's own decision timeline / task steps;
- * until then this keeps the existing detail screens reachable rather than deleting them. */
-private enum class DetailOverlay { ACTION_ITEMS, DECISIONS }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -651,13 +645,11 @@ fun MeetingDetailScreen(
     val actionItems by viewModel.actionItems.collectAsState()
     val decisions by viewModel.decisions.collectAsState()
     val questions by viewModel.questions.collectAsState()
-    val topics by viewModel.topics.collectAsState()
     val chatMessages by viewModel.chatMessages.collectAsState()
     val speakers by viewModel.speakers.collectAsState()
     val canUndo by viewModel.canUndo.collectAsState()
     val canRedo by viewModel.canRedo.collectAsState()
     val asrModelInstalled by viewModel.asrModelInstalled.collectAsState()
-    val llmModelInstalled by viewModel.llmModelInstalled.collectAsState()
     val cleanFillerWords by viewModel.cleanFillerWords.collectAsState()
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -697,7 +689,6 @@ fun MeetingDetailScreen(
     val intelligenceProfile = (meeting?.recordingType ?: RecordingType.GENERAL).intelligenceProfile()
 
     var currentTab by remember { mutableStateOf(RecordingDetailTab.OVERVIEW) }
-    var overlay by remember { mutableStateOf<DetailOverlay?>(null) }
     var showFullPlayer by remember { mutableStateOf(false) }
     var showAiToolsSheet by remember { mutableStateOf(false) }
     var showOriginalInCleanupReview by remember { mutableStateOf(false) }
@@ -1051,16 +1042,18 @@ fun MeetingDetailScreen(
 
             // Tab Pages — the tab bar itself is [BottomTabBar] in Scaffold's bottomBar above.
             when (currentTab) {
-                RecordingDetailTab.OVERVIEW -> BentoOverviewTab(
-                    meeting = meeting,
-                    topics = topics,
+                RecordingDetailTab.OVERVIEW -> com.example.feature.meetingdetail.components.OverviewStepper(
+                    summary = meeting?.summaryPreview,
+                    openQuestionCount = questions.count { !it.resolved },
                     decisions = decisions,
                     actionItems = actionItems,
-                    intelligenceProfile = intelligenceProfile,
-                    onNavigateToTranscript = { currentTab = RecordingDetailTab.TRANSCRIPT },
-                    onNavigateToActionItems = { overlay = DetailOverlay.ACTION_ITEMS },
-                    onNavigateToDecisions = { overlay = DetailOverlay.DECISIONS },
-                    llmModelInstalled = llmModelInstalled
+                    onToggleActionItem = { viewModel.toggleActionItem(it) },
+                    onAddTask = { showAddActionDialog = true },
+                    speakers = speakers,
+                    segments = transcript.segments,
+                    showDecisionsStep = intelligenceProfile.extractDecisions,
+                    showTasksStep = intelligenceProfile.extractActionItems,
+                    onPlayFrom = { viewModel.jumpToTimestamp(it) }
                 )
                 RecordingDetailTab.TRANSCRIPT -> TranscriptTab(
                     segments = transcript.segments,
@@ -1105,46 +1098,6 @@ fun MeetingDetailScreen(
                         viewModel.jumpToTimestamp(ts)
                     }
                 )
-            }
-        }
-    }
-
-    // Decisions/Action Items overlays — see [DetailOverlay] above. Rendered on top of the main
-    // Scaffold rather than as a fourth/fifth tab.
-    if (overlay != null) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text(if (overlay == DetailOverlay.ACTION_ITEMS) "Action Items" else "Decisions") },
-                    navigationIcon = {
-                        IconButton(onClick = { overlay = null }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background
-                    )
-                )
-            }
-        ) { overlayPadding ->
-            Box(modifier = Modifier.fillMaxSize().padding(overlayPadding)) {
-                when (overlay) {
-                    DetailOverlay.ACTION_ITEMS -> ActionItemsTab(
-                        actionItems = actionItems,
-                        segments = transcript.segments,
-                        onToggle = { viewModel.toggleActionItem(it) },
-                        onDelete = { viewModel.deleteActionItem(it) },
-                        onAddClick = { showAddActionDialog = true },
-                        onJumpToTimestamp = { viewModel.jumpToTimestamp(it) }
-                    )
-                    DetailOverlay.DECISIONS -> DecisionsTab(
-                        decisions = decisions,
-                        questions = questions,
-                        segments = transcript.segments,
-                        onJumpToTimestamp = { viewModel.jumpToTimestamp(it) }
-                    )
-                    null -> Unit
-                }
             }
         }
     }
@@ -1460,183 +1413,6 @@ fun BentoAudioPlayerCard(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun BentoOverviewTab(
-    meeting: Meeting?,
-    topics: List<Topic>,
-    decisions: List<Decision>,
-    actionItems: List<ActionItem>,
-    onNavigateToTranscript: () -> Unit,
-    onNavigateToActionItems: () -> Unit,
-    onNavigateToDecisions: () -> Unit,
-    /** Which categories this recording type actually produces — a Lecture or Idea shows no
-     * Decisions/Action Items rows at all, rather than a row pointing at a tab that doesn't exist. */
-    intelligenceProfile: IntelligenceProfile = RecordingType.GENERAL.intelligenceProfile(),
-    /** Real on-disk state, used only to explain an absent summary honestly. */
-    llmModelInstalled: Boolean = true
-) {
-    if (meeting == null) return
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
-        // 1. Summary — a single quiet container, not a bordered bento card.
-        item {
-            SectionCard {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text(
-                        text = "Summary",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    val summary = meeting.summaryPreview
-                    // Never claim to still be generating once processing has actually finished —
-                    // a READY recording with no summary is a real outcome with a real cause, and
-                    // a permanent "Generating..." would be a progress indicator for work that
-                    // already stopped.
-                    val summaryPlaceholder = when {
-                        meeting.status == MeetingStatus.PROCESSING -> "Generating notes on your device..."
-                        meeting.status == MeetingStatus.MODEL_REQUIRED || !llmModelInstalled ->
-                            "No summary yet — the Meeting Intelligence model isn't installed. Your recording and transcript are safe; install it in AI Engine to generate notes."
-                        meeting.status == MeetingStatus.ERROR -> "Processing didn't finish, so no summary was generated."
-                        else -> "No summary was generated for this recording."
-                    }
-                    Text(
-                        text = summary?.takeIf { it.isNotBlank() } ?: summaryPlaceholder,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (summary.isNullOrBlank()) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        lineHeight = 22.sp
-                    )
-                }
-            }
-        }
-
-        // 2. Grouped list of rows — matches the reference's flat "AI Summary" list exactly.
-        // Decisions/Action Items rows only appear when this recording type actually produces
-        // them (IntelligenceProfile) — never a row pointing at empty, meaningless content.
-        item {
-            SectionCard {
-                // An empty list is a legitimate result, not a malfunction — plenty of recordings
-                // are notes or chats with nothing decided and nothing assigned. Say that plainly
-                // instead of using wording that reads like the analysis fell over.
-                if (intelligenceProfile.extractDecisions) {
-                    ListRow(
-                        title = "Decisions",
-                        subtitle = decisions.firstOrNull()?.text ?: "Nothing was decided in this recording",
-                        icon = Icons.Default.Psychology,
-                        onClick = onNavigateToDecisions,
-                        trailing = { CountTrailing(decisions.size) }
-                    )
-                }
-                if (intelligenceProfile.extractActionItems) {
-                    ListRow(
-                        title = "Action Items",
-                        subtitle = actionItems.firstOrNull()?.task ?: "No tasks came out of this recording",
-                        icon = Icons.Default.FormatListBulleted,
-                        onClick = onNavigateToActionItems,
-                        trailing = { CountTrailing(actionItems.size) }
-                    )
-                }
-                ListRow(
-                    title = "Transcript",
-                    subtitle = "Full text with speakers and timestamps",
-                    icon = Icons.Default.Subject,
-                    onClick = onNavigateToTranscript,
-                    showDivider = false
-                )
-            }
-        }
-
-        // 3. Key points/concepts/topics — labeled to match what this recording type actually is
-        // (e.g. "Key Concepts" for a Lecture, "Key Points" for an Idea), not generic "Topics".
-        if (topics.isNotEmpty()) {
-            item {
-                SectionCard {
-                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = intelligenceProfile.topicsLabel,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            topics.forEach { topic ->
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                                ) {
-                                    Text(
-                                        text = topic.name,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4. Details — duration / speakers / type, as quiet rows rather than a metric strip.
-        item {
-            SectionCard {
-                ListRow(
-                    title = "Duration",
-                    icon = Icons.Default.Schedule,
-                    trailing = { Text(Formatters.formatDurationHms(meeting.durationMs), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                )
-                ListRow(
-                    title = "Speakers",
-                    icon = Icons.Default.Group,
-                    trailing = { Text("${meeting.participantCount} detected", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                )
-                ListRow(
-                    title = "Type",
-                    icon = Icons.Default.GraphicEq,
-                    showDivider = false,
-                    trailing = { Text(meeting.recordingType.displayName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CountTrailing(count: Int) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = "$count",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Icon(
-            Icons.AutoMirrored.Filled.ArrowForward,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.size(16.dp)
-        )
-    }
-}
-
-/** Segments longer than this default to collapsed (timestamp + speaker + short preview) so a long
- * transcript stays scannable; anything at or under it defaults to expanded since there's nothing
- * to gain by hiding a one-line segment behind a tap. Either can always be toggled by tapping. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun TranscriptTab(
@@ -2219,265 +1995,3 @@ private fun SpeakerReassignDialog(
         }
     )
 }
-
-@Composable
-fun ActionItemsTab(
-    actionItems: List<ActionItem>,
-    segments: List<TranscriptSegment>,
-    onToggle: (ActionItem) -> Unit,
-    onDelete: (String) -> Unit,
-    onAddClick: () -> Unit,
-    onJumpToTimestamp: (Long) -> Unit
-) {
-    val segmentStartMsById = remember(segments) { segments.associate { it.id to it.startMs } }
-    Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onAddClick,
-                containerColor = IndigoPrimary,
-                contentColor = Color.White,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.testTag("fab_add_action_item")
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Action Item")
-            }
-        }
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            if (actionItems.isEmpty()) {
-                item {
-                    Text(
-                        text = "No tasks came out of this recording. Not every conversation has one — tap + to add your own.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                items(actionItems, key = { it.id }) { item ->
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(14.dp)
-                                .fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Checkbox(
-                                checked = item.isCompleted,
-                                onCheckedChange = { onToggle(item) },
-                                colors = CheckboxDefaults.colors(checkedColor = SuccessGreen)
-                            )
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = item.task,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (item.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Assignee: ${item.assigneeName ?: "Unassigned"}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "•",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "Due: ${item.deadline ?: "TBD"}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            item.sourceSegmentIds.firstOrNull()?.let { segmentStartMsById[it] }?.let { ts ->
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = IndigoPrimary.copy(alpha = 0.12f),
-                                    modifier = Modifier.clickable { onJumpToTimestamp(ts) }
-                                ) {
-                                    Text(
-                                        text = Formatters.formatDurationHms(ts),
-                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                        color = IndigoPrimaryLight,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun DecisionsTab(
-    decisions: List<Decision>,
-    questions: List<Question>,
-    segments: List<TranscriptSegment> = emptyList(),
-    onJumpToTimestamp: (Long) -> Unit = {}
-) {
-    val segmentStartMsById = remember(segments) { segments.associate { it.id to it.startMs } }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item {
-            Text(
-                text = "Agreed Decisions",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        if (decisions.isEmpty()) {
-            item {
-                Text(
-                    text = "Nothing was decided in this recording. That's a normal result for notes and open-ended conversations.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        } else {
-            items(decisions, key = { it.id }) { dec ->
-                val typeColor = when (dec.type) {
-                    com.example.core.model.DecisionType.DECISION -> SuccessGreen
-                    com.example.core.model.DecisionType.SUGGESTION -> IndigoPrimaryLight
-                    com.example.core.model.DecisionType.POSSIBILITY -> WarningAmber
-                    com.example.core.model.DecisionType.DISCUSSION -> MaterialTheme.colorScheme.onSurfaceVariant
-                }
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, typeColor.copy(alpha = 0.4f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(14.dp)
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = typeColor,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = dec.text,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = dec.type.name.lowercase().replaceFirstChar { it.uppercase() },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = typeColor,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                // Never a fabricated percentage: only shown when the extraction actually provided one.
-                                dec.confidence?.let { c ->
-                                    Text(
-                                        text = "• Confidence: ${(c * 100).toInt()}%",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                        dec.sourceSegmentIds.firstOrNull()?.let { segmentStartMsById[it] }?.let { ts ->
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = typeColor.copy(alpha = 0.12f),
-                                modifier = Modifier.clickable { onJumpToTimestamp(ts) }
-                            ) {
-                                Text(
-                                    text = Formatters.formatDurationHms(ts),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = typeColor,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (questions.isNotEmpty()) {
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Questions & Inquiries",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            items(questions, key = { it.id }) { q ->
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(14.dp)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.HelpOutline, contentDescription = null, tint = VioletSecondary)
-                            Text(
-                                text = q.text,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        q.answer?.let { ans ->
-                            Text(
-                                text = "Resolution: $ans",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
