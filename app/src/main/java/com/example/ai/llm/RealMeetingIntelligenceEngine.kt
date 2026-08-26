@@ -134,7 +134,8 @@ class RealMeetingIntelligenceEngine(
     override suspend fun askMeeting(
         question: String,
         transcript: Transcript,
-        relevantSegments: List<TranscriptSegment>
+        relevantSegments: List<TranscriptSegment>,
+        personalization: com.example.core.model.AskPersonalizationContext
     ): AiResult<ChatMessage> {
         val candidateSegments = relevantSegments.ifEmpty { transcript.segments }
         if (candidateSegments.isEmpty()) {
@@ -145,7 +146,7 @@ class RealMeetingIntelligenceEngine(
         // outside that first chunk — see docs/AI_ARCHITECTURE.md "Known Limitations".
         val chunk = TranscriptChunker.chunk(candidateSegments, contextLengthTokens).firstOrNull()
             ?: return AiResult.Failed("Transcript is too short to analyze.")
-        val prompt = buildAskPrompt(question, chunk.segments)
+        val prompt = buildAskPrompt(question, chunk.segments, personalization)
         return when (val result = languageModel.generate(prompt, maxOutputTokens = ASK_OUTPUT_TOKENS)) {
             is AiResult.Success -> {
                 val answer = result.value.trim()
@@ -312,11 +313,21 @@ class RealMeetingIntelligenceEngine(
         return full.take(half) + ELISION_MARKER + full.takeLast(half)
     }
 
-    private fun buildAskPrompt(question: String, segments: List<TranscriptSegment>): String {
+    private fun buildAskPrompt(question: String, segments: List<TranscriptSegment>, personalization: com.example.core.model.AskPersonalizationContext): String {
         val excerpt = renderSegmentsWithTimestamps(segments)
+        // Both lines are conditional — an empty personalization context adds nothing to the
+        // prompt at all. The vocabulary line lists only what's already judged relevant to this
+        // question (see AskPersonalizationContext's own doc), never the whole learned table.
+        val nameLine = personalization.userName?.takeIf { it.isNotBlank() }?.let {
+            "\nYou are answering for $it. Address them by name only if it reads naturally — never force it into every sentence.\n"
+        } ?: ""
+        val vocabularyLine = personalization.relevantVocabulary.takeIf { it.isNotEmpty() }?.let { entries ->
+            "\nKnown terminology for this recording (use the corrected form when relevant): " +
+                entries.joinToString("; ") { "\"${it.surfaceForm}\" means \"${it.canonicalForm}\"" } + "\n"
+        } ?: ""
         return """
             Answer the question below using ONLY the real meeting transcript excerpt provided. If the transcript does not contain the answer, say so plainly instead of guessing.
-
+            $nameLine$vocabularyLine
             Each line below starts with that line's exact timestamp in brackets, like [12:02]. When your answer states something a specific line supports, cite it by writing that exact bracketed timestamp immediately after the claim — copy it exactly as shown, never invent one. Not every sentence needs a citation; only cite where you are drawing on a specific line.
 
             Transcript excerpt:

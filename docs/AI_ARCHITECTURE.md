@@ -561,6 +561,20 @@ Each entry carries a `TranscriptAiToolReadiness`: `READY` (Clean Transcript — 
 
 **Not built this pass**: `FIND_IMPORTANT_MOMENTS` and `FIND_NAMES_ORGANIZATIONS` stay `NOT_STARTED` — genuinely new extraction, not a UI gap on existing data.
 
+## 15. Ask AI Persistence + Personalised Context (Phase 15 §8)
+
+**Audit finding — persistence was already real, no work needed.** `ChatMessage` rows are written to Room (`saveChatMessage`) for both the user's question and the assistant's answer inside `AskMeetingUseCase`, and `MeetingDetailViewModel` already reloads them via a Flow, so Ask AI history already survives process death and app restarts. Nothing was fabricated or half-built here; this pass found a real, working feature and moved on rather than rewriting it.
+
+**Real bug found and fixed**: `AskAiPanel`'s message composer had no `imePadding()`, so on devices where the soft keyboard doesn't already resize the window, the keyboard could cover the input field — the same class of inset bug fixed earlier on the recording confirmation screen. Fixed with `Modifier.imePadding()` on the panel's root `Column`.
+
+**Personalisation — "context selection, not dumping all memory"**: the spec's own phrase is now structurally enforced, not just a convention. `AskPersonalizationContext` (`core/model/Vocabulary.kt`) is a new, narrow data class — a nullable `userName` plus a `relevantVocabulary: List<VocabularyEntry>` — and it is physically the only channel `AskMeetingUseCase` has for passing anything personal into a prompt: it cannot carry the whole learned-vocabulary table or arbitrary user data, because nothing else is on the type.
+
+`AskMeetingUseCase.invoke()` now takes an optional `userName` (passed in per call, not read from DataStore inside the use case, so it stays free of a DataStore dependency), and computes `relevantVocabulary` by calling the existing `VocabularyRepository.findRelevantTerms(question)` — the same relevance filter Fix Terminology uses (Phase 15 §6), scoped to the question actually asked, never the full vocabulary table. `MeetingDetailScreen.askQuestion()` reads the user's name from `UserPreferences` once per question and passes it through. The whole path is threaded through `MeetingIntelligenceEngine.askMeeting()`'s interface (default-valued so every existing caller/fake keeps compiling) into `RealMeetingIntelligenceEngine.buildAskPrompt()`, which only emits a name line and/or a "known terminology" line when the corresponding field is actually non-empty — an empty `AskPersonalizationContext` (the default) produces byte-identical prompts to before personalisation existed.
+
+**Tests**: `AskMeetingUseCasePersonalizationTest` (Robolectric + in-memory Room) pins down that a supplied name reaches the context, a missing name stays `null` rather than being guessed, only vocabulary relevant to the actual question is included (not the whole learned table), and a use case built with no `VocabularyRepository` wired degrades to empty vocabulary instead of crashing. `RealMeetingIntelligenceEngineAskPersonalizationTest` pins down the prompt text itself: a set name reaches the prompt, a relevant vocabulary entry's surface form and canonical form both reach the prompt, and — the regression this whole design is meant to prevent — an empty context adds nothing detectable to the prompt at all.
+
+**Not built this pass**: no UI was added for a user to *edit* the corrected transcript segments' terms from the Ask AI panel itself, and personalisation does not yet extend to other AI tools beyond Ask Meeting (e.g. summary generation) — those tools don't currently accept any per-user context parameter, so extending personalisation to them is a separate, later change, not part of §8's scope (Ask AI specifically).
+
 ## 0d. Status Update — Phase 3A: Recording Type Focus Guidance
 
 Phase 3A added `RecordingType` (Meeting, Interview, Lecture, Voice Memo, Idea, Brainstorm,

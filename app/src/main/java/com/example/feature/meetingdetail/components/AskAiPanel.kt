@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -90,7 +91,10 @@ fun AskAiPanel(
         "Summarise this recording"
     )
 
-    Column(modifier = modifier.fillMaxSize()) {
+    // Phase 15 §8: the composer must never end up hidden behind the IME — Compose doesn't do
+    // this automatically for a plain Column, it has to opt in via imePadding() (the same gap the
+    // confirmation screen had for navigationBars/ime insets, fixed the same way).
+    Column(modifier = modifier.fillMaxSize().imePadding()) {
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),

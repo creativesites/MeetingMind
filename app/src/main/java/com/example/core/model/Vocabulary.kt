@@ -22,3 +22,16 @@ data class VocabularyEntry(
     val frequency: Int,
     val lastConfirmedAt: Long
 )
+
+/**
+ * What Ask AI is allowed to personalize an answer with (Phase 15 §8) — deliberately narrow: the
+ * user's own name (never inferred — see [com.example.core.datastore.AppPreferencesState.userName]'s
+ * own doc) and only the vocabulary entries [com.example.core.repository.VocabularyRepository.findRelevantTerms]
+ * judged relevant to *this specific question*, never the whole learned-vocabulary table. This is
+ * the "context selection, not dumping all memory" requirement, expressed as a type so it can't
+ * silently grow into a dumping ground later.
+ */
+data class AskPersonalizationContext(
+    val userName: String? = null,
+    val relevantVocabulary: List<VocabularyEntry> = emptyList()
+)

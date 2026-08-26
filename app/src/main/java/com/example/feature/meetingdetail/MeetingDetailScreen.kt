@@ -170,7 +170,8 @@ class MeetingDetailViewModel(
             RealMeetingIntelligenceEngine(
                 languageModel = MediaPipeLanguageModel(getApplication(), modelStorage, modelId = llmModelId),
                 contextLengthTokens = contextTokens
-            )
+            ),
+            vocabularyRepository = vocabularyRepository
         )
     }
     /** Display-only filler-word cleanup preference. The stored transcript is always verbatim; this
@@ -584,7 +585,8 @@ class MeetingDetailViewModel(
             _pendingQuestion.value = questionText
             _isAnswering.value = true
             try {
-                buildAskUseCase()(meetingId, questionText)
+                val userName = userPrefs.preferencesFlow.first().userName
+                buildAskUseCase()(meetingId, questionText, userName)
             } finally {
                 _isAnswering.value = false
             }

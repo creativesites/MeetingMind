@@ -1,6 +1,7 @@
 package com.example.ai.llm
 
 import com.example.ai.common.AiResult
+import com.example.core.model.AskPersonalizationContext
 import com.example.core.model.ChatMessage
 import com.example.core.model.MeetingSummary
 import com.example.core.model.RecordingType
@@ -57,7 +58,11 @@ interface MeetingIntelligenceEngine {
     suspend fun askMeeting(
         question: String,
         transcript: Transcript,
-        relevantSegments: List<TranscriptSegment>
+        relevantSegments: List<TranscriptSegment>,
+        /** Phase 15 §8 — deliberately narrow, see [AskPersonalizationContext]'s own doc: never a
+         * dump of everything the app knows about the user, only their name and whatever learned
+         * vocabulary is relevant to this one question. */
+        personalization: AskPersonalizationContext = AskPersonalizationContext()
     ): AiResult<ChatMessage>
 }
 
@@ -81,7 +86,8 @@ class UnavailableMeetingIntelligenceEngine(
     override suspend fun askMeeting(
         question: String,
         transcript: Transcript,
-        relevantSegments: List<TranscriptSegment>
+        relevantSegments: List<TranscriptSegment>,
+        personalization: AskPersonalizationContext
     ): AiResult<ChatMessage> =
         AiResult.ModelUnavailable(modelId = "local-llm", message = "No local meeting intelligence model is installed on this device.")
 }

@@ -154,7 +154,7 @@ class MeetingProcessingPipelineIntegrationTest {
             )
         )
 
-        override suspend fun askMeeting(question: String, transcript: Transcript, relevantSegments: List<TranscriptSegment>) =
+        override suspend fun askMeeting(question: String, transcript: Transcript, relevantSegments: List<TranscriptSegment>, personalization: com.example.core.model.AskPersonalizationContext) =
             AiResult.Success(ChatMessage(id = UUID.randomUUID().toString(), meetingId = transcript.meetingId, isUser = false, content = "n/a"))
     }
 
@@ -316,7 +316,7 @@ class MeetingProcessingPipelineIntegrationTest {
                 customContext: String?
             ) = AiResult.ModelUnavailable(modelId = "local-llm", message = "No local meeting intelligence model is installed.")
 
-            override suspend fun askMeeting(question: String, transcript: Transcript, relevantSegments: List<TranscriptSegment>) =
+            override suspend fun askMeeting(question: String, transcript: Transcript, relevantSegments: List<TranscriptSegment>, personalization: com.example.core.model.AskPersonalizationContext) =
                 AiResult.ModelUnavailable(modelId = "local-llm", message = "No local meeting intelligence model is installed.")
         }
         val pipeline = MeetingProcessingPipeline(
@@ -362,7 +362,7 @@ class MeetingProcessingPipelineIntegrationTest {
                 )
             )
 
-            override suspend fun askMeeting(question: String, transcript: Transcript, relevantSegments: List<TranscriptSegment>) =
+            override suspend fun askMeeting(question: String, transcript: Transcript, relevantSegments: List<TranscriptSegment>, personalization: com.example.core.model.AskPersonalizationContext) =
                 AiResult.Success(ChatMessage(id = UUID.randomUUID().toString(), meetingId = transcript.meetingId, isUser = false, content = "n/a"))
         }
         val pipeline = MeetingProcessingPipeline(

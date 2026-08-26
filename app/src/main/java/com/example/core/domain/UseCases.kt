@@ -167,11 +167,17 @@ class AskMeetingUseCase(
     private val pipelineIntelligence: com.example.ai.llm.MeetingIntelligenceEngine =
         com.example.ai.llm.UnavailableMeetingIntelligenceEngine(),
     private val embeddingEngine: com.example.ai.embeddings.EmbeddingEngine = com.example.ai.embeddings.LocalEmbeddingEngine(),
-    private val retrievalTopK: Int = 12
+    private val retrievalTopK: Int = 12,
+    /** Null in tests / anywhere personalization isn't wired — [invoke] treats that exactly like
+     * "no relevant vocabulary" rather than failing. */
+    private val vocabularyRepository: com.example.core.repository.VocabularyRepository? = null
 ) {
     suspend operator fun invoke(
         meetingId: String,
-        question: String
+        question: String,
+        /** The user's own name, if they've set one (Phase 15 §8) — passed in per-call, not read
+         * from DataStore here, so this use case stays free of a DataStore dependency. */
+        userName: String? = null
     ): ChatMessage {
         val transcript = transcriptRepository.getTranscriptDirect(meetingId)
         // Record user message
@@ -191,10 +197,15 @@ class AskMeetingUseCase(
         // in [retrievalTopK] segments skips the ranking step entirely — nothing to gain from it.
         val relevantSegments = retrieveRelevantSegments(transcript.segments, question)
 
+        // Only vocabulary this specific question is relevant to — never the whole learned table
+        // (see AskPersonalizationContext's own doc).
+        val relevantVocabulary = vocabularyRepository?.findRelevantTerms(question) ?: emptyList()
+        val personalization = com.example.core.model.AskPersonalizationContext(userName, relevantVocabulary)
+
         // Process with local intelligence — never fabricate an answer. If no local LLM is
         // installed, or nothing has been transcribed yet, say so explicitly instead of
         // inventing a grounded-sounding response.
-        val aiResponse = when (val result = pipelineIntelligence.askMeeting(question, transcript, relevantSegments)) {
+        val aiResponse = when (val result = pipelineIntelligence.askMeeting(question, transcript, relevantSegments, personalization)) {
             is AiResult.Success -> result.value
             else -> ChatMessage(
                 id = UUID.randomUUID().toString(),
