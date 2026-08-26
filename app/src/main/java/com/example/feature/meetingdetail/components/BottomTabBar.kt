@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -41,7 +42,11 @@ fun BottomTabBar(
 ) {
     Column(modifier = modifier.fillMaxWidth().background(Color.White)) {
         HorizontalDivider(thickness = 1.dp, color = LineSoft)
-        Row(Modifier.fillMaxWidth()) {
+        // navigationBarsPadding on the tab row (not the Column/background above) keeps this bar's
+        // white background bleeding under the system nav bar/gesture area while the tappable tabs
+        // themselves stay above it — same pattern as MiniPlayerBar; previously this had zero inset
+        // handling and rendered partly behind the gesture nav bar.
+        Row(Modifier.fillMaxWidth().navigationBarsPadding()) {
             RecordingDetailTab.entries.forEach { tab ->
                 val active = tab == current
                 Box(

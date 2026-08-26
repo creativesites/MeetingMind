@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.border
@@ -741,9 +742,15 @@ fun MeetingDetailScreen(
     Scaffold(
         topBar = {
             Surface(color = Color.White) {
+                // statusBarsPadding on the content (not the Surface itself) lets this bar's white
+                // background bleed under the status bar while the back button/title/mini dial sit
+                // below it — previously this had zero inset handling and rendered under the status
+                // bar, overlapping the clock/battery icons (see MiniPlayerBar for the same pattern
+                // applied to the nav-bar side).
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .statusBarsPadding()
                         .padding(start = 18.dp, end = 18.dp, top = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
