@@ -216,6 +216,31 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
         transcriptDao.updateSegmentText(segmentId, newText)
     }
 
+    /** One segment's before/after text from a [replaceAllInTranscript] pass. */
+    data class ReplaceAllChange(val segmentId: String, val before: String, val after: String)
+
+    /**
+     * Replaces every case-insensitive, literal occurrence of [searchText] with [replaceText]
+     * across [meetingId]'s whole transcript in one pass (Phase 15 §3/§4: Replace/Replace All as a
+     * first-class editing action, not a loop the caller has to build from single-segment edits).
+     * Returns exactly the segments that actually changed, in transcript order, so the caller can
+     * register one atomic undo step covering all of them — empty (and no writes at all) when
+     * [searchText] is blank or nothing matches.
+     */
+    suspend fun replaceAllInTranscript(meetingId: String, searchText: String, replaceText: String): List<ReplaceAllChange> = withContext(Dispatchers.IO) {
+        if (searchText.isBlank()) return@withContext emptyList()
+        val changes = transcriptDao.getSegmentsForMeetingDirect(meetingId)
+            .sortedBy { it.startMs }
+            .mapNotNull { seg ->
+                if (!seg.text.contains(searchText, ignoreCase = true)) return@mapNotNull null
+                val newText = seg.text.replace(searchText, replaceText, ignoreCase = true)
+                if (newText == seg.text) return@mapNotNull null
+                ReplaceAllChange(seg.id, seg.text, newText)
+            }
+        changes.forEach { transcriptDao.updateSegmentText(it.segmentId, it.after) }
+        changes
+    }
+
     /** Persists [com.example.ai.pipeline.TranscriptCleanupEngine]'s output for one segment — a
      * no-op if that segment has since been hand-edited by the user (see [TranscriptDao.updateCleanedText]). */
     suspend fun updateCleanedText(segmentId: String, cleanedText: String?) = withContext(Dispatchers.IO) {

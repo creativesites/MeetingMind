@@ -409,6 +409,11 @@ class MeetingDetailViewModel(
         ) : EditAction
         data class Split(val originalId: String, val originalText: String, val originalEndMs: Long, val charOffset: Int, val newSegmentId: String) : EditAction
         data class Merge(val result: TranscriptRepository.MergeResult) : EditAction
+        /** A Replace All pass across the whole transcript — every changed segment undoes/redoes
+         * together as one step, not one per segment (docs Phase 15 §3: replace/replace all is a
+         * first-class editing action, not a loop of individual text edits from the user's point
+         * of view). */
+        data class ReplaceAll(val changes: List<TextEdit>) : EditAction
     }
 
     private val _undoStack = MutableStateFlow<List<EditAction>>(emptyList())
@@ -429,6 +434,18 @@ class MeetingDetailViewModel(
         viewModelScope.launch {
             transcriptRepository.updateSegmentText(segmentId, after)
             pushUndo(EditAction.TextEdit(segmentId, before, after))
+        }
+    }
+
+    /** Replaces every case-insensitive occurrence of [searchText] with [replaceText] across the
+     * whole transcript in one pass, registering the whole pass as a single undo step. A no-op
+     * (including no undo entry) when [searchText] is blank or nothing actually matches — an
+     * empty Replace All must never pollute the undo stack. */
+    fun replaceAllInTranscript(searchText: String, replaceText: String) {
+        viewModelScope.launch {
+            val changes = transcriptRepository.replaceAllInTranscript(meetingId, searchText, replaceText)
+            if (changes.isEmpty()) return@launch
+            pushUndo(EditAction.ReplaceAll(changes.map { EditAction.TextEdit(it.segmentId, it.before, it.after) }))
         }
     }
 
@@ -482,6 +499,7 @@ class MeetingDetailViewModel(
                 is EditAction.SpeakerReassign -> transcriptRepository.setSegmentSpeakers(action.segmentIds, action.beforeSpeakerId, action.beforeSpeakerName)
                 is EditAction.Split -> transcriptRepository.undoSplitSegment(action.originalId, action.originalText, action.originalEndMs, action.newSegmentId)
                 is EditAction.Merge -> transcriptRepository.undoMergeSegment(action.result)
+                is EditAction.ReplaceAll -> action.changes.forEach { transcriptRepository.updateSegmentText(it.segmentId, it.before) }
             }
             _undoStack.value = _undoStack.value.dropLast(1)
             _redoStack.value = _redoStack.value + action
@@ -502,6 +520,7 @@ class MeetingDetailViewModel(
                 }
                 is EditAction.Split -> transcriptRepository.splitSegment(action.originalId, action.charOffset)
                 is EditAction.Merge -> transcriptRepository.mergeSegmentWithPrevious(meetingId, action.result.removed.id)
+                is EditAction.ReplaceAll -> action.changes.forEach { transcriptRepository.updateSegmentText(it.segmentId, it.after) }
             }
             _redoStack.value = _redoStack.value.dropLast(1)
             _undoStack.value = _undoStack.value + action
@@ -1057,6 +1076,7 @@ fun MeetingDetailScreen(
                     onEditSegmentText = { segmentId, before, after -> viewModel.editSegmentText(segmentId, before, after) },
                     onSplitSegment = { segmentId, currentText, currentEndMs, offset -> viewModel.splitSegment(segmentId, currentText, currentEndMs, offset) },
                     onMergeSegmentWithPrevious = { segmentId, currentText -> viewModel.mergeSegmentWithPrevious(segmentId, currentText) },
+                    onReplaceAll = { searchText, replaceText -> viewModel.replaceAllInTranscript(searchText, replaceText) },
                     onReassignSpeaker = { segmentIds, beforeId, beforeName, existingId, newName, colorHex ->
                         viewModel.reassignSpeaker(segmentIds, beforeId, beforeName, existingId, newName, colorHex)
                     },
@@ -1444,6 +1464,9 @@ fun TranscriptTab(
     onEditSegmentText: (segmentId: String, before: String, after: String) -> Unit,
     onSplitSegment: (segmentId: String, currentText: String, currentEndMs: Long, charOffset: Int) -> Unit,
     onMergeSegmentWithPrevious: (segmentId: String, currentText: String) -> Unit,
+    /** Replaces every case-insensitive occurrence of the first String with the second across the
+     * whole transcript, as one undo step (docs Phase 15 §3). */
+    onReplaceAll: (searchText: String, replaceText: String) -> Unit,
     onReassignSpeaker: (
         segmentIds: List<String>,
         beforeSpeakerId: String?,
@@ -1477,6 +1500,11 @@ fun TranscriptTab(
     // entered from the three-word row at the bottom.
     var showSearch by remember { mutableStateOf(false) }
     var searchMatchIndex by remember { mutableStateOf(0) }
+    // Replace/Replace All (docs Phase 15 §3) lives inside the same search panel rather than a
+    // separate mode — it only ever acts on whatever's currently in searchQuery, so there's no
+    // second query to keep in sync.
+    var showReplaceField by remember { mutableStateOf(false) }
+    var replaceText by remember { mutableStateOf("") }
     var isEditMode by remember { mutableStateOf(false) }
     // Only the focused segment is actually editable at a time (docs/recording-page-implementation.md
     // §2.5) — everything else in fieldValues is just segments the user has already visited this
@@ -1598,7 +1626,9 @@ fun TranscriptTab(
                         color = Ink,
                         modifier = Modifier.clickable {
                             showSearch = false
+                            showReplaceField = false
                             searchQuery = ""
+                            replaceText = ""
                         }
                     )
                 }
@@ -1614,6 +1644,15 @@ fun TranscriptTab(
                             color = InkMuted
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                            Text(
+                                text = "Replace",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (searchMatches.isEmpty()) InkFaint else InkSecondary,
+                                modifier = Modifier
+                                    .clickable(enabled = searchMatches.isNotEmpty()) { showReplaceField = !showReplaceField }
+                                    .testTag("transcript_replace_toggle")
+                            )
                             Text(
                                 text = "Prev",
                                 fontSize = 13.sp,
@@ -1633,6 +1672,36 @@ fun TranscriptTab(
                                 }
                             )
                         }
+                    }
+                }
+                if (showReplaceField && searchQuery.isNotBlank() && searchMatches.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = replaceText,
+                            onValueChange = { replaceText = it },
+                            placeholder = { Text("Replace with…") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f).testTag("transcript_replace_field")
+                        )
+                        Text(
+                            text = "Replace All (${searchMatches.size})",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Ink,
+                            modifier = Modifier
+                                .clickable {
+                                    onReplaceAll(searchQuery, replaceText)
+                                    showReplaceField = false
+                                    searchQuery = ""
+                                    replaceText = ""
+                                }
+                                .testTag("transcript_replace_all_btn")
+                        )
                     }
                 }
             }

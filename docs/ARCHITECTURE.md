@@ -126,6 +126,14 @@ Every step in the pipeline is a call against an interface returning `AiResult<T>
 
 **Deferred to a later phase**: speaker-segmented player visualization (`SpeakerTimelineSegment`, ring rendering split by speaker turn) — this now has a correct, consolidated color source to build on, but the rendering itself is a separate UI feature not built in this pass.
 
+## 4c. Transcript Editor (Phase 15 §3 audit + fix)
+
+**Audit finding — most of §3's requirements were already built** in earlier phases and needed no new code: per-segment text editing with autosave-on-blur (`editSegmentText`), split/merge at cursor offset, speaker reassignment including on-the-fly speaker creation, document-level undo/redo (`EditAction` sealed interface + two stacks), and find/next/prev search. Selection, cut, copy, and paste within a focused segment are also already real — `TranscriptTab`'s editable segment is a plain Compose `BasicTextField`, which gets the OS's native text-selection toolbar (select, cut, copy, paste) for free; there was nothing to build there, only to confirm.
+
+**What was actually missing — Replace/Replace All**: search could locate matches but not act on them. Added `TranscriptRepository.replaceAllInTranscript(meetingId, searchText, replaceText)` — a case-insensitive, literal (non-regex) replace across every segment in one pass, returning exactly the segments that changed so the caller can build one atomic undo entry (`EditAction.ReplaceAll`) rather than one undo step per segment. Wired into `TranscriptTab`'s existing search panel as a "Replace" toggle next to Prev/Next, rather than a separate mode.
+
+**Deferred, not built this pass**: multi-segment selection/highlighting spanning paragraph boundaries (the current selection model is native-per-segment, which is what `BasicTextField` gives for free — a custom cross-segment selection UI is a materially larger feature, not a fix to something broken); AI actions on a text selection — `FloatingSelectionBar` already exists as an honest stub ("Fix errors" / "Clarity" / "Condense" show a "coming in a later phase" toast rather than fake output) and stays a stub until Phase 5/6 build the AI job infrastructure and real rewrite tools it needs to call into.
+
 ## 5. Dependency Injection
 
 There is no DI framework (no Hilt, no Koin). Every `AndroidViewModel` constructs its dependencies directly in its own initializer, e.g.:

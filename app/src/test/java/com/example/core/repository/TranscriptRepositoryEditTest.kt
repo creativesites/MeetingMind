@@ -127,4 +127,50 @@ class TranscriptRepositoryEditTest {
         assertEquals("Sounds good — let's confirm by email.", edited.text)
         assertTrue(edited.isUserEdited)
     }
+
+    // --- replaceAllInTranscript (Phase 15 §3/§4) ---
+
+    @Test
+    fun `replaceAllInTranscript is case-insensitive and only touches matching segments`() = runBlocking {
+        val changes = repository.replaceAllInTranscript("m1", "thursday", "Friday")
+
+        assertEquals(1, changes.size)
+        assertEquals("s1", changes[0].segmentId)
+        assertEquals("The deadline is Thursday.", changes[0].before)
+        assertEquals("The deadline is Friday.", changes[0].after)
+
+        val transcript = repository.getTranscriptDirect("m1")
+        assertEquals("The deadline is Friday.", transcript.segments.first { it.id == "s1" }.text)
+        // The non-matching segment is untouched, including its isUserEdited flag.
+        assertEquals("Sounds good to me.", transcript.segments.first { it.id == "s2" }.text)
+        assertFalse(transcript.segments.first { it.id == "s2" }.isUserEdited)
+    }
+
+    @Test
+    fun `replaceAllInTranscript marks every changed segment user-edited`() = runBlocking {
+        val changes = repository.replaceAllInTranscript("m1", "good", "great")
+
+        assertEquals(1, changes.size)
+        val transcript = repository.getTranscriptDirect("m1")
+        assertEquals("Sounds great to me.", transcript.segments.first { it.id == "s2" }.text)
+        assertTrue(transcript.segments.first { it.id == "s2" }.isUserEdited)
+    }
+
+    @Test
+    fun `replaceAllInTranscript with no matches makes no changes and no writes`() = runBlocking {
+        val changes = repository.replaceAllInTranscript("m1", "nonexistent phrase", "x")
+
+        assertTrue(changes.isEmpty())
+        val transcript = repository.getTranscriptDirect("m1")
+        assertTrue(transcript.segments.none { it.isUserEdited })
+    }
+
+    @Test
+    fun `replaceAllInTranscript with a blank search text is a safe no-op`() = runBlocking {
+        val changes = repository.replaceAllInTranscript("m1", "", "x")
+
+        assertTrue(changes.isEmpty())
+        val transcript = repository.getTranscriptDirect("m1")
+        assertEquals("The deadline is Thursday.", transcript.segments.first { it.id == "s1" }.text)
+    }
 }
