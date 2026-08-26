@@ -29,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.common.Formatters
@@ -37,14 +36,10 @@ import com.example.core.model.ActionItem
 import com.example.core.model.Decision
 import com.example.core.model.Speaker
 import com.example.core.model.TranscriptSegment
-import com.example.ui.theme.Accent
 import com.example.ui.theme.Ink
 import com.example.ui.theme.InkFaint
 import com.example.ui.theme.InkMuted
 import com.example.ui.theme.LineSoft
-import com.example.ui.theme.Speaker2
-import com.example.ui.theme.Speaker3
-import com.example.ui.theme.Speaker4
 import com.example.ui.theme.SurfaceTrack
 import kotlinx.coroutines.launch
 
@@ -94,7 +89,7 @@ fun OverviewStepper(
                 Spacer(modifier = Modifier.height(26.dp))
                 when (steps[page]) {
                     StepKind.WHAT_HAPPENED -> WhatHappenedStep(summary, openQuestionCount)
-                    StepKind.DECISIONS -> DecisionsStep(decisions, segments, onPlayFrom)
+                    StepKind.DECISIONS -> DecisionsStep(decisions, segments, speakers, onPlayFrom)
                     StepKind.TASKS -> TasksStep(actionItems, onToggleActionItem, onAddTask)
                     StepKind.WHO_TALKED -> WhoTalkedStep(speakers, segments)
                 }
@@ -147,7 +142,7 @@ private fun Decision.evidence(segments: List<TranscriptSegment>): DecisionEviden
 }
 
 @Composable
-private fun DecisionsStep(decisions: List<Decision>, segments: List<TranscriptSegment>, onPlayFrom: (Long) -> Unit) {
+private fun DecisionsStep(decisions: List<Decision>, segments: List<TranscriptSegment>, speakers: List<Speaker>, onPlayFrom: (Long) -> Unit) {
     Text(text = "${spellCount(decisions.size)} decision${if (decisions.size == 1) "" else "s"}", style = RecordingPageType.stepHeading)
     Spacer(modifier = Modifier.height(30.dp))
     if (decisions.isEmpty()) {
@@ -185,7 +180,9 @@ private fun DecisionsStep(decisions: List<Decision>, segments: List<TranscriptSe
                                         }
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             if (evidence.speakerName != null) {
-                                                SpeakerAvatar(initial = evidence.speakerName, color = Accent, size = 20.dp)
+                                                val speakerIndex = speakers.indexOfFirst { it.id == evidence.speakerId }.coerceAtLeast(0)
+                                                val speakerColor = speakerColorFor(speakers.getOrNull(speakerIndex)?.colorHex, speakerIndex)
+                                                SpeakerAvatar(initial = evidence.speakerName, color = speakerColor, size = 20.dp)
                                                 Text(text = evidence.speakerName, fontSize = 12.sp, color = InkMuted)
                                             }
                                             if (evidence.startMs != null) {
@@ -269,19 +266,17 @@ private fun WhoTalkedStep(speakers: List<Speaker>, segments: List<TranscriptSegm
         Text(text = "No speakers were identified in this recording.", style = RecordingPageType.stepBody)
         return
     }
-    val palette = listOf(Accent, Speaker2, Speaker3, Speaker4)
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         bySpeaker.forEachIndexed { index, entry ->
             val speakerId = entry.key
             val ms = entry.value
             val speaker = speakers.find { it.id == speakerId }
-            val color = speaker?.colorHex?.let { hex -> runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull() }
-                ?: palette[index % palette.size]
+            val color = speakerColorFor(speaker?.colorHex, index)
             val share = ms.toFloat() / totalMs.toFloat()
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 SpeakerAvatar(initial = speaker?.customName ?: "?", color = color, size = 34.dp)
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = speaker?.customName ?: "Unlabeled speaker", fontSize = 16.sp, color = Ink)
+                    Text(text = speaker?.customName ?: "Unknown speaker", fontSize = 16.sp, color = Ink)
                     Spacer(modifier = Modifier.height(7.dp))
                     Box(modifier = Modifier.fillMaxWidth().height(5.dp).background(SurfaceTrack, RoundedCornerShape(3.dp))) {
                         Box(

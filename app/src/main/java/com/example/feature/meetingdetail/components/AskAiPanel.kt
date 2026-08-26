@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.common.Formatters
 import com.example.core.model.ChatMessage
+import com.example.core.model.Speaker
 import com.example.core.model.TranscriptSegment
 import com.example.ui.theme.Accent
 import com.example.ui.theme.Ink
@@ -64,6 +65,7 @@ import com.example.ui.theme.Line
 fun AskAiPanel(
     chatMessages: List<ChatMessage>,
     allSegments: List<TranscriptSegment>,
+    speakers: List<Speaker>,
     totalSegmentCount: Int,
     isAnswering: Boolean,
     pendingQuestion: String,
@@ -140,6 +142,7 @@ fun AskAiPanel(
                                 Spacer(modifier = Modifier.height(18.dp))
                                 CitationDetailPanel(
                                     segment = segment,
+                                    speakers = speakers,
                                     onPlayFrom = { onPlayFrom(segment.startMs) },
                                     onOpenInTranscript = { onOpenInTranscript(segment.startMs) }
                                 )
@@ -214,14 +217,17 @@ fun AskAiPanel(
 @Composable
 private fun CitationDetailPanel(
     segment: TranscriptSegment,
+    speakers: List<Speaker>,
     onPlayFrom: () -> Unit,
     onOpenInTranscript: () -> Unit
 ) {
     SunkenPanel {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-            SpeakerAvatar(initial = segment.speakerName ?: "?", color = Accent, size = 22.dp)
+            val speakerIndex = speakers.indexOfFirst { it.id == segment.speakerId }.coerceAtLeast(0)
+            val speakerColor = speakerColorFor(speakers.getOrNull(speakerIndex)?.colorHex, speakerIndex)
+            SpeakerAvatar(initial = segment.speakerName ?: "?", color = speakerColor, size = 22.dp)
             Text(
-                text = "${segment.speakerName ?: "Unlabeled speaker"} · ${Formatters.formatDurationHms(segment.startMs)}",
+                text = "${segment.speakerName ?: "Unknown speaker"} · ${Formatters.formatDurationHms(segment.startMs)}",
                 fontSize = 12.5.sp,
                 color = InkMuted
             )

@@ -420,16 +420,68 @@ class MeetingProcessingPipelineIntegrationTest {
         assertTrue("Pipeline must complete without ever invoking the diarizer", !diarizerWasInvoked)
         assertEquals(MeetingStatus.READY.name, result.status)
         val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
-        // The two ASR fragments share no speakerId (both null) and sit back-to-back, so
-        // TranscriptStructureEngine correctly merges them into one paragraph — exactly the
-        // "treat an undiarized transcript as one speaker" behavior a skipped diarization should
-        // produce.
+        // The two ASR fragments share the same (now real, assigned) speakerId and sit
+        // back-to-back, so TranscriptStructureEngine correctly merges them into one paragraph.
         assertEquals(1, segments.size)
-        // ASR never assigns a speakerId itself — with diarization genuinely skipped (not run and
-        // discarded), the segment must still have none, never a fabricated "Speaker 1".
-        assertEquals(null, segments[0].speakerId)
+        // Phase 15 §2: a confirmed single speaker still gets a real, persisted speaker identity —
+        // leaving speakerId null (the old behavior) meant the SpeakerEntity insertion step
+        // silently dropped the segment, so the UI fell back to "Unlabeled speaker". "You" because
+        // this meeting's source is LOCAL_RECORDING (the user's own recording).
+        assertEquals("speaker_0", segments[0].speakerId)
+        assertEquals("You", segments[0].speakerName)
         assertTrue(segments[0].text.contains("ship on Friday"))
         assertTrue(segments[0].text.contains("Sounds good"))
+
+        val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId)
+        assertEquals(1, speakers.size)
+        assertEquals("You", speakers[0].customName)
+        assertEquals("#6366F1", speakers[0].colorHex)
+    }
+
+    @Test
+    fun `a confirmed single speaker on an imported recording is named Speaker 1, not You`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        database.meetingDao().insertMeeting(
+            MeetingEntity(
+                id = meetingId,
+                title = "Untitled Meeting",
+                createdAt = System.currentTimeMillis(),
+                durationMs = 0L,
+                source = "IMPORTED_AUDIO",
+                audioFilePath = audioFile.absolutePath,
+                status = MeetingStatus.RECORDING.name,
+                participantCount = 1,
+                language = "en",
+                summaryText = null
+            )
+        )
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = object : SpeakerDiarizer {
+                override suspend fun diarize(
+                    audioFile: File,
+                    totalDurationMs: Long,
+                    segments: List<TranscriptSegment>,
+                    knownSpeakers: List<Speaker>,
+                    expectedSpeakerCount: Int?
+                ): AiResult<List<TranscriptSegment>> = error("must not run")
+            },
+            intelligenceEngine = fakeIntelligenceEngine,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L, expectedSpeakerCount = 1) { _, _, _ -> }
+
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        // An imported file isn't necessarily the user's own voice, so the identity must not
+        // assume "You" the way a LOCAL_RECORDING does.
+        assertEquals("Speaker 1", segments[0].speakerName)
+        val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId)
+        assertEquals("Speaker 1", speakers[0].customName)
     }
 
     @Test

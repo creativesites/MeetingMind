@@ -96,6 +96,9 @@ interface SpeakerDao {
 
     @Update
     suspend fun updateSpeaker(speaker: SpeakerEntity)
+
+    @Query("DELETE FROM speakers WHERE id = :speakerId")
+    suspend fun deleteSpeakerById(speakerId: String)
 }
 
 @Dao

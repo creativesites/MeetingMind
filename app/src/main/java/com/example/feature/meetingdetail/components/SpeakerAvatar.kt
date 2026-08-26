@@ -13,6 +13,33 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.Accent
+import com.example.ui.theme.Speaker2
+import com.example.ui.theme.Speaker3
+import com.example.ui.theme.Speaker4
+
+/**
+ * The single Compose-side speaker palette (Phase 15 §2 — consolidates what used to be three
+ * divergent color sources: this list, a second copy of it inline in two other files, and a
+ * completely different hex list in [com.example.ai.pipeline.MeetingProcessingPipeline]). Order
+ * and values must stay in sync with [com.example.core.model.SpeakerColors.PALETTE_HEX] — that
+ * object is what the pipeline actually persists into `SpeakerEntity.colorHex`, so this list only
+ * matters as a fallback for a speaker id not yet reflected in persisted data.
+ */
+val SpeakerPalette = listOf(Accent, Speaker2, Speaker3, Speaker4)
+
+/**
+ * Resolves a speaker's Compose colour: the real persisted [colorHex] when there is one — parsed,
+ * never re-derived — falling back to the index-based [SpeakerPalette] only when nothing is
+ * persisted yet (e.g. a speaker reassigned moments ago, before Room's Flow has re-emitted). A
+ * speaker's colour must never shuffle between renders, which is why every call site should pass
+ * the same [fallbackIndex] for the same speaker (its stable position in the meeting's speaker
+ * list) rather than a render-order index.
+ */
+fun speakerColorFor(colorHex: String?, fallbackIndex: Int): Color =
+    colorHex
+        ?.let { hex -> runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull() }
+        ?: SpeakerPalette[fallbackIndex.mod(SpeakerPalette.size)]
 
 /**
  * A round speaker avatar: solid speaker-colour fill, first-initial label, white text.

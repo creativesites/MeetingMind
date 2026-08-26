@@ -390,6 +390,27 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
         segmentIds.forEach { segId -> transcriptDao.reassignSegmentSpeaker(segId, speakerId, speakerName) }
     }
 
+    /**
+     * Merges [sourceSpeakerId] into [targetSpeakerId]: every segment currently attributed to the
+     * source speaker moves to the target (keeping the target's name/colour, since that's the
+     * identity the user chose to keep), then the now-empty source [SpeakerEntity] row is deleted
+     * — a real identity merge, not a rename, since two previously-distinct speaker rows collapse
+     * into one (Phase 15 §2: "merge" as a first-class speaker-management action). A no-op if
+     * either id doesn't resolve to a real speaker on this meeting, or if they're already the same
+     * speaker. Not undoable — the caller should confirm with the user before calling this.
+     */
+    suspend fun mergeSpeakers(meetingId: String, sourceSpeakerId: String, targetSpeakerId: String) = withContext(Dispatchers.IO) {
+        if (sourceSpeakerId == targetSpeakerId) return@withContext
+        val existingSpeakers = speakerDao.getSpeakersForMeetingDirect(meetingId)
+        val target = existingSpeakers.find { it.id == targetSpeakerId } ?: return@withContext
+        if (existingSpeakers.none { it.id == sourceSpeakerId }) return@withContext
+        val movedSegmentIds = transcriptDao.getSegmentsForMeetingDirect(meetingId)
+            .filter { it.speakerId == sourceSpeakerId }
+            .map { it.id }
+        movedSegmentIds.forEach { segId -> transcriptDao.reassignSegmentSpeaker(segId, target.id, target.customName) }
+        speakerDao.deleteSpeakerById(sourceSpeakerId)
+    }
+
     fun getDecisions(meetingId: String): Flow<List<Decision>> = decisionDao.getDecisionsForMeeting(meetingId).map { list ->
         list.map {
             Decision(

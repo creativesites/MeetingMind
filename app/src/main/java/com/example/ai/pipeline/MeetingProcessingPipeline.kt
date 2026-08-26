@@ -239,13 +239,23 @@ class MeetingProcessingPipeline(
             // embedding models' load/inference cost for a result that would only ever be thrown
             // away, and exposes the transcript to exactly the fragmentation risk diarization
             // exists to avoid: a real single-speaker recording getting split into several
-            // fabricated "speakers" from acoustic noise alone. ASR's segments already carry no
-            // speakerId, which correctly renders as no speaker label — nothing is invented here.
+            // fabricated "speakers" from acoustic noise alone.
+            //
+            // Phase 15 §2 fix: every segment still gets exactly one real, persisted speaker
+            // identity (id "speaker_0") — leaving speakerId null here (the old behavior) meant
+            // the SpeakerEntity insertion below silently filtered every segment out, so a solo
+            // recording ended up with zero persisted speakers and the UI fell back to showing
+            // "Unlabeled speaker". The identity is never guessed from the transcript text — the
+            // name is "You" when this recording is the user's own local recording (source ==
+            // LOCAL_RECORDING) and "Speaker 1" otherwise (an imported file/video/bot capture,
+            // where "you" would misattribute someone else's voice).
             val speakerLabelledSegments: List<TranscriptSegment>
             if (expectedSpeakerCount == 1) {
                 updateJob("Single speaker confirmed — skipping speaker detection...", 55, ProcessingStage.DIARIZING)
-                speakerLabelledSegments = rawSegments
-                Log.d(PERF_TAG, "Diarization: skipped (confirmed single speaker)")
+                val soloSpeakerId = "speaker_0"
+                val soloSpeakerName = if (existingMeeting.source == com.example.core.model.MeetingSource.LOCAL_RECORDING.name) "You" else "Speaker 1"
+                speakerLabelledSegments = rawSegments.map { it.copy(speakerId = soloSpeakerId, speakerName = soloSpeakerName) }
+                Log.d(PERF_TAG, "Diarization: skipped (confirmed single speaker) — assigned '$soloSpeakerName'")
             } else {
                 updateJob("Identifying distinct speakers...", 55, ProcessingStage.DIARIZING)
                 val diarizeStart = System.currentTimeMillis()
@@ -399,9 +409,10 @@ class MeetingProcessingPipeline(
             }
             transcriptDao.insertSegments(segmentEntities)
 
-            // Only real, non-null speaker IDs become Speaker rows — with diarization unavailable
-            // this is correctly empty rather than inventing a "Speaker 1" identity for a
-            // single-track transcript.
+            // Only real, non-null speaker IDs become Speaker rows. The single-speaker path above
+            // always assigns one; a multi-speaker path with diarization unavailable is correctly
+            // empty here rather than inventing per-speaker identities numeric heuristics can't
+            // actually support.
             val uniqueSpeakers = diarizedSegments
                 .filter { it.speakerId != null }
                 .distinctBy { it.speakerId }
@@ -413,7 +424,7 @@ class MeetingProcessingPipeline(
                         speakerIndex = speakerIndex,
                         originalLabel = seg.speakerName ?: seg.speakerId,
                         customName = seg.speakerName ?: seg.speakerId,
-                        colorHex = SPEAKER_COLORS[speakerIndex % SPEAKER_COLORS.size],
+                        colorHex = com.example.core.model.SpeakerColors.forIndex(speakerIndex),
                         confidence = null // sherpa-onnx's diarization API doesn't provide a per-speaker confidence score.
                     )
                 }
@@ -640,6 +651,5 @@ class MeetingProcessingPipeline(
     private companion object {
         const val PERF_TAG = "MeetMindPerf"
         const val DEFAULT_LLM_CONTEXT_TOKENS = 4096
-        val SPEAKER_COLORS = listOf("#3B82F6", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#06B6D4")
     }
 }

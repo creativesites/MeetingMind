@@ -131,9 +131,6 @@ import com.example.ui.theme.InkFaint
 import com.example.ui.theme.InkMuted
 import com.example.ui.theme.InkSecondary
 import com.example.ui.theme.LineSoft
-import com.example.ui.theme.Speaker2
-import com.example.ui.theme.Speaker3
-import com.example.ui.theme.Speaker4
 import com.example.ui.theme.WarningAmber
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -379,6 +376,15 @@ class MeetingDetailViewModel(
         }
     }
 
+    /** Merges [sourceSpeakerId]'s segments into [targetSpeakerId] and removes the now-empty
+     * source speaker row (Phase 15 §2 "merge" action — for when diarization split one real
+     * person into two speaker identities). Not undoable. */
+    fun mergeSpeakers(sourceSpeakerId: String, targetSpeakerId: String) {
+        viewModelScope.launch {
+            transcriptRepository.mergeSpeakers(meetingId, sourceSpeakerId, targetSpeakerId)
+        }
+    }
+
     /** Real per-speaker identity for this recording, including the persisted colour
      * (docs/recording-page-implementation.md §1.1 — speaker colour must be "persisted per
      * speaker id so they never shuffle", not re-derived on every render). */
@@ -491,7 +497,7 @@ class MeetingDetailViewModel(
                     // The speaker row created by the original apply is never deleted by undo, only
                     // the segments' pointers change — so this colour is only ever used in the
                     // (unreachable in practice) case where it's somehow gone missing.
-                    val colorHex = speakers.value.find { it.id == action.afterSpeakerId }?.colorHex ?: "#6366F1"
+                    val colorHex = speakers.value.find { it.id == action.afterSpeakerId }?.colorHex ?: com.example.core.model.SpeakerColors.forIndex(0)
                     transcriptRepository.reassignSpeaker(meetingId, action.segmentIds, action.afterSpeakerId, action.afterSpeakerName, colorHex)
                 }
                 is EditAction.Split -> transcriptRepository.splitSegment(action.originalId, action.charOffset)
@@ -1067,6 +1073,7 @@ fun MeetingDetailScreen(
                 RecordingDetailTab.ASK_AI -> com.example.feature.meetingdetail.components.AskAiPanel(
                     chatMessages = chatMessages,
                     allSegments = transcript.segments,
+                    speakers = speakers,
                     totalSegmentCount = transcript.segments.size,
                     isAnswering = isAnswering,
                     pendingQuestion = pendingQuestion,
@@ -1190,17 +1197,45 @@ fun MeetingDetailScreen(
     }
 
     if (showRenameSpeakerDialog) {
+        // Merge targets exclude the speaker being edited itself — merging a speaker into itself
+        // is meaningless (Phase 15 §2: merge is for collapsing two diarization-split identities
+        // that are really the same person back into one).
+        val mergeTargets = speakers.filter { it.id != renameSpeakerTargetId }
         AlertDialog(
             onDismissRequest = { showRenameSpeakerDialog = false },
             title = { Text("Rename Speaker") },
             text = {
-                OutlinedTextField(
-                    value = renameSpeakerText,
-                    onValueChange = { renameSpeakerText = it },
-                    label = { Text("Custom Speaker Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column {
+                    OutlinedTextField(
+                        value = renameSpeakerText,
+                        onValueChange = { renameSpeakerText = it },
+                        label = { Text("Custom Speaker Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (mergeTargets.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Or merge into an existing speaker — every segment moves there and this speaker is removed:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = InkMuted
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        mergeTargets.forEach { target ->
+                            Text(
+                                text = target.customName,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.mergeSpeakers(renameSpeakerTargetId, target.id)
+                                        showRenameSpeakerDialog = false
+                                    }
+                                    .padding(vertical = 10.dp)
+                            )
+                        }
+                    }
+                }
             },
             confirmButton = {
                 Button(
@@ -1474,12 +1509,9 @@ fun TranscriptTab(
     // the first-appearance palette only for a speaker id not yet reflected in [speakers] (e.g. one
     // reassigned moments ago, before Room's Flow has re-emitted).
     val speakerColorMap = remember(speakers, segments) {
-        val byId = speakers.associate { sp ->
-            sp.id to (runCatching { Color(android.graphics.Color.parseColor(sp.colorHex)) }.getOrNull() ?: Accent)
-        }
-        val palette = listOf(Accent, Speaker2, Speaker3, Speaker4)
+        val byId = speakers.withIndex().associate { (index, sp) -> sp.id to com.example.feature.meetingdetail.components.speakerColorFor(sp.colorHex, index) }
         val unseen = segments.mapNotNull { it.speakerId }.distinct().filterNot { byId.containsKey(it) }
-        byId + unseen.withIndex().associate { (index, id) -> id to palette[index % palette.size] }
+        byId + unseen.withIndex().associate { (index, id) -> id to com.example.feature.meetingdetail.components.speakerColorFor(null, speakers.size + index) }
     }
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -1916,7 +1948,6 @@ private fun SpeakerReassignDialog(
         }
     }
     val targetIds = if (applyToRun) runIds else listOf(target.id)
-    val palette = listOf("#6366F1", "#A855F7", "#10B981", "#F59E0B")
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1970,7 +2001,7 @@ private fun SpeakerReassignDialog(
                 Button(
                     onClick = {
                         if (newSpeakerName.isNotBlank()) {
-                            val colorHex = palette[speakers.size % palette.size]
+                            val colorHex = com.example.core.model.SpeakerColors.forIndex(speakers.size)
                             onConfirm(targetIds, null, newSpeakerName.trim(), colorHex)
                         }
                     },
