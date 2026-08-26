@@ -132,6 +132,36 @@ class ReprocessTranscriptCleanupUseCase(
     }
 }
 
+/**
+ * Applies every learned correction (Phase 15 §4/§6) to one meeting's transcript in one pass —
+ * the "Fix terminology" AI tool. Deliberately not a new LLM prompt contract: the underlying
+ * operation is the same exact-match, case-insensitive replace [TranscriptRepository.replaceAllInTranscript]
+ * already does for a manual Replace All, just driven by [VocabularyRepository]'s learned
+ * surfaceForm -> canonicalForm mappings instead of one user-typed pair. [VocabularyRepository.findRelevantTerms]
+ * narrows the vocabulary down to entries actually worth checking against this transcript (real
+ * word-level fuzzy matching) before the exact-match replace runs — fuzzy matching only decides
+ * what's worth checking, it can never itself turn into a wrong replacement, since the replace step
+ * is always an exact substring match.
+ */
+class FixTerminologyUseCase(
+    private val transcriptRepository: com.example.core.repository.TranscriptRepository,
+    private val vocabularyRepository: com.example.core.repository.VocabularyRepository
+) {
+    suspend operator fun invoke(meetingId: String): List<com.example.core.repository.TranscriptRepository.ReplaceAllChange> {
+        val transcript = transcriptRepository.getTranscriptDirect(meetingId)
+        if (transcript.segments.isEmpty()) return emptyList()
+
+        val fullText = transcript.segments.joinToString(" ") { it.text }
+        val relevantTerms = vocabularyRepository.findRelevantTerms(fullText, limit = 50)
+
+        val allChanges = mutableListOf<com.example.core.repository.TranscriptRepository.ReplaceAllChange>()
+        for (term in relevantTerms) {
+            allChanges += transcriptRepository.replaceAllInTranscript(meetingId, term.surfaceForm, term.canonicalForm)
+        }
+        return allChanges
+    }
+}
+
 class AskMeetingUseCase(
     private val transcriptRepository: TranscriptRepository,
     private val pipelineIntelligence: com.example.ai.llm.MeetingIntelligenceEngine =

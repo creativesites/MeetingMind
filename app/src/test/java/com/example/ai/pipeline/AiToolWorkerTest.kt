@@ -9,9 +9,13 @@ import androidx.work.workDataOf
 import com.example.core.database.AiJobEntity
 import com.example.core.database.MeetMindDatabase
 import com.example.core.database.MeetingEntity
+import com.example.core.database.TranscriptSegmentEntity
 import com.example.core.model.AiJobStatus
 import com.example.core.model.TranscriptAiToolType
+import com.example.core.model.VocabularySource
+import com.example.core.repository.VocabularyRepository
 import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -132,6 +136,33 @@ class AiToolWorkerTest {
         assertEquals(error, persisted?.errorMessage)
         // Never a fabricated result payload for a tool that didn't actually run.
         assertEquals(null, persisted?.resultPayloadJson)
+    }
+
+    @Test
+    fun `FIX_TERMINOLOGY actually runs end-to-end and persists a real result`() = runBlocking {
+        VocabularyRepository(database).recordCorrection("Sherpa Onix", "Sherpa-ONNX", VocabularySource.REPLACE_ALL)
+        database.transcriptDao().insertSegments(
+            listOf(
+                TranscriptSegmentEntity(
+                    id = "s1", meetingId = "m1", speakerId = "spk_0", speakerName = "You",
+                    startMs = 0L, endMs = 1000L, text = "We use Sherpa Onix for ASR.", confidence = 0.9f
+                )
+            )
+        )
+        val jobId = seedJob(TranscriptAiToolType.FIX_TERMINOLOGY)
+        val worker = TestListenableWorkerBuilder<AiToolWorker>(context)
+            .setInputData(workDataOf(AiToolWorker.KEY_JOB_ID to jobId))
+            .build()
+
+        val result = worker.doWork()
+
+        assertTrue(result is ListenableWorker.Result.Success)
+        val persisted = database.aiJobDao().getById(jobId)
+        assertEquals(AiJobStatus.SUCCEEDED.name, persisted?.status)
+        assertEquals(100, persisted?.progressPercent)
+        val resultJson = JSONObject(persisted!!.resultPayloadJson!!)
+        assertEquals(1, resultJson.getInt("segmentsChanged"))
+        assertEquals("We use Sherpa-ONNX for ASR.", database.transcriptDao().getSegmentsForMeetingDirect("m1")[0].text)
     }
 
     @Test

@@ -37,9 +37,10 @@ import com.example.ui.theme.LineSoft
 /**
  * The "✨ AI tools" bottom sheet (docs/recording-page-implementation.md §2.4). Data comes straight
  * from [TranscriptAiToolRegistry] — the 19-tool taxonomy already existed in this codebase as
- * architecture prep; this is its first real UI. Only [TranscriptAiToolType.CLEAN_TRANSCRIPT] is
- * [TranscriptAiToolReadiness.READY] today, so it's the only row that actually runs something;
- * everything else says honestly what state it's in rather than pretending to work.
+ * architecture prep; this is its first real UI. [TranscriptAiToolType.CLEAN_TRANSCRIPT] and
+ * [TranscriptAiToolType.FIX_TERMINOLOGY] are [TranscriptAiToolReadiness.READY] as of Phase 15
+ * §6, so they're the only rows that actually run something; everything else says honestly
+ * what state it's in rather than pretending to work.
  *
  * Scope is fixed to "Whole transcript" this phase — the §2.4 scope control
  * (selection/from-here-on/one-speaker) is a later pass.
@@ -49,6 +50,7 @@ import com.example.ui.theme.LineSoft
 fun AiToolsSheet(
     onDismiss: () -> Unit,
     onRunCleanTranscript: () -> Unit,
+    onRunFixTerminology: () -> Unit = {},
     onDataAlreadyAvailable: (TranscriptAiToolType) -> Unit = {},
     onNotBuiltYet: (TranscriptAiToolType) -> Unit = {},
     sheetState: SheetState = rememberModalBottomSheetState()
@@ -101,8 +103,10 @@ fun AiToolsSheet(
                                         showDivider = index != tools.lastIndex,
                                         onClick = {
                                             when (tool.readiness) {
-                                                TranscriptAiToolReadiness.READY -> {
-                                                    if (tool == TranscriptAiToolType.CLEAN_TRANSCRIPT) onRunCleanTranscript()
+                                                TranscriptAiToolReadiness.READY -> when (tool) {
+                                                    TranscriptAiToolType.CLEAN_TRANSCRIPT -> onRunCleanTranscript()
+                                                    TranscriptAiToolType.FIX_TERMINOLOGY -> onRunFixTerminology()
+                                                    else -> Unit
                                                 }
                                                 TranscriptAiToolReadiness.DATA_EXISTS_NEEDS_UI -> onDataAlreadyAvailable(tool)
                                                 TranscriptAiToolReadiness.NOT_STARTED -> onNotBuiltYet(tool)

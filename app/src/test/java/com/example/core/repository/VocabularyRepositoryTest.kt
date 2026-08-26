@@ -96,6 +96,25 @@ class VocabularyRepositoryTest {
     }
 
     @Test
+    fun `findRelevantTerms matches a multi-word surfaceForm as an exact phrase, case-insensitively`() = runBlocking {
+        repository.recordCorrection("Sherpa Onix", "Sherpa-ONNX", VocabularySource.REPLACE_ALL)
+
+        val matches = repository.findRelevantTerms("we're using sherpa onix for speech recognition")
+        assertEquals(1, matches.size)
+        assertEquals("Sherpa-ONNX", matches[0].canonicalForm)
+    }
+
+    @Test
+    fun `findRelevantTerms does not match a multi-word surfaceForm on partial word overlap`() = runBlocking {
+        repository.recordCorrection("Sherpa Onix", "Sherpa-ONNX", VocabularySource.REPLACE_ALL)
+
+        // "Sherpa" alone appears, but the full two-word phrase "Sherpa Onix" does not — a partial
+        // overlap must not count as relevant, or the tool would fire on any mention of "Sherpa."
+        val matches = repository.findRelevantTerms("our Sherpa guide led the trek")
+        assertTrue(matches.isEmpty())
+    }
+
+    @Test
     fun `findRelevantTerms does not match unrelated text`() = runBlocking {
         repository.recordCorrection("Kubernetes", "Kubernetes (K8s)", VocabularySource.REPLACE_ALL)
 

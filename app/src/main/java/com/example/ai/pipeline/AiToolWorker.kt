@@ -6,23 +6,27 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.example.core.database.AiJobEntity
 import com.example.core.database.MeetMindDatabase
+import com.example.core.domain.FixTerminologyUseCase
 import com.example.core.domain.ReprocessTranscriptCleanupUseCase
 import com.example.core.model.AiJobStatus
 import com.example.core.model.TranscriptAiToolType
 import com.example.core.model.TranscriptCleanupMode
 import com.example.core.repository.MeetingRepository
 import com.example.core.repository.TranscriptRepository
+import com.example.core.repository.VocabularyRepository
 import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 
 /**
  * Generic background runner for the "✨ AI Tools" menu (Phase 15 §5) — reads one persisted
- * [AiJobEntity] by id and dispatches on its [AiJobEntity.toolType]. This is infrastructure only:
- * per the Phase 15 plan, wiring up each individual tool's real engine is Phase 6+ work. Today
- * exactly one branch is real — [TranscriptAiToolType.CLEAN_TRANSCRIPT], because
- * [ReprocessTranscriptCleanupUseCase] already exists and needed no new engine. Every other tool
- * type fails the job honestly with "isn't wired up yet" rather than fabricating a result — the
- * same discipline [MeetingProcessingPipeline] uses for a model that isn't installed.
+ * [AiJobEntity] by id and dispatches on its [AiJobEntity.toolType]. This is infrastructure plus,
+ * as of Phase 15 §6, two real wired tools: [TranscriptAiToolType.CLEAN_TRANSCRIPT] (delegates to
+ * the pre-existing [ReprocessTranscriptCleanupUseCase]) and [TranscriptAiToolType.FIX_TERMINOLOGY]
+ * ([FixTerminologyUseCase], built new this phase — no LLM prompt contract needed, since it's a
+ * deterministic exact-match replace driven by [com.example.core.repository.VocabularyRepository]'s
+ * learned corrections). Every other tool type fails the job honestly with "isn't wired up yet"
+ * rather than fabricating a result — the same discipline [MeetingProcessingPipeline] uses for a
+ * model that isn't installed.
  *
  * Mirrors [MeetingProcessingWorker]'s shape (persisted, process-death-safe, real progress) but is
  * not a copy-paste of it: that worker is permanently specific to the meeting-processing pipeline,
@@ -48,6 +52,7 @@ class AiToolWorker(
         return try {
             when (toolType) {
                 TranscriptAiToolType.CLEAN_TRANSCRIPT -> runCleanTranscript(database, job)
+                TranscriptAiToolType.FIX_TERMINOLOGY -> runFixTerminology(database, job)
                 else -> failJob(aiJobDao, job, "\"${toolType.label}\" isn't wired up yet — not run.")
             }
         } catch (e: CancellationException) {
@@ -80,6 +85,23 @@ class AiToolWorker(
         useCase(job.meetingId, mode)
 
         val resultJson = JSONObject().put("cleanupMode", mode.name).toString()
+        database.aiJobDao().insertOrUpdate(
+            job.copy(status = AiJobStatus.SUCCEEDED.name, progressPercent = 100, resultPayloadJson = resultJson, updatedAt = System.currentTimeMillis())
+        )
+        return Result.success(workDataOf(KEY_RESULT_JOB_ID to job.id))
+    }
+
+    /** Applies every learned correction to this meeting's transcript in one pass — see
+     * [FixTerminologyUseCase]. */
+    private suspend fun runFixTerminology(database: MeetMindDatabase, job: AiJobEntity): Result {
+        val transcriptRepository = TranscriptRepository(database)
+        val vocabularyRepository = VocabularyRepository(database)
+        val useCase = FixTerminologyUseCase(transcriptRepository, vocabularyRepository)
+
+        setProgress(workDataOf(KEY_PROGRESS_PERCENT to 50))
+        val changes = useCase(job.meetingId)
+
+        val resultJson = JSONObject().put("segmentsChanged", changes.size).toString()
         database.aiJobDao().insertOrUpdate(
             job.copy(status = AiJobStatus.SUCCEEDED.name, progressPercent = 100, resultPayloadJson = resultJson, updatedAt = System.currentTimeMillis())
         )

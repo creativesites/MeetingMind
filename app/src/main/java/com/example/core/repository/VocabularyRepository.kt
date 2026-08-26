@@ -80,10 +80,25 @@ class VocabularyRepository(private val database: MeetMindDatabase) {
         if (words.isEmpty()) return@withContext emptyList()
 
         entries
-            .filter { entry -> words.any { word -> isLexicalMatch(word, entry.surfaceForm) } }
+            .filter { entry -> isRelevant(entry.surfaceForm, text, words) }
             .sortedByDescending { it.frequency }
             .take(limit)
             .map(::toDomain)
+    }
+
+    /** A multi-word [surfaceForm] (e.g. a corrected product name) can never match via per-word
+     * fuzzy comparison — no single tokenized word in [text] equals a two-word phrase — so it gets
+     * an exact, case-insensitive substring check instead: the same match
+     * [TranscriptRepository.replaceAllInTranscript] itself performs, so "relevant" here can never
+     * diverge from "would actually get replaced." A single-word [surfaceForm] keeps the
+     * word-level fuzzy check, which is where real ASR near-misses actually need the tolerance. */
+    private fun isRelevant(surfaceForm: String, text: String, words: List<String>): Boolean {
+        val surfaceWordCount = surfaceForm.trim().split(Regex("\\s+")).size
+        return if (surfaceWordCount > 1) {
+            text.contains(surfaceForm, ignoreCase = true)
+        } else {
+            words.any { word -> isLexicalMatch(word, surfaceForm) }
+        }
     }
 
     private fun isLexicalMatch(word: String, surfaceForm: String): Boolean {

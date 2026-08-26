@@ -152,6 +152,7 @@ class MeetingDetailViewModel(
     private val transcriptRepository = TranscriptRepository(database)
     private val actionItemRepository = ActionItemRepository(database)
     private val vocabularyRepository = com.example.core.repository.VocabularyRepository(database)
+    private val aiJobRepository = com.example.core.repository.AiJobRepository(application, database)
     private val modelStorage = com.example.ai.modelmanagement.LocalModelStorage(application)
     private val userPrefs = com.example.core.datastore.UserPreferencesManager(application)
 
@@ -451,6 +452,17 @@ class MeetingDetailViewModel(
             // learned-vocabulary signal Phase 15 §4 wants — unlike a single-segment hand edit,
             // which could just as easily be a one-off rewording rather than a real correction.
             vocabularyRepository.recordCorrection(searchText, replaceText, com.example.core.model.VocabularySource.REPLACE_ALL)
+        }
+    }
+
+    /** Runs the "Fix terminology" AI tool through the persisted, process-death-safe job queue
+     * (docs/AI_ARCHITECTURE.md §12) rather than a `viewModelScope` launch — this is a background
+     * job, so [onStarted] confirms it was queued, not that it finished; [transcript] (a live Room
+     * Flow) reflects the result automatically once the job completes. */
+    fun runFixTerminology(onStarted: () -> Unit) {
+        viewModelScope.launch {
+            aiJobRepository.enqueue(meetingId, com.example.core.model.TranscriptAiToolType.FIX_TERMINOLOGY)
+            onStarted()
         }
     }
 
@@ -1124,6 +1136,12 @@ fun MeetingDetailScreen(
             onRunCleanTranscript = {
                 showAiToolsSheet = false
                 viewModel.proposeCleanup()
+            },
+            onRunFixTerminology = {
+                showAiToolsSheet = false
+                viewModel.runFixTerminology {
+                    Toast.makeText(context, "Fixing terminology in the background — the transcript will update automatically", Toast.LENGTH_LONG).show()
+                }
             },
             onDataAlreadyAvailable = {
                 showAiToolsSheet = false

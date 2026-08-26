@@ -26,8 +26,8 @@ class TranscriptAiToolTest {
     }
 
     @Test
-    fun `clean transcript is the only tool marked ready today`() {
+    fun `clean transcript and fix terminology are the tools marked ready as of Phase 15 §6`() {
         val ready = TranscriptAiToolType.entries.filter { it.readiness == TranscriptAiToolReadiness.READY }
-        assertTrue(ready == listOf(TranscriptAiToolType.CLEAN_TRANSCRIPT))
+        assertTrue(ready == listOf(TranscriptAiToolType.CLEAN_TRANSCRIPT, TranscriptAiToolType.FIX_TERMINOLOGY))
     }
 }

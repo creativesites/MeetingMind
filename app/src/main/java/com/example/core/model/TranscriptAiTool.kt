@@ -75,16 +75,17 @@ enum class TranscriptAiToolType(
         "Shows more of the surrounding conversation around a passage.",
         TranscriptAiToolReadiness.NOT_STARTED
     ),
-    /** A general mechanism was deliberately NOT built as a separate engine — Moderate/Aggressive
-     * cleanup already permit "correct an obvious ASR mistake when nearby context makes the
-     * intended word unambiguous" as part of their own prompt permissiveness (see
-     * `docs/AI_ARCHITECTURE.md` §8). A dedicated "replace this term everywhere" action is still
-     * genuinely new work: it needs a target term, a scope (this transcript only), and its own
-     * validator pass distinct from cleanup's. */
+    /** Backed by [com.example.core.domain.FixTerminologyUseCase] (Phase 15 §6) — deliberately not
+     * a new LLM prompt contract. Moderate/Aggressive cleanup already permit "correct an obvious
+     * ASR mistake when nearby context makes the intended word unambiguous" (see
+     * `docs/AI_ARCHITECTURE.md` §8); this tool is the deterministic complement: it applies every
+     * correction [com.example.core.repository.VocabularyRepository] has already learned (via
+     * Replace All) to this transcript in one pass, via the same exact-match replace Replace All
+     * itself uses — never a fuzzy/AI-guessed substitution. */
     FIX_TERMINOLOGY(
         TranscriptAiToolCategory.TRANSCRIPT, "Fix terminology",
-        "Corrects a specific misspelled name or term everywhere it appears in this transcript.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        "Applies every correction you've taught MeetingMind to this transcript.",
+        TranscriptAiToolReadiness.READY
     ),
 
     EXTRACT_KEY_POINTS(
