@@ -59,6 +59,7 @@ import com.example.ui.theme.Line
  * running state also doesn't claim per-chunk progress ("chunk 2 of 6") since that isn't plumbed
  * from the use case to this screen yet — it shows a plain, honest "thinking" state instead.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun AskAiPanel(
     chatMessages: List<ChatMessage>,

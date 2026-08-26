@@ -44,6 +44,7 @@ private fun parseAskAnswer(content: String): List<AskAnswerPart> {
  * backend already validated against a real segment reach here (see
  * RealMeetingIntelligenceEngine.parseCitedTimestamps), so every chip shown is real.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun AskAnswerText(
     content: String,

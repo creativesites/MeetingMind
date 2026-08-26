@@ -36,6 +36,7 @@ private val TrackColor = Color(0xFFE9EDF5)
  * a 4dp white inset disc holding the play/pause glyph. Tap toggles playback; long-press opens the
  * full player.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun MiniDialPlayer(
     progress: Float,

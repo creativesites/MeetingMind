@@ -24,6 +24,7 @@ data class DiffRun(val text: String, val changed: Boolean)
  * colour (Compose's built-in [androidx.compose.ui.text.style.TextDecoration] always colours the
  * line with the text colour, which can't express this, hence the manual [drawBehind] line).
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun DiffProposedText(
     runs: List<DiffRun>,
