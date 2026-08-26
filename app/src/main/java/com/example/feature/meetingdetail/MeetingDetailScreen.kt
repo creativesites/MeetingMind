@@ -9,7 +9,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -105,7 +104,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusEvent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -148,13 +149,20 @@ import com.example.core.ui.SectionCard
 import com.example.feature.meetingdetail.components.BottomTabBar
 import com.example.feature.meetingdetail.components.MiniDialPlayer
 import com.example.feature.meetingdetail.components.RecordingDetailTab
+import com.example.ui.theme.Accent
+import com.example.ui.theme.AccentWash
 import com.example.ui.theme.CyanTertiary
 import com.example.ui.theme.HeroGradientBrush
 import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.IndigoPrimaryLight
 import com.example.ui.theme.Ink
+import com.example.ui.theme.InkFaint
 import com.example.ui.theme.InkMuted
 import com.example.ui.theme.InkSecondary
+import com.example.ui.theme.LineSoft
+import com.example.ui.theme.Speaker2
+import com.example.ui.theme.Speaker3
+import com.example.ui.theme.Speaker4
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.VioletSecondary
 import com.example.ui.theme.WarningAmber
@@ -1340,8 +1348,6 @@ private fun CountTrailing(count: Int) {
 /** Segments longer than this default to collapsed (timestamp + speaker + short preview) so a long
  * transcript stays scannable; anything at or under it defaults to expanded since there's nothing
  * to gain by hiding a one-line segment behind a tap. Either can always be toggled by tapping. */
-private const val TRANSCRIPT_SEGMENT_COLLAPSE_THRESHOLD_CHARS = 220
-
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun TranscriptTab(
@@ -1362,14 +1368,16 @@ fun TranscriptTab(
      * display preference into a permanent rewrite of their transcript. */
     cleanFillerWords: Boolean = true
 ) {
+    val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
+    // The toolbar is text until you need it (docs/recording-page-implementation.md §2.3) — there
+    // is no persistent search field or edit button above the transcript any more; both are
+    // entered from the three-word row at the bottom.
+    var showSearch by remember { mutableStateOf(false) }
     var isEditMode by remember { mutableStateOf(false) }
     // segmentId -> in-progress draft text, only while isEditMode is true. Re-seeded from the real
     // segments each time edit mode is entered so a Cancel always throws the drafts away cleanly.
     var drafts by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    // Explicit per-segment expand/collapse overrides; a segment not in this map falls back to the
-    // length-based default below.
-    var expandOverrides by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     // "Spotify lyrics"-style following: auto-scrolls to whichever segment is currently playing.
     // Off by default only makes sense once there's something to follow, so this only matters once
     // activePlaybackSegmentId is non-null; toggling it back on re-jumps immediately (see the
@@ -1382,6 +1390,18 @@ fun TranscriptTab(
             it.text.contains(searchQuery, ignoreCase = true) ||
                 (it.speakerName?.contains(searchQuery, ignoreCase = true) == true)
         }
+    }
+
+    // Speaker colour, assigned by first appearance in the recording and stable for as long as the
+    // segment list itself is (docs/recording-page-implementation.md §1.1: "assigned by first
+    // appearance ... then persisted per speaker id so they never shuffle"). This is an interim
+    // step toward reading the persisted SpeakerEntity.colorHex directly — see the phase check-in
+    // notes — but already replaces the old hash-derived colour, which could put two different
+    // speakers on the same colour.
+    val speakerColors = remember(segments) {
+        val palette = listOf(Accent, Speaker2, Speaker3, Speaker4)
+        val order = segments.mapNotNull { it.speakerId }.distinct()
+        order.withIndex().associate { (index, id) -> id to palette[index % palette.size] }
     }
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -1403,59 +1423,74 @@ fun TranscriptTab(
     }
 
     Column(modifier = Modifier.fillMaxSize().imePadding()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("Search transcript...") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                enabled = !isEditMode,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(vertical = 4.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            if (isEditMode) {
-                TextButton(
-                    onClick = { isEditMode = false; drafts = emptyMap() },
-                    modifier = Modifier.testTag("transcript_edit_cancel_btn")
-                ) { Text("Cancel") }
-                Button(
-                    onClick = {
-                        val changed = drafts.filter { (id, text) -> segments.find { it.id == id }?.text != text }
-                        onSaveEdits(changed)
-                        isEditMode = false
-                        drafts = emptyMap()
-                    },
-                    modifier = Modifier.testTag("transcript_edit_save_btn")
-                ) { Text("Save") }
-            } else {
-                TextButton(
-                    onClick = {
-                        drafts = segments.associate { it.id to it.text }
-                        isEditMode = true
-                    },
-                    modifier = Modifier.testTag("transcript_edit_btn")
-                ) {
-                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Edit")
-                }
-            }
-        }
-
-        if (activePlaybackSegmentId != null || isAudioPlaying) {
+        if (isEditMode) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Cancel",
+                    fontSize = 15.sp,
+                    color = InkSecondary,
+                    modifier = Modifier
+                        .clickable {
+                            isEditMode = false
+                            drafts = emptyMap()
+                        }
+                        .testTag("transcript_edit_cancel_btn")
+                )
+                Text(
+                    text = "Save",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Ink,
+                    modifier = Modifier
+                        .clickable {
+                            val changed = drafts.filter { (id, text) -> segments.find { it.id == id }?.text != text }
+                            onSaveEdits(changed)
+                            isEditMode = false
+                            drafts = emptyMap()
+                        }
+                        .testTag("transcript_edit_save_btn")
+                )
+            }
+        } else if (showSearch) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search transcript…") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "Done",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Ink,
+                    modifier = Modifier.clickable {
+                        showSearch = false
+                        searchQuery = ""
+                    }
+                )
+            }
+        }
+
+        if (!isEditMode && (activePlaybackSegmentId != null || isAudioPlaying)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 22.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -1466,137 +1501,97 @@ fun TranscriptTab(
                 )
                 Text(
                     text = "Sync to audio",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = 12.5.sp,
+                    color = InkSecondary,
+                    fontWeight = FontWeight.Medium
                 )
             }
         }
 
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentPadding = PaddingValues(
+                start = 22.dp,
+                end = 22.dp,
+                top = if (isEditMode || showSearch) 6.dp else 28.dp,
+                bottom = 24.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(26.dp)
         ) {
             items(filteredSegments, key = { it.id }) { seg ->
+                val isPlaying = seg.id == activePlaybackSegmentId
                 val isDeepLinkHighlighted = seg.id == highlightedSegmentId
-                val isPlayingHighlighted = seg.id == activePlaybackSegmentId
-                val isHighlighted = isDeepLinkHighlighted || isPlayingHighlighted
-                val isExpanded = isEditMode || (expandOverrides[seg.id]
-                    ?: (seg.text.length <= TRANSCRIPT_SEGMENT_COLLAPSE_THRESHOLD_CHARS))
+                val speakerColor = seg.speakerId?.let { speakerColors[it] } ?: InkMuted
                 val bringIntoViewRequester = remember { BringIntoViewRequester() }
                 val coroutineScope = rememberCoroutineScope()
 
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isHighlighted) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                        } else {
-                            MaterialTheme.colorScheme.surface
-                        }
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(
-                        if (isHighlighted) 1.5.dp else 1.dp,
-                        if (isHighlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
-                    ),
+                // No cards, no borders, no elevation in reading mode
+                // (docs/recording-page-implementation.md §2.3) — just a 38dp mono-timestamp gutter
+                // and, for the playing segment only, a 2dp Accent rule immediately left of the text.
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .animateContentSize()
+                        .background(if (isDeepLinkHighlighted) AccentWash else Color.Transparent)
+                        .drawBehind {
+                            if (isPlaying) {
+                                val x = 50.dp.toPx()
+                                drawLine(
+                                    color = Accent,
+                                    start = Offset(x, 0f),
+                                    end = Offset(x, size.height),
+                                    strokeWidth = 2.dp.toPx()
+                                )
+                            }
+                        }
+                        .then(if (!isEditMode) Modifier.clickable { onJumpToTimestamp(seg.startMs) } else Modifier),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Column(
+                    Text(
+                        text = Formatters.formatDurationHms(seg.startMs),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.5.sp,
+                        letterSpacing = 0.5.sp,
+                        color = if (isPlaying) Accent else InkFaint,
                         modifier = Modifier
-                            .padding(14.dp)
-                            .then(
-                                if (!isEditMode) {
-                                    Modifier.clickable {
-                                        expandOverrides = expandOverrides + (seg.id to !isExpanded)
-                                    }
-                                } else {
-                                    Modifier
-                                }
-                            )
-                    ) {
+                            .width(38.dp)
+                            .padding(top = 5.dp)
+                    )
+
+                    Column(modifier = Modifier.weight(1f)) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            Text(
+                                text = seg.speakerName ?: "Unlabeled speaker",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.3.sp,
+                                color = speakerColor,
                                 modifier = seg.speakerId?.let { spkId ->
                                     Modifier.clickable { onRenameSpeaker(spkId, seg.speakerName ?: "") }
                                 } ?: Modifier
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = seg.speakerId?.let { Formatters.getSpeakerColor(it.hashCode()) }
-                                        ?: MaterialTheme.colorScheme.outlineVariant,
-                                    modifier = Modifier.size(26.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = seg.speakerName?.take(1) ?: "?",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = seg.speakerName ?: "Unlabeled speaker",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                            )
+                            if (seg.isUserEdited) {
                                 Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription = "Rename Speaker",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                if (seg.isUserEdited) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = "Edited by you",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                                if (isPlayingHighlighted) {
-                                    Icon(
-                                        Icons.Default.VolumeUp,
-                                        contentDescription = "Now playing",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = IndigoPrimary.copy(alpha = 0.12f),
-                                modifier = Modifier.clickable { onJumpToTimestamp(seg.startMs) }
-                            ) {
-                                Text(
-                                    text = Formatters.formatDurationHms(seg.startMs),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = IndigoPrimaryLight,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    Icons.Default.Check,
+                                    contentDescription = "Edited by you",
+                                    tint = Accent,
+                                    modifier = Modifier.size(12.dp)
                                 )
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(5.dp))
 
                         if (isEditMode) {
                             OutlinedTextField(
                                 value = drafts[seg.id] ?: seg.text,
                                 onValueChange = { newValue -> drafts = drafts + (seg.id to newValue) },
-                                textStyle = MaterialTheme.typography.bodyMedium,
+                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.5.sp, lineHeight = 29.sp, color = Ink),
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1614,17 +1609,77 @@ fun TranscriptTab(
                             }
                             Text(
                                 text = displayText,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                lineHeight = 20.sp,
-                                maxLines = if (isExpanded) Int.MAX_VALUE else 2,
-                                overflow = if (isExpanded) TextOverflow.Clip else TextOverflow.Ellipsis
+                                fontSize = 16.5.sp,
+                                lineHeight = 28.sp,
+                                color = if (isPlaying) Ink else InkSecondary
                             )
                         }
                     }
                 }
             }
         }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    drawLine(LineSoft, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
+                }
+                .padding(horizontal = 18.dp)
+        ) {
+            TranscriptToolbarWord(
+                label = "Search",
+                active = showSearch,
+                modifier = Modifier.weight(1f).testTag("transcript_search_btn")
+            ) {
+                showSearch = !showSearch
+                if (!showSearch) searchQuery = ""
+            }
+            TranscriptToolbarWord(
+                label = "Edit",
+                active = isEditMode,
+                modifier = Modifier.weight(1f).testTag("transcript_edit_btn")
+            ) {
+                if (!isEditMode) {
+                    drafts = segments.associate { it.id to it.text }
+                    showSearch = false
+                } else {
+                    drafts = emptyMap()
+                }
+                isEditMode = !isEditMode
+            }
+            TranscriptToolbarWord(
+                label = "Tools",
+                active = !showSearch && !isEditMode,
+                modifier = Modifier.weight(1f)
+            ) {
+                // The AI tools sheet (docs/recording-page-implementation.md §2.4) is a later phase
+                // of this redesign — say so honestly rather than a dead tap target.
+                Toast.makeText(context, "AI tools are coming in a later phase", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+}
+
+@Composable
+private fun TranscriptToolbarWord(
+    label: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .padding(vertical = 15.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (active) Ink else InkSecondary
+        )
     }
 }
 
