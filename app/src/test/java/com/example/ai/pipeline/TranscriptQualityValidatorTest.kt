@@ -1,5 +1,8 @@
 package com.example.ai.pipeline
 
+import com.example.core.model.RecordingType
+import com.example.core.model.TranscriptCleanupMode
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -119,5 +122,113 @@ class TranscriptQualityValidatorTest {
             cleaned = "John said he would handle the deployment."
         )
         assertTrue(verdict.reason, verdict.accepted)
+    }
+
+    // --- Mode-aware thresholds: the same length ratio is accepted or rejected depending on
+    // which TranscriptCleanupProfile (recording type x mode) it's validated against ---
+
+    private fun profile(mode: TranscriptCleanupMode) = RecordingType.MEETING.transcriptCleanupProfile(mode)
+
+    @Test
+    fun `a moderately restructured candidate is rejected under Conservative but accepted under Moderate`() {
+        val raw = "I think what I want to do is, what I'm thinking is basically that we should probably use the smaller model here."
+        val cleaned = "I think we should use the smaller model here."
+
+        val conservative = TranscriptQualityValidator.validate(raw, cleaned, profile(TranscriptCleanupMode.CONSERVATIVE))
+        assertFalse(conservative.reason, conservative.accepted)
+
+        val moderate = TranscriptQualityValidator.validate(raw, cleaned, profile(TranscriptCleanupMode.MODERATE))
+        assertTrue(moderate.reason, moderate.accepted)
+    }
+
+    @Test
+    fun `a heavily restructured candidate is rejected under Conservative and Moderate but accepted under Aggressive`() {
+        val raw = "So, um, what I think I want to say is, basically, I think we should probably use the smaller model, if that makes sense."
+        val cleaned = "We should use the smaller model."
+
+        val conservative = TranscriptQualityValidator.validate(raw, cleaned, profile(TranscriptCleanupMode.CONSERVATIVE))
+        assertFalse(conservative.accepted)
+
+        val moderate = TranscriptQualityValidator.validate(raw, cleaned, profile(TranscriptCleanupMode.MODERATE))
+        assertFalse(moderate.accepted)
+
+        val aggressive = TranscriptQualityValidator.validate(raw, cleaned, profile(TranscriptCleanupMode.AGGRESSIVE))
+        assertTrue(aggressive.reason, aggressive.accepted)
+    }
+
+    @Test
+    fun `null profile behaves identically to an explicit Conservative profile`() {
+        val raw = "I think what I want to do is, what I'm thinking is basically that we should probably use the smaller model here."
+        val cleaned = "I think we should use the smaller model here."
+
+        val default = TranscriptQualityValidator.validate(raw, cleaned)
+        val conservative = TranscriptQualityValidator.validate(raw, cleaned, profile(TranscriptCleanupMode.CONSERVATIVE))
+        assertEquals(conservative.accepted, default.accepted)
+    }
+
+    // --- Numbers/dates/money are hard-rejected in every mode, including Aggressive ---
+
+    @Test
+    fun `a changed dollar amount is rejected even under Aggressive mode`() {
+        val verdict = TranscriptQualityValidator.validate(
+            raw = "We agreed on a budget of \$15,000 for this quarter.",
+            cleaned = "We agreed on a budget of \$50,000 for this quarter.",
+            profile = profile(TranscriptCleanupMode.AGGRESSIVE)
+        )
+        assertFalse(verdict.accepted)
+    }
+
+    @Test
+    fun `a changed day of the week is rejected even under Aggressive mode`() {
+        val verdict = TranscriptQualityValidator.validate(
+            raw = "Let's meet again on Monday to finalize things.",
+            cleaned = "Let's meet again on Friday to finalize things.",
+            profile = profile(TranscriptCleanupMode.AGGRESSIVE)
+        )
+        assertFalse(verdict.accepted)
+    }
+
+    @Test
+    fun `a swapped name is rejected even under Aggressive mode`() {
+        val verdict = TranscriptQualityValidator.validate(
+            raw = "John said he would handle the deployment.",
+            cleaned = "Peter said he would handle the deployment.",
+            profile = profile(TranscriptCleanupMode.AGGRESSIVE)
+        )
+        assertFalse(verdict.accepted)
+    }
+
+    @Test
+    fun `a changed vehicle count is rejected even under Aggressive mode`() {
+        val verdict = TranscriptQualityValidator.validate(
+            raw = "We have three vehicles available for the trip.",
+            cleaned = "We have five vehicles available for the trip.",
+            profile = profile(TranscriptCleanupMode.AGGRESSIVE)
+        )
+        assertFalse(verdict.accepted)
+    }
+
+    // --- Self-correction / variant-spelling evidence exception ---
+
+    @Test
+    fun `a self-corrected entity name is accepted when the raw text contains both variants`() {
+        // The default (no profile) thresholds are the strictest in the system — proving this
+        // passes here shows the self-correction exception works even without a permissive mode.
+        val verdict = TranscriptQualityValidator.validate(
+            raw = "The company name is Myavana no Myavanna actually Myavana.",
+            cleaned = "The company name is Myavana."
+        )
+        assertTrue(verdict.reason, verdict.accepted)
+    }
+
+    @Test
+    fun `an unrelated model name swap is still rejected despite the self-correction exception existing`() {
+        // Guards against the self-correction exception being too permissive: "Qwen" and "Gemini"
+        // share no meaningful prefix, so this must not be mistaken for a self-correction.
+        val verdict = TranscriptQualityValidator.validate(
+            raw = "We're running this on Qwen for now.",
+            cleaned = "We're running this on Gemini for now."
+        )
+        assertFalse(verdict.accepted)
     }
 }

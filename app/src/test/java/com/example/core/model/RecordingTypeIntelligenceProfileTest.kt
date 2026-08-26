@@ -116,4 +116,50 @@ class RecordingTypeIntelligenceProfileTest {
             assertEquals("$it should not force a speaker-count guess", null, it.suggestedSpeakerCount())
         }
     }
+
+    // --- transcriptCleanupProfile: the single source of truth combining type x mode ---
+
+    @Test
+    fun `transcriptCleanupProfile carries the same type guidance across every mode for a given type`() {
+        val guidance = RecordingType.LECTURE.cleanupGuidance()
+        TranscriptCleanupMode.entries.forEach { mode ->
+            assertEquals(guidance, RecordingType.LECTURE.transcriptCleanupProfile(mode).typeGuidance)
+        }
+    }
+
+    @Test
+    fun `transcriptCleanupProfile carries the same mode tuning across every type for a given mode`() {
+        val moderateProfiles = RecordingType.entries.map { it.transcriptCleanupProfile(TranscriptCleanupMode.MODERATE) }
+        val first = moderateProfiles.first()
+        moderateProfiles.forEach { profile ->
+            assertEquals(first.permissivenessGuidance, profile.permissivenessGuidance)
+            assertEquals(first.minLengthRatio, profile.minLengthRatio, 0.0)
+            assertEquals(first.maxLengthRatio, profile.maxLengthRatio, 0.0)
+            assertEquals(first.minWordOverlap, profile.minWordOverlap, 0.0)
+            assertEquals(first.preferredModelTier, profile.preferredModelTier)
+        }
+    }
+
+    @Test
+    fun `mode permissiveness widens monotonically from Conservative to Aggressive, regardless of type`() {
+        RecordingType.entries.forEach { type ->
+            val conservative = type.transcriptCleanupProfile(TranscriptCleanupMode.CONSERVATIVE)
+            val moderate = type.transcriptCleanupProfile(TranscriptCleanupMode.MODERATE)
+            val aggressive = type.transcriptCleanupProfile(TranscriptCleanupMode.AGGRESSIVE)
+
+            assertTrue("$type: minLengthRatio should shrink Conservative -> Aggressive", conservative.minLengthRatio > moderate.minLengthRatio)
+            assertTrue("$type: minLengthRatio should shrink Moderate -> Aggressive", moderate.minLengthRatio > aggressive.minLengthRatio)
+            assertTrue("$type: maxLengthRatio should grow Conservative -> Aggressive", conservative.maxLengthRatio < moderate.maxLengthRatio)
+            assertTrue("$type: maxLengthRatio should grow Moderate -> Aggressive", moderate.maxLengthRatio < aggressive.maxLengthRatio)
+            assertTrue("$type: minWordOverlap should shrink Conservative -> Aggressive", conservative.minWordOverlap > moderate.minWordOverlap)
+            assertTrue("$type: minWordOverlap should shrink Moderate -> Aggressive", moderate.minWordOverlap > aggressive.minWordOverlap)
+        }
+    }
+
+    @Test
+    fun `preferred model tier rises with mode permissiveness`() {
+        assertEquals(ModelTier.LIGHTWEIGHT, RecordingType.MEETING.transcriptCleanupProfile(TranscriptCleanupMode.CONSERVATIVE).preferredModelTier)
+        assertEquals(ModelTier.RECOMMENDED, RecordingType.MEETING.transcriptCleanupProfile(TranscriptCleanupMode.MODERATE).preferredModelTier)
+        assertEquals(ModelTier.HIGH_QUALITY, RecordingType.MEETING.transcriptCleanupProfile(TranscriptCleanupMode.AGGRESSIVE).preferredModelTier)
+    }
 }

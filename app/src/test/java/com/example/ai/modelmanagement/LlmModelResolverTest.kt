@@ -1,6 +1,10 @@
 package com.example.ai.modelmanagement
 
+import com.example.core.model.ModelCapability
+import com.example.core.model.ModelTier
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
@@ -68,6 +72,52 @@ class LlmModelResolverTest {
         assertEquals(
             ModelCatalog.qwen25_1_5bInstruct.id,
             LlmModelResolver.resolve(ModelCatalog.qwen25_1_5bInstruct.id, storage)
+        )
+    }
+
+    // --- resolveForModeOrNull: device/mode-aware tier selection for transcript cleanup ---
+
+    @Test
+    fun `resolveForModeOrNull returns the exact preferred tier when it is installed`() {
+        val storage = FakeModelStorage(
+            setOf(ModelCatalog.qwen25_0_5bInstruct.id, ModelCatalog.qwen25_1_5bInstruct.id, ModelCatalog.phi4MiniInstruct.id)
+        )
+
+        assertEquals(
+            ModelCatalog.qwen25_1_5bInstruct.id,
+            LlmModelResolver.resolveForModeOrNull(storage, ModelCapability.TRANSCRIPT_CLEANUP, ModelTier.RECOMMENDED)
+        )
+    }
+
+    @Test
+    fun `resolveForModeOrNull degrades to the closest installed tier when the preferred one is missing`() {
+        // Aggressive mode prefers HIGH_QUALITY, but only LIGHTWEIGHT is installed — never assume
+        // the biggest model is best, but also never silently fail when it simply isn't installed.
+        val storage = FakeModelStorage(setOf(ModelCatalog.qwen25_0_5bInstruct.id))
+
+        assertEquals(
+            ModelCatalog.qwen25_0_5bInstruct.id,
+            LlmModelResolver.resolveForModeOrNull(storage, ModelCapability.TRANSCRIPT_CLEANUP, ModelTier.HIGH_QUALITY)
+        )
+    }
+
+    @Test
+    fun `resolveForModeOrNull never returns a tier further away than the closest installed one`() {
+        // Preferred RECOMMENDED is missing; both LIGHTWEIGHT and HIGH_QUALITY sit one tier away —
+        // whichever it picks must never be a model further from RECOMMENDED than either of these,
+        // i.e. it must never fall through to something even less appropriate.
+        val storage = FakeModelStorage(setOf(ModelCatalog.qwen25_0_5bInstruct.id, ModelCatalog.phi4MiniInstruct.id))
+
+        val resolved = LlmModelResolver.resolveForModeOrNull(storage, ModelCapability.TRANSCRIPT_CLEANUP, ModelTier.RECOMMENDED)
+        assertTrue(resolved == ModelCatalog.qwen25_0_5bInstruct.id || resolved == ModelCatalog.phi4MiniInstruct.id)
+    }
+
+    @Test
+    fun `resolveForModeOrNull returns null when nothing with the capability is installed`() {
+        val storage = FakeModelStorage(setOf(ModelCatalog.parakeetTdtV3Int8.id))
+
+        assertNull(
+            LlmModelResolver.resolveForModeOrNull(storage, ModelCapability.TRANSCRIPT_CLEANUP, ModelTier.RECOMMENDED)
         )
     }
 }
