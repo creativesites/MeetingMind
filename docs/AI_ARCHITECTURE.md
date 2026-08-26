@@ -463,6 +463,59 @@ All new/updated tests pass; full project-wide `testDebugUnitTest`, `lintDebug`, 
 - **The full `IntelligenceOrchestrator`/dependency-invalidation caching system from §5 was not built.** `ReprocessTranscriptCleanupUseCase` solves the actual "re-clean without re-transcribing" need directly; a general dependency-aware invalidation graph across every intelligence stage remains future work if a second reprocessing need (e.g. "re-extract action items without re-cleaning") arises.
 - **Term/entity correction has no dedicated mechanism** — folded into Moderate/Aggressive's existing prompt permissiveness ("correct an obvious ASR mistake when nearby context makes the intended word unambiguous") rather than a separate extraction/lookup engine, per the explicit "keep the first implementation local/offline, do not invent an external knowledge lookup dependency" instruction.
 
+## 9. Stage G: AI-Assisted Diarization Reconciliation
+
+**Why this exists**: §8 scaffolded `DiarizationStrategy.AI_ASSISTED`/`AUTO` as real, persisted settings with an honest "not yet implemented" fallback. This stage builds the actual reconciliation logic — deliberately as a second-opinion layer on top of `SherpaSpeakerDiarizer`'s own deterministic reconciliation (`analyzeSpeakerFragmentation`/`reconcileFragmentedSpeakers`, built well before this session and already real), never a replacement for it.
+
+### What the deterministic pass already does (confirmed by audit, not re-built)
+
+`SherpaSpeakerDiarizer` already: merges short sandwiched fragments between two identical speakers (likely noise), and flags/reassigns speaker indices that are simultaneously (a) a small share of total speaking time and (b) either two-or-more such indices together, or a single index with many very-short turns (rapid clustering flicker) — gated so a genuine, if brief, lone participant is never touched. This is real, tested (`SherpaSpeakerDiarizerTest`), and unchanged by this stage.
+
+### The gap this stage fills
+
+The deterministic pass's own `MIN_NOISE_SPEAKERS_TO_FLAG = 2` gate deliberately leaves exactly one case alone: a *single* minor speaker. That is intentional — from duration/turn-count numbers alone, "one real brief participant" and "one lingering diarization fragment" are indistinguishable. There is no second numeric signal left to check. `DiarizationReconciliationEngine` (`ai/diarization/DiarizationReconciliationEngine.kt`) adds the one signal pure arithmetic can't provide: whether the minor speaker's own words plainly read as a continuation, self-correction, or restart of something a dominant speaker was already saying.
+
+### Architecture
+
+`computeSpeakerTranscriptFootprints(segments)` — pure, recomputes each speaker id's share of total duration, turn count, and a few sample text excerpts directly from already-diarized `TranscriptSegment`s (no change to `SpeakerDiarizer`'s interface or `SherpaSpeakerDiarizer` itself was needed). `ambiguousSpeakerIds(footprints)` flags any speaker below `AMBIGUOUS_SHARE_THRESHOLD` (0.15, the same order of magnitude as the deterministic pass's own `MAX_NOISE_SHARE_WHEN_FLAGGING`) **only when at least one other speaker sits at or above it** — a recording with no dominant speaker to anchor a merge against (every speaker minor, or a plausible near-even split like 52%/48%) returns no candidates at all, and the model is never even called.
+
+`RealDiarizationReconciliationEngine` prompts a local instruct LLM with every ambiguous speaker's footprint + sample text under "MINOR SPEAKERS TO REVIEW" and every confident speaker's under "MAIN SPEAKERS," asking for a strict JSON array of `{"from","into","reason"}` merge proposals. Every proposal is validated before being applied: `from` must be one of the ambiguous ids actually offered, `into` must be one of the confident ids actually offered — a model that invents an id, or proposes merging two confident speakers into each other, contributes no change at all, never a guessed one. This is the same salvage-tolerant-parse-then-strict-validate shape `RealTranscriptAiCleanupEngine` already established, applied to a different domain.
+
+### Pipeline wiring
+
+Runs inside `MeetingProcessingPipeline`'s diarization step, after the deterministic diarizer call and before `TranscriptStructureEngine` (so structuring/cleanup/intelligence all see the reconciled speaker ids, not the raw ones):
+
+```
+diarizer.diarize(...) -> deterministic segments (unchanged, already real)
+    -> computeSpeakerTranscriptFootprints -> shouldAttemptAiReconciliation(strategy)
+         DETERMINISTIC: never attempts it
+         AI_ASSISTED / AUTO: attempts it only when ambiguousSpeakerIds is non-empty
+              -> no capable model installed: log honest skip, keep deterministic result
+              -> model runs: apply only the guardrail-accepted merges, log what changed and why
+```
+
+Model capability: `ModelCapability.DIARIZATION_RECONCILIATION`, added to the same three LLM catalog entries that already carry `TRANSCRIPT_CLEANUP`/`EXTRACTION`/`SYNTHESIS`/`ASK_MEETING` — a general-purpose instruct LLM genuinely can serve this task too, no new model artifact. Resolved via the existing `LlmModelResolver.resolveForModeOrNull`, preferring `ModelTier.LIGHTWEIGHT` (this is a bounded, constrained-output classification task, not open-ended generation — no need for a larger tier by default). The cleanup engine's own `LlmEngineManager.release()` discipline is reused: at most one LLM allocation resident at a time.
+
+`AUTO` behaves identically to `AI_ASSISTED` today (both only act when something is genuinely ambiguous) — kept as a separate `when` branch rather than collapsed into one case so a future AUTO-specific heuristic (e.g. skip on a very long recording to save battery) has a real place to grow into without changing what an explicit `AI_ASSISTED` request means.
+
+### Tests
+
+17 new tests in `DiarizationReconciliationEngineTest`: footprint share/turn-count computed correctly from real durations; segments with no speakerId excluded; **the product spec's own worked examples** — an 82/7/5/4/2% split flags every minor speaker, a 52/48% split flags nothing, a single 12%/88% split is flagged as a genuine candidate (not silently dismissed, not silently merged); `shouldAttemptAiReconciliation` per strategy; a valid merge reassigning segments; a hallucinated id being ignored; a proposal merging two confident speakers never even reaching the model (0 calls); an empty-array response changing nothing; malformed JSON falling back without throwing; `ModelUnavailable` surfacing so the pipeline can fall back honestly; the model never being called when nothing is ambiguous; the prompt never asking about a confident speaker.
+
+### Known limitations
+
+- **Not device-verified.** Everything above is proven against synthetic fixtures on the JVM — real model output on a real ambiguous two-speaker recording (does it actually catch a mid-sentence diarization split? does it over-merge on a genuinely plausible small participant?) has not been observed.
+- **`AUTO` has no behavior distinct from `AI_ASSISTED` yet** — both currently mean "attempt only when ambiguous," as documented above.
+- **Sample text excerpts are the first 3 turns per speaker, truncated to 160 characters** — a deliberate, simple choice for prompt-budget reasons; a more targeted "excerpts immediately adjacent to the ambiguous speaker's turns" selection (closer to what actually reveals a mid-sentence split) is a reasonable future refinement, not attempted here to keep this stage's scope bounded.
+
+## 10. AI Tools menu — architecture prep only (no new engines built)
+
+The user's product spec for the transcript workspace's forthcoming "✨ AI Tools" menu (Transcript / Analysis / Utilities, 18 actions) is captured as a single source of truth — `TranscriptAiToolType`/`TranscriptAiToolCategory`/`TranscriptAiToolRegistry` (`core/model/TranscriptAiTool.kt`) — so a future session can wire up real UI and engines without re-deciding names, grouping, or scope, and so the eventual UI reads this list instead of hardcoding it.
+
+Each entry carries a `TranscriptAiToolReadiness`: `READY` (Clean Transcript — already backed by `ReprocessTranscriptCleanupUseCase`, reachable today via Meeting Detail's "Re-clean Transcript" action), `DATA_EXISTS_NEEDS_UI` (Find Decisions/Questions/Action Items, Identify Topics, Extract Key Points — the underlying data is already extracted and persisted during normal processing; these need a menu item and a place to show what already exists, not a new AI engine), or `NOT_STARTED` (the remaining 12 — Fix Transcription Errors, Improve Clarity, Remove Repetition, Condense, Expand Context, Fix Terminology, Find Important Moments, Find Names & Organisations, Explain This, Rewrite Professionally, Create Notes, Create Outline, Generate Title-on-demand — genuinely new work).
+
+**Deliberately not built this pass**: no new prompt contracts, no new validators, no new use cases, no UI. Per the standing "only add UI/architecture necessary to test the current feature, don't build the entire future post-processing suite in one task" constraint — this is exactly what the registry itself documents, so that constraint doesn't have to be re-explained at the top of every future session that picks one of these up. Building one out means following `TranscriptAiCleanupEngine`'s established shape (dedicated engine interface, explicit MUST/MAY/MUST-NOT prompt contract, validation before anything is accepted, honest three-tier fallback) — never a second, differently-shaped mechanism.
+
 ## 0d. Status Update — Phase 3A: Recording Type Focus Guidance
 
 Phase 3A added `RecordingType` (Meeting, Interview, Lecture, Voice Memo, Idea, Brainstorm,
