@@ -247,3 +247,21 @@ interface ChatMessageDao {
     @Query("DELETE FROM chat_messages WHERE meetingId = :meetingId")
     suspend fun deleteMessagesForMeeting(meetingId: String)
 }
+
+@Dao
+interface VocabularyDao {
+    @Query("SELECT * FROM vocabulary WHERE surfaceForm = :surfaceForm COLLATE NOCASE LIMIT 1")
+    suspend fun findBySurfaceForm(surfaceForm: String): VocabularyEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entry: VocabularyEntity)
+
+    @Query("SELECT * FROM vocabulary ORDER BY frequency DESC, lastConfirmedAt DESC")
+    fun getAll(): Flow<List<VocabularyEntity>>
+
+    @Query("SELECT * FROM vocabulary ORDER BY frequency DESC, lastConfirmedAt DESC")
+    suspend fun getAllDirect(): List<VocabularyEntity>
+
+    @Query("DELETE FROM vocabulary WHERE id = :id")
+    suspend fun deleteById(id: String)
+}

@@ -281,3 +281,30 @@ data class ChatMessageEntity(
      * or an AI answer from before this field existed. */
     val readSegmentCount: Int = 0
 )
+
+/**
+ * A learned correction — "the ASR keeps writing X, the user always means Y" — persisted so it can
+ * be looked up later, never so the model can be retrained (see docs/AI_ARCHITECTURE.md §11: this
+ * is a lookup table read at prompt-construction time, not on-device fine-tuning). Global across
+ * every recording, not scoped to one meeting: a name or product term the user corrects once is
+ * worth remembering everywhere. [surfaceForm] is deliberately not the primary key — the same
+ * mis-transcription can recur and should increment [frequency]/refresh [lastConfirmedAt] on the
+ * existing row rather than create a duplicate.
+ */
+@Entity(tableName = "vocabulary", indices = [Index(value = ["surfaceForm"], unique = true)])
+data class VocabularyEntity(
+    @PrimaryKey val id: String,
+    val surfaceForm: String,
+    val canonicalForm: String,
+    /** [com.example.core.model.VocabularyTermType.name] — honestly OTHER when nothing inferred it. */
+    val type: String,
+    /** How sure this mapping is real, not a one-off typo. 1.0 for a direct user correction — the
+     * user saying so explicitly is the strongest signal this system has; left room for a future
+     * AI-suggested entry to persist at something lower. */
+    val confidence: Float,
+    /** [com.example.core.model.VocabularySource.name] — where this correction came from. */
+    val source: String,
+    /** How many times this exact correction has been made/confirmed. */
+    val frequency: Int,
+    val lastConfirmedAt: Long
+)

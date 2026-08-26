@@ -302,4 +302,39 @@ class MeetMindDatabaseMigrationTest {
             assertEquals(1, cursor.getInt(2))
         }
     }
+
+    private fun openV9EmptyDatabase(): SupportSQLiteDatabase {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(null) // in-memory
+            .callback(object : SupportSQLiteOpenHelper.Callback(9) {
+                override fun onCreate(db: SupportSQLiteDatabase) = Unit
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            })
+            .build()
+        helper = FrameworkSQLiteOpenHelperFactory().create(configuration)
+        return helper.writableDatabase
+    }
+
+    @Test
+    fun `migration 9 to 10 creates the vocabulary table with all learned-correction columns`() {
+        val db = openV9EmptyDatabase()
+
+        MeetMindDatabase.MIGRATION_9_10.migrate(db)
+
+        assertTrue(tableExists(db, "vocabulary"))
+        val columns = columnNames(db, "vocabulary")
+        assertTrue(columns.contains("surfaceForm"))
+        assertTrue(columns.contains("canonicalForm"))
+        assertTrue(columns.contains("type"))
+        assertTrue(columns.contains("confidence"))
+        assertTrue(columns.contains("source"))
+        assertTrue(columns.contains("frequency"))
+        assertTrue(columns.contains("lastConfirmedAt"))
+        // A brand-new table on every existing install — no fabricated seed rows.
+        db.query("SELECT COUNT(*) FROM vocabulary").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0, cursor.getInt(0))
+        }
+    }
 }

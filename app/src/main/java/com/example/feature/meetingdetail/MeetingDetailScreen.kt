@@ -151,6 +151,7 @@ class MeetingDetailViewModel(
     private val meetingRepository = MeetingRepository(application, database)
     private val transcriptRepository = TranscriptRepository(database)
     private val actionItemRepository = ActionItemRepository(database)
+    private val vocabularyRepository = com.example.core.repository.VocabularyRepository(database)
     private val modelStorage = com.example.ai.modelmanagement.LocalModelStorage(application)
     private val userPrefs = com.example.core.datastore.UserPreferencesManager(application)
 
@@ -446,6 +447,10 @@ class MeetingDetailViewModel(
             val changes = transcriptRepository.replaceAllInTranscript(meetingId, searchText, replaceText)
             if (changes.isEmpty()) return@launch
             pushUndo(EditAction.ReplaceAll(changes.map { EditAction.TextEdit(it.segmentId, it.before, it.after) }))
+            // A deliberate, explicit "this word is wrong everywhere" action is exactly the
+            // learned-vocabulary signal Phase 15 §4 wants — unlike a single-segment hand edit,
+            // which could just as easily be a one-off rewording rather than a real correction.
+            vocabularyRepository.recordCorrection(searchText, replaceText, com.example.core.model.VocabularySource.REPLACE_ALL)
         }
     }
 
