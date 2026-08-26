@@ -655,6 +655,7 @@ fun MeetingDetailScreen(
     val actionItems by viewModel.actionItems.collectAsState()
     val decisions by viewModel.decisions.collectAsState()
     val questions by viewModel.questions.collectAsState()
+    val topics by viewModel.topics.collectAsState()
     val chatMessages by viewModel.chatMessages.collectAsState()
     val speakers by viewModel.speakers.collectAsState()
     val canUndo by viewModel.canUndo.collectAsState()
@@ -707,6 +708,10 @@ fun MeetingDetailScreen(
     var currentTab by remember { mutableStateOf(RecordingDetailTab.OVERVIEW) }
     var showFullPlayer by remember { mutableStateOf(false) }
     var showAiToolsSheet by remember { mutableStateOf(false) }
+    // Set when an "AI tools" entry whose data already exists is tapped (Phase 15 §7) — switches to
+    // Overview and tells OverviewStepper which step to jump to, instead of a generic "already
+    // shown on Overview" toast that never actually took the user there.
+    var overviewJumpTarget by remember { mutableStateOf<com.example.feature.meetingdetail.components.OverviewStepTarget?>(null) }
     var showOriginalInCleanupReview by remember { mutableStateOf(false) }
     val cleanupProposal by viewModel.cleanupProposal.collectAsState()
     val isProposingCleanup by viewModel.isProposingCleanup.collectAsState()
@@ -1073,13 +1078,18 @@ fun MeetingDetailScreen(
                     openQuestionCount = questions.count { !it.resolved },
                     decisions = decisions,
                     actionItems = actionItems,
+                    questions = questions,
+                    topics = topics,
+                    topicsLabel = intelligenceProfile.topicsLabel,
                     onToggleActionItem = { viewModel.toggleActionItem(it) },
                     onAddTask = { showAddActionDialog = true },
                     speakers = speakers,
                     segments = transcript.segments,
                     showDecisionsStep = intelligenceProfile.extractDecisions,
                     showTasksStep = intelligenceProfile.extractActionItems,
-                    onPlayFrom = { viewModel.jumpToTimestamp(it) }
+                    showQuestionsStep = intelligenceProfile.extractQuestions,
+                    onPlayFrom = { viewModel.jumpToTimestamp(it) },
+                    jumpTo = overviewJumpTarget
                 )
                 RecordingDetailTab.TRANSCRIPT -> TranscriptTab(
                     segments = transcript.segments,
@@ -1143,9 +1153,22 @@ fun MeetingDetailScreen(
                     Toast.makeText(context, "Fixing terminology in the background — the transcript will update automatically", Toast.LENGTH_LONG).show()
                 }
             },
-            onDataAlreadyAvailable = {
+            onDataAlreadyAvailable = { tool ->
                 showAiToolsSheet = false
-                Toast.makeText(context, "Already shown on Overview — this is a menu entry away, not a new AI pass", Toast.LENGTH_LONG).show()
+                val target = when (tool) {
+                    com.example.core.model.TranscriptAiToolType.FIND_DECISIONS -> com.example.feature.meetingdetail.components.OverviewStepTarget.DECISIONS
+                    com.example.core.model.TranscriptAiToolType.FIND_ACTION_ITEMS -> com.example.feature.meetingdetail.components.OverviewStepTarget.TASKS
+                    com.example.core.model.TranscriptAiToolType.FIND_QUESTIONS -> com.example.feature.meetingdetail.components.OverviewStepTarget.QUESTIONS
+                    com.example.core.model.TranscriptAiToolType.EXTRACT_KEY_POINTS,
+                    com.example.core.model.TranscriptAiToolType.IDENTIFY_TOPICS -> com.example.feature.meetingdetail.components.OverviewStepTarget.TOPICS
+                    else -> null
+                }
+                if (target != null) {
+                    currentTab = RecordingDetailTab.OVERVIEW
+                    overviewJumpTarget = target
+                } else {
+                    Toast.makeText(context, "Already shown on Overview — this is a menu entry away, not a new AI pass", Toast.LENGTH_LONG).show()
+                }
             },
             onNotBuiltYet = {
                 showAiToolsSheet = false

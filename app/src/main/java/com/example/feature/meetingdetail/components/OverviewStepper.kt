@@ -34,7 +34,9 @@ import androidx.compose.ui.unit.sp
 import com.example.core.common.Formatters
 import com.example.core.model.ActionItem
 import com.example.core.model.Decision
+import com.example.core.model.Question
 import com.example.core.model.Speaker
+import com.example.core.model.Topic
 import com.example.core.model.TranscriptSegment
 import com.example.ui.theme.Ink
 import com.example.ui.theme.InkFaint
@@ -43,14 +45,40 @@ import com.example.ui.theme.LineSoft
 import com.example.ui.theme.SurfaceTrack
 import kotlinx.coroutines.launch
 
-private enum class StepKind { WHAT_HAPPENED, DECISIONS, TASKS, WHO_TALKED }
+/**
+ * One step of [OverviewStepper]'s pager, also the type [OverviewStepper] can be asked to jump
+ * straight to (Phase 15 §7) — public so a caller like the "AI tools" sheet's
+ * FIND_DECISIONS/FIND_ACTION_ITEMS/FIND_QUESTIONS/IDENTIFY_TOPICS/EXTRACT_KEY_POINTS entries can
+ * navigate here instead of just saying "already shown on Overview" without actually taking the
+ * user there. [EXTRACT_KEY_POINTS] and [IDENTIFY_TOPICS] both target [TOPICS] —
+ * [com.example.core.model.Topic] is the one "key points/concepts/topics" list
+ * [com.example.core.model.IntelligenceProfile.topicsLabel] already documents as always-present,
+ * just under a type-varying label.
+ */
+enum class OverviewStepTarget { WHAT_HAPPENED, DECISIONS, TASKS, QUESTIONS, TOPICS, WHO_TALKED }
+
+/** Pure step-list construction, pulled out of the composable so it's directly unit-testable
+ * (see [OverviewStepperStepsTest]) without a Compose test harness. [WHAT_HAPPENED]/[TOPICS]/
+ * [WHO_TALKED] are always present; [DECISIONS]/[TASKS]/[QUESTIONS] only exist when this
+ * recording type actually produces them — never an empty step pointing at content that was
+ * never asked for. */
+internal fun buildOverviewSteps(showDecisionsStep: Boolean, showTasksStep: Boolean, showQuestionsStep: Boolean): List<OverviewStepTarget> =
+    buildList {
+        add(OverviewStepTarget.WHAT_HAPPENED)
+        if (showDecisionsStep) add(OverviewStepTarget.DECISIONS)
+        if (showTasksStep) add(OverviewStepTarget.TASKS)
+        if (showQuestionsStep) add(OverviewStepTarget.QUESTIONS)
+        add(OverviewStepTarget.TOPICS)
+        add(OverviewStepTarget.WHO_TALKED)
+    }
 
 /**
- * The Overview tab's four-step pager (docs/recording-page-implementation.md §2.2/§3.6) — replaces
+ * The Overview tab's step pager (docs/recording-page-implementation.md §2.2/§3.6) — replaces
  * the old always-expanded list-of-cards (BentoOverviewTab) with "one thing at a time"
- * (the chosen direction, `1b`). Steps 2/3 only exist when this recording type actually produces
- * decisions/action items (same [intelligenceProfile] gate the old cards used) — never an empty
- * step pointing at content that was never asked for.
+ * (the chosen direction, `1b`). Decisions/Tasks/Questions only exist when this recording type
+ * actually produces them (same [intelligenceProfile] gate the old cards used) — never an empty
+ * step pointing at content that was never asked for. Topics is always present, per
+ * [com.example.core.model.IntelligenceProfile.topicsLabel]'s own doc.
  */
 @Composable
 fun OverviewStepper(
@@ -58,25 +86,34 @@ fun OverviewStepper(
     openQuestionCount: Int,
     decisions: List<Decision>,
     actionItems: List<ActionItem>,
+    questions: List<Question>,
+    topics: List<Topic>,
+    topicsLabel: String,
     onToggleActionItem: (ActionItem) -> Unit,
     onAddTask: () -> Unit,
     speakers: List<Speaker>,
     segments: List<TranscriptSegment>,
     showDecisionsStep: Boolean,
     showTasksStep: Boolean,
+    showQuestionsStep: Boolean,
     onPlayFrom: (Long) -> Unit,
+    /** Set (non-null) to animate straight to that step once, e.g. from the AI tools sheet's
+     * "already available" entries (Phase 15 §7) — consumed once via [LaunchedEffect] so it
+     * doesn't fight the user's own subsequent swipes. */
+    jumpTo: OverviewStepTarget? = null,
     modifier: Modifier = Modifier
 ) {
-    val steps = remember(showDecisionsStep, showTasksStep) {
-        buildList {
-            add(StepKind.WHAT_HAPPENED)
-            if (showDecisionsStep) add(StepKind.DECISIONS)
-            if (showTasksStep) add(StepKind.TASKS)
-            add(StepKind.WHO_TALKED)
-        }
+    val steps = remember(showDecisionsStep, showTasksStep, showQuestionsStep) {
+        buildOverviewSteps(showDecisionsStep, showTasksStep, showQuestionsStep)
     }
     val pagerState = rememberPagerState(pageCount = { steps.size })
     val scope = rememberCoroutineScope()
+
+    androidx.compose.runtime.LaunchedEffect(jumpTo, steps) {
+        val target = jumpTo ?: return@LaunchedEffect
+        val index = steps.indexOf(target)
+        if (index >= 0) pagerState.animateScrollToPage(index)
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth()) { page ->
@@ -88,10 +125,12 @@ fun OverviewStepper(
                 )
                 Spacer(modifier = Modifier.height(26.dp))
                 when (steps[page]) {
-                    StepKind.WHAT_HAPPENED -> WhatHappenedStep(summary, openQuestionCount)
-                    StepKind.DECISIONS -> DecisionsStep(decisions, segments, speakers, onPlayFrom)
-                    StepKind.TASKS -> TasksStep(actionItems, onToggleActionItem, onAddTask)
-                    StepKind.WHO_TALKED -> WhoTalkedStep(speakers, segments)
+                    OverviewStepTarget.WHAT_HAPPENED -> WhatHappenedStep(summary, openQuestionCount)
+                    OverviewStepTarget.DECISIONS -> DecisionsStep(decisions, segments, speakers, onPlayFrom)
+                    OverviewStepTarget.TASKS -> TasksStep(actionItems, onToggleActionItem, onAddTask)
+                    OverviewStepTarget.QUESTIONS -> QuestionsStep(questions, segments, onPlayFrom)
+                    OverviewStepTarget.TOPICS -> TopicsStep(topics, topicsLabel)
+                    OverviewStepTarget.WHO_TALKED -> WhoTalkedStep(speakers, segments)
                 }
             }
         }
@@ -251,6 +290,67 @@ private fun TasksStep(actionItems: List<ActionItem>, onToggle: (ActionItem) -> U
         color = Ink,
         modifier = Modifier.clickable(onClick = onAddTask)
     )
+}
+
+/** Backs [com.example.core.model.TranscriptAiToolType.FIND_QUESTIONS] (Phase 15 §7) — the data
+ * was already extracted and persisted during normal processing; this is its first place to
+ * actually show up, mirroring [DecisionsStep]'s evidence-with-play-from pattern. */
+@Composable
+private fun QuestionsStep(questions: List<Question>, segments: List<TranscriptSegment>, onPlayFrom: (Long) -> Unit) {
+    Text(text = "Questions", style = RecordingPageType.stepHeading)
+    Spacer(modifier = Modifier.height(26.dp))
+    if (questions.isEmpty()) {
+        Text(text = "No questions came up in this recording.", style = RecordingPageType.stepBody)
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(22.dp)) {
+        questions.forEach { question ->
+            val evidenceMs = question.sourceSegmentIds.firstNotNullOfOrNull { id -> segments.find { it.id == id }?.startMs }
+            Column {
+                Text(text = question.text, style = RecordingPageType.decisionLine)
+                Spacer(modifier = Modifier.height(7.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = if (question.resolved) "Answered" else "Open",
+                        fontSize = 12.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                        color = if (question.resolved) InkMuted else Ink
+                    )
+                    if (evidenceMs != null) {
+                        Text(
+                            text = "Play from ${Formatters.formatDurationHms(evidenceMs)}",
+                            fontSize = 12.sp,
+                            color = InkMuted,
+                            modifier = Modifier.clickable { onPlayFrom(evidenceMs) }
+                        )
+                    }
+                }
+                if (question.resolved && question.answer != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(text = question.answer, fontSize = 13.5.sp, lineHeight = 20.sp, color = InkMuted)
+                }
+            }
+        }
+    }
+}
+
+/** Backs both [com.example.core.model.TranscriptAiToolType.EXTRACT_KEY_POINTS] and
+ * [com.example.core.model.TranscriptAiToolType.IDENTIFY_TOPICS] (Phase 15 §7) — both point at the
+ * same underlying [Topic] list, just under a type-varying [topicsLabel] (see
+ * [com.example.core.model.IntelligenceProfile.topicsLabel]'s own doc). */
+@Composable
+private fun TopicsStep(topics: List<Topic>, topicsLabel: String) {
+    Text(text = topicsLabel, style = RecordingPageType.stepHeading)
+    Spacer(modifier = Modifier.height(26.dp))
+    if (topics.isEmpty()) {
+        Text(text = "Nothing distinct enough to call out separately came up in this recording.", style = RecordingPageType.stepBody)
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        topics.sortedByDescending { it.relevance }.forEach { topic ->
+            Text(text = topic.name, fontSize = 16.sp, lineHeight = 24.sp, color = Ink)
+        }
+    }
 }
 
 @Composable

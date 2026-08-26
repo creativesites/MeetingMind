@@ -551,6 +551,16 @@ Each entry carries a `TranscriptAiToolReadiness`: `READY` (Clean Transcript — 
 
 **Not built this pass**: the other 17 tools stay `NOT_STARTED`/`DATA_EXISTS_NEEDS_UI` and correctly say so in the AI tools sheet — each remaining `NOT_STARTED` entry genuinely needs a new LLM prompt contract (`TranscriptAiCleanupEngine`'s established shape: explicit MUST/MAY/MUST-NOT contract, validator, honest fallback), which is out of scope for what a single pass can respectably cover; a diff-review UI specifically for FIX_TERMINOLOGY's bulk multi-segment change also wasn't built — its result currently surfaces only via the transcript itself updating and a toast, not a review screen (CLEAN_TRANSCRIPT's existing `CleanupReviewScreen` stays the one tool with a review step).
 
+## 14. Analysis Tools + Overview Integration (Phase 15 §7)
+
+**Audit finding**: `TranscriptAiToolType`'s `DATA_EXISTS_NEEDS_UI` entries were honestly labeled but under-delivered on their own claim. `FIND_DECISIONS`/`FIND_ACTION_ITEMS` really were already shown (Overview's Decisions/Tasks steps), but `FIND_QUESTIONS` and `IDENTIFY_TOPICS`/`EXTRACT_KEY_POINTS` were not — `MeetingDetailViewModel.questions`/`.topics` were fetched from Room but `topics` was never even collected into Compose state, so `TopicEntity` rows existed with zero UI anywhere in the app. Tapping any of these five tools in the AI Tools sheet just showed one generic "already shown on Overview" toast regardless of tool — which for two of the five was not true.
+
+**Fixed**: `OverviewStepper` gained two new steps — Questions (gated by `IntelligenceProfile.extractQuestions`, same pattern as Decisions/Tasks) and Topics (always present, per `IntelligenceProfile.topicsLabel`'s own doc — "the always-present key points/concepts/topics list"). `EXTRACT_KEY_POINTS` and `IDENTIFY_TOPICS` both point at the same Topics step, since they're the same underlying `Topic` data under a type-varying label, not two separate features.
+
+**Real navigation, not just a toast**: `OverviewStepTarget` is a new public enum `OverviewStepper` accepts as an optional `jumpTo` param — the AI Tools sheet's `onDataAlreadyAvailable` now switches to the Overview tab and passes the right target (DECISIONS/TASKS/QUESTIONS/TOPICS) instead of a single generic message for all five tools. The step-list construction itself (`buildOverviewSteps`) was pulled out as a pure function specifically so it's unit-testable without a Compose test harness.
+
+**Not built this pass**: `FIND_IMPORTANT_MOMENTS` and `FIND_NAMES_ORGANIZATIONS` stay `NOT_STARTED` — genuinely new extraction, not a UI gap on existing data.
+
 ## 0d. Status Update — Phase 3A: Recording Type Focus Guidance
 
 Phase 3A added `RecordingType` (Meeting, Interview, Lecture, Voice Memo, Idea, Brainstorm,
