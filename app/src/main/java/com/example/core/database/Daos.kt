@@ -249,6 +249,24 @@ interface ChatMessageDao {
 }
 
 @Dao
+interface AiJobDao {
+    @Query("SELECT * FROM ai_jobs WHERE id = :id")
+    suspend fun getById(id: String): AiJobEntity?
+
+    @Query("SELECT * FROM ai_jobs WHERE meetingId = :meetingId ORDER BY createdAt DESC")
+    fun getForMeeting(meetingId: String): Flow<List<AiJobEntity>>
+
+    @Query("SELECT * FROM ai_jobs WHERE meetingId = :meetingId AND status IN ('QUEUED', 'RUNNING')")
+    suspend fun getActiveForMeetingDirect(meetingId: String): List<AiJobEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdate(job: AiJobEntity)
+
+    @Query("DELETE FROM ai_jobs WHERE id = :id")
+    suspend fun deleteById(id: String)
+}
+
+@Dao
 interface VocabularyDao {
     @Query("SELECT * FROM vocabulary WHERE surfaceForm = :surfaceForm COLLATE NOCASE LIMIT 1")
     suspend fun findBySurfaceForm(surfaceForm: String): VocabularyEntity?

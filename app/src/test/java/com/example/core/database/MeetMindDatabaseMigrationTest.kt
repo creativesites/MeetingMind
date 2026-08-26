@@ -337,4 +337,40 @@ class MeetMindDatabaseMigrationTest {
             assertEquals(0, cursor.getInt(0))
         }
     }
+
+    private fun openV10EmptyDatabase(): SupportSQLiteDatabase {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(null) // in-memory
+            .callback(object : SupportSQLiteOpenHelper.Callback(10) {
+                override fun onCreate(db: SupportSQLiteDatabase) = Unit
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            })
+            .build()
+        helper = FrameworkSQLiteOpenHelperFactory().create(configuration)
+        return helper.writableDatabase
+    }
+
+    @Test
+    fun `migration 10 to 11 creates the ai_jobs table with all job-tracking columns`() {
+        val db = openV10EmptyDatabase()
+
+        MeetMindDatabase.MIGRATION_10_11.migrate(db)
+
+        assertTrue(tableExists(db, "ai_jobs"))
+        val columns = columnNames(db, "ai_jobs")
+        assertTrue(columns.contains("meetingId"))
+        assertTrue(columns.contains("toolType"))
+        assertTrue(columns.contains("status"))
+        assertTrue(columns.contains("progressPercent"))
+        assertTrue(columns.contains("progressStep"))
+        assertTrue(columns.contains("inputPayloadJson"))
+        assertTrue(columns.contains("resultPayloadJson"))
+        assertTrue(columns.contains("errorMessage"))
+        assertTrue(columns.contains("retryCount"))
+        db.query("SELECT COUNT(*) FROM ai_jobs").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0, cursor.getInt(0))
+        }
+    }
 }

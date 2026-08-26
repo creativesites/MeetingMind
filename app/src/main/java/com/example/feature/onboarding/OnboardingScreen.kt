@@ -75,13 +75,24 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     private val _selectedModel = MutableStateFlow(deviceCapabilities.recommendedAsrModelId)
     val selectedModel: StateFlow<String> = _selectedModel.asStateFlow()
 
+    /** What the user typed on the identity step — never pre-filled from the device name, Google
+     * account, or any contact data (Phase 15 §5: "Do not assume the user's name from device/
+     * account information"). Starts blank; staying blank is a valid choice, not an error. */
+    private val _userName = MutableStateFlow("")
+    val userName: StateFlow<String> = _userName.asStateFlow()
+
     fun selectModel(modelId: String) {
         _selectedModel.value = modelId
+    }
+
+    fun setUserName(name: String) {
+        _userName.value = name
     }
 
     fun completeOnboarding(onCompleted: () -> Unit) {
         viewModelScope.launch {
             prefs.setSelectedAsrModel(_selectedModel.value)
+            prefs.setUserName(_userName.value)
             prefs.setOnboardingCompleted(true)
             onCompleted()
         }
@@ -95,7 +106,9 @@ fun OnboardingScreen(
 ) {
     var currentStep by remember { mutableIntStateOf(0) }
     val selectedModel by viewModel.selectedModel.collectAsState()
+    val userName by viewModel.userName.collectAsState()
     val caps = viewModel.deviceCapabilities
+    val stepCount = 4
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
@@ -116,7 +129,7 @@ fun OnboardingScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    repeat(3) { index ->
+                    repeat(stepCount) { index ->
                         Box(
                             modifier = Modifier
                                 .size(width = if (index == currentStep) 24.dp else 8.dp, height = 8.dp)
@@ -135,7 +148,11 @@ fun OnboardingScreen(
             when (currentStep) {
                 0 -> OnboardingStepZero()
                 1 -> OnboardingStepOne()
-                2 -> OnboardingStepTwo(
+                2 -> OnboardingStepIdentity(
+                    userName = userName,
+                    onUserNameChange = { viewModel.setUserName(it) }
+                )
+                3 -> OnboardingStepTwo(
                     caps = caps,
                     selectedModel = selectedModel,
                     onSelectModel = { viewModel.selectModel(it) }
@@ -164,7 +181,7 @@ fun OnboardingScreen(
 
                 Button(
                     onClick = {
-                        if (currentStep < 2) {
+                        if (currentStep < stepCount - 1) {
                             currentStep++
                         } else {
                             viewModel.completeOnboarding(onFinishOnboarding)
@@ -174,7 +191,7 @@ fun OnboardingScreen(
                     modifier = Modifier.testTag("onboarding_next_btn")
                 ) {
                     Text(
-                        text = if (currentStep == 2) "Get Started" else "Continue",
+                        text = if (currentStep == stepCount - 1) "Get Started" else "Continue",
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White
                     )
@@ -314,6 +331,68 @@ private fun OnboardingStepOne() {
                 )
             }
         }
+    }
+}
+
+/**
+ * Collects the user's own name, typed by them — never pre-filled from the device name, Google
+ * account, or contacts (Phase 15 §5). Optional: leaving it blank is a valid choice and just means
+ * personalization features that could use a name (e.g. Ask AI addressing them by it) don't have
+ * one to use yet, rather than blocking onboarding on it.
+ */
+@Composable
+private fun OnboardingStepIdentity(
+    userName: String,
+    onUserNameChange: (String) -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+            modifier = Modifier.size(100.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        Text(
+            text = "What should we call you?",
+            style = MaterialTheme.typography.displayMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "Used to personalize your experience — like Ask AI addressing you by name. Optional, and stored only on this device.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            lineHeight = 24.sp
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        androidx.compose.material3.OutlinedTextField(
+            value = userName,
+            onValueChange = onUserNameChange,
+            placeholder = { Text("Your name") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().testTag("onboarding_name_field")
+        )
     }
 }
 

@@ -21,9 +21,10 @@ import androidx.room.migration.Migration
         AiModelEntity::class,
         ProcessingJobEntity::class,
         ChatMessageEntity::class,
-        VocabularyEntity::class
+        VocabularyEntity::class,
+        AiJobEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class MeetMindDatabase : RoomDatabase() {
@@ -40,6 +41,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun processingJobDao(): ProcessingJobDao
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun vocabularyDao(): VocabularyDao
+    abstract fun aiJobDao(): AiJobDao
 
     companion object {
         @Volatile
@@ -246,6 +248,36 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds the `ai_jobs` table (Phase 15 §5): persisted background AI Tools runs, so a job
+         * survives process death instead of being tied to a ViewModel's `viewModelScope`. A
+         * brand-new table — nothing to preserve.
+         */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS ai_jobs (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        meetingId TEXT NOT NULL,
+                        toolType TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        progressPercent INTEGER NOT NULL DEFAULT 0,
+                        progressStep TEXT NOT NULL DEFAULT '',
+                        inputPayloadJson TEXT NOT NULL DEFAULT '{}',
+                        resultPayloadJson TEXT,
+                        errorMessage TEXT,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        retryCount INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(meetingId) REFERENCES meetings(id) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_jobs_meetingId ON ai_jobs(meetingId)")
+            }
+        }
+
         fun getInstance(context: Context): MeetMindDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -253,12 +285,23 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance
             }
+        }
+
+        /**
+         * Test-only seam: lets a Robolectric test swap in an in-memory database for code that,
+         * like [com.example.ai.pipeline.AiToolWorker] and [com.example.ai.pipeline.MeetingProcessingWorker],
+         * must resolve [getInstance] internally (WorkManager instantiates Workers itself, so there
+         * is no constructor to inject a database into). Never called from production code.
+         */
+        @androidx.annotation.VisibleForTesting
+        fun setInstanceForTest(database: MeetMindDatabase?) {
+            INSTANCE = database
         }
     }
 }

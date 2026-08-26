@@ -44,7 +44,13 @@ data class AppPreferencesState(
     /** How interventionist AI transcript cleanup is allowed to be. See [TranscriptCleanupMode]. */
     val transcriptCleanupMode: TranscriptCleanupMode = DEFAULT_TRANSCRIPT_CLEANUP_MODE,
     /** Which engine decides speaker assignments. See [DiarizationStrategy]. */
-    val diarizationStrategy: DiarizationStrategy = DiarizationStrategy.AUTO
+    val diarizationStrategy: DiarizationStrategy = DiarizationStrategy.AUTO,
+    /** The user's own name, typed by them during onboarding — never inferred from a device name,
+     * account, or contact card (Phase 15 §5). Null until they set it; a blank onboarding answer
+     * stays null rather than storing an empty string. Used for personalization (e.g. Ask AI
+     * addressing them by name) — NOT for the single-speaker "You" label, which stays literal
+     * regardless of this value (see docs/ARCHITECTURE.md §4b). */
+    val userName: String? = null
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -60,6 +66,7 @@ class UserPreferencesManager(private val context: Context) {
     private val CLEAN_FILLER_WORDS = booleanPreferencesKey("clean_filler_words")
     private val TRANSCRIPT_CLEANUP_MODE = stringPreferencesKey("transcript_cleanup_mode")
     private val DIARIZATION_STRATEGY = stringPreferencesKey("diarization_strategy")
+    private val USER_NAME = stringPreferencesKey("user_name")
 
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
         AppPreferencesState(
@@ -81,7 +88,8 @@ class UserPreferencesManager(private val context: Context) {
             } ?: DEFAULT_TRANSCRIPT_CLEANUP_MODE,
             diarizationStrategy = prefs[DIARIZATION_STRATEGY]?.let {
                 runCatching { DiarizationStrategy.valueOf(it) }.getOrNull()
-            } ?: DiarizationStrategy.AUTO
+            } ?: DiarizationStrategy.AUTO,
+            userName = prefs[USER_NAME]
         )
     }
 
@@ -123,5 +131,14 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setDiarizationStrategy(strategy: DiarizationStrategy) {
         context.dataStore.edit { it[DIARIZATION_STRATEGY] = strategy.name }
+    }
+
+    /** A blank/whitespace-only [name] clears the stored value rather than persisting an empty
+     * string — "typed nothing" and "no name set" are the same state. */
+    suspend fun setUserName(name: String) {
+        context.dataStore.edit {
+            val trimmed = name.trim()
+            if (trimmed.isEmpty()) it.remove(USER_NAME) else it[USER_NAME] = trimmed
+        }
     }
 }

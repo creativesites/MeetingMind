@@ -291,6 +291,44 @@ data class ChatMessageEntity(
  * mis-transcription can recur and should increment [frequency]/refresh [lastConfirmedAt] on the
  * existing row rather than create a duplicate.
  */
+/**
+ * A background AI Tools run (Phase 15 §5), persisted end-to-end so it survives process death —
+ * not tied to a ViewModel's `viewModelScope`, unlike the pre-existing `proposeCleanup()` path this
+ * infrastructure is meant to eventually replace call sites for. See
+ * [com.example.core.repository.AiJobRepository] and [com.example.ai.pipeline.AiToolWorker].
+ * [toolType] is [com.example.core.model.TranscriptAiToolType.name]; [status] is
+ * [com.example.core.model.AiJobStatus.name].
+ */
+@Entity(
+    tableName = "ai_jobs",
+    foreignKeys = [
+        ForeignKey(
+            entity = MeetingEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["meetingId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["meetingId"])]
+)
+data class AiJobEntity(
+    @PrimaryKey val id: String,
+    val meetingId: String,
+    val toolType: String,
+    val status: String,
+    val progressPercent: Int = 0,
+    val progressStep: String = "",
+    /** The tool's real input, e.g. `{"segmentId": "..."}` or `{"searchText": "...", ...}" — never
+     * inspected generically, only by the specific tool implementation that reads it. */
+    val inputPayloadJson: String = "{}",
+    /** Null until [status] is SUCCEEDED — never a placeholder/fake result written early. */
+    val resultPayloadJson: String? = null,
+    val errorMessage: String? = null,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val retryCount: Int = 0
+)
+
 @Entity(tableName = "vocabulary", indices = [Index(value = ["surfaceForm"], unique = true)])
 data class VocabularyEntity(
     @PrimaryKey val id: String,

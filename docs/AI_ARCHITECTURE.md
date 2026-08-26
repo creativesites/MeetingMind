@@ -528,6 +528,19 @@ Each entry carries a `TranscriptAiToolReadiness`: `READY` (Clean Transcript — 
 
 **Deliberately not built this pass**: a settings UI to browse/edit/delete learned terms; injecting `findRelevantTerms()` results into any prompt (there is no rewrite/cleanup prompt this phase touches — that's Phase 6); a `type` classifier (every entry is honestly `OTHER` until one exists).
 
+## 12. AI Toolkit Infrastructure + User Identity (Phase 15 §5)
+
+**The gap**: the only existing background-AI mechanism, `MeetingProcessingWorker`, is permanently specific to the meeting-processing pipeline. Everything else — `proposeCleanup()`/`applyCleanupProposal()`/`reprocessCleanup()` in `MeetingDetailScreen`'s ViewModel — runs on a bare `viewModelScope.launch`, tied to that ViewModel's lifecycle. Kill the app mid-run and the operation is just gone, with no record it was ever requested.
+
+**What was built — infrastructure only, no new tool engines** (per the Phase 15 plan, individual tools are Phase 6+):
+- `AiJobEntity`/`AiJobDao` (`ai_jobs` table, migration 10→11): a persisted row for every background AI Tools run — `toolType`, `status` (`AiJobStatus`: QUEUED/RUNNING/SUCCEEDED/FAILED/CANCELLED), `progressPercent`/`progressStep`, `inputPayloadJson`/`resultPayloadJson`, `errorMessage`, `retryCount`. Written as QUEUED *before* WorkManager is ever touched, so a screen reading `AiJobRepository.getJobsForMeeting()` sees the request immediately, and reopening the app after it was killed mid-run reads the real last-known state instead of losing track of it.
+- `AiToolWorker` (`ai/pipeline`): the generic dispatcher every future tool run goes through — reads one job by id, dispatches on `toolType`. Exactly one branch is real today, `CLEAN_TRANSCRIPT` (delegates to the pre-existing `ReprocessTranscriptCleanupUseCase`, since it already exists and needed no new engine). Every other tool type fails the job honestly — `"$label isn't wired up yet — not run."`, persisted to Room as FAILED — never a fabricated result. Cancellation (via `CancellationException`) is recorded as CANCELLED, not lumped in with FAILED.
+- `AiJobRepository`: `enqueue()`/`cancel()`/`retry()` — cancel marks CANCELLED in Room immediately rather than waiting for WorkManager's cooperative cancellation to actually stop the worker (which only happens at its next suspend checkpoint); retry only acts on FAILED/CANCELLED jobs and increments `retryCount`.
+
+**Not yet switched over**: `MeetingDetailScreen`'s `proposeCleanup()`/`reprocessCleanup()` call sites still use their original `viewModelScope.launch` path — `AiToolWorker`'s CLEAN_TRANSCRIPT branch proves the infrastructure works end-to-end, but moving the UI to actually go through `AiJobRepository.enqueue()` instead is Phase 6 work (that's where the diff-review UI these jobs will feed also gets built), to avoid destabilizing an already-working review flow in what's meant to be an infrastructure-only pass.
+
+**User Identity** (same phase, unrelated mechanism): `AppPreferencesState.userName` (DataStore) — collected on a new onboarding step, typed by the user, never pre-filled from the device name, Google account, or contacts. Optional: staying blank is a valid choice. Explicitly **not** used for the single-speaker "You" label (see `docs/ARCHITECTURE.md` §4b — that stays a literal, source-derived default regardless of this preference) — it exists for personalization surfaces like Ask AI addressing the user by name, which is Phase 8 work.
+
 ## 0d. Status Update — Phase 3A: Recording Type Focus Guidance
 
 Phase 3A added `RecordingType` (Meeting, Interview, Lecture, Voice Memo, Idea, Brainstorm,
