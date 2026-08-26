@@ -137,7 +137,8 @@ object ModelCatalog {
             ModelCapability.TRANSCRIPT_CLEANUP,
             ModelCapability.EXTRACTION,
             ModelCapability.SYNTHESIS,
-            ModelCapability.ASK_MEETING
+            ModelCapability.ASK_MEETING,
+            ModelCapability.DIARIZATION_RECONCILIATION
         ),
         files = listOf(
             ModelFileSpec(
@@ -192,7 +193,8 @@ object ModelCatalog {
             ModelCapability.TRANSCRIPT_CLEANUP,
             ModelCapability.EXTRACTION,
             ModelCapability.SYNTHESIS,
-            ModelCapability.ASK_MEETING
+            ModelCapability.ASK_MEETING,
+            ModelCapability.DIARIZATION_RECONCILIATION
         ),
         files = listOf(
             ModelFileSpec(
@@ -246,7 +248,8 @@ object ModelCatalog {
             ModelCapability.TRANSCRIPT_CLEANUP,
             ModelCapability.EXTRACTION,
             ModelCapability.SYNTHESIS,
-            ModelCapability.ASK_MEETING
+            ModelCapability.ASK_MEETING,
+            ModelCapability.DIARIZATION_RECONCILIATION
         ),
         files = listOf(
             ModelFileSpec(

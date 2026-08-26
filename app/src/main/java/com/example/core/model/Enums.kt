@@ -40,7 +40,11 @@ enum class ModelCapability {
     /** Title/summary/key-points synthesis. See [com.example.ai.llm.RealMeetingIntelligenceEngine]. */
     SYNTHESIS,
     /** Grounded question-answering over a transcript. See [com.example.ai.llm.MeetingIntelligenceEngine.askMeeting]. */
-    ASK_MEETING
+    ASK_MEETING,
+    /** Reviews ambiguous speaker assignments left after deterministic diarization and proposes
+     * evidence-based merges — never invents a speaker, never asked to touch a confident one. See
+     * [com.example.ai.diarization.DiarizationReconciliationEngine]. */
+    DIARIZATION_RECONCILIATION
 }
 
 /**
@@ -69,17 +73,19 @@ enum class TranscriptCleanupMode {
  * hardcoded to one behavior. See `docs/AI_ARCHITECTURE.md` §8 "Diarization strategy scaffolding."
  */
 enum class DiarizationStrategy {
-    /** sherpa-onnx diarization + the existing deterministic fragmentation reconciliation — today's
-     * only real implementation. */
+    /** sherpa-onnx diarization + its own deterministic fragmentation reconciliation only — never
+     * consults a model, however ambiguous the result looks. */
     DETERMINISTIC,
-    /** After deterministic diarization runs, use the local intelligence layer to inspect the
-     * transcript + speaker segments for suspicious assignments. Scaffolded as a real, selectable
-     * setting this pass; the actual AI reconciliation logic is not implemented yet and this value
-     * currently behaves identically to [DETERMINISTIC] (see [com.example.ai.pipeline.MeetingProcessingPipeline]) —
-     * never silently claimed as having run when it didn't. */
+    /** After deterministic diarization runs, also asks a local LLM to review any speaker left
+     * below [com.example.ai.diarization.AMBIGUOUS_SHARE_THRESHOLD] of the recording — never a
+     * confident one — for textual evidence it's actually the same person as a dominant speaker. A
+     * no-op when nothing is ambiguous, when no capable model is installed, or when the model
+     * proposes nothing the guardrails accept; see [com.example.ai.diarization.DiarizationReconciliationEngine]. */
     AI_ASSISTED,
-    /** MeetingMind decides based on recording context (today: runs deterministic diarization
-     * normally, honoring `speakerCount == 1`'s existing skip-diarization path). */
+    /** MeetingMind decides based on recording context. Today: identical to [AI_ASSISTED] — only
+     * attempts reconciliation when something is genuinely ambiguous — kept as a separate case so a
+     * future heuristic (e.g. skip on a very long recording to save battery) has a real branch to
+     * grow into. */
     AUTO
 }
 

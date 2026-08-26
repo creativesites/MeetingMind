@@ -247,23 +247,53 @@ class MeetingProcessingPipeline(
                 speakerLabelledSegments = rawSegments
                 Log.d(PERF_TAG, "Diarization: skipped (confirmed single speaker)")
             } else {
-                // DiarizationStrategy is a real, persisted setting (see core/model/Enums.kt), but
-                // AI_ASSISTED reconciliation logic itself is not implemented yet — deliberately
-                // scoped out of this pass. Acknowledging that honestly here (rather than silently
-                // ignoring the setting) matters more than pretending the strategy dial does
-                // something it doesn't: DETERMINISTIC and AUTO both already mean "run the real
-                // sherpa-onnx diarizer," and AI_ASSISTED currently means exactly the same thing,
-                // logged as a real fallback rather than a fabricated "AI-assisted" result.
-                if (diarizationStrategy == com.example.core.model.DiarizationStrategy.AI_ASSISTED) {
-                    Log.d(PERF_TAG, "Diarization: AI-assisted strategy requested but not yet implemented — using deterministic diarization")
-                }
                 updateJob("Identifying distinct speakers...", 55, ProcessingStage.DIARIZING)
                 val diarizeStart = System.currentTimeMillis()
-                speakerLabelledSegments = when (val diarizeResult = diarizer.diarize(audioFile, totalDurationMs, rawSegments, expectedSpeakerCount = expectedSpeakerCount)) {
+                val deterministicSegments = when (val diarizeResult = diarizer.diarize(audioFile, totalDurationMs, rawSegments, expectedSpeakerCount = expectedSpeakerCount)) {
                     is AiResult.Success -> diarizeResult.value
                     else -> rawSegments // No diarization model installed: keep ASR's segments as-is.
                 }
                 Log.d(PERF_TAG, "Diarization: ${System.currentTimeMillis() - diarizeStart}ms")
+
+                // Stage G: an optional second-opinion pass on top of the deterministic result above
+                // — never a replacement for it (see DiarizationReconciliationEngine's own doc for
+                // why a single residual minor speaker is exactly the case pure numeric heuristics
+                // can't resolve alone). DETERMINISTIC never attempts this; AI_ASSISTED/AUTO only do
+                // when there is something genuinely ambiguous left to ask about.
+                val footprints = com.example.ai.diarization.computeSpeakerTranscriptFootprints(deterministicSegments)
+                speakerLabelledSegments = if (com.example.ai.diarization.shouldAttemptAiReconciliation(footprints, diarizationStrategy)) {
+                    updateJob("Refining speaker labels...", 57, ProcessingStage.DIARIZING)
+                    val reconcileModelId = LlmModelResolver.resolveForModeOrNull(
+                        modelStorage, ModelCapability.DIARIZATION_RECONCILIATION, com.example.core.model.ModelTier.LIGHTWEIGHT
+                    )
+                    if (reconcileModelId == null) {
+                        Log.d(PERF_TAG, "Diarization reconciliation: skipped — no installed model has DIARIZATION_RECONCILIATION capability")
+                        deterministicSegments
+                    } else {
+                        val reconcileEngine = com.example.ai.diarization.RealDiarizationReconciliationEngine(
+                            MediaPipeLanguageModel(context, modelStorage, modelId = reconcileModelId)
+                        )
+                        val reconcileResult = reconcileEngine.reconcile(deterministicSegments)
+                        LlmEngineManager.release()
+                        when (reconcileResult) {
+                            is AiResult.Success -> {
+                                val r = reconcileResult.value
+                                if (r.mergedSpeakerIds.isNotEmpty()) {
+                                    Log.d(PERF_TAG, "Diarization reconciliation: merged ${r.mergedSpeakerIds} — ${r.reasons.joinToString("; ")}")
+                                } else {
+                                    Log.d(PERF_TAG, "Diarization reconciliation: no confident merges proposed")
+                                }
+                                r.segments
+                            }
+                            else -> {
+                                Log.d(PERF_TAG, "Diarization reconciliation: unavailable (${reconcileResult.describeFailure() ?: "no reason given"}) — using deterministic result")
+                                deterministicSegments
+                            }
+                        }
+                    }
+                } else {
+                    deterministicSegments
+                }
             }
 
             // Regroup the VAD-sized fragments into readable paragraphs. This runs *after*
