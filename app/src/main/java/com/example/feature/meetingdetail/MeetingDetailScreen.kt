@@ -288,14 +288,14 @@ class MeetingDetailViewModel(
     fun togglePlayPause() = PlaybackController.togglePlayPause()
     fun seekPlayback(positionMs: Long) = PlaybackController.seekTo(positionMs)
 
-    /** Used by "jump to timestamp" actions (transcript/decisions/action items). Loads this recording into the shared player if it isn't already, then seeks and plays. */
+    /** Used by "jump to timestamp" actions (transcript/decisions/action items). Loads this
+     * recording into the shared player if it isn't already, then seeks and plays — all as one
+     * atomic [PlaybackController.playAt] call, so the seek can never race the async load/prepare
+     * sequence and silently get dropped (which is what previously let a tapped segment start
+     * playback from 0:00 instead of the tapped timestamp). */
     fun jumpToTimestamp(positionMs: Long) {
-        val path = meeting.value?.audioFilePath
-        if (PlaybackController.state.value.recordingId != meetingId && path != null) {
-            playAudio(File(path))
-        }
-        PlaybackController.seekTo(positionMs)
-        if (!PlaybackController.state.value.isPlaying) PlaybackController.togglePlayPause()
+        val path = meeting.value?.audioFilePath ?: return
+        PlaybackController.playAt(getApplication(), meetingId, meeting.value?.title ?: "Recording", File(path), positionMs)
     }
 
     private val _asrModelInstalled = MutableStateFlow(
@@ -634,15 +634,21 @@ fun MeetingDetailScreen(
     val isThisRecordingActive = playbackState.recordingId == meeting?.id
     LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
 
-    // The one place "which transcript segment is playing right now" gets computed — shared by the
-    // player's optional lyrics-style preview and the Transcript tab's auto-scroll/highlight, so
-    // there is exactly one observer of playback position driving both, not two independent ones.
-    // derivedStateOf means downstream composables only recompose when the ANSWER changes (i.e.
-    // playback crosses into the next segment), not on every ~200ms position tick.
+    // PlaybackController is the single authoritative source for "which segment/speaker is
+    // playing right now" (see PlaybackState.currentSegmentId) — this screen only registers the
+    // segments it has and reads the answer back, never re-derives it from positionMs itself.
+    LaunchedEffect(meeting?.id, transcript.segments) {
+        meeting?.id?.let { PlaybackController.setSegments(it, transcript.segments) }
+    }
+
+    // Shared by the player's optional lyrics-style preview and the Transcript tab's
+    // auto-scroll/highlight, so there is exactly one place reading the current segment, not two
+    // independent ones. derivedStateOf means downstream composables only recompose when the
+    // ANSWER changes (i.e. playback crosses into the next segment), not on every ~200ms position tick.
     val activeSegmentState: State<TranscriptSegment?> = remember(transcript.segments) {
         derivedStateOf {
             if (!isThisRecordingActive) null
-            else com.example.core.common.findActiveTranscriptSegment(transcript.segments, playbackState.positionMs)
+            else transcript.segments.find { it.id == playbackState.currentSegmentId }
         }
     }
     val activeSegment by activeSegmentState
@@ -1645,15 +1651,19 @@ fun TranscriptTab(
                 val coroutineScope = rememberCoroutineScope()
 
                 // No cards, no borders, no elevation in reading mode
-                // (docs/recording-page-implementation.md §2.3) — just a 38dp mono-timestamp gutter
-                // and, for the playing segment only, a 2dp Accent rule immediately left of the text.
+                // (docs/recording-page-implementation.md §2.3) — just a 38dp mono-timestamp gutter,
+                // then for the playing segment only a 2dp Accent rule, then a deliberate gap before
+                // the text column (which starts at 38dp gutter + 14dp Arrangement.spacedBy = 52dp).
+                // The rule sits right after the gutter (x=42dp, i.e. 41-43dp once its 2dp stroke is
+                // centered) rather than immediately before the text, so there is real breathing
+                // room (~9dp) between the border and the transcript text it's never allowed to touch.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(if (isDeepLinkHighlighted || isSearchMatch) AccentWash else Color.Transparent)
                         .drawBehind {
                             if (isPlaying) {
-                                val x = 50.dp.toPx()
+                                val x = 42.dp.toPx()
                                 drawLine(
                                     color = Accent,
                                     start = Offset(x, 0f),
