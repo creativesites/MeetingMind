@@ -3,7 +3,7 @@ package com.example.ai.pipeline
 import com.example.ai.common.AiResult
 import com.example.ai.llm.LanguageModel
 import com.example.ai.llm.TranscriptChunker
-import com.example.core.model.RecordingType
+import com.example.core.model.TranscriptCleanupProfile
 import com.example.core.model.TranscriptSegment
 import org.json.JSONArray
 
@@ -13,9 +13,11 @@ import org.json.JSONArray
  * Its only job is reconstructing already-structured, already-rule-based-cleaned paragraphs
  * ([TranscriptStructureEngine] + [TranscriptCleanupEngine]) into a more faithful, readable
  * transcript using a real on-device LLM — never a summarizer, never asked to add or infer
- * anything the transcript doesn't already say. Every candidate is validated by
- * [TranscriptQualityValidator] before it can ever replace the deterministic cleanup that already
- * ran; a rejected or unavailable candidate simply falls back to that deterministic result (see
+ * anything the transcript doesn't already say. How interventionist this is allowed to be is
+ * entirely governed by [TranscriptCleanupProfile] (recording type × cleanup mode) — there is one
+ * engine, not a different implementation per mode or per recording type. Every candidate is
+ * validated by [TranscriptQualityValidator] against [profile] before it can ever replace the
+ * cleanup that already ran; a rejected or unavailable candidate simply falls back (see
  * [TranscriptAiCleanupResult]) rather than ever fabricating a replacement.
  */
 interface TranscriptAiCleanupEngine {
@@ -25,6 +27,9 @@ interface TranscriptAiCleanupEngine {
      *   used as this pass's *input* (building on top of the deterministic pass rather than
      *   redoing it), while [TranscriptSegment.text] (the real raw ASR text) is always what every
      *   candidate is validated against.
+     * @param profile Recording type × cleanup mode, the single source of truth for prompt
+     *   permissiveness and validator thresholds — see [com.example.core.model.RecordingType.transcriptCleanupProfile].
+     * @param singleSpeakerMode True when diarization was skipped for a confirmed single speaker.
      * @return [AiResult.ModelUnavailable] only when no cleanup-capable model could be reached at
      *   all (the very first attempt fails that way); a later per-chunk failure or a rejected
      *   candidate degrades gracefully within an [AiResult.Success] instead — a single bad model
@@ -32,7 +37,7 @@ interface TranscriptAiCleanupEngine {
      */
     suspend fun clean(
         segments: List<TranscriptSegment>,
-        recordingType: RecordingType,
+        profile: TranscriptCleanupProfile,
         singleSpeakerMode: Boolean
     ): AiResult<TranscriptAiCleanupResult>
 }
@@ -60,6 +65,14 @@ data class TranscriptAiCleanupResult(
  * prompts that chunker's defaults were tuned for) to pack already-structured paragraphs into
  * model calls sized to [contextLengthTokens], which must come from the real selected model's
  * catalog entry — never an arbitrary constant.
+ *
+ * Each call also carries a bounded, read-only context window — the paragraph immediately before
+ * and immediately after the chunk being rewritten — so the model can resolve a self-correction,
+ * reference, or terminology repetition that spans a chunk boundary without ever being asked (or
+ * allowed) to rewrite that neighboring paragraph itself. This is a deliberate compromise between
+ * "one paragraph per call with full neighbor context" (maximally precise, far more model calls)
+ * and "the whole transcript in one call" (fast, but a tiny on-device model has no business
+ * reading hours of audio at once) — chunk-level, not per-paragraph, context.
  */
 class RealTranscriptAiCleanupEngine(
     private val languageModel: LanguageModel,
@@ -68,7 +81,7 @@ class RealTranscriptAiCleanupEngine(
 
     override suspend fun clean(
         segments: List<TranscriptSegment>,
-        recordingType: RecordingType,
+        profile: TranscriptCleanupProfile,
         singleSpeakerMode: Boolean
     ): AiResult<TranscriptAiCleanupResult> {
         // A hand-correction is never sent through automatic cleanup — the user's own edit always
@@ -77,6 +90,7 @@ class RealTranscriptAiCleanupEngine(
         if (eligible.isEmpty()) {
             return AiResult.Success(TranscriptAiCleanupResult(segments, 0, 0, 0))
         }
+        val sortedAll = segments.sortedBy { it.startMs }
 
         val chunks = TranscriptChunker.chunk(
             eligible,
@@ -102,8 +116,11 @@ class RealTranscriptAiCleanupEngine(
                 continue
             }
 
+            val contextBefore = contextParagraphBefore(sortedAll, chunk.segments.first())
+            val contextAfter = contextParagraphAfter(sortedAll, chunk.segments.last())
+
             chunksAttempted++
-            val prompt = buildCleanupPrompt(chunk.segments, recordingType, singleSpeakerMode)
+            val prompt = buildCleanupPrompt(chunk.segments, contextBefore, contextAfter, profile, singleSpeakerMode)
             val result = languageModel.generate(prompt, maxOutputTokens = CLEANUP_OUTPUT_TOKENS)
 
             // Nothing has succeeded yet and the very first real attempt reports the model isn't
@@ -120,7 +137,7 @@ class RealTranscriptAiCleanupEngine(
             }
             for (seg in chunk.segments) {
                 val candidate = parsed[seg.id]
-                val verdict = TranscriptQualityValidator.validate(seg.text, candidate)
+                val verdict = TranscriptQualityValidator.validate(seg.text, candidate, profile)
                 if (verdict.accepted) {
                     cleanedById[seg.id] = candidate!!
                     accepted++
@@ -134,32 +151,53 @@ class RealTranscriptAiCleanupEngine(
         return AiResult.Success(TranscriptAiCleanupResult(resultSegments, chunksAttempted, accepted, fallback))
     }
 
+    private fun contextParagraphBefore(sortedAll: List<TranscriptSegment>, first: TranscriptSegment): TranscriptSegment? {
+        val idx = sortedAll.indexOfFirst { it.id == first.id }
+        return if (idx > 0) sortedAll[idx - 1] else null
+    }
+
+    private fun contextParagraphAfter(sortedAll: List<TranscriptSegment>, last: TranscriptSegment): TranscriptSegment? {
+        val idx = sortedAll.indexOfFirst { it.id == last.id }
+        return if (idx in 0 until sortedAll.lastIndex) sortedAll[idx + 1] else null
+    }
+
     private fun buildCleanupPrompt(
-        segments: List<TranscriptSegment>,
-        recordingType: RecordingType,
+        primarySegments: List<TranscriptSegment>,
+        contextBefore: TranscriptSegment?,
+        contextAfter: TranscriptSegment?,
+        profile: TranscriptCleanupProfile,
         singleSpeakerMode: Boolean
     ): String {
-        val guidance = recordingType.cleanupGuidance().let { if (it.isNotBlank()) "\n$it" else "" }
+        val guidance = profile.typeGuidance.let { if (it.isNotBlank()) "\n$it" else "" }
         val speakerNote = if (singleSpeakerMode) {
             "\nThis is a single continuous speaker. Reconstruct natural paragraphs — a pause is not, by itself, evidence of a new thought."
         } else ""
-        val paragraphs = segments.joinToString("\n") { seg ->
-            val speaker = seg.speakerName ?: "Unknown speaker"
-            "[${seg.id}] $speaker: ${seg.cleanedText ?: seg.text}"
-        }
+        val contextBeforeBlock = contextBefore?.let {
+            "\nCONTEXT BEFORE (for reference only — do NOT rewrite this, do NOT include it in your response):\n${renderParagraph(it)}\n"
+        } ?: ""
+        val contextAfterBlock = contextAfter?.let {
+            "\nCONTEXT AFTER (for reference only — do NOT rewrite this, do NOT include it in your response):\n${renderParagraph(it)}\n"
+        } ?: ""
+        val primaryBlock = primarySegments.joinToString("\n") { renderParagraph(it) }
+
         return """
             You are reconstructing real speech-to-text output into a faithful, professional transcript. You are NOT summarizing, NOT improving the speaker's argument, and NOT inferring missing information — you are turning disfluent spoken text into readable written text of the exact same content.
 
             You MUST preserve: meaning, chronology, names, numbers, dates, monetary amounts, commitments, uncertainty, contradictions, speaker identity, and every substantive detail.
-            You MAY: remove obvious filler words and repeated words, repair false starts, join fragmented sentence pieces, improve punctuation and paragraph readability, and resolve an immediate self-correction ONLY when the correction is explicitly present in the text (for example "Monday — sorry, I mean Tuesday" becomes "Tuesday").
+            ${profile.permissivenessGuidance}
             You MUST NOT: invent words, facts, names, numbers, dates, or amounts; summarize; add explanations; infer missing speech; remove meaningful uncertainty or contradictions; change speaker attribution; or reorder events.
             $guidance$speakerNote
-
-            Respond with ONLY a JSON array, no markdown, no commentary, exactly one entry per paragraph below in the same order, using the exact id given: [{"id":string,"text":string}]
-
-            Paragraphs:
-            $paragraphs
+            $contextBeforeBlock
+            PRIMARY TEXT — rewrite ONLY this. Respond with exactly one entry per [id] below, using the exact id given:
+            $primaryBlock
+            $contextAfterBlock
+            Respond with ONLY a JSON array, no markdown, no commentary: [{"id":string,"text":string}]
         """.trimIndent()
+    }
+
+    private fun renderParagraph(seg: TranscriptSegment): String {
+        val speaker = seg.speakerName ?: "Unknown speaker"
+        return "[${seg.id}] $speaker: ${seg.cleanedText ?: seg.text}"
     }
 
     /** Salvage-tolerant: takes the first `[` through the last `]` so a model that adds stray
@@ -189,7 +227,7 @@ class RealTranscriptAiCleanupEngine(
         // The cleanup prompt's fixed instruction text is far shorter than an extraction/synthesis
         // schema prompt — reserving less here (vs. TranscriptChunker's own defaults) leaves more
         // real budget for actual transcript text per call, especially on a small cleanup-tier model.
-        const val CLEANUP_PROMPT_OVERHEAD_TOKENS = 300
+        const val CLEANUP_PROMPT_OVERHEAD_TOKENS = 350
         // Generous relative to the input budget: the response must return the full cleaned text of
         // every paragraph in the chunk PLUS JSON structure overhead, not just a short verdict.
         const val CLEANUP_OUTPUT_TOKENS = 600

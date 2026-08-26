@@ -99,6 +99,12 @@ class MeetingProcessingPipeline(
         // (see ModelCatalog.qwen25_0_5bInstruct) is actually honored instead of always running
         // whichever model happened to be the constructor default.
         llmModelId: String? = null,
+        // Defaults to the safest (Conservative-equivalent) behavior for any caller that doesn't
+        // pass one explicitly (existing tests included) — a real caller passes the user's actual
+        // preference (see ProcessingScreen), which defaults to Moderate (see
+        // core/datastore/UserPreferences.kt's DEFAULT_TRANSCRIPT_CLEANUP_MODE).
+        cleanupMode: com.example.core.model.TranscriptCleanupMode = com.example.core.model.TranscriptCleanupMode.CONSERVATIVE,
+        diarizationStrategy: com.example.core.model.DiarizationStrategy = com.example.core.model.DiarizationStrategy.AUTO,
         onProgress: (step: String, percent: Int, stage: ProcessingStage) -> Unit
     ): MeetingEntity = withContext(Dispatchers.Default) {
         val effectiveIntelligenceEngine = if (llmModelId != null) {
@@ -241,6 +247,16 @@ class MeetingProcessingPipeline(
                 speakerLabelledSegments = rawSegments
                 Log.d(PERF_TAG, "Diarization: skipped (confirmed single speaker)")
             } else {
+                // DiarizationStrategy is a real, persisted setting (see core/model/Enums.kt), but
+                // AI_ASSISTED reconciliation logic itself is not implemented yet — deliberately
+                // scoped out of this pass. Acknowledging that honestly here (rather than silently
+                // ignoring the setting) matters more than pretending the strategy dial does
+                // something it doesn't: DETERMINISTIC and AUTO both already mean "run the real
+                // sherpa-onnx diarizer," and AI_ASSISTED currently means exactly the same thing,
+                // logged as a real fallback rather than a fabricated "AI-assisted" result.
+                if (diarizationStrategy == com.example.core.model.DiarizationStrategy.AI_ASSISTED) {
+                    Log.d(PERF_TAG, "Diarization: AI-assisted strategy requested but not yet implemented — using deterministic diarization")
+                }
                 updateJob("Identifying distinct speakers...", 55, ProcessingStage.DIARIZING)
                 val diarizeStart = System.currentTimeMillis()
                 speakerLabelledSegments = when (val diarizeResult = diarizer.diarize(audioFile, totalDurationMs, rawSegments, expectedSpeakerCount = expectedSpeakerCount)) {
@@ -260,50 +276,20 @@ class MeetingProcessingPipeline(
             // Free the segmentation+embedding models before the LLM's much larger allocation loads.
             SherpaEngineManager.releaseAll()
 
-            // STEP 3.5: Transcript cleanup (best-effort — a rejected/unavailable candidate simply
-            // leaves the real ASR/diarized text as-is). Every candidate is validated before it's
-            // ever attached; the raw text a paragraph carries is never overwritten, only offered a
-            // separate cleanedText alongside it. Never run for an already-user-edited segment —
+            // STEP 3.5/3.6: Transcript cleanup (rule-based, then a validated AI upgrade) — extracted
+            // into cleanTranscript() below so a standalone reprocess flow (change cleanup mode,
+            // re-clean an already-transcribed meeting) can call the EXACT same code path without a
+            // second, special-cased implementation. Never run for an already-user-edited segment —
             // that can't happen on this first-run path (nothing has been edited yet at this point
-            // in a brand-new meeting's life), but the check is here so this stage stays correct if
-            // this pipeline is ever reused for a reprocess-after-edit flow.
-            updateJob("Cleaning up your transcript...", 58, ProcessingStage.CLEANING_TRANSCRIPT)
-            val ruleCleanedSegments = applyTranscriptCleanup(paragraphedSegments, cleanupEngine)
-
-            // STEP 3.6: AI transcript cleanup — a validated *upgrade* over the rule-based pass
-            // above, never a replacement for it: this only ever overwrites a segment's cleanedText
-            // when it finds a real cleanup-capable model installed AND that model's candidate
-            // passes TranscriptQualityValidator against the real raw text. No model installed, no
-            // candidate accepted, or a user-edited segment (never even offered) all fall back to
-            // exactly what the rule-based pass already produced — never a fabricated status.
-            val aiCleanupModelId = LlmModelResolver.resolveSmallestInstalled(modelStorage, ModelCapability.TRANSCRIPT_CLEANUP)
-            val diarizedSegments = if (aiCleanupModelId != null) {
-                updateJob("Refining transcript with AI...", 60, ProcessingStage.CLEANING_TRANSCRIPT)
-                val aiStart = System.currentTimeMillis()
-                val aiCleanupEngine = RealTranscriptAiCleanupEngine(
-                    languageModel = MediaPipeLanguageModel(context, modelStorage, modelId = aiCleanupModelId),
-                    contextLengthTokens = ModelCatalog.entries.find { it.id == aiCleanupModelId }?.contextLengthTokens
-                        ?: DEFAULT_LLM_CONTEXT_TOKENS
-                )
-                val aiResult = aiCleanupEngine.clean(ruleCleanedSegments, recordingType, singleSpeakerMode = expectedSpeakerCount == 1)
-                // Free the cleanup model before the (possibly different) intelligence model loads —
-                // at most one LLM allocation resident at a time, same discipline as every other stage.
-                LlmEngineManager.release()
-                when (aiResult) {
-                    is AiResult.Success -> {
-                        val r = aiResult.value
-                        Log.d(PERF_TAG, "AI cleanup: ${System.currentTimeMillis() - aiStart}ms, ${r.chunksAttempted} chunks, ${r.paragraphsAccepted} accepted, ${r.paragraphsFallback} fallback")
-                        r.segments
-                    }
-                    else -> {
-                        Log.d(PERF_TAG, "AI cleanup: unavailable (${aiResult.describeFailure() ?: "no reason given"}) — using rule-based cleanup only")
-                        ruleCleanedSegments
-                    }
-                }
-            } else {
-                Log.d(PERF_TAG, "AI cleanup: skipped — no installed model has TRANSCRIPT_CLEANUP capability")
-                ruleCleanedSegments
-            }
+            // in a brand-new meeting's life), but the check lives inside cleanTranscript so it's
+            // correct on both paths.
+            val diarizedSegments = cleanTranscript(
+                structuredSegments = paragraphedSegments,
+                recordingType = recordingType,
+                cleanupMode = cleanupMode,
+                singleSpeakerMode = expectedSpeakerCount == 1,
+                onStatus = { step -> updateJob(step, if (step.startsWith("Refining")) 60 else 58, ProcessingStage.CLEANING_TRANSCRIPT) }
+            )
 
             // STEP 4: Meeting Intelligence (best-effort — unavailable leaves summary/insights empty)
             val intelligenceProfile = recordingType.intelligenceProfile()
@@ -449,6 +435,70 @@ class MeetingProcessingPipeline(
                 meetingDao.updateMeeting(existingMeeting.copy(status = MeetingStatus.ERROR.name))
             }
             throw e
+        }
+    }
+
+    /**
+     * Runs rule-based cleanup, then a validated AI cleanup upgrade, against already-structured
+     * paragraphs — never touches audio, VAD, ASR, or diarization. Used internally by
+     * [processMeeting] for a fresh run's cleanup stage, AND directly by
+     * [com.example.core.domain.ReprocessTranscriptCleanupUseCase] to let a user re-clean an
+     * already-transcribed meeting with a different mode without re-recording — one real
+     * implementation of "how cleanup runs," not a second special-cased pipeline.
+     *
+     * @param onStatus Plain status text only (no percent/stage) — [processMeeting] bridges this
+     *   into its own job-progress persistence; a standalone reprocess call can drive a simple
+     *   loading indicator directly from the same strings.
+     */
+    suspend fun cleanTranscript(
+        structuredSegments: List<TranscriptSegment>,
+        recordingType: com.example.core.model.RecordingType,
+        cleanupMode: com.example.core.model.TranscriptCleanupMode,
+        singleSpeakerMode: Boolean,
+        onStatus: suspend (String) -> Unit = {}
+    ): List<TranscriptSegment> = withContext(Dispatchers.Default) {
+        val profile = recordingType.transcriptCleanupProfile(cleanupMode)
+
+        onStatus("Cleaning up your transcript...")
+        val ruleCleanedSegments = applyTranscriptCleanup(structuredSegments, cleanupEngine)
+
+        // A validated *upgrade* over the rule-based pass above, never a replacement for it: this
+        // only ever overwrites a segment's cleanedText when it finds a real cleanup-capable model
+        // installed AND that model's candidate passes TranscriptQualityValidator against the real
+        // raw text. No model installed, no candidate accepted, or a user-edited segment (never
+        // even offered) all fall back to exactly what the rule-based pass already produced — never
+        // a fabricated status.
+        val aiCleanupModelId = LlmModelResolver.resolveForModeOrNull(modelStorage, ModelCapability.TRANSCRIPT_CLEANUP, profile.preferredModelTier)
+        if (aiCleanupModelId == null) {
+            Log.d(PERF_TAG, "AI cleanup: skipped — no installed model has TRANSCRIPT_CLEANUP capability")
+            return@withContext ruleCleanedSegments
+        }
+
+        onStatus("Refining transcript with AI...")
+        val aiStart = System.currentTimeMillis()
+        val aiCleanupEngine = RealTranscriptAiCleanupEngine(
+            languageModel = MediaPipeLanguageModel(context, modelStorage, modelId = aiCleanupModelId),
+            contextLengthTokens = ModelCatalog.entries.find { it.id == aiCleanupModelId }?.contextLengthTokens
+                ?: DEFAULT_LLM_CONTEXT_TOKENS
+        )
+        val aiResult = aiCleanupEngine.clean(ruleCleanedSegments, profile, singleSpeakerMode)
+        // Free the cleanup model before the (possibly different) intelligence model loads — at
+        // most one LLM allocation resident at a time, same discipline as every other stage.
+        LlmEngineManager.release()
+        when (aiResult) {
+            is AiResult.Success -> {
+                val r = aiResult.value
+                Log.d(
+                    PERF_TAG,
+                    "AI cleanup: ${System.currentTimeMillis() - aiStart}ms, mode=${cleanupMode.name}, model=$aiCleanupModelId, " +
+                        "${r.chunksAttempted} chunks, ${r.paragraphsAccepted} accepted, ${r.paragraphsFallback} fallback"
+                )
+                r.segments
+            }
+            else -> {
+                Log.d(PERF_TAG, "AI cleanup: unavailable (${aiResult.describeFailure() ?: "no reason given"}) — using rule-based cleanup only")
+                ruleCleanedSegments
+            }
         }
     }
 

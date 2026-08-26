@@ -40,6 +40,12 @@ class MeetingProcessingWorker(
         val llmModelId = inputData.getString(KEY_LLM_MODEL_ID)
         val expectedSpeakerCount = inputData.getInt(KEY_EXPECTED_SPEAKER_COUNT, -1).takeIf { it > 0 }
         val recordingTitle = inputData.getString(KEY_RECORDING_TITLE) ?: "recording"
+        val cleanupMode = inputData.getString(KEY_CLEANUP_MODE)?.let {
+            runCatching { com.example.core.model.TranscriptCleanupMode.valueOf(it) }.getOrNull()
+        } ?: com.example.core.model.TranscriptCleanupMode.CONSERVATIVE
+        val diarizationStrategy = inputData.getString(KEY_DIARIZATION_STRATEGY)?.let {
+            runCatching { com.example.core.model.DiarizationStrategy.valueOf(it) }.getOrNull()
+        } ?: com.example.core.model.DiarizationStrategy.AUTO
 
         setForeground(createForegroundInfo("Preparing audio...", 5, recordingTitle))
 
@@ -54,6 +60,8 @@ class MeetingProcessingWorker(
                 modelId = modelId,
                 expectedSpeakerCount = expectedSpeakerCount,
                 llmModelId = llmModelId,
+                cleanupMode = cleanupMode,
+                diarizationStrategy = diarizationStrategy,
                 onProgress = { step, percent, stage ->
                     // onProgress is a plain (non-suspend) callback invoked from the pipeline's
                     // coroutine; runBlocking here is safe because we're already off the main
@@ -156,6 +164,8 @@ class MeetingProcessingWorker(
         const val KEY_LLM_MODEL_ID = "llmModelId"
         const val KEY_EXPECTED_SPEAKER_COUNT = "expectedSpeakerCount"
         const val KEY_RECORDING_TITLE = "recordingTitle"
+        const val KEY_CLEANUP_MODE = "cleanupMode"
+        const val KEY_DIARIZATION_STRATEGY = "diarizationStrategy"
 
         const val KEY_PROGRESS_STEP = "step"
         const val KEY_PROGRESS_PERCENT = "percent"

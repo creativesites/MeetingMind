@@ -54,4 +54,25 @@ object LlmModelResolver {
             .filter { modelStorage.isInstalled(it.id) }
             .minByOrNull { it.tier.ordinal }
             ?.id
+
+    /**
+     * The installed model whose tier is closest to [preferredTier] — never a hard requirement.
+     * A mode that prefers [com.example.core.model.ModelTier.HIGH_QUALITY] but only finds
+     * `LIGHTWEIGHT` installed still gets that model back rather than refusing to run at all; a
+     * mode never assumes the biggest installed model is automatically the right choice either —
+     * it degrades toward its own preferred tier, not toward whatever happens to be biggest.
+     * Returns null only when nothing installed has [capability] at all.
+     */
+    fun resolveForModeOrNull(
+        modelStorage: ModelStorage,
+        capability: ModelCapability,
+        preferredTier: com.example.core.model.ModelTier
+    ): String? {
+        val installed = ModelCatalog.entries
+            .filter { capability in it.capability }
+            .filter { modelStorage.isInstalled(it.id) }
+        if (installed.isEmpty()) return null
+        return installed.find { it.tier == preferredTier }?.id
+            ?: installed.minByOrNull { kotlin.math.abs(it.tier.ordinal - preferredTier.ordinal) }?.id
+    }
 }

@@ -146,6 +146,29 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
     }
 
     /**
+     * The single source of truth combining recording type AND cleanup mode into one concrete
+     * policy — the prompt's permissiveness text, the validator's acceptance thresholds, and the
+     * preferred model quality tier all come from here, so they can never drift out of sync with
+     * each other the way three independent hardcoded copies could. Built from [cleanupGuidance]
+     * (unchanged, still the type-specific structural guidance) plus mode-specific permissiveness
+     * rules and thresholds — never a second, parallel place that redefines what a recording type
+     * means for cleanup.
+     */
+    fun transcriptCleanupProfile(mode: TranscriptCleanupMode): TranscriptCleanupProfile {
+        val tuning = CleanupModeTuning.forMode(mode)
+        return TranscriptCleanupProfile(
+            mode = mode,
+            recordingType = this,
+            typeGuidance = cleanupGuidance(),
+            permissivenessGuidance = tuning.permissivenessGuidance,
+            minLengthRatio = tuning.minLengthRatio,
+            maxLengthRatio = tuning.maxLengthRatio,
+            minWordOverlap = tuning.minWordOverlap,
+            preferredModelTier = tuning.preferredModelTier
+        )
+    }
+
+    /**
      * How aggressively [com.example.ai.pipeline.TranscriptStructureEngine] should merge raw ASR
      * fragments into readable paragraphs for this recording type. Distinct from
      * [intelligenceProfile] — this governs the transcript's own shape, not what the LLM is asked
@@ -194,6 +217,65 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
  * detection) — a longer pause is far more likely to be someone still forming a thought than a new
  * one starting, and the fixed-threshold approach this replaces couldn't tell the two apart.
  */
+/**
+ * The concrete policy [com.example.ai.pipeline.TranscriptAiCleanupEngine] and
+ * [com.example.ai.pipeline.TranscriptQualityValidator] both read — combining [recordingType]'s
+ * structural guidance with [mode]'s permissiveness. See [RecordingType.transcriptCleanupProfile].
+ */
+data class TranscriptCleanupProfile(
+    val mode: TranscriptCleanupMode,
+    val recordingType: RecordingType,
+    /** Recording-type-specific structural guidance — identical text to [RecordingType.cleanupGuidance]. */
+    val typeGuidance: String,
+    /** What this mode additionally allows beyond the universal MUST/MUST-NOT fidelity contract —
+     * appended to the cleanup prompt, never replacing the contract itself. */
+    val permissivenessGuidance: String,
+    val minLengthRatio: Double,
+    val maxLengthRatio: Double,
+    val minWordOverlap: Double,
+    /** Which installed model tier this mode prefers — see [ModelTier]. Never a hard requirement:
+     * the closest available tier is used when the preferred one isn't installed (see
+     * `LlmModelResolver.resolveForModeOrNull`) — a mode never refuses to run just because the
+     * "ideal" tier isn't on the device. */
+    val preferredModelTier: ModelTier
+)
+
+/**
+ * The mode-only half of [TranscriptCleanupProfile]'s tuning — deliberately independent of
+ * recording type, since how *interventionist* cleanup is allowed to be and how *structurally* a
+ * recording type wants its paragraphs are genuinely separate questions (see the type-specific
+ * `when` in [RecordingType.transcriptCleanupProfile] for the other half).
+ */
+private data class CleanupModeTuning(
+    val permissivenessGuidance: String,
+    val minLengthRatio: Double,
+    val maxLengthRatio: Double,
+    val minWordOverlap: Double,
+    val preferredModelTier: ModelTier
+) {
+    companion object {
+        fun forMode(mode: TranscriptCleanupMode): CleanupModeTuning = when (mode) {
+            TranscriptCleanupMode.CONSERVATIVE -> CleanupModeTuning(
+                permissivenessGuidance = "Make the smallest possible changes that improve readability: remove obvious filler words, remove duplicated words, resolve obvious immediate repetitions, join fragmented sentences, fix obvious punctuation and capitalization, resolve obvious false starts. Preserve the speaker's actual wording as closely as possible otherwise — do not rewrite sentences that are already readable.",
+                // Identical to the pre-mode thresholds this replaces — Conservative is the
+                // no-regression baseline every other mode is measured against.
+                minLengthRatio = 0.4, maxLengthRatio = 1.3, minWordOverlap = 0.5,
+                preferredModelTier = ModelTier.LIGHTWEIGHT
+            )
+            TranscriptCleanupMode.MODERATE -> CleanupModeTuning(
+                permissivenessGuidance = "Beyond basic filler/repetition removal: remove unnecessary conversational repetition, remove incomplete thoughts that are clearly abandoned, resolve self-corrections (keep only the corrected version), combine fragmented sentences, improve sentence structure, correct an obvious ASR mistake when nearby context makes the intended word unambiguous, remove redundant phrases, and restructure awkward spoken grammar into readable written language. Preserve repetition that clearly conveys emphasis rather than accidental restart.",
+                minLengthRatio = 0.3, maxLengthRatio = 1.6, minWordOverlap = 0.35,
+                preferredModelTier = ModelTier.RECOMMENDED
+            )
+            TranscriptCleanupMode.AGGRESSIVE -> CleanupModeTuning(
+                permissivenessGuidance = "Produce a polished, professional transcript: substantial sentence restructuring is expected, remove unnecessary or abandoned sentences, remove repeated ideas, resolve self-corrections, correct likely ASR mistranscriptions using surrounding context, normalize terminology, combine fragmented segments into coherent paragraphs, and convert spoken grammar into professional written language. This is still a transcript of what was said, never a summary: do not shorten arbitrarily, do not add explanations or conclusions the speaker didn't state, and never invent a fact, name, number, or date not already present in the source.",
+                minLengthRatio = 0.2, maxLengthRatio = 2.0, minWordOverlap = 0.25,
+                preferredModelTier = ModelTier.HIGH_QUALITY
+            )
+        }
+    }
+}
+
 data class TranscriptMergePolicy(
     val maxGapMs: Long,
     val extendedGapMs: Long,

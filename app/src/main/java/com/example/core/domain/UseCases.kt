@@ -94,6 +94,44 @@ class TranscribeMeetingUseCase(
     }
 }
 
+/**
+ * Lets a user re-clean an already-transcribed meeting's transcript with a different
+ * [com.example.core.model.TranscriptCleanupMode] — without re-recording, re-transcribing, or
+ * re-diarizing. Delegates to [MeetingProcessingPipeline.cleanTranscript], the exact same code
+ * path a fresh recording's own cleanup stage uses — this is not a second, special-cased pipeline,
+ * just a different entry point into the one real implementation of "how cleanup runs."
+ *
+ * Only [com.example.core.model.TranscriptSegment.cleanedText] is ever touched here — the real ASR
+ * text, speaker assignments, timestamps, and source-segment provenance are all read from what's
+ * already persisted and never modified. [TranscriptRepository.updateCleanedText] already refuses
+ * to touch a user-edited segment at the SQL level, so a hand-correction survives a re-clean
+ * automatically, with no extra logic needed here.
+ */
+class ReprocessTranscriptCleanupUseCase(
+    private val pipeline: MeetingProcessingPipeline,
+    private val meetingRepository: MeetingRepository,
+    private val transcriptRepository: TranscriptRepository
+) {
+    suspend operator fun invoke(
+        meetingId: String,
+        cleanupMode: com.example.core.model.TranscriptCleanupMode,
+        onStatus: suspend (String) -> Unit = {}
+    ) {
+        val meeting = meetingRepository.getMeetingByIdDirect(meetingId) ?: return
+        val transcript = transcriptRepository.getTranscriptDirect(meetingId)
+        if (transcript.segments.isEmpty()) return
+
+        val cleaned = pipeline.cleanTranscript(
+            structuredSegments = transcript.segments,
+            recordingType = meeting.recordingType,
+            cleanupMode = cleanupMode,
+            singleSpeakerMode = meeting.speakerCountPreference == 1,
+            onStatus = onStatus
+        )
+        cleaned.forEach { seg -> transcriptRepository.updateCleanedText(seg.id, seg.cleanedText) }
+    }
+}
+
 class AskMeetingUseCase(
     private val transcriptRepository: TranscriptRepository,
     private val pipelineIntelligence: com.example.ai.llm.MeetingIntelligenceEngine =
