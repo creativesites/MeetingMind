@@ -103,6 +103,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusEvent
@@ -342,16 +343,126 @@ class MeetingDetailViewModel(
         }
     }
 
-    /** Persists a batch of hand-corrected segment texts (only the ones that actually changed).
-     * The transcript [StateFlow] above re-emits from Room once these writes land, so every other
-     * consumer of the transcript (Ask AI, export, search) sees the correction immediately —
-     * there is no separate "edited" copy to keep in sync. */
-    fun saveTranscriptEdits(edits: Map<String, String>) {
-        if (edits.isEmpty()) return
+    /** Real per-speaker identity for this recording, including the persisted colour
+     * (docs/recording-page-implementation.md §1.1 — speaker colour must be "persisted per
+     * speaker id so they never shuffle", not re-derived on every render). */
+    val speakers: StateFlow<List<com.example.core.model.Speaker>> = transcriptRepository.getSpeakers(meetingId).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    // --- Document-level undo/redo (docs/recording-page-implementation.md §3.2 item 6) ---
+    // A stack of already-applied, real database writes — undoing one performs the real inverse
+    // write, it never just rewinds in-memory UI state. This is what lets a rewrite tool's apply
+    // (phase 6) and a hand edit share one history: both push the same kind of entry.
+    private sealed interface EditAction {
+        data class TextEdit(val segmentId: String, val before: String, val after: String) : EditAction
+        data class SpeakerReassign(
+            val segmentIds: List<String>,
+            val beforeSpeakerId: String?,
+            val beforeSpeakerName: String?,
+            val afterSpeakerId: String,
+            val afterSpeakerName: String
+        ) : EditAction
+        data class Split(val originalId: String, val originalText: String, val originalEndMs: Long, val charOffset: Int, val newSegmentId: String) : EditAction
+        data class Merge(val result: TranscriptRepository.MergeResult) : EditAction
+    }
+
+    private val _undoStack = MutableStateFlow<List<EditAction>>(emptyList())
+    private val _redoStack = MutableStateFlow<List<EditAction>>(emptyList())
+    val canUndo: StateFlow<Boolean> = _undoStack.map { it.isNotEmpty() }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val canRedo: StateFlow<Boolean> = _redoStack.map { it.isNotEmpty() }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    private fun pushUndo(action: EditAction) {
+        _undoStack.value = _undoStack.value + action
+        _redoStack.value = emptyList()
+    }
+
+    /** Commits one segment's hand-corrected text immediately (autosave — §3.7 item 41) and
+     * registers it as a single undo step. A no-op when the text didn't actually change, so
+     * losing/regaining focus on an untouched segment never pollutes the undo stack. */
+    fun editSegmentText(segmentId: String, before: String, after: String) {
+        if (before == after) return
         viewModelScope.launch {
-            edits.forEach { (segmentId, newText) ->
-                transcriptRepository.updateSegmentText(segmentId, newText)
+            transcriptRepository.updateSegmentText(segmentId, after)
+            pushUndo(EditAction.TextEdit(segmentId, before, after))
+        }
+    }
+
+    /** Splits [segmentId] at [charOffset] characters into [currentText] — [currentText] is
+     * flushed to the database first (in the same launch, so there is no race with a pending
+     * edit) so the split always operates on exactly what the user sees on screen. */
+    fun splitSegment(segmentId: String, currentText: String, currentEndMs: Long, charOffset: Int) {
+        viewModelScope.launch {
+            transcriptRepository.updateSegmentText(segmentId, currentText)
+            val newSegment = transcriptRepository.splitSegment(segmentId, charOffset) ?: return@launch
+            pushUndo(EditAction.Split(segmentId, currentText, currentEndMs, charOffset, newSegment.id))
+        }
+    }
+
+    /** Merges [segmentId] into the immediately preceding segment (same speaker only) — a no-op,
+     * silently, when there is nothing eligible to merge into. [currentText] is flushed first, same
+     * reasoning as [splitSegment]. */
+    fun mergeSegmentWithPrevious(segmentId: String, currentText: String) {
+        viewModelScope.launch {
+            transcriptRepository.updateSegmentText(segmentId, currentText)
+            val result = transcriptRepository.mergeSegmentWithPrevious(meetingId, segmentId) ?: return@launch
+            pushUndo(EditAction.Merge(result))
+        }
+    }
+
+    /** Reassigns [segmentIds] to a speaker — either [existingSpeakerId] or, when null, a brand
+     * new speaker named [newSpeakerName] (docs/recording-page-implementation.md §3.2 item 9). */
+    fun reassignSpeaker(
+        segmentIds: List<String>,
+        beforeSpeakerId: String?,
+        beforeSpeakerName: String?,
+        existingSpeakerId: String?,
+        newSpeakerName: String?,
+        newSpeakerColorHex: String
+    ) {
+        if (segmentIds.isEmpty()) return
+        val afterId = existingSpeakerId ?: java.util.UUID.randomUUID().toString()
+        val afterName = existingSpeakerId?.let { id -> speakers.value.find { it.id == id }?.customName } ?: newSpeakerName
+        if (afterName.isNullOrBlank()) return
+        viewModelScope.launch {
+            transcriptRepository.reassignSpeaker(meetingId, segmentIds, afterId, afterName, newSpeakerColorHex)
+            pushUndo(EditAction.SpeakerReassign(segmentIds, beforeSpeakerId, beforeSpeakerName, afterId, afterName))
+        }
+    }
+
+    fun undo() {
+        val action = _undoStack.value.lastOrNull() ?: return
+        viewModelScope.launch {
+            when (action) {
+                is EditAction.TextEdit -> transcriptRepository.updateSegmentText(action.segmentId, action.before)
+                is EditAction.SpeakerReassign -> transcriptRepository.setSegmentSpeakers(action.segmentIds, action.beforeSpeakerId, action.beforeSpeakerName)
+                is EditAction.Split -> transcriptRepository.undoSplitSegment(action.originalId, action.originalText, action.originalEndMs, action.newSegmentId)
+                is EditAction.Merge -> transcriptRepository.undoMergeSegment(action.result)
             }
+            _undoStack.value = _undoStack.value.dropLast(1)
+            _redoStack.value = _redoStack.value + action
+        }
+    }
+
+    fun redo() {
+        val action = _redoStack.value.lastOrNull() ?: return
+        viewModelScope.launch {
+            when (action) {
+                is EditAction.TextEdit -> transcriptRepository.updateSegmentText(action.segmentId, action.after)
+                is EditAction.SpeakerReassign -> {
+                    // The speaker row created by the original apply is never deleted by undo, only
+                    // the segments' pointers change — so this colour is only ever used in the
+                    // (unreachable in practice) case where it's somehow gone missing.
+                    val colorHex = speakers.value.find { it.id == action.afterSpeakerId }?.colorHex ?: "#6366F1"
+                    transcriptRepository.reassignSpeaker(meetingId, action.segmentIds, action.afterSpeakerId, action.afterSpeakerName, colorHex)
+                }
+                is EditAction.Split -> transcriptRepository.splitSegment(action.originalId, action.charOffset)
+                is EditAction.Merge -> transcriptRepository.mergeSegmentWithPrevious(meetingId, action.result.removed.id)
+            }
+            _redoStack.value = _redoStack.value.dropLast(1)
+            _undoStack.value = _undoStack.value + action
         }
     }
 
@@ -470,6 +581,9 @@ fun MeetingDetailScreen(
     val questions by viewModel.questions.collectAsState()
     val topics by viewModel.topics.collectAsState()
     val chatMessages by viewModel.chatMessages.collectAsState()
+    val speakers by viewModel.speakers.collectAsState()
+    val canUndo by viewModel.canUndo.collectAsState()
+    val canRedo by viewModel.canRedo.collectAsState()
     val asrModelInstalled by viewModel.asrModelInstalled.collectAsState()
     val llmModelInstalled by viewModel.llmModelInstalled.collectAsState()
     val cleanFillerWords by viewModel.cleanFillerWords.collectAsState()
@@ -866,13 +980,23 @@ fun MeetingDetailScreen(
                 )
                 RecordingDetailTab.TRANSCRIPT -> TranscriptTab(
                     segments = transcript.segments,
+                    speakers = speakers,
                     onJumpToTimestamp = { viewModel.jumpToTimestamp(it) },
                     onRenameSpeaker = { id, name ->
                         renameSpeakerTargetId = id
                         renameSpeakerText = name
                         showRenameSpeakerDialog = true
                     },
-                    onSaveEdits = { viewModel.saveTranscriptEdits(it) },
+                    onEditSegmentText = { segmentId, before, after -> viewModel.editSegmentText(segmentId, before, after) },
+                    onSplitSegment = { segmentId, currentText, currentEndMs, offset -> viewModel.splitSegment(segmentId, currentText, currentEndMs, offset) },
+                    onMergeSegmentWithPrevious = { segmentId, currentText -> viewModel.mergeSegmentWithPrevious(segmentId, currentText) },
+                    onReassignSpeaker = { segmentIds, beforeId, beforeName, existingId, newName, colorHex ->
+                        viewModel.reassignSpeaker(segmentIds, beforeId, beforeName, existingId, newName, colorHex)
+                    },
+                    canUndo = canUndo,
+                    canRedo = canRedo,
+                    onUndo = { viewModel.undo() },
+                    onRedo = { viewModel.redo() },
                     highlightedSegmentId = highlightedSegmentId,
                     activePlaybackSegmentId = activeSegment?.id,
                     isAudioPlaying = isThisRecordingActive && playbackState.isPlaying,
@@ -1352,9 +1476,26 @@ private fun CountTrailing(count: Int) {
 @Composable
 fun TranscriptTab(
     segments: List<TranscriptSegment>,
+    speakers: List<com.example.core.model.Speaker>,
     onJumpToTimestamp: (Long) -> Unit,
     onRenameSpeaker: (speakerId: String, currentName: String) -> Unit,
-    onSaveEdits: (Map<String, String>) -> Unit = {},
+    /** Autosaves one segment's hand-corrected text (docs/recording-page-implementation.md §3.7
+     * item 41) — called on blur/focus-switch, not per keystroke. */
+    onEditSegmentText: (segmentId: String, before: String, after: String) -> Unit,
+    onSplitSegment: (segmentId: String, currentText: String, currentEndMs: Long, charOffset: Int) -> Unit,
+    onMergeSegmentWithPrevious: (segmentId: String, currentText: String) -> Unit,
+    onReassignSpeaker: (
+        segmentIds: List<String>,
+        beforeSpeakerId: String?,
+        beforeSpeakerName: String?,
+        existingSpeakerId: String?,
+        newSpeakerName: String?,
+        newSpeakerColorHex: String
+    ) -> Unit,
+    canUndo: Boolean,
+    canRedo: Boolean,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
     /** Set briefly when this tab is opened via a search-result deep link — scrolls to and tints
      * this one segment so the user immediately sees why it matched, without permanently marking
      * it (a manual tab switch afterward leaves it as an ordinary segment again). */
@@ -1374,42 +1515,53 @@ fun TranscriptTab(
     // is no persistent search field or edit button above the transcript any more; both are
     // entered from the three-word row at the bottom.
     var showSearch by remember { mutableStateOf(false) }
+    var searchMatchIndex by remember { mutableStateOf(0) }
     var isEditMode by remember { mutableStateOf(false) }
-    // segmentId -> in-progress draft text, only while isEditMode is true. Re-seeded from the real
-    // segments each time edit mode is entered so a Cancel always throws the drafts away cleanly.
-    var drafts by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // Only the focused segment is actually editable at a time (docs/recording-page-implementation.md
+    // §2.5) — everything else in fieldValues is just segments the user has already visited this
+    // session, kept so switching back and forth doesn't lose an uncommitted selection/cursor.
+    var focusedSegmentId by remember { mutableStateOf<String?>(null) }
+    var fieldValues by remember { mutableStateOf<Map<String, androidx.compose.ui.text.input.TextFieldValue>>(emptyMap()) }
+    var speakerPickerTarget by remember { mutableStateOf<TranscriptSegment?>(null) }
     // "Spotify lyrics"-style following: auto-scrolls to whichever segment is currently playing.
-    // Off by default only makes sense once there's something to follow, so this only matters once
-    // activePlaybackSegmentId is non-null; toggling it back on re-jumps immediately (see the
-    // LaunchedEffect below, keyed on this flag).
     var syncToAudio by rememberSaveable { mutableStateOf(true) }
 
-    val filteredSegments = remember(segments, searchQuery) {
-        if (searchQuery.isBlank()) segments
-        else segments.filter {
-            it.text.contains(searchQuery, ignoreCase = true) ||
-                (it.speakerName?.contains(searchQuery, ignoreCase = true) == true)
-        }
+    fun commitFocused() {
+        val id = focusedSegmentId ?: return
+        val original = segments.find { it.id == id } ?: return
+        val current = fieldValues[id]?.text ?: return
+        if (current != original.text) onEditSegmentText(id, original.text, current)
     }
 
-    // Speaker colour, assigned by first appearance in the recording and stable for as long as the
-    // segment list itself is (docs/recording-page-implementation.md §1.1: "assigned by first
-    // appearance ... then persisted per speaker id so they never shuffle"). This is an interim
-    // step toward reading the persisted SpeakerEntity.colorHex directly — see the phase check-in
-    // notes — but already replaces the old hash-derived colour, which could put two different
-    // speakers on the same colour.
-    val speakerColors = remember(segments) {
+    // Search mode (docs/recording-page-implementation.md §2.3/§3.2 item 11): the transcript stays
+    // fully visible, matches are highlighted in place, next/prev step through them by seeking —
+    // unlike the old behaviour, non-matching segments are never hidden.
+    val searchMatches = remember(segments, searchQuery) {
+        if (searchQuery.isBlank()) emptyList()
+        else segments.filter {
+            it.text.contains(searchQuery, ignoreCase = true) || (it.speakerName?.contains(searchQuery, ignoreCase = true) == true)
+        }.map { it.id }
+    }
+    LaunchedEffect(searchQuery) { searchMatchIndex = 0 }
+
+    // Speaker colour: the real persisted one where a speaker row already exists, falling back to
+    // the first-appearance palette only for a speaker id not yet reflected in [speakers] (e.g. one
+    // reassigned moments ago, before Room's Flow has re-emitted).
+    val speakerColorMap = remember(speakers, segments) {
+        val byId = speakers.associate { sp ->
+            sp.id to (runCatching { Color(android.graphics.Color.parseColor(sp.colorHex)) }.getOrNull() ?: Accent)
+        }
         val palette = listOf(Accent, Speaker2, Speaker3, Speaker4)
-        val order = segments.mapNotNull { it.speakerId }.distinct()
-        order.withIndex().associate { (index, id) -> id to palette[index % palette.size] }
+        val unseen = segments.mapNotNull { it.speakerId }.distinct().filterNot { byId.containsKey(it) }
+        byId + unseen.withIndex().associate { (index, id) -> id to palette[index % palette.size] }
     }
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     // One-shot deep-link scroll (search result), independent of playback sync.
-    LaunchedEffect(highlightedSegmentId, filteredSegments) {
+    LaunchedEffect(highlightedSegmentId, segments) {
         if (highlightedSegmentId == null) return@LaunchedEffect
-        val index = filteredSegments.indexOfFirst { it.id == highlightedSegmentId }
+        val index = segments.indexOfFirst { it.id == highlightedSegmentId }
         if (index >= 0) listState.animateScrollToItem(index)
     }
 
@@ -1418,7 +1570,14 @@ fun TranscriptTab(
     // nothing at all while the user has sync switched off.
     LaunchedEffect(activePlaybackSegmentId, syncToAudio) {
         if (!syncToAudio || activePlaybackSegmentId == null) return@LaunchedEffect
-        val index = filteredSegments.indexOfFirst { it.id == activePlaybackSegmentId }
+        val index = segments.indexOfFirst { it.id == activePlaybackSegmentId }
+        if (index >= 0) listState.animateScrollToItem(index)
+    }
+
+    // Jump to (and seek) the current search match whenever it changes.
+    LaunchedEffect(searchMatchIndex, searchMatches) {
+        val id = searchMatches.getOrNull(searchMatchIndex) ?: return@LaunchedEffect
+        val index = segments.indexOfFirst { it.id == id }
         if (index >= 0) listState.animateScrollToItem(index)
     }
 
@@ -1435,10 +1594,13 @@ fun TranscriptTab(
                     text = "Cancel",
                     fontSize = 15.sp,
                     color = InkSecondary,
+                    // Discards only whatever is still sitting uncommitted in the focused field —
+                    // every other segment touched this session already autosaved on blur.
                     modifier = Modifier
                         .clickable {
                             isEditMode = false
-                            drafts = emptyMap()
+                            focusedSegmentId = null
+                            fieldValues = emptyMap()
                         }
                         .testTag("transcript_edit_cancel_btn")
                 )
@@ -1449,40 +1611,72 @@ fun TranscriptTab(
                     color = Ink,
                     modifier = Modifier
                         .clickable {
-                            val changed = drafts.filter { (id, text) -> segments.find { it.id == id }?.text != text }
-                            onSaveEdits(changed)
+                            commitFocused()
                             isEditMode = false
-                            drafts = emptyMap()
+                            focusedSegmentId = null
+                            fieldValues = emptyMap()
                         }
                         .testTag("transcript_edit_save_btn")
                 )
             }
         } else if (showSearch) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search transcript…") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = "Done",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Ink,
-                    modifier = Modifier.clickable {
-                        showSearch = false
-                        searchQuery = ""
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Search transcript…") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f).testTag("transcript_search_field")
+                    )
+                    Text(
+                        text = "Done",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Ink,
+                        modifier = Modifier.clickable {
+                            showSearch = false
+                            searchQuery = ""
+                        }
+                    )
+                }
+                if (searchQuery.isNotBlank()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (searchMatches.isEmpty()) "No matches" else "${searchMatchIndex + 1} of ${searchMatches.size}",
+                            fontSize = 12.5.sp,
+                            color = InkMuted
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                            Text(
+                                text = "Prev",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (searchMatches.isEmpty()) InkFaint else InkSecondary,
+                                modifier = Modifier.clickable(enabled = searchMatches.isNotEmpty()) {
+                                    searchMatchIndex = (searchMatchIndex - 1 + searchMatches.size) % searchMatches.size
+                                }
+                            )
+                            Text(
+                                text = "Next",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (searchMatches.isEmpty()) InkFaint else Ink,
+                                modifier = Modifier.clickable(enabled = searchMatches.isNotEmpty()) {
+                                    searchMatchIndex = (searchMatchIndex + 1) % searchMatches.size
+                                }
+                            )
+                        }
                     }
-                )
+                }
             }
         }
 
@@ -1521,10 +1715,12 @@ fun TranscriptTab(
             ),
             verticalArrangement = Arrangement.spacedBy(26.dp)
         ) {
-            items(filteredSegments, key = { it.id }) { seg ->
+            items(segments, key = { it.id }) { seg ->
                 val isPlaying = seg.id == activePlaybackSegmentId
                 val isDeepLinkHighlighted = seg.id == highlightedSegmentId
-                val speakerColor = seg.speakerId?.let { speakerColors[it] } ?: InkMuted
+                val isSearchMatch = showSearch && seg.id in searchMatches
+                val isFocused = isEditMode && seg.id == focusedSegmentId
+                val speakerColor = seg.speakerId?.let { speakerColorMap[it] } ?: InkMuted
                 val bringIntoViewRequester = remember { BringIntoViewRequester() }
                 val coroutineScope = rememberCoroutineScope()
 
@@ -1534,7 +1730,7 @@ fun TranscriptTab(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(if (isDeepLinkHighlighted) AccentWash else Color.Transparent)
+                        .background(if (isDeepLinkHighlighted || isSearchMatch) AccentWash else Color.Transparent)
                         .drawBehind {
                             if (isPlaying) {
                                 val x = 50.dp.toPx()
@@ -1546,7 +1742,20 @@ fun TranscriptTab(
                                 )
                             }
                         }
-                        .then(if (!isEditMode) Modifier.clickable { onJumpToTimestamp(seg.startMs) } else Modifier),
+                        .then(
+                            if (isEditMode) {
+                                Modifier.clickable(enabled = !isFocused) {
+                                    commitFocused()
+                                    focusedSegmentId = seg.id
+                                    if (seg.id !in fieldValues) {
+                                        fieldValues = fieldValues + (seg.id to androidx.compose.ui.text.input.TextFieldValue(seg.text))
+                                    }
+                                }
+                            } else {
+                                Modifier.clickable { onJumpToTimestamp(seg.startMs) }
+                            }
+                        )
+                        .alpha(if (isEditMode && !isFocused) 0.4f else 1f),
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
@@ -1571,10 +1780,17 @@ fun TranscriptTab(
                                 fontWeight = FontWeight.SemiBold,
                                 letterSpacing = 0.3.sp,
                                 color = speakerColor,
-                                modifier = seg.speakerId?.let { spkId ->
-                                    Modifier.clickable { onRenameSpeaker(spkId, seg.speakerName ?: "") }
-                                } ?: Modifier
+                                modifier = when {
+                                    isFocused -> Modifier.clickable { speakerPickerTarget = seg }
+                                    !isEditMode -> seg.speakerId?.let { spkId ->
+                                        Modifier.clickable { onRenameSpeaker(spkId, seg.speakerName ?: "") }
+                                    } ?: Modifier
+                                    else -> Modifier
+                                }
                             )
+                            if (isFocused) {
+                                Text("▾", fontSize = 11.sp, color = InkFaint)
+                            }
                             if (seg.isUserEdited) {
                                 Icon(
                                     Icons.Default.Check,
@@ -1587,22 +1803,50 @@ fun TranscriptTab(
 
                         Spacer(modifier = Modifier.height(5.dp))
 
-                        if (isEditMode) {
-                            OutlinedTextField(
-                                value = drafts[seg.id] ?: seg.text,
-                                onValueChange = { newValue -> drafts = drafts + (seg.id to newValue) },
-                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.5.sp, lineHeight = 29.sp, color = Ink),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .bringIntoViewRequester(bringIntoViewRequester)
-                                    .onFocusEvent { focusState ->
-                                        if (focusState.isFocused) {
-                                            coroutineScope.launch { bringIntoViewRequester.bringIntoView() }
+                        if (isFocused) {
+                            val fieldValue = fieldValues[seg.id] ?: androidx.compose.ui.text.input.TextFieldValue(seg.text)
+                            Box {
+                                androidx.compose.foundation.text.BasicTextField(
+                                    value = fieldValue,
+                                    onValueChange = { newValue ->
+                                        val oldPos = fieldValue.selection.start
+                                        val backspaceAtStart = newValue.text.length == fieldValue.text.length - 1 &&
+                                            oldPos == 0 && fieldValue.selection.collapsed && newValue.selection.start == 0
+                                        if (backspaceAtStart) {
+                                            onMergeSegmentWithPrevious(seg.id, fieldValue.text)
+                                            focusedSegmentId = null
+                                            fieldValues = fieldValues - seg.id
+                                        } else {
+                                            fieldValues = fieldValues + (seg.id to newValue)
                                         }
-                                    }
-                                    .testTag("transcript_segment_edit_${seg.id}")
-                            )
+                                    },
+                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.5.sp, lineHeight = 29.sp, color = Ink),
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .bringIntoViewRequester(bringIntoViewRequester)
+                                        .onFocusEvent { focusState ->
+                                            if (focusState.isFocused) {
+                                                coroutineScope.launch { bringIntoViewRequester.bringIntoView() }
+                                            }
+                                        }
+                                        .testTag("transcript_segment_edit_${seg.id}")
+                                )
+                            }
+                            if (!fieldValue.selection.collapsed) {
+                                Box(modifier = Modifier.padding(top = 8.dp)) {
+                                    com.example.feature.meetingdetail.components.FloatingSelectionBar(
+                                        items = listOf("Fix errors", "Clarity", "Condense"),
+                                        onItemClick = {
+                                            Toast.makeText(context, "AI tools are coming in a later phase", Toast.LENGTH_SHORT).show()
+                                        },
+                                        moreLabel = "⋯",
+                                        onMoreClick = {
+                                            Toast.makeText(context, "AI tools are coming in a later phase", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            }
                         } else {
                             val displayText = remember(seg.text, cleanFillerWords) {
                                 com.example.core.common.FillerWordCleaner.cleanIf(cleanFillerWords, seg.text)
@@ -1627,37 +1871,69 @@ fun TranscriptTab(
                 }
                 .padding(horizontal = 18.dp)
         ) {
-            TranscriptToolbarWord(
-                label = "Search",
-                active = showSearch,
-                modifier = Modifier.weight(1f).testTag("transcript_search_btn")
-            ) {
-                showSearch = !showSearch
-                if (!showSearch) searchQuery = ""
-            }
-            TranscriptToolbarWord(
-                label = "Edit",
-                active = isEditMode,
-                modifier = Modifier.weight(1f).testTag("transcript_edit_btn")
-            ) {
-                if (!isEditMode) {
-                    drafts = segments.associate { it.id to it.text }
-                    showSearch = false
-                } else {
-                    drafts = emptyMap()
+            if (isEditMode) {
+                val focusedField = focusedSegmentId?.let { fieldValues[it] }
+                val canSplit = focusedField != null && focusedField.selection.start > 0 && focusedField.selection.start < focusedField.text.length
+                TranscriptToolbarWord(label = "Undo", active = false, enabled = canUndo, modifier = Modifier.weight(1f), onClick = onUndo)
+                TranscriptToolbarWord(label = "Redo", active = false, enabled = canRedo, modifier = Modifier.weight(1f), onClick = onRedo)
+                TranscriptToolbarWord(
+                    label = "Speaker",
+                    active = false,
+                    enabled = focusedSegmentId != null,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    speakerPickerTarget = segments.find { it.id == focusedSegmentId }
                 }
-                isEditMode = !isEditMode
-            }
-            TranscriptToolbarWord(
-                label = "Tools",
-                active = !showSearch && !isEditMode,
-                modifier = Modifier.weight(1f)
-            ) {
-                // The AI tools sheet (docs/recording-page-implementation.md §2.4) is a later phase
-                // of this redesign — say so honestly rather than a dead tap target.
-                Toast.makeText(context, "AI tools are coming in a later phase", Toast.LENGTH_SHORT).show()
+                TranscriptToolbarWord(label = "Split", active = false, enabled = canSplit, modifier = Modifier.weight(1f)) {
+                    val id = focusedSegmentId ?: return@TranscriptToolbarWord
+                    val fv = focusedField ?: return@TranscriptToolbarWord
+                    val seg = segments.find { it.id == id } ?: return@TranscriptToolbarWord
+                    onSplitSegment(id, fv.text, seg.endMs, fv.selection.start)
+                    focusedSegmentId = null
+                    fieldValues = fieldValues - id
+                }
+            } else {
+                TranscriptToolbarWord(
+                    label = "Search",
+                    active = showSearch,
+                    modifier = Modifier.weight(1f).testTag("transcript_search_btn")
+                ) {
+                    showSearch = !showSearch
+                    if (!showSearch) searchQuery = ""
+                }
+                TranscriptToolbarWord(
+                    label = "Edit",
+                    active = false,
+                    modifier = Modifier.weight(1f).testTag("transcript_edit_btn")
+                ) {
+                    showSearch = false
+                    isEditMode = true
+                }
+                TranscriptToolbarWord(
+                    label = "Tools",
+                    active = !showSearch,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    // The AI tools sheet (docs/recording-page-implementation.md §2.4) is a later
+                    // phase of this redesign — say so honestly rather than a dead tap target.
+                    Toast.makeText(context, "AI tools are coming in a later phase", Toast.LENGTH_SHORT).show()
+                }
             }
         }
+    }
+
+    val pickerTarget = speakerPickerTarget
+    if (pickerTarget != null) {
+        SpeakerReassignDialog(
+            target = pickerTarget,
+            allSegments = segments,
+            speakers = speakers,
+            onDismiss = { speakerPickerTarget = null },
+            onConfirm = { segmentIds, existingSpeakerId, newSpeakerName, colorHex ->
+                onReassignSpeaker(segmentIds, pickerTarget.speakerId, pickerTarget.speakerName, existingSpeakerId, newSpeakerName, colorHex)
+                speakerPickerTarget = null
+            }
+        )
     }
 }
 
@@ -1666,11 +1942,12 @@ private fun TranscriptToolbarWord(
     label: String,
     active: Boolean,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Box(
         modifier = modifier
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 15.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -1678,9 +1955,106 @@ private fun TranscriptToolbarWord(
             text = label,
             fontSize = 14.sp,
             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (active) Ink else InkSecondary
+            color = if (!enabled) InkFaint else if (active) Ink else InkSecondary
         )
     }
+}
+
+/** ▾ picker on a focused segment's speaker label (docs/recording-page-implementation.md §3.2 item
+ * 9): existing speakers, a brand-new speaker, and — when the following segments share the
+ * segment's original speaker — the option to reassign that whole contiguous run at once. */
+@Composable
+private fun SpeakerReassignDialog(
+    target: TranscriptSegment,
+    allSegments: List<TranscriptSegment>,
+    speakers: List<com.example.core.model.Speaker>,
+    onDismiss: () -> Unit,
+    onConfirm: (segmentIds: List<String>, existingSpeakerId: String?, newSpeakerName: String?, colorHex: String) -> Unit
+) {
+    var applyToRun by remember { mutableStateOf(true) }
+    var newSpeakerName by remember { mutableStateOf("") }
+    var creatingNew by remember { mutableStateOf(false) }
+
+    val runIds = remember(target, allSegments) {
+        val startIndex = allSegments.indexOfFirst { it.id == target.id }
+        if (startIndex < 0) listOf(target.id)
+        else {
+            val ids = mutableListOf(target.id)
+            var i = startIndex + 1
+            while (i < allSegments.size && allSegments[i].speakerId == target.speakerId) {
+                ids += allSegments[i].id
+                i++
+            }
+            ids
+        }
+    }
+    val targetIds = if (applyToRun) runIds else listOf(target.id)
+    val palette = listOf("#6366F1", "#A855F7", "#10B981", "#F59E0B")
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Reassign speaker") },
+        text = {
+            Column {
+                speakers.filter { it.id != target.speakerId }.forEach { sp ->
+                    Text(
+                        text = sp.customName,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onConfirm(targetIds, sp.id, null, sp.colorHex) }
+                            .padding(vertical = 12.dp)
+                    )
+                }
+                if (!creatingNew) {
+                    Text(
+                        text = "New speaker…",
+                        color = Ink,
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { creatingNew = true }
+                            .padding(vertical = 12.dp)
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = newSpeakerName,
+                        onValueChange = { newSpeakerName = it },
+                        label = { Text("Speaker name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    )
+                }
+                if (runIds.size > 1) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).clickable { applyToRun = !applyToRun },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        androidx.compose.material3.Checkbox(checked = applyToRun, onCheckedChange = { applyToRun = it })
+                        Text("Apply to the rest of this run (${runIds.size} segments)", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (creatingNew) {
+                Button(
+                    onClick = {
+                        if (newSpeakerName.isNotBlank()) {
+                            val colorHex = palette[speakers.size % palette.size]
+                            onConfirm(targetIds, null, newSpeakerName.trim(), colorHex)
+                        }
+                    },
+                    enabled = newSpeakerName.isNotBlank()
+                ) { Text("Create") }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable

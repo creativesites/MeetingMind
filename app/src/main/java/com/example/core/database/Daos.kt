@@ -71,6 +71,15 @@ interface TranscriptDao {
 
     @Query("DELETE FROM transcript_segments WHERE meetingId = :meetingId")
     suspend fun deleteSegmentsForMeeting(meetingId: String)
+
+    @Query("DELETE FROM transcript_segments WHERE id = :segmentId")
+    suspend fun deleteSegmentById(segmentId: String)
+
+    // Reassigning a segment's speaker is a hand correction like any other edit — isUserEdited=1
+    // for the same reason updateSegmentText sets it: a later cleanup/AI pass must never silently
+    // overwrite it.
+    @Query("UPDATE transcript_segments SET speakerId = :speakerId, speakerName = :speakerName, isUserEdited = 1 WHERE id = :segmentId")
+    suspend fun reassignSegmentSpeaker(segmentId: String, speakerId: String?, speakerName: String?)
 }
 
 @Dao

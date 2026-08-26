@@ -19,6 +19,7 @@ import com.example.core.database.ChatMessageEntity
 import com.example.core.database.MeetMindDatabase
 import com.example.core.database.MeetingEntity
 import com.example.core.database.SpeakerEntity
+import com.example.core.database.TranscriptSegmentEntity
 import com.example.core.firebase.FirebaseAuthManager
 import com.example.core.firebase.FirebaseUserModel
 import com.example.core.model.ActionItem
@@ -238,6 +239,150 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
         if (existing != null) {
             speakerDao.updateSpeaker(existing.copy(customName = newName))
         }
+    }
+
+    /** Splits [segmentId] into two segments at [charOffset] characters into its current text
+     * (docs/recording-page-implementation.md §3.2 item 7). The new segment's timestamp is
+     * linearly interpolated across the original segment's duration by character offset — a rough
+     * estimate, since no word-level timestamps exist to align to instead. Returns the new
+     * segment (for the caller to register an undo action) or null if the split isn't possible
+     * (offset at an edge, or either half would be blank). */
+    suspend fun splitSegment(segmentId: String, charOffset: Int): TranscriptSegment? = withContext(Dispatchers.IO) {
+        val original = transcriptDao.getSegmentById(segmentId) ?: return@withContext null
+        val text = original.text
+        if (charOffset <= 0 || charOffset >= text.length) return@withContext null
+        val firstText = text.substring(0, charOffset).trimEnd()
+        val secondText = text.substring(charOffset).trimStart()
+        if (firstText.isBlank() || secondText.isBlank()) return@withContext null
+        val duration = (original.endMs - original.startMs).coerceAtLeast(0)
+        val splitMs = original.startMs + duration * charOffset / text.length.coerceAtLeast(1)
+        val newId = java.util.UUID.randomUUID().toString()
+        val newEntity = original.copy(id = newId, startMs = splitMs, text = secondText, isUserEdited = true, cleanedText = null)
+        val updatedOriginal = original.copy(endMs = splitMs, text = firstText, isUserEdited = true, cleanedText = null)
+        transcriptDao.insertSegments(listOf(updatedOriginal, newEntity))
+        TranscriptSegment(
+            id = newId,
+            meetingId = newEntity.meetingId,
+            speakerId = newEntity.speakerId,
+            speakerName = newEntity.speakerName,
+            startMs = newEntity.startMs,
+            endMs = newEntity.endMs,
+            text = newEntity.text,
+            confidence = newEntity.confidence,
+            isUserEdited = true,
+            cleanedText = null,
+            sourceSegmentIds = newEntity.sourceSegmentIdsJson.toIdList()
+        )
+    }
+
+    /** Reverses [splitSegment]: deletes the segment the split created and restores the original
+     * segment's pre-split text/endMs. */
+    suspend fun undoSplitSegment(originalId: String, originalText: String, originalEndMs: Long, newSegmentId: String) = withContext(Dispatchers.IO) {
+        val original = transcriptDao.getSegmentById(originalId) ?: return@withContext
+        transcriptDao.insertSegments(listOf(original.copy(text = originalText, endMs = originalEndMs)))
+        transcriptDao.deleteSegmentById(newSegmentId)
+    }
+
+    /** What [mergeSegmentWithPrevious] changed, kept only so [undoMergeSegment] can reverse it. */
+    data class MergeResult(val removed: TranscriptSegment, val keptId: String, val keptTextBefore: String, val keptEndMsBefore: Long)
+
+    /** Merges [segmentId] into the immediately preceding segment in the meeting, only when they
+     * share a speaker (docs/recording-page-implementation.md §3.2 item 8: "deleting at the start
+     * of a segment merges it into the previous one — same speaker only"). Returns null (a no-op)
+     * when there is no eligible previous segment. */
+    suspend fun mergeSegmentWithPrevious(meetingId: String, segmentId: String): MergeResult? = withContext(Dispatchers.IO) {
+        val all = transcriptDao.getSegmentsForMeetingDirect(meetingId).sortedBy { it.startMs }
+        val index = all.indexOfFirst { it.id == segmentId }
+        if (index <= 0) return@withContext null
+        val current = all[index]
+        val previous = all[index - 1]
+        if (previous.speakerId != current.speakerId) return@withContext null
+        val merged = previous.copy(
+            endMs = current.endMs,
+            text = (previous.text.trimEnd() + " " + current.text.trimStart()).trim(),
+            isUserEdited = true,
+            cleanedText = null
+        )
+        transcriptDao.insertSegments(listOf(merged))
+        transcriptDao.deleteSegmentById(current.id)
+        MergeResult(
+            removed = TranscriptSegment(
+                id = current.id,
+                meetingId = current.meetingId,
+                speakerId = current.speakerId,
+                speakerName = current.speakerName,
+                startMs = current.startMs,
+                endMs = current.endMs,
+                text = current.text,
+                confidence = current.confidence,
+                isUserEdited = current.isUserEdited,
+                cleanedText = current.cleanedText,
+                sourceSegmentIds = current.sourceSegmentIdsJson.toIdList()
+            ),
+            keptId = previous.id,
+            keptTextBefore = previous.text,
+            keptEndMsBefore = previous.endMs
+        )
+    }
+
+    /** Reverses [mergeSegmentWithPrevious]: restores the removed segment's row and the kept
+     * segment's pre-merge text/endMs. */
+    suspend fun undoMergeSegment(result: MergeResult) = withContext(Dispatchers.IO) {
+        val keptEntity = transcriptDao.getSegmentById(result.keptId) ?: return@withContext
+        val removed = result.removed
+        transcriptDao.insertSegments(
+            listOf(
+                keptEntity.copy(text = result.keptTextBefore, endMs = result.keptEndMsBefore),
+                TranscriptSegmentEntity(
+                    id = removed.id,
+                    meetingId = removed.meetingId,
+                    speakerId = removed.speakerId,
+                    speakerName = removed.speakerName,
+                    startMs = removed.startMs,
+                    endMs = removed.endMs,
+                    text = removed.text,
+                    confidence = removed.confidence,
+                    isUserEdited = removed.isUserEdited,
+                    cleanedText = removed.cleanedText,
+                    sourceSegmentIdsJson = removed.sourceSegmentIds.toIdsJson()
+                )
+            )
+        )
+    }
+
+    /** Reassigns [segmentIds] to [speakerId]/[speakerName] — either an existing speaker or a
+     * brand-new one, in which case a [SpeakerEntity] is created with [newSpeakerColorHex]
+     * (docs/recording-page-implementation.md §3.2 item 9). */
+    suspend fun reassignSpeaker(
+        meetingId: String,
+        segmentIds: List<String>,
+        speakerId: String,
+        speakerName: String,
+        newSpeakerColorHex: String
+    ) = withContext(Dispatchers.IO) {
+        val existingSpeakers = speakerDao.getSpeakersForMeetingDirect(meetingId)
+        if (existingSpeakers.none { it.id == speakerId }) {
+            speakerDao.insertSpeakers(
+                listOf(
+                    SpeakerEntity(
+                        id = speakerId,
+                        meetingId = meetingId,
+                        speakerIndex = existingSpeakers.size,
+                        originalLabel = speakerName,
+                        customName = speakerName,
+                        colorHex = newSpeakerColorHex
+                    )
+                )
+            )
+        }
+        segmentIds.forEach { segId -> transcriptDao.reassignSegmentSpeaker(segId, speakerId, speakerName) }
+    }
+
+    /** Raw speaker write with no "create the speaker if missing" behaviour — used to undo
+     * [reassignSpeaker] back to whatever the segments carried before, including null (never
+     * diarized). */
+    suspend fun setSegmentSpeakers(segmentIds: List<String>, speakerId: String?, speakerName: String?) = withContext(Dispatchers.IO) {
+        segmentIds.forEach { segId -> transcriptDao.reassignSegmentSpeaker(segId, speakerId, speakerName) }
     }
 
     fun getDecisions(meetingId: String): Flow<List<Decision>> = decisionDao.getDecisionsForMeeting(meetingId).map { list ->
