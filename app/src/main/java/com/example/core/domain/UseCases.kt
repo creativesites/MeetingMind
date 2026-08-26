@@ -135,7 +135,9 @@ class ReprocessTranscriptCleanupUseCase(
 class AskMeetingUseCase(
     private val transcriptRepository: TranscriptRepository,
     private val pipelineIntelligence: com.example.ai.llm.MeetingIntelligenceEngine =
-        com.example.ai.llm.UnavailableMeetingIntelligenceEngine()
+        com.example.ai.llm.UnavailableMeetingIntelligenceEngine(),
+    private val embeddingEngine: com.example.ai.embeddings.EmbeddingEngine = com.example.ai.embeddings.LocalEmbeddingEngine(),
+    private val retrievalTopK: Int = 12
 ) {
     suspend operator fun invoke(
         meetingId: String,
@@ -152,10 +154,17 @@ class AskMeetingUseCase(
         )
         transcriptRepository.saveChatMessage(userMsg)
 
+        // Real retrieval: cosine-similarity top-K over the question against every segment, so a
+        // long recording's answer isn't silently limited to whatever fits the model's context
+        // budget starting from the beginning of the transcript (the previously known gap — see
+        // docs/AI_ARCHITECTURE.md "Ask Meeting limitation"). A short transcript that already fits
+        // in [retrievalTopK] segments skips the ranking step entirely — nothing to gain from it.
+        val relevantSegments = retrieveRelevantSegments(transcript.segments, question)
+
         // Process with local intelligence — never fabricate an answer. If no local LLM is
         // installed, or nothing has been transcribed yet, say so explicitly instead of
         // inventing a grounded-sounding response.
-        val aiResponse = when (val result = pipelineIntelligence.askMeeting(question, transcript, emptyList())) {
+        val aiResponse = when (val result = pipelineIntelligence.askMeeting(question, transcript, relevantSegments)) {
             is AiResult.Success -> result.value
             else -> ChatMessage(
                 id = UUID.randomUUID().toString(),
@@ -168,6 +177,20 @@ class AskMeetingUseCase(
         }
         transcriptRepository.saveChatMessage(aiResponse)
         return aiResponse
+    }
+
+    private suspend fun retrieveRelevantSegments(
+        segments: List<com.example.core.model.TranscriptSegment>,
+        question: String
+    ): List<com.example.core.model.TranscriptSegment> {
+        if (segments.size <= retrievalTopK) return segments
+        val queryVector = embeddingEngine.embed(question)
+        return segments
+            .map { seg -> seg to embeddingEngine.cosineSimilarity(queryVector, embeddingEngine.embed(seg.text)) }
+            .sortedByDescending { it.second }
+            .take(retrievalTopK)
+            .map { it.first }
+            .sortedBy { it.startMs }
     }
 }
 

@@ -275,5 +275,9 @@ data class ChatMessageEntity(
     val content: String,
     val timestamp: Long,
     val sourceTimestampsJson: String = "", // JSON or comma-separated
-    val sourceQuotesJson: String = ""
+    val sourceQuotesJson: String = "",
+    /** How many transcript segments were actually retrieved/read as context to produce this
+     * answer — see [com.example.core.model.ChatMessage.readSegmentCount]. 0 for a user message,
+     * or an AI answer from before this field existed. */
+    val readSegmentCount: Int = 0
 )

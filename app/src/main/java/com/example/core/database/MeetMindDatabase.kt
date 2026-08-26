@@ -22,7 +22,7 @@ import androidx.room.migration.Migration
         ProcessingJobEntity::class,
         ChatMessageEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class MeetMindDatabase : RoomDatabase() {
@@ -204,6 +204,20 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds [ChatMessageEntity.readSegmentCount] (Recording page redesign, phase 7): how many
+         * transcript segments were actually retrieved as context for an Ask AI answer — the
+         * "read N of M segments" honesty line. Also the phase that fixed
+         * [com.example.core.domain.AskMeetingUseCase] always passing an empty retrieval list.
+         * Defaults every existing row to 0 — an honest "unknown, this answer predates retrieval
+         * tracking" rather than a fabricated count.
+         */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE chat_messages ADD COLUMN readSegmentCount INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): MeetMindDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -211,7 +225,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

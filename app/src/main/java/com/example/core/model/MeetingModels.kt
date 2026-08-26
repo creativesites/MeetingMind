@@ -488,7 +488,13 @@ data class ChatMessage(
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
     val sourceTimestamps: List<Long> = emptyList(),
-    val sourceQuotes: List<String> = emptyList()
+    val sourceQuotes: List<String> = emptyList(),
+    /** How many transcript segments were actually retrieved and given to the model as context for
+     * this answer — the honest "read N of M segments" footprint
+     * (docs/recording-page-implementation.md §2.8/§3.5 item 28-29). Distinct from
+     * [sourceTimestamps].size, which is how many of those the model actually *cited* — an answer
+     * can legitimately read more context than it ends up citing. 0 for a user message. */
+    val readSegmentCount: Int = 0
 )
 
 /**

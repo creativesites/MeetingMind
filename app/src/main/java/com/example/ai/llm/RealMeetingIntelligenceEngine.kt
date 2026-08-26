@@ -147,16 +147,26 @@ class RealMeetingIntelligenceEngine(
             ?: return AiResult.Failed("Transcript is too short to analyze.")
         val prompt = buildAskPrompt(question, chunk.segments)
         return when (val result = languageModel.generate(prompt, maxOutputTokens = ASK_OUTPUT_TOKENS)) {
-            is AiResult.Success -> AiResult.Success(
-                ChatMessage(
-                    id = UUID.randomUUID().toString(),
-                    meetingId = transcript.meetingId,
-                    isUser = false,
-                    content = result.value.trim(),
-                    sourceTimestamps = chunk.segments.map { it.startMs },
-                    sourceQuotes = chunk.segments.map { it.text }.take(MAX_SOURCE_QUOTES)
+            is AiResult.Success -> {
+                val answer = result.value.trim()
+                // Real citations only — a [MM:SS] marker in the raw answer that doesn't match any
+                // segment actually offered to the model (a hallucinated timestamp, or one copied
+                // wrong) is dropped rather than shown as if it resolved (§3.5 item 29). This is
+                // also the honest count behind the "read N of M segments" footprint line: N is how
+                // many of *this chunk's* segments were actually cited, not the whole chunk size.
+                val cited = parseCitedTimestamps(answer, chunk.segments)
+                AiResult.Success(
+                    ChatMessage(
+                        id = UUID.randomUUID().toString(),
+                        meetingId = transcript.meetingId,
+                        isUser = false,
+                        content = answer,
+                        sourceTimestamps = cited.map { it.startMs },
+                        sourceQuotes = cited.map { it.text }.take(MAX_SOURCE_QUOTES),
+                        readSegmentCount = chunk.segments.size
+                    )
                 )
-            )
+            }
             else -> AiResult.Failed(result.describeFailure() ?: "Ask Meeting is unavailable.")
         }
     }
@@ -303,15 +313,39 @@ class RealMeetingIntelligenceEngine(
     }
 
     private fun buildAskPrompt(question: String, segments: List<TranscriptSegment>): String {
-        val excerpt = renderSegments(segments, includeIds = false)
+        val excerpt = renderSegmentsWithTimestamps(segments)
         return """
             Answer the question below using ONLY the real meeting transcript excerpt provided. If the transcript does not contain the answer, say so plainly instead of guessing.
+
+            Each line below starts with that line's exact timestamp in brackets, like [12:02]. When your answer states something a specific line supports, cite it by writing that exact bracketed timestamp immediately after the claim — copy it exactly as shown, never invent one. Not every sentence needs a citation; only cite where you are drawing on a specific line.
 
             Transcript excerpt:
             $excerpt
 
             Question: $question
         """.trimIndent()
+    }
+
+    /** Same shape as [renderSegments] but with each line's real [seg.startMs] as a `[MM:SS]`
+     * marker the model is instructed to copy back inline — see [buildAskPrompt] and
+     * [parseCitedTimestamps]. */
+    private fun renderSegmentsWithTimestamps(segments: List<TranscriptSegment>): String =
+        segments.joinToString("\n") { seg ->
+            val speaker = seg.speakerName ?: "Unknown speaker"
+            val text = seg.cleanedText ?: FillerWordCleaner.clean(seg.text)
+            "[${com.example.core.common.Formatters.formatDurationHms(seg.startMs)}] $speaker: $text"
+        }
+
+    /** Parses `[MM:SS]` (or `[H:MM:SS]`) markers out of the model's raw answer and resolves each
+     * one to a real segment in [segments] by exact timestamp-string match — per
+     * docs/recording-page-implementation.md §3.5 item 29, "Drop any citation that does not resolve
+     * to a real segment" rather than trust the model's copy. Returns matches in the order they
+     * first appear in the text, deduplicated. */
+    private fun parseCitedTimestamps(answer: String, segments: List<TranscriptSegment>): List<TranscriptSegment> {
+        val byLabel = segments.associateBy { com.example.core.common.Formatters.formatDurationHms(it.startMs) }
+        val seen = LinkedHashSet<String>()
+        CITATION_REGEX.findAll(answer).forEach { seen.add(it.groupValues[1]) }
+        return seen.mapNotNull { byLabel[it] }
     }
 
     private companion object {
@@ -328,5 +362,8 @@ class RealMeetingIntelligenceEngine(
          * all; the evidence block alone is used instead of a misleading few words. */
         const val MIN_TRANSCRIPT_EXCERPT_CHARS = 200
         const val ELISION_MARKER = "\n[...transcript continues...]\n"
+        /** Matches `[MM:SS]` or `[H:MM:SS]` — the exact shape [Formatters.formatDurationHms]
+         * produces, which is what the ask prompt shows the model and asks it to copy back. */
+        val CITATION_REGEX = Regex("\\[(\\d{1,2}:\\d{2}(?::\\d{2})?)\\]")
     }
 }

@@ -445,7 +445,8 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
                 content = entity.content,
                 timestamp = entity.timestamp,
                 sourceTimestamps = timestamps,
-                sourceQuotes = quotes
+                sourceQuotes = quotes,
+                readSegmentCount = entity.readSegmentCount
             )
         }
     }.flowOn(Dispatchers.IO)
@@ -459,7 +460,8 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
                 content = chatMessage.content,
                 timestamp = chatMessage.timestamp,
                 sourceTimestampsJson = chatMessage.sourceTimestamps.joinToString(","),
-                sourceQuotesJson = chatMessage.sourceQuotes.joinToString("|||")
+                sourceQuotesJson = chatMessage.sourceQuotes.joinToString("|||"),
+                readSegmentCount = chatMessage.readSegmentCount
             )
         )
     }

@@ -565,9 +565,13 @@ class MeetingDetailViewModel(
         }
     }
 
+    private val _pendingQuestion = MutableStateFlow("")
+    val pendingQuestion: StateFlow<String> = _pendingQuestion.asStateFlow()
+
     fun askQuestion(questionText: String) {
         if (questionText.isBlank()) return
         viewModelScope.launch {
+            _pendingQuestion.value = questionText
             _isAnswering.value = true
             try {
                 buildAskUseCase()(meetingId, questionText)
@@ -683,6 +687,7 @@ fun MeetingDetailScreen(
     }
     val activeSegment by activeSegmentState
     val isAnswering by viewModel.isAnswering.collectAsState()
+    val pendingQuestion by viewModel.pendingQuestion.collectAsState()
 
     // Which Overview rows make sense is still driven by the recording's own IntelligenceProfile —
     // a Lecture or Idea never gets an empty "Decisions"/"Action Items" row dangling around
@@ -1082,11 +1087,23 @@ fun MeetingDetailScreen(
                     isAudioPlaying = isThisRecordingActive && playbackState.isPlaying,
                     cleanFillerWords = cleanFillerWords
                 )
-                RecordingDetailTab.ASK_AI -> AskAiTab(
+                RecordingDetailTab.ASK_AI -> com.example.feature.meetingdetail.components.AskAiPanel(
                     chatMessages = chatMessages,
+                    allSegments = transcript.segments,
+                    totalSegmentCount = transcript.segments.size,
                     isAnswering = isAnswering,
+                    pendingQuestion = pendingQuestion,
                     onSendQuestion = { viewModel.askQuestion(it) },
-                    onJumpToTimestamp = { viewModel.jumpToTimestamp(it) }
+                    onPlayFrom = { viewModel.jumpToTimestamp(it) },
+                    onOpenInTranscript = { ts ->
+                        highlightedSegmentId = transcript.segments
+                            .filter { it.startMs <= ts }
+                            .maxByOrNull { it.startMs }
+                            ?.id
+                            ?: transcript.segments.minByOrNull { kotlin.math.abs(it.startMs - ts) }?.id
+                        currentTab = RecordingDetailTab.TRANSCRIPT
+                        viewModel.jumpToTimestamp(ts)
+                    }
                 )
             }
         }
@@ -2464,213 +2481,3 @@ fun DecisionsTab(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun AskAiTab(
-    chatMessages: List<ChatMessage>,
-    isAnswering: Boolean,
-    onSendQuestion: (String) -> Unit,
-    onJumpToTimestamp: (Long) -> Unit
-) {
-    var inputText by remember { mutableStateOf("") }
-    val listState = rememberLazyListState()
-
-    val presetChips = listOf(
-        "What did we agree on?",
-        "What are the next steps?",
-        "What was the budget decision?",
-        "Who owns the documentation?"
-    )
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .navigationBarsPadding()
-    ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            if (chatMessages.isEmpty()) {
-                item {
-                    Card(
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = IndigoPrimary.copy(alpha = 0.08f)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, IndigoPrimary.copy(alpha = 0.3f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = IndigoPrimaryLight)
-                                Text(
-                                    text = "Grounded Meeting Q&A",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = IndigoPrimaryLight
-                                )
-                            }
-                            Text(
-                                text = "Ask anything about this meeting. Answers are computed locally and strictly anchored in the transcript with timestamp citations.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            }
-
-            items(chatMessages, key = { it.id }) { msg ->
-                ChatMessageBubble(
-                    message = msg,
-                    onJumpToTimestamp = onJumpToTimestamp
-                )
-            }
-
-            if (isAnswering) {
-                item {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(8.dp)
-                    ) {
-                        androidx.compose.material3.CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = IndigoPrimaryLight
-                        )
-                        Text(
-                            text = "Analyzing transcript offline...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = IndigoPrimaryLight
-                        )
-                    }
-                }
-            }
-        }
-
-        FlowRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            presetChips.forEach { chip ->
-                AssistChip(
-                    onClick = { onSendQuestion(chip) },
-                    label = { Text(chip, fontSize = 12.sp) },
-                    shape = RoundedCornerShape(10.dp)
-                )
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = inputText,
-                onValueChange = { inputText = it },
-                placeholder = { Text("Ask about this meeting...") },
-                singleLine = true,
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag("ask_ai_input")
-            )
-
-            IconButton(
-                onClick = {
-                    if (inputText.isNotBlank()) {
-                        onSendQuestion(inputText.trim())
-                        inputText = ""
-                    }
-                },
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(IndigoPrimary)
-                    .testTag("ask_ai_send_btn")
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun ChatMessageBubble(
-    message: ChatMessage,
-    onJumpToTimestamp: (Long) -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start
-    ) {
-        Card(
-            shape = RoundedCornerShape(
-                topStart = 18.dp,
-                topEnd = 18.dp,
-                bottomStart = if (message.isUser) 18.dp else 4.dp,
-                bottomEnd = if (message.isUser) 4.dp else 18.dp
-            ),
-            colors = CardDefaults.cardColors(
-                containerColor = if (message.isUser) IndigoPrimary else MaterialTheme.colorScheme.surface
-            ),
-            border = if (!message.isUser) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
-            modifier = Modifier.fillMaxWidth(0.85f)
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text(
-                    text = message.content,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (message.isUser) Color.White else MaterialTheme.colorScheme.onSurface,
-                    lineHeight = 20.sp
-                )
-
-                if (message.sourceTimestamps.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Sources:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        message.sourceTimestamps.forEach { ts ->
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = IndigoPrimary.copy(alpha = 0.12f),
-                                modifier = Modifier.clickable { onJumpToTimestamp(ts) }
-                            ) {
-                                Text(
-                                    text = Formatters.formatDurationHms(ts),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = IndigoPrimaryLight,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
