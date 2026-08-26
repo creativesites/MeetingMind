@@ -90,6 +90,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setTranscriptCleanupMode(mode: com.example.core.model.TranscriptCleanupMode) {
+        viewModelScope.launch {
+            userPrefs.setTranscriptCleanupMode(mode)
+        }
+    }
+
+    fun setDiarizationStrategy(strategy: com.example.core.model.DiarizationStrategy) {
+        viewModelScope.launch {
+            userPrefs.setDiarizationStrategy(strategy)
+        }
+    }
+
     fun clearAllData(onComplete: () -> Unit) {
         viewModelScope.launch {
             meetingRepository.deleteAllMeetings()
@@ -201,6 +213,106 @@ fun SettingsScreen(
                                 checked = prefs.cleanFillerWords,
                                 onCheckedChange = { viewModel.toggleCleanFillerWords(it) },
                                 modifier = Modifier.testTag("settings_clean_filler_switch")
+                            )
+                        }
+                    )
+                }
+            }
+
+            item {
+                Text(
+                    text = "Transcript Cleanup",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            item {
+                SectionCard {
+                    ListRow(
+                        title = "Conservative",
+                        subtitle = "Light cleanup. Keeps your original wording.",
+                        onClick = { viewModel.setTranscriptCleanupMode(com.example.core.model.TranscriptCleanupMode.CONSERVATIVE) },
+                        trailing = {
+                            androidx.compose.material3.RadioButton(
+                                selected = prefs.transcriptCleanupMode == com.example.core.model.TranscriptCleanupMode.CONSERVATIVE,
+                                onClick = { viewModel.setTranscriptCleanupMode(com.example.core.model.TranscriptCleanupMode.CONSERVATIVE) },
+                                modifier = Modifier.testTag("settings_cleanup_mode_conservative")
+                            )
+                        }
+                    )
+                    ListRow(
+                        title = "Moderate",
+                        subtitle = "Balances readability with your original wording.",
+                        onClick = { viewModel.setTranscriptCleanupMode(com.example.core.model.TranscriptCleanupMode.MODERATE) },
+                        trailing = {
+                            androidx.compose.material3.RadioButton(
+                                selected = prefs.transcriptCleanupMode == com.example.core.model.TranscriptCleanupMode.MODERATE,
+                                onClick = { viewModel.setTranscriptCleanupMode(com.example.core.model.TranscriptCleanupMode.MODERATE) },
+                                modifier = Modifier.testTag("settings_cleanup_mode_moderate")
+                            )
+                        }
+                    )
+                    ListRow(
+                        title = "Aggressive",
+                        subtitle = "Creates the most polished transcript. May make larger wording changes.",
+                        showDivider = false,
+                        onClick = { viewModel.setTranscriptCleanupMode(com.example.core.model.TranscriptCleanupMode.AGGRESSIVE) },
+                        trailing = {
+                            androidx.compose.material3.RadioButton(
+                                selected = prefs.transcriptCleanupMode == com.example.core.model.TranscriptCleanupMode.AGGRESSIVE,
+                                onClick = { viewModel.setTranscriptCleanupMode(com.example.core.model.TranscriptCleanupMode.AGGRESSIVE) },
+                                modifier = Modifier.testTag("settings_cleanup_mode_aggressive")
+                            )
+                        }
+                    )
+                }
+            }
+
+            item {
+                Text(
+                    text = "Speaker Detection",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            item {
+                SectionCard {
+                    ListRow(
+                        title = "Automatic",
+                        subtitle = "MeetingMind chooses the best approach.",
+                        onClick = { viewModel.setDiarizationStrategy(com.example.core.model.DiarizationStrategy.AUTO) },
+                        trailing = {
+                            androidx.compose.material3.RadioButton(
+                                selected = prefs.diarizationStrategy == com.example.core.model.DiarizationStrategy.AUTO,
+                                onClick = { viewModel.setDiarizationStrategy(com.example.core.model.DiarizationStrategy.AUTO) },
+                                modifier = Modifier.testTag("settings_diarization_auto")
+                            )
+                        }
+                    )
+                    ListRow(
+                        title = "Deterministic",
+                        subtitle = "Uses the local speaker detection engine.",
+                        onClick = { viewModel.setDiarizationStrategy(com.example.core.model.DiarizationStrategy.DETERMINISTIC) },
+                        trailing = {
+                            androidx.compose.material3.RadioButton(
+                                selected = prefs.diarizationStrategy == com.example.core.model.DiarizationStrategy.DETERMINISTIC,
+                                onClick = { viewModel.setDiarizationStrategy(com.example.core.model.DiarizationStrategy.DETERMINISTIC) },
+                                modifier = Modifier.testTag("settings_diarization_deterministic")
+                            )
+                        }
+                    )
+                    ListRow(
+                        title = "AI-assisted",
+                        subtitle = "Uses local AI to help resolve difficult speaker assignments.",
+                        showDivider = false,
+                        onClick = { viewModel.setDiarizationStrategy(com.example.core.model.DiarizationStrategy.AI_ASSISTED) },
+                        trailing = {
+                            androidx.compose.material3.RadioButton(
+                                selected = prefs.diarizationStrategy == com.example.core.model.DiarizationStrategy.AI_ASSISTED,
+                                onClick = { viewModel.setDiarizationStrategy(com.example.core.model.DiarizationStrategy.AI_ASSISTED) },
+                                modifier = Modifier.testTag("settings_diarization_ai_assisted")
                             )
                         }
                     )

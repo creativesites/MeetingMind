@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
@@ -128,6 +129,7 @@ import com.example.core.audio.PlaybackState
 import com.example.core.common.Formatters
 import com.example.core.database.MeetMindDatabase
 import com.example.core.domain.AskMeetingUseCase
+import com.example.core.domain.ReprocessTranscriptCleanupUseCase
 import com.example.core.model.ActionItem
 import com.example.core.model.ChatMessage
 import com.example.core.model.Decision
@@ -197,6 +199,36 @@ class MeetingDetailViewModel(
     val cleanFillerWords: StateFlow<Boolean> = userPrefs.preferencesFlow
         .map { it.cleanFillerWords }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    // Reuses the exact same pipeline object that a fresh recording's VAD/ASR/diarization run
+    // would use — but cleanTranscript() (see ReprocessTranscriptCleanupUseCase) only ever touches
+    // modelStorage/cleanupEngine, so calling it here never triggers audio processing.
+    private val pipeline by lazy { com.example.ai.pipeline.MeetingProcessingPipeline(getApplication(), database) }
+    private val reprocessCleanupUseCase by lazy {
+        ReprocessTranscriptCleanupUseCase(pipeline, meetingRepository, transcriptRepository)
+    }
+
+    private val _isReprocessingCleanup = MutableStateFlow(false)
+    val isReprocessingCleanup: StateFlow<Boolean> = _isReprocessingCleanup.asStateFlow()
+
+    /** Re-cleans this meeting's already-persisted transcript with the user's currently-selected
+     * [com.example.core.model.TranscriptCleanupMode] — no re-recording, re-transcription, or
+     * re-diarization. [transcript] (already a live Room [Flow]) reflects the result automatically
+     * once [com.example.core.repository.TranscriptRepository.updateCleanedText] persists it. */
+    fun reprocessCleanup(onDone: (message: String) -> Unit) {
+        viewModelScope.launch {
+            _isReprocessingCleanup.value = true
+            try {
+                val mode = userPrefs.preferencesFlow.first().transcriptCleanupMode
+                reprocessCleanupUseCase(meetingId, mode)
+                onDone("Transcript re-cleaned (${mode.name.lowercase()} mode)")
+            } catch (e: Exception) {
+                onDone("Re-clean failed: ${e.message ?: "unknown error"}")
+            } finally {
+                _isReprocessingCleanup.value = false
+            }
+        }
+    }
 
     /** All playback is owned by the single app-level [PlaybackController] — never a per-screen player. */
     val playbackState: StateFlow<PlaybackState> = PlaybackController.state
@@ -419,6 +451,7 @@ fun MeetingDetailScreen(
     val context = LocalContext.current
     val meeting by viewModel.meeting.collectAsState()
     val transcript by viewModel.transcript.collectAsState()
+    val isReprocessingCleanup by viewModel.isReprocessingCleanup.collectAsState()
     val actionItems by viewModel.actionItems.collectAsState()
     val decisions by viewModel.decisions.collectAsState()
     val questions by viewModel.questions.collectAsState()
@@ -575,6 +608,17 @@ fun MeetingDetailScreen(
                                 menuExpanded = false
                                 editTitleText = meeting?.title ?: ""
                                 showEditTitleDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Re-clean Transcript") },
+                            leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                            enabled = !isReprocessingCleanup,
+                            onClick = {
+                                menuExpanded = false
+                                viewModel.reprocessCleanup { message ->
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                }
                             }
                         )
                         DropdownMenuItem(
