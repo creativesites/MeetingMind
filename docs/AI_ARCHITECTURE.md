@@ -307,6 +307,41 @@ Not implemented, and not started: calendar integration, Zoom/Meet/Teams bots, ba
 
 **Known limitation**: this pass did not extend the "clean up filler words" live display toggle in `MeetingDetailScreen` to prefer the cached `cleanedText` — it still runs `FillerWordCleaner.clean()` live at display time, which is correct and unchanged behavior, just not yet reading from the new cache. Low risk, deferred as out of scope for this increment.
 
+## 6. Transcript Structure Fix (P0): a real `TranscriptStructureEngine`, not a fixed-threshold heuristic
+
+**Root cause, traced end to end**: real-device testing after Stage B showed transcripts — including single-speaker recordings — still reading as heavily fragmented. Fragmentation is introduced at three compounding points, only the last of which was under-built:
+1. `SileroVadDetector` closes a speech interval after any ≥700ms silence (`MIN_SILENCE_DURATION_SEC`) — the root generator of raw fragment boundaries. Left untouched per the explicit "don't fix this by raising VAD thresholds" instruction.
+2. `SherpaParakeetSpeechRecognizer` decodes each VAD interval as a fully independent `OfflineStream` — one interval becomes exactly one `TranscriptSegment`, verbatim, with zero merging (correctly — that isn't ASR's job).
+3. The old `TranscriptParagraphBuilder` had exactly one signal (gap duration, fixed at 1500ms) plus two hard caps (45s/700 chars) to decide whether to re-merge those fragments — no recording-type awareness, no sentence-completion awareness, no single-speaker-mode leniency. A single-speaker recording with a natural 2-second thinking pause — extremely common in an Idea/Voice Memo — got split purely because of gap duration, with nothing about the content saying the thought had ended.
+
+**Decision: replace, not extend.** `TranscriptParagraphBuilder` is deleted; `TranscriptStructureEngine` (`ai/pipeline/TranscriptStructureEngine.kt`) replaces it as the pipeline's paragraph-building stage. Extending the old single-function/single-threshold design to cover per-type policy, sentence-boundary detection, and single-speaker mode would have produced exactly the "untestable collection of heuristics" this fix was asked to avoid. The old builder's `joinText` sentence-joining logic (adds the terminal punctuation ASR omitted between two fragments, never rewrites a word) was sound and is reused verbatim as `joinFragmentTexts`. `TranscriptCleanupEngine`/`TranscriptQualityValidator` (Stage B) are unaffected — they still operate downstream on whatever paragraph text this stage produces.
+
+**The merge decision** (`DeterministicTranscriptStructureEngine.canExtend`) reads every signal a person would actually use when reading a transcript, not gap duration alone:
+- A user-edited fragment is never merged in either direction (extends Stage B's "user edits always win" discipline to structuring).
+- A genuine speaker change always breaks the paragraph — unless `singleSpeakerMode` is true, in which case speakerId carries no signal (diarization was skipped for a confirmed solo recording) and is not consulted at all.
+- The pause is compared against one of two thresholds from `RecordingType.transcriptMergePolicy()`: the base `maxGapMs` if the accumulated text already reads as a complete thought, or the more generous `extendedGapMs` if it doesn't — "doesn't" meaning no terminal punctuation, a trailing conjunction/preposition/article ("and", "so", "the", ...), or either neighboring fragment being one or two words long (a lone ASR emission is far more likely to be a sliver of a larger thought than a complete block on its own).
+- Two hard ceilings (paragraph duration, character length) apply regardless of signal strength, so nothing merges indefinitely.
+
+**Per-recording-type policy** (`TranscriptMergePolicy`, `core/model/MeetingModels.kt`):
+
+| Types | maxGap / extendedGap | duration / chars | Rationale |
+|---|---|---|---|
+| Idea, Voice Memo, Journal, Dictation, Research | 3.0s / 7.0s | 90s / 1200 | Solo narration — thinking pauses are normal, merge aggressively |
+| Lecture | 3.5s / 8.0s | 120s / 1600 | Explanatory monologue — favor long coherent paragraphs |
+| Meeting, Conversation, Brainstorm | 1.5s / 3.0s | 45s / 700 | Speaker turn is the primary structural signal — merge within a turn, keep real turns apart |
+| Interview | 1.2s / 2.5s | 45s / 700 | Q&A alternates quickly — slightly tighter base gap keeps exchanges crisp |
+| Custom, General | 1.5s / 3.0s | 45s / 700 | Unknown content — same balanced defaults as Meeting |
+
+**Single-speaker mode** (`TranscriptMergePolicy.boostedForSingleSpeaker`) widens `maxGapMs`/`extendedGapMs` to a floor of 4.0s/9.0s on top of whichever policy the recording type already specifies — never the duration/character ceilings, so "do not blindly merge indefinitely" still holds even for a confirmed solo recording. A type that's already more generous than this floor (Idea, Voice Memo, ...) is unaffected.
+
+**Provenance for future word-level timestamps**: `TranscriptSegment`/`TranscriptSegmentEntity` gain `sourceSegmentIds: List<String>` (Room migration 6→7, `sourceSegmentIdsJson`) — every persisted paragraph, merged or not, lists the raw ASR fragment id(s) it was built from, earliest-first. A merge also keeps the earliest `startMs` and latest `endMs` across the group (unchanged from the old builder), which is what keeps `findActiveTranscriptSegment`'s playback-position lookup and the transcript UI's tap-to-seek (`MeetingDetailScreen`, both key off `startMs`) correct after merging — audited directly, no changes were needed there.
+
+**Pipeline wiring**: `recordingType` resolution moved earlier in `MeetingProcessingPipeline.processMeeting()` (it now also drives structuring, not just the later intelligence-extraction step). `TranscriptStructureEngine.structure(speakerLabelledSegments, recordingType, singleSpeakerMode = expectedSpeakerCount == 1)` replaces the old `TranscriptParagraphBuilder.buildParagraphs()` call, in the same position (after diarization, before the cleanup stage).
+
+**Tests**: 21 new tests in `TranscriptStructureEngineTest` covering every signal in isolation plus the required adversarial scenarios — single-speaker natural pauses merging, single-speaker mode still breaking a genuinely long silence, fragmented single-speaker sentences, one-word fragments, long pauses after a trailing conjunction, genuine sentence boundaries still breaking, genuine speaker changes never merging, rapid A/B/A/B alternation, a four-way Meeting/Interview/Lecture/Idea comparison at the same gap, timestamp and `sourceSegmentIds` survival across a merge, user edits never absorbed, and no word ever dropped or reordered. 259 tests total project-wide, 0 failures; `lintDebug`/`assembleDebug` both clean.
+
+**Known limitation**: this fix is deterministic-layer-only, exactly as scoped — the ASR model and VAD threshold were deliberately left untouched, and no LLM-assisted restructuring was added. Real-device transcript readability with this change has not yet been re-verified on hardware (see Known Limitations below); the adversarial test suite proves the decision logic itself is correct against synthetic timing data, not that real Parakeet output on a real device produces the exact gap/punctuation patterns these tests assume.
+
 ## 0d. Status Update — Phase 3A: Recording Type Focus Guidance
 
 Phase 3A added `RecordingType` (Meeting, Interview, Lecture, Voice Memo, Idea, Brainstorm,

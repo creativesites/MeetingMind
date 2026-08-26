@@ -81,7 +81,8 @@ class MeetingProcessingPipeline(
         contextLengthTokens = ModelCatalog.qwen25_1_5bInstruct.contextLengthTokens ?: DEFAULT_LLM_CONTEXT_TOKENS
     ),
     private val embeddingEngine: EmbeddingEngine = LocalEmbeddingEngine(),
-    private val cleanupEngine: TranscriptCleanupEngine = RuleBasedTranscriptCleanupEngine()
+    private val cleanupEngine: TranscriptCleanupEngine = RuleBasedTranscriptCleanupEngine(),
+    private val structureEngine: TranscriptStructureEngine = DeterministicTranscriptStructureEngine
 ) {
 
     suspend fun processMeeting(
@@ -215,6 +216,15 @@ class MeetingProcessingPipeline(
                 }
             }
 
+            // Resolved here (rather than at STEP 4, where it used to live) because the structure
+            // engine below needs it too — recording type governs paragraph-merging behavior just
+            // as much as it governs what the LLM is asked to extract.
+            val recordingType = try {
+                com.example.core.model.RecordingType.valueOf(existingMeeting.recordingType)
+            } catch (e: Exception) {
+                com.example.core.model.RecordingType.GENERAL
+            }
+
             // STEP 3: Speaker Diarization — skipped entirely for a confirmed single speaker.
             // Running full multi-speaker clustering on a recording the user already told
             // MeetingMind is solo (Idea, Voice Memo, a "Just me" pick) wastes the segmentation +
@@ -241,9 +251,10 @@ class MeetingProcessingPipeline(
             // Regroup the VAD-sized fragments into readable paragraphs. This runs *after*
             // diarization on purpose: speaker identity is what decides where a paragraph may
             // legitimately continue, so grouping earlier would risk merging across a speaker
-            // change that diarization hadn't reported yet.
-            val paragraphedSegments = TranscriptParagraphBuilder.buildParagraphs(speakerLabelledSegments)
-            Log.d(PERF_TAG, "Paragraphs: ${speakerLabelledSegments.size} fragments -> ${paragraphedSegments.size} paragraphs")
+            // change that diarization hadn't reported yet. Recording type and single-speaker mode
+            // both shape how aggressively fragments merge — see TranscriptStructureEngine.
+            val paragraphedSegments = structureEngine.structure(speakerLabelledSegments, recordingType, singleSpeakerMode = expectedSpeakerCount == 1)
+            Log.d(PERF_TAG, "Structuring: ${speakerLabelledSegments.size} fragments -> ${paragraphedSegments.size} paragraphs")
             // Free the segmentation+embedding models before the LLM's much larger allocation loads.
             SherpaEngineManager.releaseAll()
 
@@ -258,11 +269,6 @@ class MeetingProcessingPipeline(
             val diarizedSegments = applyTranscriptCleanup(paragraphedSegments, cleanupEngine)
 
             // STEP 4: Meeting Intelligence (best-effort — unavailable leaves summary/insights empty)
-            val recordingType = try {
-                com.example.core.model.RecordingType.valueOf(existingMeeting.recordingType)
-            } catch (e: Exception) {
-                com.example.core.model.RecordingType.GENERAL
-            }
             val intelligenceProfile = recordingType.intelligenceProfile()
             // What this step is actually doing depends on what this recording type actually
             // produces — a Lecture never claims to be "extracting decisions & action items".
@@ -333,7 +339,8 @@ class MeetingProcessingPipeline(
                     endMs = it.endMs,
                     text = it.text,
                     confidence = it.confidence,
-                    cleanedText = it.cleanedText
+                    cleanedText = it.cleanedText,
+                    sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString()
                 )
             }
             transcriptDao.insertSegments(segmentEntities)

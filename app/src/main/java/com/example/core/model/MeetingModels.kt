@@ -123,7 +123,62 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
             analyzingStageLabel = "Analyzing your recording..."
         )
     }
+
+    /**
+     * How aggressively [com.example.ai.pipeline.TranscriptStructureEngine] should merge raw ASR
+     * fragments into readable paragraphs for this recording type. Distinct from
+     * [intelligenceProfile] — this governs the transcript's own shape, not what the LLM is asked
+     * to extract from it. See [TranscriptMergePolicy] for what each field controls.
+     */
+    fun transcriptMergePolicy(): TranscriptMergePolicy = when (this) {
+        // Solo narration/notes: natural thinking pauses are extremely common and must not read as
+        // paragraph breaks — merge aggressively into long, natural paragraphs.
+        IDEA, VOICE_MEMO, JOURNAL, DICTATION, RESEARCH -> TranscriptMergePolicy(
+            maxGapMs = 3_000L, extendedGapMs = 7_000L,
+            maxParagraphDurationMs = 90_000L, maxParagraphChars = 1_200
+        )
+        // Explanatory monologue: favor long, coherent paragraphs over frequent breaks.
+        LECTURE -> TranscriptMergePolicy(
+            maxGapMs = 3_500L, extendedGapMs = 8_000L,
+            maxParagraphDurationMs = 120_000L, maxParagraphChars = 1_600
+        )
+        // Multi-speaker exchange: a real turn boundary (speaker change) is the primary structural
+        // signal, so gap tolerance stays close to natural conversational pacing — merge the
+        // fragments *within* one person's turn, but don't paper over genuinely separate turns with
+        // an overly generous gap.
+        MEETING, CONVERSATION, BRAINSTORM -> TranscriptMergePolicy(
+            maxGapMs = 1_500L, extendedGapMs = 3_000L,
+            maxParagraphDurationMs = 45_000L, maxParagraphChars = 700
+        )
+        // Question/answer exchanges tend to alternate quickly — a slightly tighter base gap keeps
+        // those boundaries crisp, while the same incomplete-sentence extension still protects a
+        // mid-answer pause from being cut off.
+        INTERVIEW -> TranscriptMergePolicy(
+            maxGapMs = 1_200L, extendedGapMs = 2_500L,
+            maxParagraphDurationMs = 45_000L, maxParagraphChars = 700
+        )
+        // Genuinely unknown content — the same balanced defaults meeting-like recordings use.
+        CUSTOM, GENERAL -> TranscriptMergePolicy(
+            maxGapMs = 1_500L, extendedGapMs = 3_000L,
+            maxParagraphDurationMs = 45_000L, maxParagraphChars = 700
+        )
+    }
 }
+
+/**
+ * The gap/length thresholds [com.example.ai.pipeline.TranscriptStructureEngine] uses to decide
+ * whether two consecutive same-speaker ASR fragments belong in one transcript paragraph. Two gap
+ * thresholds, not one: [maxGapMs] applies when the accumulated text already reads as a complete
+ * sentence, [extendedGapMs] applies when it doesn't (see the engine's incomplete-sentence
+ * detection) — a longer pause is far more likely to be someone still forming a thought than a new
+ * one starting, and the fixed-threshold approach this replaces couldn't tell the two apart.
+ */
+data class TranscriptMergePolicy(
+    val maxGapMs: Long,
+    val extendedGapMs: Long,
+    val maxParagraphDurationMs: Long,
+    val maxParagraphChars: Int
+)
 
 /**
  * Drives what MeetingMind actually asks the LLM to extract, which Meeting Detail
@@ -206,7 +261,15 @@ data class TranscriptSegment(
     // this segment is user-edited (a cleanup of text the user has since corrected is stale and is
     // never generated for or shown over an edited segment). Callers that want the best available
     // reading text should use [cleanedText] ?: [text], never the reverse.
-    val cleanedText: String? = null
+    val cleanedText: String? = null,
+    // The raw ASR fragment id(s) this paragraph was built from, earliest-first — populated by
+    // [com.example.ai.pipeline.TranscriptStructureEngine] regardless of whether a merge actually
+    // happened (a paragraph with exactly one source still lists its own id). Never empty for a
+    // persisted segment; empty only as the domain-model default before structuring has run. Exists
+    // so provenance survives a merge even though the original per-fragment rows are never
+    // persisted individually — and so a future word-level-timestamp feature has something to
+    // anchor to.
+    val sourceSegmentIds: List<String> = emptyList()
 )
 
 data class Transcript(

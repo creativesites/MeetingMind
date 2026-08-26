@@ -59,7 +59,10 @@ data class TranscriptSegmentEntity(
      * hasn't run yet (or was rejected by [com.example.ai.pipeline.TranscriptQualityValidator]) —
      * callers fall back to [text]. Never written to when [isUserEdited] is true: the user's own
      * correction always wins over a cached cleanup of the text it replaced. */
-    val cleanedText: String? = null
+    val cleanedText: String? = null,
+    /** JSON array of the raw ASR fragment ids this paragraph was built from — see
+     * [com.example.core.model.TranscriptSegment.sourceSegmentIds]. */
+    val sourceSegmentIdsJson: String = "[]"
 )
 
 @Entity(

@@ -95,8 +95,10 @@ class SileroVadDetector(
         // a couple of words each — since one VAD interval becomes exactly one transcript segment
         // (see SherpaParakeetSpeechRecognizer). 0.7s sits above ordinary mid-thought hesitation
         // but still below a real turn-taking pause. Fragments that survive this are additionally
-        // regrouped by TranscriptParagraphBuilder after diarization; both layers matter, because
-        // longer intervals also give the ASR more acoustic context per decode.
+        // regrouped by TranscriptStructureEngine after diarization; both layers matter, because
+        // longer intervals also give the ASR more acoustic context per decode. Deliberately NOT
+        // raised further to compensate for remaining fragmentation — that is the structure
+        // engine's job, so it works regardless of exactly where this threshold sits.
         const val MIN_SILENCE_DURATION_SEC = 0.7f
         const val MIN_SPEECH_DURATION_SEC = 0.25f
         const val WINDOW_SIZE_SAMPLES = 512

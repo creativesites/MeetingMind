@@ -183,7 +183,8 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
                         text = it.text,
                         confidence = it.confidence,
                         isUserEdited = it.isUserEdited,
-                        cleanedText = it.cleanedText
+                        cleanedText = it.cleanedText,
+                        sourceSegmentIds = it.sourceSegmentIdsJson.toIdList()
                     )
                 }
             )

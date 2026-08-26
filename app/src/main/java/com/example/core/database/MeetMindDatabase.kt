@@ -22,7 +22,7 @@ import androidx.room.migration.Migration
         ProcessingJobEntity::class,
         ChatMessageEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class MeetMindDatabase : RoomDatabase() {
@@ -176,6 +176,19 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds [TranscriptSegmentEntity.sourceSegmentIdsJson] (Intelligence Orchestration Layer,
+         * Stage B follow-up: transcript structure fix): the raw ASR fragment id(s) a persisted
+         * paragraph was merged from, so provenance survives even though individual raw fragments
+         * are never persisted as their own rows. Defaults every existing row to `'[]'` — an honest
+         * "unknown, this paragraph predates provenance tracking" rather than a fabricated guess.
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE transcript_segments ADD COLUMN sourceSegmentIdsJson TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
+
         fun getInstance(context: Context): MeetMindDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -183,7 +196,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

@@ -421,7 +421,7 @@ class MeetingProcessingPipelineIntegrationTest {
         assertEquals(MeetingStatus.READY.name, result.status)
         val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
         // The two ASR fragments share no speakerId (both null) and sit back-to-back, so
-        // TranscriptParagraphBuilder correctly merges them into one paragraph — exactly the
+        // TranscriptStructureEngine correctly merges them into one paragraph — exactly the
         // "treat an undiarized transcript as one speaker" behavior a skipped diarization should
         // produce.
         assertEquals(1, segments.size)
