@@ -83,12 +83,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -99,7 +97,6 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -148,10 +145,16 @@ import com.example.core.share.ShareContentFormatter
 import com.example.core.share.ShareHelper
 import com.example.core.ui.ListRow
 import com.example.core.ui.SectionCard
+import com.example.feature.meetingdetail.components.BottomTabBar
+import com.example.feature.meetingdetail.components.MiniDialPlayer
+import com.example.feature.meetingdetail.components.RecordingDetailTab
 import com.example.ui.theme.CyanTertiary
 import com.example.ui.theme.HeroGradientBrush
 import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.IndigoPrimaryLight
+import com.example.ui.theme.Ink
+import com.example.ui.theme.InkMuted
+import com.example.ui.theme.InkSecondary
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.VioletSecondary
 import com.example.ui.theme.WarningAmber
@@ -431,10 +434,12 @@ class MeetingDetailViewModel(
     // PlaybackService, not this ViewModel, and must keep running after this screen is destroyed.
 }
 
-/** Which of Meeting Detail's tabs exist for a given recording — Action Items/Decisions only
- * appear when [IntelligenceProfile] actually enables them for this recording type. */
-private enum class DetailTabKind { OVERVIEW, TRANSCRIPT, ACTION_ITEMS, DECISIONS, ASK_AI }
-private data class DetailTab(val kind: DetailTabKind, val title: String)
+/** Full-screen overlays reachable from the Overview tab's Decisions/Action Items rows now that
+ * those are no longer persistent tabs (docs/recording-page-implementation.md §2.1: "Tabs are
+ * Overview · Transcript · Ask AI only — the current dynamic tab list ... is removed"). Phase 8 of
+ * the redesign replaces these with the Overview stepper's own decision timeline / task steps;
+ * until then this keeps the existing detail screens reachable rather than deleting them. */
+private enum class DetailOverlay { ACTION_ITEMS, DECISIONS }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -489,23 +494,16 @@ fun MeetingDetailScreen(
     val activeSegment by activeSegmentState
     val isAnswering by viewModel.isAnswering.collectAsState()
 
-    // Which AI tabs make sense is driven by the recording's own IntelligenceProfile — a Lecture
-    // or Idea never gets an empty "Decisions"/"Action Items" tab dangling around implying content
-    // that was never even asked for. Overview and Transcript are always first (in that order, so
-    // TRANSCRIPT is always index 1), Ask AI is always last.
+    // Which Overview rows make sense is still driven by the recording's own IntelligenceProfile —
+    // a Lecture or Idea never gets an empty "Decisions"/"Action Items" row dangling around
+    // implying content that was never even asked for. The persistent tab bar itself is always
+    // exactly Overview/Transcript/Ask AI (docs/recording-page-implementation.md §2.1) — Decisions
+    // and Action Items are reachable as overlays from Overview instead of their own tabs.
     val intelligenceProfile = (meeting?.recordingType ?: RecordingType.GENERAL).intelligenceProfile()
-    val tabs = remember(intelligenceProfile) {
-        buildList {
-            add(DetailTab(DetailTabKind.OVERVIEW, "Overview"))
-            add(DetailTab(DetailTabKind.TRANSCRIPT, "Transcript"))
-            if (intelligenceProfile.extractActionItems) add(DetailTab(DetailTabKind.ACTION_ITEMS, "Action Items"))
-            if (intelligenceProfile.extractDecisions) add(DetailTab(DetailTabKind.DECISIONS, "Decisions"))
-            add(DetailTab(DetailTabKind.ASK_AI, "Ask AI"))
-        }
-    }
-    fun tabIndexOf(kind: DetailTabKind): Int = tabs.indexOfFirst { it.kind == kind }.coerceAtLeast(0)
 
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var currentTab by remember { mutableStateOf(RecordingDetailTab.OVERVIEW) }
+    var overlay by remember { mutableStateOf<DetailOverlay?>(null) }
+    var showFullPlayer by remember { mutableStateOf(false) }
 
     // Consumed exactly once per screen entry — re-composition or the user manually switching
     // tabs afterward must not keep forcing them back to this segment.
@@ -514,7 +512,7 @@ fun MeetingDetailScreen(
     LaunchedEffect(initialJumpToMs, transcript.segments) {
         if (jumpConsumed || initialJumpToMs == null || transcript.segments.isEmpty()) return@LaunchedEffect
         jumpConsumed = true
-        selectedTabIndex = tabIndexOf(DetailTabKind.TRANSCRIPT)
+        currentTab = RecordingDetailTab.TRANSCRIPT
         viewModel.jumpToTimestamp(initialJumpToMs)
         highlightedSegmentId = transcript.segments
             .filter { it.startMs <= initialJumpToMs }
@@ -569,33 +567,67 @@ fun MeetingDetailScreen(
         }
     }
 
+    val audioPath = meeting?.audioFilePath
+
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = meeting?.title ?: "Recording Details",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier.testTag("meeting_detail_back_btn")
+            Surface(color = Color.White) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 18.dp, end = 18.dp, top = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onNavigateBack)
+                            .testTag("meeting_detail_back_btn"),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = InkSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { menuExpanded = true },
-                        modifier = Modifier.testTag("meeting_menu_btn")
-                    ) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Options")
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = meeting?.title ?: "Recording Details",
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = when (currentTab) {
+                                RecordingDetailTab.OVERVIEW -> meeting?.let {
+                                    "${Formatters.formatDateHeader(it.createdAt)} · ${Formatters.formatDurationHms(it.durationMs)}"
+                                } ?: ""
+                                RecordingDetailTab.TRANSCRIPT -> "Transcript · ${transcript.segments.size} segments"
+                                RecordingDetailTab.ASK_AI -> "Answers from this recording only"
+                            },
+                            fontSize = 11.5.sp,
+                            color = InkMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 1.dp)
+                        )
                     }
+
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.testTag("meeting_menu_btn")
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = InkSecondary)
+                        }
 
                     DropdownMenu(
                         expanded = menuExpanded,
@@ -696,11 +728,34 @@ fun MeetingDetailScreen(
                             }
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
+                    }
+
+                    // The design's mini dial is a conic play/progress indicator, present on every
+                    // tab and never scrolling away (docs/recording-page-implementation.md §2.1).
+                    // Long-press reveals the full scrub player below (see showFullPlayer) — the
+                    // old always-visible player's slider/lyrics-preview didn't fit the dial's
+                    // "shrinks to a corner" brief, so it moved behind that disclosure instead of
+                    // being deleted.
+                    MiniDialPlayer(
+                        progress = if (isThisRecordingActive && playbackState.durationMs > 0L) {
+                            (playbackState.positionMs.toFloat() / playbackState.durationMs.toFloat()).coerceIn(0f, 1f)
+                        } else 0f,
+                        isPlaying = isThisRecordingActive && playbackState.isPlaying,
+                        onTogglePlayPause = {
+                            if (isThisRecordingActive) {
+                                viewModel.togglePlayPause()
+                            } else if (audioPath != null) {
+                                viewModel.playAudio(File(audioPath))
+                            }
+                        },
+                        onLongPress = { showFullPlayer = !showFullPlayer },
+                        modifier = Modifier.testTag("mini_dial_player")
+                    )
+                }
+            }
+        },
+        bottomBar = {
+            BottomTabBar(current = currentTab, onSelect = { currentTab = it })
         }
     ) { innerPadding ->
         Column(
@@ -709,24 +764,30 @@ fun MeetingDetailScreen(
                 .padding(innerPadding)
         ) {
             // Bento Audio Player Card — reflects the one shared playback session, not a
-            // screen-owned player. Shows real live progress only when this recording is the one
-            // actually loaded; otherwise a simple "Play" affordance that loads it into the
-            // shared session (replacing whatever else was loaded, never running alongside it).
-            val audioPath = meeting?.audioFilePath
-            if (audioPath != null) {
-                BentoAudioPlayerCard(
-                    playbackState = if (isThisRecordingActive) playbackState else PlaybackState(),
-                    segments = transcript.segments,
-                    activeSegment = activeSegment,
-                    onPlayPause = {
-                        if (isThisRecordingActive) {
-                            viewModel.togglePlayPause()
-                        } else {
-                            viewModel.playAudio(File(audioPath))
-                        }
-                    },
-                    onSeek = { viewModel.seekPlayback(it) }
-                )
+            // screen-owned player. Only surfaced on long-press of the mini dial now (see
+            // showFullPlayer above); shows real live progress only when this recording is the one
+            // actually loaded, otherwise a simple "Play" affordance that loads it into the shared
+            // session (replacing whatever else was loaded, never running alongside it).
+            AnimatedVisibility(
+                visible = showFullPlayer && audioPath != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                if (audioPath != null) {
+                    BentoAudioPlayerCard(
+                        playbackState = if (isThisRecordingActive) playbackState else PlaybackState(),
+                        segments = transcript.segments,
+                        activeSegment = activeSegment,
+                        onPlayPause = {
+                            if (isThisRecordingActive) {
+                                viewModel.togglePlayPause()
+                            } else {
+                                viewModel.playAudio(File(audioPath))
+                            }
+                        },
+                        onSeek = { viewModel.seekPlayback(it) }
+                    )
+                }
             }
 
             // Honest "model required" banner — never shown alongside a fabricated transcript.
@@ -782,41 +843,20 @@ fun MeetingDetailScreen(
                 }
             }
 
-            // Tab Bar
-            ScrollableTabRow(
-                selectedTabIndex = selectedTabIndex,
-                containerColor = MaterialTheme.colorScheme.background,
-                contentColor = IndigoPrimaryLight,
-                edgePadding = 16.dp
-            ) {
-                tabs.forEachIndexed { index, tab ->
-                    Tab(
-                        selected = selectedTabIndex == index,
-                        onClick = { selectedTabIndex = index },
-                        text = {
-                            Text(
-                                text = tab.title,
-                                fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
-                    )
-                }
-            }
-
-            // Tab Pages
-            when (tabs.getOrNull(selectedTabIndex)?.kind) {
-                DetailTabKind.OVERVIEW -> BentoOverviewTab(
+            // Tab Pages — the tab bar itself is [BottomTabBar] in Scaffold's bottomBar above.
+            when (currentTab) {
+                RecordingDetailTab.OVERVIEW -> BentoOverviewTab(
                     meeting = meeting,
                     topics = topics,
                     decisions = decisions,
                     actionItems = actionItems,
                     intelligenceProfile = intelligenceProfile,
-                    onNavigateToTranscript = { selectedTabIndex = tabIndexOf(DetailTabKind.TRANSCRIPT) },
-                    onNavigateToActionItems = { selectedTabIndex = tabIndexOf(DetailTabKind.ACTION_ITEMS) },
-                    onNavigateToDecisions = { selectedTabIndex = tabIndexOf(DetailTabKind.DECISIONS) },
+                    onNavigateToTranscript = { currentTab = RecordingDetailTab.TRANSCRIPT },
+                    onNavigateToActionItems = { overlay = DetailOverlay.ACTION_ITEMS },
+                    onNavigateToDecisions = { overlay = DetailOverlay.DECISIONS },
                     llmModelInstalled = llmModelInstalled
                 )
-                DetailTabKind.TRANSCRIPT -> TranscriptTab(
+                RecordingDetailTab.TRANSCRIPT -> TranscriptTab(
                     segments = transcript.segments,
                     onJumpToTimestamp = { viewModel.jumpToTimestamp(it) },
                     onRenameSpeaker = { id, name ->
@@ -830,24 +870,55 @@ fun MeetingDetailScreen(
                     isAudioPlaying = isThisRecordingActive && playbackState.isPlaying,
                     cleanFillerWords = cleanFillerWords
                 )
-                DetailTabKind.ACTION_ITEMS -> ActionItemsTab(
-                    actionItems = actionItems,
-                    segments = transcript.segments,
-                    onToggle = { viewModel.toggleActionItem(it) },
-                    onDelete = { viewModel.deleteActionItem(it) },
-                    onAddClick = { showAddActionDialog = true },
-                    onJumpToTimestamp = { viewModel.jumpToTimestamp(it) }
-                )
-                DetailTabKind.DECISIONS -> DecisionsTab(decisions = decisions, questions = questions, segments = transcript.segments, onJumpToTimestamp = { viewModel.jumpToTimestamp(it) })
-                DetailTabKind.ASK_AI -> AskAiTab(
+                RecordingDetailTab.ASK_AI -> AskAiTab(
                     chatMessages = chatMessages,
                     isAnswering = isAnswering,
                     onSendQuestion = { viewModel.askQuestion(it) },
                     onJumpToTimestamp = { viewModel.jumpToTimestamp(it) }
                 )
-                null -> Unit
             }
         }
+    }
+
+    // Decisions/Action Items overlays — see [DetailOverlay] above. Rendered on top of the main
+    // Scaffold rather than as a fourth/fifth tab.
+    if (overlay != null) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(if (overlay == DetailOverlay.ACTION_ITEMS) "Action Items" else "Decisions") },
+                    navigationIcon = {
+                        IconButton(onClick = { overlay = null }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    )
+                )
+            }
+        ) { overlayPadding ->
+            Box(modifier = Modifier.fillMaxSize().padding(overlayPadding)) {
+                when (overlay) {
+                    DetailOverlay.ACTION_ITEMS -> ActionItemsTab(
+                        actionItems = actionItems,
+                        segments = transcript.segments,
+                        onToggle = { viewModel.toggleActionItem(it) },
+                        onDelete = { viewModel.deleteActionItem(it) },
+                        onAddClick = { showAddActionDialog = true },
+                        onJumpToTimestamp = { viewModel.jumpToTimestamp(it) }
+                    )
+                    DetailOverlay.DECISIONS -> DecisionsTab(
+                        decisions = decisions,
+                        questions = questions,
+                        segments = transcript.segments,
+                        onJumpToTimestamp = { viewModel.jumpToTimestamp(it) }
+                    )
+                    null -> Unit
+                }
+            }
+        }
+    }
     }
 
     // Dialogs
