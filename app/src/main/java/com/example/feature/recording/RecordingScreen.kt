@@ -81,7 +81,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.core.audio.MeetingRecordingService
+import com.example.core.audio.RecordingCapacity
 import com.example.core.audio.RecordingState
+import com.example.core.common.DeviceCapabilityDetector
 import com.example.core.common.Formatters
 import com.example.core.model.RecordingType
 import com.example.ui.theme.IndigoPrimary
@@ -135,6 +137,9 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     val focusInterrupted: StateFlow<Boolean> = _boundService
         .flatMapLatest { it?.focusInterrupted ?: flowOf(false) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val capacityWarning: StateFlow<String?> = _boundService
+        .flatMapLatest { it?.capacityWarning ?: flowOf(null) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private var currentMeetingId: String = UUID.randomUUID().toString()
     private var meetingTitle: String = "In-Person Discussion"
@@ -251,10 +256,17 @@ fun RecordingScreen(
     }
 
     if (!typeChosen) {
+        // Pre-flight storage check (design spec §3.8) — computed once per screen entry rather
+        // than polled, since nothing changes while the user is just picking a recording type.
+        val availableStorageMb = remember { DeviceCapabilityDetector.getAvailableStorageMb() }
+        val storageLine = remember(availableStorageMb) { RecordingCapacity.formatStorageLine(availableStorageMb) }
+        val refuseToStart = remember(availableStorageMb) { RecordingCapacity.shouldRefuseToStart(availableStorageMb) }
         RecordingTypePickerScreen(
             selected = selectedType,
             customContext = customContextText,
             selectedSpeakerCount = selectedSpeakerCount,
+            storageLine = storageLine,
+            refuseToStart = refuseToStart,
             onSelect = {
                 selectedType = it
                 meetingTitle = it.displayName
@@ -432,6 +444,20 @@ fun RecordingScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                // In-flight storage/battery warning (design spec §3.8): a single quiet line, never
+                // a modal interrupting a live recording.
+                val capacityWarning by viewModel.capacityWarning.collectAsState()
+                capacityWarning?.let { warning ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = warning,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("record_capacity_warning")
+                    )
+                }
+
                 Spacer(modifier = Modifier.weight(1f))
 
                 Row(
@@ -517,6 +543,8 @@ private fun RecordingTypePickerScreen(
     selected: RecordingType,
     customContext: String,
     selectedSpeakerCount: Int?,
+    storageLine: String,
+    refuseToStart: Boolean,
     onSelect: (RecordingType) -> Unit,
     onCustomContextChange: (String) -> Unit,
     onSelectSpeakerCount: (Int?) -> Unit,
@@ -579,8 +607,19 @@ private fun RecordingTypePickerScreen(
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            // Pre-flight storage line (design spec §3.8): honest capacity, never a guess dressed
+            // up as a fact — see RecordingCapacity.formatStorageLine.
+            Text(
+                text = if (refuseToStart) "Not enough storage to start a recording ($storageLine)." else storageLine,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (refuseToStart) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().testTag("record_storage_line")
+            )
+
             Button(
                 onClick = onStart,
+                enabled = !refuseToStart,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth().height(48.dp).testTag("record_type_start_btn")
             ) {
@@ -588,6 +627,7 @@ private fun RecordingTypePickerScreen(
             }
             OutlinedButton(
                 onClick = onQuickRecord,
+                enabled = !refuseToStart,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth().testTag("record_type_quick_btn")
             ) {

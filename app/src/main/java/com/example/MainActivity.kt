@@ -11,19 +11,34 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.core.audio.PlaybackController
+import com.example.core.audio.RecordingJournalEntry
+import com.example.core.audio.RecordingJournalStore
+import com.example.core.audio.RecordingState
+import com.example.core.common.Formatters
+import com.example.core.database.MeetMindDatabase
+import com.example.core.model.MeetingSource
+import com.example.core.model.RecordingType
+import com.example.core.repository.MeetingRepository
 import com.example.core.ui.MiniPlayerBar
+import kotlinx.coroutines.launch
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -99,6 +114,21 @@ fun MeetMindApp() {
     if (prefsState == null) return
 
     val startRoute = if (prefsState?.onboardingCompleted == true) Routes.HOME else Routes.ONBOARDING
+
+    // Crash recovery (design spec §3.7): a journal left behind in RECORDING/PAUSED state means
+    // the process died mid-capture rather than stopping cleanly — MeetingRecordingService clears
+    // the journal on every normal stop/discard, so its mere presence in one of those two states
+    // is itself the signal, checked once per app launch.
+    val journalStore = remember { RecordingJournalStore(context) }
+    val recoveryMeetingRepository = remember { MeetingRepository(context, MeetMindDatabase.getInstance(context)) }
+    val recoveryScope = rememberCoroutineScope()
+    var recoveryEntry by remember { mutableStateOf<RecordingJournalEntry?>(null) }
+    LaunchedEffect(Unit) {
+        val entry = journalStore.read()
+        if (entry != null && (entry.state == RecordingState.RECORDING.name || entry.state == RecordingState.PAUSED.name)) {
+            recoveryEntry = entry
+        }
+    }
 
     LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
     val playbackState by PlaybackController.state.collectAsState()
@@ -301,6 +331,53 @@ fun MeetMindApp() {
                 playbackState.recordingId?.let { navController.navigate(Routes.meetingDetailRoute(it)) }
             },
             modifier = Modifier.align(Alignment.BottomCenter)
+        )
+    }
+
+    recoveryEntry?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { /* Never auto-dismiss into a silent discard — spec §3.7. Back
+                gesture just closes this composition's state; the same journal is read again and
+                re-prompted on the next app launch since nothing here has cleared it. */ recoveryEntry = null },
+            title = { Text("We found an unfinished recording.") },
+            text = {
+                Text(
+                    "MeetingMind closed unexpectedly while recording \"${entry.title}\" " +
+                        "(about ${Formatters.formatDurationHms(entry.lastKnownDurationMs)} captured). " +
+                        "Continuing this recording isn't supported yet, but you can save what was " +
+                        "already captured or delete it."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    recoveryScope.launch {
+                        val recordingType = try {
+                            RecordingType.valueOf(entry.recordingType)
+                        } catch (e: Exception) {
+                            RecordingType.GENERAL
+                        }
+                        recoveryMeetingRepository.createInitialMeeting(
+                            id = entry.meetingId,
+                            title = entry.title,
+                            source = MeetingSource.LOCAL_RECORDING,
+                            audioFilePath = entry.audioFilePath,
+                            recordingType = recordingType
+                        )
+                        journalStore.clear()
+                        recoveryEntry = null
+                        navController.navigate(
+                            Routes.processingRoute(entry.meetingId, entry.audioFilePath, entry.lastKnownDurationMs)
+                        )
+                    }
+                }) { Text("Save recording") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    java.io.File(entry.audioFilePath).delete()
+                    journalStore.clear()
+                    recoveryEntry = null
+                }) { Text("Delete") }
+            }
         )
     }
     }

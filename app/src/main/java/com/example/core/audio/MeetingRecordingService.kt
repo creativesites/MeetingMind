@@ -11,6 +11,8 @@ import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -18,6 +20,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
+import com.example.core.common.DeviceCapabilityDetector
 import com.example.core.database.MeetMindDatabase
 import com.example.core.model.MeetingSource
 import com.example.core.model.RecordingContext
@@ -26,9 +29,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -78,9 +83,18 @@ class MeetingRecordingService : Service() {
     private val _focusInterrupted = MutableStateFlow(false)
     val focusInterrupted: StateFlow<Boolean> = _focusInterrupted.asStateFlow()
 
+    /** Single quiet in-flight storage/battery warning line (design spec §3.8), or null when
+     * nothing is wrong. Re-evaluated on the same cadence as the crash-recovery heartbeat. */
+    private val _capacityWarning = MutableStateFlow<String?>(null)
+    val capacityWarning: StateFlow<String?> = _capacityWarning.asStateFlow()
+
     private var meetingId: String? = null
     private var meetingTitle: String = "Recording"
     private var recordingContext: RecordingContext = RecordingContext()
+    private var outputFile: File? = null
+
+    private lateinit var journalStore: RecordingJournalStore
+    private var maintenanceJob: Job? = null
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var recordingStartTimeMs: Long = 0L
@@ -116,6 +130,7 @@ class MeetingRecordingService : Service() {
         super.onCreate()
         audioRecorder = AudioRecorder(applicationContext)
         meetingRepository = MeetingRepository(applicationContext, MeetMindDatabase.getInstance(applicationContext))
+        journalStore = RecordingJournalStore(applicationContext)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         createNotificationChannel()
     }
@@ -160,9 +175,12 @@ class MeetingRecordingService : Service() {
         }
 
         recordingStartTimeMs = System.currentTimeMillis()
+        outputFile = file
         acquireWakeLock()
         startForegroundWithProperType()
         _state.value = RecordingState.RECORDING
+        writeJournal()
+        startMaintenanceLoop()
         return file
     }
 
@@ -173,6 +191,7 @@ class MeetingRecordingService : Service() {
         audioRecorder.pauseRecording()
         _state.value = RecordingState.PAUSED
         if (dueToFocusLoss) _focusInterrupted.value = true
+        writeJournal()
         updateNotification()
     }
 
@@ -181,6 +200,7 @@ class MeetingRecordingService : Service() {
         audioRecorder.resumeRecording()
         _state.value = RecordingState.RECORDING
         _focusInterrupted.value = false
+        writeJournal()
         updateNotification()
     }
 
@@ -214,6 +234,7 @@ class MeetingRecordingService : Service() {
                 }
             }
             _state.value = RecordingState.SAVED
+            journalStore.clear()
             onSaved(id.orEmpty(), file, finalDurationMs)
             teardown()
         }
@@ -226,10 +247,15 @@ class MeetingRecordingService : Service() {
     fun discardRecording() {
         audioRecorder.discardRecording()
         _state.value = RecordingState.IDLE
+        journalStore.clear()
         teardown()
     }
 
     private fun teardown() {
+        maintenanceJob?.cancel()
+        maintenanceJob = null
+        _capacityWarning.value = null
+        outputFile = null
         abandonAudioFocus()
         releaseWakeLock()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -239,6 +265,62 @@ class MeetingRecordingService : Service() {
             stopForeground(true)
         }
         stopSelf()
+    }
+
+    // ---- Crash recovery journal (§3.7) + storage/battery warnings (§3.8) -------------------
+
+    /** Writes the current in-flight state to `recovery.json`. Called on every state transition
+     * and, while recording, at least every 10 seconds by [startMaintenanceLoop] — per spec, a
+     * heartbeat gap longer than that on top of a dead journal is what tells the next app launch
+     * the process actually died rather than just not having written in a while. */
+    private fun writeJournal() {
+        val id = meetingId ?: return
+        val file = outputFile ?: return
+        journalStore.write(
+            RecordingJournalEntry(
+                meetingId = id,
+                title = meetingTitle,
+                recordingType = recordingContext.recordingType.name,
+                audioFilePath = file.absolutePath,
+                lastKnownDurationMs = durationMs.value,
+                // Markers/notes don't exist as capture data yet (design spec §3.4/§3.5 — Stage 3),
+                // so this journal always reports zero of each rather than a made-up count.
+                markerCount = 0,
+                noteCount = 0,
+                lastHeartbeatAtMs = System.currentTimeMillis(),
+                state = _state.value.name
+            )
+        )
+    }
+
+    /** One loop, started when capture begins and cancelled in [teardown], doing both the journal
+     * heartbeat and the periodic storage/battery check — they're on the same "while actually
+     * recording or paused" condition and neither needs its own cadence, so one coroutine covers
+     * both instead of running two nearly-identical loops. */
+    private fun startMaintenanceLoop() {
+        maintenanceJob?.cancel()
+        maintenanceJob = scope.launch {
+            while (isActive) {
+                delay(10_000)
+                if (_state.value != RecordingState.RECORDING && _state.value != RecordingState.PAUSED) break
+                writeJournal()
+                val freeMb = DeviceCapabilityDetector.getAvailableStorageMb()
+                _capacityWarning.value = RecordingCapacity.inFlightWarning(freeMb, currentBatteryPercent())
+                updateNotification()
+            }
+        }
+    }
+
+    /** Current battery percentage via the sticky [Intent.ACTION_BATTERY_CHANGED] broadcast — no
+     * persistent [android.content.BroadcastReceiver] needed for a value only read once every 10
+     * seconds. Null if the device won't report level/scale (rare), so [RecordingCapacity] can
+     * skip the battery half of its check rather than warn on a value that isn't real. */
+    private fun currentBatteryPercent(): Int? {
+        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return null
+        val level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        if (level < 0 || scale <= 0) return null
+        return level * 100 / scale
     }
 
     // ---- Audio focus -----------------------------------------------------------------------
@@ -357,6 +439,7 @@ class MeetingRecordingService : Service() {
         val statusText = when {
             isPaused && _focusInterrupted.value -> "Paused — an interruption stopped it. Tap Resume to continue."
             isPaused -> "Recording paused (offline)"
+            _capacityWarning.value != null -> _capacityWarning.value!!
             else -> "Continuous recording active • Tap to open"
         }
 
