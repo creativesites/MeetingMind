@@ -1,9 +1,8 @@
 package com.example.feature.onboarding
 
 import android.app.Application
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,15 +22,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -45,10 +44,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,10 +56,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.core.common.DeviceCapabilityDetector
 import com.example.core.datastore.UserPreferencesManager
 import com.example.core.model.DeviceCapabilities
-import com.example.core.ui.ListRow
-import com.example.core.ui.SectionCard
+import com.example.ui.theme.Accent
+import com.example.ui.theme.Ink
+import com.example.ui.theme.InkFaint
+import com.example.ui.theme.InkMuted
+import com.example.ui.theme.InkSecondary
+import com.example.ui.theme.LineSoft
 import com.example.ui.theme.SuccessGreen
-import com.example.ui.theme.VioletSecondary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -99,6 +99,11 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     }
 }
 
+/**
+ * Onboarding (Phase 15 §Part 2) — restyled onto the same Ink/Accent flat-row token system as
+ * Settings/AI Engine/meeting detail, so the very first thing a user sees already matches the
+ * rest of the app instead of looking like a different, older design pass.
+ */
 @Composable
 fun OnboardingScreen(
     viewModel: OnboardingViewModel,
@@ -110,9 +115,7 @@ fun OnboardingScreen(
     val caps = viewModel.deviceCapabilities
     val stepCount = 4
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
+    Scaffold(containerColor = Color.White) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -134,9 +137,7 @@ fun OnboardingScreen(
                             modifier = Modifier
                                 .size(width = if (index == currentStep) 24.dp else 8.dp, height = 8.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(
-                                    if (index == currentStep) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                                )
+                                .background(if (index == currentStep) Ink else LineSoft)
                         )
                     }
                 }
@@ -168,13 +169,15 @@ fun OnboardingScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (currentStep > 0) {
-                    Button(
-                        onClick = { currentStep-- },
-                        colors = ButtonDefaults.textButtonColors(),
-                        modifier = Modifier.testTag("onboarding_back_btn")
-                    ) {
-                        Text("Back", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    Text(
+                        text = "Back",
+                        fontSize = 15.sp,
+                        color = InkSecondary,
+                        modifier = Modifier
+                            .clickable { currentStep-- }
+                            .testTag("onboarding_back_btn")
+                            .padding(vertical = 12.dp, horizontal = 4.dp)
+                    )
                 } else {
                     Spacer(modifier = Modifier.width(1.dp))
                 }
@@ -187,7 +190,8 @@ fun OnboardingScreen(
                             viewModel.completeOnboarding(onFinishOnboarding)
                         }
                     },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Ink),
                     modifier = Modifier.testTag("onboarding_next_btn")
                 ) {
                     Text(
@@ -216,16 +220,11 @@ private fun OnboardingStepZero() {
     ) {
         Surface(
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+            color = Accent.copy(alpha = 0.10f),
             modifier = Modifier.size(100.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.Security,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(48.dp)
-                )
+                Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = Accent, modifier = Modifier.size(48.dp))
             }
         }
 
@@ -233,9 +232,10 @@ private fun OnboardingStepZero() {
 
         Text(
             text = "Private by Default",
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = (-0.7).sp,
+            color = Ink,
             textAlign = TextAlign.Center
         )
 
@@ -243,30 +243,18 @@ private fun OnboardingStepZero() {
 
         Text(
             text = "Your recordings and transcripts never leave this phone. Everything is processed and stored strictly on-device.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 15.5.sp,
+            color = InkSecondary,
             textAlign = TextAlign.Center,
             lineHeight = 24.sp
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionCard {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                FeatureBullet(
-                    icon = Icons.Default.CheckCircle,
-                    title = "No Cloud Uploads",
-                    subtitle = "Audio and text stay in app-private storage"
-                )
-                FeatureBullet(
-                    icon = Icons.Default.CheckCircle,
-                    title = "No API Keys Required",
-                    subtitle = "Runs local models without third-party rate limits"
-                )
-            }
+        Column(modifier = Modifier.fillMaxWidth()) {
+            FeatureBullet(icon = Icons.Default.CheckCircle, title = "No Cloud Uploads", subtitle = "Audio and text stay in app-private storage")
+            HorizontalDivider(color = LineSoft, modifier = Modifier.padding(vertical = 12.dp))
+            FeatureBullet(icon = Icons.Default.CheckCircle, title = "No API Keys Required", subtitle = "Runs local models without third-party rate limits")
         }
     }
 }
@@ -279,16 +267,11 @@ private fun OnboardingStepOne() {
     ) {
         Surface(
             shape = CircleShape,
-            color = VioletSecondary.copy(alpha = 0.15f),
+            color = Accent.copy(alpha = 0.10f),
             modifier = Modifier.size(100.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    tint = VioletSecondary,
-                    modifier = Modifier.size(48.dp)
-                )
+                Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = Accent, modifier = Modifier.size(48.dp))
             }
         }
 
@@ -296,9 +279,10 @@ private fun OnboardingStepOne() {
 
         Text(
             text = "Your Meetings, Organized",
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = (-0.7).sp,
+            color = Ink,
             textAlign = TextAlign.Center
         )
 
@@ -306,30 +290,18 @@ private fun OnboardingStepOne() {
 
         Text(
             text = "MeetingMind transcribes your meetings, identifies speakers, extracts key decisions, assigns action items, and allows grounded Q&A.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 15.5.sp,
+            color = InkSecondary,
             textAlign = TextAlign.Center,
             lineHeight = 24.sp
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionCard {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                FeatureBullet(
-                    icon = Icons.Default.Mic,
-                    title = "Record or Import",
-                    subtitle = "Live mic recording or import audio/video files"
-                )
-                FeatureBullet(
-                    icon = Icons.Default.Memory,
-                    title = "Speaker Diarization & RAG",
-                    subtitle = "Search by speaker or ask questions with citations"
-                )
-            }
+        Column(modifier = Modifier.fillMaxWidth()) {
+            FeatureBullet(icon = Icons.Default.Mic, title = "Record or Import", subtitle = "Live mic recording or import audio/video files")
+            HorizontalDivider(color = LineSoft, modifier = Modifier.padding(vertical = 12.dp))
+            FeatureBullet(icon = Icons.Default.Memory, title = "Speaker Diarization & RAG", subtitle = "Search by speaker or ask questions with citations")
         }
     }
 }
@@ -338,7 +310,7 @@ private fun OnboardingStepOne() {
  * Collects the user's own name, typed by them — never pre-filled from the device name, Google
  * account, or contacts (Phase 15 §5). Optional: leaving it blank is a valid choice and just means
  * personalization features that could use a name (e.g. Ask AI addressing them by it) don't have
- * one to use yet, rather than blocking onboarding on it.
+ * one to use yet, rather than blocking onboarding on it. Also editable later in Settings.
  */
 @Composable
 private fun OnboardingStepIdentity(
@@ -351,16 +323,11 @@ private fun OnboardingStepIdentity(
     ) {
         Surface(
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+            color = Accent.copy(alpha = 0.10f),
             modifier = Modifier.size(100.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(48.dp)
-                )
+                Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Accent, modifier = Modifier.size(48.dp))
             }
         }
 
@@ -368,29 +335,38 @@ private fun OnboardingStepIdentity(
 
         Text(
             text = "What should we call you?",
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = (-0.7).sp,
+            color = Ink,
             textAlign = TextAlign.Center
         )
 
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
-            text = "Used to personalize your experience — like Ask AI addressing you by name. Optional, and stored only on this device.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = "Used to personalize your experience — like Ask AI addressing you by name. Optional, and stored only on this device. You can change this later in Settings.",
+            fontSize = 15.5.sp,
+            color = InkSecondary,
             textAlign = TextAlign.Center,
             lineHeight = 24.sp
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        androidx.compose.material3.OutlinedTextField(
+        OutlinedTextField(
             value = userName,
             onValueChange = onUserNameChange,
-            placeholder = { Text("Your name") },
+            placeholder = { Text("Your name", color = InkFaint) },
             singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Accent,
+                unfocusedBorderColor = LineSoft,
+                cursorColor = Accent,
+                focusedTextColor = Ink,
+                unfocusedTextColor = Ink
+            ),
+            shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth().testTag("onboarding_name_field")
         )
     }
@@ -418,9 +394,10 @@ private fun OnboardingStepTwo(
     ) {
         Text(
             text = "Your On-Device Speech Model",
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = (-0.6).sp,
+            color = Ink,
             textAlign = TextAlign.Center
         )
 
@@ -428,29 +405,31 @@ private fun OnboardingStepTwo(
 
         Text(
             text = "Detected ${caps.totalRamGb} GB RAM (${caps.cpuArch}, ${caps.devicePerformanceTier}).",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.5.sp,
+            color = InkMuted,
             textAlign = TextAlign.Center
         )
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        SectionCard {
-            ListRow(
-                title = "Parakeet TDT 0.6B v3 (INT8)",
-                subtitle = "On-device speech-to-text, ~639 MB — downloaded on the next screen",
-                icon = Icons.Default.Mic,
-                trailing = null,
-                showDivider = false
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(imageVector = Icons.Default.Mic, contentDescription = null, tint = Accent, modifier = Modifier.size(20.dp))
+            Column {
+                Text("Parakeet TDT 0.6B v3 (INT8)", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                Text("On-device speech-to-text, ~639 MB — downloaded on the next screen", fontSize = 12.5.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
             text = "You'll download this model (and the others you choose to enable) after onboarding, in AI Engine.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.5.sp,
+            color = InkMuted,
             textAlign = TextAlign.Center
         )
     }
@@ -466,23 +445,10 @@ private fun FeatureBullet(
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = SuccessGreen,
-            modifier = Modifier.size(20.dp)
-        )
+        Icon(imageVector = icon, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(20.dp))
         Column {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text(title, fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(subtitle, fontSize = 12.5.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
         }
     }
 }
