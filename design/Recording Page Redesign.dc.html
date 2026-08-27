@@ -1,0 +1,2441 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><style>body{margin:0;background:#EDEEF2;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}.dv-turn{padding:44px 48px 36px;border-bottom:1px solid rgba(0,0,0,.08)}.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 26px}.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}.dv-tname{font:600 13px/1.2 "Helvetica Neue",Helvetica,sans-serif;color:#1a1a1a}.dv-opts{display:flex;flex-wrap:wrap;gap:44px;align-items:flex-start}.dv-opt{flex:none;display:flex;flex-direction:column;gap:12px;scroll-margin-top:16px}.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11.5px/1.4 "Helvetica Neue",Helvetica,sans-serif;color:rgba(0,0,0,.55);max-width:412px}.dv-opt:target .dv-oid{background:#6366F1;color:#fff}.dv-next{margin:26px 0 0;font:12px/1.6 "Helvetica Neue",Helvetica,sans-serif;color:rgba(0,0,0,.5)}a{color:#6366F1}a:hover{color:#4F46E5}</style></helmet>
+
+<section class="dv-turn" id="t7">
+<div class="dv-thd"><a class="dv-tid" href="#t7">7</a><span class="dv-tname">The capture pipeline — near-zero friction before, near-zero UI during, everything after. Replaces <a class="dv-oid" href="#6a">6a</a>.</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="7a">
+<div class="dv-olabel"><a class="dv-oid" href="#7a">7a</a><span>New recording. Remembered workflow and an optional title, nothing else — participants and purpose are metadata and move after the fact. Tap "Change workflow" for the picker.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:18px 22px 0;display:flex;align-items:center;gap:12px">
+<div style="width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center;font-size:20px;color:#475569">‹</div>
+<div style="font-size:13px;color:#94A3B8">New recording</div>
+</div>
+
+<sc-if value="{{ n7Quick }}" hint-placeholder-val="{{ true }}">
+<div style="padding:34px 22px 0">
+<div style="font:11px ui-monospace,Menlo,monospace;letter-spacing:1.1px;color:#94A3B8">WORKFLOW</div>
+<div style="margin-top:10px;font-size:32px;font-weight:600;letter-spacing:-1px;color:#0F172A;line-height:1.1">Meeting</div>
+<div style="margin-top:8px;font-size:14px;line-height:22px;color:#475569;text-wrap:pretty">Speakers, decisions, tasks and questions. You have used this for your last 9 recordings.</div>
+<div onClick="{{ n7Toggle }}" style="margin-top:14px;font-size:13.5px;font-weight:500;color:#6366F1;cursor:pointer">{{ n7Link }}</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ n7All }}">
+<div style="padding:26px 22px 0">
+<div style="font:11px ui-monospace,Menlo,monospace;letter-spacing:1.1px;color:#94A3B8">WHAT ARE YOU RECORDING</div>
+<div style="margin-top:12px;display:flex;flex-direction:column">
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:12px"><div><div style="font-size:16px;font-weight:500;color:#0F172A">Meeting</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Decisions, tasks, questions</div></div><div style="font-size:14px;color:#6366F1;flex:none">✓</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA"><div style="font-size:16px;color:#0F172A">Lecture</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Concepts, definitions, study notes</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA"><div style="font-size:16px;color:#0F172A">Interview</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Two speakers, verbatim, quotes</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA"><div style="font-size:16px;color:#0F172A">Sermon</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Scripture, structure, sermon notes</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA"><div style="font-size:16px;color:#0F172A">Brainstorm</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Ideas, themes, next steps</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA"><div style="font-size:16px;color:#0F172A">Idea</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">One voice, cleaned up</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;border-bottom:1px solid #F5F7FA"><div style="font-size:16px;color:#0F172A">Free recording</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Transcript only — classify it later</div></div>
+</div>
+<div onClick="{{ n7Toggle }}" style="margin-top:16px;font-size:13.5px;font-weight:500;color:#6366F1;cursor:pointer">{{ n7Link }}</div>
+</div>
+</sc-if>
+
+<div style="margin:30px 22px 0;padding-top:18px;border-top:1px solid #F5F7FA">
+<div style="font:11px ui-monospace,Menlo,monospace;letter-spacing:1.1px;color:#94A3B8">TITLE — OPTIONAL</div>
+<div style="margin-top:11px;font-size:19px;color:#CBD5E1">Project kickoff</div>
+<div style="margin-top:11px;height:1px;background:#E2E8F0"></div>
+<div style="margin-top:10px;font-size:12.5px;line-height:20px;color:#94A3B8;text-wrap:pretty">Leave it empty and the recording is named by date. MeetingMind suggests a title once it has the transcript.</div>
+</div>
+
+<div style="flex:1;min-height:28px"></div>
+
+<div style="padding:0 22px 22px">
+<div style="display:flex;align-items:center;gap:12px;padding-bottom:16px">
+<div style="display:flex;align-items:flex-end;gap:3px;height:22px;flex:none">
+<div style="width:3px;height:8px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:16px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:22px;border-radius:2px;background:#94A3B8"></div>
+<div style="width:3px;height:12px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:18px;border-radius:2px;background:#CBD5E1"></div>
+</div>
+<div style="flex:1;font-size:12.5px;color:#94A3B8;text-wrap:pretty">Bottom mic · level good · 11 GB free, enough for about 40 hours</div>
+</div>
+<div style="padding:17px 0;border-radius:20px;background:#6366F1;text-align:center;font-size:16px;font-weight:600;letter-spacing:0.2px;color:#fff;box-shadow:0 12px 30px rgba(99,102,241,.28)">Start recording</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="7b">
+<div class="dv-olabel"><a class="dv-oid" href="#7b">7b</a><span>Recording. Four states on one screen: calm, marker sheet, quick note, paused. Marker is the only large control, and every marker type is one tap with no typing. Tap Marker, Note, or Pause.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;position:relative;-webkit-font-smoothing:antialiased">
+
+<div style="padding:18px 20px 0;display:flex;align-items:center;justify-content:space-between">
+<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#475569">‹</div>
+<sc-if value="{{ c7Paused }}"><div style="font:11px ui-monospace,Menlo,monospace;letter-spacing:0.6px;color:#94A3B8">PAUSED</div></sc-if>
+<sc-if value="{{ c7Calm }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:8px"><div style="width:7px;height:7px;border-radius:4px;background:#6366F1"></div><div style="font:11px ui-monospace,Menlo,monospace;letter-spacing:0.6px;color:#6366F1">RECORDING</div></div></sc-if>
+<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:19px;letter-spacing:1px;color:#475569">⋯</div>
+</div>
+
+<div style="padding:44px 30px 0;text-align:center">
+<div style="font-size:13px;letter-spacing:1.4px;text-transform:uppercase;color:#94A3B8">Project kickoff</div>
+<div style="margin-top:20px;font:300 62px ui-monospace,Menlo,monospace;letter-spacing:-3px;color:#0F172A;line-height:1">42:18</div>
+<div style="margin-top:10px;font-size:12.5px;color:#94A3B8">
+<sc-if value="{{ c7Paused }}"><span>Paused · nothing is being captured</span></sc-if>
+<sc-if value="{{ c7Calm }}" hint-placeholder-val="{{ true }}"><span>Meeting · 3 voices heard · keeps running when locked</span></sc-if>
+</div>
+</div>
+
+<div style="margin:38px 30px 0;display:flex;align-items:center;justify-content:center;gap:3px;height:44px;opacity:1">
+<div style="width:3px;height:12px;border-radius:2px;background:#E2E8F0"></div>
+<div style="width:3px;height:22px;border-radius:2px;background:#E2E8F0"></div>
+<div style="width:3px;height:16px;border-radius:2px;background:#E2E8F0"></div>
+<div style="width:3px;height:32px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:20px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:38px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:26px;border-radius:2px;background:#94A3B8"></div>
+<div style="width:3px;height:44px;border-radius:2px;background:#94A3B8"></div>
+<div style="width:3px;height:30px;border-radius:2px;background:#94A3B8"></div>
+<div style="width:3px;height:19px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:35px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:14px;border-radius:2px;background:#E2E8F0"></div>
+<div style="width:3px;height:24px;border-radius:2px;background:#E2E8F0"></div>
+<div style="width:3px;height:11px;border-radius:2px;background:#E2E8F0"></div>
+</div>
+
+<div style="flex:1;min-height:20px"></div>
+
+<sc-if value="{{ c7Calm }}" hint-placeholder-val="{{ true }}">
+<div style="padding:0 24px">
+<div style="display:flex;align-items:baseline;justify-content:space-between;padding-bottom:11px;border-bottom:1px solid #F5F7FA">
+<div style="font:11px ui-monospace,Menlo,monospace;letter-spacing:0.6px;color:#94A3B8">MARKS</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">7 · 3 notes</div>
+</div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:13px"><div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1;flex:none">41:52</div><div style="flex:1;font-size:14.5px;color:#0F172A">Decision</div></div>
+<div style="padding:13px 0;display:flex;align-items:baseline;gap:13px"><div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1;flex:none">38:07</div><div style="flex:1;font-size:14.5px;color:#0F172A">Note — check the API date with Winston</div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ c7Paused }}">
+<div style="padding:0 24px;text-align:center">
+<div style="font-size:14px;line-height:23px;color:#475569;text-wrap:pretty">Audio so far is already saved. Resuming continues the same recording as a second segment.</div>
+</div>
+</sc-if>
+
+<div style="padding:26px 24px 0;display:flex;align-items:center;gap:14px">
+<sc-if value="{{ c7Paused }}">
+<div onClick="{{ c7TogglePause }}" style="flex:1;padding:17px 0;border-radius:20px;background:#6366F1;text-align:center;font-size:16px;font-weight:600;color:#fff;cursor:pointer;box-shadow:0 12px 30px rgba(99,102,241,.26)">Resume</div>
+<div style="flex:none;padding:17px 26px;border-radius:20px;border:1px solid #E2E8F0;text-align:center;font-size:16px;font-weight:500;color:#475569">Stop</div>
+</sc-if>
+<sc-if value="{{ c7Calm }}" hint-placeholder-val="{{ true }}">
+<div onClick="{{ c7OpenMarker }}" style="flex:1;padding:19px 0;border-radius:22px;background:#0F172A;text-align:center;font-size:16.5px;font-weight:600;letter-spacing:0.2px;color:#fff;cursor:pointer">＋ Marker</div>
+<div onClick="{{ c7OpenNote }}" style="width:62px;height:62px;flex:none;border-radius:22px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#475569;cursor:pointer">Note</div>
+</sc-if>
+</div>
+
+<sc-if value="{{ c7Calm }}" hint-placeholder-val="{{ true }}">
+<div style="padding:14px 24px 22px;display:flex;align-items:center;gap:14px">
+<div onClick="{{ c7TogglePause }}" style="flex:1;padding:15px 0;border-radius:20px;border:1px solid #E2E8F0;text-align:center;font-size:15px;font-weight:500;color:#475569;cursor:pointer">Pause</div>
+<div style="flex:1;padding:15px 0;border-radius:20px;border:1px solid #E2E8F0;text-align:center;font-size:15px;font-weight:500;color:#475569">Stop</div>
+</div>
+</sc-if>
+<sc-if value="{{ c7Paused }}"><div style="height:22px"></div></sc-if>
+<sc-if value="{{ c7Sheet }}" hint-placeholder-val="{{ true }}"><div style="height:22px"></div></sc-if>
+
+<sc-if value="{{ c7Marker }}" hint-placeholder-val="{{ true }}">
+<div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:28px 28px 0 0;box-shadow:0 -18px 50px rgba(15,23,42,.16);padding:20px 22px 24px">
+<div style="width:38px;height:4px;border-radius:2px;background:#E2E8F0;margin:0 auto 18px"></div>
+<div style="display:flex;align-items:baseline;justify-content:space-between">
+<div style="font-size:17px;font-weight:600;color:#0F172A">Add marker</div>
+<div style="font:12px ui-monospace,Menlo,monospace;color:#6366F1">42:18</div>
+</div>
+<div style="margin-top:6px;font-size:12.5px;color:#94A3B8">One tap saves it. Add words later.</div>
+<div style="margin-top:16px;display:flex;flex-direction:column">
+<div style="padding:15px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:12px"><div style="font-size:16px;color:#0F172A">Decision</div><div style="font-size:12px;color:#94A3B8">Something was settled</div></div>
+<div style="padding:15px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:12px"><div style="font-size:16px;color:#0F172A">Action</div><div style="font-size:12px;color:#94A3B8">Someone owes something</div></div>
+<div style="padding:15px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:12px"><div style="font-size:16px;color:#0F172A">Idea</div><div style="font-size:12px;color:#94A3B8">Worth keeping</div></div>
+<div style="padding:15px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:12px"><div style="font-size:16px;color:#0F172A">Question</div><div style="font-size:12px;color:#94A3B8">Unresolved</div></div>
+<div style="padding:15px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:12px"><div style="font-size:16px;color:#0F172A">Important</div><div style="font-size:12px;color:#94A3B8">Do not lose this</div></div>
+<div style="padding:15px 0;border-top:1px solid #F5F7FA;border-bottom:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:12px"><div style="font-size:16px;color:#0F172A">Bookmark</div><div style="font-size:12px;color:#94A3B8">Come back here</div></div>
+</div>
+<div onClick="{{ c7Close }}" style="margin-top:18px;text-align:center;font-size:14.5px;font-weight:500;color:#475569;cursor:pointer">Cancel</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ c7Note }}">
+<div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:28px 28px 0 0;box-shadow:0 -18px 50px rgba(15,23,42,.16);padding:20px 22px 24px">
+<div style="width:38px;height:4px;border-radius:2px;background:#E2E8F0;margin:0 auto 18px"></div>
+<div style="display:flex;align-items:baseline;justify-content:space-between">
+<div style="font-size:17px;font-weight:600;color:#0F172A">Quick note</div>
+<div style="font:12px ui-monospace,Menlo,monospace;color:#6366F1">42:18</div>
+</div>
+<div style="margin-top:16px;padding:15px 16px;border:1px solid #E2E8F0;border-radius:18px;min-height:96px;font-size:15.5px;line-height:24px;color:#0F172A">Check the API date with Winston<span style="color:#6366F1">|</span></div>
+<div style="margin-top:12px;font-size:12.5px;line-height:20px;color:#94A3B8;text-wrap:pretty">Pinned to 42:18 in this recording. Recording continues while you type.</div>
+<div style="margin-top:18px;display:flex;align-items:center;gap:12px">
+<div onClick="{{ c7Close }}" style="flex:none;padding:15px 22px;border-radius:18px;border:1px solid #E2E8F0;font-size:15px;font-weight:500;color:#475569;cursor:pointer">Cancel</div>
+<div onClick="{{ c7Close }}" style="flex:1;padding:15px 0;border-radius:18px;background:#6366F1;text-align:center;font-size:15.5px;font-weight:600;color:#fff;cursor:pointer">Save note</div>
+</div>
+</div>
+</sc-if>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="7c">
+<div class="dv-olabel"><a class="dv-oid" href="#7c">7c</a><span>Saved. Stop never drops you into AI: the recording is safe first, and processing is a choice with its real cost stated. Tap "Process later" for the deferred state.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:18px 22px 0;display:flex;align-items:center;justify-content:flex-end">
+<div style="font-size:13px;font-weight:500;color:#475569">Done</div>
+</div>
+
+<div style="padding:34px 22px 0">
+<div style="display:flex;align-items:center;gap:10px">
+<div style="width:22px;height:22px;border-radius:11px;background:#10B981;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff">✓</div>
+<div style="font:11px ui-monospace,Menlo,monospace;letter-spacing:0.8px;color:#10B981">SAVED ON THIS PHONE</div>
+</div>
+<div style="margin-top:18px;font-size:30px;font-weight:600;letter-spacing:-0.9px;line-height:1.15;color:#0F172A">Project kickoff</div>
+<div style="margin-top:7px;font-size:13.5px;color:#94A3B8">Meeting · 26 Aug 2026, 9:14 AM</div>
+</div>
+
+<div style="margin:28px 22px 0;display:grid;grid-template-columns:1fr 1fr;gap:1px 0;border-top:1px solid #F5F7FA">
+<div style="padding:15px 0;border-bottom:1px solid #F5F7FA"><div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">LENGTH</div><div style="margin-top:4px;font-size:17px;color:#0F172A">42:18</div></div>
+<div style="padding:15px 0;border-bottom:1px solid #F5F7FA"><div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">AUDIO</div><div style="margin-top:4px;font-size:17px;color:#0F172A">48.2 MB</div></div>
+<div style="padding:15px 0;border-bottom:1px solid #F5F7FA"><div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">MARKERS</div><div style="margin-top:4px;font-size:17px;color:#0F172A">7</div></div>
+<div style="padding:15px 0;border-bottom:1px solid #F5F7FA"><div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">NOTES</div><div style="margin-top:4px;font-size:17px;color:#0F172A">3</div></div>
+</div>
+
+<sc-if value="{{ s7Idle }}" hint-placeholder-val="{{ true }}">
+<div style="margin:26px 22px 0;padding-left:14px;border-left:2px solid #6366F1">
+<div style="font:11px ui-monospace,Menlo,monospace;letter-spacing:0.6px;color:#6366F1">PROCESSING WILL TAKE</div>
+<div style="margin-top:10px;font-size:15px;line-height:24px;color:#475569;text-wrap:pretty">Roughly 4 minutes on this phone: transcript, speakers, then the meeting brief. It runs in the background and survives you leaving the app.</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ s7Later }}">
+<div style="margin:26px 22px 0;padding-left:14px;border-left:2px solid #F59E0B">
+<div style="font:11px ui-monospace,Menlo,monospace;letter-spacing:0.6px;color:#F59E0B">QUEUED</div>
+<div style="margin-top:10px;font-size:15px;line-height:24px;color:#475569;text-wrap:pretty">Audio, markers and notes are kept. Processing starts when the phone is charging, or whenever you tap Process on the recording.</div>
+</div>
+</sc-if>
+
+<div style="margin:26px 22px 0;padding-top:17px;border-top:1px solid #F5F7FA;display:flex;flex-direction:column">
+<div style="padding:14px 0;display:flex;align-items:center;justify-content:space-between;gap:14px"><div><div style="font-size:15.5px;color:#0F172A">Continue this recording</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Adds a second segment to the same recording</div></div><div style="font-size:18px;color:#CBD5E1;flex:none">›</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div><div style="font-size:15.5px;color:#0F172A">Add to notebook or project</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Work · MeetingMind launch</div></div><div style="font-size:18px;color:#CBD5E1;flex:none">›</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;border-bottom:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div style="font-size:15.5px;color:#0F172A">Rename, participants, purpose</div><div style="font-size:18px;color:#CBD5E1;flex:none">›</div></div>
+</div>
+
+<div style="flex:1;min-height:26px"></div>
+
+<div style="padding:0 22px 22px;display:flex;flex-direction:column;gap:11px">
+<div style="padding:17px 0;border-radius:20px;background:#6366F1;text-align:center;font-size:16px;font-weight:600;color:#fff;box-shadow:0 12px 30px rgba(99,102,241,.26)">Process now</div>
+<div style="display:flex;gap:11px">
+<div onClick="{{ s7Toggle }}" style="flex:1;padding:15px 0;border-radius:20px;border:1px solid #E2E8F0;text-align:center;font-size:15px;font-weight:500;color:#475569;cursor:pointer">Process later</div>
+<div style="flex:1;padding:15px 0;border-radius:20px;border:1px solid #E2E8F0;text-align:center;font-size:15px;font-weight:500;color:#475569">Play it back</div>
+</div>
+<div style="text-align:center;padding-top:4px;font-size:13.5px;color:#94A3B8">Discard recording</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="7d">
+<div class="dv-olabel"><a class="dv-oid" href="#7d">7d</a><span>Processing, typed by workflow. The first four stages are shared; what comes after them is what the workflow is for. Tap Meeting · Sermon · Lecture to see the tail change. Supersedes the single stage list in <a class="dv-oid" href="#6b">6b</a>.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:18px 22px 0;display:flex;align-items:center;justify-content:space-between">
+<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#475569">‹</div>
+<div style="font-size:13px;color:#94A3B8">Processing</div>
+<div style="width:34px"></div>
+</div>
+
+<div style="padding:28px 22px 0">
+<div style="font-size:26px;font-weight:600;letter-spacing:-0.8px;color:#0F172A">Project kickoff</div>
+<div style="margin-top:6px;font-size:13px;color:#94A3B8">42:18 of audio · started 2 minutes ago</div>
+<div style="margin-top:16px;height:4px;border-radius:2px;background:#EEF2F6"><div style="width:57%;height:4px;border-radius:2px;background:#6366F1"></div></div>
+</div>
+
+<div style="margin:22px 22px 0;display:flex;gap:8px">
+<div onClick="{{ p7SetMeeting }}" style="padding:8px 14px;border-radius:12px;border:1px solid #E2E8F0;background:{{ p7ChipMeetingBg }};color:{{ p7ChipMeetingFg }};font-size:12.5px;font-weight:500;cursor:pointer">Meeting</div>
+<div onClick="{{ p7SetSermon }}" style="padding:8px 14px;border-radius:12px;border:1px solid #E2E8F0;background:{{ p7ChipSermonBg }};color:{{ p7ChipSermonFg }};font-size:12.5px;font-weight:500;cursor:pointer">Sermon</div>
+<div onClick="{{ p7SetLecture }}" style="padding:8px 14px;border-radius:12px;border:1px solid #E2E8F0;background:{{ p7ChipLectureBg }};color:{{ p7ChipLectureFg }};font-size:12.5px;font-weight:500;cursor:pointer">Lecture</div>
+</div>
+
+<div style="margin:22px 22px 0;padding-bottom:11px;border-bottom:1px solid #EEF2F6;display:flex;align-items:baseline;justify-content:space-between">
+<div style="font:11px ui-monospace,Menlo,monospace;letter-spacing:0.6px;color:#94A3B8">STAGES</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">4 of 7</div>
+</div>
+
+<div style="padding:0 22px">
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none;font-size:13px;color:#94A3B8">✓</div><div style="flex:1;font-size:15px;color:#94A3B8">Preparing audio</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">4s</div></div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none;font-size:13px;color:#94A3B8">✓</div><div style="flex:1"><div style="font-size:15px;color:#94A3B8">Transcribing</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Whisper small · 14 chunks</div></div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">1:48</div></div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none;font-size:13px;color:#94A3B8">✓</div><div style="flex:1;font-size:15px;color:#94A3B8">Identifying speakers</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">22s</div></div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none;display:flex;justify-content:center"><div style="width:7px;height:7px;border-radius:4px;background:#6366F1"></div></div><div style="flex:1"><div style="font-size:15px;font-weight:500;color:#0F172A">Building the transcript</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Aligning words to audio · 14 flagged so far</div></div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#6366F1">0:31</div></div>
+
+<sc-if value="{{ p7Meeting }}" hint-placeholder-val="{{ true }}">
+<div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none"></div><div style="flex:1;font-size:15px;color:#0F172A">Topics and decisions</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~40s</div></div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none"></div><div style="flex:1;font-size:15px;color:#0F172A">Actions and questions</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~25s</div></div>
+<div style="padding:13px 0;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none"></div><div style="flex:1"><div style="font-size:15px;color:#0F172A">Meeting brief</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Gemma 3n · editable when it lands</div></div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~35s</div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ p7Sermon }}">
+<div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none"></div><div style="flex:1;font-size:15px;color:#0F172A">Themes and passages</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~40s</div></div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none"></div><div style="flex:1"><div style="font-size:15px;color:#0F172A">Scripture references</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Matched to book, chapter, verse</div></div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~20s</div></div>
+<div style="padding:13px 0;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none"></div><div style="flex:1"><div style="font-size:15px;color:#0F172A">Sermon notes</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Structure, points, application</div></div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~35s</div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ p7Lecture }}">
+<div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none"></div><div style="flex:1;font-size:15px;color:#0F172A">Concepts covered</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~40s</div></div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none"></div><div style="flex:1"><div style="font-size:15px;color:#0F172A">Definitions</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Term plus the minute it was defined</div></div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~20s</div></div>
+<div style="padding:13px 0;display:flex;align-items:baseline;gap:13px"><div style="width:16px;flex:none"></div><div style="flex:1"><div style="font-size:15px;color:#0F172A">Study notes</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Outline plus questions to revise</div></div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~35s</div></div>
+</div>
+</sc-if>
+</div>
+
+<div style="margin:22px 22px 0;padding-top:17px;border-top:1px solid #F5F7FA">
+<div style="font-size:14px;line-height:23px;color:#475569;text-wrap:pretty">The transcript is already readable. Everything after it is a draft you can edit or re-run.</div>
+<div style="margin-top:12px;font-size:12.5px;color:#94A3B8">About 1 minute 40 left · 3% battery so far</div>
+</div>
+
+<div style="flex:1;min-height:26px"></div>
+
+<div style="padding:0 22px 22px;display:flex;gap:11px">
+<div style="flex:1;padding:16px 0;border-radius:20px;background:#0F172A;text-align:center;font-size:15.5px;font-weight:600;color:#fff">Read transcript</div>
+<div style="flex:none;padding:16px 20px;border-radius:20px;border:1px solid #E2E8F0;text-align:center;font-size:15px;font-weight:500;color:#475569">Background</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+</div>
+<p class="dv-next">Try next: "show the recovered-recording prompt" · "design the notebook picker" · "add a failed-processing state to <a class="dv-oid" href="#7d">7d</a>"</p>
+</section>
+
+<section class="dv-turn" id="t6">
+<div class="dv-thd"><a class="dv-tid" href="#t6">6</a><span class="dv-tname">Record flow, Processing, AI engine and Settings — same light vocabulary: rows and dividers, purple only where the model or the mic is live</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="6a">
+<div class="dv-olabel"><a class="dv-oid" href="#6a">6a</a><span>Record. One screen for both halves of the flow: before you start it asks the two things that change the transcript (what this is, who is in it); while running, the ring becomes the clock and the partial transcript proves it is working. Tap the ring to switch state.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:18px 22px 0;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div style="width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center;font-size:20px;color:#475569">‹</div>
+<sc-if value="{{ r6Live }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;align-items:center;gap:8px"><div style="width:7px;height:7px;border-radius:4px;background:#6366F1"></div><div style="font:11px ui-monospace,Menlo,monospace;letter-spacing:0.5px;color:#6366F1">RECORDING</div></div>
+</sc-if>
+<sc-if value="{{ r6Ready }}">
+<div style="font-size:13px;color:#94A3B8">New recording</div>
+</sc-if>
+<div style="width:34px;flex:none"></div>
+</div>
+
+<sc-if value="{{ r6Ready }}">
+<div>
+<div style="padding:26px 22px 0">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">What is it</div>
+<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">
+<div style="padding:9px 14px;border-radius:12px;background:#0F172A;color:#fff;font-size:13px;font-weight:500">Meeting</div>
+<div style="padding:9px 14px;border-radius:12px;border:1px solid #E2E8F0;color:#475569;font-size:13px">Interview</div>
+<div style="padding:9px 14px;border-radius:12px;border:1px solid #E2E8F0;color:#475569;font-size:13px">Lecture</div>
+<div style="padding:9px 14px;border-radius:12px;border:1px solid #E2E8F0;color:#475569;font-size:13px">Voice memo</div>
+</div>
+</div>
+
+<div style="margin:24px 22px 0;display:flex;flex-direction:column">
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px">
+<div><div style="font-size:15.5px;color:#0F172A">Title</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Named from the calendar event</div></div>
+<div style="font-size:12.5px;font-weight:500;color:#475569;flex:none">Weekly product sync</div>
+</div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px">
+<div><div style="font-size:15.5px;color:#0F172A">Speakers expected</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Helps split the transcript</div></div>
+<div style="font:13px ui-monospace,Menlo,monospace;color:#0F172A;flex:none">4</div>
+</div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;border-bottom:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px">
+<div><div style="font-size:15.5px;color:#0F172A">Transcribe</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Live, so the transcript is ready when you stop</div></div>
+<div style="font-size:12.5px;font-weight:500;color:#475569;flex:none">While recording</div>
+</div>
+</div>
+
+<div style="margin:30px 22px 0;display:flex;align-items:center;gap:14px">
+<div style="display:flex;align-items:flex-end;gap:3px;height:26px;flex:1">
+<div style="width:3px;height:8px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:15px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:22px;border-radius:2px;background:#94A3B8"></div>
+<div style="width:3px;height:11px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:18px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:9px;border-radius:2px;background:#E2E8F0"></div>
+<div style="width:3px;height:14px;border-radius:2px;background:#E2E8F0"></div>
+<div style="width:3px;height:7px;border-radius:2px;background:#E2E8F0"></div>
+</div>
+<div style="font-size:12.5px;color:#94A3B8;flex:none">Bottom mic · level good</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ r6Live }}" hint-placeholder-val="{{ true }}">
+<div>
+<div style="padding:30px 22px 0;text-align:center">
+<div style="font:300 54px ui-monospace,Menlo,monospace;letter-spacing:-2px;color:#0F172A">08:42</div>
+<div style="margin-top:6px;font-size:12.5px;color:#94A3B8">Meeting · Weekly product sync · 4 speakers</div>
+</div>
+
+<div style="margin:24px 22px 0;display:flex;align-items:center;justify-content:center;gap:3px;height:52px">
+<div style="width:3px;height:14px;border-radius:2px;background:#E2E8F0"></div>
+<div style="width:3px;height:26px;border-radius:2px;background:#E2E8F0"></div>
+<div style="width:3px;height:19px;border-radius:2px;background:#E2E8F0"></div>
+<div style="width:3px;height:38px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:24px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:44px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:30px;border-radius:2px;background:#94A3B8"></div>
+<div style="width:3px;height:52px;border-radius:2px;background:#6366F1"></div>
+<div style="width:3px;height:36px;border-radius:2px;background:#6366F1"></div>
+<div style="width:3px;height:22px;border-radius:2px;background:#6366F1"></div>
+<div style="width:3px;height:41px;border-radius:2px;background:#94A3B8"></div>
+<div style="width:3px;height:16px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:28px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:12px;border-radius:2px;background:#E2E8F0"></div>
+<div style="width:3px;height:20px;border-radius:2px;background:#E2E8F0"></div>
+</div>
+
+<div style="margin:22px 22px 0;padding-top:16px;border-top:1px solid #F5F7FA">
+<div style="display:flex;align-items:baseline;justify-content:space-between">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Hearing now</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">3 voices</div>
+</div>
+<div style="margin-top:11px;font-size:14.5px;line-height:24px;color:#94A3B8;text-wrap:pretty"><span style="color:#0F172A">Priya:</span> so if we hold the pricing change until the round closes, <span style="color:#CBD5E1">the deck only needs the retention slide…</span></div>
+</div>
+
+<div style="margin:20px 22px 0;padding-top:16px;border-top:1px solid #F5F7FA">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Marks</div>
+<div style="margin-top:9px;display:flex;flex-direction:column">
+<div style="padding:11px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:12px"><div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1;flex:none">06:03</div><div style="flex:1;font-size:14.5px;color:#0F172A">Decision — hold pricing</div></div>
+<div style="padding:11px 0;display:flex;align-items:baseline;gap:12px"><div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1;flex:none">02:14</div><div style="flex:1;font-size:14.5px;color:#0F172A">Mark</div></div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<div style="flex:1;min-height:20px"></div>
+
+<div style="padding:0 22px 8px;display:flex;align-items:center;justify-content:center;gap:26px">
+<sc-if value="{{ r6Live }}" hint-placeholder-val="{{ true }}">
+<div style="width:56px;height:56px;border-radius:28px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;gap:4px;flex:none">
+<div style="width:4px;height:18px;border-radius:2px;background:#475569"></div>
+<div style="width:4px;height:18px;border-radius:2px;background:#475569"></div>
+</div>
+</sc-if>
+<sc-if value="{{ r6Ready }}">
+<div style="width:56px;flex:none"></div>
+</sc-if>
+
+<div onClick="{{ r6Toggle }}" style="width:96px;height:96px;border-radius:48px;background:#6366F1;flex:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 14px 34px rgba(99,102,241,.30)">
+<sc-if value="{{ r6Live }}" hint-placeholder-val="{{ true }}">
+<div style="width:26px;height:26px;border-radius:6px;background:#fff"></div>
+</sc-if>
+<sc-if value="{{ r6Ready }}">
+<div style="width:22px;height:34px;border-radius:11px;background:#fff"></div>
+</sc-if>
+</div>
+
+<sc-if value="{{ r6Live }}" hint-placeholder-val="{{ true }}">
+<div style="width:56px;height:56px;border-radius:28px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#475569;flex:none">Mark</div>
+</sc-if>
+<sc-if value="{{ r6Ready }}">
+<div style="width:56px;flex:none"></div>
+</sc-if>
+</div>
+
+<div style="padding:10px 22px 20px;text-align:center;font-size:12.5px;color:#94A3B8">
+<sc-if value="{{ r6Live }}" hint-placeholder-val="{{ true }}"><span>Transcribing as you speak · 62 MB free of space needed</span></sc-if>
+<sc-if value="{{ r6Ready }}"><span>Recorded and transcribed on this phone. Nothing is uploaded.</span></sc-if>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="6b">
+<div class="dv-olabel"><a class="dv-oid" href="#6b">6b</a><span>Processing. The queue as a single honest ledger: what is happening this second, what is waiting and why, what finished and how long it took. Tap the stage list to collapse it.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:22px 22px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:14px">
+<div>
+<div style="font-size:26px;font-weight:600;letter-spacing:-0.7px;color:#0F172A">Processing</div>
+<div style="margin-top:5px;font-size:13px;color:#94A3B8">1 running · 2 waiting</div>
+</div>
+<div style="font-size:12.5px;font-weight:500;color:#475569;padding-top:9px">Pause all</div>
+</div>
+
+<div style="margin:26px 22px 0;padding-left:14px;border-left:2px solid #6366F1">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#6366F1">Running</div>
+<div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1">68%</div>
+</div>
+<div style="margin-top:9px;font-size:18px;font-weight:600;letter-spacing:-0.3px;color:#0F172A">Candidate screen — staff engineer</div>
+<div style="margin-top:4px;font-size:12.5px;color:#94A3B8">48:20 of audio · started 3 minutes ago</div>
+<div style="margin-top:13px;height:4px;border-radius:2px;background:#EEF2F6"><div style="width:68%;height:4px;border-radius:2px;background:#6366F1"></div></div>
+</div>
+
+<div onClick="{{ p6ToggleStages }}" style="margin:20px 22px 0;cursor:pointer">
+<div style="display:flex;align-items:baseline;justify-content:space-between;padding-bottom:11px;border-bottom:1px solid #EEF2F6">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Stages</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">2 of 5</div>
+</div>
+<sc-if value="{{ p6StagesOpen }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column">
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:12px">
+<div style="font-size:13px;color:#94A3B8;width:16px;flex:none">✓</div>
+<div style="flex:1;font-size:15px;color:#94A3B8">Copy audio</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">4s</div>
+</div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:12px">
+<div style="width:16px;flex:none;display:flex;justify-content:center"><div style="width:7px;height:7px;border-radius:4px;background:#6366F1"></div></div>
+<div style="flex:1"><div style="font-size:15px;font-weight:500;color:#0F172A">Transcribe</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Whisper small · chunk 9 of 14</div></div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#6366F1">1:12</div>
+</div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:12px">
+<div style="width:16px;flex:none"></div><div style="flex:1;font-size:15px;color:#0F172A">Split speakers</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~20s</div>
+</div>
+<div style="padding:13px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:12px">
+<div style="width:16px;flex:none"></div><div style="flex:1"><div style="font-size:15px;color:#0F172A">Summary, decisions, tasks</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Gemma 3n</div></div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~40s</div>
+</div>
+<div style="padding:13px 0;display:flex;align-items:baseline;gap:12px">
+<div style="width:16px;flex:none"></div><div style="flex:1;font-size:15px;color:#0F172A">Index for search</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">~15s</div>
+</div>
+</div>
+</sc-if>
+<div style="margin-top:14px;display:flex;gap:8px">
+<div style="padding:9px 14px;border-radius:12px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Pause</div>
+<div style="padding:9px 14px;border-radius:12px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Run on charge</div>
+<div style="padding:9px 14px;border-radius:12px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Cancel</div>
+</div>
+</div>
+
+<div style="margin:28px 22px 0;padding-bottom:12px;border-bottom:1px solid #EEF2F6;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Waiting</div>
+<div style="padding:0 22px">
+<div style="padding:16px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:center;gap:14px">
+<div style="width:3px;height:34px;border-radius:2px;background:#F59E0B;flex:none"></div>
+<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:500;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Board prep call</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Waiting for the charger · summary only</div></div>
+<div style="font-size:12.5px;font-weight:500;color:#475569;flex:none">Now</div>
+</div>
+<div style="padding:16px 0;display:flex;align-items:center;gap:14px">
+<div style="width:3px;height:34px;border-radius:2px;background:#EEF2F6;flex:none"></div>
+<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:500;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Note to self — onboarding idea</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Queued behind two jobs</div></div>
+<div style="font-size:12.5px;color:#94A3B8;flex:none">2nd</div>
+</div>
+</div>
+
+<div style="margin:28px 22px 0;padding-bottom:12px;border-bottom:1px solid #EEF2F6;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Finished today</div>
+<div style="padding:0 22px">
+<div style="padding:15px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:12px"><div style="flex:1;font-size:15.5px;color:#0F172A">Series A narrative review</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">41s</div></div>
+<div style="padding:15px 0;display:flex;align-items:baseline;gap:12px"><div style="flex:1;min-width:0"><div style="font-size:15.5px;color:#0F172A">Pricing workshop</div><div style="margin-top:3px;font-size:12.5px;color:#F59E0B">14 words flagged for review</div></div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">2:04</div></div>
+</div>
+
+<div style="flex:1;min-height:24px"></div>
+
+<div style="padding:16px 22px 20px;font-size:12px;line-height:19px;color:#94A3B8;text-wrap:pretty">Processing keeps running if you leave the app. Battery used today: 4%.</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="6c">
+<div class="dv-olabel"><a class="dv-oid" href="#6c">6c</a><span>AI engine. Leads with what is running and what it costs in seconds, not a model catalogue; every candidate states the honest verdict for this phone. Tap the Gemma 2 row.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:22px 22px 0">
+<div style="font-size:26px;font-weight:600;letter-spacing:-0.7px;color:#0F172A">AI engine</div>
+<div style="margin-top:5px;font-size:13px;color:#94A3B8">Everything runs on this phone</div>
+</div>
+
+<div style="margin:24px 22px 0;padding-left:14px;border-left:2px solid #6366F1">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#6366F1">Now running</div>
+<div style="margin-top:10px;font-size:20px;font-weight:600;letter-spacing:-0.4px;color:#0F172A">Gemma 3n · E2B</div>
+<div style="margin-top:7px;font-size:14px;line-height:22px;color:#475569;text-wrap:pretty">Summaries, decisions, tasks and Ask AI. About 40 seconds for a one-hour meeting on this phone.</div>
+<div style="margin-top:13px;display:flex;gap:24px">
+<div><div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">SIZE</div><div style="margin-top:3px;font-size:14px;color:#0F172A">2.9 GB</div></div>
+<div><div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">RAM</div><div style="margin-top:3px;font-size:14px;color:#0F172A">3.1 GB</div></div>
+<div><div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">CONTEXT</div><div style="margin-top:3px;font-size:14px;color:#0F172A">4k</div></div>
+</div>
+</div>
+
+<div style="margin:22px 22px 0;padding-top:17px;border-top:1px solid #F5F7FA;display:flex;align-items:baseline;justify-content:space-between;gap:14px">
+<div>
+<div style="font-size:16px;font-weight:600;color:#0F172A">Whisper small · English</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Speech to text, with per-word confidence</div>
+</div>
+<div style="font:11px ui-monospace,Menlo,monospace;color:#CBD5E1;flex:none">466 MB</div>
+</div>
+
+<div style="margin:28px 22px 0;padding-bottom:12px;border-bottom:1px solid #EEF2F6;display:flex;align-items:baseline;justify-content:space-between">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Other engines</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">3</div>
+</div>
+
+<div style="padding:0 22px">
+<div onClick="{{ m6ToggleRow }}" style="padding:16px 0;border-bottom:1px solid #F5F7FA;cursor:pointer">
+<div style="display:flex;align-items:baseline;gap:12px">
+<div style="flex:1;min-width:0">
+<div style="font-size:16px;font-weight:500;color:#0F172A">Gemma 2 · 2B</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Slower, better on long meetings · 1.6 GB</div>
+</div>
+<div style="font-size:12.5px;font-weight:500;color:#6366F1;flex:none">Get</div>
+</div>
+<sc-if value="{{ m6RowOpen }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:13px;padding-left:14px;border-left:2px solid #EEF2F6">
+<div style="font-size:13.5px;line-height:22px;color:#475569;text-wrap:pretty">Holds 8k tokens, so a 90-minute meeting summarises in one pass instead of four. Expect about 2 minutes per hour of audio here.</div>
+<div style="margin-top:12px;display:flex;gap:8px">
+<div style="padding:9px 14px;border-radius:12px;background:#6366F1;color:#fff;font-size:12.5px;font-weight:500">Download on Wi-Fi</div>
+<div style="padding:9px 14px;border-radius:12px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Compare</div>
+</div>
+</div>
+</sc-if>
+</div>
+
+<div style="padding:16px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:baseline;gap:12px">
+<div style="flex:1;min-width:0">
+<div style="font-size:16px;font-weight:500;color:#0F172A">Whisper medium</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Fewer flagged words · 1.5 GB</div>
+</div>
+<div style="font-size:12.5px;font-weight:500;color:#6366F1;flex:none">Get</div>
+</div>
+
+<div style="padding:16px 0;display:flex;align-items:baseline;gap:12px;opacity:.55">
+<div style="flex:1;min-width:0">
+<div style="font-size:16px;font-weight:500;color:#0F172A">Gemma 3n · E4B</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Needs 6 GB of RAM · this phone has 4</div>
+</div>
+<div style="font-size:12.5px;color:#94A3B8;flex:none">Too large</div>
+</div>
+</div>
+
+<div style="margin:24px 22px 0;padding-top:6px;display:flex;flex-direction:column">
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px">
+<div><div style="font-size:15.5px;color:#0F172A">Run heavy passes on charge</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Summaries wait for the charger</div></div>
+<div style="width:44px;height:26px;border-radius:13px;background:#6366F1;padding:3px;box-sizing:border-box;display:flex;justify-content:flex-end;flex:none"><div style="width:20px;height:20px;border-radius:10px;background:#fff"></div></div>
+</div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px">
+<div><div style="font-size:15.5px;color:#0F172A">Keep the model in memory</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Faster Ask AI, more battery</div></div>
+<div style="width:44px;height:26px;border-radius:13px;background:#E2E8F0;padding:3px;box-sizing:border-box;display:flex;justify-content:flex-start;flex:none"><div style="width:20px;height:20px;border-radius:10px;background:#fff"></div></div>
+</div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;border-bottom:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px">
+<div><div style="font-size:15.5px;color:#0F172A">Model storage</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">3.4 GB used · 11 GB free</div></div>
+<div style="font-size:12.5px;font-weight:500;color:#475569;flex:none">Manage</div>
+</div>
+</div>
+
+<div style="flex:1;min-height:24px"></div>
+
+<div style="padding:16px 22px 14px;font-size:12px;line-height:19px;color:#94A3B8">Last job: Series A narrative review · Gemma 3n · 14 chunks · 41s</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Home</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Search</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Models</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Settings</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="6d">
+<div class="dv-olabel"><a class="dv-oid" href="#6d">6d</a><span>Settings. No cards and no icons: labelled groups, one row per decision, the current value on the right, and a line of consequence only where the choice has one. Tap the on-device switch.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:22px 22px 0">
+<div style="font-size:26px;font-weight:600;letter-spacing:-0.7px;color:#0F172A">Settings</div>
+</div>
+
+<div style="margin:26px 22px 0;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Recording</div>
+<div style="margin:8px 22px 0;display:flex;flex-direction:column">
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div style="font-size:15.5px;color:#0F172A">Quality</div><div style="font-size:13px;color:#475569">AAC · 128 kbps</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div style="font-size:15.5px;color:#0F172A">Microphone</div><div style="font-size:13px;color:#475569">Automatic</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div><div style="font-size:15.5px;color:#0F172A">Stop after silence</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Ends the recording and starts processing</div></div><div style="font-size:13px;color:#475569;flex:none">10 min</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div style="font-size:15.5px;color:#0F172A">Default type</div><div style="font-size:13px;color:#475569">Meeting</div></div>
+</div>
+
+<div style="margin:26px 22px 0;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Transcript</div>
+<div style="margin:8px 22px 0;display:flex;flex-direction:column">
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div style="font-size:15.5px;color:#0F172A">Language</div><div style="font-size:13px;color:#475569">English (UK)</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div><div style="font-size:15.5px;color:#0F172A">Cleanup on open</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Verbatim is always kept underneath</div></div><div style="font-size:13px;color:#475569;flex:none">Readable</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div style="font-size:15.5px;color:#0F172A">Remove fillers</div><div style="width:44px;height:26px;border-radius:13px;background:#6366F1;padding:3px;box-sizing:border-box;display:flex;justify-content:flex-end;flex:none"><div style="width:20px;height:20px;border-radius:10px;background:#fff"></div></div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div><div style="font-size:15.5px;color:#0F172A">Flag low-confidence words</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Below 75% · about 14 per hour</div></div><div style="font-size:13px;color:#475569;flex:none">On</div></div>
+</div>
+
+<div style="margin:26px 22px 0;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Privacy</div>
+<div style="margin:8px 22px 0;display:flex;flex-direction:column">
+<div onClick="{{ s6ToggleOnly }}" style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px;cursor:pointer">
+<div><div style="font-size:15.5px;color:#0F172A">On-device only</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">{{ s6OnlyHint }}</div></div>
+<div style="width:44px;height:26px;border-radius:13px;background:{{ s6OnlyBg }};padding:3px;box-sizing:border-box;display:flex;justify-content:{{ s6OnlyJustify }};flex:none"><div style="width:20px;height:20px;border-radius:10px;background:#fff"></div></div>
+</div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div style="font-size:15.5px;color:#0F172A">Require unlock to open</div><div style="width:44px;height:26px;border-radius:13px;background:#E2E8F0;padding:3px;box-sizing:border-box;display:flex;justify-content:flex-start;flex:none"><div style="width:20px;height:20px;border-radius:10px;background:#fff"></div></div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div style="font-size:15.5px;color:#0F172A">Hide contents in recents</div><div style="width:44px;height:26px;border-radius:13px;background:#6366F1;padding:3px;box-sizing:border-box;display:flex;justify-content:flex-end;flex:none"><div style="width:20px;height:20px;border-radius:10px;background:#fff"></div></div></div>
+</div>
+
+<div style="margin:26px 22px 0;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Storage</div>
+<div style="margin:8px 22px 0;display:flex;flex-direction:column">
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div><div style="font-size:15.5px;color:#0F172A">Recordings</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">42 recordings · 19 hours</div></div><div style="font:13px ui-monospace,Menlo,monospace;color:#475569;flex:none">6.8 GB</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div><div style="font-size:15.5px;color:#0F172A">Delete audio after transcript</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Off: audio is kept so you can replay quotes</div></div><div style="width:44px;height:26px;border-radius:13px;background:#E2E8F0;padding:3px;box-sizing:border-box;display:flex;justify-content:flex-start;flex:none"><div style="width:20px;height:20px;border-radius:10px;background:#fff"></div></div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div style="font-size:15.5px;color:#0F172A">Export format</div><div style="font-size:13px;color:#475569">PDF and Markdown</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;border-bottom:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px"><div style="font-size:15.5px;color:#0F172A">Back up to my own folder</div><div style="font-size:13px;color:#475569">Not set</div></div>
+</div>
+
+<div style="flex:1;min-height:24px"></div>
+
+<div style="padding:20px 22px 16px;display:flex;align-items:baseline;justify-content:space-between">
+<div style="font-size:12.5px;color:#94A3B8">MeetingMind 2.4 · no account, no sync</div>
+<div style="font-size:12.5px;font-weight:500;color:#475569">Licences</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Home</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Search</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Models</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Settings</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+</div>
+<p class="dv-next">Try next: "add the stopped/saving step to <a class="dv-oid" href="#6a">6a</a>" · "show <a class="dv-oid" href="#6b">6b</a>'s failed-job state" · "add a model comparison sheet to <a class="dv-oid" href="#6c">6c</a>"</p>
+</section>
+
+<section class="dv-turn" id="t5">
+<div class="dv-thd"><a class="dv-tid" href="#t5">5</a><span class="dv-tname">Home resolved (<a class="dv-oid" href="#4a">4a</a> + <a class="dv-oid" href="#4b">4b</a>'s processing and Today list), plus Search and Import</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="5a">
+<div class="dv-olabel"><a class="dv-oid" href="#5a">5a</a><span>Home. Search is a button in the header, import sits under Record, and the old Yesterday list is gone: <a class="dv-oid" href="#4b">4b</a>'s job card and bar-marked Today rows take its place. Tap Record, the job card, or the first row.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:22px 22px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:14px">
+<div>
+<div style="font-size:26px;font-weight:600;letter-spacing:-0.7px;color:#0F172A;line-height:1.2">Good morning, Ama</div>
+<div style="margin-top:5px;font-size:13px;color:#94A3B8">42 recordings · 19 hours captured</div>
+</div>
+<div style="width:46px;height:46px;flex:none;border-radius:23px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:20px;color:#0F172A;cursor:pointer">⌕</div>
+</div>
+
+<div onClick="{{ h5ToggleRecord }}" style="margin:26px 22px 0;display:flex;align-items:center;gap:16px;cursor:pointer">
+<div style="width:64px;height:64px;border-radius:32px;background:#6366F1;flex:none;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 28px rgba(99,102,241,.28)">
+<div style="width:15px;height:23px;border-radius:8px;background:#fff"></div>
+</div>
+<div style="flex:1">
+<div style="font-size:17.5px;font-weight:600;color:#0F172A">Record</div>
+<div style="margin-top:2px;font-size:13px;color:#94A3B8">{{ h5RecordHint }}</div>
+</div>
+<div style="font-size:18px;color:#CBD5E1">{{ h5RecordChevron }}</div>
+</div>
+
+<sc-if value="{{ h5RecordOpen }}" hint-placeholder-val="{{ true }}">
+<div style="margin:16px 22px 0;padding:16px 18px;border-radius:20px;background:#FAFBFD">
+<div style="display:flex;flex-direction:column">
+<div style="padding:11px 0;display:flex;align-items:center;justify-content:space-between"><div style="font-size:15.5px;color:#0F172A">Meeting</div><div style="font-size:12px;color:#94A3B8">Speakers, decisions, tasks</div></div>
+<div style="padding:11px 0;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #F5F7FA"><div style="font-size:15.5px;color:#0F172A">Interview</div><div style="font-size:12px;color:#94A3B8">Two speakers, verbatim</div></div>
+<div style="padding:11px 0;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #F5F7FA"><div style="font-size:15.5px;color:#0F172A">Lecture</div><div style="font-size:12px;color:#94A3B8">One speaker, notes</div></div>
+<div style="padding:11px 0;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #F5F7FA"><div style="font-size:15.5px;color:#0F172A">Voice memo</div><div style="font-size:12px;color:#94A3B8">Just capture it</div></div>
+</div>
+</div>
+</sc-if>
+
+<div style="margin:18px 22px 0;padding-top:17px;border-top:1px solid #F5F7FA;display:flex;align-items:center;gap:16px;cursor:pointer">
+<div style="width:64px;height:64px;border-radius:32px;border:1px solid #E2E8F0;flex:none;display:flex;align-items:center;justify-content:center">
+<div style="display:flex;align-items:flex-end;gap:3px;height:22px">
+<div style="width:3px;height:9px;border-radius:2px;background:#94A3B8"></div>
+<div style="width:3px;height:18px;border-radius:2px;background:#94A3B8"></div>
+<div style="width:3px;height:13px;border-radius:2px;background:#94A3B8"></div>
+<div style="width:3px;height:22px;border-radius:2px;background:#94A3B8"></div>
+<div style="width:3px;height:11px;border-radius:2px;background:#94A3B8"></div>
+</div>
+</div>
+<div style="flex:1">
+<div style="font-size:17.5px;font-weight:600;color:#0F172A">Import audio</div>
+<div style="margin-top:2px;font-size:13px;color:#94A3B8">A file, a voice note, or a video</div>
+</div>
+<div style="font-size:18px;color:#CBD5E1">›</div>
+</div>
+
+<div onClick="{{ h5ToggleJob }}" style="margin:26px 22px 0;padding:15px 18px;border:1px solid #EEF2F6;border-radius:20px;cursor:pointer">
+<div style="display:flex;align-items:center;gap:12px">
+<div style="flex:1;min-width:0">
+<div style="font-size:14.5px;font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Candidate screen — staff engineer</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">{{ h5JobLine }}</div>
+</div>
+<div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1">68%</div>
+</div>
+<div style="margin-top:11px;height:4px;border-radius:2px;background:#EEF2F6"><div style="width:68%;height:4px;border-radius:2px;background:#6366F1"></div></div>
+<sc-if value="{{ h5JobOpen }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:14px;padding-top:13px;border-top:1px solid #EEF2F6">
+<div style="font-size:13px;line-height:21px;color:#475569;text-wrap:pretty">Transcribing chunk 9 of 14 on this phone. Gemma 3n is queued behind it for the summary.</div>
+<div style="margin-top:12px;display:flex;gap:8px">
+<div style="padding:8px 13px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Pause</div>
+<div style="padding:8px 13px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Run later</div>
+</div>
+</div>
+</sc-if>
+</div>
+
+<div style="margin:28px 22px 0;padding-bottom:12px;border-bottom:1px solid #EEF2F6;display:flex;align-items:baseline;justify-content:space-between">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Today</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">3</div>
+</div>
+
+<div style="padding:0 22px">
+<div onClick="{{ h5Row1 }}" style="display:flex;align-items:flex-start;gap:14px;padding:17px 0;border-bottom:1px solid #F5F7FA;cursor:pointer">
+<div style="width:3px;height:34px;border-radius:2px;background:#6366F1;flex:none;margin-top:3px"></div>
+<div style="flex:1;min-width:0">
+<div style="font-size:16px;font-weight:500;color:#0F172A">Series A narrative review</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">3 decisions · 3 tasks · 9:14 AM</div>
+<sc-if value="{{ h5Row1Open }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:13px;padding-left:14px;border-left:2px solid #EEF2F6">
+<div style="font-size:14px;line-height:22px;color:#475569;text-wrap:pretty">Retention leads the deck. The raise moves to $15M pending a hiring plan.</div>
+<div style="margin-top:11px;display:flex;gap:8px">
+<div style="padding:8px 13px;border-radius:11px;background:#0F172A;color:#fff;font-size:12.5px;font-weight:500">Play</div>
+<div style="padding:8px 13px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">3 tasks</div>
+<div style="padding:8px 13px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Share</div>
+</div>
+</div>
+</sc-if>
+</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1;margin-top:4px">42:18</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:14px;padding:17px 0;border-bottom:1px solid #F5F7FA">
+<div style="width:3px;height:34px;border-radius:2px;background:#F59E0B;flex:none"></div>
+<div style="flex:1;min-width:0">
+<div style="font-size:16px;font-weight:500;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Pricing workshop</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">14 words to review</div>
+</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">1:12:40</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:14px;padding:17px 0">
+<div style="width:3px;height:34px;border-radius:2px;background:#EEF2F6;flex:none"></div>
+<div style="flex:1;min-width:0">
+<div style="font-size:16px;font-weight:500;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Note to self — onboarding idea</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Voice memo · imported</div>
+</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">02:07</div>
+</div>
+</div>
+
+<div style="flex:1;min-height:24px"></div>
+
+<div style="padding:0 22px 14px;display:flex;align-items:center;justify-content:space-between">
+<div style="font-size:12.5px;color:#94A3B8">Everything stays on this phone</div>
+<div style="font-size:12.5px;font-weight:500;color:#475569">All recordings</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Home</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Search</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Models</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Settings</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="5b">
+<div class="dv-olabel"><a class="dv-oid" href="#5b">5b</a><span>Search, built out of <a class="dv-oid" href="#4c">4c</a>. One field does both jobs: an answer with timestamp citations on top, then the literal word matches underneath, so the AI never hides the evidence. Tap the field for the resting state.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:18px 20px 0;display:flex;align-items:center;gap:12px">
+<div style="width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center;font-size:20px;color:#475569">‹</div>
+<div onClick="{{ h5ToggleSearch }}" style="flex:1;display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid #E2E8F0;border-radius:24px;cursor:pointer">
+<div style="font-size:16px;color:#CBD5E1">⌕</div>
+<div style="flex:1;font-size:14.5px;color:{{ h5FieldColor }}">{{ h5FieldText }}</div>
+</div>
+</div>
+
+<sc-if value="{{ h5Results }}" hint-placeholder-val="{{ true }}">
+<div>
+<div style="padding:16px 20px 0;display:flex;gap:8px;flex-wrap:wrap">
+<div style="padding:7px 12px;border-radius:11px;background:#0F172A;color:#fff;font-size:12px;font-weight:500">Anytime</div>
+<div style="padding:7px 12px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12px">All types</div>
+<div style="padding:7px 12px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12px">Any speaker</div>
+</div>
+
+<div style="margin:24px 20px 0;padding-left:14px;border-left:2px solid #6366F1">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#6366F1">Answer</div>
+<div style="margin-top:11px;font-size:16.5px;line-height:28px;color:#0F172A;text-wrap:pretty">Pricing changes are on hold until the round closes. Ama made the call in the Series A review<span style="font:600 11px ui-monospace,Menlo,monospace;color:#6366F1;background:rgba(99,102,241,.10);border-radius:5px;padding:2px 5px;margin:0 4px">31:07</span>after the pricing workshop landed on three tiers but no date<span style="font:600 11px ui-monospace,Menlo,monospace;color:#6366F1;background:rgba(99,102,241,.10);border-radius:5px;padding:2px 5px;margin:0 4px">54:22</span>. Nobody has revisited it since.</div>
+<div style="margin-top:12px;font-size:12px;line-height:19px;color:#94A3B8;text-wrap:pretty">Read 11 segments across 3 recordings · Gemma 3n on device · 2.4s</div>
+</div>
+
+<div style="margin:30px 20px 0;padding-bottom:12px;border-bottom:1px solid #EEF2F6;display:flex;align-items:baseline;justify-content:space-between">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Matches</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">6 in 3</div>
+</div>
+
+<div style="padding:0 20px">
+<div style="padding:17px 0;border-bottom:1px solid #F5F7FA">
+<div style="display:flex;align-items:baseline;gap:12px">
+<div style="flex:1;font-size:16px;font-weight:500;color:#0F172A">Pricing workshop</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">3 hits</div>
+</div>
+<div style="margin-top:6px;font-size:13.5px;line-height:21px;color:#475569;text-wrap:pretty">“…so the <span style="font-weight:600;color:#0F172A;background:#F1F5F9;border-radius:4px;padding:1px 4px">pricing</span> decision we can defer, but the tiers we can't…”</div>
+<div style="margin-top:11px;display:flex;gap:7px">
+<div style="padding:6px 11px;border-radius:10px;border:1px solid #E2E8F0;font:10.5px ui-monospace,Menlo,monospace;color:#475569">18:40</div>
+<div style="padding:6px 11px;border-radius:10px;border:1px solid #E2E8F0;font:10.5px ui-monospace,Menlo,monospace;color:#475569">54:22</div>
+<div style="padding:6px 11px;border-radius:10px;border:1px solid #E2E8F0;font:10.5px ui-monospace,Menlo,monospace;color:#475569">1:02:11</div>
+</div>
+</div>
+<div style="padding:17px 0;border-bottom:1px solid #F5F7FA">
+<div style="display:flex;align-items:baseline;gap:12px">
+<div style="flex:1;font-size:16px;font-weight:500;color:#0F172A">Series A narrative review</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">2 hits</div>
+</div>
+<div style="margin-top:6px;font-size:13.5px;line-height:21px;color:#475569;text-wrap:pretty">“…hold every <span style="font-weight:600;color:#0F172A;background:#F1F5F9;border-radius:4px;padding:1px 4px">pricing</span> change until the round is closed…”</div>
+<div style="margin-top:11px;display:flex;gap:7px">
+<div style="padding:6px 11px;border-radius:10px;border:1px solid #E2E8F0;font:10.5px ui-monospace,Menlo,monospace;color:#475569">31:07</div>
+<div style="padding:6px 11px;border-radius:10px;border:1px solid #E2E8F0;font:10.5px ui-monospace,Menlo,monospace;color:#475569">38:02</div>
+</div>
+</div>
+<div style="padding:17px 0">
+<div style="display:flex;align-items:baseline;gap:12px">
+<div style="flex:1;font-size:16px;font-weight:500;color:#0F172A">Board prep call</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">1 hit</div>
+</div>
+<div style="margin-top:6px;font-size:13.5px;line-height:21px;color:#475569;text-wrap:pretty">“…they'll ask about <span style="font-weight:600;color:#0F172A;background:#F1F5F9;border-radius:4px;padding:1px 4px">pricing</span> power, so bring the cohort chart…”</div>
+<div style="margin-top:11px;display:flex;gap:7px">
+<div style="padding:6px 11px;border-radius:10px;border:1px solid #E2E8F0;font:10.5px ui-monospace,Menlo,monospace;color:#475569">07:55</div>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ h5Empty }}">
+<div style="padding:26px 20px 0">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Recent searches</div>
+<div style="margin-top:10px;display:flex;flex-direction:column">
+<div style="padding:14px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:center;gap:12px"><div style="font-size:14px;color:#CBD5E1">⌕</div><div style="flex:1;font-size:15.5px;color:#0F172A">pricing decision</div><div style="font-size:15px;color:#E2E8F0">×</div></div>
+<div style="padding:14px 0;border-bottom:1px solid #F5F7FA;display:flex;align-items:center;gap:12px"><div style="font-size:14px;color:#CBD5E1">⌕</div><div style="flex:1;font-size:15.5px;color:#0F172A">hiring plan</div><div style="font-size:15px;color:#E2E8F0">×</div></div>
+<div style="padding:14px 0;display:flex;align-items:center;gap:12px"><div style="font-size:14px;color:#CBD5E1">⌕</div><div style="flex:1;font-size:15.5px;color:#0F172A">Priya</div><div style="font-size:15px;color:#E2E8F0">×</div></div>
+</div>
+
+<div style="margin-top:30px;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#6366F1">Ask across everything</div>
+<div style="margin-top:12px;display:flex;flex-direction:column;gap:12px">
+<div style="padding:13px 16px;border:1px solid rgba(99,102,241,.30);border-radius:16px;font-size:14.5px;color:#0F172A">What did we promise the board this quarter?</div>
+<div style="padding:13px 16px;border:1px solid rgba(99,102,241,.30);border-radius:16px;font-size:14.5px;color:#0F172A">Which tasks are still unassigned?</div>
+<div style="padding:13px 16px;border:1px solid rgba(99,102,241,.30);border-radius:16px;font-size:14.5px;color:#0F172A">Summarise everything Priya said about hiring</div>
+</div>
+<div style="margin-top:16px;font-size:12px;line-height:19px;color:#94A3B8;text-wrap:pretty">Words are found instantly. Questions run Gemma 3n on this phone and take a few seconds.</div>
+</div>
+</sc-if>
+
+<div style="flex:1;min-height:24px"></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Home</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Search</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Models</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Settings</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="5c">
+<div class="dv-olabel"><a class="dv-oid" href="#5c">5c</a><span>Import audio. The file is already in hand, so the screen only asks what it is and when to run — then hands off to the same job card home shows. Tap the button to start the import.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:18px 22px 0;display:flex;align-items:center;gap:12px">
+<div style="width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center;font-size:20px;color:#475569">‹</div>
+<div style="font-size:16px;font-weight:600;color:#0F172A">Import audio</div>
+</div>
+
+<div style="margin:22px 22px 0;padding:17px 18px;border:1px solid #EEF2F6;border-radius:20px">
+<div style="display:flex;align-items:center;gap:14px">
+<div style="display:flex;align-items:flex-end;gap:3px;height:34px;flex:none">
+<div style="width:3px;height:12px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:26px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:19px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:34px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:15px;border-radius:2px;background:#CBD5E1"></div>
+<div style="width:3px;height:24px;border-radius:2px;background:#CBD5E1"></div>
+</div>
+<div style="flex:1;min-width:0">
+<div style="font-size:15.5px;font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">board-call-aug-24.m4a</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">38:12 · 42 MB · from Files</div>
+</div>
+<div style="font-size:12.5px;font-weight:500;color:#475569">Change</div>
+</div>
+</div>
+
+<div style="margin:26px 22px 0;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">What is it</div>
+<div style="margin:12px 22px 0;display:flex;flex-wrap:wrap;gap:8px">
+<div style="padding:9px 14px;border-radius:12px;background:#0F172A;color:#fff;font-size:13px;font-weight:500">Meeting</div>
+<div style="padding:9px 14px;border-radius:12px;border:1px solid #E2E8F0;color:#475569;font-size:13px">Interview</div>
+<div style="padding:9px 14px;border-radius:12px;border:1px solid #E2E8F0;color:#475569;font-size:13px">Lecture</div>
+<div style="padding:9px 14px;border-radius:12px;border:1px solid #E2E8F0;color:#475569;font-size:13px">Voice memo</div>
+</div>
+
+<div style="margin:26px 22px 0;display:flex;flex-direction:column">
+<div style="padding:15px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px">
+<div><div style="font-size:15.5px;color:#0F172A">Title</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Board prep call</div></div>
+<div style="font-size:12.5px;font-weight:500;color:#475569">Edit</div>
+</div>
+<div style="padding:15px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px">
+<div><div style="font-size:15.5px;color:#0F172A">Speakers expected</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Helps split the transcript</div></div>
+<div style="font:12.5px ui-monospace,Menlo,monospace;color:#0F172A">3</div>
+</div>
+<div style="padding:15px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px">
+<div><div style="font-size:15.5px;color:#0F172A">Language</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Detected from the first minute</div></div>
+<div style="font-size:12.5px;color:#0F172A">English</div>
+</div>
+<div style="padding:15px 0;border-top:1px solid #F5F7FA;display:flex;align-items:center;justify-content:space-between;gap:14px">
+<div><div style="font-size:15.5px;color:#0F172A">Run now</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Off: queues until charging</div></div>
+<div style="width:44px;height:26px;border-radius:13px;background:#6366F1;padding:3px;box-sizing:border-box;display:flex;justify-content:flex-end"><div style="width:20px;height:20px;border-radius:10px;background:#fff"></div></div>
+</div>
+</div>
+
+<sc-if value="{{ h5ImpRunning }}" hint-placeholder-val="{{ true }}">
+<div style="margin:22px 22px 0;padding:15px 18px;border:1px solid #EEF2F6;border-radius:20px">
+<div style="display:flex;align-items:center;gap:12px">
+<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:600;color:#0F172A">Board prep call</div><div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Copying audio · chunk 1 of 12</div></div>
+<div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1">8%</div>
+</div>
+<div style="margin-top:11px;height:4px;border-radius:2px;background:#EEF2F6"><div style="width:8%;height:4px;border-radius:2px;background:#6366F1"></div></div>
+</div>
+</sc-if>
+
+<div style="flex:1;min-height:24px"></div>
+
+<div style="padding:0 22px 20px">
+<div style="font-size:12px;line-height:19px;color:#94A3B8;text-wrap:pretty">The file is copied into MeetingMind and transcribed on this phone. Nothing is uploaded.</div>
+<div onClick="{{ h5ImpGo }}" style="margin-top:14px;padding:16px 0;border-radius:18px;background:#6366F1;text-align:center;font-size:15.5px;font-weight:600;color:#fff;cursor:pointer;box-shadow:0 10px 26px rgba(99,102,241,.26)">{{ h5ImpCta }}</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+</div>
+<p class="dv-next">Try next: "give <a class="dv-oid" href="#5b">5b</a> a running answer state" · "show <a class="dv-oid" href="#5c">5c</a>'s file picker step" · "add speaker filter results to <a class="dv-oid" href="#5b">5b</a>"</p>
+</section>
+
+<section class="dv-turn" id="t4">
+<div class="dv-thd"><a class="dv-tid" href="#t4">4</a><span class="dv-tname">Home — three directions in the new language</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="4a">
+<div class="dv-olabel"><a class="dv-oid" href="#4a">4a</a><span>The list is the page. No tiles, no bento: one record affordance, then recordings as typographic rows under date rules. Import, telemetry and filters only appear when asked. Tap a row, and the <em>Recent</em> header.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:22px 22px 0;display:flex;align-items:flex-start;justify-content:space-between">
+<div>
+<div style="font-size:26px;font-weight:600;letter-spacing:-0.7px;color:#0F172A;line-height:1.2">Good morning, Ama</div>
+<div style="margin-top:5px;font-size:13px;color:#94A3B8">42 recordings · 19 hours captured</div>
+</div>
+<div style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:19px;color:#475569">⌕</div>
+</div>
+
+<div onClick="{{ hToggleRecord }}" style="margin:26px 22px 0;display:flex;align-items:center;gap:16px;cursor:pointer">
+<div style="width:64px;height:64px;border-radius:32px;background:#6366F1;flex:none;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 28px rgba(99,102,241,.28)">
+<div style="width:15px;height:23px;border-radius:8px;background:#fff"></div>
+</div>
+<div style="flex:1">
+<div style="font-size:17.5px;font-weight:600;color:#0F172A">Record</div>
+<div style="margin-top:2px;font-size:13px;color:#94A3B8">{{ hRecordHint }}</div>
+</div>
+<div style="font-size:18px;color:#CBD5E1">{{ hRecordChevron }}</div>
+</div>
+
+<sc-if value="{{ hRecordOpen }}" hint-placeholder-val="{{ true }}">
+<div style="margin:16px 22px 0;padding:16px 18px;border-radius:20px;background:#FAFBFD">
+<div style="display:flex;flex-direction:column">
+<div style="padding:11px 0;display:flex;align-items:center;justify-content:space-between"><div style="font-size:15.5px;color:#0F172A">Meeting</div><div style="font-size:12px;color:#94A3B8">Speakers, decisions, tasks</div></div>
+<div style="padding:11px 0;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #F5F7FA"><div style="font-size:15.5px;color:#0F172A">Interview</div><div style="font-size:12px;color:#94A3B8">Two speakers, verbatim</div></div>
+<div style="padding:11px 0;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #F5F7FA"><div style="font-size:15.5px;color:#0F172A">Lecture</div><div style="font-size:12px;color:#94A3B8">One speaker, notes</div></div>
+<div style="padding:11px 0;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #F5F7FA"><div style="font-size:15.5px;color:#0F172A">Voice memo</div><div style="font-size:12px;color:#94A3B8">Just capture it</div></div>
+<div style="padding:11px 0;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #F5F7FA"><div style="font-size:15.5px;color:#475569">Import a file</div><div style="font-size:12px;color:#94A3B8">Audio or video</div></div>
+</div>
+</div>
+</sc-if>
+
+<div style="margin:30px 22px 0;padding-bottom:12px;border-bottom:1px solid #EEF2F6;display:flex;align-items:baseline;justify-content:space-between">
+<div onClick="{{ hToggleFilters }}" style="display:flex;align-items:center;gap:7px;cursor:pointer"><div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">{{ hFilterLabel }}</div><div style="font-size:9px;color:#CBD5E1">▾</div></div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">{{ hFilterCount }}</div>
+</div>
+
+<sc-if value="{{ hFiltersOpen }}">
+<div style="margin:12px 22px 0;display:flex;flex-wrap:wrap;gap:8px">
+<div onClick="{{ hFilterAll }}" style="padding:8px 13px;border-radius:11px;background:{{ hFAllBg }};color:{{ hFAllColor }};font-size:12.5px;font-weight:500">All</div>
+<div onClick="{{ hFilterMic }}" style="padding:8px 13px;border-radius:11px;background:{{ hFMicBg }};color:{{ hFMicColor }};font-size:12.5px;font-weight:500">Recorded</div>
+<div onClick="{{ hFilterImported }}" style="padding:8px 13px;border-radius:11px;background:{{ hFImpBg }};color:{{ hFImpColor }};font-size:12.5px;font-weight:500">Imported</div>
+<div onClick="{{ hFilterTasks }}" style="padding:8px 13px;border-radius:11px;background:{{ hFTaskBg }};color:{{ hFTaskColor }};font-size:12.5px;font-weight:500">With tasks</div>
+</div>
+</sc-if>
+
+<div style="padding:0 22px">
+
+<div onClick="{{ hRow1 }}" style="padding:18px 0;border-bottom:1px solid #F5F7FA;cursor:pointer">
+<div style="display:flex;align-items:baseline;gap:12px">
+<div style="flex:1;font-size:16.5px;font-weight:500;color:#0F172A;line-height:1.35;text-wrap:pretty">Series A narrative review</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">42:18</div>
+</div>
+<div style="margin-top:5px;font-size:12.5px;color:#94A3B8">Meeting · 4 speakers · 9:14 AM</div>
+<sc-if value="{{ hRow1Open }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:13px;padding-left:14px;border-left:2px solid #EEF2F6">
+<div style="font-size:14px;line-height:22px;color:#475569;text-wrap:pretty">Retention leads the deck. The raise moves to $15M pending a hiring plan.</div>
+<div style="margin-top:11px;display:flex;gap:8px">
+<div style="padding:8px 13px;border-radius:11px;background:#0F172A;color:#fff;font-size:12.5px;font-weight:500">Play</div>
+<div style="padding:8px 13px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">3 tasks</div>
+<div style="padding:8px 13px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Share</div>
+</div>
+</div>
+</sc-if>
+</div>
+
+<div onClick="{{ hRow2 }}" style="padding:18px 0;border-bottom:1px solid #F5F7FA;cursor:pointer">
+<div style="display:flex;align-items:baseline;gap:12px">
+<div style="flex:1;font-size:16.5px;font-weight:500;color:#0F172A;line-height:1.35;text-wrap:pretty">Candidate screen — staff engineer</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">51:03</div>
+</div>
+<div style="margin-top:5px;display:flex;align-items:center;gap:7px"><div style="width:5px;height:5px;border-radius:3px;background:#6366F1"></div><div style="font-size:12.5px;color:#6366F1">Transcribing · 68%</div></div>
+</div>
+
+<div style="padding:18px 0;border-bottom:1px solid #F5F7FA">
+<div style="display:flex;align-items:baseline;gap:12px">
+<div style="flex:1;font-size:16.5px;font-weight:500;color:#0F172A;line-height:1.35;text-wrap:pretty">Pricing workshop</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">1:12:40</div>
+</div>
+<div style="margin-top:5px;font-size:12.5px;color:#94A3B8">Meeting · 6 speakers · 14 words to review</div>
+</div>
+
+<div style="padding:26px 0 12px;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#CBD5E1">Yesterday</div>
+
+<div style="padding:18px 0;border-bottom:1px solid #F5F7FA">
+<div style="display:flex;align-items:baseline;gap:12px">
+<div style="flex:1;font-size:16.5px;font-weight:500;color:#0F172A;line-height:1.35;text-wrap:pretty">Note to self — onboarding idea</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">02:07</div>
+</div>
+<div style="margin-top:5px;font-size:12.5px;color:#94A3B8">Voice memo · imported</div>
+</div>
+
+<div style="padding:18px 0">
+<div style="display:flex;align-items:baseline;gap:12px">
+<div style="flex:1;font-size:16.5px;font-weight:500;color:#0F172A;line-height:1.35;text-wrap:pretty">Design system walkthrough</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">28:55</div>
+</div>
+<div style="margin-top:5px;font-size:12.5px;color:#94A3B8">Lecture · 1 speaker</div>
+</div>
+
+</div>
+
+<div style="flex:1;min-height:26px"></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Home</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Search</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Models</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Settings</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="4b">
+<div class="dv-olabel"><a class="dv-oid" href="#4b">4b</a><span>Dial at the top. The record button is the same circle as the player, so home and playback speak one shape. One resume line, then the list. Tap the dial and the job row.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px 0">
+<div style="font-size:13px;color:#94A3B8">Wednesday, 26 August</div>
+<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:19px;color:#475569">⌕</div>
+</div>
+
+<div style="display:flex;flex-direction:column;align-items:center;padding:22px 30px 0">
+<div onClick="{{ hToggleArmed }}" style="position:relative;width:172px;height:172px;border-radius:50%;background:{{ hArmRing }};cursor:pointer">
+<div style="position:absolute;inset:11px;border-radius:50%;background:#fff"></div>
+<div style="position:absolute;inset:22px;border-radius:50%;background:{{ hArmFill }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px">
+<div style="width:{{ hArmGlyphW }};height:{{ hArmGlyphH }};border-radius:{{ hArmGlyphR }};background:{{ hArmGlyphBg }}"></div>
+<div style="font-size:12.5px;font-weight:500;color:{{ hArmLabelColor }};letter-spacing:0.2px">{{ hArmLabel }}</div>
+</div>
+</div>
+<div style="margin-top:16px;font-size:13px;color:#94A3B8;text-align:center;text-wrap:pretty">{{ hArmHint }}</div>
+</div>
+
+<div onClick="{{ hToggleJob }}" style="margin:30px 18px 0;padding:15px 18px;border:1px solid #EEF2F6;border-radius:20px;cursor:pointer">
+<div style="display:flex;align-items:center;gap:12px">
+<div style="flex:1;min-width:0">
+<div style="font-size:14.5px;font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Candidate screen — staff engineer</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">{{ hJobLine }}</div>
+</div>
+<div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1">68%</div>
+</div>
+<div style="margin-top:11px;height:4px;border-radius:2px;background:#EEF2F6"><div style="width:68%;height:4px;border-radius:2px;background:#6366F1"></div></div>
+<sc-if value="{{ hJobOpen }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:14px;padding-top:13px;border-top:1px solid #EEF2F6">
+<div style="font-size:13px;line-height:21px;color:#475569;text-wrap:pretty">Transcribing chunk 9 of 14 on this phone. Gemma 3n is queued behind it for the summary.</div>
+<div style="margin-top:12px;display:flex;gap:8px">
+<div style="padding:8px 13px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Pause</div>
+<div style="padding:8px 13px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Run later</div>
+</div>
+</div>
+</sc-if>
+</div>
+
+<div style="margin:28px 18px 0;padding-bottom:12px;border-bottom:1px solid #EEF2F6;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Today</div>
+
+<div style="padding:0 18px">
+<div style="display:flex;align-items:center;gap:14px;padding:17px 0;border-bottom:1px solid #F5F7FA">
+<div style="width:3px;height:34px;border-radius:2px;background:#6366F1;flex:none"></div>
+<div style="flex:1;min-width:0">
+<div style="font-size:16px;font-weight:500;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Series A narrative review</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">3 decisions · 3 tasks</div>
+</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">42:18</div>
+</div>
+<div style="display:flex;align-items:center;gap:14px;padding:17px 0;border-bottom:1px solid #F5F7FA">
+<div style="width:3px;height:34px;border-radius:2px;background:#F59E0B;flex:none"></div>
+<div style="flex:1;min-width:0">
+<div style="font-size:16px;font-weight:500;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Pricing workshop</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">14 words to review</div>
+</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">1:12:40</div>
+</div>
+<div style="display:flex;align-items:center;gap:14px;padding:17px 0">
+<div style="width:3px;height:34px;border-radius:2px;background:#EEF2F6;flex:none"></div>
+<div style="flex:1;min-width:0">
+<div style="font-size:16px;font-weight:500;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Note to self — onboarding idea</div>
+<div style="margin-top:3px;font-size:12.5px;color:#94A3B8">Voice memo</div>
+</div>
+<div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">02:07</div>
+</div>
+</div>
+
+<div style="flex:1;min-height:20px"></div>
+
+<div style="padding:0 18px 14px;display:flex;align-items:center;justify-content:space-between">
+<div style="font-size:12.5px;color:#94A3B8">Everything stays on this phone</div>
+<div style="font-size:12.5px;font-weight:500;color:#6366F1">Import a file</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Home</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Search</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Models</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Settings</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="4c">
+<div class="dv-olabel"><a class="dv-oid" href="#4c">4c</a><span>Ask-first. The field at the top searches across every recording, and the same field answers questions — home becomes the way in, not a shelf. Record is a pill that follows the scroll. Tap the field.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;position:relative;-webkit-font-smoothing:antialiased">
+
+<div style="padding:20px 20px 0">
+<div onClick="{{ hToggleAsk }}" style="display:flex;align-items:center;gap:12px;padding:14px 18px;border:1px solid #E2E8F0;border-radius:26px;cursor:pointer">
+<div style="font-size:16px;color:#CBD5E1">⌕</div>
+<div style="flex:1;font-size:14.5px;color:{{ hAskColor }}">{{ hAskText }}</div>
+</div>
+</div>
+
+<sc-if value="{{ hAskOpen }}" hint-placeholder-val="{{ true }}">
+<div style="padding:18px 20px 0">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Across 42 recordings</div>
+<div style="margin-top:14px;font-size:16.5px;line-height:28px;color:#0F172A;text-wrap:pretty">Pricing came up three times this month. The decision to hold changes until after the round was made in the Series A review<span style="font:600 11px ui-monospace,Menlo,monospace;color:#6366F1;background:rgba(99,102,241,.10);border-radius:5px;padding:2px 5px;margin:0 4px">31:07</span>and has not been revisited since.</div>
+<div style="margin-top:14px;font-size:12px;color:#94A3B8">Read 11 segments across 3 recordings. On device.</div>
+<div style="margin-top:22px;display:flex;flex-direction:column">
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:baseline;gap:12px"><div style="flex:1;font-size:15px;color:#0F172A">Pricing workshop</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">3 hits</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:baseline;gap:12px"><div style="flex:1;font-size:15px;color:#0F172A">Series A narrative review</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">2 hits</div></div>
+<div style="padding:14px 0;border-top:1px solid #F5F7FA;display:flex;align-items:baseline;gap:12px"><div style="flex:1;font-size:15px;color:#0F172A">Board prep call</div><div style="font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1">1 hit</div></div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ hAskClosed }}">
+<div style="padding:26px 20px 0">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Needs you</div>
+<div style="margin-top:14px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;gap:13px"><div style="width:7px;height:7px;border-radius:4px;background:#F59E0B;flex:none"></div><div style="flex:1;font-size:15.5px;color:#0F172A">14 words to review in Pricing workshop</div><div style="font-size:17px;color:#CBD5E1">›</div></div>
+<div style="display:flex;align-items:center;gap:13px"><div style="width:7px;height:7px;border-radius:4px;background:#6366F1;flex:none"></div><div style="flex:1;font-size:15.5px;color:#0F172A">Candidate screen is transcribing · 68%</div><div style="font-size:17px;color:#CBD5E1">›</div></div>
+<div style="display:flex;align-items:center;gap:13px"><div style="width:7px;height:7px;border-radius:4px;background:#EEF2F6;flex:none"></div><div style="flex:1;font-size:15.5px;color:#475569">3 tasks due this week</div><div style="font-size:17px;color:#CBD5E1">›</div></div>
+</div>
+
+<div style="margin-top:34px;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Recent</div>
+<div style="margin-top:6px;display:flex;flex-direction:column">
+<div style="padding:16px 0;border-bottom:1px solid #F5F7FA"><div style="font-size:16.5px;font-weight:500;color:#0F172A;text-wrap:pretty">Series A narrative review</div><div style="margin-top:4px;font-size:12.5px;color:#94A3B8">Today, 9:14 AM · 42:18 · 4 speakers</div></div>
+<div style="padding:16px 0;border-bottom:1px solid #F5F7FA"><div style="font-size:16.5px;font-weight:500;color:#0F172A;text-wrap:pretty">Pricing workshop</div><div style="margin-top:4px;font-size:12.5px;color:#94A3B8">Today, 7:30 AM · 1:12:40 · 6 speakers</div></div>
+<div style="padding:16px 0;border-bottom:1px solid #F5F7FA"><div style="font-size:16.5px;font-weight:500;color:#0F172A;text-wrap:pretty">Note to self — onboarding idea</div><div style="margin-top:4px;font-size:12.5px;color:#94A3B8">Yesterday · 02:07 · voice memo</div></div>
+<div style="padding:16px 0"><div style="font-size:16.5px;font-weight:500;color:#0F172A;text-wrap:pretty">Design system walkthrough</div><div style="margin-top:4px;font-size:12.5px;color:#94A3B8">Yesterday · 28:55 · lecture</div></div>
+</div>
+</div>
+</sc-if>
+
+<div style="flex:1;min-height:90px"></div>
+
+<div style="position:absolute;left:0;right:0;bottom:58px;display:flex;justify-content:center">
+<div style="display:flex;align-items:center;gap:11px;padding:14px 22px;border-radius:28px;background:#0F172A;box-shadow:0 14px 34px rgba(15,23,42,.26)">
+<div style="width:11px;height:17px;border-radius:6px;background:#fff"></div>
+<div style="font-size:14.5px;font-weight:600;color:#fff">Record</div>
+<div style="width:1px;height:18px;background:rgba(255,255,255,.22)"></div>
+<div style="font-size:12px;color:rgba(255,255,255,.65)">Meeting ▾</div>
+</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Home</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Search</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Models</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Settings</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+</div>
+<p class="dv-next">Try next: "put <a class="dv-oid" href="#4c">4c</a>'s Needs you strip on top of <a class="dv-oid" href="#4a">4a</a>" · "show <a class="dv-oid" href="#4a">4a</a> empty" · "where does device/model status live?"</p>
+</section>
+
+<section class="dv-turn" id="t3">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Transcript tab — modes and the AI toolkit</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="3a">
+<div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a><span>Reading. No chrome at all: speaker labels, timestamps in the gutter, the playing line marked. Three words at the bottom are the whole toolbar.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="display:flex;align-items:center;gap:14px;padding:10px 18px 0">
+<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#475569;line-height:1">‹</div>
+<div style="flex:1;min-width:0">
+<div style="font-size:14.5px;font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Series A narrative review</div>
+<div style="font-size:11.5px;color:#94A3B8;margin-top:1px">Transcript · 42:18</div>
+</div>
+<div onClick="{{ togglePlay }}" style="position:relative;width:52px;height:52px;border-radius:26px;background:{{ ringMini }};flex:none;cursor:pointer">
+<div style="position:absolute;inset:4px;border-radius:22px;background:#fff;display:flex;align-items:center;justify-content:center">
+<sc-if value="{{ playing }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:3px"><div style="width:3px;height:13px;border-radius:2px;background:#6366F1"></div><div style="width:3px;height:13px;border-radius:2px;background:#6366F1"></div></div></sc-if>
+<sc-if value="{{ paused }}"><div style="width:0;height:0;border-left:12px solid #6366F1;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></sc-if>
+</div>
+</div>
+</div>
+
+<div style="padding:28px 22px 0;display:flex;flex-direction:column;gap:26px">
+
+<div style="display:flex;gap:14px">
+<div style="width:38px;flex:none;font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1;padding-top:5px">11:48</div>
+<div style="flex:1">
+<div style="font-size:12px;font-weight:600;letter-spacing:0.3px;color:#A855F7">Tom</div>
+<div style="margin-top:5px;font-size:16.5px;line-height:28px;color:#475569;text-wrap:pretty">So the version we send has to survive the first ten seconds. That is the whole job of slide one.</div>
+</div>
+</div>
+
+<div style="display:flex;gap:14px">
+<div style="width:38px;flex:none;font:10.5px ui-monospace,Menlo,monospace;color:#6366F1;padding-top:5px">12:02</div>
+<div style="flex:1;border-left:2px solid #6366F1;margin-left:-16px;padding-left:14px">
+<div style="font-size:12px;font-weight:600;letter-spacing:0.3px;color:#6366F1">Nadia</div>
+<div style="margin-top:5px;font-size:16.5px;line-height:28px;color:#0F172A;text-wrap:pretty">If we lead with growth rate, the first question is going to be about churn anyway. I'd rather put retention up front and let the growth number land second.</div>
+</div>
+</div>
+
+<div style="display:flex;gap:14px">
+<div style="width:38px;flex:none;font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1;padding-top:5px">12:24</div>
+<div style="flex:1">
+<div style="font-size:12px;font-weight:600;letter-spacing:0.3px;color:#A855F7">Tom</div>
+<div style="margin-top:5px;font-size:16.5px;line-height:28px;color:#475569;text-wrap:pretty">That works, but only if the cohort curve is clean. Slide 4 right now is three charts fighting each other.</div>
+</div>
+</div>
+
+<div style="display:flex;gap:14px">
+<div style="width:38px;flex:none;font:10.5px ui-monospace,Menlo,monospace;color:#CBD5E1;padding-top:5px">12:41</div>
+<div style="flex:1">
+<div style="font-size:12px;font-weight:600;letter-spacing:0.3px;color:#10B981">Priya</div>
+<div style="margin-top:5px;font-size:16.5px;line-height:28px;color:#475569;text-wrap:pretty">I can pull enterprise churn by segment before Thursday so we're not guessing.</div>
+</div>
+</div>
+
+</div>
+
+<div style="flex:1;min-height:24px"></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:0 18px 14px;border-top:1px solid #EEF2F6;padding-top:14px">
+<div style="text-align:center;font-size:14px;color:#475569">Search</div>
+<div style="text-align:center;font-size:14px;color:#475569">Edit</div>
+<div style="text-align:center;font-size:14px;font-weight:600;color:#0F172A">Tools</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Overview</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Transcript</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Ask AI</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="3b">
+<div class="dv-olabel"><a class="dv-oid" href="#3b">3b</a><span>Tools. One sheet, three groups, nothing expanded until you ask. The scope line at the top is the only setting. Tap a group header.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="padding:14px 22px 0;opacity:.35">
+<div style="font-size:16.5px;line-height:28px;color:#475569;text-wrap:pretty">If we lead with growth rate, the first question is going to be about churn anyway. I'd rather put retention up front and let the growth number land second.</div>
+<div style="margin-top:22px;font-size:16.5px;line-height:28px;color:#475569;text-wrap:pretty">That works, but only if the cohort curve is clean.</div>
+</div>
+
+<div style="flex:1"></div>
+
+<div style="background:#fff;border-radius:28px 28px 0 0;box-shadow:0 -18px 50px rgba(15,23,42,.13);padding:10px 0 0">
+<div style="width:38px;height:4px;border-radius:2px;background:#E2E8F0;margin:0 auto 18px"></div>
+
+<div style="padding:0 24px 18px;display:flex;align-items:baseline;justify-content:space-between">
+<div style="font-size:20px;font-weight:600;letter-spacing:-0.4px;color:#0F172A">AI tools</div>
+<div style="font-size:13px;color:#6366F1">Whole transcript ▾</div>
+</div>
+
+<div style="border-top:1px solid #EEF2F6">
+<div onClick="{{ groupTranscript }}" style="display:flex;align-items:center;justify-content:space-between;padding:17px 24px;cursor:pointer">
+<div style="font-size:16px;font-weight:600;color:#0F172A">Transcript</div>
+<div style="font-size:12.5px;color:#94A3B8">{{ gTranscriptHint }}</div>
+</div>
+<sc-if value="{{ gTranscript }}" hint-placeholder-val="{{ true }}">
+<div style="padding:0 24px 18px;display:flex;flex-direction:column">
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Clean transcript</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Fix transcription errors</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Improve clarity</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Remove repetition</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Condense</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Expand context</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Fix terminology</div>
+</div>
+</sc-if>
+
+<div onClick="{{ groupAnalysis }}" style="display:flex;align-items:center;justify-content:space-between;padding:17px 24px;border-top:1px solid #EEF2F6;cursor:pointer">
+<div style="font-size:16px;font-weight:600;color:#0F172A">Analysis</div>
+<div style="font-size:12.5px;color:#94A3B8">{{ gAnalysisHint }}</div>
+</div>
+<sc-if value="{{ gAnalysis }}">
+<div style="padding:0 24px 18px;display:flex;flex-direction:column">
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Extract key points</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Find decisions</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Find questions</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Find action items</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Find important moments</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Identify topics</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Find names &amp; organisations</div>
+</div>
+</sc-if>
+
+<div onClick="{{ groupUtilities }}" style="display:flex;align-items:center;justify-content:space-between;padding:17px 24px;border-top:1px solid #EEF2F6;cursor:pointer">
+<div style="font-size:16px;font-weight:600;color:#0F172A">Utilities</div>
+<div style="font-size:12.5px;color:#94A3B8">{{ gUtilitiesHint }}</div>
+</div>
+<sc-if value="{{ gUtilities }}">
+<div style="padding:0 24px 18px;display:flex;flex-direction:column">
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Explain this</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Rewrite professionally</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Create notes</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Create outline</div>
+<div style="padding:11px 0;font-size:15.5px;color:#0F172A;border-top:1px solid #F5F7FA">Generate title</div>
+</div>
+</sc-if>
+</div>
+
+<div style="padding:16px 24px 22px;border-top:1px solid #EEF2F6;font-size:12px;line-height:19px;color:#94A3B8;text-wrap:pretty">Everything here runs on this phone. Longer transcripts are handled in chunks, so a whole-transcript pass takes a minute or two.</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="3c">
+<div class="dv-olabel"><a class="dv-oid" href="#3c">3c</a><span>Editing. Selecting text is what summons the toolbar — four tools that suit the selection, the rest behind the sparkle. Tap the ⋯</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 0">
+<div style="font-size:15px;color:#475569">Cancel</div>
+<div style="font-size:12.5px;color:#94A3B8">Editing · 12:02</div>
+<div style="font-size:15px;font-weight:600;color:#0F172A">Save</div>
+</div>
+
+<div style="padding:26px 22px 0;display:flex;flex-direction:column;gap:24px">
+<div style="opacity:.4">
+<div style="font-size:12px;font-weight:600;color:#A855F7">Tom</div>
+<div style="margin-top:5px;font-size:16.5px;line-height:28px;color:#475569;text-wrap:pretty">So the version we send has to survive the first ten seconds.</div>
+</div>
+
+<div>
+<div style="display:flex;align-items:center;gap:8px"><div style="font-size:12px;font-weight:600;color:#6366F1">Nadia</div><div style="font-size:11px;color:#CBD5E1">▾</div></div>
+<div contenteditable="true" style="margin-top:6px;font-size:16.5px;line-height:29px;color:#0F172A;outline:none;text-wrap:pretty">If we lead with growth rate, <span style="background:rgba(99,102,241,.16);border-radius:3px">the first question is going to be about churn anyway</span>. I'd rather put retention up front and let the growth number land second.</div>
+</div>
+
+<div style="margin-top:-8px;align-self:flex-start;background:#0F172A;border-radius:16px;padding:6px;display:flex;align-items:center;gap:2px;box-shadow:0 12px 30px rgba(15,23,42,.28)">
+<div style="padding:9px 12px;font-size:13px;color:#fff;border-radius:11px">Fix errors</div>
+<div style="padding:9px 12px;font-size:13px;color:#fff;border-radius:11px">Clarity</div>
+<div style="padding:9px 12px;font-size:13px;color:#fff;border-radius:11px">Condense</div>
+<div onClick="{{ toggleMore }}" style="padding:9px 12px;font-size:14px;color:#fff;border-radius:11px;letter-spacing:1px;cursor:pointer">⋯</div>
+</div>
+
+<sc-if value="{{ moreOpen }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:-14px;padding:16px 18px;border-radius:20px;background:#FAFBFD">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">On this selection</div>
+<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">
+<div style="padding:9px 14px;border-radius:12px;background:#fff;border:1px solid #E2E8F0;font-size:13px;color:#0F172A">Remove repetition</div>
+<div style="padding:9px 14px;border-radius:12px;background:#fff;border:1px solid #E2E8F0;font-size:13px;color:#0F172A">Expand context</div>
+<div style="padding:9px 14px;border-radius:12px;background:#fff;border:1px solid #E2E8F0;font-size:13px;color:#0F172A">Fix terminology</div>
+<div style="padding:9px 14px;border-radius:12px;background:#fff;border:1px solid #E2E8F0;font-size:13px;color:#0F172A">Explain this</div>
+<div style="padding:9px 14px;border-radius:12px;background:#fff;border:1px solid #E2E8F0;font-size:13px;color:#0F172A">Rewrite professionally</div>
+<div style="padding:9px 14px;border-radius:12px;background:#fff;border:1px solid #E2E8F0;font-size:13px;color:#0F172A">Create notes</div>
+</div>
+<div style="margin-top:14px;padding-top:13px;border-top:1px solid #EEF2F6;font-size:12.5px;color:#94A3B8">All tools · 19</div>
+</div>
+</sc-if>
+
+<div style="opacity:.4">
+<div style="font-size:12px;font-weight:600;color:#A855F7">Tom</div>
+<div style="margin-top:5px;font-size:16.5px;line-height:28px;color:#475569;text-wrap:pretty">That works, but only if the cohort curve is clean.</div>
+</div>
+</div>
+
+<div style="flex:1;min-height:20px"></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;padding:14px 18px;border-top:1px solid #EEF2F6">
+<div style="text-align:center;font-size:14px;color:#CBD5E1">Undo</div>
+<div style="text-align:center;font-size:14px;color:#CBD5E1">Redo</div>
+<div style="text-align:center;font-size:14px;color:#475569">Speaker</div>
+<div style="text-align:center;font-size:14px;color:#475569">Split</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="3d">
+<div class="dv-olabel"><a class="dv-oid" href="#3d">3d</a><span>After a tool runs. Nothing is applied until you keep it: changes marked in place, the original one tap away, and a plain sentence on what the model did. Tap "Show original".</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="display:flex;align-items:center;gap:14px;padding:10px 18px 0">
+<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#475569;line-height:1">‹</div>
+<div style="flex:1;min-width:0">
+<div style="font-size:14.5px;font-weight:600;color:#0F172A">Improve clarity</div>
+<div style="font-size:11.5px;color:#94A3B8;margin-top:1px">3 paragraphs · not applied yet</div>
+</div>
+</div>
+
+<div style="padding:30px 22px 0">
+<div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8;letter-spacing:0.5px">12:02 · NADIA</div>
+
+<sc-if value="{{ origHidden }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:12px;font-size:16.5px;line-height:29px;color:#0F172A;text-wrap:pretty">If we lead with growth rate, the first question <span style="border-bottom:2px solid #10B981">will be about churn regardless</span>. I would rather put retention up front and let the growth number land second.</div>
+</sc-if>
+<sc-if value="{{ origShown }}">
+<div style="margin-top:12px;font-size:16.5px;line-height:29px;color:#94A3B8;text-wrap:pretty;text-decoration:line-through;text-decoration-color:#E2E8F0">If we lead with growth rate, the first question is going to be about churn anyway. I'd rather put retention up front and let the growth number land second.</div>
+<div style="margin-top:14px;font-size:16.5px;line-height:29px;color:#0F172A;text-wrap:pretty">If we lead with growth rate, the first question <span style="border-bottom:2px solid #10B981">will be about churn regardless</span>. I would rather put retention up front and let the growth number land second.</div>
+</sc-if>
+
+<div onClick="{{ toggleOrig }}" style="margin-top:16px;font-size:13.5px;font-weight:500;color:#6366F1;cursor:pointer">{{ origLabel }}</div>
+
+<div style="margin-top:28px;padding-top:22px;border-top:1px solid #EEF2F6">
+<div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8;letter-spacing:0.5px">12:24 · TOM</div>
+<div style="margin-top:12px;font-size:16.5px;line-height:29px;color:#0F172A;text-wrap:pretty">That works only if the cohort curve is clean. <span style="border-bottom:2px solid #10B981">Slide 4 currently has three charts competing for attention.</span></div>
+</div>
+
+<div style="margin-top:26px;padding:16px 18px;border-radius:20px;background:#FAFBFD">
+<div style="font-size:13.5px;line-height:22px;color:#475569;text-wrap:pretty">Seven phrases were tightened and two contractions expanded. No sentence was removed and no meaning was added — anything the model was unsure of was left alone.</div>
+<div style="margin-top:12px;display:flex;align-items:center;gap:8px"><div style="font:10.5px ui-monospace,Menlo,monospace;color:#94A3B8">GEMMA 3N · ON DEVICE · 48s</div></div>
+</div>
+</div>
+
+<div style="flex:1;min-height:24px"></div>
+
+<div style="padding:0 18px 16px;display:flex;gap:9px">
+<div style="flex:1;padding:15px 0;text-align:center;border:1px solid #E2E8F0;border-radius:16px;font-size:14px;color:#475569">Discard</div>
+<div style="flex:1;padding:15px 0;text-align:center;background:#0F172A;border-radius:16px;font-size:14px;font-weight:600;color:#fff">Keep changes</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Overview</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Transcript</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Ask AI</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+</div>
+<p class="dv-next">Try next: "add a running state for a whole-transcript pass" · "show <a class="dv-oid" href="#3b">3b</a> with a selection scope instead" · "put Search mode next to <a class="dv-oid" href="#3a">3a</a>"</p>
+</section>
+
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Building out <a class="dv-oid" href="#1b">1b</a> — decisions from <a class="dv-oid" href="#1c">1c</a>, plus the two other tabs</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a><span>Overview, step 2. <a class="dv-oid" href="#1c">1c</a>'s timeline moves into the stepper: decisions sit at their minute, and each opens to the sentence it came from.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="display:flex;align-items:center;gap:14px;padding:10px 18px 0">
+<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#475569;line-height:1">‹</div>
+<div style="flex:1;min-width:0">
+<div style="font-size:14.5px;font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Series A narrative review</div>
+<div style="font-size:11.5px;color:#94A3B8;margin-top:1px">Today · 42:18</div>
+</div>
+<div onClick="{{ togglePlay }}" style="position:relative;width:52px;height:52px;border-radius:26px;background:{{ ringMini }};flex:none;cursor:pointer">
+<div style="position:absolute;inset:4px;border-radius:22px;background:#fff;display:flex;align-items:center;justify-content:center">
+<sc-if value="{{ playing }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:3px"><div style="width:3px;height:13px;border-radius:2px;background:#6366F1"></div><div style="width:3px;height:13px;border-radius:2px;background:#6366F1"></div></div></sc-if>
+<sc-if value="{{ paused }}"><div style="width:0;height:0;border-left:12px solid #6366F1;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></sc-if>
+</div>
+</div>
+</div>
+
+<div style="padding:34px 30px 0">
+<div style="font:11px ui-monospace,'SF Mono',Menlo,monospace;letter-spacing:1.2px;color:#94A3B8">2 OF 4</div>
+<div style="margin-top:26px;font-size:30px;font-weight:600;letter-spacing:-0.8px;line-height:1.15;color:#0F172A">Three decisions</div>
+
+<div style="margin-top:30px;display:flex;flex-direction:column">
+
+<div style="display:flex;gap:18px">
+<div style="width:9px;flex:none;display:flex;flex-direction:column;align-items:center"><div style="width:9px;height:9px;border-radius:5px;background:#0F172A;margin-top:8px"></div><div style="flex:1;width:1.5px;background:#EEF2F6"></div></div>
+<div onClick="{{ d1Toggle }}" style="flex:1;padding-bottom:26px;cursor:pointer">
+<div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8;letter-spacing:0.5px">04:12</div>
+<div style="margin-top:7px;font-size:17px;line-height:26px;color:#0F172A;text-wrap:pretty">Lead the deck with net retention, not growth rate.</div>
+<sc-if value="{{ d1Open }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:14px;padding-left:15px;border-left:2px solid #EEF2F6">
+<div style="font-size:14.5px;line-height:23px;color:#475569;text-wrap:pretty">"If we lead with growth rate, the first question is going to be about churn anyway."</div>
+<div style="margin-top:9px;display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;border-radius:10px;background:#6366F1;color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center">N</div><div style="font-size:12px;color:#94A3B8">Nadia</div><div style="font-size:12px;color:#0F172A;font-weight:500">Play from 04:12</div></div>
+</div>
+</sc-if>
+</div>
+</div>
+
+<div style="display:flex;gap:18px">
+<div style="width:9px;flex:none;display:flex;flex-direction:column;align-items:center"><div style="width:9px;height:9px;border-radius:5px;background:#0F172A;margin-top:8px"></div><div style="flex:1;width:1.5px;background:#EEF2F6"></div></div>
+<div onClick="{{ d2Toggle }}" style="flex:1;padding-bottom:26px;cursor:pointer">
+<div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8;letter-spacing:0.5px">18:40</div>
+<div style="margin-top:7px;font-size:17px;line-height:26px;color:#0F172A;text-wrap:pretty">Raise target moves from $12M to $15M.</div>
+<sc-if value="{{ d2Open }}">
+<div style="margin-top:14px;padding-left:15px;border-left:2px solid #EEF2F6">
+<div style="font-size:14.5px;line-height:23px;color:#475569;text-wrap:pretty">Contingent on a revised hiring plan. Tom owns the new plan for Monday.</div>
+<div style="margin-top:9px;font-size:12px;color:#0F172A;font-weight:500">1 linked task · Play from 18:40</div>
+</div>
+</sc-if>
+</div>
+</div>
+
+<div style="display:flex;gap:18px">
+<div style="width:9px;flex:none;display:flex;flex-direction:column;align-items:center"><div style="width:9px;height:9px;border-radius:5px;background:#0F172A;margin-top:8px"></div></div>
+<div onClick="{{ d3Toggle }}" style="flex:1;cursor:pointer">
+<div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8;letter-spacing:0.5px">31:07</div>
+<div style="margin-top:7px;font-size:17px;line-height:26px;color:#0F172A;text-wrap:pretty">Hold pricing changes until after the round.</div>
+<sc-if value="{{ d3Open }}">
+<div style="margin-top:14px;padding-left:15px;border-left:2px solid #EEF2F6">
+<div style="font-size:14.5px;line-height:23px;color:#475569;text-wrap:pretty">Left as an open question in the recording — Marcus asked twice and it was deferred.</div>
+<div style="margin-top:9px;font-size:12px;color:#0F172A;font-weight:500">Play from 31:07</div>
+</div>
+</sc-if>
+</div>
+</div>
+
+</div>
+</div>
+
+<div style="flex:1"></div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:0 30px 22px">
+<div style="width:52px;height:52px;border-radius:26px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:22px;color:#475569">‹</div>
+<div style="display:flex;gap:7px">
+<div style="width:7px;height:7px;border-radius:4px;background:#E2E8F0"></div>
+<div style="width:22px;height:7px;border-radius:4px;background:#0F172A"></div>
+<div style="width:7px;height:7px;border-radius:4px;background:#E2E8F0"></div>
+<div style="width:7px;height:7px;border-radius:4px;background:#E2E8F0"></div>
+</div>
+<div style="width:52px;height:52px;border-radius:26px;background:#0F172A;display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff">›</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Overview</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Transcript</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Ask AI</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="2b">
+<div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a><span>Transcript workspace. A review queue instead of a wall of text: the local pass flags what it is unsure of, you fix it in place, and the cleanup pass is a control rather than a hidden step. Tap the flagged words, the cleanup modes, and Done.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="display:flex;align-items:center;gap:14px;padding:10px 18px 0">
+<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#475569;line-height:1">‹</div>
+<div style="flex:1;min-width:0">
+<div style="font-size:14.5px;font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Series A narrative review</div>
+<div style="font-size:11.5px;color:#94A3B8;margin-top:1px">Transcript · 214 segments</div>
+</div>
+<div onClick="{{ togglePlay }}" style="position:relative;width:52px;height:52px;border-radius:26px;background:{{ ringMini }};flex:none;cursor:pointer">
+<div style="position:absolute;inset:4px;border-radius:22px;background:#fff;display:flex;align-items:center;justify-content:center">
+<sc-if value="{{ playing }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:3px"><div style="width:3px;height:13px;border-radius:2px;background:#6366F1"></div><div style="width:3px;height:13px;border-radius:2px;background:#6366F1"></div></div></sc-if>
+<sc-if value="{{ paused }}"><div style="width:0;height:0;border-left:12px solid #6366F1;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></sc-if>
+</div>
+</div>
+</div>
+
+<div onClick="{{ toggleQueue }}" style="margin:22px 18px 0;padding:16px 18px;border:1px solid #EEF2F6;border-radius:20px;cursor:pointer">
+<div style="display:flex;align-items:baseline;justify-content:space-between">
+<div style="font-size:15px;font-weight:600;color:#0F172A">{{ reviewLabel }}</div>
+<div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">{{ reviewCount }}</div>
+</div>
+<div style="margin-top:11px;height:4px;border-radius:2px;background:#EEF2F6"><div style="width:{{ reviewPct }};height:4px;border-radius:2px;background:#0F172A"></div></div>
+<sc-if value="{{ queueOpen }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:14px;font-size:13.5px;line-height:21px;color:#475569;text-wrap:pretty">The on-device pass transcribed everything but marked 14 words it could not hear cleanly, and 2 places where it may have split the wrong speaker. Nothing was guessed for you.</div>
+<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+<div style="padding:8px 14px;border-radius:11px;background:#0F172A;color:#fff;font-size:12.5px;font-weight:500">Review flagged words</div>
+<div style="padding:8px 14px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Fix speakers (2)</div>
+</div>
+</sc-if>
+</div>
+
+<div style="padding:24px 18px 0">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="display:flex;align-items:center;gap:9px">
+<div style="width:26px;height:26px;border-radius:13px;background:#6366F1;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">N</div>
+<div style="font-size:14px;font-weight:600;color:#0F172A">Nadia</div>
+<div style="font-size:12px;color:#CBD5E1">▾</div>
+</div>
+<div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">12:02</div>
+</div>
+
+<div contenteditable="true" style="margin-top:12px;font-size:16.5px;line-height:28px;color:#0F172A;outline:none;text-wrap:pretty">If we lead with growth rate, the first question is going to be about <span onClick="{{ pickWord }}" style="border-bottom:2px dotted #F59E0B;background:rgba(245,158,11,.10);padding:0 2px;border-radius:3px;cursor:pointer">churn</span> anyway. I'd rather put retention up front and let the <span style="border-bottom:2px dotted #F59E0B;background:rgba(245,158,11,.10);padding:0 2px;border-radius:3px">growth number</span> land second.</div>
+
+<sc-if value="{{ wordOpen }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:16px;padding:16px;border-radius:18px;background:#FAFBFD">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Heard as</div>
+<div style="margin-top:8px;display:flex;align-items:baseline;gap:12px">
+<div style="font-size:19px;font-weight:600;color:#0F172A">churn</div>
+<div style="font:11px ui-monospace,Menlo,monospace;color:#F59E0B">61% confident</div>
+</div>
+<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+<div style="padding:9px 15px;border-radius:12px;background:#0F172A;color:#fff;font-size:13px;font-weight:500">Keep</div>
+<div style="padding:9px 15px;border-radius:12px;border:1px solid #E2E8F0;color:#0F172A;font-size:13px">turn</div>
+<div style="padding:9px 15px;border-radius:12px;border:1px solid #E2E8F0;color:#0F172A;font-size:13px">churn rate</div>
+<div style="padding:9px 15px;border-radius:12px;border:1px solid #E2E8F0;color:#475569;font-size:13px">Type it</div>
+</div>
+<div style="margin-top:14px;display:flex;align-items:center;gap:10px;padding-top:13px;border-top:1px solid #EEF2F6">
+<div style="width:18px;height:18px;border-radius:5px;background:#0F172A;color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center">✓</div>
+<div style="font-size:13px;color:#475569">Apply to the other 6 times this word appears</div>
+</div>
+<div style="margin-top:12px;font-size:12px;color:#94A3B8">Playing 11:58 – 12:06 on loop while you decide.</div>
+</div>
+</sc-if>
+
+<div style="margin-top:26px;padding-top:22px;border-top:1px solid #EEF2F6;opacity:.55">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="display:flex;align-items:center;gap:9px"><div style="width:26px;height:26px;border-radius:13px;background:#A855F7;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">T</div><div style="font-size:14px;font-weight:600;color:#0F172A">Tom</div></div>
+<div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">12:24</div>
+</div>
+<div style="margin-top:10px;font-size:16px;line-height:27px;color:#475569;text-wrap:pretty">That works, but only if the cohort curve is clean. Slide 4 right now is three charts fighting each other.</div>
+</div>
+</div>
+
+<div style="flex:1;min-height:22px"></div>
+
+<div style="padding:0 18px 16px">
+<sc-if value="{{ cleanupOpen }}">
+<div style="padding:16px;border-radius:20px;background:#FAFBFD;margin-bottom:14px">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Cleanup pass</div>
+<div style="margin-top:12px;padding:3px;background:#EBF1F9;border-radius:13px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px">
+<div onClick="{{ modeLight }}" style="padding:9px 0;text-align:center;font-size:12.5px;font-weight:500;color:{{ modeLightColor }};background:{{ modeLightBg }};border-radius:10px">Verbatim</div>
+<div onClick="{{ modeMid }}" style="padding:9px 0;text-align:center;font-size:12.5px;font-weight:500;color:{{ modeMidColor }};background:{{ modeMidBg }};border-radius:10px">Readable</div>
+<div onClick="{{ modeHeavy }}" style="padding:9px 0;text-align:center;font-size:12.5px;font-weight:500;color:{{ modeHeavyColor }};background:{{ modeHeavyBg }};border-radius:10px">Polished</div>
+</div>
+<div style="margin-top:12px;font-size:13px;line-height:20px;color:#475569;text-wrap:pretty">{{ modeBlurb }}</div>
+<div style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;padding-top:13px;border-top:1px solid #EEF2F6">
+<div style="font-size:13.5px;color:#0F172A">Hide filler words</div>
+<div style="width:38px;height:22px;border-radius:11px;background:#0F172A;position:relative"><div style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:9px;background:#fff"></div></div>
+</div>
+<div style="margin-top:14px;font-size:12px;line-height:19px;color:#94A3B8">Runs on device from the stored verbatim text. Your edits are kept — re-cleaning never overwrites a line you touched.</div>
+</div>
+</sc-if>
+
+<div style="display:flex;gap:9px;align-items:center">
+<div onClick="{{ toggleCleanup }}" style="flex:1;padding:14px 0;text-align:center;border:1px solid #E2E8F0;border-radius:16px;font-size:13.5px;font-weight:500;color:#0F172A;cursor:pointer">{{ cleanupLabel }}</div>
+<div style="flex:1;padding:14px 0;text-align:center;background:#0F172A;border-radius:16px;font-size:13.5px;font-weight:600;color:#fff">Done</div>
+</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Overview</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Transcript</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Ask AI</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="2c">
+<div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a><span>Ask AI. Answers read as prose, not bubbles; every claim carries the minute it came from and opens into the actual line. Honest about the local model's limits. Tap a citation or a follow-up.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="display:flex;align-items:center;gap:14px;padding:10px 18px 0">
+<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#475569;line-height:1">‹</div>
+<div style="flex:1;min-width:0">
+<div style="font-size:14.5px;font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Series A narrative review</div>
+<div style="font-size:11.5px;color:#94A3B8;margin-top:1px">Answers from this recording only</div>
+</div>
+<div onClick="{{ togglePlay }}" style="position:relative;width:52px;height:52px;border-radius:26px;background:{{ ringMini }};flex:none;cursor:pointer">
+<div style="position:absolute;inset:4px;border-radius:22px;background:#fff;display:flex;align-items:center;justify-content:center">
+<sc-if value="{{ playing }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:3px"><div style="width:3px;height:13px;border-radius:2px;background:#6366F1"></div><div style="width:3px;height:13px;border-radius:2px;background:#6366F1"></div></div></sc-if>
+<sc-if value="{{ paused }}"><div style="width:0;height:0;border-left:12px solid #6366F1;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></sc-if>
+</div>
+</div>
+</div>
+
+<div style="padding:30px 24px 0">
+<div style="font-size:20px;font-weight:600;letter-spacing:-0.4px;line-height:1.35;color:#94A3B8;text-wrap:pretty">What did we agree on about the raise?</div>
+
+<div style="margin-top:22px;font-size:17.5px;line-height:30px;color:#0F172A;text-wrap:pretty">The target moved from $12M to $15M<span onClick="{{ toggleCite }}" style="font:600 11px ui-monospace,Menlo,monospace;color:#6366F1;background:rgba(99,102,241,.10);border-radius:5px;padding:2px 5px;margin:0 4px;cursor:pointer">18:40</span>and the increase is contingent on a revised hiring plan that Tom owns for Monday. Pricing changes were deliberately deferred until after the round closes<span style="font:600 11px ui-monospace,Menlo,monospace;color:#6366F1;background:rgba(99,102,241,.10);border-radius:5px;padding:2px 5px;margin:0 4px">31:07</span>.</div>
+
+<sc-if value="{{ citeOpen }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:18px;padding:16px;border-radius:18px;background:#FAFBFD">
+<div style="display:flex;align-items:center;gap:9px"><div style="width:22px;height:22px;border-radius:11px;background:#A855F7;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">T</div><div style="font-size:12.5px;color:#94A3B8">Tom · 18:40</div></div>
+<div style="margin-top:10px;font-size:14.5px;line-height:24px;color:#0F172A;text-wrap:pretty">"Fifteen works, but I need to redo the hiring plan before we put that number in front of anyone."</div>
+<div style="margin-top:12px;display:flex;gap:8px"><div style="padding:8px 13px;border-radius:11px;background:#0F172A;color:#fff;font-size:12.5px;font-weight:500">Play from 18:40</div><div style="padding:8px 13px;border-radius:11px;border:1px solid #E2E8F0;color:#475569;font-size:12.5px">Open in transcript</div></div>
+</div>
+</sc-if>
+
+<div style="margin-top:20px;font-size:12.5px;line-height:20px;color:#94A3B8;text-wrap:pretty">Read 6 of 214 segments to answer this. Nothing outside the transcript was used, and no number was inferred.</div>
+
+<div style="margin-top:28px;padding-top:22px;border-top:1px solid #EEF2F6;display:flex;flex-direction:column;gap:2px">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8;padding-bottom:8px">Ask next</div>
+<div onClick="{{ askFollowUp }}" style="display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid #F5F7FA;cursor:pointer"><div style="font-size:15px;color:#0F172A">What is still unresolved on pricing?</div><div style="font-size:17px;color:#CBD5E1">›</div></div>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid #F5F7FA"><div style="font-size:15px;color:#0F172A">Who has the most to do after this?</div><div style="font-size:17px;color:#CBD5E1">›</div></div>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0"><div style="font-size:15px;color:#0F172A">Summarise this for the board update</div><div style="font-size:17px;color:#CBD5E1">›</div></div>
+</div>
+
+<sc-if value="{{ thinking }}">
+<div style="margin-top:24px;padding:16px;border-radius:18px;background:#FAFBFD">
+<div style="font-size:15px;color:#0F172A">What is still unresolved on pricing?</div>
+<div style="margin-top:12px;display:flex;align-items:center;gap:10px"><div style="width:6px;height:6px;border-radius:3px;background:#6366F1"></div><div style="font-size:13px;color:#475569">Reading the transcript — chunk 2 of 6</div></div>
+<div style="margin-top:10px;height:3px;border-radius:2px;background:#EEF2F6"><div style="width:34%;height:3px;border-radius:2px;background:#6366F1"></div></div>
+<div style="margin-top:11px;font-size:12px;color:#94A3B8">Gemma 3n, on this phone. Roughly 20 seconds.</div>
+</div>
+</sc-if>
+</div>
+
+<div style="flex:1;min-height:20px"></div>
+
+<div style="padding:0 18px 16px">
+<div style="display:flex;align-items:center;gap:10px;padding:6px 6px 6px 18px;border:1px solid #E2E8F0;border-radius:26px">
+<div style="flex:1;font-size:14.5px;color:#94A3B8;padding:10px 0">Ask about this recording…</div>
+<div style="width:42px;height:42px;border-radius:21px;background:#0F172A;color:#fff;font-size:17px;display:flex;align-items:center;justify-content:center">↑</div>
+</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Overview</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Transcript</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Ask AI</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+</div>
+<p class="dv-next">Try next: "in <a class="dv-oid" href="#2b">2b</a>, show the fix-speakers flow" · "let me type a correction in <a class="dv-oid" href="#2b">2b</a>" · "make <a class="dv-oid" href="#2c">2c</a>'s answer stream in word by word"</p>
+</section>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Recording page — three directions</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a><span>Dial. Familiar shape, quieter surface. Everything past the summary is a collapsed row that opens in place.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#F4F6FB;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased">
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px 2px">
+<div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:26px;color:#475569;line-height:1">‹</div>
+<div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#475569;letter-spacing:1px">⋯</div>
+</div>
+
+<div style="padding:2px 24px 0">
+<div style="font-size:24px;font-weight:600;letter-spacing:-0.5px;color:#0F172A;line-height:1.2;text-wrap:pretty">Series A narrative review</div>
+<div style="margin-top:6px;font-size:12.5px;color:#94A3B8;letter-spacing:0.1px">Today, 9:14 AM · 42:18 · 4 speakers</div>
+</div>
+
+<div style="display:flex;flex-direction:column;align-items:center;padding:26px 0 22px">
+<div style="position:relative;width:184px;height:184px;border-radius:50%;background:{{ ringDial }}">
+<div style="position:absolute;inset:13px;border-radius:50%;background:#F4F6FB"></div>
+<div onClick="{{ togglePlay }}" style="position:absolute;inset:22px;border-radius:50%;background:#fff;box-shadow:0 10px 30px rgba(99,102,241,.16);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;cursor:pointer">
+<sc-if value="{{ playing }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:5px"><div style="width:5px;height:22px;border-radius:2.5px;background:#6366F1"></div><div style="width:5px;height:22px;border-radius:2.5px;background:#6366F1"></div></div>
+</sc-if>
+<sc-if value="{{ paused }}">
+<div style="width:0;height:0;border-left:20px solid #6366F1;border-top:12px solid transparent;border-bottom:12px solid transparent;margin-left:5px"></div>
+</sc-if>
+<div style="font:500 13px ui-monospace,'SF Mono',Menlo,monospace;color:#0F172A;letter-spacing:0.5px">{{ posLabel }}</div>
+</div>
+</div>
+<div style="margin-top:14px;font:12px ui-monospace,'SF Mono',Menlo,monospace;color:#94A3B8;letter-spacing:0.5px">−30:14 remaining</div>
+</div>
+
+<div style="margin:0 20px;padding:3px;background:#EBF1F9;border-radius:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px">
+<sc-if value="{{ isAOverview }}" hint-placeholder-val="{{ true }}"><div style="padding:9px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;background:#fff;border-radius:11px;box-shadow:0 1px 3px rgba(15,23,42,.08)">Overview</div></sc-if>
+<sc-if value="{{ notAOverview }}"><div onClick="{{ tabAOverview }}" style="padding:9px 0;text-align:center;font-size:13px;font-weight:500;color:#475569;cursor:pointer">Overview</div></sc-if>
+<sc-if value="{{ isATranscript }}"><div style="padding:9px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;background:#fff;border-radius:11px;box-shadow:0 1px 3px rgba(15,23,42,.08)">Transcript</div></sc-if>
+<sc-if value="{{ notATranscript }}" hint-placeholder-val="{{ true }}"><div onClick="{{ tabATranscript }}" style="padding:9px 0;text-align:center;font-size:13px;font-weight:500;color:#475569;cursor:pointer">Transcript</div></sc-if>
+<sc-if value="{{ isAAsk }}"><div style="padding:9px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;background:#fff;border-radius:11px;box-shadow:0 1px 3px rgba(15,23,42,.08)">Ask AI</div></sc-if>
+<sc-if value="{{ notAAsk }}" hint-placeholder-val="{{ true }}"><div onClick="{{ tabAAsk }}" style="padding:9px 0;text-align:center;font-size:13px;font-weight:500;color:#475569;cursor:pointer">Ask AI</div></sc-if>
+</div>
+
+<sc-if value="{{ isAOverview }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column;gap:14px;padding:18px 20px 32px">
+
+<div style="background:#fff;border-radius:24px;box-shadow:0 1px 3px rgba(15,23,42,.06);padding:20px">
+<div style="font-size:11.5px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Summary</div>
+<div style="margin-top:10px;font-size:14.5px;line-height:23px;color:#0F172A;text-wrap:pretty">The team aligned on leading the deck with retention rather than growth rate. Nadia rebuilds slides 4–7 around the cohort curve, and the raise target moves from $12M to $15M pending a revised hiring plan.</div>
+</div>
+
+<div style="background:#fff;border-radius:24px;box-shadow:0 1px 3px rgba(15,23,42,.06);overflow:hidden">
+<div onClick="{{ toggleDecisions }}" style="display:flex;align-items:center;gap:14px;padding:16px 18px;cursor:pointer">
+<div style="flex:1"><div style="font-size:15px;font-weight:600;color:#0F172A">Decisions</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Lead the deck with net retention</div></div>
+<div style="font-size:14px;font-weight:600;color:#475569">3</div>
+<div style="font-size:17px;color:#CBD5E1">›</div>
+</div>
+<sc-if value="{{ decisionsOpen }}">
+<div style="padding:0 18px 16px;display:flex;flex-direction:column;gap:12px">
+<div style="border-top:1px solid #EEF2F6;padding-top:14px;display:flex;gap:12px"><div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1;padding-top:2px">04:12</div><div style="font-size:13.5px;line-height:20px;color:#0F172A">Lead the deck with net retention, not growth rate.</div></div>
+<div style="display:flex;gap:12px"><div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1;padding-top:2px">18:40</div><div style="font-size:13.5px;line-height:20px;color:#0F172A">Raise target moves from $12M to $15M.</div></div>
+<div style="display:flex;gap:12px"><div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1;padding-top:2px">31:07</div><div style="font-size:13.5px;line-height:20px;color:#0F172A">Hold pricing changes until after the round.</div></div>
+</div>
+</sc-if>
+<div style="height:1px;background:#EEF2F6;margin:0 18px"></div>
+<div onClick="{{ toggleActions }}" style="display:flex;align-items:center;gap:14px;padding:16px 18px;cursor:pointer">
+<div style="flex:1"><div style="font-size:15px;font-weight:600;color:#0F172A">Action items</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Rebuild slides 4–7 around the cohort curve</div></div>
+<div style="font-size:14px;font-weight:600;color:#475569">3</div>
+<div style="font-size:17px;color:#CBD5E1">›</div>
+</div>
+<sc-if value="{{ actionsOpen }}">
+<div style="padding:0 18px 16px;display:flex;flex-direction:column;gap:13px">
+<div style="border-top:1px solid #EEF2F6;padding-top:14px;display:flex;gap:12px;align-items:flex-start"><div style="width:18px;height:18px;border-radius:9px;border:1.5px solid #CBD5E1;flex:none;margin-top:1px"></div><div><div style="font-size:13.5px;line-height:19px;color:#0F172A">Rebuild slides 4–7 around the cohort curve</div><div style="margin-top:3px;font-size:11.5px;color:#94A3B8">Nadia · Friday</div></div></div>
+<div style="display:flex;gap:12px;align-items:flex-start"><div style="width:18px;height:18px;border-radius:9px;border:1.5px solid #CBD5E1;flex:none;margin-top:1px"></div><div><div style="font-size:13.5px;line-height:19px;color:#0F172A">Revised hiring plan for the $15M case</div><div style="margin-top:3px;font-size:11.5px;color:#94A3B8">Tom · Monday</div></div></div>
+<div style="display:flex;gap:12px;align-items:flex-start"><div style="width:18px;height:18px;border-radius:9px;border:1.5px solid #CBD5E1;flex:none;margin-top:1px"></div><div><div style="font-size:13.5px;line-height:19px;color:#0F172A">Pull enterprise churn by segment</div><div style="margin-top:3px;font-size:11.5px;color:#94A3B8">Priya</div></div></div>
+</div>
+</sc-if>
+<div style="height:1px;background:#EEF2F6;margin:0 18px"></div>
+<div onClick="{{ tabATranscript }}" style="display:flex;align-items:center;gap:14px;padding:16px 18px;cursor:pointer">
+<div style="flex:1"><div style="font-size:15px;font-weight:600;color:#0F172A">Transcript</div><div style="margin-top:2px;font-size:12.5px;color:#94A3B8">Full text with speakers and timestamps</div></div>
+<div style="font-size:17px;color:#CBD5E1">›</div>
+</div>
+</div>
+
+<div style="background:#fff;border-radius:24px;box-shadow:0 1px 3px rgba(15,23,42,.06);padding:18px">
+<div style="display:flex;flex-wrap:wrap;gap:8px">
+<div style="padding:6px 12px;border-radius:10px;background:rgba(99,102,241,.07);font-size:12.5px;font-weight:500;color:#0F172A">Cohort retention</div>
+<div style="padding:6px 12px;border-radius:10px;background:rgba(99,102,241,.07);font-size:12.5px;font-weight:500;color:#0F172A">Raise sizing</div>
+<div style="padding:6px 12px;border-radius:10px;background:rgba(99,102,241,.07);font-size:12.5px;font-weight:500;color:#0F172A">Hiring plan</div>
+<div style="padding:6px 12px;border-radius:10px;background:rgba(99,102,241,.07);font-size:12.5px;font-weight:500;color:#0F172A">Pricing</div>
+</div>
+</div>
+
+</div>
+</sc-if>
+
+<sc-if value="{{ isATranscript }}">
+<div style="padding:18px 20px 32px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;gap:10px;padding:0 2px 4px"><div style="width:34px;height:20px;border-radius:10px;background:#6366F1;position:relative"><div style="position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:8px;background:#fff"></div></div><div style="font-size:12.5px;font-weight:600;color:#475569">Sync to audio</div></div>
+<div style="background:rgba(99,102,241,.06);border:1.5px solid #6366F1;border-radius:16px;padding:14px">
+<div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:8px"><div style="width:26px;height:26px;border-radius:13px;background:#6366F1;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">N</div><div style="font-size:13.5px;font-weight:700;color:#0F172A">Nadia</div></div><div style="padding:3px 8px;border-radius:8px;background:rgba(99,102,241,.12);font:700 11px ui-monospace,Menlo,monospace;color:#6366F1">12:02</div></div>
+<div style="margin-top:9px;font-size:14px;line-height:21px;color:#0F172A">If we lead with growth rate, the first question is going to be about churn anyway. I'd rather put retention up front and let the growth number land second.</div>
+</div>
+<div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:14px">
+<div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:8px"><div style="width:26px;height:26px;border-radius:13px;background:#A855F7;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">T</div><div style="font-size:13.5px;font-weight:700;color:#0F172A">Tom</div></div><div style="padding:3px 8px;border-radius:8px;background:rgba(99,102,241,.12);font:700 11px ui-monospace,Menlo,monospace;color:#6366F1">12:24</div></div>
+<div style="margin-top:9px;font-size:14px;line-height:21px;color:#475569">That works, but only if the cohort curve is clean. Slide 4 right now is three charts fighting each other.</div>
+</div>
+<div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:14px">
+<div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:8px"><div style="width:26px;height:26px;border-radius:13px;background:#10B981;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">P</div><div style="font-size:13.5px;font-weight:700;color:#0F172A">Priya</div></div><div style="padding:3px 8px;border-radius:8px;background:rgba(99,102,241,.12);font:700 11px ui-monospace,Menlo,monospace;color:#6366F1">12:41</div></div>
+<div style="margin-top:9px;font-size:14px;line-height:21px;color:#475569">I can pull enterprise churn by segment before Thursday so we're not guessing.</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isAAsk }}">
+<div style="padding:18px 20px 32px;display:flex;flex-direction:column;gap:14px">
+<div style="align-self:flex-end;max-width:78%;background:#6366F1;color:#fff;border-radius:18px 18px 4px 18px;padding:13px 15px;font-size:14px;line-height:20px">What did we agree on about the raise?</div>
+<div style="max-width:88%;background:#fff;border:1px solid #E2E8F0;border-radius:18px 18px 18px 4px;padding:14px 15px">
+<div style="font-size:14px;line-height:21px;color:#0F172A">The raise target moved from $12M to $15M, contingent on a revised hiring plan Tom owns. Pricing changes were deferred until after the round.</div>
+<div style="margin-top:11px;display:flex;align-items:center;gap:6px"><div style="font-size:11px;color:#94A3B8">Sources</div><div style="padding:2px 6px;border-radius:6px;background:rgba(99,102,241,.12);font:700 10.5px ui-monospace,Menlo,monospace;color:#6366F1">18:40</div><div style="padding:2px 6px;border-radius:6px;background:rgba(99,102,241,.12);font:700 10.5px ui-monospace,Menlo,monospace;color:#6366F1">31:07</div></div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:2px">
+<div style="padding:7px 12px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font-size:12px;color:#475569">What are the next steps?</div>
+<div style="padding:7px 12px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font-size:12px;color:#475569">Who owns pricing?</div>
+</div>
+<div style="display:flex;align-items:center;gap:9px;padding-top:4px">
+<div style="flex:1;height:46px;border-radius:23px;background:#fff;border:1px solid #E2E8F0;display:flex;align-items:center;padding:0 16px;font-size:13.5px;color:#94A3B8">Ask about this recording…</div>
+<div style="width:46px;height:46px;border-radius:23px;background:#6366F1;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px">↑</div>
+</div>
+</div>
+</sc-if>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a><span>One thing at a time. Player shrinks to a dial in the corner; the meeting is read as four full-screen cards you step through.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+
+<div style="display:flex;align-items:center;gap:14px;padding:10px 18px 0">
+<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#475569;line-height:1">‹</div>
+<div style="flex:1;min-width:0">
+<div style="font-size:14.5px;font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Series A narrative review</div>
+<div style="font-size:11.5px;color:#94A3B8;margin-top:1px">Today · 42:18</div>
+</div>
+<div onClick="{{ togglePlay }}" style="position:relative;width:52px;height:52px;border-radius:26px;background:{{ ringMini }};flex:none;cursor:pointer">
+<div style="position:absolute;inset:4px;border-radius:22px;background:#fff;display:flex;align-items:center;justify-content:center">
+<sc-if value="{{ playing }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:3px"><div style="width:3px;height:13px;border-radius:2px;background:#6366F1"></div><div style="width:3px;height:13px;border-radius:2px;background:#6366F1"></div></div></sc-if>
+<sc-if value="{{ paused }}"><div style="width:0;height:0;border-left:12px solid #6366F1;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px"></div></sc-if>
+</div>
+</div>
+</div>
+
+<div style="padding:34px 30px 0">
+<div style="font:11px ui-monospace,'SF Mono',Menlo,monospace;letter-spacing:1.2px;color:#94A3B8">{{ stepLabel }}</div>
+<sc-if value="{{ isStep0 }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:26px">
+<div style="font-size:30px;font-weight:600;letter-spacing:-0.8px;line-height:1.15;color:#0F172A">What happened</div>
+<div style="margin-top:20px;font-size:17px;line-height:29px;color:#475569;text-wrap:pretty">The team aligned on leading the deck with retention rather than growth rate. Nadia rebuilds slides 4–7 around the cohort curve, and the raise target moves from $12M to $15M pending a revised hiring plan.</div>
+<div style="margin-top:24px;font-size:15px;line-height:26px;color:#94A3B8;text-wrap:pretty">Two open questions remain on pricing, both deferred until after the round closes.</div>
+</div>
+</sc-if>
+<sc-if value="{{ isStep1 }}">
+<div style="margin-top:26px">
+<div style="font-size:30px;font-weight:600;letter-spacing:-0.8px;line-height:1.15;color:#0F172A">Three decisions</div>
+<div style="margin-top:26px;display:flex;flex-direction:column;gap:22px">
+<div><div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1;letter-spacing:0.5px">04:12</div><div style="margin-top:6px;font-size:17px;line-height:26px;color:#0F172A">Lead the deck with net retention, not growth rate.</div></div>
+<div><div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1;letter-spacing:0.5px">18:40</div><div style="margin-top:6px;font-size:17px;line-height:26px;color:#0F172A">Raise target moves from $12M to $15M.</div></div>
+<div><div style="font:11px ui-monospace,Menlo,monospace;color:#6366F1;letter-spacing:0.5px">31:07</div><div style="margin-top:6px;font-size:17px;line-height:26px;color:#0F172A">Hold pricing changes until after the round.</div></div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ isStep2 }}">
+<div style="margin-top:26px">
+<div style="font-size:30px;font-weight:600;letter-spacing:-0.8px;line-height:1.15;color:#0F172A">Three things to do</div>
+<div style="margin-top:26px;display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;gap:14px;align-items:flex-start"><div style="width:22px;height:22px;border-radius:11px;border:1.5px solid #CBD5E1;flex:none;margin-top:3px"></div><div><div style="font-size:16.5px;line-height:25px;color:#0F172A">Rebuild slides 4–7 around the cohort curve</div><div style="margin-top:4px;font-size:12.5px;color:#94A3B8">Nadia · Friday</div></div></div>
+<div style="display:flex;gap:14px;align-items:flex-start"><div style="width:22px;height:22px;border-radius:11px;border:1.5px solid #CBD5E1;flex:none;margin-top:3px"></div><div><div style="font-size:16.5px;line-height:25px;color:#0F172A">Revised hiring plan for the $15M case</div><div style="margin-top:4px;font-size:12.5px;color:#94A3B8">Tom · Monday</div></div></div>
+<div style="display:flex;gap:14px;align-items:flex-start"><div style="width:22px;height:22px;border-radius:11px;border:1.5px solid #CBD5E1;flex:none;margin-top:3px"></div><div><div style="font-size:16.5px;line-height:25px;color:#0F172A">Pull enterprise churn by segment</div><div style="margin-top:4px;font-size:12.5px;color:#94A3B8">Priya</div></div></div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ isStep3 }}">
+<div style="margin-top:26px">
+<div style="font-size:30px;font-weight:600;letter-spacing:-0.8px;line-height:1.15;color:#0F172A">Who talked</div>
+<div style="margin-top:28px;display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;align-items:center;gap:14px"><div style="width:34px;height:34px;border-radius:17px;background:#6366F1;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center">N</div><div style="flex:1"><div style="font-size:16px;color:#0F172A">Nadia</div><div style="height:5px;border-radius:3px;background:#EBF1F9;margin-top:7px"><div style="width:46%;height:5px;border-radius:3px;background:#6366F1"></div></div></div><div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">19:24</div></div>
+<div style="display:flex;align-items:center;gap:14px"><div style="width:34px;height:34px;border-radius:17px;background:#A855F7;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center">T</div><div style="flex:1"><div style="font-size:16px;color:#0F172A">Tom</div><div style="height:5px;border-radius:3px;background:#EBF1F9;margin-top:7px"><div style="width:31%;height:5px;border-radius:3px;background:#A855F7"></div></div></div><div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">13:02</div></div>
+<div style="display:flex;align-items:center;gap:14px"><div style="width:34px;height:34px;border-radius:17px;background:#10B981;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center">P</div><div style="flex:1"><div style="font-size:16px;color:#0F172A">Priya</div><div style="height:5px;border-radius:3px;background:#EBF1F9;margin-top:7px"><div style="width:17%;height:5px;border-radius:3px;background:#10B981"></div></div></div><div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">07:11</div></div>
+<div style="display:flex;align-items:center;gap:14px"><div style="width:34px;height:34px;border-radius:17px;background:#F59E0B;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center">M</div><div style="flex:1"><div style="font-size:16px;color:#0F172A">Marcus</div><div style="height:5px;border-radius:3px;background:#EBF1F9;margin-top:7px"><div style="width:6%;height:5px;border-radius:3px;background:#F59E0B"></div></div></div><div style="font:11px ui-monospace,Menlo,monospace;color:#94A3B8">02:41</div></div>
+</div>
+</div>
+</sc-if>
+</div>
+
+<div style="flex:1"></div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:0 30px 22px">
+<div onClick="{{ prevStep }}" style="width:52px;height:52px;border-radius:26px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:22px;color:#475569;cursor:pointer">‹</div>
+<div style="display:flex;gap:7px">
+<div style="width:{{ dot0 }};height:7px;border-radius:4px;background:{{ dotColor0 }}"></div>
+<div style="width:{{ dot1 }};height:7px;border-radius:4px;background:{{ dotColor1 }}"></div>
+<div style="width:{{ dot2 }};height:7px;border-radius:4px;background:{{ dotColor2 }}"></div>
+<div style="width:{{ dot3 }};height:7px;border-radius:4px;background:{{ dotColor3 }}"></div>
+</div>
+<div onClick="{{ nextStep }}" style="width:52px;height:52px;border-radius:26px;background:#0F172A;display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;cursor:pointer">›</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #EEF2F6">
+<div style="padding:15px 0;text-align:center;font-size:13px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #0F172A">Overview</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Transcript</div>
+<div style="padding:15px 0;text-align:center;font-size:13px;color:#94A3B8">Ask AI</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="1c">
+<div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a><span>Dial and thread. The ring is segmented by speaker and scrubs; below it the meeting is one timeline where decisions and tasks sit at the minute they happened.</span></div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+<div style="min-height:100%;background:#F4F6FB;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased">
+
+<div style="background:#fff;border-radius:0 0 32px 32px;padding:6px 0 26px;box-shadow:0 1px 3px rgba(15,23,42,.05)">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:0 10px">
+<div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:26px;color:#475569;line-height:1">‹</div>
+<div style="font-size:12.5px;color:#94A3B8">Today, 9:14 AM</div>
+<div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#475569;letter-spacing:1px">⋯</div>
+</div>
+
+<div style="display:flex;flex-direction:column;align-items:center;padding:8px 30px 0">
+<div style="position:relative;width:206px;height:206px;border-radius:50%;background:{{ ringSpeakers }}">
+<div style="position:absolute;inset:5px;border-radius:50%;background:#fff"></div>
+<div style="position:absolute;inset:11px;border-radius:50%;background:{{ ringDialC }}"></div>
+<div onClick="{{ togglePlay }}" style="position:absolute;inset:25px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+<div style="font:600 27px ui-monospace,'SF Mono',Menlo,monospace;letter-spacing:-0.5px;color:#0F172A;line-height:1">{{ posLabel }}</div>
+<sc-if value="{{ playing }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:4px"><div style="width:4px;height:16px;border-radius:2px;background:#6366F1"></div><div style="width:4px;height:16px;border-radius:2px;background:#6366F1"></div></div></sc-if>
+<sc-if value="{{ paused }}"><div style="width:0;height:0;border-left:15px solid #6366F1;border-top:9px solid transparent;border-bottom:9px solid transparent;margin-left:4px"></div></sc-if>
+</div>
+</div>
+<div style="margin-top:18px;text-align:center">
+<div style="font-size:15.5px;line-height:24px;color:#0F172A;text-wrap:pretty">"I'd rather put retention up front and let the growth number land second."</div>
+<div style="margin-top:8px;font-size:12px;color:#94A3B8">Nadia · 12:02 of 42:18</div>
+</div>
+</div>
+</div>
+
+<div style="display:flex;gap:24px;padding:20px 24px 4px;border-bottom:1px solid #E2E8F0;margin:0 0 2px">
+<div style="flex:none;white-space:nowrap;padding-bottom:11px;font-size:14px;font-weight:600;color:#0F172A;box-shadow:inset 0 -2px 0 #6366F1">Overview</div>
+<div style="flex:none;white-space:nowrap;padding-bottom:11px;font-size:14px;color:#94A3B8">Transcript</div>
+<div style="flex:none;white-space:nowrap;padding-bottom:11px;font-size:14px;color:#94A3B8">Ask AI</div>
+</div>
+
+<div style="padding:20px 24px 34px">
+<div style="font-size:14.5px;line-height:23px;color:#475569;text-wrap:pretty">Retention leads the deck. The raise moves to $15M pending a hiring plan.</div>
+
+<div style="margin-top:24px;display:flex;flex-direction:column">
+
+<div style="display:flex;gap:16px">
+<div style="width:44px;flex:none;text-align:right;font:11px ui-monospace,Menlo,monospace;color:#94A3B8;padding-top:3px">04:12</div>
+<div style="width:9px;flex:none;display:flex;flex-direction:column;align-items:center"><div style="width:9px;height:9px;border-radius:5px;background:#6366F1;margin-top:6px"></div><div style="flex:1;width:1.5px;background:#E2E8F0"></div></div>
+<div onClick="{{ toggleMoment1 }}" style="flex:1;padding-bottom:22px;cursor:pointer">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#6366F1">Decision</div>
+<div style="margin-top:5px;font-size:15px;line-height:22px;color:#0F172A">Lead the deck with net retention, not growth rate.</div>
+<sc-if value="{{ moment1Open }}">
+<div style="margin-top:11px;padding:12px 14px;background:#fff;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.06)">
+<div style="font-size:13px;line-height:20px;color:#475569">"If we lead with growth rate, the first question is going to be about churn anyway."</div>
+<div style="margin-top:8px;display:flex;align-items:center;gap:7px"><div style="width:20px;height:20px;border-radius:10px;background:#6366F1;color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center">N</div><div style="font-size:11.5px;color:#94A3B8">Nadia · play from 04:12</div></div>
+</div>
+</sc-if>
+</div>
+</div>
+
+<div style="display:flex;gap:16px">
+<div style="width:44px;flex:none;text-align:right;font:11px ui-monospace,Menlo,monospace;color:#94A3B8;padding-top:3px">12:41</div>
+<div style="width:9px;flex:none;display:flex;flex-direction:column;align-items:center"><div style="width:9px;height:9px;border-radius:5px;background:#10B981;margin-top:6px"></div><div style="flex:1;width:1.5px;background:#E2E8F0"></div></div>
+<div onClick="{{ toggleMoment2 }}" style="flex:1;padding-bottom:22px;cursor:pointer">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#10B981">Task · Priya</div>
+<div style="margin-top:5px;font-size:15px;line-height:22px;color:#0F172A">Pull enterprise churn by segment</div>
+<sc-if value="{{ moment2Open }}">
+<div style="margin-top:11px;padding:12px 14px;background:#fff;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.06)">
+<div style="font-size:13px;line-height:20px;color:#475569">"I can pull enterprise churn by segment before Thursday so we're not guessing."</div>
+<div style="margin-top:8px;font-size:11.5px;color:#94A3B8">Due Thursday · play from 12:41</div>
+</div>
+</sc-if>
+</div>
+</div>
+
+<div style="display:flex;gap:16px">
+<div style="width:44px;flex:none;text-align:right;font:11px ui-monospace,Menlo,monospace;color:#94A3B8;padding-top:3px">18:40</div>
+<div style="width:9px;flex:none;display:flex;flex-direction:column;align-items:center"><div style="width:9px;height:9px;border-radius:5px;background:#6366F1;margin-top:6px"></div><div style="flex:1;width:1.5px;background:#E2E8F0"></div></div>
+<div onClick="{{ toggleMoment3 }}" style="flex:1;padding-bottom:22px;cursor:pointer">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#6366F1">Decision</div>
+<div style="margin-top:5px;font-size:15px;line-height:22px;color:#0F172A">Raise target moves from $12M to $15M.</div>
+<sc-if value="{{ moment3Open }}">
+<div style="margin-top:11px;padding:12px 14px;background:#fff;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.06)">
+<div style="font-size:13px;line-height:20px;color:#475569">Contingent on a revised hiring plan. Tom owns the new plan for Monday.</div>
+<div style="margin-top:8px;font-size:11.5px;color:#94A3B8">1 linked task · play from 18:40</div>
+</div>
+</sc-if>
+</div>
+</div>
+
+<div style="display:flex;gap:16px">
+<div style="width:44px;flex:none;text-align:right;font:11px ui-monospace,Menlo,monospace;color:#94A3B8;padding-top:3px">31:07</div>
+<div style="width:9px;flex:none;display:flex;flex-direction:column;align-items:center"><div style="width:9px;height:9px;border-radius:5px;background:#94A3B8;margin-top:6px"></div></div>
+<div style="flex:1">
+<div style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#94A3B8">Open question</div>
+<div style="margin-top:5px;font-size:15px;line-height:22px;color:#475569">Does pricing move before or after the round?</div>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+</x-import>
+</div>
+
+</div>
+<p class="dv-next">Try next: "take <a class="dv-oid" href="#1c">1c</a>'s timeline into <a class="dv-oid" href="#1a">1a</a>" · "make <a class="dv-oid" href="#1b">1b</a>'s stepper swipeable" · "show the Transcript tab for <a class="dv-oid" href="#1c">1c</a>"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#6366F1&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#6366F1&quot;,&quot;#A855F7&quot;,&quot;#2563EB&quot;,&quot;#0F172A&quot;],&quot;section&quot;:&quot;Player&quot;},&quot;progress&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:28.5,&quot;min&quot;:0,&quot;max&quot;:100,&quot;step&quot;:0.5,&quot;unit&quot;:&quot;%&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Player&quot;}}">
+class Component extends DCLogic {
+  state = { tabA: 'overview', playing: true, open: null, step: 0, moment: 1,
+    dec: 1, queue: true, word: true, cleanup: false, mode: 'mid', reviewed: 6, cite: true, thinking: false,
+    group: 'transcript', more: true, orig: false,
+    hRecord: false, hFilters: false, hFilter: 'all', hRow: 1, hArmed: false, hJob: true, hAsk: true,
+    h5Record: false, h5Job: true, h5Row: null, h5Search: 'results', h5Imp: 'setup', h5Type: 'meeting',
+    m6Row: false, s6Only: true, p6Stages: true, r6: 'live',
+    n7: 'quick', c7: 'calm', s7: 'idle', p7: 'meeting' };
+
+  get accent() { return this.props.accent ?? '#6366F1'; }
+  get pct() { return (this.props.progress ?? 28.5); }
+
+  fmt(pctVal) {
+    const total = 42 * 60 + 18;
+    const s = Math.round(total * pctVal / 100);
+    return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  renderVals() {
+    const a = this.accent, p = this.pct, track = '#E9EDF5';
+    const ring = (size) => `conic-gradient(from 180deg, ${a} 0 ${p}%, ${track} ${p}% 100%)`;
+    const speakerArc = `conic-gradient(from 180deg, ${a} 0 46%, #A855F7 46% 77%, #10B981 77% 94%, #F59E0B 94% 100%)`;
+    const dot = (i) => ({ width: this.state.step === i ? '22px' : '7px', color: this.state.step === i ? '#0F172A' : '#E2E8F0' });
+    const set = (o) => () => this.setState(o);
+    const v = {
+      playing: this.state.playing,
+      paused: !this.state.playing,
+      togglePlay: () => this.setState(s => ({ playing: !s.playing })),
+      posLabel: this.fmt(p),
+      ringDial: ring(184),
+      ringMini: ring(52),
+      ringDialC: ring(172),
+      ringSpeakers: speakerArc,
+      isAOverview: this.state.tabA === 'overview',
+      isATranscript: this.state.tabA === 'transcript',
+      isAAsk: this.state.tabA === 'ask',
+      notAOverview: this.state.tabA !== 'overview',
+      notATranscript: this.state.tabA !== 'transcript',
+      notAAsk: this.state.tabA !== 'ask',
+      tabAOverview: set({ tabA: 'overview' }),
+      tabATranscript: set({ tabA: 'transcript' }),
+      tabAAsk: set({ tabA: 'ask' }),
+      decisionsOpen: this.state.open === 'decisions',
+      actionsOpen: this.state.open === 'actions',
+      toggleDecisions: () => this.setState(s => ({ open: s.open === 'decisions' ? null : 'decisions' })),
+      toggleActions: () => this.setState(s => ({ open: s.open === 'actions' ? null : 'actions' })),
+      stepLabel: `${this.state.step + 1} OF 4`,
+      isStep0: this.state.step === 0,
+      isStep1: this.state.step === 1,
+      isStep2: this.state.step === 2,
+      isStep3: this.state.step === 3,
+      nextStep: () => this.setState(s => ({ step: (s.step + 1) % 4 })),
+      prevStep: () => this.setState(s => ({ step: (s.step + 3) % 4 })),
+      moment1Open: this.state.moment === 1,
+      moment2Open: this.state.moment === 2,
+      moment3Open: this.state.moment === 3,
+      toggleMoment1: () => this.setState(s => ({ moment: s.moment === 1 ? null : 1 })),
+      toggleMoment2: () => this.setState(s => ({ moment: s.moment === 2 ? null : 2 })),
+      toggleMoment3: () => this.setState(s => ({ moment: s.moment === 3 ? null : 3 })),
+
+      d1Open: this.state.dec === 1,
+      d2Open: this.state.dec === 2,
+      d3Open: this.state.dec === 3,
+      d1Toggle: () => this.setState(s => ({ dec: s.dec === 1 ? null : 1 })),
+      d2Toggle: () => this.setState(s => ({ dec: s.dec === 2 ? null : 2 })),
+      d3Toggle: () => this.setState(s => ({ dec: s.dec === 3 ? null : 3 })),
+
+      queueOpen: this.state.queue,
+      toggleQueue: () => this.setState(s => ({ queue: !s.queue })),
+      reviewLabel: this.state.reviewed >= 14 ? 'Everything reviewed' : 'Words to review',
+      reviewCount: `${this.state.reviewed} of 14`,
+      reviewPct: Math.round(this.state.reviewed / 14 * 100) + '%',
+      wordOpen: this.state.word,
+      pickWord: () => this.setState(s => ({ word: !s.word })),
+      cleanupOpen: this.state.cleanup,
+      cleanupLabel: this.state.cleanup ? 'Hide cleanup' : 'Cleanup pass',
+      toggleCleanup: () => this.setState(s => ({ cleanup: !s.cleanup })),
+      modeLight: set({ mode: 'light' }),
+      modeMid: set({ mode: 'mid' }),
+      modeHeavy: set({ mode: 'heavy' }),
+      modeBlurb: {
+        light: 'Only fillers and obvious punctuation. Closest to what was actually said.',
+        mid: 'Resolves self-corrections and collapses repetition, staying close to the speaker.',
+        heavy: 'Restructures spoken grammar into written prose. Never summarises, never invents.'
+      }[this.state.mode],
+
+      citeOpen: this.state.cite,
+      toggleCite: () => this.setState(s => ({ cite: !s.cite })),
+      thinking: this.state.thinking,
+      askFollowUp: () => this.setState(s => ({ thinking: !s.thinking })),
+
+      gTranscript: this.state.group === 'transcript',
+      gAnalysis: this.state.group === 'analysis',
+      gUtilities: this.state.group === 'utilities',
+      gTranscriptHint: this.state.group === 'transcript' ? '' : '7',
+      gAnalysisHint: this.state.group === 'analysis' ? '' : '7',
+      gUtilitiesHint: this.state.group === 'utilities' ? '' : '5',
+      groupTranscript: () => this.setState(s => ({ group: s.group === 'transcript' ? null : 'transcript' })),
+      groupAnalysis: () => this.setState(s => ({ group: s.group === 'analysis' ? null : 'analysis' })),
+      groupUtilities: () => this.setState(s => ({ group: s.group === 'utilities' ? null : 'utilities' })),
+
+      moreOpen: this.state.more,
+      toggleMore: () => this.setState(s => ({ more: !s.more })),
+
+      origShown: this.state.orig,
+      origHidden: !this.state.orig,
+      origLabel: this.state.orig ? 'Hide original' : 'Show original',
+      toggleOrig: () => this.setState(s => ({ orig: !s.orig })),
+
+      hRecordOpen: this.state.hRecord,
+      hRecordChevron: this.state.hRecord ? '⌄' : '›',
+      hRecordHint: this.state.hRecord ? 'Pick what this is' : 'Meeting · last used',
+      hToggleRecord: () => this.setState(s => ({ hRecord: !s.hRecord })),
+      hFiltersOpen: this.state.hFilters,
+      hFilterLabel: this.state.hFilter === 'all' ? 'Recent' : { mic: 'Recorded', imported: 'Imported', tasks: 'With tasks' }[this.state.hFilter],
+      hFilterCount: this.state.hFilter === 'all' ? '42' : '11',
+      hToggleFilters: () => this.setState(s => ({ hFilters: !s.hFilters })),
+      hFilterAll: set({ hFilter: 'all' }),
+      hFilterMic: set({ hFilter: 'mic' }),
+      hFilterImported: set({ hFilter: 'imported' }),
+      hFilterTasks: set({ hFilter: 'tasks' }),
+      hRow1Open: this.state.hRow === 1,
+      hRow1: () => this.setState(s => ({ hRow: s.hRow === 1 ? null : 1 })),
+      hRow2: () => this.setState(s => ({ hRow: s.hRow === 2 ? null : 2 })),
+
+      hArmRing: this.state.hArmed
+        ? 'conic-gradient(from 180deg, #6366F1 0 100%)'
+        : 'conic-gradient(from 180deg, #EBF1F9 0 100%)',
+      hArmFill: this.state.hArmed ? '#6366F1' : '#fff',
+      hArmGlyphW: this.state.hArmed ? '18px' : '17px',
+      hArmGlyphH: this.state.hArmed ? '18px' : '26px',
+      hArmGlyphR: this.state.hArmed ? '5px' : '9px',
+      hArmGlyphBg: this.state.hArmed ? '#fff' : '#6366F1',
+      hArmLabel: this.state.hArmed ? 'Recording' : 'Record',
+      hArmLabelColor: this.state.hArmed ? 'rgba(255,255,255,.85)' : '#475569',
+      hArmHint: this.state.hArmed ? '00:04 · tap to stop' : 'Meeting · four speakers expected',
+      hToggleArmed: () => this.setState(s => ({ hArmed: !s.hArmed })),
+      hJobOpen: this.state.hJob,
+      hJobLine: this.state.hJob ? 'Transcribing · chunk 9 of 14' : 'Transcribing',
+      hToggleJob: () => this.setState(s => ({ hJob: !s.hJob })),
+
+      hAskOpen: this.state.hAsk,
+      hAskClosed: !this.state.hAsk,
+      hAskText: this.state.hAsk ? 'What did we decide about pricing?' : 'Search or ask across everything',
+      hAskColor: this.state.hAsk ? '#0F172A' : '#94A3B8',
+      hToggleAsk: () => this.setState(s => ({ hAsk: !s.hAsk })),
+
+      h5RecordOpen: this.state.h5Record,
+      h5RecordChevron: this.state.h5Record ? '⌄' : '›',
+      h5RecordHint: this.state.h5Record ? 'Pick what this is' : 'Meeting · last used',
+      h5ToggleRecord: () => this.setState(s => ({ h5Record: !s.h5Record })),
+      h5JobOpen: this.state.h5Job,
+      h5JobLine: this.state.h5Job ? 'Transcribing · chunk 9 of 14' : 'Transcribing · 68%',
+      h5ToggleJob: () => this.setState(s => ({ h5Job: !s.h5Job })),
+      h5Row1Open: this.state.h5Row === 1,
+      h5Row1: () => this.setState(s => ({ h5Row: s.h5Row === 1 ? null : 1 })),
+
+      h5Results: this.state.h5Search === 'results',
+      h5Empty: this.state.h5Search === 'empty',
+      h5FieldText: this.state.h5Search === 'results' ? 'pricing decision' : 'Search or ask across 42 recordings',
+      h5FieldColor: this.state.h5Search === 'results' ? '#0F172A' : '#94A3B8',
+      h5ToggleSearch: () => this.setState(s => ({ h5Search: s.h5Search === 'results' ? 'empty' : 'results' })),
+
+      h5ImpSetup: this.state.h5Imp === 'setup',
+      h5ImpRunning: this.state.h5Imp === 'running',
+      h5ImpGo: () => this.setState(s => ({ h5Imp: s.h5Imp === 'setup' ? 'running' : 'setup' })),
+      h5ImpCta: this.state.h5Imp === 'setup' ? 'Import and transcribe' : 'Working — tap to reset',
+
+      m6RowOpen: this.state.m6Row,
+      m6ToggleRow: () => this.setState(s => ({ m6Row: !s.m6Row })),
+      s6OnlyOn: this.state.s6Only,
+      s6ToggleOnly: () => this.setState(s => ({ s6Only: !s.s6Only })),
+      s6OnlyBg: this.state.s6Only ? '#6366F1' : '#E2E8F0',
+      s6OnlyJustify: this.state.s6Only ? 'flex-end' : 'flex-start',
+      s6OnlyHint: this.state.s6Only ? 'On: nothing leaves this phone, ever' : 'Off: cloud models may be offered per job',
+      p6StagesOpen: this.state.p6Stages,
+      p6ToggleStages: () => this.setState(s => ({ p6Stages: !s.p6Stages })),
+
+      r6Ready: this.state.r6 === 'ready',
+      r6Live: this.state.r6 === 'live',
+      r6Toggle: () => this.setState(s => ({ r6: s.r6 === 'live' ? 'ready' : 'live' })),
+
+      n7Quick: this.state.n7 === 'quick',
+      n7All: this.state.n7 === 'all',
+      n7Toggle: () => this.setState(s => ({ n7: s.n7 === 'quick' ? 'all' : 'quick' })),
+      n7Link: this.state.n7 === 'quick' ? 'Change workflow' : 'Use Meeting and hide these',
+
+      c7Calm: this.state.c7 === 'calm',
+      c7Marker: this.state.c7 === 'marker',
+      c7Note: this.state.c7 === 'note',
+      c7Paused: this.state.c7 === 'paused',
+      c7Sheet: this.state.c7 === 'marker' || this.state.c7 === 'note',
+      c7OpenMarker: () => this.setState({ c7: 'marker' }),
+      c7OpenNote: () => this.setState({ c7: 'note' }),
+      c7Close: () => this.setState({ c7: 'calm' }),
+      c7TogglePause: () => this.setState(s => ({ c7: s.c7 === 'paused' ? 'calm' : 'paused' })),
+
+      s7Idle: this.state.s7 === 'idle',
+      s7Later: this.state.s7 === 'later',
+      s7Toggle: () => this.setState(s => ({ s7: s.s7 === 'idle' ? 'later' : 'idle' })),
+
+      p7Meeting: this.state.p7 === 'meeting',
+      p7Sermon: this.state.p7 === 'sermon',
+      p7Lecture: this.state.p7 === 'lecture',
+      p7SetMeeting: () => this.setState({ p7: 'meeting' }),
+      p7SetSermon: () => this.setState({ p7: 'sermon' }),
+      p7SetLecture: () => this.setState({ p7: 'lecture' }),
+      p7ChipMeetingBg: this.state.p7 === 'meeting' ? '#0F172A' : 'transparent',
+      p7ChipMeetingFg: this.state.p7 === 'meeting' ? '#fff' : '#475569',
+      p7ChipSermonBg: this.state.p7 === 'sermon' ? '#0F172A' : 'transparent',
+      p7ChipSermonFg: this.state.p7 === 'sermon' ? '#fff' : '#475569',
+      p7ChipLectureBg: this.state.p7 === 'lecture' ? '#0F172A' : 'transparent',
+      p7ChipLectureFg: this.state.p7 === 'lecture' ? '#fff' : '#475569'
+    };
+    ['light', 'mid', 'heavy'].forEach(m => {
+      const on = this.state.mode === m;
+      const k = m === 'light' ? 'Light' : m === 'mid' ? 'Mid' : 'Heavy';
+      v['mode' + k + 'Bg'] = on ? '#fff' : 'transparent';
+      v['mode' + k + 'Color'] = on ? '#0F172A' : '#475569';
+    });
+    for (let i = 0; i < 4; i++) { const d = dot(i); v['dot' + i] = d.width; v['dotColor' + i] = d.color; }
+    return v;
+  }
+}
+</script>
+</body>
+</html>
