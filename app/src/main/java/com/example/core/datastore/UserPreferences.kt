@@ -32,7 +32,10 @@ data class AppPreferencesState(
     val selectedAsrModelId: String = ModelCatalog.parakeetTdtV3Int8.id,
     val selectedLlmModelId: String = ModelCatalog.qwen25_1_5bInstruct.id,
     val batterySaverMode: Boolean = false,
-    val wifiOnlyDownload: Boolean = true,
+    /** Off by default — a first-run user who taps "Get" on a model shouldn't silently get nothing
+     * until they happen to be on Wi-Fi. Users on a limited mobile plan can turn this on themselves
+     * in Settings; the models involved are hundreds of MB to a few GB, so the row states that. */
+    val wifiOnlyDownload: Boolean = false,
     val audioQualitySampleRate: Int = 16000,
     val autoStopSilenceMinutes: Int = 15,
     val cloudSyncEnabled: Boolean = false,
@@ -74,7 +77,7 @@ class UserPreferencesManager(private val context: Context) {
             selectedAsrModelId = prefs[SELECTED_ASR_MODEL] ?: ModelCatalog.parakeetTdtV3Int8.id,
             selectedLlmModelId = prefs[SELECTED_LLM_MODEL] ?: ModelCatalog.qwen25_1_5bInstruct.id,
             batterySaverMode = prefs[BATTERY_SAVER] ?: false,
-            wifiOnlyDownload = prefs[WIFI_ONLY_DOWNLOAD] ?: true,
+            wifiOnlyDownload = prefs[WIFI_ONLY_DOWNLOAD] ?: false,
             audioQualitySampleRate = prefs[AUDIO_SAMPLE_RATE] ?: 16000,
             autoStopSilenceMinutes = prefs[AUTO_STOP_MINUTES] ?: 15,
             cloudSyncEnabled = prefs[CLOUD_SYNC_ENABLED] ?: false,
