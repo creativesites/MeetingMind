@@ -73,87 +73,124 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.ComponentName
+import android.content.Context
+import android.content.ServiceConnection
+import android.os.IBinder
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.core.audio.AudioRecorder
 import com.example.core.audio.MeetingRecordingService
-import com.example.core.audio.RecorderState
+import com.example.core.audio.RecordingState
 import com.example.core.common.Formatters
-import com.example.core.database.MeetMindDatabase
-import com.example.core.model.Meeting
-import com.example.core.model.MeetingSource
-import com.example.core.model.MeetingStatus
 import com.example.core.model.RecordingType
-import com.example.core.repository.MeetingRepository
 import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.IndigoPrimaryLight
 import com.example.ui.theme.RecordingRed
 import com.example.ui.theme.SuccessGreen
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.io.File
 import java.util.UUID
 
+/**
+ * Binds to [MeetingRecordingService] rather than owning an `AudioRecorder` directly (Phase 15
+ * §Part 2 / design capture-pipeline spec §3.2) — this ViewModel only ever sends intents to the
+ * service and relays its [StateFlow]s back to the UI. [android.content.Context.bindService] is
+ * asynchronous, so [state]/[amplitude]/[durationMs]/[focusInterrupted] are built with
+ * [flatMapLatest] over the (possibly still-null) bound-service reference: they read as [IDLE]
+ * before binding resolves and automatically switch to the real service flows the moment it does,
+ * with no separate "waiting to bind" state the UI needs to know about.
+ */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class RecordingViewModel(application: Application) : AndroidViewModel(application) {
-    private val database = MeetMindDatabase.getInstance(application)
-    private val meetingRepository = MeetingRepository(application, database)
-    val recorder = AudioRecorder(application)
 
-    val recorderState: StateFlow<RecorderState> = recorder.state
-    val amplitude: StateFlow<Float> = recorder.amplitude
-    val durationMs: StateFlow<Long> = recorder.durationMs
+    private val _boundService = MutableStateFlow<MeetingRecordingService?>(null)
+    private var isBound = false
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            _boundService.value = (binder as? MeetingRecordingService.LocalBinder)?.service
+        }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            _boundService.value = null
+        }
+    }
+
+    val state: StateFlow<RecordingState> = _boundService
+        .flatMapLatest { it?.state ?: flowOf(RecordingState.IDLE) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, RecordingState.IDLE)
+    val amplitude: StateFlow<Float> = _boundService
+        .flatMapLatest { it?.amplitude ?: flowOf(0f) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0f)
+    val durationMs: StateFlow<Long> = _boundService
+        .flatMapLatest { it?.durationMs ?: flowOf(0L) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+    val focusInterrupted: StateFlow<Boolean> = _boundService
+        .flatMapLatest { it?.focusInterrupted ?: flowOf(false) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private var currentMeetingId: String = UUID.randomUUID().toString()
-    private var currentOutputFile: File? = null
     private var meetingTitle: String = "In-Person Discussion"
     private var recordingContext: com.example.core.model.RecordingContext = com.example.core.model.RecordingContext()
+
+    private fun ensureBound() {
+        if (isBound) return
+        isBound = true
+        getApplication<Application>().bindService(
+            MeetingRecordingService.bindIntent(getApplication()),
+            connection,
+            Context.BIND_AUTO_CREATE
+        )
+    }
 
     fun startRecording(title: String, context: com.example.core.model.RecordingContext) {
         meetingTitle = title
         this.recordingContext = context
         currentMeetingId = UUID.randomUUID().toString()
-        currentOutputFile = recorder.startRecording(currentMeetingId)
-        MeetingRecordingService.startService(getApplication(), meetingTitle)
+        ensureBound()
+        viewModelScope.launch {
+            val service = _boundService.filterNotNull().first()
+            try {
+                service.startRecording(currentMeetingId, title, context)
+            } catch (e: Exception) {
+                // service.state already reflects RecordingState.FAILED — the UI reads that
+                // directly rather than this call site needing its own error channel.
+            }
+        }
     }
 
     fun pauseRecording() {
-        recorder.pauseRecording()
-        MeetingRecordingService.pauseService(getApplication())
+        _boundService.value?.pauseRecording()
     }
 
     fun resumeRecording() {
-        recorder.resumeRecording()
-        MeetingRecordingService.resumeService(getApplication())
+        _boundService.value?.resumeRecording()
     }
 
     fun discardRecording() {
-        recorder.discardRecording()
-        MeetingRecordingService.stopService(getApplication())
+        _boundService.value?.discardRecording()
     }
 
     fun finishRecording(onComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit) {
-        val finalDuration = durationMs.value
-        val file = recorder.stopRecording() ?: currentOutputFile ?: return
-        MeetingRecordingService.stopService(getApplication())
-
-        viewModelScope.launch {
-            meetingRepository.createInitialMeeting(
-                id = currentMeetingId,
-                title = meetingTitle,
-                source = MeetingSource.LOCAL_RECORDING,
-                audioFilePath = file.absolutePath,
-                recordingType = recordingContext.recordingType,
-                customContext = recordingContext.customContext,
-                speakerCountPreference = recordingContext.speakerCountPreference
-            )
-            onComplete(currentMeetingId, file.absolutePath, finalDuration)
+        val service = _boundService.value ?: return
+        service.stopRecording { meetingId, file, duration ->
+            if (file != null) onComplete(meetingId, file.absolutePath, duration)
         }
     }
 
     override fun onCleared() {
         super.onCleared()
-        MeetingRecordingService.stopService(getApplication())
+        if (isBound) {
+            getApplication<Application>().unbindService(connection)
+            isBound = false
+        }
     }
 }
 
@@ -200,7 +237,7 @@ fun RecordingScreen(
         }
     }
 
-    val state by viewModel.recorderState.collectAsState()
+    val state by viewModel.state.collectAsState()
     val amplitude by viewModel.amplitude.collectAsState()
     val durationMs by viewModel.durationMs.collectAsState()
     var showDiscardDialog by remember { mutableStateOf(false) }
@@ -257,10 +294,10 @@ fun RecordingScreen(
                     }
                 },
                 actions = {
-                    if (state == RecorderState.RECORDING || state == RecorderState.PAUSED) {
+                    if (state == RecordingState.RECORDING || state == RecordingState.PAUSED) {
                         Surface(
                             shape = RoundedCornerShape(20.dp),
-                            color = if (state == RecorderState.RECORDING) RecordingRed.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
+                            color = if (state == RecordingState.RECORDING) RecordingRed.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
                             modifier = Modifier.padding(end = 16.dp)
                         ) {
                             Row(
@@ -268,14 +305,14 @@ fun RecordingScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                if (state == RecorderState.RECORDING) {
+                                if (state == RecordingState.RECORDING) {
                                     Icon(Icons.Default.FiberManualRecord, contentDescription = null, tint = RecordingRed, modifier = Modifier.size(10.dp))
                                 }
                                 Text(
                                     text = Formatters.formatDurationHms(durationMs),
                                     style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace),
                                     fontWeight = FontWeight.Bold,
-                                    color = if (state == RecorderState.RECORDING) RecordingRed else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (state == RecordingState.RECORDING) RecordingRed else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -366,12 +403,12 @@ fun RecordingScreen(
 
                 WaveformCenterButton(
                     amplitude = amplitude,
-                    isRecording = state == RecorderState.RECORDING,
-                    isPaused = state == RecorderState.PAUSED,
+                    isRecording = state == RecordingState.RECORDING,
+                    isPaused = state == RecordingState.PAUSED,
                     onToggle = {
-                        if (state == RecorderState.RECORDING) {
+                        if (state == RecordingState.RECORDING) {
                             viewModel.pauseRecording()
-                        } else if (state == RecorderState.PAUSED) {
+                        } else if (state == RecordingState.PAUSED) {
                             viewModel.resumeRecording()
                         }
                     }
@@ -380,13 +417,13 @@ fun RecordingScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = if (state == RecorderState.RECORDING) "Listening…" else "Paused",
+                    text = if (state == RecordingState.RECORDING) "Listening…" else "Paused",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = if (state == RecorderState.RECORDING) {
+                    text = if (state == RecordingState.RECORDING) {
                         "Recording safely on your device"
                     } else {
                         "Tap the button to resume"

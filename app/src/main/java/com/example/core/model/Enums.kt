@@ -9,6 +9,25 @@ enum class MeetingSource {
 
 enum class MeetingStatus {
     RECORDING,
+
+    /**
+     * Capture finished and the audio is safely on disk, but the user has not chosen to process
+     * it yet (Phase 15 §Part 2 / design `#7c`). Only `RECORDING -> SAVED` is reachable from the
+     * capture path itself — nothing in capture may set `PROCESSING` directly, since "stop"
+     * deliberately does not imply "start analyzing." The audio is never discarded on this
+     * transition, or on any transition away from it.
+     */
+    SAVED,
+
+    /**
+     * The user chose "process later" (design `#7c`) rather than discarding or processing now.
+     * Audio, markers and notes are all kept; a `WorkManager` `PeriodicWorkRequest` with
+     * `requiresCharging` picks these up, alongside an explicit "Process now" from Home or the
+     * workspace. Distinct from [SAVED]: this state records an actual decision to defer, not just
+     * "hasn't been decided yet."
+     */
+    QUEUED,
+
     PROCESSING,
     READY,
     ERROR,

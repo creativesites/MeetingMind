@@ -61,9 +61,12 @@ class ExampleRobolectricTest {
 
     @Test
     fun test_recording_service_actions() {
+        // The service is now bound (RecordingViewModel binds and calls startRecording() on it
+        // directly) rather than started via an ACTION_START intent — see Phase 15 §Part 2 §3.2.
+        // ACTION_PAUSE/RESUME/STOP remain: those still arrive as intents from the lock-screen
+        // notification's own action buttons, which can't call a bound method directly.
         assertEquals("meetmind_recording_channel", MeetingRecordingService.CHANNEL_ID)
         assertEquals(1001, MeetingRecordingService.NOTIFICATION_ID)
-        assertEquals("com.example.meetmind.ACTION_START", MeetingRecordingService.ACTION_START)
         assertEquals("com.example.meetmind.ACTION_PAUSE", MeetingRecordingService.ACTION_PAUSE)
         assertEquals("com.example.meetmind.ACTION_RESUME", MeetingRecordingService.ACTION_RESUME)
         assertEquals("com.example.meetmind.ACTION_STOP", MeetingRecordingService.ACTION_STOP)
