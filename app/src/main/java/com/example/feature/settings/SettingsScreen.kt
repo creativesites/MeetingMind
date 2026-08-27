@@ -1,6 +1,7 @@
 package com.example.feature.settings
 
 import android.app.Application
+import com.example.BuildConfig
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -387,7 +388,7 @@ fun SettingsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "MeetingMind v1.0.0 (Local-First Offline MVP)",
+                        text = "MeetingMind ${BuildConfig.VERSION_NAME} (Local-First Offline MVP)",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

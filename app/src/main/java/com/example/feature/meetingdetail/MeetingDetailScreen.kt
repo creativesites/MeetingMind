@@ -1871,12 +1871,16 @@ fun TranscriptTab(
                                     com.example.feature.meetingdetail.components.FloatingSelectionBar(
                                         items = listOf("Fix errors", "Clarity", "Condense"),
                                         onItemClick = {
-                                            Toast.makeText(context, "AI tools are coming in a later phase", Toast.LENGTH_SHORT).show()
+                                            // None of these three map to a READY tool yet (Fix
+                                            // Transcription Errors / Improve Clarity / Condense are
+                                            // all still NOT_STARTED in TranscriptAiToolRegistry) —
+                                            // say so honestly rather than routing to something that
+                                            // doesn't exist. "⋯" below opens the real sheet, where
+                                            // Clean Transcript and Fix Terminology actually run.
+                                            Toast.makeText(context, "Not built yet — see ⋯ for tools that are ready", Toast.LENGTH_SHORT).show()
                                         },
                                         moreLabel = "⋯",
-                                        onMoreClick = {
-                                            Toast.makeText(context, "AI tools are coming in a later phase", Toast.LENGTH_SHORT).show()
-                                        }
+                                        onMoreClick = onOpenToolsSheet
                                     )
                                 }
                             }
