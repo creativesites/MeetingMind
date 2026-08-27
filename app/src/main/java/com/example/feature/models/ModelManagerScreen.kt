@@ -5,7 +5,6 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,44 +16,33 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,9 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -85,12 +71,13 @@ import com.example.core.model.AiModelInfo
 import com.example.core.model.DeviceCapabilities
 import com.example.core.model.ModelCapability
 import com.example.core.repository.ModelRepository
-import com.example.core.ui.SectionCard
-import com.example.ui.theme.CyanTertiary
-import com.example.ui.theme.IndigoPrimaryLight
-import com.example.ui.theme.SuccessGreen
-import com.example.ui.theme.VioletSecondary
-import com.example.ui.theme.WarningAmber
+import com.example.ui.theme.Accent
+import com.example.ui.theme.Ink
+import com.example.ui.theme.InkFaint
+import com.example.ui.theme.InkMuted
+import com.example.ui.theme.InkSecondary
+import com.example.ui.theme.LineSoft
+import com.example.ui.theme.Speaker4
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -243,6 +230,16 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
     }
 }
 
+/**
+ * AI engine screen (Phase 15 §Part 2 / design `#6c`) — restyled onto the Ink/Accent flat-row
+ * token system shared with the rest of the redesign so this reads as one app with Settings/Home,
+ * not a separate Material3-default screen. This is a **visual** pass only: every feature the old
+ * card-based screen had (device performance profile, per-model install/pause/resume/cancel/
+ * delete with real byte progress, active-model selection per capability, technical details,
+ * Wi-Fi-only/insufficient-storage refusal messaging) is preserved exactly — `#6c`'s own mockup
+ * frame shows only a single "Now running" summary with no way to switch between installed models,
+ * which would have been a real functionality regression if implemented literally.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModelManagerScreen(
@@ -267,29 +264,8 @@ fun ModelManagerScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "MeetingMind Intelligence",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier.testTag("models_back_btn")
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        },
+        containerColor = Color.White,
+        snackbarHost = { SnackbarHost(snackbarHostState) { data -> Snackbar(snackbarData = data, containerColor = Ink, contentColor = Color.White) } },
         bottomBar = {
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.AI_ENGINE,
@@ -301,62 +277,42 @@ fun ModelManagerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            contentPadding = PaddingValues(bottom = 22.dp)
         ) {
-            // 1. Device performance profile — one flat, borderless container.
             item {
-                SectionCard {
-                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.Speed, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                }
-                            }
-                            Text(
-                                text = "Device Performance Profile",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        // A single 4-wide SpaceAround row squeezes each column too narrow on
-                        // typical phone widths — "Free Storage" was breaking mid-word ("Storag/e").
-                        // Two 2-wide rows give every label enough room to stay on one line.
-                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                DeviceStatColumn("Available RAM", "${caps.availableRamGb} GB")
-                                DeviceStatColumn("Architecture", caps.cpuArch)
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                DeviceStatColumn("Hardware Tier", caps.devicePerformanceTier, valueColor = SuccessGreen)
-                                DeviceStatColumn("Free Storage", Formatters.formatBytes(viewModel.availableStorageMb * 1024 * 1024))
-                            }
-                        }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(start = 22.dp, end = 22.dp, top = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    IconButton(onClick = onNavigateBack, modifier = Modifier.testTag("models_back_btn").size(34.dp)) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = InkSecondary)
                     }
+                }
+                Column(modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 6.dp)) {
+                    Text(text = "AI engine", fontSize = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.7).sp, color = Ink)
+                    Text(text = "Everything runs on this phone", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 5.dp))
                 }
             }
 
-            // 2. Header
+            // Device performance profile — real device info the mockup doesn't show but which
+            // the old screen relied on to explain why a model is or isn't offered.
             item {
-                Text(
-                    text = "MeetingMind's Intelligence",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+                Column(modifier = Modifier.padding(top = 22.dp, start = 22.dp, end = 22.dp)) {
+                    Text(text = "THIS DEVICE", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp, color = InkMuted)
+                    Row(modifier = Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        DeviceStat("RAM", "${caps.availableRamGb} GB")
+                        DeviceStat("ARCH", caps.cpuArch)
+                        DeviceStat("TIER", caps.devicePerformanceTier)
+                        DeviceStat("FREE", Formatters.formatBytes(viewModel.availableStorageMb * 1024 * 1024))
+                    }
+                }
+                HorizontalDivider(color = LineSoft, modifier = Modifier.padding(top = 20.dp))
             }
 
-            // 3. Capability groups — what MeetingMind can do, in plain language first. Technical
-            // model details (size, quantization, storage) are one tap away, never dumped up front.
             CAPABILITY_GROUPS.forEach { group ->
                 val groupModels = models.filter { group.capability in it.capability }
                 if (groupModels.isNotEmpty()) {
@@ -368,7 +324,7 @@ fun ModelManagerScreen(
                         else -> Triple(prefs.selectedAsrModelId, { id: String -> viewModel.selectActiveAsrModel(id) }, caps.recommendedAsrModelId)
                     }
                     item(key = "group_${group.capability}") {
-                        CapabilityGroupCard(
+                        CapabilityGroupSection(
                             group = group,
                             models = groupModels.map { model ->
                                 val liveProgress = downloadProgress[model.id]
@@ -395,47 +351,43 @@ fun ModelManagerScreen(
 }
 
 @Composable
-private fun DeviceStatColumn(label: String, value: String, valueColor: Color = Color.Unspecified) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
+private fun DeviceStat(label: String, value: String) {
+    Column {
+        Text(label, fontSize = 11.sp, letterSpacing = 0.5.sp, color = InkFaint)
+        Text(value, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 3.dp))
     }
 }
 
 private data class CapabilityGroupInfo(
     val capability: ModelCapability,
     val title: String,
-    val plainDescription: String,
-    val icon: ImageVector
+    val plainDescription: String
 )
 
 private val CAPABILITY_GROUPS = listOf(
     CapabilityGroupInfo(
         ModelCapability.TRANSCRIPTION,
-        "Speech Recognition",
-        "Converts your recordings into text — entirely on this device, never sent anywhere.",
-        Icons.Default.RecordVoiceOver
+        "Speech recognition",
+        "Converts your recordings into text — entirely on this device, never sent anywhere."
     ),
     CapabilityGroupInfo(
         ModelCapability.DIARIZATION,
-        "Speaker Detection",
-        "Figures out who said what when more than one person is speaking.",
-        Icons.Default.Groups
+        "Speaker detection",
+        "Figures out who said what when more than one person is speaking."
     ),
     CapabilityGroupInfo(
         ModelCapability.SUMMARIZATION,
-        "Meeting Intelligence & Ask",
-        "Extracts decisions and action items, and answers questions about your recordings — grounded only in what was actually said.",
-        Icons.Default.Psychology
+        "Meeting intelligence & Ask",
+        "Extracts decisions and action items, and answers questions about your recordings — grounded only in what was actually said."
     )
 )
 
-private enum class CapabilityStatus(val label: String, val color: @Composable () -> Color) {
-    READY("Ready", { SuccessGreen }),
-    DOWNLOADING("Downloading", { IndigoPrimaryLight }),
-    PAUSED("Paused", { MaterialTheme.colorScheme.onSurfaceVariant }),
-    NEEDS_DOWNLOAD("Needs download", { WarningAmber }),
-    UNAVAILABLE("Unavailable", { CyanTertiary })
+private enum class CapabilityStatus(val label: String, val color: Color) {
+    READY("Ready", Ink),
+    DOWNLOADING("Downloading", Accent),
+    PAUSED("Paused", InkMuted),
+    NEEDS_DOWNLOAD("Needs download", Speaker4),
+    UNAVAILABLE("Unavailable", InkMuted)
 }
 
 private fun statusFor(models: List<AiModelInfo>, pausedModelIds: Set<String>): CapabilityStatus = when {
@@ -447,7 +399,7 @@ private fun statusFor(models: List<AiModelInfo>, pausedModelIds: Set<String>): C
 }
 
 @Composable
-private fun CapabilityGroupCard(
+private fun CapabilityGroupSection(
     group: CapabilityGroupInfo,
     models: List<AiModelInfo>,
     pausedModelIds: Set<String>,
@@ -459,100 +411,66 @@ private fun CapabilityGroupCard(
     onCancel: (String) -> Unit,
     onDelete: (String) -> Unit
 ) {
-    var expanded by remember(group.capability) { mutableStateOf(true) }
+    // Always expanded — the old screen's accordion collapse hid whether a group even had a
+    // choice worth making; a capability group is small enough (1-3 models) to stay flat.
     val status = statusFor(models, pausedModelIds)
 
-    SectionCard {
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(group.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                    }
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(group.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            text = status.label,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = status.color(),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    Text(
-                        text = group.plainDescription,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+    Column(modifier = Modifier.padding(top = 24.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(group.title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                Text(group.plainDescription, fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 4.dp))
             }
+            Text(status.label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = status.color, modifier = Modifier.padding(start = 12.dp))
+        }
+        HorizontalDivider(color = LineSoft, modifier = Modifier.padding(top = 14.dp, start = 22.dp, end = 22.dp))
 
-            if (expanded) {
-                Column(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // "Selectable" means the user actually has more than one real model to
-                    // choose between for this capability — offering a choice when there's only
-                    // one option would imply a decision that doesn't exist.
-                    val isSelectable = models.size > 1
-                    // Mirrors LlmModelResolver: the model that will really be used is the
-                    // selected one when it's installed, otherwise the best one that is. Showing
-                    // "Active" on a model whose files the user already deleted would be a lie.
-                    val effectiveActiveId = remember(models, activeModelId) {
-                        models.find { it.id == activeModelId && it.isInstalled }?.id
-                            ?: models.filter { it.isInstalled }.maxByOrNull { it.tier.ordinal }?.id
-                    }
-                    if (isSelectable) {
-                        Text(
-                            text = if (effectiveActiveId == null) {
-                                "Download one of these to turn this on. You can switch at any time."
-                            } else {
-                                "Pick the one that suits your phone — whichever is marked Active is the one being used."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    models.sortedBy { it.tier.ordinal }.forEach { model ->
-                        BentoModelItemCard(
-                            model = model,
-                            isActive = effectiveActiveId == model.id,
-                            isPaused = model.id in pausedModelIds,
-                            isSelectable = isSelectable,
-                            isRecommendedForDevice = recommendedModelId != null && recommendedModelId == model.id && isSelectable,
-                            onSelectActive = { onSelectActive(model.id) },
-                            onInstall = { onInstall(model.id) },
-                            onPause = { onPause(model.id) },
-                            onCancel = { onCancel(model.id) },
-                            onDelete = { onDelete(model.id) }
-                        )
-                    }
-                }
-            }
+        // "Selectable" means the user actually has more than one real model to choose between
+        // for this capability — offering a choice when there's only one option would imply a
+        // decision that doesn't exist.
+        val isSelectable = models.size > 1
+        // Mirrors LlmModelResolver: the model that will really be used is the selected one when
+        // it's installed, otherwise the best one that is. Showing "Active" on a model whose files
+        // the user already deleted would be a lie.
+        val effectiveActiveId = remember(models, activeModelId) {
+            models.find { it.id == activeModelId && it.isInstalled }?.id
+                ?: models.filter { it.isInstalled }.maxByOrNull { it.tier.ordinal }?.id
+        }
+        if (isSelectable) {
+            Text(
+                text = if (effectiveActiveId == null) {
+                    "Download one of these to turn this on. You can switch at any time."
+                } else {
+                    "Pick the one that suits your phone — whichever is marked Active is the one being used."
+                },
+                fontSize = 12.5.sp,
+                color = InkMuted,
+                modifier = Modifier.padding(top = 12.dp, start = 22.dp, end = 22.dp)
+            )
+        }
+        models.sortedBy { it.tier.ordinal }.forEach { model ->
+            ModelRow(
+                model = model,
+                isActive = effectiveActiveId == model.id,
+                isPaused = model.id in pausedModelIds,
+                isSelectable = isSelectable,
+                isRecommendedForDevice = recommendedModelId != null && recommendedModelId == model.id && isSelectable,
+                onSelectActive = { onSelectActive(model.id) },
+                onInstall = { onInstall(model.id) },
+                onPause = { onPause(model.id) },
+                onCancel = { onCancel(model.id) },
+                onDelete = { onDelete(model.id) }
+            )
         }
     }
 }
 
 @Composable
-fun BentoModelItemCard(
+fun ModelRow(
     model: AiModelInfo,
     isActive: Boolean,
     isPaused: Boolean = false,
@@ -566,242 +484,200 @@ fun BentoModelItemCard(
 ) {
     var showTechnicalDetails by remember(model.id) { mutableStateOf(false) }
 
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.06f) else MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (isActive) Accent.copy(alpha = 0.05f) else Color.Transparent)
+            .padding(horizontal = 22.dp, vertical = 14.dp)
     ) {
-        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.weight(1f)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    if (model.isInstalled && isSelectable) {
-                        RadioButton(
-                            selected = isActive,
-                            onClick = onSelectActive,
-                            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary),
-                            modifier = Modifier.testTag("model_select_${model.id}")
-                        )
-                    }
-                    Text(
-                        text = model.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f, fill = false)
+                if (model.isInstalled && isSelectable) {
+                    RadioButton(
+                        selected = isActive,
+                        onClick = onSelectActive,
+                        colors = RadioButtonDefaults.colors(selectedColor = Accent, unselectedColor = InkFaint),
+                        modifier = Modifier.testTag("model_select_${model.id}")
                     )
                 }
+                Text(
+                    text = model.name,
+                    fontSize = 15.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Ink,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+            }
 
-                if (model.isDownloading) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        CircularProgressIndicator(
-                            progress = { model.downloadProgress },
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.5.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        IconButton(onClick = onPause, modifier = Modifier.size(28.dp).testTag("model_pause_${model.id}")) {
-                            Icon(Icons.Default.Pause, contentDescription = "Pause download", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                        }
-                    }
-                } else if (isPaused) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Button(
-                            onClick = onInstall,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.testTag("model_resume_${model.id}")
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Resume", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                        IconButton(onClick = onCancel, modifier = Modifier.size(28.dp).testTag("model_cancel_${model.id}")) {
-                            Icon(Icons.Default.Close, contentDescription = "Cancel and discard download", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                        }
-                    }
-                } else if (model.isInstalled) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        // With more than one model installed, "Installed" alone left the user
-                        // unable to tell which one was actually running. State the real answer.
-                        when {
-                            !isSelectable -> Text(
-                                text = "Installed",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = SuccessGreen,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            isActive -> Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = SuccessGreen.copy(alpha = 0.14f)
-                            ) {
-                                Text(
-                                    text = "Active",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = SuccessGreen,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        .testTag("model_active_badge_${model.id}")
-                                )
-                            }
-                            else -> Button(
-                                onClick = onSelectActive,
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.primary
-                                ),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                                ),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier.testTag("model_use_${model.id}")
-                            ) {
-                                Text("Use this", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        IconButton(onClick = onDelete, modifier = Modifier.size(28.dp).testTag("model_delete_${model.id}")) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Delete model",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                } else if (!model.isDownloadable) {
-                    Text(
-                        text = "Not yet available",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            if (model.isDownloading) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    CircularProgressIndicator(
+                        progress = { model.downloadProgress },
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.5.dp,
+                        color = Accent
                     )
-                } else {
+                    IconButton(onClick = onPause, modifier = Modifier.size(28.dp).testTag("model_pause_${model.id}")) {
+                        Icon(Icons.Default.Pause, contentDescription = "Pause download", tint = InkMuted, modifier = Modifier.size(18.dp))
+                    }
+                }
+            } else if (isPaused) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Button(
                         onClick = onInstall,
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.testTag("model_install_${model.id}")
+                        colors = ButtonDefaults.buttonColors(containerColor = Ink),
+                        modifier = Modifier.testTag("model_resume_${model.id}")
                     ) {
                         Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Download", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Resume", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    IconButton(onClick = onCancel, modifier = Modifier.size(28.dp).testTag("model_cancel_${model.id}")) {
+                        Icon(Icons.Default.Close, contentDescription = "Cancel and discard download", tint = InkMuted, modifier = Modifier.size(18.dp))
                     }
                 }
-            }
-
-            // Tier chip + on-device recommendation — only shown when there's an actual choice
-            // to make (isSelectable), so it never implies a comparison that doesn't exist.
-            if (isSelectable) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                    ) {
-                        Text(
-                            text = model.tier.displayName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
+            } else if (model.isInstalled) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // With more than one model installed, "Installed" alone left the user
+                    // unable to tell which one was actually running. State the real answer.
+                    when {
+                        !isSelectable -> Text(text = "Installed", fontSize = 12.5.sp, color = Ink, fontWeight = FontWeight.SemiBold)
+                        isActive -> Text(
+                            text = "Active",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Accent,
+                            modifier = Modifier.testTag("model_active_badge_${model.id}")
+                        )
+                        else -> Text(
+                            text = "Use this",
+                            fontSize = 12.5.sp,
                             fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            color = Accent,
+                            modifier = Modifier
+                                .clickable(onClick = onSelectActive)
+                                .testTag("model_use_${model.id}")
                         )
                     }
-                    if (isRecommendedForDevice) {
-                        Text(
-                            text = "Best fit for your phone",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    IconButton(onClick = onDelete, modifier = Modifier.size(28.dp).testTag("model_delete_${model.id}")) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete model",
+                            tint = InkMuted,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
-                Text(
-                    text = model.tier.shortDescription,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 18.sp
-                )
-            }
-
-            Text(
-                text = model.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = 18.sp
-            )
-
-            // Storage cost, visible without expanding "Technical details" — while downloading or
-            // paused the progress line below already states the size, so this would be redundant.
-            if (!model.isDownloading && !isPaused) {
-                Text(
-                    text = if (model.isInstalled) "${Formatters.formatBytes(model.sizeBytes)} on this device" else "${Formatters.formatBytes(model.sizeBytes)} download",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (model.isDownloading || isPaused) {
-                LinearProgressIndicator(
-                    progress = { model.downloadProgress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp)),
-                    color = if (isPaused) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = if (isPaused) {
-                        "Paused at ${(model.downloadProgress * 100).toInt()}% of ${Formatters.formatBytes(model.sizeBytes)} — resumes from here, not from the start"
-                    } else {
-                        "${(model.downloadProgress * 100).toInt()}% of ${Formatters.formatBytes(model.sizeBytes)}"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Row(
-                modifier = Modifier.clickable { showTechnicalDetails = !showTechnicalDetails },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = if (showTechnicalDetails) "Hide technical details" else "Technical details",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Icon(
-                    imageVector = if (showTechnicalDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-
-            if (showTechnicalDetails) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "${model.parameterCount} parameters • ${model.quantization} • ${Formatters.formatBytes(model.sizeBytes)} on disk",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = model.version,
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "Stored on-device only, deletable at any time",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            } else if (!model.isDownloadable) {
+                Text(text = "Not yet available", fontSize = 12.5.sp, color = InkMuted)
+            } else {
+                Button(
+                    onClick = onInstall,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Ink),
+                    modifier = Modifier.testTag("model_install_${model.id}")
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Download", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
+
+        // Tier chip + on-device recommendation — only shown when there's an actual choice
+        // to make (isSelectable), so it never implies a comparison that doesn't exist.
+        if (isSelectable) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
+                Text(text = model.tier.displayName, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                if (isRecommendedForDevice) {
+                    Text(text = "· Best fit for your phone", fontSize = 11.sp, color = InkMuted)
+                }
+            }
+            Text(
+                text = model.tier.shortDescription,
+                fontSize = 12.5.sp,
+                color = InkSecondary,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+
+        Text(
+            text = model.description,
+            fontSize = 12.5.sp,
+            color = InkSecondary,
+            lineHeight = 18.sp,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+
+        // Storage cost, visible without expanding "Technical details" — while downloading or
+        // paused the progress line below already states the size, so this would be redundant.
+        if (!model.isDownloading && !isPaused) {
+            Text(
+                text = if (model.isInstalled) "${Formatters.formatBytes(model.sizeBytes)} on this device" else "${Formatters.formatBytes(model.sizeBytes)} download",
+                fontSize = 11.5.sp,
+                color = InkMuted,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
+
+        if (model.isDownloading || isPaused) {
+            LinearProgressIndicator(
+                progress = { model.downloadProgress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+                color = if (isPaused) InkMuted else Accent,
+                trackColor = LineSoft
+            )
+            Text(
+                text = if (isPaused) {
+                    "Paused at ${(model.downloadProgress * 100).toInt()}% of ${Formatters.formatBytes(model.sizeBytes)} — resumes from here, not from the start"
+                } else {
+                    "${(model.downloadProgress * 100).toInt()}% of ${Formatters.formatBytes(model.sizeBytes)}"
+                },
+                fontSize = 11.5.sp,
+                color = InkMuted,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .clickable { showTechnicalDetails = !showTechnicalDetails },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (showTechnicalDetails) "Hide technical details" else "Technical details",
+                fontSize = 12.sp,
+                color = Accent,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        if (showTechnicalDetails) {
+            Column(modifier = Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "${model.parameterCount} parameters · ${model.quantization} · ${Formatters.formatBytes(model.sizeBytes)} on disk",
+                    fontSize = 11.sp,
+                    color = InkMuted
+                )
+                Text(text = model.version, fontSize = 11.sp, color = InkMuted)
+                Text(text = "Stored on-device only, deletable at any time", fontSize = 11.sp, color = InkMuted)
+            }
+        }
     }
+    HorizontalDivider(color = LineSoft, modifier = Modifier.padding(start = 22.dp, end = 22.dp))
 }
