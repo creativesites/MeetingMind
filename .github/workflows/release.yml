@@ -9,12 +9,15 @@ on:
   push:
     tags:
       - 'v*'
-  # Also runnable by hand, so a release can be rebuilt without moving a tag.
+  # Also runnable by hand from the Actions tab with no setup: it tags whatever commit it ran
+  # against. That matters because a tag cannot always be pushed from every environment, and a
+  # release should never be blocked on which machine happened to be holding the credentials.
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build and release'
-        required: true
+        description: 'Version tag to create and release (e.g. v18)'
+        required: false
+        default: 'v18' 
 
 permissions:
   contents: write
@@ -24,8 +27,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - uses: actions/setup-java@v4
         with:
@@ -60,7 +61,7 @@ jobs:
         id: rename
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}"
+          version="${{ github.event.inputs.tag || github.ref_name }}"
           mkdir -p dist
           for apk in app/build/outputs/apk/debug/*.apk; do
             base="$(basename "$apk" .apk)"
@@ -71,8 +72,10 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          # Creates the tag at this commit when it does not already exist.
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           name: MeetingMind ${{ github.event.inputs.tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           # Debug-signed, so it installs alongside nothing and needs "install from unknown sources".
           prerelease: true
           generate_release_notes: true
