@@ -179,7 +179,7 @@ deterministic token alignment — the LLM is never asked to produce a timestamp 
 | 11 | Gemini Flash intelligence with structured output + provenance (`GeminiIntelligenceEngine`) | done |
 | 12 | Ask Meeting / RAG grounding (`TranscriptRetriever`) | done |
 | 13-14 | Gemini Live, Live extended thinking | **partial** — state machine and async tool lifecycle done and tested; no transport ships, see `## 6` |
-| 15 | Benchmark corpus | not started — see `## 6` |
+| 15 | Benchmark suite | **partial** — metrics done and tested (`TranscriptBenchmark`); no corpus, see `## 6` |
 | 16 | Device regression against real recordings | not started — see `## 6` |
 
 ### 4.1 What runs, per profile
@@ -204,7 +204,7 @@ it. `ProcessingProfile.OFFLINE` has no cloud route at all and cannot fall the ot
 
 ### 4.2 Test coverage
 
-512 unit tests, all passing (`./gradlew testDebugUnitTest`). The structural layer is pure Kotlin
+537 unit tests, all passing (`./gradlew testDebugUnitTest`). The structural layer is pure Kotlin
 with no Android or native dependency, so all of it is covered on the JVM. Two real defects were
 found by these tests and fixed: a `Long.MIN_VALUE` sentinel overflowing in the timestamp-anomaly
 check, and a duplicate-phrase detector that only probed a fixed three-word period and therefore
@@ -230,11 +230,20 @@ Recorded so the next session starts informed, not so it is quietly dropped:
   on representative input — but they are not yet *demonstrated* fixed on audio. Nobody should
   claim this overhaul worked until a real recording that currently produces a bad transcript has
   been run through both pipelines and compared.
-- **Benchmark corpus (Phase 15).** There are no recordings here to run it on, and a harness with
-  nothing to measure is a harness that will be written to fit whatever it is first pointed at. The
-  metrics it should compute already exist and are already computed per run
-  (`TranscriptQualityEvaluator`); what is missing is the reference transcripts to compare against
-  and the recordings listed in the brief §32.
+- **Benchmark corpus (Phase 15), partially done.** `TranscriptBenchmark` implements the §32
+  metrics — WER, CER, speaker attribution error, speaker fragmentation, speaker confusion,
+  timestamp error, duplicate rate, fragmentation rate — against a hand-checked
+  `ReferenceTranscript`, with fourteen tests over cases whose answers are known by construction. It
+  shares its alignment with the fusion engine, because a metric computed by a different aligner
+  than the pipeline uses measures the difference between two aligners as much as between two
+  transcripts.
+
+  What is missing is the **corpus**: the recordings listed in §32 (crosstalk, accented English,
+  code switching, 30+ minute meetings, and the rest) and their reference transcripts. Adding one
+  means adding a `ReferenceTranscript` and calling `score`; no code here has to change. Paragraph
+  quality still has to be scored by a person — there is no metric for "does this read like
+  something a human would write", and inventing one would be exactly the fake precision §31 warns
+  against.
 - **Gemini Live transport (Phases 13-14), partially done.** What ships is the part that could
   actually be got right here and is the part most likely to be got wrong elsewhere:
   `LiveSessionController`, an explicit state machine that never infers idleness from
