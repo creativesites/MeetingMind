@@ -24,7 +24,7 @@ import androidx.room.migration.Migration
         VocabularyEntity::class,
         AiJobEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class MeetMindDatabase : RoomDatabase() {
@@ -278,6 +278,31 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Records how each meeting was actually processed (canonical-transcript overhaul).
+         *
+         * Every column is added with a default, so existing meetings migrate untouched and stay
+         * fully readable: an older transcript reports `processingVersion = 0`, which is how a
+         * later build can tell that it predates the word-centric pipeline and was therefore
+         * produced by the code path that fragmented sentences — without having to guess from its
+         * contents.
+         *
+         * No table is added for words or speaker turns. Words are already persisted inside
+         * `transcript_segments.wordsJson`, which the overhaul extended to round-trip word ids,
+         * speakers, attribution confidence and source engine; speaker turns are derivable from
+         * those words. A second copy of the same data, with no reader, would be a schema to keep
+         * in sync for nothing.
+         */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE meetings ADD COLUMN processingProfile TEXT NOT NULL DEFAULT 'OFFLINE'")
+                db.execSQL("ALTER TABLE meetings ADD COLUMN transcriptionEngine TEXT")
+                db.execSQL("ALTER TABLE meetings ADD COLUMN transcriptionModelId TEXT")
+                db.execSQL("ALTER TABLE meetings ADD COLUMN processingVersion INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE meetings ADD COLUMN qualityMetricsJson TEXT")
+            }
+        }
+
         fun getInstance(context: Context): MeetMindDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -285,7 +310,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

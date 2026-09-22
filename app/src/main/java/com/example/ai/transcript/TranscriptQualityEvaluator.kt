@@ -179,3 +179,26 @@ object TranscriptQualityEvaluator {
     /** Words legitimately abut and occasionally overlap by a few milliseconds at a window seam. */
     private const val TIMESTAMP_TOLERANCE_MS = 50L
 }
+
+/**
+ * Serializes a report for [com.example.core.database.MeetingEntity.qualityMetricsJson].
+ *
+ * Metrics only — this never contains transcript text, which is why it is safe to store alongside
+ * the meeting and to include in a diagnostic export.
+ */
+fun TranscriptQualityReport.toJson(): String = org.json.JSONObject().apply {
+    put("wordCount", wordCount)
+    put("paragraphCount", paragraphCount)
+    put("utteranceCount", utteranceCount)
+    put("speakerTurnCount", speakerTurnCount)
+    put("speakerCount", speakerCount)
+    put("meanParagraphWords", meanParagraphWords)
+    put("fragmentationRate", fragmentationRate)
+    put("incompleteSentenceRate", incompleteSentenceRate)
+    put("highConfidenceAttributionRate", highConfidenceAttributionRate)
+    put("unattributedWordRate", unattributedWordRate)
+    put("speakerTurnsPerMinute", speakerTurnsPerMinute)
+    put("duplicatePhraseCount", duplicatePhraseCount)
+    put("timestampAnomalyCount", timestampAnomalyCount)
+    put("verdict", verdict.name)
+}.toString()

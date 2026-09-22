@@ -373,4 +373,77 @@ class MeetMindDatabaseMigrationTest {
             assertEquals(0, cursor.getInt(0))
         }
     }
+
+    private fun openV11MeetingsDatabase(): SupportSQLiteDatabase {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(null) // in-memory
+            .callback(object : SupportSQLiteOpenHelper.Callback(11) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        """
+                        CREATE TABLE meetings (
+                            id TEXT NOT NULL PRIMARY KEY,
+                            title TEXT NOT NULL,
+                            createdAt INTEGER NOT NULL,
+                            durationMs INTEGER NOT NULL,
+                            source TEXT NOT NULL,
+                            audioFilePath TEXT,
+                            status TEXT NOT NULL,
+                            participantCount INTEGER NOT NULL,
+                            language TEXT NOT NULL,
+                            summaryText TEXT,
+                            updatedAt INTEGER NOT NULL,
+                            recordingType TEXT NOT NULL DEFAULT 'GENERAL',
+                            customContext TEXT,
+                            speakerCountPreference INTEGER
+                        )
+                        """.trimIndent()
+                    )
+                    // A real meeting from before the canonical-transcript overhaul, seeded to
+                    // prove it survives and stays readable.
+                    db.execSQL(
+                        "INSERT INTO meetings (id, title, createdAt, durationMs, source, audioFilePath, status, participantCount, language, summaryText, updatedAt, recordingType, customContext, speakerCountPreference) " +
+                            "VALUES ('m1', 'Quarterly Planning', 1700000000000, 600000, 'LOCAL_RECORDING', '/data/m1.wav', 'READY', 2, 'en', 'Discussed roadmap', 1700000600000, 'MEETING', NULL, 2)"
+                    )
+                }
+
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            })
+            .build()
+        helper = FrameworkSQLiteOpenHelperFactory().create(configuration)
+        return helper.writableDatabase
+    }
+
+    @Test
+    fun `migration 11 to 12 records how a meeting was processed without disturbing existing meetings`() {
+        val db = openV11MeetingsDatabase()
+
+        MeetMindDatabase.MIGRATION_11_12.migrate(db)
+
+        val columns = columnNames(db, "meetings")
+        assertTrue(columns.contains("processingProfile"))
+        assertTrue(columns.contains("transcriptionEngine"))
+        assertTrue(columns.contains("transcriptionModelId"))
+        assertTrue(columns.contains("processingVersion"))
+        assertTrue(columns.contains("qualityMetricsJson"))
+
+        db.query(
+            "SELECT title, summaryText, recordingType, processingProfile, transcriptionEngine, processingVersion, qualityMetricsJson " +
+                "FROM meetings WHERE id = 'm1'"
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            // The user's existing meeting is untouched and still fully readable.
+            assertEquals("Quarterly Planning", cursor.getString(0))
+            assertEquals("Discussed roadmap", cursor.getString(1))
+            assertEquals("MEETING", cursor.getString(2))
+            // An unknown processing profile must default to the private one — never to a profile
+            // that would imply the recording had been sent somewhere.
+            assertEquals("OFFLINE", cursor.getString(3))
+            assertTrue(cursor.isNull(4))
+            // 0 marks a transcript produced before the word-centric pipeline existed.
+            assertEquals(0, cursor.getInt(5))
+            assertTrue(cursor.isNull(6))
+        }
+    }
 }

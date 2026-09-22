@@ -25,7 +25,21 @@ data class MeetingEntity(
     val customContext: String? = null,
     /** What the user told MeetingMind about expected speakers — see
      * [com.example.core.model.RecordingContext]. Null means unspecified. */
-    val speakerCountPreference: Int? = null
+    val speakerCountPreference: Int? = null,
+    /** Name of the [com.example.core.model.ProcessingProfile] this meeting was processed with.
+     * Defaults to the private profile: an unreadable or missing value must never imply that a
+     * recording was sent to a cloud service. */
+    val processingProfile: String = "OFFLINE",
+    /** Which engine produced the transcript, e.g. "parakeet-tdt-0.6b-v3" or "gemini-3.5-transcribe".
+     * Null for a meeting processed before this was recorded. */
+    val transcriptionEngine: String? = null,
+    val transcriptionModelId: String? = null,
+    /** [com.example.ai.transcript.CANONICAL_PIPELINE_VERSION] at the time this was processed.
+     * 0 means "before the word-centric pipeline existed". */
+    val processingVersion: Int = 0,
+    /** Engineering diagnostics from [com.example.ai.transcript.TranscriptQualityEvaluator], as
+     * JSON. Never shown to the user as a score — see that class's own doc. Null when not measured. */
+    val qualityMetricsJson: String? = null
 )
 
 @Entity(

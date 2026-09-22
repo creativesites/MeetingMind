@@ -28,6 +28,7 @@ import com.example.ai.transcript.CanonicalWord
 import com.example.ai.transcript.DiarizationTurn
 import com.example.ai.transcript.TranscriptMetadata
 import com.example.ai.transcript.TranscriptQualityEvaluator
+import com.example.ai.transcript.toJson
 import com.example.ai.transcript.WordSpeakerAttributor
 import com.example.ai.vad.SileroVadDetector
 import com.example.ai.vad.VoiceActivityDetector
@@ -488,7 +489,16 @@ class MeetingProcessingPipeline(
                 durationMs = totalDurationMs,
                 participantCount = uniqueSpeakers.size.coerceAtLeast(1),
                 summaryText = summary?.summary,
-                updatedAt = System.currentTimeMillis()
+                updatedAt = System.currentTimeMillis(),
+                // How this meeting was actually processed. Recorded per meeting so a later build
+                // can tell which transcripts predate a pipeline change without inferring it from
+                // their contents, and so a support question about one meeting's quality can be
+                // answered from data rather than from guesswork.
+                processingProfile = canonical.metadata.processingMode,
+                transcriptionEngine = canonical.metadata.transcriptionEngine,
+                transcriptionModelId = canonical.metadata.transcriptionModelId,
+                processingVersion = canonical.metadata.processingVersion,
+                qualityMetricsJson = quality.toJson()
             )
             meetingDao.updateMeeting(updatedMeeting)
 
