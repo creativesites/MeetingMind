@@ -7,7 +7,8 @@ This documents the **actual** AI runtimes/models present in the codebase today, 
 The state described in §D/§G of `docs/AUDIT.md` (cloud Gemini calls, `sin(time)` fake VAD, regex "intelligence", `delay()`-based fake model downloads, hardcoded mock sign-in) has been **removed**. This section reflects the architecture as it stands now; the original audit findings below (§1 historical table) are kept as a record of what was found, not what ships today.
 
 **What changed:**
-- `ai/gemini/GeminiApiClient.kt` was deleted entirely — no class in the app calls any cloud AI endpoint. `PrivacyNoCloudPathTest` asserts this by reflection (the class must not exist) and by checking `MeetingProcessingPipeline`'s default constructor parameters.
+- `ai/gemini/GeminiApiClient.kt` was deleted entirely — the unconditional, unconsented cloud path is gone. `PrivacyNoCloudPathTest` asserts this by reflection (the class must not exist) and by checking `MeetingProcessingPipeline`'s default constructor parameters.
+  - **Superseded in part by the canonical-transcript overhaul (§0f).** MeetingMind now has a cloud path again, but a fundamentally different one: it is reachable only from `ProcessingProfile.INTERNET`, which the user must choose; `ProcessingProfile.OFFLINE` is not given a cloud route at all, so an offline run cannot reach it by taking a wrong branch; and no credential ships in the APK, so an unmodified build reports Internet mode unavailable rather than working silently. The original finding this line records — cloud calls happening with no profile, no consent and no way to turn them off — remains fixed.
 - Every AI interface (`VoiceActivityDetector`, `SpeechRecognizer`, `SpeakerDiarizer`, `MeetingIntelligenceEngine`, and the new lower-level `LanguageModel`) now returns `AiResult<T>` — `Success`, `ModelUnavailable`, `DeviceUnsupported`, `InsufficientMemory`, or `Failed` — instead of a plain value. No implementation may return `Success` with fabricated content.
 - The default implementation behind every one of those interfaces is an `Unavailable*` class (`UnavailableVoiceActivityDetector`, `UnavailableSpeechRecognizer`, `UnavailableSpeakerDiarizer`, `UnavailableMeetingIntelligenceEngine`, `UnavailableLanguageModel`) that honestly returns `AiResult.ModelUnavailable` — no sine waves, no placeholder transcript strings, no keyword-rule "intelligence."
 - `MeetingProcessingPipeline` now branches on `AiResult`: if ASR is unavailable, processing stops, the recording is left exactly as it was, and the meeting is marked `MeetingStatus.MODEL_REQUIRED` (a new, distinct status — not `ERROR`, since nothing failed). If diarization or meeting intelligence are unavailable but ASR succeeded, the pipeline degrades gracefully (keeps ASR's own segments, leaves summary/decisions/action items/questions empty) rather than blocking the whole meeting or fabricating those fields.
@@ -664,3 +665,72 @@ Of the three options previously weighed here, **option 1 was chosen**: `GeminiAp
 ## 4. RAM / Performance Tiers
 
 `DeviceCapabilityDetector` already estimates total RAM and recommends a model tier (`recommendedAsrModelId`, `recommendedLlmModelId`) based on it. This is good groundwork that nothing currently consumes for actual model selection at runtime (only for a display recommendation during onboarding). The target: `ModelRepository`/pipeline should actually honor the selected/recommended model, and should refuse to load a model whose `minimumRamMb` exceeds the device's available RAM, degrading to a smaller tier automatically with a visible explanation to the user rather than crashing or silently underperforming.
+
+---
+
+## 0f. Status Update — Canonical Transcript Overhaul (word/time pipeline + Internet mode)
+
+Full audit, rationale and per-phase status: **`docs/TRANSCRIPTION_OVERHAUL.md`**. This section
+records only what changed in the contracts described above, so the two documents do not disagree.
+
+### What was wrong
+
+`SherpaParakeetSpeechRecognizer` decoded **one VAD region per ASR stream and emitted one
+`TranscriptSegment` per region** (described approvingly in §0b above). That made a VAD boundary
+simultaneously an acoustic context boundary and a transcript boundary: a sentence split by a
+700 ms breath was decoded as two unrelated utterances — costing real recognition accuracy, not
+only formatting — and `reconcileTranscriptWithSpeakers` (§0c) then handed every word of a region
+to whichever speaker held the most milliseconds of it, with no record of how close the call was.
+
+Several existing mitigations were compensating downstream for that one upstream fact: Silero's
+`MIN_SILENCE_DURATION_SEC` raised to 0.7 s, and `TranscriptStructureEngine` re-gluing fragments
+after the event. Re-gluing can restore formatting; it cannot restore context the model was denied.
+
+### What replaced it
+
+A word/time layer in `com.example.ai.transcript` — pure Kotlin, no Android and no native
+dependency, so all of it is unit-tested on the JVM:
+
+```
+audio -> SpeechRegion -> AsrWindow -> CanonicalWord -> SpeakerTurn -> Utterance -> paragraph
+```
+
+Contract changes to the interfaces §0b/§0c describe:
+
+- `VoiceActivityDetector` returns `List<SpeechRegion>` (`SpeechInterval` remains as a typealias).
+  It answers *where is speech*, and nothing may read its boundaries as transcript boundaries.
+- `SpeechRecognizer` returns `List<CanonicalWord>` — words with timestamps — not segments. It is
+  handed decode windows built by `AsrContextBuilder` (default 25 s, 3 s overlap, and a
+  configurable 2 s ceiling on silence *inside* a window), and `AsrWindowReconciler` removes the
+  duplicate text overlap produces by anchoring on the longest run two windows agree on.
+- `SpeakerDiarizer` returns `List<DiarizationTurn>` — raw acoustic turns. `reconcileTranscriptWithSpeakers`
+  is gone; `WordSpeakerAttributor` maps words onto turns with a per-word `AttributionConfidence`
+  of HIGH/MEDIUM/LOW/NONE. `SpeakerEntity.confidence`, previously hardcoded null, is now the
+  measured share of that speaker's words attributed with HIGH.
+- `CanonicalTranscript` is the source of truth and **projects to** `List<TranscriptSegment>`, so
+  persistence, UI, search, embeddings, export and editing keep working against the type they
+  already know. `TranscriptStructureEngine` is retained unchanged and now groups utterances rather
+  than VAD fragments.
+
+### Internet mode
+
+`ProcessingProfile` (OFFLINE / INTERNET / LIVE / LIVE_ADVANCED) and `AiModelRouter` are the only
+places a model identifier or a routing decision lives. Internet mode runs Gemini's verbatim pass
+for fidelity and its smart pass for readability, fused by `TranscriptFusionEngine` via
+deterministic LCS alignment — the smart pass contributes surface forms only, and no model is ever
+asked to produce a timestamp or a speaker identity. Long recordings are chunked with overlap
+(`GeminiChunkPlanner`) and chunk-local speaker labels resolved into recording-wide identities by
+shared speaking time in the overlap (`GlobalSpeakerResolver`), which creates a *new* identity
+rather than a guessed link when the evidence is absent or ambiguous.
+
+Degradation is tested: smart pass fails or aligns too poorly → verbatim kept; cloud fails entirely
+→ on-device processing, and the meeting records itself as `OFFLINE` because that is what happened
+to it. The fallback runs in that direction only.
+
+### Known Limitations (same standard as §0b)
+
+**No device, no audio corpus and no Gemini credential were available in this environment.** Every
+claim above is from unit tests over synthetic word streams and a scripted transport, plus a
+successful `assembleDebug`. Whether transcripts are actually better — fewer fragments, fewer
+speaker flips, lower WER — has **not** been measured and must not be claimed until real recordings
+have been run through both pipelines and compared. See `docs/TRANSCRIPTION_OVERHAUL.md` §6.
