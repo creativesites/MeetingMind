@@ -76,9 +76,13 @@ data class TranscriptQualityReport(
 
 object TranscriptQualityEvaluator {
 
-    /** Length of the repeated run treated as a duplicate phrase. Three words is long enough that a
+    /** Shortest repeated run treated as a duplicate phrase. Three words is long enough that a
      * genuine repetition ("no, no, no") is rare and a reconciliation failure is not. */
-    private const val DUPLICATE_NGRAM = 3
+    private const val MIN_DUPLICATE_RUN = 3
+
+    /** Longest repeated run looked for. A failed overlap reconciliation repeats a phrase, not a
+     * paragraph, and scanning further costs time for nothing. */
+    private const val MAX_DUPLICATE_RUN = 12
 
     fun evaluate(transcript: CanonicalTranscript): TranscriptQualityReport {
         val words = transcript.words
@@ -126,35 +130,48 @@ object TranscriptQualityEvaluator {
     private fun rate(count: Int, total: Int): Double = if (total == 0) 0.0 else count.toDouble() / total
 
     /**
-     * Counts adjacent repeated [DUPLICATE_NGRAM]-word runs. Only *adjacent* repeats are counted:
-     * a phrase legitimately recurring later in a meeting is not a defect, whereas the same three
-     * words appearing twice back to back is very nearly always an overlap that was not reconciled.
+     * Counts back-to-back repeated runs of [MIN_DUPLICATE_RUN]..[MAX_DUPLICATE_RUN] words.
+     *
+     * Only *adjacent* repeats count: a phrase legitimately recurring later in a meeting is not a
+     * defect, whereas the same run appearing twice in immediate succession is very nearly always an
+     * overlap that was not reconciled. Runs of several lengths are checked because the duplicated
+     * span is whatever the two decode windows happened to share — "we still need to we still need
+     * to" repeats with a period of four, and a fixed three-word probe would miss it entirely.
      */
     internal fun countDuplicatePhrases(words: List<CanonicalWord>): Int {
-        if (words.size < DUPLICATE_NGRAM * 2) return 0
+        if (words.size < MIN_DUPLICATE_RUN * 2) return 0
         val keys = words.map { AsrWindowReconciler.normalize(it.text) }
         var count = 0
         var i = 0
-        while (i + DUPLICATE_NGRAM * 2 <= keys.size) {
-            val a = keys.subList(i, i + DUPLICATE_NGRAM)
-            val b = keys.subList(i + DUPLICATE_NGRAM, i + DUPLICATE_NGRAM * 2)
-            if (a == b && a.none { it.isEmpty() }) {
-                count++
-                i += DUPLICATE_NGRAM * 2
-            } else {
-                i++
+        outer@ while (i + MIN_DUPLICATE_RUN * 2 <= keys.size) {
+            // Longest first: a six-word repeat should be reported once, not as two overlapping
+            // three-word ones.
+            for (run in minOf(MAX_DUPLICATE_RUN, (keys.size - i) / 2) downTo MIN_DUPLICATE_RUN) {
+                val a = keys.subList(i, i + run)
+                if (a.any { it.isEmpty() }) continue
+                if (a == keys.subList(i + run, i + run * 2)) {
+                    count++
+                    i += run * 2
+                    continue@outer
+                }
             }
+            i++
         }
         return count
     }
 
+    /** Words whose timing is impossible: negative length, or starting meaningfully before the
+     * latest point already reached. */
     internal fun countTimestampAnomalies(words: List<CanonicalWord>): Int {
         var anomalies = 0
-        var previousEnd = Long.MIN_VALUE
+        // Nullable rather than a sentinel: `Long.MIN_VALUE - tolerance` silently overflows into a
+        // large positive number, which made every first word look like an anomaly.
+        var previousEnd: Long? = null
         for (word in words) {
             if (word.endMs < word.startMs) anomalies++
-            if (word.startMs < previousEnd - TIMESTAMP_TOLERANCE_MS) anomalies++
-            previousEnd = maxOf(previousEnd, word.endMs)
+            val reached = previousEnd
+            if (reached != null && word.startMs < reached - TIMESTAMP_TOLERANCE_MS) anomalies++
+            previousEnd = maxOf(reached ?: word.endMs, word.endMs)
         }
         return anomalies
     }
