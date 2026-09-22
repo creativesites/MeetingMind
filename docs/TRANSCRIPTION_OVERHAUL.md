@@ -180,7 +180,7 @@ deterministic token alignment — the LLM is never asked to produce a timestamp 
 | 12 | Ask Meeting / RAG grounding (`TranscriptRetriever`) | done |
 | 13-14 | Gemini Live, Live extended thinking | **partial** — state machine and async tool lifecycle done and tested; no transport ships, see `## 6` |
 | 15 | Benchmark suite | **partial** — metrics done and tested (`TranscriptBenchmark`); no corpus, see `## 6` |
-| 16 | Device regression against real recordings | not started — see `## 6` |
+| 16 | Regression against existing meetings and features | done for everything testable without a device — see `## 6` for what is not |
 
 ### 4.1 What runs, per profile
 
@@ -202,9 +202,26 @@ error, timeout or unconfigured build falls through to on-device processing and t
 a transcript; the meeting is then recorded as `OFFLINE`, because that is what actually happened to
 it. `ProcessingProfile.OFFLINE` has no cloud route at all and cannot fall the other way.
 
-### 4.2 Test coverage
+### 4.2 Regression (Phase 16)
 
-537 unit tests, all passing (`./gradlew testDebugUnitTest`). The structural layer is pure Kotlin
+Everything the change could break that can be checked without a device is checked:
+
+- **Existing meetings stay readable.** Migration 11→12 adds defaulted columns only; a seeded
+  pre-overhaul meeting survives untouched and reports `processingVersion = 0`. A word persisted
+  before word ids existed deserializes with honest "not known" defaults rather than being treated
+  as corrupt.
+- **Every existing feature still passes.** The 395 tests that existed before this work still pass,
+  covering transcript editing (split/merge/speaker reassignment), search, export, playback sync,
+  cleanup, AI tools and the processing worker. Two needed updating, both because they asserted on
+  a segment id string that is now derived from the canonical transcript's utterances — no caller
+  may assume a particular id.
+- **Privacy did not regress.** `PrivacyNoCloudPathTest` now also pins that the pipeline's default
+  transport is unconfigured, that `OFFLINE` is given no route requiring the network, and that every
+  path resolving a processing profile defaults to `OFFLINE`.
+
+### 4.3 Test coverage
+
+544 unit tests, all passing (`./gradlew testDebugUnitTest`). The structural layer is pure Kotlin
 with no Android or native dependency, so all of it is covered on the JVM. Two real defects were
 found by these tests and fixed: a `Long.MIN_VALUE` sentinel overflowing in the timestamp-anomaly
 check, and a duplicate-phrase detector that only probed a fixed three-word period and therefore

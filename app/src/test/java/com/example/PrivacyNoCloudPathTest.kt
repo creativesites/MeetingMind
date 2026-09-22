@@ -21,6 +21,12 @@ import org.robolectric.annotation.Config
 /**
  * Guards against the core local processing pipeline silently regaining a cloud AI dependency.
  *
+ * Since the canonical-transcript overhaul MeetingMind does have a cloud path again, but a
+ * fundamentally different one: reachable only from `ProcessingProfile.INTERNET`, which the user
+ * chooses; never reachable from `ProcessingProfile.OFFLINE`, which is not given a network route at
+ * all; and backed by no credential in the APK. These tests pin all three, plus the original
+ * property they were written for — that the pipeline's own defaults are on-device implementations.
+ *
  * 1. No class named `com.example.ai.gemini.GeminiApiClient` exists in the app at all — it was
  *    removed entirely rather than merely disconnected (see docs/AUDIT.md / AI_ARCHITECTURE.md).
  * 2. [MeetingProcessingPipeline], constructed the exact way every real call site in the app
@@ -90,8 +96,10 @@ class PrivacyNoCloudPathTest {
     }
 
     @Test
-    fun `no class in the app references a Gemini cloud endpoint`() {
-        // Belt-and-suspenders: nothing in the compiled classpath should be named after Gemini.
+    fun `the removed unconsented Gemini client is still absent`() {
+        // The original P0 finding: a cloud client that ran unconditionally, with no profile, no
+        // consent and no way to turn it off. Its classes must stay gone. This says nothing about
+        // ai/cloud, which is the consented replacement and is covered by the tests below.
         val suspiciousClassNames = listOf(
             "com.example.ai.gemini.GeminiApiClient",
             "com.example.ai.gemini.GeminiTranscriptionResult"
@@ -105,5 +113,46 @@ class PrivacyNoCloudPathTest {
             }
             assertFalse("$className must not exist in the app", exists)
         }
+    }
+
+    @Test
+    fun `the pipeline's default cloud transport is unconfigured, so no credential ships in the app`() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val pipeline = MeetingProcessingPipeline(context, database)
+
+        val transport = MeetingProcessingPipeline::class.java
+            .getDeclaredField("geminiTransport").apply { isAccessible = true }
+            .get(pipeline) as com.example.ai.cloud.GeminiTransport
+
+        assertEquals(com.example.ai.cloud.UnconfiguredGeminiTransport::class.java, transport.javaClass)
+        assertFalse("an unmodified build must not be able to make a cloud call", transport.isConfigured())
+    }
+
+    @Test
+    fun `the offline profile is given no route that requires the network`() {
+        // Structural, not a runtime flag: an offline run cannot reach a cloud engine by taking a
+        // wrong branch, because it is never handed a route it could use.
+        val offlineRoutes = com.example.ai.routing.DefaultAiModelRouter
+            .routesFor(com.example.core.model.ProcessingProfile.OFFLINE)
+
+        assertFalse(
+            offlineRoutes.any { com.example.ai.routing.DefaultAiModelRouter.route(it).requiresNetwork }
+        )
+    }
+
+    @Test
+    fun `the offline profile is the default everywhere a processing profile is resolved`() {
+        assertEquals(
+            com.example.core.model.ProcessingProfile.OFFLINE,
+            com.example.core.datastore.AppPreferencesState().processingProfile
+        )
+        assertEquals(
+            com.example.core.model.ProcessingProfile.OFFLINE,
+            com.example.core.model.ProcessingProfile.fromNameOrDefault(null)
+        )
+        assertEquals(
+            com.example.core.model.ProcessingProfile.OFFLINE,
+            com.example.core.model.ProcessingProfile.fromNameOrDefault("CORRUPTED")
+        )
     }
 }
