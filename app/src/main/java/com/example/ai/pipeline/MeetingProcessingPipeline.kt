@@ -120,7 +120,11 @@ class MeetingProcessingPipeline(
      */
     private val geminiTransport: GeminiTransport = GeminiHttpTransport(GeminiCredentialStore(context)),
     private val cloudTranscriptionEngine: GeminiTranscriptionEngine = GeminiTranscriptionEngine(geminiTransport),
-    private val cloudIntelligenceEngine: MeetingIntelligenceEngine = GeminiIntelligenceEngine(geminiTransport)
+    private val cloudIntelligenceEngine: MeetingIntelligenceEngine = GeminiIntelligenceEngine(geminiTransport),
+    /** The single decision point for which language model does secondary AI work (cleanup,
+     * speaker reconciliation). See [com.example.ai.routing.LanguageModelFactory]. */
+    private val languageModelFactory: com.example.ai.routing.LanguageModelFactory =
+        com.example.ai.routing.LanguageModelFactory(context, modelStorage, geminiTransport)
 ) {
 
     suspend fun processMeeting(
@@ -147,13 +151,7 @@ class MeetingProcessingPipeline(
         processingProfile: ProcessingProfile = ProcessingProfile.OFFLINE,
         onProgress: (step: String, percent: Int, stage: ProcessingStage) -> Unit
     ): MeetingEntity = withContext(Dispatchers.Default) {
-        val effectiveIntelligenceEngine = if (processingProfile == ProcessingProfile.INTERNET) {
-            // Reasoning follows transcription: an Internet-mode meeting is analysed by the cloud
-            // model. It is given the transcript, never the audio — the transcription engine
-            // already decided what was said, and a reasoning model re-hearing the recording would
-            // give the app two disagreeing accounts of the same meeting.
-            cloudIntelligenceEngine
-        } else if (llmModelId != null) {
+        val localIntelligenceEngine = if (llmModelId != null) {
             RealMeetingIntelligenceEngine(
                 languageModel = MediaPipeLanguageModel(context, modelStorage, modelId = llmModelId),
                 contextLengthTokens = ModelCatalog.entries.find { it.id == llmModelId }?.contextLengthTokens
@@ -161,6 +159,21 @@ class MeetingProcessingPipeline(
             )
         } else {
             intelligenceEngine
+        }
+        val effectiveIntelligenceEngine = if (processingProfile == ProcessingProfile.INTERNET) {
+            // Reasoning follows transcription: an Internet-mode meeting is analysed by the cloud
+            // model. It is given the transcript, never the audio — the transcription engine
+            // already decided what was said, and a reasoning model re-hearing the recording would
+            // give the app two disagreeing accounts of the same meeting.
+            //
+            // With the local engine behind it: a cloud failure (no key yet, quota, no signal)
+            // yields a local summary rather than none at all.
+            com.example.ai.llm.FallbackMeetingIntelligenceEngine(
+                primary = cloudIntelligenceEngine,
+                fallback = localIntelligenceEngine
+            )
+        } else {
+            localIntelligenceEngine
         }
         val meetingDao = database.meetingDao()
         val transcriptDao = database.transcriptDao()
@@ -414,7 +427,7 @@ class MeetingProcessingPipeline(
                 val footprints = com.example.ai.diarization.computeSpeakerTranscriptFootprints(projected)
                 if (com.example.ai.diarization.shouldAttemptAiReconciliation(footprints, diarizationStrategy)) {
                     updateJob("Refining speaker labels...", 57, ProcessingStage.DIARIZING)
-                    val merges = resolveSpeakerMerges(projected)
+                    val merges = resolveSpeakerMerges(projected, processingProfile)
                     if (merges.isNotEmpty()) {
                         canonical = CanonicalTranscriptAssembler.assemble(
                             meetingId = meetingId,
@@ -458,7 +471,8 @@ class MeetingProcessingPipeline(
                 recordingType = recordingType,
                 cleanupMode = cleanupMode,
                 singleSpeakerMode = expectedSpeakerCount == 1,
-                onStatus = { step -> updateJob(step, if (step.startsWith("Refining")) 60 else 58, ProcessingStage.CLEANING_TRANSCRIPT) }
+                onStatus = { step -> updateJob(step, if (step.startsWith("Refining")) 60 else 58, ProcessingStage.CLEANING_TRANSCRIPT) },
+                processingProfile = processingProfile
             )
 
             // STEP 4: Meeting Intelligence (best-effort — unavailable leaves summary/insights empty)
@@ -656,7 +670,10 @@ class MeetingProcessingPipeline(
          * that really ran. Callers that show an honest footprint line (recording page redesign
          * §2.7/§3.4 item 27 — "record model name, on-device flag, elapsed time... never let the
          * model self-report what it changed") need this instead of guessing from context. */
-        onEngineUsed: (String) -> Unit = {}
+        onEngineUsed: (String) -> Unit = {},
+        /** Which profile the refinement pass may use. Defaults to the private one: a caller that
+         * wants cloud refinement must ask for it. */
+        processingProfile: ProcessingProfile = ProcessingProfile.OFFLINE
     ): List<TranscriptSegment> = withContext(Dispatchers.Default) {
         val profile = recordingType.transcriptCleanupProfile(cleanupMode)
 
@@ -669,19 +686,25 @@ class MeetingProcessingPipeline(
         // raw text. No model installed, no candidate accepted, or a user-edited segment (never
         // even offered) all fall back to exactly what the rule-based pass already produced — never
         // a fabricated status.
-        val aiCleanupModelId = LlmModelResolver.resolveForModeOrNull(modelStorage, ModelCapability.TRANSCRIPT_CLEANUP, profile.preferredModelTier)
-        if (aiCleanupModelId == null) {
-            Log.d(PERF_TAG, "AI cleanup: skipped — no installed model has TRANSCRIPT_CLEANUP capability")
+        // Through the factory, so Internet mode reaches this stage too: Gemini when a key is
+        // entered, otherwise the best installed on-device model, otherwise rule-based only.
+        val resolvedCleanupModel = languageModelFactory.resolve(
+            profile = processingProfile,
+            capability = ModelCapability.TRANSCRIPT_CLEANUP,
+            preferredTier = profile.preferredModelTier
+        )
+        if (resolvedCleanupModel == null) {
+            Log.d(PERF_TAG, "AI cleanup: skipped — no cloud model configured and no installed model has TRANSCRIPT_CLEANUP capability")
             onEngineUsed("rule-based")
             return@withContext ruleCleanedSegments
         }
+        val aiCleanupModelId = resolvedCleanupModel.modelId
 
-        onStatus("Refining transcript with AI...")
+        onStatus(if (resolvedCleanupModel.isCloud) "Refining transcript with Google's AI..." else "Refining transcript with AI...")
         val aiStart = System.currentTimeMillis()
         val aiCleanupEngine = RealTranscriptAiCleanupEngine(
-            languageModel = MediaPipeLanguageModel(context, modelStorage, modelId = aiCleanupModelId),
-            contextLengthTokens = ModelCatalog.entries.find { it.id == aiCleanupModelId }?.contextLengthTokens
-                ?: DEFAULT_LLM_CONTEXT_TOKENS
+            languageModel = resolvedCleanupModel.languageModel,
+            contextLengthTokens = resolvedCleanupModel.contextLengthTokens
         )
         val aiResult = aiCleanupEngine.clean(ruleCleanedSegments, profile, singleSpeakerMode)
         // Free the cleanup model before the (possibly different) intelligence model loads — at
@@ -821,17 +844,20 @@ class MeetingProcessingPipeline(
         emptyList()
     }
 
-    private suspend fun resolveSpeakerMerges(segments: List<TranscriptSegment>): Map<String, String> {
-        val reconcileModelId = LlmModelResolver.resolveForModeOrNull(
-            modelStorage, ModelCapability.DIARIZATION_RECONCILIATION, com.example.core.model.ModelTier.LIGHTWEIGHT
+    private suspend fun resolveSpeakerMerges(
+        segments: List<TranscriptSegment>,
+        processingProfile: ProcessingProfile
+    ): Map<String, String> {
+        val resolved = languageModelFactory.resolve(
+            profile = processingProfile,
+            capability = ModelCapability.DIARIZATION_RECONCILIATION,
+            preferredTier = com.example.core.model.ModelTier.LIGHTWEIGHT
         )
-        if (reconcileModelId == null) {
-            Log.d(PERF_TAG, "Diarization reconciliation: skipped — no installed model has DIARIZATION_RECONCILIATION capability")
+        if (resolved == null) {
+            Log.d(PERF_TAG, "Diarization reconciliation: skipped — no cloud model configured and no installed model has DIARIZATION_RECONCILIATION capability")
             return emptyMap()
         }
-        val engine = com.example.ai.diarization.RealDiarizationReconciliationEngine(
-            MediaPipeLanguageModel(context, modelStorage, modelId = reconcileModelId)
-        )
+        val engine = com.example.ai.diarization.RealDiarizationReconciliationEngine(resolved.languageModel)
         val result = engine.reconcile(segments)
         LlmEngineManager.release()
         if (result !is AiResult.Success) {

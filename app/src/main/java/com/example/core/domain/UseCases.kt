@@ -115,7 +115,9 @@ class ReprocessTranscriptCleanupUseCase(
     suspend operator fun invoke(
         meetingId: String,
         cleanupMode: com.example.core.model.TranscriptCleanupMode,
-        onStatus: suspend (String) -> Unit = {}
+        onStatus: suspend (String) -> Unit = {},
+        /** The user's current profile. Defaults to the private one for callers that don't pass it. */
+        processingProfile: com.example.core.model.ProcessingProfile = com.example.core.model.ProcessingProfile.OFFLINE
     ) {
         val meeting = meetingRepository.getMeetingByIdDirect(meetingId) ?: return
         val transcript = transcriptRepository.getTranscriptDirect(meetingId)
@@ -126,7 +128,8 @@ class ReprocessTranscriptCleanupUseCase(
             recordingType = meeting.recordingType,
             cleanupMode = cleanupMode,
             singleSpeakerMode = meeting.speakerCountPreference == 1,
-            onStatus = onStatus
+            onStatus = onStatus,
+            processingProfile = processingProfile
         )
         cleaned.forEach { seg -> transcriptRepository.updateCleanedText(seg.id, seg.cleanedText) }
     }

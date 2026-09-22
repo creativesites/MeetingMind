@@ -126,8 +126,10 @@ class GeminiIntelligenceEngine(
         )
     }
 
-    private fun modelIdOrNull(): String? =
-        if (!transport.isConfigured()) null else router.route(AiRoute.GEMINI_INTELLIGENCE).modelId
+    /** Refreshes rather than trusting [GeminiTransport.isConfigured]'s cached answer — a key the
+     * user entered after this engine was created must be honoured, not silently missed. */
+    private suspend fun modelIdOrNull(): String? =
+        if (!transport.refreshConfigured()) null else router.route(AiRoute.GEMINI_INTELLIGENCE).modelId
 
     private fun <T> unavailable(): AiResult<T> = AiResult.ModelUnavailable(
         modelId = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,

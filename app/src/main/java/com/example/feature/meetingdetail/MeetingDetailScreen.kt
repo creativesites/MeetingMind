@@ -158,19 +158,33 @@ class MeetingDetailViewModel(
      * AI always uses whichever LLM the user currently has selected, not whatever was selected the
      * moment this screen first opened. */
     private suspend fun buildAskUseCase(): AskMeetingUseCase {
+        val prefsNow = userPrefs.preferencesFlow.first()
         val llmModelId = com.example.ai.modelmanagement.LlmModelResolver.resolve(
-            selectedModelId = userPrefs.preferencesFlow.first().selectedLlmModelId,
+            selectedModelId = prefsNow.selectedLlmModelId,
             modelStorage = modelStorage
         )
         val contextTokens = ModelCatalog.entries.find { it.id == llmModelId }?.contextLengthTokens ?: 4096
-        return AskMeetingUseCase(
-            transcriptRepository,
-            RealMeetingIntelligenceEngine(
-                languageModel = MediaPipeLanguageModel(getApplication(), modelStorage, modelId = llmModelId),
-                contextLengthTokens = contextTokens
-            ),
-            vocabularyRepository = vocabularyRepository
+        val localEngine = RealMeetingIntelligenceEngine(
+            languageModel = MediaPipeLanguageModel(getApplication(), modelStorage, modelId = llmModelId),
+            contextLengthTokens = contextTokens
         )
+        // Ask follows the processing profile like every other AI stage: Gemini in Internet mode,
+        // with the local model behind it so a cloud failure still gets an answer. Offline never
+        // reaches the cloud engine at all.
+        val engine: com.example.ai.llm.MeetingIntelligenceEngine =
+            if (prefsNow.processingProfile == com.example.core.model.ProcessingProfile.INTERNET) {
+                com.example.ai.llm.FallbackMeetingIntelligenceEngine(
+                    primary = com.example.ai.cloud.GeminiIntelligenceEngine(
+                        com.example.ai.cloud.GeminiHttpTransport(
+                            com.example.ai.cloud.GeminiCredentialStore(getApplication())
+                        )
+                    ),
+                    fallback = localEngine
+                )
+            } else {
+                localEngine
+            }
+        return AskMeetingUseCase(transcriptRepository, engine, vocabularyRepository = vocabularyRepository)
     }
     /** Display-only filler-word cleanup preference. The stored transcript is always verbatim; this
      * only decides how it is rendered, so flipping it takes effect immediately with no reprocessing. */
@@ -197,8 +211,9 @@ class MeetingDetailViewModel(
         viewModelScope.launch {
             _isReprocessingCleanup.value = true
             try {
-                val mode = userPrefs.preferencesFlow.first().transcriptCleanupMode
-                reprocessCleanupUseCase(meetingId, mode)
+                val prefsNow = userPrefs.preferencesFlow.first()
+                val mode = prefsNow.transcriptCleanupMode
+                reprocessCleanupUseCase(meetingId, mode, processingProfile = prefsNow.processingProfile)
                 onDone("Transcript re-cleaned (${mode.name.lowercase()} mode)")
             } catch (e: Exception) {
                 onDone("Re-clean failed: ${e.message ?: "unknown error"}")
@@ -234,7 +249,8 @@ class MeetingDetailViewModel(
                 val meetingNow = meeting.value ?: return@launch
                 val currentSegments = transcript.value.segments
                 if (currentSegments.isEmpty()) return@launch
-                val mode = userPrefs.preferencesFlow.first().transcriptCleanupMode
+                val prefsNow = userPrefs.preferencesFlow.first()
+                val mode = prefsNow.transcriptCleanupMode
                 var engineLabel = "rule-based"
                 val start = System.currentTimeMillis()
                 val proposed = pipeline.cleanTranscript(
@@ -242,7 +258,8 @@ class MeetingDetailViewModel(
                     recordingType = meetingNow.recordingType,
                     cleanupMode = mode,
                     singleSpeakerMode = meetingNow.speakerCountPreference == 1,
-                    onEngineUsed = { engineLabel = it }
+                    onEngineUsed = { engineLabel = it },
+                    processingProfile = prefsNow.processingProfile
                 )
                 val elapsed = System.currentTimeMillis() - start
                 // Only segments the tool actually proposes a real change for — a review screen

@@ -48,8 +48,8 @@ class GeminiHttpTransport(
 
     override fun isConfigured(): Boolean = lastKnownConfigured
 
-    /** Refreshes [isConfigured] from storage. Called when a screen that offers Internet mode opens. */
-    suspend fun refreshConfigured(): Boolean {
+    /** Refreshes [isConfigured] from storage. */
+    override suspend fun refreshConfigured(): Boolean {
         lastKnownConfigured = credentials.getApiKey() != null
         return lastKnownConfigured
     }

@@ -24,7 +24,7 @@ class GeminiLanguageModel(
 ) : LanguageModel {
 
     override suspend fun generate(prompt: String, maxOutputTokens: Int): AiResult<String> {
-        if (!transport.isConfigured()) {
+        if (!transport.refreshConfigured()) {
             return AiResult.ModelUnavailable(
                 modelId = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
                 message = "No Gemini API key is set. Add one in Settings to use Internet mode."

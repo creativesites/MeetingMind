@@ -109,7 +109,9 @@ class AiToolWorker(
         }
 
         setProgress(workDataOf(KEY_PROGRESS_PERCENT to 50))
-        useCase(job.meetingId, mode)
+        val profile = com.example.core.datastore.UserPreferencesManager(applicationContext)
+            .preferencesFlow.first().processingProfile
+        useCase(job.meetingId, mode, processingProfile = profile)
 
         val resultJson = JSONObject().put("cleanupMode", mode.name).toString()
         database.aiJobDao().insertOrUpdate(
@@ -203,31 +205,20 @@ class AiToolWorker(
     private suspend fun buildToolEngine(
         preferences: com.example.core.datastore.AppPreferencesState
     ): TranscriptToolEngine? {
-        if (preferences.processingProfile == com.example.core.model.ProcessingProfile.INTERNET) {
-            val transport = com.example.ai.cloud.GeminiHttpTransport(
+        val factory = com.example.ai.routing.LanguageModelFactory(
+            context = applicationContext,
+            modelStorage = com.example.ai.modelmanagement.LocalModelStorage(applicationContext),
+            geminiTransport = com.example.ai.cloud.GeminiHttpTransport(
                 com.example.ai.cloud.GeminiCredentialStore(applicationContext)
             )
-            if (transport.refreshConfigured()) {
-                return TranscriptToolEngine(
-                    languageModel = com.example.ai.cloud.GeminiLanguageModel(transport),
-                    engineName = com.example.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL
-                )
-            }
-        }
-
-        val modelStorage = com.example.ai.modelmanagement.LocalModelStorage(applicationContext)
-        val modelId = com.example.ai.modelmanagement.LlmModelResolver.resolveForModeOrNull(
-            modelStorage,
-            com.example.core.model.ModelCapability.TRANSCRIPT_CLEANUP,
-            preferences.transcriptCleanupMode.let {
-                com.example.core.model.RecordingType.GENERAL.transcriptCleanupProfile(it).preferredModelTier
-            }
-        ) ?: return null
-
-        return TranscriptToolEngine(
-            languageModel = com.example.ai.llm.MediaPipeLanguageModel(applicationContext, modelStorage, modelId = modelId),
-            engineName = modelId
         )
+        val resolved = factory.resolve(
+            profile = preferences.processingProfile,
+            capability = com.example.core.model.ModelCapability.TRANSCRIPT_CLEANUP,
+            preferredTier = com.example.core.model.RecordingType.GENERAL
+                .transcriptCleanupProfile(preferences.transcriptCleanupMode).preferredModelTier
+        ) ?: return null
+        return TranscriptToolEngine(languageModel = resolved.languageModel, engineName = resolved.modelId)
     }
 
     /** Reads back findings the processing pipeline already extracted and persisted. */

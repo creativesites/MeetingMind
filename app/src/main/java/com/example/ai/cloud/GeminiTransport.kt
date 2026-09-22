@@ -47,6 +47,15 @@ interface GeminiTransport {
     /** Whether this transport is configured to make calls at all. Checked before a profile offers
      * Internet mode, so the user is told up front rather than after a failed upload. */
     fun isConfigured(): Boolean
+
+    /**
+     * Re-reads whatever [isConfigured] depends on and returns the fresh answer.
+     *
+     * [isConfigured] is synchronous so the UI can ask it cheaply, which means an implementation
+     * backed by storage may answer from a cached value. Anything about to decide *which model
+     * runs* calls this instead, so a key entered a moment ago is honoured rather than missed.
+     */
+    suspend fun refreshConfigured(): Boolean = isConfigured()
 }
 
 /**

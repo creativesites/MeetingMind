@@ -62,7 +62,7 @@ class GeminiTranscriptionEngine(
         vocabularyHints: List<String> = emptyList(),
         onProgress: (progress: Float, statusText: String) -> Unit = { _, _ -> }
     ): AiResult<CloudTranscriptionResult> {
-        if (!transport.isConfigured()) {
+        if (!transport.refreshConfigured()) {
             return AiResult.ModelUnavailable(
                 modelId = router.route(AiRoute.GEMINI_TRANSCRIPTION_VERBATIM).modelId ?: "gemini",
                 message = "Internet mode isn't set up on this build. Offline processing is unaffected."
