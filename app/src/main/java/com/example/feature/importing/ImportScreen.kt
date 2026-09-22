@@ -74,6 +74,21 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
+import com.example.ui.theme.Accent
+import com.example.ui.theme.Ink
+import com.example.ui.theme.InkFaint
+import com.example.ui.theme.InkMuted
+import com.example.ui.theme.InkSecondary
+import com.example.ui.theme.Line
+import com.example.ui.theme.LineFaint
+import com.example.ui.theme.LineSoft
 
 data class ImportMediaState(
     val uri: Uri? = null,
@@ -172,6 +187,8 @@ fun ImportScreen(
 ) {
     val state by viewModel.importState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    var showAllTypes by remember { mutableStateOf(false) }
+    var showSpeakerPicker by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -179,218 +196,312 @@ fun ImportScreen(
         uri?.let { viewModel.handleSelectedUri(it) }
     }
 
-    val formats = listOf("MP3", "WAV", "M4A", "AAC", "MP4 Video", "Screen Recs")
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Import Media Files",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier.testTag("import_back_btn")
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        }
-    ) { innerPadding ->
+    Scaffold(containerColor = Color.White) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(20.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .verticalScroll(rememberScrollState())
         ) {
-            // 1. Upload dropzone — one flat, borderless, tappable surface.
-            SectionCard(
+            // #5c header: a back chevron and a plain title. No app bar, no elevation.
+            Row(
                 modifier = Modifier
-                    .clickable { filePickerLauncher.launch("*/*") }
-                    .testTag("import_picker_card")
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(start = 22.dp, end = 22.dp, top = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                Text(
+                    text = "‹",
+                    fontSize = 20.sp,
+                    color = InkSecondary,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clickable(onClick = onNavigateBack)
+                        .testTag("import_back_btn")
+                        .wrapContentSize(Alignment.Center)
+                )
+                Text("Import audio", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            }
+
+            val fileName = state.fileName
+            if (fileName == null) {
+                // Nothing picked yet. The frame shows the screen with a file already in hand, so
+                // this is the one state it does not depict: keep it to the same visual language —
+                // one bordered card, the same bar-meter glyph, one action — rather than inventing
+                // a differently-styled dropzone.
                 Column(
                     modifier = Modifier
-                        .padding(28.dp)
-                        .fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp)
+                        .padding(top = 22.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .border(1.dp, LineSoft, RoundedCornerShape(20.dp))
+                        .clickable { filePickerLauncher.launch("*/*") }
+                        .testTag("import_picker_card")
+                        .padding(horizontal = 18.dp, vertical = 17.dp)
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                        modifier = Modifier.size(68.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.CloudUpload,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(36.dp)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        ImportBarGlyph()
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Choose a file", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                            Text(
+                                "Audio or video, from Files or any app",
+                                fontSize = 12.5.sp,
+                                color = InkMuted,
+                                modifier = Modifier.padding(top = 3.dp)
                             )
                         }
-                    }
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "Select Audio or Video Recording",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Extracts audio tracks on your local device for offline AI processing.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    Text(
-                        text = formats.joinToString("  ·  "),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Button(
-                        onClick = { filePickerLauncher.launch("*/*") },
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.testTag("import_browse_btn")
-                    ) {
-                        Icon(Icons.Default.FileUpload, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Browse Device Files", fontWeight = FontWeight.Bold)
+                        Text("Browse", fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = InkSecondary)
                     }
                 }
-            }
-
-            // 2. Extraction progress
-            if (state.isExtracting) {
-                SectionCard {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.primary)
-                        Text("Extracting audio stream into 16kHz PCM offline...", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-
-            // 4. Selected media & transcribe CTA
-            state.fileName?.let { name ->
-                SectionCard {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                modifier = Modifier.size(44.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = if (state.isVideo) Icons.Default.VideoFile else Icons.Default.AudioFile,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                            }
-                            Column {
-                                Text(
-                                    text = name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1
-                                )
-                                Text(
-                                    text = "${Formatters.formatDurationSummary(state.durationMs)} • ${Formatters.formatBytes(state.sizeBytes)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+            } else {
+                // The picked file, as #5c shows it: glyph, name, the real facts about it, Change.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp)
+                        .padding(top = 22.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .border(1.dp, LineSoft, RoundedCornerShape(20.dp))
+                        .padding(horizontal = 18.dp, vertical = 17.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        ImportBarGlyph()
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                fileName,
+                                fontSize = 15.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = listOfNotNull(
+                                    Formatters.formatDurationSummary(state.durationMs).takeIf { state.durationMs > 0 },
+                                    Formatters.formatBytes(state.sizeBytes).takeIf { state.sizeBytes > 0 },
+                                    if (state.isVideo) "video" else null
+                                ).joinToString(" · "),
+                                fontSize = 12.5.sp,
+                                color = InkMuted,
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
                         }
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                        // What is this? / Who's speaking? — recording type and expected speaker
-                        // count are first-class inputs to the whole processing pipeline (see
-                        // RecordingContext); import must never silently default to a generic
-                        // recording the way it used to.
                         Text(
-                            text = "What is this?",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            "Change",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = InkSecondary,
+                            modifier = Modifier
+                                .clickable { filePickerLauncher.launch("*/*") }
+                                .testTag("import_change_btn")
                         )
+                    }
+                }
+            }
+
+            if (state.isExtracting) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Accent)
+                    Text("Extracting the audio track…", fontSize = 13.sp, color = InkSecondary)
+                }
+            }
+
+            if (state.fileName != null) {
+                SectionLabel("What is it")
+                // The four the frame shows, as chips. Every other type stays reachable through
+                // "More types", so importing a Sermon or a Journal is not made impossible by a
+                // frame that happened to depict four.
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val quickTypes = listOf(
+                        com.example.core.model.RecordingType.MEETING,
+                        com.example.core.model.RecordingType.INTERVIEW,
+                        com.example.core.model.RecordingType.LECTURE,
+                        com.example.core.model.RecordingType.VOICE_MEMO
+                    )
+                    quickTypes.forEach { type ->
+                        ImportTypeChip(
+                            label = type.displayName,
+                            selected = state.recordingType == type,
+                            onClick = { viewModel.selectRecordingType(type) }
+                        )
+                    }
+                    ImportTypeChip(
+                        label = if (state.recordingType in quickTypes) "More types" else state.recordingType.displayName,
+                        selected = state.recordingType !in quickTypes,
+                        onClick = { showAllTypes = !showAllTypes }
+                    )
+                }
+
+                if (showAllTypes) {
+                    Box(modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp)) {
                         com.example.core.ui.RecordingTypeGrid(
                             selected = state.recordingType,
-                            onSelect = { viewModel.selectRecordingType(it) }
+                            onSelect = {
+                                viewModel.selectRecordingType(it)
+                                showAllTypes = false
+                            }
                         )
-                        if (state.recordingType == com.example.core.model.RecordingType.CUSTOM) {
-                            OutlinedTextField(
-                                value = state.customContextText,
-                                onValueChange = { viewModel.updateCustomContext(it) },
-                                label = { Text("What should MeetingMind focus on?") },
-                                placeholder = { Text("e.g. Focus on pricing objections and next steps") },
-                                modifier = Modifier.fillMaxWidth().testTag("import_custom_context_field")
-                            )
-                        }
-                        Text(
-                            text = "Who's speaking? (optional)",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        com.example.core.ui.SpeakerCountRow(
-                            selected = state.speakerCountPreference,
-                            onSelect = { viewModel.selectSpeakerCount(it) }
-                        )
+                    }
+                }
 
-                        Button(
-                            onClick = {
-                                val mId = state.meetingId
-                                val file = state.extractedAudioFile
-                                if (mId != null && file != null) {
-                                    coroutineScope.launch {
-                                        viewModel.applyRecordingContext()
-                                        onStartProcessing(mId, file.absolutePath, state.durationMs)
-                                    }
+                if (state.recordingType == com.example.core.model.RecordingType.CUSTOM) {
+                    OutlinedTextField(
+                        value = state.customContextText,
+                        onValueChange = { viewModel.updateCustomContext(it) },
+                        label = { Text("What should MeetingMind focus on?") },
+                        placeholder = { Text("e.g. Focus on pricing objections and next steps") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 22.dp, vertical = 8.dp)
+                            .testTag("import_custom_context_field")
+                    )
+                }
+
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 26.dp)) {
+                    ImportValueRow(
+                        title = "Speakers expected",
+                        subtitle = "Helps split the transcript",
+                        value = state.speakerCountPreference?.toString() ?: "Not sure",
+                        monospaceValue = state.speakerCountPreference != null,
+                        onClick = { showSpeakerPicker = !showSpeakerPicker }
+                    )
+                    if (showSpeakerPicker) {
+                        Box(modifier = Modifier.padding(bottom = 10.dp)) {
+                            com.example.core.ui.SpeakerCountRow(
+                                selected = state.speakerCountPreference,
+                                onSelect = {
+                                    viewModel.selectSpeakerCount(it)
+                                    showSpeakerPicker = false
                                 }
-                            },
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                                .testTag("import_transcribe_btn")
-                        ) {
-                            Text(
-                                "Transcribe & Process ${if (state.isVideo) "Video" else "Recording"}",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
                             )
                         }
                     }
+                    ImportValueRow(
+                        title = "Language",
+                        // Said honestly: the app transcribes English today, and the frame's
+                        // "detected from the first minute" would be a claim about behaviour that
+                        // does not exist.
+                        subtitle = "English — the only language the installed models handle",
+                        value = "English",
+                        onClick = {}
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        val mId = state.meetingId
+                        val file = state.extractedAudioFile
+                        if (mId != null && file != null) {
+                            coroutineScope.launch {
+                                viewModel.applyRecordingContext()
+                                onStartProcessing(mId, file.absolutePath, state.durationMs)
+                            }
+                        }
+                    },
+                    enabled = state.meetingId != null && state.extractedAudioFile != null,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Color.White),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp)
+                        .padding(top = 26.dp, bottom = 28.dp)
+                        .height(50.dp)
+                        .testTag("import_transcribe_btn")
+                ) {
+                    Text("Start processing", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.6.sp,
+        color = InkMuted,
+        modifier = Modifier.padding(horizontal = 22.dp).padding(top = 26.dp)
+    )
+}
+
+/** The bar-meter glyph #5c uses in place of a file-type icon. */
+@Composable
+private fun ImportBarGlyph() {
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        modifier = Modifier.height(34.dp)
+    ) {
+        listOf(12, 26, 19, 34, 15, 24).forEach { barHeight ->
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(barHeight.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(InkFaint)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ImportTypeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) Ink else Color.White,
+        border = if (selected) null else BorderStroke(1.dp, Line),
+        modifier = Modifier.testTag("import_type_${label.lowercase().replace(' ', '_')}")
+    ) {
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+            color = if (selected) Color.White else InkSecondary,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+        )
+    }
+}
+
+@Composable
+private fun ImportValueRow(
+    title: String,
+    subtitle: String,
+    value: String,
+    onClick: () -> Unit,
+    monospaceValue: Boolean = false
+) {
+    Column {
+        HorizontalDivider(color = LineFaint)
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 15.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 14.dp)) {
+                Text(title, fontSize = 15.5.sp, color = Ink)
+                Text(subtitle, fontSize = 12.5.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
+            }
+            Text(
+                text = value,
+                fontSize = 12.5.sp,
+                color = Ink,
+                fontFamily = if (monospaceValue) FontFamily.Monospace else null
+            )
         }
     }
 }

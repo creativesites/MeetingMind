@@ -295,7 +295,19 @@ fun ModelManagerScreen(
                 }
                 Column(modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 6.dp)) {
                     Text(text = "AI engine", fontSize = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.7).sp, color = Ink)
-                    Text(text = "Everything runs on this phone", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 5.dp))
+                    Text(
+                        // #6c's line, but only while it is true. With Internet mode on, the models
+                        // listed below are not what runs — saying otherwise on the screen that is
+                        // specifically about which engine runs would be actively misleading.
+                        text = if (prefs.processingProfile.requiresNetwork) {
+                            "Internet mode is on — these run only as the offline fallback"
+                        } else {
+                            "Everything runs on this phone"
+                        },
+                        fontSize = 13.sp,
+                        color = InkMuted,
+                        modifier = Modifier.padding(top = 5.dp)
+                    )
                 }
             }
 
