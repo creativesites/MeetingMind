@@ -68,6 +68,20 @@ class AiToolWorkerTest {
                     summaryText = null
                 )
             )
+            // A real transcript, so a tool run gets as far as needing a model rather than
+            // stopping at "nothing in scope" — which is a different failure entirely.
+            database.transcriptDao().insertSegments(
+                listOf(
+                    com.example.core.database.TranscriptSegmentEntity(
+                        id = "s1", meetingId = "m1", speakerId = "spk_m1_0", speakerName = "Speaker 1",
+                        startMs = 0L, endMs = 5_000L, text = "We agreed to ship on Friday.", confidence = null
+                    ),
+                    com.example.core.database.TranscriptSegmentEntity(
+                        id = "s2", meetingId = "m1", speakerId = "spk_m1_1", speakerName = "Speaker 2",
+                        startMs = 5_000L, endMs = 9_000L, text = "Sounds good to me.", confidence = null
+                    )
+                )
+            )
         }
     }
 
@@ -119,7 +133,10 @@ class AiToolWorkerTest {
     }
 
     @Test
-    fun `a tool that is not wired up yet fails honestly instead of fabricating a result`() = runBlocking {
+    fun `a model-backed tool with no model available fails honestly instead of fabricating a result`() = runBlocking {
+        // No local model is installed in this environment and no Gemini key is set, so there is
+        // genuinely nothing to run the tool with. That must be said, not papered over: the job
+        // fails, the reason names what to do about it, and no result payload is written.
         val jobId = seedJob(TranscriptAiToolType.FIX_TRANSCRIPTION_ERRORS)
         val worker = TestListenableWorkerBuilder<AiToolWorker>(context)
             .setInputData(workDataOf(AiToolWorker.KEY_JOB_ID to jobId))
@@ -129,13 +146,47 @@ class AiToolWorkerTest {
 
         assertTrue(result is ListenableWorker.Result.Failure)
         val error = (result as ListenableWorker.Result.Failure).outputData.getString(AiToolWorker.KEY_ERROR)
-        assertTrue("error should name the unwired tool honestly: $error", error != null && error.contains("isn't wired up yet"))
+        assertTrue("the error should say what to do: $error", error != null && error.contains("Install a local model"))
 
         val persisted = database.aiJobDao().getById(jobId)
         assertEquals(AiJobStatus.FAILED.name, persisted?.status)
         assertEquals(error, persisted?.errorMessage)
         // Never a fabricated result payload for a tool that didn't actually run.
         assertEquals(null, persisted?.resultPayloadJson)
+    }
+
+    @Test
+    fun `a deterministic tool runs with no model at all`() = runBlocking {
+        // Expand context is arithmetic over segment order. It must work on a device with nothing
+        // installed and no network, which is exactly this test's environment.
+        val jobId = seedJob(TranscriptAiToolType.EXPAND_CONTEXT)
+        val worker = TestListenableWorkerBuilder<AiToolWorker>(context)
+            .setInputData(workDataOf(AiToolWorker.KEY_JOB_ID to jobId))
+            .build()
+
+        val result = worker.doWork()
+
+        assertTrue(result is ListenableWorker.Result.Success)
+        val persisted = database.aiJobDao().getById(jobId)
+        assertEquals(AiJobStatus.SUCCEEDED.name, persisted?.status)
+        val decoded = com.example.ai.tools.ToolResultJson.decode(persisted?.resultPayloadJson)
+        assertEquals("deterministic", decoded?.engine)
+        assertTrue(decoded?.outcome is com.example.ai.tools.ToolOutcome.ContextExpansion)
+    }
+
+    @Test
+    fun `a stored-data tool reads back what processing already found, without a model`() = runBlocking {
+        val jobId = seedJob(TranscriptAiToolType.FIND_DECISIONS)
+        val worker = TestListenableWorkerBuilder<AiToolWorker>(context)
+            .setInputData(workDataOf(AiToolWorker.KEY_JOB_ID to jobId))
+            .build()
+
+        val result = worker.doWork()
+
+        assertTrue(result is ListenableWorker.Result.Success)
+        val decoded = com.example.ai.tools.ToolResultJson.decode(database.aiJobDao().getById(jobId)?.resultPayloadJson)
+        assertEquals("stored", decoded?.engine)
+        assertTrue(decoded?.outcome is com.example.ai.tools.ToolOutcome.Findings)
     }
 
     @Test

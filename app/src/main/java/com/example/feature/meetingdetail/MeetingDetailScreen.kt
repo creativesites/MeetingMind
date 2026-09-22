@@ -458,12 +458,97 @@ class MeetingDetailViewModel(
      * (docs/AI_ARCHITECTURE.md §12) rather than a `viewModelScope` launch — this is a background
      * job, so [onStarted] confirms it was queued, not that it finished; [transcript] (a live Room
      * Flow) reflects the result automatically once the job completes. */
-    fun runFixTerminology(onStarted: () -> Unit) {
+    fun runFixTerminology(onStarted: () -> Unit) = runTool(
+        com.example.core.model.TranscriptAiToolType.FIX_TERMINOLOGY,
+        onStarted = onStarted
+    )
+
+    /**
+     * Enqueues any AI tool onto the persisted job queue.
+     *
+     * Everything goes through the queue rather than a `viewModelScope` launch, so a tool started
+     * on a long recording survives the user leaving the app: the job, its progress and its result
+     * are all in Room, and [latestToolResult] picks the result up whenever they come back.
+     */
+    fun runTool(
+        tool: com.example.core.model.TranscriptAiToolType,
+        scope: com.example.ai.tools.ToolScope = com.example.ai.tools.ToolScope.WholeTranscript,
+        onStarted: () -> Unit = {}
+    ) {
         viewModelScope.launch {
-            aiJobRepository.enqueue(meetingId, com.example.core.model.TranscriptAiToolType.FIX_TERMINOLOGY)
+            aiJobRepository.enqueue(
+                meetingId = meetingId,
+                toolType = tool,
+                inputPayloadJson = com.example.ai.tools.ToolScopeJson.encode(scope).toString()
+            )
             onStarted()
         }
     }
+
+    /**
+     * The most recent finished tool run for this meeting, decoded.
+     *
+     * Read from the job table rather than held in memory, so it is still there after process
+     * death — which for a several-minute run on a long recording is a realistic thing to survive.
+     */
+    val latestToolResult: StateFlow<com.example.ai.tools.ToolRunResult?> =
+        aiJobRepository.getJobsForMeeting(meetingId)
+            .map { jobs ->
+                jobs.filter { it.status == com.example.core.model.AiJobStatus.SUCCEEDED }
+                    .maxByOrNull { it.updatedAt }
+                    ?.let { com.example.ai.tools.ToolResultJson.decode(it.resultPayloadJson) }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** A tool run that failed, so the UI can say why instead of appearing to do nothing. */
+    /**
+     * Applies a tool's proposed edits, as one undoable action.
+     *
+     * Grouped into a single undo entry deliberately: a tool that rewrote eleven paragraphs should
+     * be undone in one step, not eleven, and the existing ReplaceAll action already has exactly
+     * that shape.
+     */
+    fun applyToolRevision(revision: com.example.ai.tools.ToolOutcome.TranscriptRevision) {
+        viewModelScope.launch {
+            val changes = revision.edits.map { EditAction.TextEdit(it.segmentId, it.before, it.after) }
+            if (changes.isEmpty()) return@launch
+            changes.forEach { transcriptRepository.updateSegmentText(it.segmentId, it.after) }
+            pushUndo(EditAction.ReplaceAll(changes))
+            clearToolResult()
+        }
+    }
+
+    fun applyToolTitle(title: String) {
+        updateTitle(title)
+        viewModelScope.launch { clearToolResult() }
+    }
+
+    /**
+     * Marks finished tool jobs as seen, so a result sheet is shown once rather than reappearing
+     * every time the screen recomposes or is returned to.
+     */
+    suspend fun clearToolResult() {
+        aiJobRepository.clearFinishedJobs(meetingId)
+    }
+
+    fun dismissToolResult() {
+        viewModelScope.launch { clearToolResult() }
+    }
+
+    /** Which processing profile is in force — the AI tools sheet has to say where tools run. */
+    val processingProfile: StateFlow<com.example.core.model.ProcessingProfile> =
+        com.example.core.datastore.UserPreferencesManager(application).preferencesFlow
+            .map { it.processingProfile }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.example.core.model.ProcessingProfile.OFFLINE)
+
+    val latestToolFailure: StateFlow<String?> =
+        aiJobRepository.getJobsForMeeting(meetingId)
+            .map { jobs ->
+                jobs.filter { it.status == com.example.core.model.AiJobStatus.FAILED }
+                    .maxByOrNull { it.updatedAt }
+                    ?.errorMessage
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Splits [segmentId] at [charOffset] characters into [currentText] — [currentText] is
      * flushed to the database first (in the same launch, so there is no race with a pending
@@ -708,6 +793,8 @@ fun MeetingDetailScreen(
     var currentTab by remember { mutableStateOf(RecordingDetailTab.OVERVIEW) }
     var showFullPlayer by remember { mutableStateOf(false) }
     var showAiToolsSheet by remember { mutableStateOf(false) }
+    val processingProfile by viewModel.processingProfile.collectAsState()
+    val latestToolResult by viewModel.latestToolResult.collectAsState()
     // Set when an "AI tools" entry whose data already exists is tapped (Phase 15 §7) — switches to
     // Overview and tells OverviewStepper which step to jump to, instead of a generic "already
     // shown on Overview" toast that never actually took the user there.
@@ -1012,6 +1099,11 @@ fun MeetingDetailScreen(
                     onUndo = { viewModel.undo() },
                     onRedo = { viewModel.redo() },
                     onOpenToolsSheet = { showAiToolsSheet = true },
+                    onRunToolOnSegment = { tool, segmentId ->
+                        viewModel.runTool(tool, com.example.ai.tools.ToolScope.Selection(listOf(segmentId))) {
+                            Toast.makeText(context, "Running \"${tool.label}\" on this paragraph", Toast.LENGTH_SHORT).show()
+                        }
+                    },
                     highlightedSegmentId = highlightedSegmentId,
                     activePlaybackSegmentId = activeSegment?.id,
                     isAudioPlaying = isThisRecordingActive && playbackState.isPlaying,
@@ -1099,36 +1191,41 @@ fun MeetingDetailScreen(
     if (showAiToolsSheet) {
         com.example.feature.meetingdetail.components.AiToolsSheet(
             onDismiss = { showAiToolsSheet = false },
-            onRunCleanTranscript = {
-                showAiToolsSheet = false
-                viewModel.proposeCleanup()
+            footerNote = if (processingProfile.requiresNetwork) {
+                "Internet mode is on, so these tools run on Google's AI services. Switch to Offline in Settings to keep them on this phone."
+            } else {
+                "Everything here runs on this phone. Longer transcripts are handled in chunks, so a whole-transcript pass takes a minute or two."
             },
-            onRunFixTerminology = {
+            onRunTool = { tool ->
                 showAiToolsSheet = false
-                viewModel.runFixTerminology {
-                    Toast.makeText(context, "Fixing terminology in the background — the transcript will update automatically", Toast.LENGTH_LONG).show()
+                when (tool) {
+                    // Cleanup has its own review flow already — a diffed proposal the user accepts
+                    // or discards — so it keeps it rather than being funnelled into the generic
+                    // result sheet.
+                    com.example.core.model.TranscriptAiToolType.CLEAN_TRANSCRIPT -> viewModel.proposeCleanup()
+                    else -> viewModel.runTool(tool) {
+                        Toast.makeText(context, "Running \"${tool.label}\" — the result will appear here when it's done", Toast.LENGTH_LONG).show()
+                    }
                 }
+            }
+        )
+    }
+
+    latestToolResult?.let { result ->
+        com.example.feature.meetingdetail.components.ToolResultSheet(
+            result = result,
+            onDismiss = { viewModel.dismissToolResult() },
+            onApplyRevision = { viewModel.applyToolRevision(it) },
+            onApplyTitle = { viewModel.applyToolTitle(it) },
+            onJumpTo = { segmentId, startMs ->
+                viewModel.dismissToolResult()
+                currentTab = RecordingDetailTab.TRANSCRIPT
+                if (startMs != null) viewModel.jumpToTimestamp(startMs)
             },
-            onDataAlreadyAvailable = { tool ->
-                showAiToolsSheet = false
-                val target = when (tool) {
-                    com.example.core.model.TranscriptAiToolType.FIND_DECISIONS -> com.example.feature.meetingdetail.components.OverviewStepTarget.DECISIONS
-                    com.example.core.model.TranscriptAiToolType.FIND_ACTION_ITEMS -> com.example.feature.meetingdetail.components.OverviewStepTarget.TASKS
-                    com.example.core.model.TranscriptAiToolType.FIND_QUESTIONS -> com.example.feature.meetingdetail.components.OverviewStepTarget.QUESTIONS
-                    com.example.core.model.TranscriptAiToolType.EXTRACT_KEY_POINTS,
-                    com.example.core.model.TranscriptAiToolType.IDENTIFY_TOPICS -> com.example.feature.meetingdetail.components.OverviewStepTarget.TOPICS
-                    else -> null
-                }
-                if (target != null) {
-                    currentTab = RecordingDetailTab.OVERVIEW
-                    overviewJumpTarget = target
-                } else {
-                    Toast.makeText(context, "Already shown on Overview — this is a menu entry away, not a new AI pass", Toast.LENGTH_LONG).show()
-                }
-            },
-            onNotBuiltYet = {
-                showAiToolsSheet = false
-                Toast.makeText(context, "Not built yet", Toast.LENGTH_SHORT).show()
+            onCopyDocument = { markdown ->
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText(result.tool.label, markdown))
+                Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -1482,6 +1579,8 @@ fun TranscriptTab(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onOpenToolsSheet: () -> Unit,
+    /** Runs one AI tool over a single paragraph — the selection bar's three shortcuts. */
+    onRunToolOnSegment: (com.example.core.model.TranscriptAiToolType, String) -> Unit = { _, _ -> },
     /** Set briefly when this tab is opened via a search-result deep link — scrolls to and tints
      * this one segment so the user immediately sees why it matched, without permanently marking
      * it (a manual tab switch afterward leaves it as an ordinary segment again). */
@@ -1870,14 +1969,17 @@ fun TranscriptTab(
                                 Box(modifier = Modifier.padding(top = 8.dp)) {
                                     com.example.feature.meetingdetail.components.FloatingSelectionBar(
                                         items = listOf("Fix errors", "Clarity", "Condense"),
-                                        onItemClick = {
-                                            // None of these three map to a READY tool yet (Fix
-                                            // Transcription Errors / Improve Clarity / Condense are
-                                            // all still NOT_STARTED in TranscriptAiToolRegistry) —
-                                            // say so honestly rather than routing to something that
-                                            // doesn't exist. "⋯" below opens the real sheet, where
-                                            // Clean Transcript and Fix Terminology actually run.
-                                            Toast.makeText(context, "Not built yet — see ⋯ for tools that are ready", Toast.LENGTH_SHORT).show()
+                                        onItemClick = { index ->
+                                            // Scoped to this paragraph, not the whole transcript:
+                                            // the user selected text, so that is what the tool
+                                            // runs on, and the result comes back as a proposal
+                                            // they accept or discard.
+                                            val tool = when (index) {
+                                                0 -> com.example.core.model.TranscriptAiToolType.FIX_TRANSCRIPTION_ERRORS
+                                                1 -> com.example.core.model.TranscriptAiToolType.IMPROVE_CLARITY
+                                                else -> com.example.core.model.TranscriptAiToolType.CONDENSE
+                                            }
+                                            onRunToolOnSegment(tool, seg.id)
                                         },
                                         moreLabel = "⋯",
                                         onMoreClick = onOpenToolsSheet

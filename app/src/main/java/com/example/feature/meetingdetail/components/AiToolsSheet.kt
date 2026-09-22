@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,24 +36,25 @@ import com.example.ui.theme.InkMuted
 import com.example.ui.theme.LineSoft
 
 /**
- * The "✨ AI tools" bottom sheet (docs/recording-page-implementation.md §2.4). Data comes straight
- * from [TranscriptAiToolRegistry] — the 19-tool taxonomy already existed in this codebase as
- * architecture prep; this is its first real UI. [TranscriptAiToolType.CLEAN_TRANSCRIPT] and
- * [TranscriptAiToolType.FIX_TERMINOLOGY] are [TranscriptAiToolReadiness.READY] as of Phase 15
- * §6, so they're the only rows that actually run something; everything else says honestly
- * what state it's in rather than pretending to work.
+ * The "✨ AI tools" bottom sheet (design/recording-page-implementation.md §2.4).
  *
- * Scope is fixed to "Whole transcript" this phase — the §2.4 scope control
- * (selection/from-here-on/one-speaker) is a later pass.
+ * The list comes straight from [TranscriptAiToolRegistry], so this file never hardcodes which
+ * tools exist. Every row runs: the sheet no longer needs to distinguish a working tool from a
+ * placeholder, because there are no placeholders. What backs a given tool — a use case, a database
+ * read, or a model — is the worker's business, not this sheet's.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiToolsSheet(
     onDismiss: () -> Unit,
-    onRunCleanTranscript: () -> Unit,
-    onRunFixTerminology: () -> Unit = {},
-    onDataAlreadyAvailable: (TranscriptAiToolType) -> Unit = {},
-    onNotBuiltYet: (TranscriptAiToolType) -> Unit = {},
+    /** Runs any tool in the registry. Dispatch by tool type happens in one place — the worker —
+     * rather than being split between here and there. */
+    onRunTool: (TranscriptAiToolType) -> Unit,
+    scopeLabel: String = "Whole transcript",
+    onChangeScope: (() -> Unit)? = null,
+    /** Stated rather than assumed: with Internet mode on, these tools are not running on the
+     * phone, and a footer that says they are would be false. */
+    footerNote: String = "Everything here runs on this phone. Longer transcripts are handled in chunks, so a whole-transcript pass takes a minute or two.",
     sheetState: SheetState = rememberModalBottomSheetState()
 ) {
     var expandedCategory by remember { mutableStateOf<TranscriptAiToolCategory?>(null) }
@@ -73,7 +75,14 @@ fun AiToolsSheet(
                 verticalAlignment = Alignment.Bottom
             ) {
                 Text(text = "AI tools", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, color = Ink)
-                Text(text = "Whole transcript ▾", fontSize = 13.sp, color = Accent)
+                Text(
+                    text = if (onChangeScope != null) "$scopeLabel ▾" else scopeLabel,
+                    fontSize = 13.sp,
+                    color = Accent,
+                    modifier = if (onChangeScope != null) {
+                        Modifier.clickable(onClick = onChangeScope).testTag("ai_tools_scope")
+                    } else Modifier
+                )
             }
 
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -101,17 +110,7 @@ fun AiToolsSheet(
                                     ToolRow(
                                         label = tool.label,
                                         showDivider = index != tools.lastIndex,
-                                        onClick = {
-                                            when (tool.readiness) {
-                                                TranscriptAiToolReadiness.READY -> when (tool) {
-                                                    TranscriptAiToolType.CLEAN_TRANSCRIPT -> onRunCleanTranscript()
-                                                    TranscriptAiToolType.FIX_TERMINOLOGY -> onRunFixTerminology()
-                                                    else -> Unit
-                                                }
-                                                TranscriptAiToolReadiness.DATA_EXISTS_NEEDS_UI -> onDataAlreadyAvailable(tool)
-                                                TranscriptAiToolReadiness.NOT_STARTED -> onNotBuiltYet(tool)
-                                            }
-                                        }
+                                        onClick = { onRunTool(tool) }
                                     )
                                 }
                             }
@@ -122,7 +121,7 @@ fun AiToolsSheet(
             }
 
             Text(
-                text = "Everything here runs on this phone. Longer transcripts are handled in chunks, so a whole-transcript pass takes a minute or two.",
+                text = footerNote,
                 fontSize = 12.sp,
                 lineHeight = 19.sp,
                 color = InkMuted,

@@ -4,36 +4,32 @@ package com.example.core.model
 enum class TranscriptAiToolCategory { TRANSCRIPT, ANALYSIS, UTILITIES }
 
 /**
- * How ready [TranscriptAiToolType] actually is today — deliberately three states, not a boolean,
- * because "needs a new AI engine" and "the data already exists, just needs a menu item" are very
- * different amounts of future work and a UI (or a future session) reading this registry should be
- * able to tell them apart without re-auditing the codebase.
+ * What runs a [TranscriptAiToolType].
+ *
+ * Three states rather than a boolean because the differences are ones a caller acts on: a
+ * database read is instant and always available, a deterministic use case cannot fail for want of
+ * a model, and a model-backed tool needs one and can report that it has none.
  */
 enum class TranscriptAiToolReadiness {
-    /** A real, callable use case already exists and can be wired to a menu item as-is. */
+    /** Backed by a dedicated, deterministic use case of its own. */
     READY,
-    /** The underlying data is already computed and persisted elsewhere (during normal processing)
-     * — this tool needs a menu item and a place to show what already exists, not a new AI engine. */
+    /** Reads back data the processing pipeline already computed and persisted. No model runs. */
     DATA_EXISTS_NEEDS_UI,
-    /** No underlying engine exists yet — this is genuinely new work: a prompt contract, a
-     * validator (or reuse of [com.example.ai.pipeline.TranscriptQualityValidator]'s pattern), and
-     * a use case, following the same architecture [com.example.ai.pipeline.TranscriptAiCleanupEngine]
-     * and [com.example.ai.diarization.DiarizationReconciliationEngine] already establish. */
-    NOT_STARTED
+    /** Runs through [com.example.ai.tools.TranscriptToolEngine]: the shared fidelity contract, a
+     * tool-specific instruction, structured output, and validation before the user sees anything. */
+    MODEL_BACKED
 }
 
 /**
- * The "✨ AI Tools" menu the transcript workspace (currently the Transcript tab) will eventually
- * expose — this enum is architecture prep only: a single source of truth for what the menu will
- * contain and how ready each entry is, so a future session can wire up real UI and engines without
- * re-deciding names, grouping, or scope. **No new AI engine was built for any [NOT_STARTED] entry
- * in this pass** — per the standing "only add UI/architecture necessary to test the current
- * feature, don't build the entire future post-processing suite in one task" constraint. Building
- * one of these out means following [com.example.ai.pipeline.TranscriptAiCleanupEngine]'s
- * established shape: a dedicated engine interface, a real prompt contract with an explicit
- * MUST/MAY/MUST-NOT fidelity contract, validation before anything is accepted, and honest
- * three-tier fallback (rejected/unavailable/never attempted) — never a second, differently-shaped
- * mechanism.
+ * The "✨ AI Tools" menu on the transcript workspace: the single source of truth for what the menu
+ * contains, how it is grouped, and what backs each entry.
+ *
+ * Every entry here runs. [TranscriptAiToolReadiness] no longer describes how finished a tool is —
+ * it describes *what kind of thing* runs it, which is what a caller actually needs to know:
+ * a dedicated use case, a database read, or the shared model-backed
+ * [com.example.ai.tools.TranscriptToolEngine]. Nothing in this menu is a placeholder, and nothing
+ * fabricates a result: a model-backed tool with no available model reports that, the same way
+ * every other AI surface in this app does.
  */
 enum class TranscriptAiToolType(
     val category: TranscriptAiToolCategory,
@@ -53,27 +49,29 @@ enum class TranscriptAiToolType(
     FIX_TRANSCRIPTION_ERRORS(
         TranscriptAiToolCategory.TRANSCRIPT, "Fix transcription errors",
         "Corrects likely misheard words using the surrounding transcript as evidence.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.MODEL_BACKED
     ),
     IMPROVE_CLARITY(
         TranscriptAiToolCategory.TRANSCRIPT, "Improve clarity",
         "Rewrites hard-to-follow passages into clearer sentences without changing meaning.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.MODEL_BACKED
     ),
     REMOVE_REPETITION(
         TranscriptAiToolCategory.TRANSCRIPT, "Remove repetition",
         "Collapses accidental repeated phrases and restated ideas.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.MODEL_BACKED
     ),
     CONDENSE(
         TranscriptAiToolCategory.TRANSCRIPT, "Condense",
         "Shortens a verbose passage while keeping everything it actually said.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.MODEL_BACKED
     ),
+    /** Deterministic: widens a selection by whole paragraphs on each side. No model involved —
+     * see [com.example.ai.tools.DeterministicTranscriptTools.expandContext]. */
     EXPAND_CONTEXT(
         TranscriptAiToolCategory.TRANSCRIPT, "Expand context",
         "Shows more of the surrounding conversation around a passage.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.READY
     ),
     /** Backed by [com.example.core.domain.FixTerminologyUseCase] (Phase 15 §6) — deliberately not
      * a new LLM prompt contract. Moderate/Aggressive cleanup already permit "correct an obvious
@@ -91,7 +89,7 @@ enum class TranscriptAiToolType(
     EXTRACT_KEY_POINTS(
         TranscriptAiToolCategory.ANALYSIS, "Extract key points",
         "Pulls out the main points discussed.",
-        TranscriptAiToolReadiness.DATA_EXISTS_NEEDS_UI
+        TranscriptAiToolReadiness.MODEL_BACKED
     ),
     /** Data already computed by [com.example.ai.llm.RealMeetingIntelligenceEngine] during normal
      * processing and persisted as `DecisionEntity`; already shown on Meeting Detail's own tab. */
@@ -113,7 +111,7 @@ enum class TranscriptAiToolType(
     FIND_IMPORTANT_MOMENTS(
         TranscriptAiToolCategory.ANALYSIS, "Find important moments",
         "Highlights notable moments in the recording.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.MODEL_BACKED
     ),
     /** Data already computed and persisted as `TopicEntity`. */
     IDENTIFY_TOPICS(
@@ -124,36 +122,37 @@ enum class TranscriptAiToolType(
     FIND_NAMES_ORGANIZATIONS(
         TranscriptAiToolCategory.ANALYSIS, "Find names & organisations",
         "Lists the people and organizations mentioned.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.MODEL_BACKED
     ),
 
     EXPLAIN_THIS(
         TranscriptAiToolCategory.UTILITIES, "Explain this",
         "Explains a selected passage in plain language.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.MODEL_BACKED
     ),
     REWRITE_PROFESSIONALLY(
         TranscriptAiToolCategory.UTILITIES, "Rewrite professionally",
         "Rewrites a passage in a more formal register.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.MODEL_BACKED
     ),
     CREATE_NOTES(
         TranscriptAiToolCategory.UTILITIES, "Create notes",
         "Turns the transcript into structured notes.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.MODEL_BACKED
     ),
     CREATE_OUTLINE(
         TranscriptAiToolCategory.UTILITIES, "Create outline",
         "Produces a hierarchical outline of the recording.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.MODEL_BACKED
     ),
-    /** [com.example.core.common.MeetingTitleGenerator] already exists and already runs
-     * automatically during processing — this entry is about making it callable ON DEMAND from the
-     * AI Tools menu, which today it is not. */
+    /** Title generation also runs automatically during processing; this is the on-demand entry
+     * point. Both paths validate the candidate through the same
+     * [com.example.core.common.MeetingTitleGenerator], so an on-demand title is held to exactly
+     * the standard an automatic one is. */
     GENERATE_TITLE(
         TranscriptAiToolCategory.UTILITIES, "Generate title",
         "Suggests a title grounded in the transcript.",
-        TranscriptAiToolReadiness.NOT_STARTED
+        TranscriptAiToolReadiness.MODEL_BACKED
     )
 }
 

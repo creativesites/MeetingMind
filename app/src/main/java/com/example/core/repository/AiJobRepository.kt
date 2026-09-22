@@ -57,6 +57,17 @@ class AiJobRepository(context: Context, private val database: MeetMindDatabase) 
      * worker only actually stops at its next suspend checkpoint — so the Room row is marked
      * CANCELLED immediately regardless, so the UI reflects the cancellation instantly rather than
      * waiting for the worker to notice. A no-op for a job that's already finished. */
+    /**
+     * Removes this meeting's finished jobs.
+     *
+     * Called once the user has seen a result. The job row is the *delivery mechanism* for a tool's
+     * output, not a history the app promises to keep — leaving succeeded rows in place would make
+     * the last result reappear on every visit to the screen.
+     */
+    suspend fun clearFinishedJobs(meetingId: String) = withContext(Dispatchers.IO) {
+        database.aiJobDao().deleteFinishedForMeeting(meetingId)
+    }
+
     suspend fun cancel(jobId: String) = withContext(Dispatchers.IO) {
         workManager.cancelUniqueWork(AiToolWorker.jobWorkName(jobId))
         val job = aiJobDao.getById(jobId) ?: return@withContext

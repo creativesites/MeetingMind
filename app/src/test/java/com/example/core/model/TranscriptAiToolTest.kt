@@ -1,5 +1,6 @@
 package com.example.core.model
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,8 +27,37 @@ class TranscriptAiToolTest {
     }
 
     @Test
-    fun `clean transcript and fix terminology are the tools marked ready as of Phase 15 §6`() {
-        val ready = TranscriptAiToolType.entries.filter { it.readiness == TranscriptAiToolReadiness.READY }
-        assertTrue(ready == listOf(TranscriptAiToolType.CLEAN_TRANSCRIPT, TranscriptAiToolType.FIX_TERMINOLOGY))
+    fun `every tool in the menu is backed by something that actually runs`() {
+        // Readiness now says what runs a tool, not how finished it is. There are no placeholders
+        // left in this menu, so there is no state meaning "does nothing yet" for a row to be in.
+        assertTrue(TranscriptAiToolType.entries.all { it.readiness in TranscriptAiToolReadiness.entries })
+        assertTrue(
+            "every category should have at least one tool",
+            TranscriptAiToolCategory.entries.all { category ->
+                TranscriptAiToolType.entries.any { it.category == category }
+            }
+        )
+    }
+
+    @Test
+    fun `the tools that need no model are the deterministic and stored-data ones`() {
+        val noModel = TranscriptAiToolType.entries.filter { it.readiness != TranscriptAiToolReadiness.MODEL_BACKED }
+
+        assertTrue(TranscriptAiToolType.CLEAN_TRANSCRIPT in noModel)
+        assertTrue(TranscriptAiToolType.FIX_TERMINOLOGY in noModel)
+        assertTrue(TranscriptAiToolType.EXPAND_CONTEXT in noModel)
+        assertTrue(TranscriptAiToolType.FIND_DECISIONS in noModel)
+        assertTrue(TranscriptAiToolType.FIND_QUESTIONS in noModel)
+        assertTrue(TranscriptAiToolType.FIND_ACTION_ITEMS in noModel)
+        assertTrue(TranscriptAiToolType.IDENTIFY_TOPICS in noModel)
+        assertEquals(7, noModel.size)
+    }
+
+    @Test
+    fun `every tool has a label and a plain-language description`() {
+        for (tool in TranscriptAiToolType.entries) {
+            assertTrue("${tool.name} has no label", tool.label.isNotBlank())
+            assertTrue("${tool.name} has no description", tool.description.isNotBlank())
+        }
     }
 }

@@ -264,6 +264,11 @@ interface AiJobDao {
 
     @Query("DELETE FROM ai_jobs WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    /** Clears a meeting's finished jobs in one statement — see
+     * [com.example.core.repository.AiJobRepository.clearFinishedJobs] for why they are cleared. */
+    @Query("DELETE FROM ai_jobs WHERE meetingId = :meetingId AND status IN ('SUCCEEDED', 'FAILED')")
+    suspend fun deleteFinishedForMeeting(meetingId: String)
 }
 
 @Dao

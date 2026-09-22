@@ -98,3 +98,43 @@ data class ToolRunResult(
     /** Which engine produced this — a model id, or "deterministic" for tools that use no model. */
     val engine: String
 )
+
+/** Serializes a [ToolScope] into an [com.example.core.database.AiJobEntity]'s input payload. */
+object ToolScopeJson {
+
+    fun encode(scope: ToolScope): org.json.JSONObject = org.json.JSONObject().apply {
+        when (scope) {
+            is ToolScope.WholeTranscript -> put("scope", "whole")
+            is ToolScope.Selection -> {
+                put("scope", "selection")
+                put("segmentIds", org.json.JSONArray(scope.segmentIds))
+            }
+            is ToolScope.FromHereOn -> {
+                put("scope", "fromHere")
+                put("startMs", scope.startMs)
+            }
+            is ToolScope.OneSpeaker -> {
+                put("scope", "speaker")
+                put("speakerId", scope.speakerId)
+            }
+        }
+    }
+
+    /**
+     * Falls back to the whole transcript for anything unrecognised. That is the safe direction:
+     * a tool running over more of the transcript than intended produces a result the user can
+     * ignore, whereas one silently running over nothing looks like the transcript had nothing
+     * in it.
+     */
+    fun decode(payload: org.json.JSONObject): ToolScope = when (payload.optString("scope")) {
+        "selection" -> {
+            val array = payload.optJSONArray("segmentIds")
+            val ids = (0 until (array?.length() ?: 0)).map { array!!.optString(it) }.filter { it.isNotBlank() }
+            if (ids.isEmpty()) ToolScope.WholeTranscript else ToolScope.Selection(ids)
+        }
+        "fromHere" -> ToolScope.FromHereOn(payload.optLong("startMs"))
+        "speaker" -> payload.optString("speakerId").takeIf { it.isNotBlank() }
+            ?.let { ToolScope.OneSpeaker(it) } ?: ToolScope.WholeTranscript
+        else -> ToolScope.WholeTranscript
+    }
+}
