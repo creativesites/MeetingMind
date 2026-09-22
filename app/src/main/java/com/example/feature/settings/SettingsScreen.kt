@@ -280,42 +280,6 @@ fun SettingsScreen(
                 }
             }
 
-            // Placed above every other processing setting because it is the one choice that
-            // decides where the user's audio goes. The subtitle is each profile's own
-            // privacyDescription, so the copy here can never drift from what the profile does.
-            settingsSection(title = "Processing") {
-                settingsRow {
-                    SettingsRadioRow(
-                        title = com.example.core.model.ProcessingProfile.OFFLINE.displayName,
-                        subtitle = com.example.core.model.ProcessingProfile.OFFLINE.privacyDescription,
-                        selected = prefs.processingProfile == com.example.core.model.ProcessingProfile.OFFLINE,
-                        onClick = { viewModel.setProcessingProfile(com.example.core.model.ProcessingProfile.OFFLINE) },
-                        testTag = "settings_processing_offline"
-                    )
-                }
-                settingsRow {
-                    SettingsRadioRow(
-                        title = com.example.core.model.ProcessingProfile.INTERNET.displayName,
-                        subtitle = com.example.core.model.ProcessingProfile.INTERNET.privacyDescription,
-                        selected = prefs.processingProfile == com.example.core.model.ProcessingProfile.INTERNET,
-                        onClick = { viewModel.setProcessingProfile(com.example.core.model.ProcessingProfile.INTERNET) },
-                        testTag = "settings_processing_internet"
-                    )
-                }
-                // Only shown once Internet mode is actually chosen: an API key field on a screen
-                // for someone who has no intention of using the cloud is noise, and reads as
-                // though the app wants one.
-                if (prefs.processingProfile == com.example.core.model.ProcessingProfile.INTERNET) {
-                    item {
-                        GeminiApiKeyRow(
-                            redactedKey = geminiKeyDisplay,
-                            onSave = { viewModel.setGeminiApiKey(it) },
-                            onClear = { viewModel.clearGeminiApiKey() }
-                        )
-                    }
-                }
-            }
-
             settingsSection(title = "Speaker Detection") {
                 settingsRow {
                     SettingsRadioRow(
@@ -347,26 +311,33 @@ fun SettingsScreen(
             }
 
             settingsSection(title = "Privacy") {
-                item {
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp)) {
-                        Text(
-                            text = if (prefs.processingProfile.requiresNetwork) "Where your recordings are processed" else "Zero-knowledge offline privacy",
-                            fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink
-                        )
-                        Text(
-                            // This section used to state unconditionally that nothing leaves the
-                            // device. That is true of Offline and false of Internet, so it now
-                            // follows the actual setting — a privacy claim the app cannot keep is
-                            // worse than no claim at all.
-                            text = if (prefs.processingProfile.requiresNetwork) {
-                                "Internet mode is on. Recordings are uploaded to Google's AI services for transcription and analysis, and the results are stored on this device. Switch to Offline above to keep everything on your phone."
-                            } else {
-                                "Audio recordings and full transcripts never leave your device. All ASR transcription, diarization, summarization, and vector search execute on your local CPU."
-                            },
-                            fontSize = 12.5.sp,
-                            color = InkSecondary,
-                            lineHeight = 19.sp,
-                            modifier = Modifier.padding(top = 4.dp)
+                // #6d expresses this as one switch with a line of consequence, not a pair of
+                // radio buttons: "on-device only, yes or no" is the decision the user is actually
+                // making, and the hint says what turning it off means before they do it.
+                settingsRow {
+                    SettingsSwitchRow(
+                        title = "On-device only",
+                        subtitle = if (prefs.processingProfile.requiresNetwork) {
+                            "Off. Recordings are uploaded to Google's AI services for transcription and analysis; results are stored on this phone."
+                        } else {
+                            "On. Audio and transcripts never leave this phone — transcription, speakers, summaries and search all run on its own CPU."
+                        },
+                        checked = !prefs.processingProfile.requiresNetwork,
+                        onCheckedChange = { onDeviceOnly ->
+                            viewModel.setProcessingProfile(
+                                if (onDeviceOnly) com.example.core.model.ProcessingProfile.OFFLINE
+                                else com.example.core.model.ProcessingProfile.INTERNET
+                            )
+                        },
+                        testTag = "settings_on_device_only"
+                    )
+                }
+                if (prefs.processingProfile.requiresNetwork) {
+                    item {
+                        GeminiApiKeyRow(
+                            redactedKey = geminiKeyDisplay,
+                            onSave = { viewModel.setGeminiApiKey(it) },
+                            onClear = { viewModel.clearGeminiApiKey() }
                         )
                     }
                 }
