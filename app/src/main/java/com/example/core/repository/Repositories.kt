@@ -253,6 +253,14 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
         list.map { Speaker(it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence) }
     }.flowOn(Dispatchers.IO)
 
+    /** The same speakers as [getSpeakers], for a one-shot caller (Ask Meeting's query analysis)
+     * that needs the current list once rather than a stream of it. */
+    suspend fun getSpeakersDirect(meetingId: String): List<Speaker> = withContext(Dispatchers.IO) {
+        speakerDao.getSpeakersForMeetingDirect(meetingId).map {
+            Speaker(it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence)
+        }
+    }
+
     /**
      * Renaming only ever touches [SpeakerEntity.customName] / the denormalized display copy on
      * transcript segments — it must never overwrite [SpeakerEntity.originalLabel] or

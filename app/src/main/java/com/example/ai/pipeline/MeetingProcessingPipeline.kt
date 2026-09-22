@@ -21,6 +21,10 @@ import com.example.ai.modelmanagement.ModelCatalog
 import com.example.ai.modelmanagement.ModelStorage
 import com.example.ai.modelmanagement.SherpaEngineManager
 import com.example.core.model.ModelCapability
+import com.example.ai.cloud.GeminiIntelligenceEngine
+import com.example.ai.cloud.GeminiTranscriptionEngine
+import com.example.ai.cloud.GeminiTransport
+import com.example.ai.cloud.UnconfiguredGeminiTransport
 import com.example.ai.diarization.defaultSpeakerNameFor
 import com.example.ai.diarization.speakerIndexOf
 import com.example.ai.transcript.CanonicalTranscriptAssembler
@@ -47,6 +51,7 @@ import com.example.core.common.MeetingTitleGenerator
 import com.example.core.repository.toWordsJson
 import com.example.core.model.MeetingStatus
 import com.example.core.model.MeetingSummary
+import com.example.core.model.ProcessingProfile
 import com.example.core.model.ProcessingStage
 import com.example.core.model.Transcript
 import com.example.core.model.TranscriptSegment
@@ -101,7 +106,17 @@ class MeetingProcessingPipeline(
     ),
     private val embeddingEngine: EmbeddingEngine = LocalEmbeddingEngine(),
     private val cleanupEngine: TranscriptCleanupEngine = RuleBasedTranscriptCleanupEngine(),
-    private val structureEngine: TranscriptStructureEngine = DeterministicTranscriptStructureEngine
+    private val structureEngine: TranscriptStructureEngine = DeterministicTranscriptStructureEngine,
+    /**
+     * The one object in this pipeline that can reach the network, and only ever from
+     * [com.example.core.model.ProcessingProfile.INTERNET]. It defaults to
+     * [UnconfiguredGeminiTransport] — no credential is embedded in the app (see
+     * docs/FUTURE_BACKEND.md and the overhaul brief §35), so an unmodified build reports Internet
+     * mode unavailable rather than failing mid-upload.
+     */
+    private val geminiTransport: GeminiTransport = UnconfiguredGeminiTransport(),
+    private val cloudTranscriptionEngine: GeminiTranscriptionEngine = GeminiTranscriptionEngine(geminiTransport),
+    private val cloudIntelligenceEngine: MeetingIntelligenceEngine = GeminiIntelligenceEngine(geminiTransport)
 ) {
 
     suspend fun processMeeting(
@@ -122,9 +137,19 @@ class MeetingProcessingPipeline(
         // core/datastore/UserPreferences.kt's DEFAULT_TRANSCRIPT_CLEANUP_MODE).
         cleanupMode: com.example.core.model.TranscriptCleanupMode = com.example.core.model.TranscriptCleanupMode.CONSERVATIVE,
         diarizationStrategy: com.example.core.model.DiarizationStrategy = com.example.core.model.DiarizationStrategy.AUTO,
+        // Defaults to the private profile. A caller that wants cloud processing must ask for it
+        // explicitly; nothing here can decide on the user's behalf that their audio should leave
+        // the device.
+        processingProfile: ProcessingProfile = ProcessingProfile.OFFLINE,
         onProgress: (step: String, percent: Int, stage: ProcessingStage) -> Unit
     ): MeetingEntity = withContext(Dispatchers.Default) {
-        val effectiveIntelligenceEngine = if (llmModelId != null) {
+        val effectiveIntelligenceEngine = if (processingProfile == ProcessingProfile.INTERNET) {
+            // Reasoning follows transcription: an Internet-mode meeting is analysed by the cloud
+            // model. It is given the transcript, never the audio — the transcription engine
+            // already decided what was said, and a reasoning model re-hearing the recording would
+            // give the app two disagreeing accounts of the same meeting.
+            cloudIntelligenceEngine
+        } else if (llmModelId != null) {
             RealMeetingIntelligenceEngine(
                 languageModel = MediaPipeLanguageModel(context, modelStorage, modelId = llmModelId),
                 contextLengthTokens = ModelCatalog.entries.find { it.id == llmModelId }?.contextLengthTokens
@@ -185,14 +210,68 @@ class MeetingProcessingPipeline(
         try {
             updateJob("Preparing audio...", 10, ProcessingStage.PREPARING_AUDIO)
 
+            // Terminology this recording is likely to contain, for engines that can bias
+            // recognition toward known terms (brief §19). Built from things the app already knows
+            // are real — what the user called this recording, the focus they typed, and the
+            // corrections they have made before — never from guesses about the content. Engines
+            // that cannot use hints ignore them; nothing downstream is allowed to rewrite a
+            // recognized word to match a hint.
+            val vocabularyHints = buildVocabularyHints(existingMeeting)
+
+            // INTERNET profile: cloud transcription replaces STEPS 1-3 entirely — Gemini's
+            // verbatim pass already returns words, timestamps and speakers, so running local VAD,
+            // ASR and diarization first would be duplicated work whose output is thrown away.
+            //
+            // A cloud failure does not end the run: the router deliberately keeps the local routes
+            // available inside the Internet profile (see AiModelRouter.routesFor) so a quota
+            // error, a timeout or an unconfigured build falls through to on-device processing and
+            // the user still gets a transcript. That is the only direction the fallback ever
+            // runs — OFFLINE has no cloud route and can never fall the other way.
+            var cloudWords: List<CanonicalWord>? = null
+            var cloudChunkCount = 1
+            var cloudDegradedReason: String? = null
+            var effectiveProfile = processingProfile
+            if (processingProfile == ProcessingProfile.INTERNET) {
+                updateJob("Transcribing with Google's AI...", 30, ProcessingStage.TRANSCRIBING)
+                val cloudStart = System.currentTimeMillis()
+                val cloudResult = cloudTranscriptionEngine.transcribe(
+                    audioFile = audioFile,
+                    totalDurationMs = totalDurationMs,
+                    vocabularyHints = vocabularyHints,
+                    onProgress = { progress, status ->
+                        onProgress(status, (25 + progress * 30).toInt(), ProcessingStage.TRANSCRIBING)
+                    }
+                )
+                when (cloudResult) {
+                    is AiResult.Success -> {
+                        cloudWords = cloudResult.value.words
+                        cloudChunkCount = cloudResult.value.chunkCount
+                        cloudDegradedReason = cloudResult.value.degradedReason
+                        Log.d(
+                            PERF_TAG,
+                            "Cloud transcription: ${System.currentTimeMillis() - cloudStart}ms, " +
+                                "${cloudResult.value.chunkCount} chunks, smartPass=${cloudResult.value.smartPassApplied}"
+                        )
+                    }
+                    else -> {
+                        effectiveProfile = ProcessingProfile.OFFLINE
+                        cloudDegradedReason = cloudResult.describeFailure()
+                        Log.d(PERF_TAG, "Cloud transcription unavailable (${cloudDegradedReason ?: "no reason given"}) — falling back to on-device processing")
+                        updateJob("Cloud transcription unavailable — processing on device...", 20, ProcessingStage.PREPARING_AUDIO)
+                    }
+                }
+            }
+
             // STEP 1: Speech activity detection. Answers "where is speech?" and nothing else —
             // a region boundary is never a transcript boundary. Best-effort: with no VAD model
             // installed the recording is windowed end to end instead of being skipped.
-            updateJob("Detecting speech intervals (VAD)...", 20, ProcessingStage.DETECTING_SPEECH)
             val vadStart = System.currentTimeMillis()
-            val speechRegions = when (val vadResult = vad.detectSpeechIntervals(audioFile, totalDurationMs)) {
-                is AiResult.Success -> vadResult.value
-                else -> emptyList()
+            val speechRegions = if (cloudWords != null) emptyList() else {
+                updateJob("Detecting speech intervals (VAD)...", 20, ProcessingStage.DETECTING_SPEECH)
+                when (val vadResult = vad.detectSpeechIntervals(audioFile, totalDurationMs)) {
+                    is AiResult.Success -> vadResult.value
+                    else -> emptyList()
+                }
             }
             val vadDurationMs = System.currentTimeMillis() - vadStart
             Log.d(PERF_TAG, "VAD: ${vadDurationMs}ms, ${speechRegions.size} regions")
@@ -200,19 +279,23 @@ class MeetingProcessingPipeline(
             // STEP 2: Speech recognition — the required gate. No model = no fabricated transcript.
             // Produces a single chronological word stream; nothing about ASR's decode windows
             // survives into the transcript's structure.
-            updateJob("Transcribing with local AI...", 35, ProcessingStage.TRANSCRIBING)
             val asrStart = System.currentTimeMillis()
-            val asrResult = speechRecognizer.transcribe(
-                audioFile = audioFile,
-                totalDurationMs = totalDurationMs,
-                meetingId = meetingId,
-                speechRegions = speechRegions,
-                options = TranscriptionOptions(modelId = modelId),
-                onProgress = { prog, status ->
-                    val overall = (35 + (prog * 20)).toInt()
-                    onProgress(status, overall, ProcessingStage.TRANSCRIBING)
-                }
-            )
+            val asrResult: AiResult<List<CanonicalWord>> = if (cloudWords != null) {
+                AiResult.Success(cloudWords)
+            } else {
+                updateJob("Transcribing with local AI...", 35, ProcessingStage.TRANSCRIBING)
+                speechRecognizer.transcribe(
+                    audioFile = audioFile,
+                    totalDurationMs = totalDurationMs,
+                    meetingId = meetingId,
+                    speechRegions = speechRegions,
+                    options = TranscriptionOptions(modelId = modelId, vocabularyHints = vocabularyHints),
+                    onProgress = { prog, status ->
+                        val overall = (35 + (prog * 20)).toInt()
+                        onProgress(status, overall, ProcessingStage.TRANSCRIBING)
+                    }
+                )
+            }
             val asrDurationMs = System.currentTimeMillis() - asrStart
             val rtf = if (totalDurationMs > 0) asrDurationMs.toDouble() / totalDurationMs.toDouble() else null
             Log.d(PERF_TAG, "ASR: ${asrDurationMs}ms for ${totalDurationMs}ms audio (RTF=${rtf?.let { "%.3f".format(it) } ?: "n/a"})")
@@ -263,7 +346,12 @@ class MeetingProcessingPipeline(
             // one real speaker shredded into several by acoustic noise. The solo path still
             // assigns one real, persisted identity rather than leaving speakers empty.
             val diarizationStart = System.currentTimeMillis()
-            val diarizationTurns: List<DiarizationTurn> = if (singleSpeakerMode) {
+            val diarizationTurns: List<DiarizationTurn> = if (cloudWords != null) {
+                // Gemini's verbatim pass diarized as it transcribed, and GlobalSpeakerResolver has
+                // already made those labels recording-wide. Re-attributing here would overwrite
+                // real evidence with a second opinion derived from nothing.
+                emptyList()
+            } else if (singleSpeakerMode) {
                 updateJob("Single speaker confirmed — skipping speaker detection...", 55, ProcessingStage.DIARIZING)
                 listOf(DiarizationTurn(speakerId = SOLO_SPEAKER_ID, startMs = 0L, endMs = maxOf(totalDurationMs, rawWords.lastOrNull()?.endMs ?: 0L)))
             } else {
@@ -283,7 +371,8 @@ class MeetingProcessingPipeline(
             // STEP 4: Word -> speaker attribution, then turns, utterances and paragraphs. Each
             // word carries its own AttributionConfidence; nothing is silently reassigned.
             val fusionStart = System.currentTimeMillis()
-            val attributedWords = WordSpeakerAttributor.attribute(rawWords, diarizationTurns)
+            val attributedWords = if (cloudWords != null) rawWords
+                else WordSpeakerAttributor.attribute(rawWords, diarizationTurns)
             fun nameForSpeaker(speakerId: String): String =
                 if (speakerId == SOLO_SPEAKER_ID) soloSpeakerName else defaultSpeakerNameFor(speakerIndexOf(speakerId))
 
@@ -295,10 +384,15 @@ class MeetingProcessingPipeline(
                 metadata = TranscriptMetadata(
                     meetingId = meetingId,
                     language = existingMeeting.language,
-                    processingMode = com.example.core.model.ProcessingProfile.OFFLINE.name,
-                    transcriptionEngine = LOCAL_TRANSCRIPTION_ENGINE,
-                    transcriptionModelId = modelId,
+                    processingMode = effectiveProfile.name,
+                    transcriptionEngine = if (cloudWords != null) {
+                        com.example.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL
+                    } else LOCAL_TRANSCRIPTION_ENGINE,
+                    transcriptionModelId = if (cloudWords != null) {
+                        com.example.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL
+                    } else modelId,
                     audioDurationMs = totalDurationMs,
+                    chunkCount = cloudChunkCount,
                     stageDurationsMs = mapOf("vad" to vadDurationMs, "asr" to asrDurationMs, "diarization" to diarizationDurationMs)
                 ),
                 speakerNameFor = ::nameForSpeaker,
@@ -311,7 +405,7 @@ class MeetingProcessingPipeline(
             // It proposes speaker-id merges only; the merge is then applied at the word layer and
             // the transcript re-assembled, so turns, utterances and paragraphs all reflect it
             // rather than only the projected segments.
-            if (!singleSpeakerMode) {
+            if (!singleSpeakerMode && cloudWords == null) {
                 val projected = CanonicalTranscriptAssembler.projectToSegments(canonical)
                 val footprints = com.example.ai.diarization.computeSpeakerTranscriptFootprints(projected)
                 if (com.example.ai.diarization.shouldAttemptAiReconciliation(footprints, diarizationStrategy)) {
@@ -702,6 +796,27 @@ class MeetingProcessingPipeline(
      * rebuilt from it. Applying it only to the projected segments would leave the canonical
      * transcript disagreeing with the transcript the user reads.
      */
+    /**
+     * Terms worth biasing recognition toward for one meeting, highest-signal first and capped, so
+     * a long learned-vocabulary table cannot drown out the terms specific to this recording.
+     *
+     * A hint is a preference, never a substitution: no code path uses this list to replace a word
+     * an engine actually recognized.
+     */
+    private suspend fun buildVocabularyHints(meeting: MeetingEntity): List<String> = try {
+        val fromMeeting = (meeting.title + " " + (meeting.customContext ?: ""))
+            .split(WORD_SPLIT_REGEX)
+            .filter { it.length >= MIN_HINT_LENGTH && it.first().isUpperCase() }
+        // getAllDirect() is already ordered by frequency then recency — the user's most-confirmed
+        // corrections first.
+        val learned = database.vocabularyDao().getAllDirect().map { it.canonicalForm }
+        (fromMeeting + learned).map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(MAX_VOCABULARY_HINTS)
+    } catch (e: Exception) {
+        // Vocabulary is an optimisation. Failing to read it must never fail a transcription.
+        Log.d(PERF_TAG, "Vocabulary hints unavailable: ${e.message}")
+        emptyList()
+    }
+
     private suspend fun resolveSpeakerMerges(segments: List<TranscriptSegment>): Map<String, String> {
         val reconcileModelId = LlmModelResolver.resolveForModeOrNull(
             modelStorage, ModelCapability.DIARIZATION_RECONCILIATION, com.example.core.model.ModelTier.LIGHTWEIGHT
@@ -745,6 +860,9 @@ class MeetingProcessingPipeline(
         /** Speaker id used when the user confirmed the recording is solo — no clustering ran. */
         const val SOLO_SPEAKER_ID = "speaker_0"
         const val LOCAL_TRANSCRIPTION_ENGINE = "parakeet-tdt-0.6b-v3"
+        const val MAX_VOCABULARY_HINTS = 64
+        const val MIN_HINT_LENGTH = 3
+        val WORD_SPLIT_REGEX = Regex("[^\\p{L}\\p{N}'-]+")
         const val DEFAULT_LLM_CONTEXT_TOKENS = 4096
     }
 }

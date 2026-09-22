@@ -574,4 +574,130 @@ class MeetingProcessingPipelineIntegrationTest {
 
         assertEquals(3, receivedExpectedCount)
     }
+
+    // --- Internet mode: profile selection, metadata, and the one-directional fallback ---
+
+    /** Answers a verbatim request with a fixed two-speaker transcript; no network involved. */
+    private fun scriptedCloudTransport(
+        verbatim: (com.example.ai.cloud.GeminiRequest) -> AiResult<String>
+    ) = object : com.example.ai.cloud.GeminiTransport {
+        override suspend fun execute(request: com.example.ai.cloud.GeminiRequest): AiResult<String> =
+            if (request.systemInstruction.startsWith("You are a verbatim")) verbatim(request)
+            else AiResult.Failed("smart pass not scripted in this test")
+        override fun isConfigured() = true
+    }
+
+    private val cloudVerbatimJson = """
+        {"words":[
+          {"text":"We","startMs":0,"endMs":300,"speaker":"SPEAKER_0"},
+          {"text":"ship","startMs":300,"endMs":700,"speaker":"SPEAKER_0"},
+          {"text":"Friday.","startMs":700,"endMs":1200,"speaker":"SPEAKER_0"},
+          {"text":"Sounds","startMs":2000,"endMs":2400,"speaker":"SPEAKER_1"},
+          {"text":"good.","startMs":2400,"endMs":2900,"speaker":"SPEAKER_1"}
+        ]}
+    """.trimIndent()
+
+    @Test
+    fun `internet mode transcribes in the cloud and records how the meeting was processed`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val transport = scriptedCloudTransport { AiResult.Success(cloudVerbatimJson) }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            // Local engines deliberately left as the fakes: if the cloud path were not taken,
+            // the transcript would come out as the fake ASR's words and this test would fail.
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = fakeDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine,
+            embeddingEngine = LocalEmbeddingEngine(),
+            geminiTransport = transport,
+            cloudIntelligenceEngine = fakeIntelligenceEngine
+        )
+
+        val meeting = pipeline.processMeeting(
+            meetingId, audioFile, 4000L,
+            processingProfile = com.example.core.model.ProcessingProfile.INTERNET
+        ) { _, _, _ -> }
+
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        assertTrue(segments.joinToString(" ") { it.text }.contains("We ship Friday."))
+        assertEquals("INTERNET", meeting.processingProfile)
+        assertEquals("gemini-3.5-transcribe", meeting.transcriptionEngine)
+        assertTrue("the pipeline version must be recorded", meeting.processingVersion > 0)
+        assertTrue("quality metrics must be recorded", meeting.qualityMetricsJson != null)
+    }
+
+    @Test
+    fun `cloud speakers survive into persisted speaker rows`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val pipeline = MeetingProcessingPipeline(
+            context = context, database = database, modelStorage = LocalModelStorage(context),
+            vad = fakeVad, speechRecognizer = fakeAsr, diarizer = fakeDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine, embeddingEngine = LocalEmbeddingEngine(),
+            geminiTransport = scriptedCloudTransport { AiResult.Success(cloudVerbatimJson) },
+            cloudIntelligenceEngine = fakeIntelligenceEngine
+        )
+
+        pipeline.processMeeting(
+            meetingId, audioFile, 4000L,
+            processingProfile = com.example.core.model.ProcessingProfile.INTERNET
+        ) { _, _, _ -> }
+
+        val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId)
+        assertEquals(2, speakers.size)
+    }
+
+    @Test
+    fun `a cloud failure falls back to on-device processing rather than losing the recording`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val pipeline = MeetingProcessingPipeline(
+            context = context, database = database, modelStorage = LocalModelStorage(context),
+            vad = fakeVad, speechRecognizer = fakeAsr, diarizer = fakeDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine, embeddingEngine = LocalEmbeddingEngine(),
+            geminiTransport = scriptedCloudTransport { AiResult.Failed("quota exceeded") },
+            cloudIntelligenceEngine = fakeIntelligenceEngine
+        )
+
+        val meeting = pipeline.processMeeting(
+            meetingId, audioFile, 4000L,
+            processingProfile = com.example.core.model.ProcessingProfile.INTERNET
+        ) { _, _, _ -> }
+
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        assertTrue("the local fakes' transcript must be what was persisted",
+            segments.joinToString(" ") { it.text }.contains("We will ship on Friday."))
+        assertEquals(
+            "a meeting that fell back was in fact processed on device, and must say so",
+            "OFFLINE", meeting.processingProfile
+        )
+    }
+
+    @Test
+    fun `an offline run never touches the cloud transport, even when one is configured`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val exploding = object : com.example.ai.cloud.GeminiTransport {
+            override suspend fun execute(request: com.example.ai.cloud.GeminiRequest): AiResult<String> =
+                error("Offline mode must never make a network call")
+            override fun isConfigured() = true
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context, database = database, modelStorage = LocalModelStorage(context),
+            vad = fakeVad, speechRecognizer = fakeAsr, diarizer = fakeDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine, embeddingEngine = LocalEmbeddingEngine(),
+            geminiTransport = exploding
+        )
+
+        val meeting = pipeline.processMeeting(
+            meetingId, audioFile, 4000L,
+            processingProfile = com.example.core.model.ProcessingProfile.OFFLINE
+        ) { _, _, _ -> }
+
+        assertEquals("OFFLINE", meeting.processingProfile)
+    }
 }
