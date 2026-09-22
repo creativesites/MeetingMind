@@ -178,7 +178,7 @@ deterministic token alignment — the LLM is never asked to produce a timestamp 
 | 10 | Chunking + global speaker reconciliation (`GeminiChunkPlanner`, `GlobalSpeakerResolver`) | done |
 | 11 | Gemini Flash intelligence with structured output + provenance (`GeminiIntelligenceEngine`) | done |
 | 12 | Ask Meeting / RAG grounding (`TranscriptRetriever`) | done |
-| 13-14 | Gemini Live, Live extended thinking | not started — see `## 6` |
+| 13-14 | Gemini Live, Live extended thinking | **partial** — state machine and async tool lifecycle done and tested; no transport ships, see `## 6` |
 | 15 | Benchmark corpus | not started — see `## 6` |
 | 16 | Device regression against real recordings | not started — see `## 6` |
 
@@ -235,10 +235,18 @@ Recorded so the next session starts informed, not so it is quietly dropped:
   metrics it should compute already exist and are already computed per run
   (`TranscriptQualityEvaluator`); what is missing is the reference transcripts to compare against
   and the recordings listed in the brief §32.
-- **Gemini Live / Live extended thinking (Phases 13-14).** A bidirectional streaming session with
-  an async, non-blocking tool lifecycle is its own subsystem with its own state machine, its own
-  audio path and its own UI; folding a first cut of it into this change would make the change
-  unreviewable. The model routing layer reserves its routes.
+- **Gemini Live transport (Phases 13-14), partially done.** What ships is the part that could
+  actually be got right here and is the part most likely to be got wrong elsewhere:
+  `LiveSessionController`, an explicit state machine that never infers idleness from
+  `turnComplete` (an extended-thinking model keeps reasoning after it stops speaking, so a client
+  that ends the interaction there truncates it mid-thought — and short answers look fine while it
+  does), plus non-blocking tool dispatch that keeps consuming server events while several tools
+  are in flight. Eleven tests cover those two behaviours.
+
+  What does **not** ship is a `LiveTransport` implementation. A bidirectional streaming session
+  against the real endpoint cannot be built or verified with no credential and no device, and a
+  transport written blind is untested code that looks finished. There is also no live audio
+  capture path and no live UI. Both remain to be built against the real API.
 - **Backend proxy for API keys (§35).** `GeminiTransport` is the entire client-side surface that
   has to change, and the app ships `UnconfiguredGeminiTransport` — there is no credential in the
   APK, so Internet mode reports itself unavailable on an unmodified build rather than working via
