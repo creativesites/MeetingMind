@@ -46,6 +46,10 @@ class MeetingProcessingWorker(
         val diarizationStrategy = inputData.getString(KEY_DIARIZATION_STRATEGY)?.let {
             runCatching { com.example.core.model.DiarizationStrategy.valueOf(it) }.getOrNull()
         } ?: com.example.core.model.DiarizationStrategy.AUTO
+        // Defaults to the private profile: a missing or unreadable value must never result in a
+        // recording being uploaded. See ProcessingProfile.fromNameOrDefault.
+        val processingProfile = com.example.core.model.ProcessingProfile
+            .fromNameOrDefault(inputData.getString(KEY_PROCESSING_PROFILE))
 
         setForeground(createForegroundInfo("Preparing audio...", 5, recordingTitle))
 
@@ -62,6 +66,7 @@ class MeetingProcessingWorker(
                 llmModelId = llmModelId,
                 cleanupMode = cleanupMode,
                 diarizationStrategy = diarizationStrategy,
+                processingProfile = processingProfile,
                 onProgress = { step, percent, stage ->
                     // onProgress is a plain (non-suspend) callback invoked from the pipeline's
                     // coroutine; runBlocking here is safe because we're already off the main
@@ -157,6 +162,7 @@ class MeetingProcessingWorker(
          * one onto the shared [UNIQUE_WORK_NAME] chain. */
         fun meetingWorkTag(meetingId: String): String = "meetmind_processing_$meetingId"
 
+        const val KEY_PROCESSING_PROFILE = "processingProfile"
         const val KEY_MEETING_ID = "meetingId"
         const val KEY_AUDIO_PATH = "audioPath"
         const val KEY_DURATION_MS = "durationMs"

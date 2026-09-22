@@ -48,6 +48,9 @@ data class AppPreferencesState(
     val transcriptCleanupMode: TranscriptCleanupMode = DEFAULT_TRANSCRIPT_CLEANUP_MODE,
     /** Which engine decides speaker assignments. See [DiarizationStrategy]. */
     val diarizationStrategy: DiarizationStrategy = DiarizationStrategy.AUTO,
+    /** How recordings are processed. Defaults to the private, on-device profile — MeetingMind
+     * never starts sending recordings to a cloud service without the user choosing to. */
+    val processingProfile: com.example.core.model.ProcessingProfile = com.example.core.model.ProcessingProfile.OFFLINE,
     /** The user's own name, typed by them during onboarding — never inferred from a device name,
      * account, or contact card (Phase 15 §5). Null until they set it; a blank onboarding answer
      * stays null rather than storing an empty string. Used for personalization (e.g. Ask AI
@@ -69,6 +72,7 @@ class UserPreferencesManager(private val context: Context) {
     private val CLEAN_FILLER_WORDS = booleanPreferencesKey("clean_filler_words")
     private val TRANSCRIPT_CLEANUP_MODE = stringPreferencesKey("transcript_cleanup_mode")
     private val DIARIZATION_STRATEGY = stringPreferencesKey("diarization_strategy")
+    private val PROCESSING_PROFILE = stringPreferencesKey("processing_profile")
     private val USER_NAME = stringPreferencesKey("user_name")
 
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
@@ -92,6 +96,10 @@ class UserPreferencesManager(private val context: Context) {
             diarizationStrategy = prefs[DIARIZATION_STRATEGY]?.let {
                 runCatching { DiarizationStrategy.valueOf(it) }.getOrNull()
             } ?: DiarizationStrategy.AUTO,
+            // Same defensive parse, and it matters more here than anywhere else: an unreadable
+            // value resolves to OFFLINE, so a corrupted preference can never silently start
+            // uploading recordings.
+            processingProfile = com.example.core.model.ProcessingProfile.fromNameOrDefault(prefs[PROCESSING_PROFILE]),
             userName = prefs[USER_NAME]
         )
     }
@@ -130,6 +138,10 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setTranscriptCleanupMode(mode: TranscriptCleanupMode) {
         context.dataStore.edit { it[TRANSCRIPT_CLEANUP_MODE] = mode.name }
+    }
+
+    suspend fun setProcessingProfile(profile: com.example.core.model.ProcessingProfile) {
+        context.dataStore.edit { it[PROCESSING_PROFILE] = profile.name }
     }
 
     suspend fun setDiarizationStrategy(strategy: DiarizationStrategy) {

@@ -49,4 +49,41 @@ class UserPreferencesManagerTest {
 
         assertNull(manager.preferencesFlow.first().userName)
     }
+
+    @Test
+    fun `processing defaults to the private profile`() {
+        // Asserted on the state's own default rather than on a freshly-read DataStore, because
+        // every test in this class shares one DataStore file and would otherwise see whatever a
+        // previously-run test wrote.
+        assertEquals(
+            com.example.core.model.ProcessingProfile.OFFLINE,
+            AppPreferencesState().processingProfile
+        )
+    }
+
+    @Test
+    fun `the processing profile round-trips when the user chooses Internet`() = runBlocking {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val manager = UserPreferencesManager(context)
+
+        manager.setProcessingProfile(com.example.core.model.ProcessingProfile.INTERNET)
+
+        assertEquals(
+            com.example.core.model.ProcessingProfile.INTERNET,
+            manager.preferencesFlow.first().processingProfile
+        )
+    }
+
+    @Test
+    fun `an unreadable stored profile falls back to OFFLINE, never to a cloud profile`() {
+        // A corrupted or future-version preference must not be able to start uploading recordings.
+        assertEquals(
+            com.example.core.model.ProcessingProfile.OFFLINE,
+            com.example.core.model.ProcessingProfile.fromNameOrDefault("SOMETHING_ELSE")
+        )
+        assertEquals(
+            com.example.core.model.ProcessingProfile.OFFLINE,
+            com.example.core.model.ProcessingProfile.fromNameOrDefault(null)
+        )
+    }
 }

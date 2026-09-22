@@ -167,9 +167,48 @@ deterministic token alignment — the LLM is never asked to produce a timestamp 
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 1 | Audit + plan (this document) | done |
-| 2-7 | Canonical word/turn/utterance/paragraph core + local pipeline rewire + Room migration | see git history |
-| 8-11 | Gemini transcribe, fusion, chunking, global speakers, Flash intelligence | see git history |
-| 12-16 | RAG grounding, Live, Live extended thinking, benchmark corpus, device regression | see `## 6` |
+| 2 | Transcript representation rebuilt around words/timestamps (`CanonicalWord`, `CanonicalTranscript`) | done |
+| 3 | VAD regions separated from ASR segmentation (`SpeechRegion`, `VoiceActivityDetector`) | done |
+| 4 | ASR context windows + overlap reconciliation (`AsrContextBuilder`, `AsrWindowReconciler`) | done |
+| 5 | Diarization turns -> word attribution -> speaker turns (`WordSpeakerAttributor`, `SpeakerTurnBuilder`) | done |
+| 6 | Natural utterance/paragraph construction (`UtteranceBuilder` + the existing structure engine) | done |
+| 7 | `CanonicalTranscript` + projection to `TranscriptSegment`; Room 11->12 | done |
+| 8 | Gemini transcription integration (`GeminiTranscriptionEngine`, `GeminiTransport`) | done |
+| 9 | Verbatim + smart fusion (`TranscriptFusionEngine`) | done |
+| 10 | Chunking + global speaker reconciliation (`GeminiChunkPlanner`, `GlobalSpeakerResolver`) | done |
+| 11 | Gemini Flash intelligence with structured output + provenance (`GeminiIntelligenceEngine`) | done |
+| 12 | Ask Meeting / RAG grounding (`TranscriptRetriever`) | done |
+| 13-14 | Gemini Live, Live extended thinking | not started — see `## 6` |
+| 15 | Benchmark corpus | not started — see `## 6` |
+| 16 | Device regression against real recordings | not started — see `## 6` |
+
+### 4.1 What runs, per profile
+
+```
+OFFLINE    SileroVadDetector -> AsrContextBuilder -> SherpaParakeetSpeechRecognizer
+           -> AsrWindowReconciler -> SherpaSpeakerDiarizer -> WordSpeakerAttributor
+           -> CanonicalTranscriptAssembler -> cleanup -> RealMeetingIntelligenceEngine
+
+INTERNET   GeminiChunkPlanner -> Gemini verbatim -> GlobalSpeakerResolver
+           -> AsrWindowReconciler -> Gemini smart -> TranscriptFusionEngine
+           -> CanonicalTranscriptAssembler -> cleanup -> GeminiIntelligenceEngine
+```
+
+Both profiles converge on the same `CanonicalTranscript`, so everything downstream — UI, search,
+embeddings, Ask Meeting, exports, provenance — is identical regardless of which one ran.
+
+The fallback is one-directional. `ProcessingProfile.INTERNET` retains the local routes so a quota
+error, timeout or unconfigured build falls through to on-device processing and the user still gets
+a transcript; the meeting is then recorded as `OFFLINE`, because that is what actually happened to
+it. `ProcessingProfile.OFFLINE` has no cloud route at all and cannot fall the other way.
+
+### 4.2 Test coverage
+
+512 unit tests, all passing (`./gradlew testDebugUnitTest`). The structural layer is pure Kotlin
+with no Android or native dependency, so all of it is covered on the JVM. Two real defects were
+found by these tests and fixed: a `Long.MIN_VALUE` sentinel overflowing in the timestamp-anomaly
+check, and a duplicate-phrase detector that only probed a fixed three-word period and therefore
+missed the four-word repeat an unreconciled overlap actually produces.
 
 ## 5. Non-negotiables carried forward from `AI_ARCHITECTURE.md`
 
@@ -183,14 +222,28 @@ deterministic token alignment — the LLM is never asked to produce a timestamp 
 
 Recorded so the next session starts informed, not so it is quietly dropped:
 
-- **Real-recording validation.** No audio corpus and no device in this environment. Every claim
-  below is from unit tests over synthetic word streams, not from a WER measurement. Problems A-G
-  are addressed *by construction* (the code path that caused each is gone); they are not yet
-  *demonstrated* fixed. This is the gating item before shipping.
-- **Benchmark corpus (Phase 15).** The harness has no recordings to run on.
+- **Real-recording validation. This is the gating item before shipping.** No audio corpus and no
+  device in this environment, and no Gemini credential. Every claim in this document comes from
+  unit tests over synthetic word streams and a scripted cloud transport, not from a WER
+  measurement or a live API call. Problems A-G are addressed *by construction* — the code path
+  that caused each one is gone, and there are tests showing the new path does not reproduce them
+  on representative input — but they are not yet *demonstrated* fixed on audio. Nobody should
+  claim this overhaul worked until a real recording that currently produces a bad transcript has
+  been run through both pipelines and compared.
+- **Benchmark corpus (Phase 15).** There are no recordings here to run it on, and a harness with
+  nothing to measure is a harness that will be written to fit whatever it is first pointed at. The
+  metrics it should compute already exist and are already computed per run
+  (`TranscriptQualityEvaluator`); what is missing is the reference transcripts to compare against
+  and the recordings listed in the brief §32.
 - **Gemini Live / Live extended thinking (Phases 13-14).** A bidirectional streaming session with
   an async, non-blocking tool lifecycle is its own subsystem with its own state machine, its own
   audio path and its own UI; folding a first cut of it into this change would make the change
   unreviewable. The model routing layer reserves its routes.
-- **Backend proxy for API keys (§35).** The transport abstraction is in place so the transport can
-  change without touching callers; the authenticated backend itself is not built.
+- **Backend proxy for API keys (§35).** `GeminiTransport` is the entire client-side surface that
+  has to change, and the app ships `UnconfiguredGeminiTransport` — there is no credential in the
+  APK, so Internet mode reports itself unavailable on an unmodified build rather than working via
+  a committed key. The authenticated backend itself is not built.
+
+- **A word-level UI.** The canonical transcript carries per-word speakers and attribution
+  confidence, and the segment projection preserves them, but no screen renders a LOW-confidence
+  attribution differently yet. The data is there for it.

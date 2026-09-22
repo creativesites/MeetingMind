@@ -201,7 +201,8 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                 MeetingProcessingWorker.KEY_EXPECTED_SPEAKER_COUNT to (expectedSpeakerCount ?: -1),
                 MeetingProcessingWorker.KEY_RECORDING_TITLE to meetingTitle,
                 MeetingProcessingWorker.KEY_CLEANUP_MODE to prefs.transcriptCleanupMode.name,
-                MeetingProcessingWorker.KEY_DIARIZATION_STRATEGY to prefs.diarizationStrategy.name
+                MeetingProcessingWorker.KEY_DIARIZATION_STRATEGY to prefs.diarizationStrategy.name,
+                MeetingProcessingWorker.KEY_PROCESSING_PROFILE to prefs.processingProfile.name
             )
             val request = OneTimeWorkRequestBuilder<MeetingProcessingWorker>()
                 .setInputData(inputData)

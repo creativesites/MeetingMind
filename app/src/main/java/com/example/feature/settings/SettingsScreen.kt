@@ -102,6 +102,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setProcessingProfile(profile: com.example.core.model.ProcessingProfile) {
+        viewModelScope.launch {
+            userPrefs.setProcessingProfile(profile)
+        }
+    }
+
     fun setDiarizationStrategy(strategy: com.example.core.model.DiarizationStrategy) {
         viewModelScope.launch {
             userPrefs.setDiarizationStrategy(strategy)
@@ -254,6 +260,30 @@ fun SettingsScreen(
                 }
             }
 
+            // Placed above every other processing setting because it is the one choice that
+            // decides where the user's audio goes. The subtitle is each profile's own
+            // privacyDescription, so the copy here can never drift from what the profile does.
+            settingsSection(title = "Processing") {
+                settingsRow {
+                    SettingsRadioRow(
+                        title = com.example.core.model.ProcessingProfile.OFFLINE.displayName,
+                        subtitle = com.example.core.model.ProcessingProfile.OFFLINE.privacyDescription,
+                        selected = prefs.processingProfile == com.example.core.model.ProcessingProfile.OFFLINE,
+                        onClick = { viewModel.setProcessingProfile(com.example.core.model.ProcessingProfile.OFFLINE) },
+                        testTag = "settings_processing_offline"
+                    )
+                }
+                settingsRow {
+                    SettingsRadioRow(
+                        title = com.example.core.model.ProcessingProfile.INTERNET.displayName,
+                        subtitle = com.example.core.model.ProcessingProfile.INTERNET.privacyDescription,
+                        selected = prefs.processingProfile == com.example.core.model.ProcessingProfile.INTERNET,
+                        onClick = { viewModel.setProcessingProfile(com.example.core.model.ProcessingProfile.INTERNET) },
+                        testTag = "settings_processing_internet"
+                    )
+                }
+            }
+
             settingsSection(title = "Speaker Detection") {
                 settingsRow {
                     SettingsRadioRow(
@@ -287,9 +317,20 @@ fun SettingsScreen(
             settingsSection(title = "Privacy") {
                 item {
                     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp)) {
-                        Text(text = "Zero-knowledge offline privacy", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                         Text(
-                            text = "Audio recordings and full transcripts never leave your device. All ASR transcription, diarization, summarization, and vector search execute on your local CPU.",
+                            text = if (prefs.processingProfile.requiresNetwork) "Where your recordings are processed" else "Zero-knowledge offline privacy",
+                            fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink
+                        )
+                        Text(
+                            // This section used to state unconditionally that nothing leaves the
+                            // device. That is true of Offline and false of Internet, so it now
+                            // follows the actual setting — a privacy claim the app cannot keep is
+                            // worse than no claim at all.
+                            text = if (prefs.processingProfile.requiresNetwork) {
+                                "Internet mode is on. Recordings are uploaded to Google's AI services for transcription and analysis, and the results are stored on this device. Switch to Offline above to keep everything on your phone."
+                            } else {
+                                "Audio recordings and full transcripts never leave your device. All ASR transcription, diarization, summarization, and vector search execute on your local CPU."
+                            },
                             fontSize = 12.5.sp,
                             color = InkSecondary,
                             lineHeight = 19.sp,
