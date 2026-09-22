@@ -81,6 +81,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.shadow
+import com.example.core.model.RecordingType
+import com.example.ui.theme.Line
+import com.example.ui.theme.SurfaceSunk
+import kotlinx.coroutines.flow.map
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val database = MeetMindDatabase.getInstance(application)
@@ -100,6 +109,25 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    private val userPrefs = com.example.core.datastore.UserPreferencesManager(application)
+
+    /**
+     * The workflow Record will start with. Remembered across launches, because the type a person
+     * records is overwhelmingly the same one they recorded last time — "before recording: almost
+     * no friction" (design/capture-pipeline-implementation.md §1).
+     */
+    val rememberedRecordingType: StateFlow<RecordingType> = userPrefs.preferencesFlow
+        .map { it.lastRecordingType }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), RecordingType.MEETING)
+
+    val processingProfile: StateFlow<com.example.core.model.ProcessingProfile> = userPrefs.preferencesFlow
+        .map { it.processingProfile }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.example.core.model.ProcessingProfile.OFFLINE)
+
+    fun rememberRecordingType(type: RecordingType) {
+        viewModelScope.launch { userPrefs.setLastRecordingType(type) }
+    }
 
     fun deleteMeeting(meetingId: String) {
         viewModelScope.launch {
@@ -150,6 +178,21 @@ fun HomeScreen(
     val caps = viewModel.deviceCapabilities
 
     var selectedFilter by remember { mutableStateOf(MeetingFilter.ALL) }
+    var recordTypesExpanded by remember { mutableStateOf(false) }
+    var expandedJobId by remember { mutableStateOf<String?>(null) }
+
+    val rememberedType by viewModel.rememberedRecordingType.collectAsState()
+    val processingProfile by viewModel.processingProfile.collectAsState()
+
+    // "42 recordings · 19 hours captured" — both halves real, computed from what is actually
+    // stored. The hours half is dropped rather than shown as "0 hours" when nothing is recorded.
+    val libraryMetaLine = remember(meetings) {
+        val count = meetings.size
+        val totalHours = meetings.sumOf { it.durationMs } / 3_600_000.0
+        val recordings = if (count == 1) "1 recording" else "$count recordings"
+        if (totalHours < 0.05) recordings else "$recordings · ${"%.0f".format(totalHours)} hours captured"
+    }
+    val recordHint = rememberedType.displayName + " · tap to change"
 
     val filteredMeetings = remember(meetings, selectedFilter) {
         when (selectedFilter) {
@@ -203,105 +246,66 @@ fun HomeScreen(
                     Column {
                         Text(text = greeting, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.7).sp, color = Ink)
                         Text(
-                            text = "${meetings.size} recordings",
+                            text = libraryMetaLine,
                             fontSize = 13.sp,
                             color = InkMuted,
                             modifier = Modifier.padding(top = 5.dp)
                         )
                     }
-                    IconButton(onClick = onNavigateToSearch, modifier = Modifier.testTag("home_search_icon_btn").size(40.dp)) {
-                        Icon(Icons.Default.Search, contentDescription = "Search Recordings", tint = Ink)
-                    }
-                }
-            }
-
-            item {
-                Column(modifier = Modifier.padding(top = 20.dp)) {
-                    HomeActionRow(
-                        title = "Record",
-                        subtitle = "Start capturing on this phone",
-                        icon = Icons.Default.Mic,
-                        onClick = onNavigateToRecord,
-                        testTag = "bento_hero_card"
-                    )
-                    HorizontalDivider(color = LineFaint, modifier = Modifier.padding(start = 22.dp, end = 22.dp))
-                    HomeActionRow(
-                        title = "Import audio",
-                        subtitle = "A file, a voice note, or a video",
-                        icon = Icons.Default.FileUpload,
-                        onClick = onNavigateToImport,
-                        testTag = "bento_import_tile"
-                    )
-                }
-                HorizontalDivider(color = LineSoft, modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 4.dp))
-            }
-
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onNavigateToModels)
-                        .testTag("bento_telemetry_tile")
-                        .padding(horizontal = 22.dp, vertical = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(Icons.Default.Memory, contentDescription = null, tint = Accent, modifier = Modifier.size(20.dp))
-                        Column {
-                            Text("On-device AI engine", fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                            Text(
-                                "${caps.availableRamGb} GB RAM free · ${caps.cpuArch} · ${caps.devicePerformanceTier}",
-                                fontSize = 12.sp,
-                                color = InkMuted,
-                                modifier = Modifier.padding(top = 2.dp)
+                    // #5a: search is a 46dp outlined circle in the header, not a bare icon button.
+                    Surface(
+                        onClick = onNavigateToSearch,
+                        shape = CircleShape,
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Line),
+                        modifier = Modifier.size(46.dp).testTag("home_search_icon_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = "Search recordings",
+                                tint = Ink,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
-                    Text("›", fontSize = 18.sp, color = InkFaint)
                 }
-                HorizontalDivider(color = LineSoft, modifier = Modifier.padding(start = 22.dp, end = 22.dp))
             }
 
-            if (activeJobs.isNotEmpty()) {
-                item {
-                    Column(modifier = Modifier.padding(top = 20.dp, start = 22.dp, end = 22.dp)) {
-                        Text(text = "ACTIVE", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp, color = InkMuted)
-                        activeJobs.forEach { job ->
-                            Column(modifier = Modifier.padding(top = 12.dp)) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(job.meetingTitle, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                    Text("${job.progressPercent}%", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
-                                }
-                                Text(job.currentStep, fontSize = 12.5.sp, color = InkMuted, modifier = Modifier.padding(top = 4.dp))
-                                LinearProgressIndicator(
-                                    progress = { job.progressPercent / 100f },
-                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(4.dp).clip(RoundedCornerShape(2.dp)),
-                                    color = Accent,
-                                    trackColor = LineSoft
-                                )
-                            }
-                        }
+            item {
+                HomeRecordRow(
+                    hint = recordHint,
+                    expanded = recordTypesExpanded,
+                    onToggleExpanded = { recordTypesExpanded = !recordTypesExpanded },
+                    onStartWithType = { type ->
+                        recordTypesExpanded = false
+                        viewModel.rememberRecordingType(type)
+                        onNavigateToRecord()
                     }
-                    HorizontalDivider(color = LineSoft, modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 20.dp))
-                }
+                )
+            }
+
+            item {
+                HomeImportRow(onClick = onNavigateToImport)
+            }
+
+            items(activeJobs, key = { it.id }) { job ->
+                HomeJobCard(
+                    title = job.meetingTitle,
+                    statusLine = job.currentStep,
+                    percent = job.progressPercent,
+                    expanded = expandedJobId == job.id,
+                    onToggleExpanded = { expandedJobId = if (expandedJobId == job.id) null else job.id },
+                    onOpen = { onNavigateToMeeting(job.meetingId) }
+                )
             }
 
             item {
                 Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 20.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Your recordings", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                        Text("${filteredMeetings.size} logged", fontSize = 12.5.sp, color = InkMuted)
-                    }
-
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(start = 22.dp, end = 22.dp),
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                        modifier = Modifier.fillMaxWidth().padding(top = 20.dp)
                     ) {
                         item { FilterPill("All", selectedFilter == MeetingFilter.ALL) { selectedFilter = MeetingFilter.ALL } }
                         item { FilterPill("Microphone", selectedFilter == MeetingFilter.RECORDED) { selectedFilter = MeetingFilter.RECORDED } }
@@ -318,14 +322,29 @@ fun HomeScreen(
             } else {
                 groupedMeetings.forEach { (header, meetingList) ->
                     item {
-                        Text(
-                            text = header.uppercase(),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 0.6.sp,
-                            color = InkMuted,
-                            modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 8.dp)
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 22.dp, end = 22.dp, top = 28.dp)
+                                .padding(bottom = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            Text(
+                                text = header.uppercase(),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.6.sp,
+                                color = InkMuted
+                            )
+                            Text(
+                                text = meetingList.size.toString(),
+                                fontSize = 10.5.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = InkFaint
+                            )
+                        }
+                        HorizontalDivider(color = LineSoft, modifier = Modifier.padding(horizontal = 22.dp))
                     }
 
                     items(meetingList, key = { it.id }) { meeting ->
@@ -342,12 +361,35 @@ fun HomeScreen(
             }
 
             item {
-                Text(
-                    text = "Everything stays on this phone",
-                    fontSize = 12.5.sp,
-                    color = InkMuted,
-                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp).padding(horizontal = 22.dp)
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 24.dp, bottom = 14.dp)
+                        .padding(horizontal = 22.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        // Honest about the profile in use: the line claims on-device only when
+                        // that is actually what is happening to this user's recordings.
+                        text = if (processingProfile.requiresNetwork) {
+                            "Processed with Google's AI services"
+                        } else {
+                            "Everything stays on this phone"
+                        },
+                        fontSize = 12.5.sp,
+                        color = InkMuted
+                    )
+                    Text(
+                        text = "All recordings",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = InkSecondary,
+                        modifier = Modifier
+                            .clickable { selectedFilter = MeetingFilter.ALL }
+                            .testTag("home_all_recordings")
+                    )
+                }
             }
         }
     }
@@ -506,5 +548,213 @@ private fun HomeEmptyState(
             Icon(Icons.Default.FileUpload, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
             Text("Or import a recording", fontSize = 13.5.sp, color = Accent, fontWeight = FontWeight.SemiBold)
         }
+    }
+}
+
+/**
+ * The Record row from `#5a`: a filled Accent disc, the app's primary verb, and a hint naming the
+ * workflow it will start with. Tapping the row opens the workflow list inline rather than pushing
+ * a separate picker screen — the spec's "before recording: almost no friction".
+ */
+@Composable
+private fun HomeRecordRow(
+    hint: String,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onStartWithType: (RecordingType) -> Unit
+) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggleExpanded)
+                .testTag("bento_hero_card")
+                .padding(horizontal = 22.dp)
+                .padding(top = 26.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .shadow(elevation = 14.dp, shape = CircleShape, ambientColor = Accent, spotColor = Accent)
+                    .clip(CircleShape)
+                    .background(Accent),
+                contentAlignment = Alignment.Center
+            ) {
+                // The design's glyph is a rounded capsule, not a microphone pictogram.
+                Box(
+                    modifier = Modifier
+                        .size(width = 15.dp, height = 23.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Record", fontSize = 17.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                Text(hint, fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
+            }
+            Text(if (expanded) "⌄" else "›", fontSize = 18.sp, color = InkFaint)
+        }
+
+        AnimatedVisibility(visible = expanded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 22.dp)
+                    .padding(top = 16.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(SurfaceSunk)
+                    .padding(horizontal = 18.dp, vertical = 4.dp)
+            ) {
+                // The four the design lists, in its order. Every other type stays available on the
+                // full picker one step into the recording flow.
+                val quickTypes = listOf(
+                    RecordingType.MEETING to "Speakers, decisions, tasks",
+                    RecordingType.INTERVIEW to "Two speakers, verbatim",
+                    RecordingType.LECTURE to "One speaker, notes",
+                    RecordingType.VOICE_MEMO to "Just capture it"
+                )
+                quickTypes.forEachIndexed { index, (type, blurb) ->
+                    if (index > 0) HorizontalDivider(color = LineFaint)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onStartWithType(type) }
+                            .testTag("home_record_type_${type.name.lowercase()}")
+                            .padding(vertical = 11.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(type.displayName, fontSize = 15.5.sp, color = Ink)
+                        Text(blurb, fontSize = 12.sp, color = InkMuted)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The Import row from `#5a`: an outlined disc holding a small bar meter. */
+@Composable
+private fun HomeImportRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .testTag("bento_import_tile")
+            .padding(horizontal = 22.dp)
+            .padding(top = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .border(1.dp, Line, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                modifier = Modifier.height(22.dp)
+            ) {
+                listOf(9, 18, 13, 22, 11).forEach { barHeight ->
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(barHeight.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(InkMuted)
+                    )
+                }
+            }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Import audio", fontSize = 17.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text("A file, a voice note, or a video", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
+        }
+        Text("›", fontSize = 18.sp, color = InkFaint)
+    }
+}
+
+/**
+ * The in-progress job card from `#5a`: bordered, with a real percentage and a real status line,
+ * expanding to show what is actually running.
+ *
+ * The percentage is whatever the pipeline last reported. Nothing here animates it forward on its
+ * own — a progress bar that moves while nothing is happening is a lie the user acts on.
+ */
+@Composable
+private fun HomeJobCard(
+    title: String,
+    statusLine: String,
+    percent: Int,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onOpen: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp)
+            .padding(top = 26.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .border(1.dp, LineSoft, RoundedCornerShape(20.dp))
+            .clickable(onClick = onToggleExpanded)
+            .testTag("home_job_card")
+            .padding(horizontal = 18.dp, vertical = 15.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(statusLine, fontSize = 12.5.sp, color = InkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
+            }
+            Text("$percent%", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Accent)
+        }
+        LinearProgressIndicator(
+            progress = { percent / 100f },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 11.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = Accent,
+            trackColor = LineSoft,
+            drawStopIndicator = {}
+        )
+        AnimatedVisibility(visible = expanded) {
+            Column(modifier = Modifier.padding(top = 14.dp)) {
+                HorizontalDivider(color = LineSoft)
+                Text(
+                    text = statusLine,
+                    fontSize = 13.sp,
+                    lineHeight = 21.sp,
+                    color = InkSecondary,
+                    modifier = Modifier.padding(top = 13.dp)
+                )
+                Row(modifier = Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HomeJobChip("Open", onClick = onOpen)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeJobChip(label: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(11.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, Line)
+    ) {
+        Text(
+            text = label,
+            fontSize = 12.5.sp,
+            color = InkSecondary,
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp)
+        )
     }
 }

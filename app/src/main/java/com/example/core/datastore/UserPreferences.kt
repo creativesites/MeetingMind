@@ -56,7 +56,9 @@ data class AppPreferencesState(
      * stays null rather than storing an empty string. Used for personalization (e.g. Ask AI
      * addressing them by name) — NOT for the single-speaker "You" label, which stays literal
      * regardless of this value (see docs/ARCHITECTURE.md §4b). */
-    val userName: String? = null
+    val userName: String? = null,
+    /** The workflow Record starts with — see HomeViewModel.rememberedRecordingType. */
+    val lastRecordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.MEETING
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -74,6 +76,7 @@ class UserPreferencesManager(private val context: Context) {
     private val DIARIZATION_STRATEGY = stringPreferencesKey("diarization_strategy")
     private val PROCESSING_PROFILE = stringPreferencesKey("processing_profile")
     private val USER_NAME = stringPreferencesKey("user_name")
+    private val LAST_RECORDING_TYPE = stringPreferencesKey("last_recording_type")
 
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
         AppPreferencesState(
@@ -100,7 +103,10 @@ class UserPreferencesManager(private val context: Context) {
             // value resolves to OFFLINE, so a corrupted preference can never silently start
             // uploading recordings.
             processingProfile = com.example.core.model.ProcessingProfile.fromNameOrDefault(prefs[PROCESSING_PROFILE]),
-            userName = prefs[USER_NAME]
+            userName = prefs[USER_NAME],
+            lastRecordingType = prefs[LAST_RECORDING_TYPE]?.let {
+                runCatching { com.example.core.model.RecordingType.valueOf(it) }.getOrNull()
+            } ?: com.example.core.model.RecordingType.MEETING
         )
     }
 
@@ -138,6 +144,10 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setTranscriptCleanupMode(mode: TranscriptCleanupMode) {
         context.dataStore.edit { it[TRANSCRIPT_CLEANUP_MODE] = mode.name }
+    }
+
+    suspend fun setLastRecordingType(type: com.example.core.model.RecordingType) {
+        context.dataStore.edit { it[LAST_RECORDING_TYPE] = type.name }
     }
 
     suspend fun setProcessingProfile(profile: com.example.core.model.ProcessingProfile) {
