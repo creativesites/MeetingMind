@@ -7,6 +7,28 @@ Written against `claude/meetingmind-transcription-overhaul-eknt35` at schema ver
 
 ---
 
+## 0. Decisions since this was written
+
+This document argued a position. These are the decisions that were then made, and they take
+precedence over anything below that disagrees. The build plan that follows from them is
+**`docs/PLAN_V1.md`**.
+
+| Question | Decision |
+| --- | --- |
+| What is the primary object? | **The Note.** A recording is a source a note has. Added alongside the schema, not by renaming (§3 below). |
+| How far does Internet mode reach? | **Every AI stage** — transcription, cleanup, speakers, intelligence, Ask, AI tools, note AI, sermon processing. Offline remains the default. |
+| Which verticals in v1? | **Professional core + Faith**, with sermons end to end as the top priority. Learning later (§4.3 below). |
+| How much of the Faith Notebook in v1? | **All of it**: sermons, devotionals, bible study, prayer, prayer requests, testimonies, gratitude, scripture collections, reflections, media, a journey timeline. The topic *graph* is later. |
+| Where does scripture come from? | **The YouVersion Platform** (official Kotlin SDK). Notes store references; text is fetched live, always with its version's attribution. |
+| Which connectors in v1? | **Only the device calendar** — no OAuth, works with any Google or Outlook calendar already on the phone. Everything else is post-launch. |
+| The schedule? | Milestone-based rather than week-based (§4.1 below). Each milestone ends with a tested APK. |
+
+§4.2 — that nothing about transcription quality has been measured on real audio — still stands.
+It is now folded into acceptance: v1 is accepted by a real sermon recorded on a real phone
+(`docs/PLAN_V1.md` §11), not by the test suite.
+
+---
+
 ## 1. The headline
 
 **The plan's central architectural commitment is already half-built, under a different name, and
