@@ -1,0 +1,80 @@
+name: Release APK
+
+# Pushing a v* tag builds the app and publishes the APKs as a GitHub release.
+#
+# This exists because a release artifact should come from a reproducible build of a known commit,
+# not from whatever was on someone's laptop. It also solves the practical problem that the APK is
+# far too large to hand over any other way.
+on:
+  push:
+    tags:
+      - 'v*'
+  # Also runnable by hand, so a release can be rebuilt without moving a tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and release'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unit tests
+        # A release that fails its own tests is not a release. Runs before the build so a broken
+        # commit cannot produce a downloadable artifact.
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build APKs
+        run: ./gradlew assembleDebug
+
+      - name: Check no credential was baked into the APK
+        # The app reads its Gemini key from on-device storage precisely so that nothing secret ends
+        # up in a published artifact. This asserts that rather than assuming it: this repository
+        # and its releases are public, and an API key inside a public APK is a published key.
+        run: |
+          set -euo pipefail
+          for apk in app/build/outputs/apk/debug/*.apk; do
+            if strings "$apk" | grep -qE 'AIzaSy[0-9A-Za-z_-]{33}|AQ\.[0-9A-Za-z_-]{20,}'; then
+              echo "::error::$apk contains something shaped like an API key"
+              exit 1
+            fi
+          done
+          echo "No credential-shaped strings found."
+
+      - name: Name the artifacts
+        id: rename
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}"
+          mkdir -p dist
+          for apk in app/build/outputs/apk/debug/*.apk; do
+            base="$(basename "$apk" .apk)"
+            abi="${base#app-}"; abi="${abi%-debug}"
+            cp "$apk" "dist/MeetingMind-${version}-${abi}.apk"
+          done
+          ls -la dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: MeetingMind ${{ github.event.inputs.tag || github.ref_name }}
+          # Debug-signed, so it installs alongside nothing and needs "install from unknown sources".
+          prerelease: true
+          generate_release_notes: true
+          body_path: docs/RELEASE_NOTES.md
+          files: dist/*.apk

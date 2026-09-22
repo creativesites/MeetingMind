@@ -51,6 +51,24 @@ android {
     compose = true
     buildConfig = true
   }
+  /**
+   * One APK per CPU architecture instead of one carrying all four.
+   *
+   * The sherpa-onnx and MediaPipe native libraries dominate this app's size, and a universal APK
+   * ships every ABI's copy to every device — a quarter of a gigabyte, of which a given phone uses
+   * about a quarter. Splitting takes the arm64-v8a build (what essentially every phone from the
+   * last several years needs) to a fraction of that. The universal APK is still produced for
+   * anyone who needs one artifact that runs anywhere.
+   */
+  splits {
+    abi {
+      isEnable = true
+      reset()
+      include("arm64-v8a", "armeabi-v7a", "x86_64")
+      isUniversalApk = true
+    }
+  }
+
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo {
     includeInApk = false
