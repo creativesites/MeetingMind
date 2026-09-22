@@ -171,4 +171,57 @@ class GeminiTranscriptionEngineTest {
         assertFalse(AiRoute.GEMINI_TRANSCRIPTION_VERBATIM in offlineRoutes)
         assertFalse(AiRoute.GEMINI_INTELLIGENCE in offlineRoutes)
     }
+
+    @Test
+    fun `a long recording is fused chunk by chunk, not in one pass`() {
+        // Alignment is quadratic, so one pass over a long recording exceeds the fusion engine's
+        // own size guard and silently comes back verbatim. Chunk-sized passes keep every table
+        // small however long the meeting is.
+        val chunks = listOf(AudioChunk(0, 0L, 10_000L), AudioChunk(1, 8_000L, 18_000L))
+        val words = listOf(
+            com.example.ai.transcript.CanonicalWord("v0", "we", 0L, 400L),
+            com.example.ai.transcript.CanonicalWord("v1", "ship", 400L, 800L),
+            com.example.ai.transcript.CanonicalWord("v2", "sounds", 12_000L, 12_400L),
+            com.example.ai.transcript.CanonicalWord("v3", "good", 12_400L, 12_800L)
+        )
+
+        val fused = GeminiTranscriptionEngine(UnconfiguredGeminiTransport()).fusePerChunk(
+            words, chunks, mapOf(0 to "We ship.", 1 to "Sounds good.")
+        )
+
+        assertEquals("We ship. Sounds good.", fused.words.joinToString(" ") { it.text })
+        assertEquals(listOf("w0", "w1", "w2", "w3"), fused.words.map { it.id })
+    }
+
+    @Test
+    fun `a chunk whose smart pass failed keeps its verbatim words while the others are polished`() {
+        val chunks = listOf(AudioChunk(0, 0L, 10_000L), AudioChunk(1, 8_000L, 18_000L))
+        val words = listOf(
+            com.example.ai.transcript.CanonicalWord("v0", "we", 0L, 400L),
+            com.example.ai.transcript.CanonicalWord("v1", "ship", 400L, 800L),
+            com.example.ai.transcript.CanonicalWord("v2", "sounds", 12_000L, 12_400L),
+            com.example.ai.transcript.CanonicalWord("v3", "good", 12_400L, 12_800L)
+        )
+
+        val fused = GeminiTranscriptionEngine(UnconfiguredGeminiTransport()).fusePerChunk(
+            words, chunks, mapOf(0 to "We ship.")
+        )
+
+        assertEquals("We ship. sounds good", fused.words.joinToString(" ") { it.text })
+    }
+
+    @Test
+    fun `a word in the overlap region is fused exactly once`() {
+        val chunks = listOf(AudioChunk(0, 0L, 10_000L), AudioChunk(1, 8_000L, 18_000L))
+        val words = listOf(
+            com.example.ai.transcript.CanonicalWord("v0", "we", 9_000L, 9_400L),
+            com.example.ai.transcript.CanonicalWord("v1", "ship", 9_400L, 9_800L)
+        )
+
+        val fused = GeminiTranscriptionEngine(UnconfiguredGeminiTransport()).fusePerChunk(
+            words, chunks, mapOf(0 to "We ship.", 1 to "We ship.")
+        )
+
+        assertEquals(2, fused.words.size)
+    }
 }

@@ -120,7 +120,8 @@ class GeminiTranscriptionEngine(
         // --- Pass B: smart. Optional by design — a failure here costs polish, not the transcript. ---
         onProgress(0.6f, "Polishing the transcript...")
         val smartModel = router.route(AiRoute.GEMINI_TRANSCRIPTION_SMART).modelId
-        val smartText = if (smartModel == null) null else buildString {
+        val smartByChunk = mutableMapOf<Int, String>()
+        if (smartModel != null) {
             for (chunk in chunks) {
                 coroutineContext.ensureActive()
                 val response = transport.execute(
@@ -134,12 +135,15 @@ class GeminiTranscriptionEngine(
                         vocabularyHints = vocabularyHints
                     )
                 )
-                if (response !is AiResult.Success) return@buildString
-                append(response.value.trim()).append(' ')
+                // One chunk failing costs that chunk's polish, not the whole readability pass:
+                // the chunks that did come back are still fused, and the rest stay verbatim.
+                if (response is AiResult.Success && response.value.isNotBlank()) {
+                    smartByChunk[chunk.index] = response.value.trim()
+                }
             }
-        }.takeIf { !it.isNullOrBlank() }
+        }
 
-        if (smartText == null) {
+        if (smartByChunk.isEmpty()) {
             return AiResult.Success(
                 CloudTranscriptionResult(
                     words = verbatimWords,
@@ -151,18 +155,78 @@ class GeminiTranscriptionEngine(
             )
         }
 
-        val fused = TranscriptFusionEngine.fuse(verbatimWords, smartText)
-        val applied = fused.alignmentCoverage >= TranscriptFusionEngine.MIN_USABLE_COVERAGE
+        val fused = fusePerChunk(verbatimWords, chunks, smartByChunk)
         onProgress(1f, "Transcript ready")
         return AiResult.Success(
             CloudTranscriptionResult(
                 words = fused.words,
                 chunkCount = chunks.size,
-                smartPassApplied = applied,
+                smartPassApplied = fused.alignmentCoverage >= TranscriptFusionEngine.MIN_USABLE_COVERAGE,
                 alignmentCoverage = fused.alignmentCoverage,
-                degradedReason = if (applied) null else
-                    "The readability pass disagreed too broadly with the verbatim transcript to be merged; the verbatim transcript is unaffected."
+                degradedReason = when {
+                    fused.alignmentCoverage >= TranscriptFusionEngine.MIN_USABLE_COVERAGE &&
+                        smartByChunk.size == chunks.size -> null
+                    fused.alignmentCoverage < TranscriptFusionEngine.MIN_USABLE_COVERAGE ->
+                        "The readability pass disagreed too broadly with the verbatim transcript to be merged; the verbatim transcript is unaffected."
+                    else ->
+                        "The readability pass didn't complete for every part of the recording; those parts are shown verbatim."
+                }
             )
+        )
+    }
+
+    /**
+     * Fuses one chunk at a time rather than the whole recording at once.
+     *
+     * Alignment is quadratic in the number of words, so fusing a long meeting in one pass builds a
+     * table large enough that [TranscriptFusionEngine] refuses it outright — a 90-minute recording
+     * would silently come back verbatim with no indication why. Chunk-sized passes keep every
+     * table small regardless of how long the recording is, and they align text against the audio
+     * it was actually produced from, which is a better-conditioned problem than aligning a
+     * concatenation against a concatenation.
+     *
+     * Words are assigned to the first chunk whose range contains them, so a word in an overlap
+     * region is fused exactly once. A chunk with no smart text keeps its verbatim words.
+     */
+    internal fun fusePerChunk(
+        verbatimWords: List<CanonicalWord>,
+        chunks: List<AudioChunk>,
+        smartByChunk: Map<Int, String>
+    ): FusedTranscript {
+        val fused = mutableListOf<CanonicalWord>()
+        var coverageSum = 0f
+        var coverageCount = 0
+        var cursor = 0
+
+        for (chunk in chunks) {
+            val group = mutableListOf<CanonicalWord>()
+            while (cursor < verbatimWords.size && verbatimWords[cursor].startMs < chunk.endMs) {
+                group += verbatimWords[cursor]
+                cursor++
+            }
+            if (group.isEmpty()) continue
+
+            val smart = smartByChunk[chunk.index]
+            if (smart == null) {
+                fused += group
+                continue
+            }
+            val chunkFusion = TranscriptFusionEngine.fuse(group, smart)
+            coverageSum += chunkFusion.alignmentCoverage
+            coverageCount++
+            fused += chunkFusion.words
+        }
+        // Any trailing words past the last chunk's end (possible only if the plan and the word
+        // stream disagree) are kept rather than dropped: losing real transcript to a bookkeeping
+        // mismatch is far worse than a few unpolished words.
+        while (cursor < verbatimWords.size) {
+            fused += verbatimWords[cursor]
+            cursor++
+        }
+
+        return FusedTranscript(
+            words = fused.mapIndexed { index, word -> word.copy(id = "w$index") },
+            alignmentCoverage = if (coverageCount == 0) 0f else coverageSum / coverageCount
         )
     }
 
