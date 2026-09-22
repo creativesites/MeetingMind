@@ -152,7 +152,7 @@ class ExampleRobolectricTest {
             audioFile = emptyFile,
             totalDurationMs = 5000L,
             meetingId = "test_meeting_1",
-            speechIntervals = emptyList(),
+            speechRegions = emptyList(),
             options = com.example.ai.asr.TranscriptionOptions(),
             onProgress = { _, _ -> }
         )

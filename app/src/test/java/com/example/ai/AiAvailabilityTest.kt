@@ -32,7 +32,7 @@ class AiAvailabilityTest {
             audioFile = File("nonexistent.m4a"),
             totalDurationMs = 10_000L,
             meetingId = "m1",
-            speechIntervals = emptyList(),
+            speechRegions = emptyList(),
             options = TranscriptionOptions(),
             onProgress = { _, _ -> }
         )
@@ -44,7 +44,7 @@ class AiAvailabilityTest {
         val result = UnavailableSpeakerDiarizer().diarize(
             audioFile = File("nonexistent.m4a"),
             totalDurationMs = 10_000L,
-            segments = emptyList()
+            meetingId = "m1"
         )
         assertTrue(result is AiResult.ModelUnavailable)
     }

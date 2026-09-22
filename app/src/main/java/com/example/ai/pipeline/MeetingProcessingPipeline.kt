@@ -21,6 +21,14 @@ import com.example.ai.modelmanagement.ModelCatalog
 import com.example.ai.modelmanagement.ModelStorage
 import com.example.ai.modelmanagement.SherpaEngineManager
 import com.example.core.model.ModelCapability
+import com.example.ai.diarization.defaultSpeakerNameFor
+import com.example.ai.diarization.speakerIndexOf
+import com.example.ai.transcript.CanonicalTranscriptAssembler
+import com.example.ai.transcript.CanonicalWord
+import com.example.ai.transcript.DiarizationTurn
+import com.example.ai.transcript.TranscriptMetadata
+import com.example.ai.transcript.TranscriptQualityEvaluator
+import com.example.ai.transcript.WordSpeakerAttributor
 import com.example.ai.vad.SileroVadDetector
 import com.example.ai.vad.VoiceActivityDetector
 import com.example.core.database.ActionItemEntity
@@ -35,6 +43,7 @@ import com.example.core.database.SpeakerEntity
 import com.example.core.database.TopicEntity
 import com.example.core.database.TranscriptSegmentEntity
 import com.example.core.common.MeetingTitleGenerator
+import com.example.core.repository.toWordsJson
 import com.example.core.model.MeetingStatus
 import com.example.core.model.MeetingSummary
 import com.example.core.model.ProcessingStage
@@ -50,8 +59,15 @@ import java.util.UUID
  * Orchestrates the full local meeting-processing pipeline:
  *
  * ```
- * Audio -> VoiceActivityDetector -> SpeechRecognizer -> SpeakerDiarizer
+ * Audio -> VoiceActivityDetector (speech regions)
+ *       -> SpeechRecognizer        (words + timestamps, decoded over overlapping context windows)
+ *       -> SpeakerDiarizer         (acoustic speaker turns)
+ *       -> WordSpeakerAttributor   (word -> speaker, with a confidence per word)
+ *       -> CanonicalTranscriptAssembler (turns -> utterances -> paragraphs)
  *       -> MeetingIntelligenceEngine -> EmbeddingEngine -> Meeting Memory (Room)
+ *
+ * The canonical transcript is the source of truth; the `TranscriptSegment` list the rest of the
+ * app consumes is a projection of it. See docs/TRANSCRIPTION_OVERHAUL.md.
  * ```
  *
  * Every AI stage is called through its interface and its [AiResult] is honored honestly:
@@ -168,23 +184,28 @@ class MeetingProcessingPipeline(
         try {
             updateJob("Preparing audio...", 10, ProcessingStage.PREPARING_AUDIO)
 
-            // STEP 1: Voice Activity Detection (best-effort — unavailable degrades to no filtering)
+            // STEP 1: Speech activity detection. Answers "where is speech?" and nothing else —
+            // a region boundary is never a transcript boundary. Best-effort: with no VAD model
+            // installed the recording is windowed end to end instead of being skipped.
             updateJob("Detecting speech intervals (VAD)...", 20, ProcessingStage.DETECTING_SPEECH)
             val vadStart = System.currentTimeMillis()
-            val speechIntervals = when (val vadResult = vad.detectSpeechIntervals(audioFile, totalDurationMs)) {
+            val speechRegions = when (val vadResult = vad.detectSpeechIntervals(audioFile, totalDurationMs)) {
                 is AiResult.Success -> vadResult.value
-                else -> emptyList() // No VAD model installed: ASR will process the whole clip.
+                else -> emptyList()
             }
-            Log.d(PERF_TAG, "VAD: ${System.currentTimeMillis() - vadStart}ms, ${speechIntervals.size} intervals")
+            val vadDurationMs = System.currentTimeMillis() - vadStart
+            Log.d(PERF_TAG, "VAD: ${vadDurationMs}ms, ${speechRegions.size} regions")
 
-            // STEP 2: Local Speech Recognition — the required gate. No model = no fabricated transcript.
+            // STEP 2: Speech recognition — the required gate. No model = no fabricated transcript.
+            // Produces a single chronological word stream; nothing about ASR's decode windows
+            // survives into the transcript's structure.
             updateJob("Transcribing with local AI...", 35, ProcessingStage.TRANSCRIBING)
             val asrStart = System.currentTimeMillis()
             val asrResult = speechRecognizer.transcribe(
                 audioFile = audioFile,
                 totalDurationMs = totalDurationMs,
                 meetingId = meetingId,
-                speechIntervals = speechIntervals,
+                speechRegions = speechRegions,
                 options = TranscriptionOptions(modelId = modelId),
                 onProgress = { prog, status ->
                     val overall = (35 + (prog * 20)).toInt()
@@ -198,7 +219,7 @@ class MeetingProcessingPipeline(
             // two heavy model families resident at once.
             SherpaEngineManager.releaseAll()
 
-            val rawSegments: List<TranscriptSegment> = when (asrResult) {
+            val rawWords: List<CanonicalWord> = when (asrResult) {
                 is AiResult.Success -> asrResult.value
                 else -> {
                     // No local ASR model installed (or the device/memory can't run it): stop here.
@@ -208,7 +229,7 @@ class MeetingProcessingPipeline(
                     updateJob(
                         step = if (isCrash) "Failed" else "Speech recognition model required",
                         percent = 100,
-                        stage = if (isCrash) ProcessingStage.FAILED else ProcessingStage.FAILED,
+                        stage = ProcessingStage.FAILED,
                         failed = isCrash,
                         completed = !isCrash,
                         error = message
@@ -224,97 +245,107 @@ class MeetingProcessingPipeline(
                 }
             }
 
-            // Resolved here (rather than at STEP 4, where it used to live) because the structure
-            // engine below needs it too — recording type governs paragraph-merging behavior just
-            // as much as it governs what the LLM is asked to extract.
+            // Resolved here because every layer below — structuring, cleanup, intelligence — is
+            // shaped by what the user was actually recording.
             val recordingType = try {
                 com.example.core.model.RecordingType.valueOf(existingMeeting.recordingType)
             } catch (e: Exception) {
                 com.example.core.model.RecordingType.GENERAL
             }
+            val singleSpeakerMode = expectedSpeakerCount == 1
+            val soloSpeakerName = if (existingMeeting.source == com.example.core.model.MeetingSource.LOCAL_RECORDING.name) "You" else "Speaker 1"
 
-            // STEP 3: Speaker Diarization — skipped entirely for a confirmed single speaker.
-            // Running full multi-speaker clustering on a recording the user already told
-            // MeetingMind is solo (Idea, Voice Memo, a "Just me" pick) wastes the segmentation +
-            // embedding models' load/inference cost for a result that would only ever be thrown
-            // away, and exposes the transcript to exactly the fragmentation risk diarization
-            // exists to avoid: a real single-speaker recording getting split into several
-            // fabricated "speakers" from acoustic noise alone.
-            //
-            // Phase 15 §2 fix: every segment still gets exactly one real, persisted speaker
-            // identity (id "speaker_0") — leaving speakerId null here (the old behavior) meant
-            // the SpeakerEntity insertion below silently filtered every segment out, so a solo
-            // recording ended up with zero persisted speakers and the UI fell back to showing
-            // "Unlabeled speaker". The identity is never guessed from the transcript text — the
-            // name is "You" when this recording is the user's own local recording (source ==
-            // LOCAL_RECORDING) and "Speaker 1" otherwise (an imported file/video/bot capture,
-            // where "you" would misattribute someone else's voice).
-            val speakerLabelledSegments: List<TranscriptSegment>
-            if (expectedSpeakerCount == 1) {
+            // STEP 3: Diarization — "who was speaking, when". Skipped entirely for a confirmed
+            // single speaker: running multi-speaker clustering on a recording the user already
+            // told MeetingMind is solo wastes two model loads for a result that would be thrown
+            // away, and exposes the transcript to exactly the risk diarization exists to avoid —
+            // one real speaker shredded into several by acoustic noise. The solo path still
+            // assigns one real, persisted identity rather than leaving speakers empty.
+            val diarizationStart = System.currentTimeMillis()
+            val diarizationTurns: List<DiarizationTurn> = if (singleSpeakerMode) {
                 updateJob("Single speaker confirmed — skipping speaker detection...", 55, ProcessingStage.DIARIZING)
-                val soloSpeakerId = "speaker_0"
-                val soloSpeakerName = if (existingMeeting.source == com.example.core.model.MeetingSource.LOCAL_RECORDING.name) "You" else "Speaker 1"
-                speakerLabelledSegments = rawSegments.map { it.copy(speakerId = soloSpeakerId, speakerName = soloSpeakerName) }
-                Log.d(PERF_TAG, "Diarization: skipped (confirmed single speaker) — assigned '$soloSpeakerName'")
+                listOf(DiarizationTurn(speakerId = SOLO_SPEAKER_ID, startMs = 0L, endMs = maxOf(totalDurationMs, rawWords.lastOrNull()?.endMs ?: 0L)))
             } else {
                 updateJob("Identifying distinct speakers...", 55, ProcessingStage.DIARIZING)
-                val diarizeStart = System.currentTimeMillis()
-                val deterministicSegments = when (val diarizeResult = diarizer.diarize(audioFile, totalDurationMs, rawSegments, expectedSpeakerCount = expectedSpeakerCount)) {
+                when (val diarizeResult = diarizer.diarize(audioFile, totalDurationMs, meetingId, expectedSpeakerCount = expectedSpeakerCount)) {
                     is AiResult.Success -> diarizeResult.value
-                    else -> rawSegments // No diarization model installed: keep ASR's segments as-is.
+                    // No diarization model installed: every word stays honestly unattributed
+                    // rather than being handed a fabricated identity.
+                    else -> emptyList()
                 }
-                Log.d(PERF_TAG, "Diarization: ${System.currentTimeMillis() - diarizeStart}ms")
+            }
+            val diarizationDurationMs = System.currentTimeMillis() - diarizationStart
+            Log.d(PERF_TAG, "Diarization: ${diarizationDurationMs}ms, ${diarizationTurns.size} turns")
+            // Free the segmentation+embedding models before any LLM allocation loads.
+            SherpaEngineManager.releaseAll()
 
-                // Stage G: an optional second-opinion pass on top of the deterministic result above
-                // — never a replacement for it (see DiarizationReconciliationEngine's own doc for
-                // why a single residual minor speaker is exactly the case pure numeric heuristics
-                // can't resolve alone). DETERMINISTIC never attempts this; AI_ASSISTED/AUTO only do
-                // when there is something genuinely ambiguous left to ask about.
-                val footprints = com.example.ai.diarization.computeSpeakerTranscriptFootprints(deterministicSegments)
-                speakerLabelledSegments = if (com.example.ai.diarization.shouldAttemptAiReconciliation(footprints, diarizationStrategy)) {
+            // STEP 4: Word -> speaker attribution, then turns, utterances and paragraphs. Each
+            // word carries its own AttributionConfidence; nothing is silently reassigned.
+            val fusionStart = System.currentTimeMillis()
+            val attributedWords = WordSpeakerAttributor.attribute(rawWords, diarizationTurns)
+            fun nameForSpeaker(speakerId: String): String =
+                if (speakerId == SOLO_SPEAKER_ID) soloSpeakerName else defaultSpeakerNameFor(speakerIndexOf(speakerId))
+
+            var canonical = CanonicalTranscriptAssembler.assemble(
+                meetingId = meetingId,
+                words = attributedWords,
+                recordingType = recordingType,
+                singleSpeakerMode = singleSpeakerMode,
+                metadata = TranscriptMetadata(
+                    meetingId = meetingId,
+                    language = existingMeeting.language,
+                    processingMode = com.example.core.model.ProcessingProfile.OFFLINE.name,
+                    transcriptionEngine = LOCAL_TRANSCRIPTION_ENGINE,
+                    transcriptionModelId = modelId,
+                    audioDurationMs = totalDurationMs,
+                    stageDurationsMs = mapOf("vad" to vadDurationMs, "asr" to asrDurationMs, "diarization" to diarizationDurationMs)
+                ),
+                speakerNameFor = ::nameForSpeaker,
+                structureEngine = structureEngine
+            )
+
+            // Stage G: an optional second-opinion pass on top of the deterministic result — never
+            // a replacement for it (see DiarizationReconciliationEngine's own doc for why a single
+            // residual minor speaker is exactly the case pure numeric heuristics can't resolve).
+            // It proposes speaker-id merges only; the merge is then applied at the word layer and
+            // the transcript re-assembled, so turns, utterances and paragraphs all reflect it
+            // rather than only the projected segments.
+            if (!singleSpeakerMode) {
+                val projected = CanonicalTranscriptAssembler.projectToSegments(canonical)
+                val footprints = com.example.ai.diarization.computeSpeakerTranscriptFootprints(projected)
+                if (com.example.ai.diarization.shouldAttemptAiReconciliation(footprints, diarizationStrategy)) {
                     updateJob("Refining speaker labels...", 57, ProcessingStage.DIARIZING)
-                    val reconcileModelId = LlmModelResolver.resolveForModeOrNull(
-                        modelStorage, ModelCapability.DIARIZATION_RECONCILIATION, com.example.core.model.ModelTier.LIGHTWEIGHT
-                    )
-                    if (reconcileModelId == null) {
-                        Log.d(PERF_TAG, "Diarization reconciliation: skipped — no installed model has DIARIZATION_RECONCILIATION capability")
-                        deterministicSegments
-                    } else {
-                        val reconcileEngine = com.example.ai.diarization.RealDiarizationReconciliationEngine(
-                            MediaPipeLanguageModel(context, modelStorage, modelId = reconcileModelId)
+                    val merges = resolveSpeakerMerges(projected)
+                    if (merges.isNotEmpty()) {
+                        canonical = CanonicalTranscriptAssembler.assemble(
+                            meetingId = meetingId,
+                            words = canonical.words.map { word ->
+                                val mapped = word.speakerId?.let { merges[it] }
+                                if (mapped == null) word else word.copy(speakerId = mapped)
+                            },
+                            recordingType = recordingType,
+                            singleSpeakerMode = false,
+                            metadata = canonical.metadata,
+                            speakerNameFor = ::nameForSpeaker,
+                            structureEngine = structureEngine
                         )
-                        val reconcileResult = reconcileEngine.reconcile(deterministicSegments)
-                        LlmEngineManager.release()
-                        when (reconcileResult) {
-                            is AiResult.Success -> {
-                                val r = reconcileResult.value
-                                if (r.mergedSpeakerIds.isNotEmpty()) {
-                                    Log.d(PERF_TAG, "Diarization reconciliation: merged ${r.mergedSpeakerIds} — ${r.reasons.joinToString("; ")}")
-                                } else {
-                                    Log.d(PERF_TAG, "Diarization reconciliation: no confident merges proposed")
-                                }
-                                r.segments
-                            }
-                            else -> {
-                                Log.d(PERF_TAG, "Diarization reconciliation: unavailable (${reconcileResult.describeFailure() ?: "no reason given"}) — using deterministic result")
-                                deterministicSegments
-                            }
-                        }
                     }
-                } else {
-                    deterministicSegments
                 }
             }
 
-            // Regroup the VAD-sized fragments into readable paragraphs. This runs *after*
-            // diarization on purpose: speaker identity is what decides where a paragraph may
-            // legitimately continue, so grouping earlier would risk merging across a speaker
-            // change that diarization hadn't reported yet. Recording type and single-speaker mode
-            // both shape how aggressively fragments merge — see TranscriptStructureEngine.
-            val paragraphedSegments = structureEngine.structure(speakerLabelledSegments, recordingType, singleSpeakerMode = expectedSpeakerCount == 1)
-            Log.d(PERF_TAG, "Structuring: ${speakerLabelledSegments.size} fragments -> ${paragraphedSegments.size} paragraphs")
-            // Free the segmentation+embedding models before the LLM's much larger allocation loads.
-            SherpaEngineManager.releaseAll()
+            val quality = TranscriptQualityEvaluator.evaluate(canonical)
+            canonical = canonical.copy(
+                metadata = canonical.metadata.copy(
+                    quality = quality,
+                    stageDurationsMs = canonical.metadata.stageDurationsMs +
+                        ("structure" to (System.currentTimeMillis() - fusionStart))
+                )
+            )
+            // Metrics only — never transcript text. See docs/TRANSCRIPTION_OVERHAUL.md.
+            Log.d(QUALITY_TAG, "Transcript quality: ${quality.toLogLine()}")
+
+            val paragraphedSegments = CanonicalTranscriptAssembler.projectToSegments(canonical)
+            Log.d(PERF_TAG, "Structuring: ${canonical.words.size} words -> ${canonical.utterances.size} utterances -> ${paragraphedSegments.size} paragraphs")
 
             // STEP 3.5/3.6: Transcript cleanup (rule-based, then a validated AI upgrade) — extracted
             // into cleanTranscript() below so a standalone reprocess flow (change cleanup mode,
@@ -404,7 +435,9 @@ class MeetingProcessingPipeline(
                     confidence = it.confidence,
                     cleanedText = it.cleanedText,
                     sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString(),
-                    wordsJson = it.words.toWordsJsonArrayString()
+                    // The single serializer in core.repository — never a second local copy; the two
+                    // that existed before had already drifted apart on the provenance fields.
+                    wordsJson = it.words.toWordsJson()
                 )
             }
             transcriptDao.insertSegments(segmentEntities)
@@ -413,6 +446,13 @@ class MeetingProcessingPipeline(
             // always assigns one; a multi-speaker path with diarization unavailable is correctly
             // empty here rather than inventing per-speaker identities numeric heuristics can't
             // actually support.
+            val speakerAttributionConfidence: Map<String, Float?> = canonical.words
+                .filter { it.speakerId != null }
+                .groupBy { it.speakerId!! }
+                .mapValues { (_, words) ->
+                    words.count { it.attribution == com.example.ai.transcript.AttributionConfidence.HIGH }
+                        .toFloat() / words.size
+                }
             val uniqueSpeakers = diarizedSegments
                 .filter { it.speakerId != null }
                 .distinctBy { it.speakerId }
@@ -425,7 +465,12 @@ class MeetingProcessingPipeline(
                         originalLabel = seg.speakerName ?: seg.speakerId,
                         customName = seg.speakerName ?: seg.speakerId,
                         colorHex = com.example.core.model.SpeakerColors.forIndex(speakerIndex),
-                        confidence = null // sherpa-onnx's diarization API doesn't provide a per-speaker confidence score.
+                        // sherpa-onnx's diarization API provides no per-speaker score of its own,
+                        // but the attribution layer does: the share of this speaker's words the
+                        // word/turn mapping was confident about. That is a real, measured figure
+                        // about how well this identity is supported — not an invented one — and
+                        // it is null when the speaker has no attributed words to measure.
+                        confidence = speakerAttributionConfidence[seg.speakerId]
                     )
                 }
             speakerDao.insertSpeakers(uniqueSpeakers)
@@ -636,20 +681,60 @@ class MeetingProcessingPipeline(
         return array.toString()
     }
 
-    private fun List<com.example.core.model.TranscriptWord>.toWordsJsonArrayString(): String {
-        val array = org.json.JSONArray()
-        forEach { word ->
-            val obj = org.json.JSONObject()
-            obj.put("text", word.text)
-            obj.put("startMs", word.startMs)
-            obj.put("endMs", word.endMs)
-            array.put(obj)
+
+    /**
+     * Runs the optional AI diarization second opinion and returns the speaker-id remapping it
+     * proposes (`from` -> `into`), or an empty map when no capable model is installed, the model
+     * is unavailable, or it proposed nothing it was confident about.
+     *
+     * The mapping — rather than the engine's own relabelled segments — is what the caller applies,
+     * because the merge has to reach the word layer for turns, utterances and paragraphs to be
+     * rebuilt from it. Applying it only to the projected segments would leave the canonical
+     * transcript disagreeing with the transcript the user reads.
+     */
+    private suspend fun resolveSpeakerMerges(segments: List<TranscriptSegment>): Map<String, String> {
+        val reconcileModelId = LlmModelResolver.resolveForModeOrNull(
+            modelStorage, ModelCapability.DIARIZATION_RECONCILIATION, com.example.core.model.ModelTier.LIGHTWEIGHT
+        )
+        if (reconcileModelId == null) {
+            Log.d(PERF_TAG, "Diarization reconciliation: skipped — no installed model has DIARIZATION_RECONCILIATION capability")
+            return emptyMap()
         }
-        return array.toString()
+        val engine = com.example.ai.diarization.RealDiarizationReconciliationEngine(
+            MediaPipeLanguageModel(context, modelStorage, modelId = reconcileModelId)
+        )
+        val result = engine.reconcile(segments)
+        LlmEngineManager.release()
+        if (result !is AiResult.Success) {
+            Log.d(PERF_TAG, "Diarization reconciliation: unavailable (${result.describeFailure() ?: "no reason given"}) — keeping deterministic result")
+            return emptyMap()
+        }
+        val reconciliation = result.value
+        if (reconciliation.mergedSpeakerIds.isEmpty()) {
+            Log.d(PERF_TAG, "Diarization reconciliation: no confident merges proposed")
+            return emptyMap()
+        }
+        // The engine reports the merge by rewriting each segment's speakerId; recovering the
+        // mapping from before/after pairs keeps this pipeline independent of that representation.
+        val before = segments.associateBy({ it.id }, { it.speakerId })
+        val merges = reconciliation.segments
+            .mapNotNull { after ->
+                val original = before[after.id] ?: return@mapNotNull null
+                if (original != null && after.speakerId != null && original != after.speakerId) {
+                    original to after.speakerId
+                } else null
+            }
+            .toMap()
+        Log.d(PERF_TAG, "Diarization reconciliation: merged ${reconciliation.mergedSpeakerIds} — ${reconciliation.reasons.joinToString("; ")}")
+        return merges
     }
 
     private companion object {
         const val PERF_TAG = "MeetMindPerf"
+        const val QUALITY_TAG = "MeetMindTranscriptQuality"
+        /** Speaker id used when the user confirmed the recording is solo — no clustering ran. */
+        const val SOLO_SPEAKER_ID = "speaker_0"
+        const val LOCAL_TRANSCRIPTION_ENGINE = "parakeet-tdt-0.6b-v3"
         const val DEFAULT_LLM_CONTEXT_TOKENS = 4096
     }
 }

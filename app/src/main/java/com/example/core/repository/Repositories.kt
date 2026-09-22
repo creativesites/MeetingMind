@@ -581,6 +581,11 @@ internal fun List<String>.toIdsJson(): String {
     return array.toString()
 }
 
+/**
+ * The one word (de)serializer in the app. There were briefly two copies of this and they drifted
+ * apart; a word written by one path and read by another must round-trip every provenance field,
+ * not just the original three, so every caller goes through these.
+ */
 internal fun String.toWordList(): List<com.example.core.model.TranscriptWord> {
     if (isBlank()) return emptyList()
     return try {
@@ -590,7 +595,17 @@ internal fun String.toWordList(): List<com.example.core.model.TranscriptWord> {
             com.example.core.model.TranscriptWord(
                 text = obj.getString("text"),
                 startMs = obj.getLong("startMs"),
-                endMs = obj.getLong("endMs")
+                endMs = obj.getLong("endMs"),
+                // Everything below was added with the canonical-transcript overhaul. A row
+                // written before it simply has none of these keys and keeps the "not known"
+                // defaults rather than being treated as corrupt.
+                id = obj.optString("id", ""),
+                speakerId = obj.optString("speakerId", "").ifEmpty { null },
+                attribution = obj.optString("attribution", "").ifEmpty { null },
+                confidence = if (obj.has("confidence") && !obj.isNull("confidence")) {
+                    obj.getDouble("confidence").toFloat()
+                } else null,
+                source = obj.optString("source", "").ifEmpty { null }
             )
         }
     } catch (e: Exception) {
@@ -605,6 +620,13 @@ internal fun List<com.example.core.model.TranscriptWord>.toWordsJson(): String {
         obj.put("text", word.text)
         obj.put("startMs", word.startMs)
         obj.put("endMs", word.endMs)
+        // Written only when there is something real to write, so the stored JSON never implies
+        // knowledge (a speaker, a confidence) that no engine actually provided.
+        if (word.id.isNotEmpty()) obj.put("id", word.id)
+        word.speakerId?.let { obj.put("speakerId", it) }
+        word.attribution?.let { obj.put("attribution", it) }
+        word.confidence?.let { obj.put("confidence", it.toDouble()) }
+        word.source?.let { obj.put("source", it) }
         array.put(obj)
     }
     return array.toString()

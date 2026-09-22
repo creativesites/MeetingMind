@@ -1,25 +1,31 @@
 package com.example.ai.vad
 
 import com.example.ai.common.AiResult
+import com.example.ai.transcript.SpeechRegion
 import java.io.File
 
-data class SpeechInterval(
-    val startMs: Long,
-    val endMs: Long,
-    // Null when the VAD engine only gives a binary speech/non-speech boundary (e.g. Silero VAD
-    // via sherpa-onnx) rather than a real per-segment confidence score.
-    val confidence: Float? = null
-)
+/**
+ * Historical name for [SpeechRegion], kept so the many existing call sites and tests that speak of
+ * "speech intervals" keep compiling. It is the same type: VAD's output is an acoustic region, and
+ * the canonical layer now owns that definition.
+ */
+typealias SpeechInterval = SpeechRegion
 
 /**
  * Detects which portions of a recording contain speech.
  *
- * No implementation of this interface may fabricate speech intervals. A real implementation
- * must actually decode and analyze the audio samples; until one is integrated, the app uses
+ * This answers exactly one question — **where is speech?** — and must never be read as answering
+ * "where does a sentence or paragraph end". A region boundary is an acoustic fact about energy in
+ * the signal; it carries no information about language. Grouping regions into decode windows is
+ * [com.example.ai.transcript.AsrContextBuilder]'s job, and deciding where text breaks is the
+ * utterance and paragraph layers'.
+ *
+ * No implementation may fabricate speech regions. A real implementation must actually decode and
+ * analyze the audio samples; until one is integrated, the app uses
  * [UnavailableVoiceActivityDetector], which honestly reports that no VAD model is installed.
  */
 interface VoiceActivityDetector {
-    suspend fun detectSpeechIntervals(audioFile: File, totalDurationMs: Long): AiResult<List<SpeechInterval>>
+    suspend fun detectSpeechIntervals(audioFile: File, totalDurationMs: Long): AiResult<List<SpeechRegion>>
 }
 
 /**
@@ -30,7 +36,7 @@ class UnavailableVoiceActivityDetector : VoiceActivityDetector {
     override suspend fun detectSpeechIntervals(
         audioFile: File,
         totalDurationMs: Long
-    ): AiResult<List<SpeechInterval>> = AiResult.ModelUnavailable(
+    ): AiResult<List<SpeechRegion>> = AiResult.ModelUnavailable(
         modelId = "vad",
         message = "No local voice activity detection model is installed on this device."
     )

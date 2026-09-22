@@ -384,11 +384,29 @@ data class TranscriptSegment(
     val words: List<TranscriptWord> = emptyList()
 )
 
-/** One ASR-recognized word/token with its real timing — see [TranscriptSegment.words]. */
+/**
+ * One recognized word with its real timing — see [TranscriptSegment.words].
+ *
+ * Since the canonical-transcript overhaul this is the persisted projection of
+ * [com.example.ai.transcript.CanonicalWord]: the same word, carrying the same provenance, in the
+ * domain model the UI and Room layers already speak. Every field beyond the original three is
+ * optional and defaults to "not known", so a row written before those fields existed still
+ * deserializes correctly and simply reports nothing it cannot honestly report.
+ */
 data class TranscriptWord(
     val text: String,
     val startMs: Long,
-    val endMs: Long
+    val endMs: Long,
+    /** Transcript-wide word id. Empty for a word persisted before word ids existed. */
+    val id: String = "",
+    /** Who said this word, if diarization had evidence for it. Never inferred from position. */
+    val speakerId: String? = null,
+    /** Name of a [com.example.ai.transcript.AttributionConfidence] entry, or null when unknown. */
+    val attribution: String? = null,
+    /** Per-word engine confidence. Null when the engine provides none (sherpa-onnx provides none). */
+    val confidence: Float? = null,
+    /** Name of a [com.example.ai.transcript.TranscriptSource] entry, or null for legacy rows. */
+    val source: String? = null
 )
 
 data class Transcript(

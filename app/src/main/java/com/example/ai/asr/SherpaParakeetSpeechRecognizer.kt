@@ -4,25 +4,34 @@ import com.example.ai.common.AiResult
 import com.example.ai.modelmanagement.ModelCatalog
 import com.example.ai.modelmanagement.ModelStorage
 import com.example.ai.modelmanagement.SherpaEngineManager
-import com.example.ai.vad.SpeechInterval
+import com.example.ai.transcript.AsrContextBuilder
+import com.example.ai.transcript.AsrWindow
+import com.example.ai.transcript.AsrWindowReconciler
+import com.example.ai.transcript.CanonicalWord
+import com.example.ai.transcript.SpeechRegion
+import com.example.ai.transcript.TranscriptSource
 import com.example.core.audio.AudioFormatConverter
-import com.example.core.model.TranscriptSegment
-import com.example.core.model.TranscriptWord
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
+import kotlinx.coroutines.ensureActive
 import java.io.File
-import java.util.UUID
+import kotlin.coroutines.coroutineContext
 
 /**
  * Real on-device ASR: NVIDIA Parakeet TDT 0.6B v3 (INT8), run through sherpa-onnx's
  * `OfflineRecognizer` configured as a NeMo transducer model. See docs/AI_ARCHITECTURE.md for
  * the exact sherpa-onnx version, model source, and configuration this was verified against.
  *
- * Each VAD-detected speech interval becomes one `OfflineStream` — a cheap, per-segment
- * object — decoded against the single, process-wide [SherpaEngineManager]-held recognizer
- * instance (loading the ~650MB encoder once, not once per segment).
+ * ### What changed, and why
+ *
+ * This used to decode **one VAD region per stream**, so Parakeet never heard across a pause. Now
+ * [AsrContextBuilder] groups regions into overlapping decode windows of tens of seconds, each
+ * decoded as one `OfflineStream` against the single process-wide recognizer, and
+ * [AsrWindowReconciler] removes the duplicate text the overlap produces. The model gets real
+ * conversational context; the caller gets one chronological word stream with no segment structure
+ * baked into it.
  */
 class SherpaParakeetSpeechRecognizer(
     private val modelStorage: ModelStorage,
@@ -33,10 +42,10 @@ class SherpaParakeetSpeechRecognizer(
         audioFile: File,
         totalDurationMs: Long,
         meetingId: String,
-        speechIntervals: List<SpeechInterval>,
+        speechRegions: List<SpeechRegion>,
         options: TranscriptionOptions,
         onProgress: (progress: Float, statusText: String) -> Unit
-    ): AiResult<List<TranscriptSegment>> {
+    ): AiResult<List<CanonicalWord>> {
         if (!modelStorage.isInstalled(modelId)) {
             return AiResult.ModelUnavailable(modelId, "No local speech recognition model is installed on this device.")
         }
@@ -75,53 +84,62 @@ class SherpaParakeetSpeechRecognizer(
             )
             val recognizer = SherpaEngineManager.getOrCreateRecognizer(modelId, config)
 
-            val effectiveIntervals = speechIntervals.ifEmpty {
-                listOf(SpeechInterval(startMs = 0L, endMs = totalDurationMs, confidence = null))
-            }
-
-            val segments = mutableListOf<TranscriptSegment>()
             val sampleRate = AudioFormatConverter.TARGET_SAMPLE_RATE
-            for ((index, interval) in effectiveIntervals.withIndex()) {
-                onProgress(
-                    index.toFloat() / effectiveIntervals.size,
-                    "Transcribing speech segment ${index + 1}/${effectiveIntervals.size}..."
-                )
-
-                val startSample = (interval.startMs * sampleRate / 1000L).toInt().coerceIn(0, decoded.samples.size)
-                val endSample = (interval.endMs * sampleRate / 1000L).toInt().coerceIn(startSample, decoded.samples.size)
-                if (endSample <= startSample) continue
-
-                val segmentSamples = decoded.samples.copyOfRange(startSample, endSample)
-                val stream = recognizer.createStream()
-                try {
-                    stream.acceptWaveform(segmentSamples, sampleRate)
-                    recognizer.decode(stream)
-                    val result = recognizer.getResult(stream)
-                    val text = result.text.trim()
-                    if (text.isNotEmpty()) {
-                        segments.add(
-                            TranscriptSegment(
-                                id = UUID.randomUUID().toString(),
-                                meetingId = meetingId,
-                                speakerId = null,
-                                speakerName = null,
-                                startMs = interval.startMs,
-                                endMs = interval.endMs,
-                                text = text,
-                                confidence = null,
-                                words = buildWords(result.tokens, result.timestamps, interval.startMs, interval.endMs)
-                            )
-                        )
-                    }
-                } finally {
-                    stream.release()
-                }
+            // The decoded sample count is authoritative: a container's reported duration can be
+            // wrong, and a window past the end of the buffer would decode silence.
+            val decodedDurationMs = decoded.samples.size.toLong() * 1000L / sampleRate
+            val windows = AsrContextBuilder.buildWindows(
+                regions = speechRegions,
+                totalDurationMs = minOf(totalDurationMs.takeIf { it > 0 } ?: decodedDurationMs, decodedDurationMs),
+                config = options.windowConfig
+            )
+            if (windows.isEmpty()) {
+                onProgress(1.0f, "No speech to transcribe")
+                return AiResult.Success(emptyList())
             }
 
-            onProgress(1.0f, "Transcription complete (${segments.size} segments)")
-            AiResult.Success(segments)
+            val perWindowWords = mutableListOf<List<CanonicalWord>>()
+            for ((index, window) in windows.withIndex()) {
+                // Cancellation must reach the inner decode loop, not just the coroutine wrapping
+                // it: a 40-minute recording is dozens of windows and the user may leave at any
+                // point. Checked before each decode so at most one window's work is wasted.
+                coroutineContext.ensureActive()
+                onProgress(
+                    index.toFloat() / windows.size,
+                    "Transcribing ${index + 1} of ${windows.size}..."
+                )
+                perWindowWords += decodeWindow(recognizer, decoded.samples, sampleRate, window)
+            }
+
+            val words = AsrWindowReconciler.reconcile(perWindowWords)
+            onProgress(1.0f, "Transcription complete (${words.size} words)")
+            AiResult.Success(words)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             AiResult.Failed(e.message ?: "Speech recognition failed.", e)
+        }
+    }
+
+    private fun decodeWindow(
+        recognizer: com.k2fsa.sherpa.onnx.OfflineRecognizer,
+        samples: FloatArray,
+        sampleRate: Int,
+        window: AsrWindow
+    ): List<CanonicalWord> {
+        val startSample = (window.startMs * sampleRate / 1000L).toInt().coerceIn(0, samples.size)
+        val endSample = (window.endMs * sampleRate / 1000L).toInt().coerceIn(startSample, samples.size)
+        if (endSample <= startSample) return emptyList()
+
+        val stream = recognizer.createStream()
+        return try {
+            stream.acceptWaveform(samples.copyOfRange(startSample, endSample), sampleRate)
+            recognizer.decode(stream)
+            val result = recognizer.getResult(stream)
+            if (result.text.isBlank()) emptyList()
+            else buildWords(result.tokens, result.timestamps, window.startMs, window.endMs)
+        } finally {
+            stream.release()
         }
     }
 
@@ -129,43 +147,57 @@ class SherpaParakeetSpeechRecognizer(
      * Groups sherpa-onnx's raw sub-word tokens into real words with real timestamps. NeMo's
      * default (SentencePiece) tokenizer marks the start of a new word with a leading "▁" —
      * standard NeMo/Conformer/Parakeet convention — so a token carrying that marker starts a new
-     * [TranscriptWord] and one without continues the word in progress. If a particular tokens.txt
-     * turns out not to use that convention, every token folds into a single word spanning the
-     * whole segment rather than mis-segmenting — a real, honest degradation, never a guess dressed
-     * up as a boundary. [OfflineRecognizerResult.timestamps] are seconds from the start of this
-     * stream's own audio, so they're offset by [segmentStartMs] to become absolute recording time.
+     * word and one without continues the word in progress. If a particular tokens.txt turns out
+     * not to use that convention, every token folds into a single word spanning the whole window
+     * rather than mis-segmenting — a real, honest degradation, never a guess dressed up as a
+     * boundary.
+     *
+     * `timestamps` are seconds from the start of this window's own audio, so they are offset by
+     * [windowStartMs] to become absolute recording time. A word's end is the next word's start
+     * (words abut in a transducer's output); the last word ends at the window end.
+     *
+     * Confidence is left null throughout: sherpa-onnx's result type has no score field at all
+     * (verified against the v1.13.6 Kotlin API), so nothing here claims to know how sure the model
+     * was about any word — only when it was said.
      */
-    private fun buildWords(
+    internal fun buildWords(
         tokens: Array<String>,
         timestamps: FloatArray,
-        segmentStartMs: Long,
-        segmentEndMs: Long
-    ): List<com.example.core.model.TranscriptWord> {
+        windowStartMs: Long,
+        windowEndMs: Long
+    ): List<CanonicalWord> {
         if (tokens.isEmpty()) return emptyList()
-        val words = mutableListOf<com.example.core.model.TranscriptWord>()
-        var current = StringBuilder()
-        var currentStartMs = -1L
 
-        fun flush(endMs: Long) {
-            if (current.isNotEmpty() && currentStartMs >= 0) {
-                words.add(com.example.core.model.TranscriptWord(current.toString(), currentStartMs, endMs))
-            }
-            current = StringBuilder()
-            currentStartMs = -1L
-        }
+        data class Pending(val text: StringBuilder, val startMs: Long)
 
+        val pending = mutableListOf<Pending>()
         for (i in tokens.indices) {
             val raw = tokens[i]
-            val tokenStartMs = segmentStartMs + (timestamps.getOrElse(i) { 0f } * 1000).toLong()
+            val tokenStartMs = windowStartMs + (timestamps.getOrElse(i) { 0f } * 1000).toLong()
             val isWordStart = raw.startsWith(WORD_START_MARKER) || raw.startsWith(" ")
-            if (isWordStart || current.isEmpty()) {
-                flush(tokenStartMs)
-                currentStartMs = tokenStartMs
+            val cleaned = raw.removePrefix(WORD_START_MARKER).removePrefix(" ")
+            if (isWordStart || pending.isEmpty()) {
+                pending += Pending(StringBuilder(cleaned), tokenStartMs)
+            } else {
+                pending.last().text.append(cleaned)
             }
-            current.append(raw.removePrefix(WORD_START_MARKER).removePrefix(" "))
         }
-        flush(segmentEndMs)
-        return words.filter { it.text.isNotBlank() }
+
+        return pending.mapIndexedNotNull { index, word ->
+            val text = word.text.toString().trim()
+            if (text.isEmpty()) return@mapIndexedNotNull null
+            val endMs = pending.getOrNull(index + 1)?.startMs ?: windowEndMs
+            CanonicalWord(
+                // Replaced with a transcript-wide id by AsrWindowReconciler; this local id only
+                // has to be unique within the window.
+                id = "w${windowStartMs}_$index",
+                text = text,
+                startMs = word.startMs,
+                endMs = maxOf(endMs, word.startMs),
+                confidence = null,
+                source = TranscriptSource.LOCAL_ASR
+            )
+        }
     }
 
     private companion object {

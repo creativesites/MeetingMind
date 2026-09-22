@@ -123,3 +123,53 @@ enum class ProcessingStage {
     FAILED,
     CANCELLED
 }
+
+/**
+ * How a recording is processed end to end.
+ *
+ * A profile, not a toggle: each one names a whole pipeline — which engines run, in what order,
+ * and where the audio goes. Keeping it one enum is what lets the router refuse a cloud call from
+ * an offline run structurally (see [com.example.ai.routing.AiModelRouter.routesFor]) instead of
+ * relying on every call site to remember to check a boolean.
+ */
+enum class ProcessingProfile(
+    val displayName: String,
+    /** One line the UI shows so the user always knows where their audio is going. */
+    val privacyDescription: String,
+    val requiresNetwork: Boolean
+) {
+    /** Silero VAD, Parakeet, local diarization, local structuring, local LLM. Nothing leaves the device. */
+    OFFLINE(
+        displayName = "Offline",
+        privacyDescription = "Private and on-device. Your recording never leaves this phone.",
+        requiresNetwork = false
+    ),
+
+    /** Gemini transcription (verbatim + smart, fused) and Gemini reasoning. */
+    INTERNET(
+        displayName = "Internet",
+        privacyDescription = "Higher-quality cloud processing. Your recording is sent to Google's AI services.",
+        requiresNetwork = true
+    ),
+
+    /** Real-time voice session. Reserved — see docs/TRANSCRIPTION_OVERHAUL.md. */
+    LIVE(
+        displayName = "Live",
+        privacyDescription = "Real-time cloud processing. Audio is streamed to Google's AI services as you speak.",
+        requiresNetwork = true
+    ),
+
+    /** Real-time voice session with extended background reasoning. Reserved. */
+    LIVE_ADVANCED(
+        displayName = "Live Advanced",
+        privacyDescription = "Real-time cloud processing with deeper reasoning. Audio is streamed to Google's AI services as you speak.",
+        requiresNetwork = true
+    );
+
+    companion object {
+        /** Parses a persisted name, falling back to the private default rather than to a cloud
+         * profile — an unreadable value must never silently start uploading audio. */
+        fun fromNameOrDefault(name: String?): ProcessingProfile =
+            entries.firstOrNull { it.name == name } ?: OFFLINE
+    }
+}

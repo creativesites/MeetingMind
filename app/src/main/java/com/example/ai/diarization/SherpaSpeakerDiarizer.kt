@@ -5,9 +5,9 @@ import com.example.ai.common.AiResult
 import com.example.ai.modelmanagement.ModelCatalog
 import com.example.ai.modelmanagement.ModelStorage
 import com.example.ai.modelmanagement.SherpaEngineManager
+import com.example.ai.transcript.DiarizationTurn
 import com.example.core.audio.AudioFormatConverter
 import com.example.core.model.Speaker
-import com.example.core.model.TranscriptSegment
 import com.k2fsa.sherpa.onnx.FastClusteringConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeakerDiarizationConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeakerSegmentationModelConfig
@@ -32,11 +32,10 @@ class SherpaSpeakerDiarizer(
     override suspend fun diarize(
         audioFile: File,
         totalDurationMs: Long,
-        segments: List<TranscriptSegment>,
+        meetingId: String,
         knownSpeakers: List<Speaker>,
         expectedSpeakerCount: Int?
-    ): AiResult<List<TranscriptSegment>> {
-        if (segments.isEmpty()) return AiResult.Success(segments)
+    ): AiResult<List<DiarizationTurn>> {
         if (!modelStorage.isInstalled(modelId)) {
             return AiResult.ModelUnavailable(modelId, "No local speaker diarization model is installed on this device.")
         }
@@ -51,7 +50,7 @@ class SherpaSpeakerDiarizer(
         return try {
             val decoded = AudioFormatConverter.decodeToMono16k(audioFile)
             if (decoded.samples.isEmpty()) {
-                return AiResult.Success(segments)
+                return AiResult.Success(emptyList())
             }
 
             val config = OfflineSpeakerDiarizationConfig(
@@ -103,7 +102,20 @@ class SherpaSpeakerDiarizer(
             }
             val reconciledSegments = reconcileFragmentedSpeakers(sandwichMerged, fragmentationAnalysis)
 
-            AiResult.Success(reconcileTranscriptWithSpeakers(segments, reconciledSegments))
+            // Raw acoustic turns, and nothing more. Mapping words onto them — with a confidence
+            // per word, and without handing a whole span to whoever held the most milliseconds of
+            // it — belongs to WordSpeakerAttributor.
+            AiResult.Success(
+                reconciledSegments
+                    .sortedBy { it.startMs }
+                    .map {
+                        DiarizationTurn(
+                            speakerId = speakerIdFor(meetingId, it.speakerIndex),
+                            startMs = it.startMs,
+                            endMs = it.endMs
+                        )
+                    }
+            )
         } catch (e: Exception) {
             AiResult.Failed(e.message ?: "Speaker diarization failed.", e)
         }
@@ -296,36 +308,5 @@ internal fun reconcileFragmentedSpeakers(
         val segMidMs = (seg.startMs + seg.endMs) / 2
         val nearest = real.minBy { kotlin.math.abs((it.startMs + it.endMs) / 2 - segMidMs) }
         seg.copy(speakerIndex = nearest.speakerIndex)
-    }
-}
-
-/**
- * Assigns each ASR transcript segment the speaker whose raw diarization interval overlaps it the
- * most, by real timestamp overlap — never by alternating turns, position, or any other guess. A
- * segment with no overlapping speaker interval is left exactly as it was (its speakerId stays
- * whatever it already was, typically null) rather than being assigned a fabricated guess.
- */
-internal fun reconcileTranscriptWithSpeakers(
-    asrSegments: List<TranscriptSegment>,
-    speakerSegments: List<RawSpeakerSegment>
-): List<TranscriptSegment> {
-    if (speakerSegments.isEmpty()) return asrSegments
-    return asrSegments.map { seg ->
-        var bestSpeakerIndex: Int? = null
-        var bestOverlapMs = 0L
-        for (spk in speakerSegments) {
-            val overlapMs = minOf(seg.endMs, spk.endMs) - maxOf(seg.startMs, spk.startMs)
-            if (overlapMs > bestOverlapMs) {
-                bestOverlapMs = overlapMs
-                bestSpeakerIndex = spk.speakerIndex
-            }
-        }
-        val speakerIndex = bestSpeakerIndex ?: return@map seg
-        seg.copy(
-            speakerId = "spk_${seg.meetingId}_$speakerIndex",
-            // "Speaker N" is the honest, generic default the product spec requires — never a
-            // guessed real name. The user can rename it later without disturbing speakerId.
-            speakerName = "Speaker ${speakerIndex + 1}"
-        )
     }
 }

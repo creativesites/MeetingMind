@@ -10,6 +10,9 @@ import com.example.ai.diarization.SpeakerDiarizer
 import com.example.ai.embeddings.LocalEmbeddingEngine
 import com.example.ai.llm.MeetingIntelligenceEngine
 import com.example.ai.modelmanagement.LocalModelStorage
+import com.example.ai.transcript.CanonicalWord
+import com.example.ai.transcript.DiarizationTurn
+import com.example.ai.transcript.SpeechRegion
 import com.example.ai.vad.SpeechInterval
 import com.example.ai.vad.VoiceActivityDetector
 import com.example.core.database.MeetMindDatabase
@@ -96,21 +99,24 @@ class MeetingProcessingPipelineIntegrationTest {
             AiResult.Success(listOf(SpeechInterval(startMs = 0L, endMs = totalDurationMs)))
     }
 
+    /**
+     * Two speakers, one sentence each, as a word stream — the shape a real recognizer now returns.
+     * Timings line up with [fakeDiarizer]'s turns so the attribution layer has real evidence to
+     * work from rather than being handed pre-labelled segments.
+     */
     private val fakeAsr = object : SpeechRecognizer {
         override suspend fun transcribe(
             audioFile: File,
             totalDurationMs: Long,
             meetingId: String,
-            speechIntervals: List<SpeechInterval>,
+            speechRegions: List<SpeechRegion>,
             options: TranscriptionOptions,
             onProgress: (progress: Float, statusText: String) -> Unit
-        ): AiResult<List<TranscriptSegment>> {
+        ): AiResult<List<CanonicalWord>> {
             onProgress(1f, "done")
             return AiResult.Success(
-                listOf(
-                    TranscriptSegment(id = "seg1", meetingId = meetingId, startMs = 0L, endMs = 2000L, text = "We will ship on Friday."),
-                    TranscriptSegment(id = "seg2", meetingId = meetingId, startMs = 2000L, endMs = 4000L, text = "Sounds good to me.")
-                )
+                words("We will ship on Friday.", startMs = 0L, endMs = 2000L) +
+                    words("Sounds good to me.", startMs = 2000L, endMs = 4000L)
             )
         }
     }
@@ -119,14 +125,29 @@ class MeetingProcessingPipelineIntegrationTest {
         override suspend fun diarize(
             audioFile: File,
             totalDurationMs: Long,
-            segments: List<TranscriptSegment>,
+            meetingId: String,
             knownSpeakers: List<Speaker>,
             expectedSpeakerCount: Int?
-        ): AiResult<List<TranscriptSegment>> = AiResult.Success(
-            segments.mapIndexed { index, seg ->
-                seg.copy(speakerId = "spk_${seg.meetingId}_$index", speakerName = "Speaker ${index + 1}")
-            }
+        ): AiResult<List<DiarizationTurn>> = AiResult.Success(
+            listOf(
+                DiarizationTurn(speakerId = "spk_${meetingId}_0", startMs = 0L, endMs = 2000L),
+                DiarizationTurn(speakerId = "spk_${meetingId}_1", startMs = 2000L, endMs = 4000L)
+            )
         )
+    }
+
+    /** Spreads a sentence evenly across a span as timed words. */
+    private fun words(sentence: String, startMs: Long, endMs: Long): List<CanonicalWord> {
+        val tokens = sentence.split(" ")
+        val step = (endMs - startMs) / tokens.size
+        return tokens.mapIndexed { index, token ->
+            CanonicalWord(
+                id = "w_${startMs}_$index",
+                text = token,
+                startMs = startMs + index * step,
+                endMs = startMs + (index + 1) * step
+            )
+        }
     }
 
     private val fakeIntelligenceEngine = object : MeetingIntelligenceEngine {
@@ -231,11 +252,15 @@ class MeetingProcessingPipelineIntegrationTest {
         pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
 
         val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
-        // Neither fake ASR segment contains filler words, so the rule-based cleanup engine's
+        // Neither fake utterance contains filler words, so the rule-based cleanup engine's
         // candidate is identical to the raw text — it must still be validated and persisted as
         // cleanedText, not left null, proving the stage actually ran rather than being skipped.
-        assertEquals("We will ship on Friday.", segments.first { it.id == "seg1" }.cleanedText)
-        assertEquals("Sounds good to me.", segments.first { it.id == "seg2" }.cleanedText)
+        // Keyed on text rather than on a segment id: segment ids are now derived from the
+        // canonical transcript's utterances, so no caller may assume a particular id string.
+        assertEquals(
+            listOf("Sounds good to me.", "We will ship on Friday."),
+            segments.mapNotNull { it.cleanedText }.sorted()
+        )
     }
 
     @Test
@@ -394,12 +419,12 @@ class MeetingProcessingPipelineIntegrationTest {
         var diarizerWasInvoked = false
         val explodingDiarizer = object : SpeakerDiarizer {
             override suspend fun diarize(
-                audioFile: File,
-                totalDurationMs: Long,
-                segments: List<TranscriptSegment>,
-                knownSpeakers: List<Speaker>,
-                expectedSpeakerCount: Int?
-            ): AiResult<List<TranscriptSegment>> {
+            audioFile: File,
+            totalDurationMs: Long,
+            meetingId: String,
+            knownSpeakers: List<Speaker>,
+            expectedSpeakerCount: Int?
+        ): AiResult<List<DiarizationTurn>> {
                 diarizerWasInvoked = true
                 error("Diarization must never run for a confirmed single speaker")
             }
@@ -463,12 +488,12 @@ class MeetingProcessingPipelineIntegrationTest {
             speechRecognizer = fakeAsr,
             diarizer = object : SpeakerDiarizer {
                 override suspend fun diarize(
-                    audioFile: File,
-                    totalDurationMs: Long,
-                    segments: List<TranscriptSegment>,
-                    knownSpeakers: List<Speaker>,
-                    expectedSpeakerCount: Int?
-                ): AiResult<List<TranscriptSegment>> = error("must not run")
+            audioFile: File,
+            totalDurationMs: Long,
+            meetingId: String,
+            knownSpeakers: List<Speaker>,
+            expectedSpeakerCount: Int?
+        ): AiResult<List<DiarizationTurn>> = error("must not run")
             },
             intelligenceEngine = fakeIntelligenceEngine,
             embeddingEngine = LocalEmbeddingEngine()
@@ -491,14 +516,14 @@ class MeetingProcessingPipelineIntegrationTest {
         var diarizerWasInvoked = false
         val trackingDiarizer = object : SpeakerDiarizer {
             override suspend fun diarize(
-                audioFile: File,
-                totalDurationMs: Long,
-                segments: List<TranscriptSegment>,
-                knownSpeakers: List<Speaker>,
-                expectedSpeakerCount: Int?
-            ): AiResult<List<TranscriptSegment>> {
+            audioFile: File,
+            totalDurationMs: Long,
+            meetingId: String,
+            knownSpeakers: List<Speaker>,
+            expectedSpeakerCount: Int?
+        ): AiResult<List<DiarizationTurn>> {
                 diarizerWasInvoked = true
-                return AiResult.Success(segments)
+                return AiResult.Success(emptyList())
             }
         }
         val pipeline = MeetingProcessingPipeline(
@@ -524,14 +549,14 @@ class MeetingProcessingPipelineIntegrationTest {
         var receivedExpectedCount: Int? = -999
         val trackingDiarizer = object : SpeakerDiarizer {
             override suspend fun diarize(
-                audioFile: File,
-                totalDurationMs: Long,
-                segments: List<TranscriptSegment>,
-                knownSpeakers: List<Speaker>,
-                expectedSpeakerCount: Int?
-            ): AiResult<List<TranscriptSegment>> {
+            audioFile: File,
+            totalDurationMs: Long,
+            meetingId: String,
+            knownSpeakers: List<Speaker>,
+            expectedSpeakerCount: Int?
+        ): AiResult<List<DiarizationTurn>> {
                 receivedExpectedCount = expectedSpeakerCount
-                return AiResult.Success(segments)
+                return AiResult.Success(emptyList())
             }
         }
         val pipeline = MeetingProcessingPipeline(

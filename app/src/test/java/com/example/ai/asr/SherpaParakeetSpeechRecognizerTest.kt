@@ -33,7 +33,7 @@ class SherpaParakeetSpeechRecognizerTest {
             audioFile = File(context.cacheDir, "does-not-matter.m4a"),
             totalDurationMs = 10_000L,
             meetingId = "m1",
-            speechIntervals = emptyList(),
+            speechRegions = emptyList(),
             options = TranscriptionOptions(),
             onProgress = { _, _ -> }
         )
