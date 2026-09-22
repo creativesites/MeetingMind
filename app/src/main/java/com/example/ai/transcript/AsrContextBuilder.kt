@@ -141,6 +141,12 @@ object AsrContextBuilder {
         // The final window can end up very short when the span length lands just past a step
         // boundary; pulling its start back keeps it a full-length decode rather than a sliver,
         // and the extra overlap is removed by the reconciler like any other.
+        //
+        // The pull-back cannot reach back past the previous window's start: a final window only
+        // exists because the previous one ended before the span did, so the span end is already
+        // beyond `previousStart + targetWindowMs`. `AsrContextBuilderTest` pins that ordering
+        // invariant across span lengths, because the reconciler walks windows in order and assumes
+        // each one moves forward in time.
         val last = windows.last()
         if (last.second - last.first < config.targetWindowMs && windows.size > 1) {
             windows[windows.lastIndex] = maxOf(spanStart, last.second - config.targetWindowMs) to last.second

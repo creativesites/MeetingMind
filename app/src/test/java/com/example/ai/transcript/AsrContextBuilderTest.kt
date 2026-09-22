@@ -120,4 +120,26 @@ class AsrContextBuilderTest {
 
         assertTrue("the sliver must not be its own window", windows.all { it.durationMs >= config.minWindowMs })
     }
+
+    @Test
+    fun `windows stay ordered and each covers new ground, whatever the span length`() {
+        // The reconciler walks windows in order and assumes each one moves forward in time, so
+        // this is an invariant the splitter owes it. Swept across span lengths, including the ones
+        // that end just past a step boundary and leave a very short final window to be pulled back.
+        for (extraMs in 0L..40_000L step 137L) {
+            val spanEnd = config.targetWindowMs + (config.targetWindowMs - config.overlapMs) + extraMs
+            val windows = AsrContextBuilder.buildWindows(
+                listOf(SpeechRegion(0L, spanEnd)), spanEnd, config.copy(paddingMs = 0L)
+            )
+
+            assertEquals(
+                "windows out of order for a span of ${spanEnd}ms",
+                windows.sortedBy { it.startMs }, windows
+            )
+            assertTrue(
+                "windows must each cover new ground for a span of ${spanEnd}ms",
+                windows.zipWithNext().all { (a, b) -> b.startMs > a.startMs && b.endMs > a.endMs }
+            )
+        }
+    }
 }
