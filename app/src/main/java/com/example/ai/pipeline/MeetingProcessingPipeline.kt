@@ -613,6 +613,9 @@ class MeetingProcessingPipeline(
                 qualityMetricsJson = quality.toJson()
             )
             meetingDao.updateMeeting(updatedMeeting)
+            // The recording's note picks up its generated title and summary. A failure here must
+            // never fail a recording that processed successfully.
+            runCatching { com.example.core.repository.NoteRepository(context, database).syncFromRecording(meetingId) }
 
             updateJob(
                 step = "Completed",

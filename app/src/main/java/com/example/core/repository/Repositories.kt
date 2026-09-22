@@ -75,7 +75,9 @@ class MeetingRepository(
         audioFilePath: String? = null,
         recordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.GENERAL,
         customContext: String? = null,
-        speakerCountPreference: Int? = null
+        speakerCountPreference: Int? = null,
+        /** File the recording into this note instead of giving it a new one ("record here"). */
+        noteId: String? = null
     ): Meeting = withContext(Dispatchers.IO) {
         val entity = MeetingEntity(
             id = id,
@@ -93,12 +95,21 @@ class MeetingRepository(
             speakerCountPreference = speakerCountPreference
         )
         meetingDao.insertMeeting(entity)
+        // Every recording lives in a note (docs/PLAN_V1.md §2).
+        NoteRepository(context, database).attachRecording(
+            meetingId = id,
+            title = title,
+            workflow = recordingType,
+            createdAt = entity.createdAt,
+            existingNoteId = noteId
+        )
         entity.toDomain()
     }
 
     suspend fun updateMeetingTitle(id: String, newTitle: String) = withContext(Dispatchers.IO) {
         val existing = meetingDao.getMeetingById(id) ?: return@withContext
         meetingDao.updateMeeting(existing.copy(title = newTitle, updatedAt = System.currentTimeMillis()))
+        NoteRepository(context, database).syncFromRecording(id)
     }
 
     /** Persists the user's answer to the before-processing "How many speakers?" prompt — reached
@@ -156,7 +167,8 @@ class MeetingRepository(
             summaryPreview = summaryText,
             recordingType = try { com.example.core.model.RecordingType.valueOf(recordingType) } catch (e: Exception) { com.example.core.model.RecordingType.GENERAL },
             customContext = customContext,
-            speakerCountPreference = speakerCountPreference
+            speakerCountPreference = speakerCountPreference,
+            noteId = noteId
         )
     }
 }
@@ -703,8 +715,54 @@ class SearchRepository(
             }
         }
 
+        // 3. Notes: title and text. A recording's own note is skipped when the recording
+        // already matched, so one piece of work doesn't appear twice.
+        val matchedMeetings = results.map { it.meetingId }.toSet()
+        for (note in database.noteDao().searchText(qTrim)) {
+            val recordingIds = database.noteDao().getMeetingsForNote(note.id).map { it.id }
+            if (recordingIds.any { it in matchedMeetings } && !note.title.contains(qTrim, ignoreCase = true)) continue
+            val titleHit = note.title.contains(qTrim, ignoreCase = true)
+            results.add(
+                SearchResultItem(
+                    meetingId = recordingIds.firstOrNull() ?: "",
+                    meetingTitle = note.title.ifBlank { "Untitled note" },
+                    meetingDate = note.eventDate ?: note.createdAt,
+                    matchSnippet = snippetAround(note.plainText, qTrim) ?: note.plainText.take(SNIPPET_LENGTH),
+                    timestampMs = 0L,
+                    matchType = SearchMatchType.NOTE,
+                    relevanceScore = if (titleHit) 0.97f else 0.9f,
+                    recordingType = runCatching { com.example.core.model.RecordingType.valueOf(note.workflow) }
+                        .getOrDefault(com.example.core.model.RecordingType.GENERAL),
+                    noteId = note.id
+                )
+            )
+        }
+
         // Rank by relevance score
         results.sortedByDescending { it.relevanceScore }
+    }
+
+    companion object {
+        private const val SNIPPET_LENGTH = 160
+
+        /**
+         * About [SNIPPET_LENGTH] characters of [text] centred on the first match of [query],
+         * cut at word boundaries and marked with ellipses where it was cut. Null when [query]
+         * doesn't occur.
+         */
+        fun snippetAround(text: String, query: String): String? {
+            val at = text.indexOf(query, ignoreCase = true)
+            if (at < 0) return null
+            val flat = text.replace('\n', ' ')
+            var start = (at - SNIPPET_LENGTH / 2).coerceAtLeast(0)
+            var end = (start + SNIPPET_LENGTH).coerceAtMost(flat.length)
+            start = (end - SNIPPET_LENGTH).coerceAtLeast(0).coerceAtMost(start)
+            if (start > 0) flat.indexOf(' ', start).takeIf { it in start until at }?.let { start = it + 1 }
+            if (end < flat.length) flat.lastIndexOf(' ', end).takeIf { it > at + query.length }?.let { end = it }
+            val prefix = if (start > 0) "…" else ""
+            val suffix = if (end < flat.length) "…" else ""
+            return prefix + flat.substring(start, end).trim() + suffix
+        }
     }
 }
 
@@ -719,7 +777,9 @@ private fun MeetingEntity.recordingTypeOrGeneral(): com.example.core.model.Recor
 
 enum class SearchMatchType {
     KEYWORD_TRANSCRIPT,
-    SEMANTIC_VECTOR
+    SEMANTIC_VECTOR,
+    /** A note's title or text. [SearchResultItem.noteId] is set. */
+    NOTE
 }
 
 data class SearchResultItem(
@@ -732,7 +792,9 @@ data class SearchResultItem(
     val relevanceScore: Float,
     // Null when the matching segment has no diarized speaker — never a fabricated name.
     val speakerName: String? = null,
-    val recordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.GENERAL
+    val recordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.GENERAL,
+    /** Set for [SearchMatchType.NOTE]. [meetingId] is then the note's first recording, or empty. */
+    val noteId: String? = null
 )
 
 /**

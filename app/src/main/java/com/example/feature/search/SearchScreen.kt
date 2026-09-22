@@ -306,6 +306,7 @@ private fun SearchResultRow(
                 text = when (item.matchType) {
                     SearchMatchType.SEMANTIC_VECTOR -> "Vector"
                     SearchMatchType.KEYWORD_TRANSCRIPT -> "Keyword"
+                    SearchMatchType.NOTE -> "Note"
                 },
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,

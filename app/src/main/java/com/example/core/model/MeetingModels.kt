@@ -341,7 +341,9 @@ data class Meeting(
     val customContext: String? = null,
     /** What the user told MeetingMind about expected speakers — see [RecordingContext]. Null means
      * unspecified; the diarization engine (if one runs) decides for itself. */
-    val speakerCountPreference: Int? = null
+    val speakerCountPreference: Int? = null,
+    /** The note this recording belongs to. See [Note]. */
+    val noteId: String? = null
 )
 
 data class TranscriptSegment(

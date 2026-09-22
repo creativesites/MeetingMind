@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "meetings",
-    indices = [Index(value = ["createdAt"]), Index(value = ["title"])]
+    indices = [Index(value = ["createdAt"]), Index(value = ["title"]), Index(value = ["noteId"])]
 )
 data class MeetingEntity(
     @PrimaryKey val id: String,
@@ -39,7 +39,12 @@ data class MeetingEntity(
     val processingVersion: Int = 0,
     /** Engineering diagnostics from [com.example.ai.transcript.TranscriptQualityEvaluator], as
      * JSON. Never shown to the user as a score — see that class's own doc. Null when not measured. */
-    val qualityMetricsJson: String? = null
+    val qualityMetricsJson: String? = null,
+    /** The note this recording belongs to (docs/PLAN_V1.md §2). A note can hold several
+     * recordings; a recording belongs to at most one note. Null only for a recording that is
+     * still being created. Deliberately not a foreign key: deleting a note must not silently
+     * delete audio, so [com.example.core.repository.NoteRepository.deleteNote] decides. */
+    val noteId: String? = null
 )
 
 @Entity(

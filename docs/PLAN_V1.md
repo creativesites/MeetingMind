@@ -180,10 +180,16 @@ design decision rather than inherited from one.
 
 ## 7. Scripture and YouVersion
 
-**Provider.** `ScriptureProvider` is an interface; `YouVersionScriptureProvider` implements it with
-the official Kotlin SDK (`com.youversion.platform:*:2.1.3`), falling back to the REST API
-(`api.youversion.com/v1/bibles/{version}/passages/{USFM}`, header `X-YVP-App-Key`). Nothing outside
-the provider knows YouVersion exists.
+**Provider.** `ScriptureProvider` is an interface; `YouVersionScriptureProvider` implements it
+against the YouVersion Platform REST API (`api.youversion.com/v1/bibles/{version}/passages/{USFM}`,
+header `X-YVP-App-Key`) over the app's existing OkHttp client, with its own small cache. Nothing
+outside the provider knows YouVersion exists.
+
+*Why not the Kotlin SDK (decided in M2):* `platform-*:2.1.3` and the Compose rich-text library both
+pull Compose 1.12 and the Kotlin 2.4 standard library into a project built with Kotlin 2.2.10.
+Taking them means upgrading the whole toolchain mid-milestone, for UI we would restyle anyway.
+The REST API is the same data under the same licence terms. Revisit when the project moves to
+Kotlin 2.4.
 
 **Licensing — this shapes the design:**
 
@@ -233,8 +239,8 @@ These can be checked in code review.
 | # | Milestone | Status |
 | --- | --- | --- |
 | M0 | This document; `PRODUCT_DIRECTION.md` updated | done |
-| M1 | Internet mode everywhere — one `LanguageModelFactory` | |
-| M2 | Notes data layer, migration 12→13, export document model | |
+| M1 | Internet mode everywhere — one `LanguageModelFactory` | done |
+| M2 | Notes data layer, migration 12→13, export document model | done |
 | M3 | Notes UI — library, notebooks, editor, export, navigation | |
 | M4 | Workflows widened — templates, processing rows | |
 | M5 | Scripture — parser, YouVersion provider, verse sheet | |
@@ -244,6 +250,24 @@ These can be checked in code review.
 | M9 | Note AI | |
 
 Each milestone from M3 on ends with a tested arm64 APK in `dist/`.
+
+**Decisions made while building**
+
+- *M1.* Ask, AI cleanup, speaker reconciliation and every AI tool now get their model from
+  `LanguageModelFactory`. Under Internet mode, cloud intelligence falls back to the on-device engine
+  on failure rather than leaving a recording with no summary. Fixed along the way: v18's Internet
+  mode ran locally even with a key entered, because the transport cached "not configured" at
+  startup and never re-read it.
+- *M2, rich text.* Notes use MeetingMind's own `RichText` (text plus style ranges), edited in
+  per-block text fields, instead of an HTML editor library. The dependency cost is above; the gain
+  is that every editing rule (toggle, continue-style-while-typing, split on Enter, merge on
+  Backspace) is plain Kotlin with unit tests.
+- *M2, export.* One `ExportDocument` feeds three renderers. The Word renderer writes real styles
+  (headings show in the navigation pane), real restartable lists, working links, embedded images and
+  page numbers. The PDF renderer paginates line by line. Meeting exports move onto it in M3.
+- *M2, search.* Notes join search by title and text now. Note *embeddings* move to M9, where
+  "related notes" is the feature that needs them; searching by meaning over notes before then would
+  be an embedding pass with nothing using it but search.
 
 ## 11. How v1 is accepted
 

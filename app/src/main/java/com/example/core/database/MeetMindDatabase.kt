@@ -22,9 +22,19 @@ import androidx.room.migration.Migration
         ProcessingJobEntity::class,
         ChatMessageEntity::class,
         VocabularyEntity::class,
-        AiJobEntity::class
+        AiJobEntity::class,
+        NotebookEntity::class,
+        NoteEntity::class,
+        NoteBlockEntity::class,
+        AttachmentEntity::class,
+        TagEntity::class,
+        NoteTagCrossRef::class,
+        NoteLinkEntity::class,
+        ScriptureRefEntity::class,
+        ScriptureCollectionEntity::class,
+        ScriptureCollectionItemEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class MeetMindDatabase : RoomDatabase() {
@@ -42,6 +52,10 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun vocabularyDao(): VocabularyDao
     abstract fun aiJobDao(): AiJobDao
+    abstract fun notebookDao(): NotebookDao
+    abstract fun noteDao(): NoteDao
+    abstract fun attachmentDao(): AttachmentDao
+    abstract fun scriptureDao(): ScriptureDao
 
     companion object {
         @Volatile
@@ -303,6 +317,110 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /** The notebook every migrated recording's note is filed in. */
+        const val DEFAULT_NOTEBOOK_ID = "notebook_my_notes"
+
+        /**
+         * Adds the notes schema (docs/PLAN_V1.md §2) and gives every existing recording a note.
+         *
+         * Nothing is moved or dropped. Each recording gets a note with the same title, type and
+         * dates, holding a single RECORDING block that points back at it, and the recording is
+         * linked to its note through the new `meetings.noteId`. All of it lands in a "My Notes"
+         * notebook so the library is never empty after an upgrade.
+         *
+         * The CREATE statements must match the entities in NoteEntities.kt exactly; Room checks
+         * on open, and `NoteSchemaTest` checks in CI.
+         */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                NOTES_SCHEMA_SQL.forEach { db.execSQL(it) }
+
+                db.execSQL("ALTER TABLE meetings ADD COLUMN noteId TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_meetings_noteId ON meetings(noteId)")
+
+                val now = System.currentTimeMillis()
+                db.execSQL(
+                    "INSERT OR IGNORE INTO notebooks (id, name, space, colorHex, icon, createdAt, updatedAt, archivedAt, sortOrder) " +
+                        "VALUES (?, 'My Notes', 'PERSONAL', NULL, NULL, ?, ?, NULL, 0)",
+                    arrayOf<Any>(DEFAULT_NOTEBOOK_ID, now, now)
+                )
+                db.execSQL(
+                    """
+                    INSERT OR IGNORE INTO notes (id, title, workflow, notebookId, createdAt, updatedAt, eventDate,
+                        pinned, isPrivate, status, answeredAt, metadataJson, archivedAt, plainText)
+                    SELECT 'note_' || id, title, recordingType, ?, createdAt, updatedAt, createdAt,
+                        0, CASE WHEN recordingType = 'JOURNAL' THEN 1 ELSE 0 END, 'OPEN', NULL, '{}', NULL,
+                        COALESCE(summaryText, '')
+                    FROM meetings
+                    """.trimIndent(),
+                    arrayOf<Any>(DEFAULT_NOTEBOOK_ID)
+                )
+                db.execSQL(
+                    """
+                    INSERT OR IGNORE INTO note_blocks (id, noteId, position, type, text, spans, payloadJson, source,
+                        sourceSegmentIdsJson, sectionKey, isUserEdited, indent, checked, updatedAt)
+                    SELECT 'block_rec_' || id, 'note_' || id, 0, 'RECORDING', '', '',
+                        '{"meetingId":"' || REPLACE(id, '"', '') || '"}', 'TRANSCRIPT', '[]', 'recording', 0, 0, 0, updatedAt
+                    FROM meetings
+                    """.trimIndent()
+                )
+                db.execSQL("UPDATE meetings SET noteId = 'note_' || id")
+            }
+        }
+
+        /** CREATE statements for the notes tables, in dependency order. */
+        internal val NOTES_SCHEMA_SQL: List<String> = listOf(
+            """CREATE TABLE IF NOT EXISTS `notebooks` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `space` TEXT NOT NULL,
+                `colorHex` TEXT, `icon` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL,
+                `archivedAt` INTEGER, `sortOrder` INTEGER NOT NULL, PRIMARY KEY(`id`))""",
+            """CREATE TABLE IF NOT EXISTS `notes` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `workflow` TEXT NOT NULL,
+                `notebookId` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `eventDate` INTEGER,
+                `pinned` INTEGER NOT NULL, `isPrivate` INTEGER NOT NULL, `status` TEXT NOT NULL, `answeredAt` INTEGER,
+                `metadataJson` TEXT NOT NULL, `archivedAt` INTEGER, `plainText` TEXT NOT NULL, PRIMARY KEY(`id`),
+                FOREIGN KEY(`notebookId`) REFERENCES `notebooks`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )""",
+            "CREATE INDEX IF NOT EXISTS `index_notes_notebookId` ON `notes` (`notebookId`)",
+            "CREATE INDEX IF NOT EXISTS `index_notes_updatedAt` ON `notes` (`updatedAt`)",
+            """CREATE TABLE IF NOT EXISTS `note_blocks` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `position` INTEGER NOT NULL,
+                `type` TEXT NOT NULL, `text` TEXT NOT NULL, `spans` TEXT NOT NULL, `payloadJson` TEXT NOT NULL,
+                `source` TEXT NOT NULL, `sourceSegmentIdsJson` TEXT NOT NULL, `sectionKey` TEXT,
+                `isUserEdited` INTEGER NOT NULL, `indent` INTEGER NOT NULL, `checked` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`),
+                FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )""",
+            "CREATE INDEX IF NOT EXISTS `index_note_blocks_noteId` ON `note_blocks` (`noteId`)",
+            """CREATE TABLE IF NOT EXISTS `attachments` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `kind` TEXT NOT NULL,
+                `path` TEXT NOT NULL, `mimeType` TEXT NOT NULL, `sizeBytes` INTEGER NOT NULL, `width` INTEGER,
+                `height` INTEGER, `durationMs` INTEGER, `caption` TEXT, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`),
+                FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )""",
+            "CREATE INDEX IF NOT EXISTS `index_attachments_noteId` ON `attachments` (`noteId`)",
+            "CREATE TABLE IF NOT EXISTS `tags` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_tags_name` ON `tags` (`name`)",
+            """CREATE TABLE IF NOT EXISTS `note_tags` (`noteId` TEXT NOT NULL, `tagId` TEXT NOT NULL, PRIMARY KEY(`noteId`, `tagId`),
+                FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE ,
+                FOREIGN KEY(`tagId`) REFERENCES `tags`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )""",
+            "CREATE INDEX IF NOT EXISTS `index_note_tags_tagId` ON `note_tags` (`tagId`)",
+            """CREATE TABLE IF NOT EXISTS `note_links` (`id` TEXT NOT NULL, `fromNoteId` TEXT NOT NULL, `toNoteId` TEXT NOT NULL,
+                `kind` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`),
+                FOREIGN KEY(`fromNoteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE ,
+                FOREIGN KEY(`toNoteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )""",
+            "CREATE INDEX IF NOT EXISTS `index_note_links_fromNoteId` ON `note_links` (`fromNoteId`)",
+            "CREATE INDEX IF NOT EXISTS `index_note_links_toNoteId` ON `note_links` (`toNoteId`)",
+            """CREATE TABLE IF NOT EXISTS `scripture_refs` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `blockId` TEXT,
+                `bookUsfm` TEXT NOT NULL, `chapter` INTEGER NOT NULL, `verseStart` INTEGER, `verseEnd` INTEGER,
+                `versionId` INTEGER, `origin` TEXT NOT NULL, `meetingId` TEXT, `segmentId` TEXT, `startMs` INTEGER,
+                `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`),
+                FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )""",
+            "CREATE INDEX IF NOT EXISTS `index_scripture_refs_noteId` ON `scripture_refs` (`noteId`)",
+            "CREATE INDEX IF NOT EXISTS `index_scripture_refs_bookUsfm_chapter` ON `scripture_refs` (`bookUsfm`, `chapter`)",
+            """CREATE TABLE IF NOT EXISTS `scripture_collections` (`id` TEXT NOT NULL, `name` TEXT NOT NULL,
+                `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))""",
+            """CREATE TABLE IF NOT EXISTS `scripture_collection_items` (`id` TEXT NOT NULL, `collectionId` TEXT NOT NULL,
+                `bookUsfm` TEXT NOT NULL, `chapter` INTEGER NOT NULL, `verseStart` INTEGER, `verseEnd` INTEGER,
+                `versionId` INTEGER, `comment` TEXT, `position` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`collectionId`) REFERENCES `scripture_collections`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )""",
+            "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
+        )
+
         fun getInstance(context: Context): MeetMindDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -310,7 +428,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
