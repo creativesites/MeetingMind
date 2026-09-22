@@ -1,7 +1,8 @@
 # MeetingMind v18
 
-Debug-signed build for device testing. Install the **arm64-v8a** APK unless you know your phone
-needs otherwise; the universal APK works everywhere but is roughly four times the size.
+Debug-signed build for device testing, **arm64-v8a only** — which is what the Galaxy S20 family
+and every other Android phone from roughly the last decade runs. It will not install on an x86
+emulator; an arm64 emulator is fine.
 
 You will need "install from unknown sources" enabled for whatever app you download it with.
 

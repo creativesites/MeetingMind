@@ -40,7 +40,8 @@ jobs:
         # commit cannot produce a downloadable artifact.
         run: ./gradlew testDebugUnitTest
 
-      - name: Build APKs
+      - name: Build APK
+        # arm64-v8a only — see the splits block in app/build.gradle.kts for why.
         run: ./gradlew assembleDebug
 
       - name: Check no credential was baked into the APK
@@ -57,7 +58,7 @@ jobs:
           done
           echo "No credential-shaped strings found."
 
-      - name: Name the artifacts
+      - name: Name the artifact
         id: rename
         run: |
           set -euo pipefail

@@ -52,20 +52,27 @@ android {
     buildConfig = true
   }
   /**
-   * One APK per CPU architecture instead of one carrying all four.
+   * arm64-v8a only.
    *
    * The sherpa-onnx and MediaPipe native libraries dominate this app's size, and a universal APK
-   * ships every ABI's copy to every device — a quarter of a gigabyte, of which a given phone uses
-   * about a quarter. Splitting takes the arm64-v8a build (what essentially every phone from the
-   * last several years needs) to a fraction of that. The universal APK is still produced for
-   * anyone who needs one artifact that runs anywhere.
+   * ships every architecture's copy to every device — a quarter of a gigabyte, of which any given
+   * phone uses about a third. Building one ABI takes that to ~86MB.
+   *
+   * arm64-v8a is the target: it is what the Galaxy S20 family runs (Exynos 990 and Snapdragon 865
+   * are both 64-bit ARM), and what every Android phone shipped in roughly the last decade runs.
+   * 32-bit armeabi-v7a is not built because no device this app targets needs it — the models alone
+   * demand more RAM than a 32-bit address space comfortably gives.
+   *
+   * Consequence worth knowing: there is no x86_64 output, so this will not install on an x86
+   * emulator. An arm64 emulator (the default on Apple Silicon) is fine. Add "x86_64" to the
+   * include list if an x86 emulator is needed.
    */
   splits {
     abi {
       isEnable = true
       reset()
-      include("arm64-v8a", "armeabi-v7a", "x86_64")
-      isUniversalApk = true
+      include("arm64-v8a")
+      isUniversalApk = false
     }
   }
 
