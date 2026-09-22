@@ -166,16 +166,9 @@ fun HomeScreen(
 
     Scaffold(
         containerColor = Color.White,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToQuickRecord,
-                containerColor = Ink,
-                contentColor = Color.White,
-                modifier = Modifier.testTag("home_quick_record_fab")
-            ) {
-                Icon(Icons.Default.Mic, contentDescription = "Quick Record")
-            }
-        },
+        // No Record FAB: the navigation bar's own filled Record action is the same destination,
+        // and two affordances for one verb on the same screen is a choice the user has to make for
+        // no reason. Quick Record remains reachable from the header action on this screen.
         bottomBar = {
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.HOME,
@@ -185,8 +178,10 @@ fun HomeScreen(
                         com.example.core.ui.BottomNavDestination.SEARCH -> onNavigateToSearch()
                         com.example.core.ui.BottomNavDestination.AI_ENGINE -> onNavigateToModels()
                         com.example.core.ui.BottomNavDestination.SETTINGS -> onNavigateToSettings()
+                        com.example.core.ui.BottomNavDestination.RECORD -> onNavigateToRecord()
                     }
-                }
+                },
+                onRecord = onNavigateToRecord
             )
         }
     ) { innerPadding ->

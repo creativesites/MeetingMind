@@ -269,7 +269,8 @@ fun ModelManagerScreen(
         bottomBar = {
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.AI_ENGINE,
-                onNavigate = onNavigateBottomNav
+                onNavigate = onNavigateBottomNav,
+                onRecord = { onNavigateBottomNav(com.example.core.ui.BottomNavDestination.RECORD) }
             )
         }
     ) { innerPadding ->

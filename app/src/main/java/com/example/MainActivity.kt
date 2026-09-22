@@ -145,16 +145,24 @@ fun MeetMindApp() {
     // entry, so repeatedly tapping tabs never piles up duplicate entries or re-navigate() is
     // treated as no-op churn — the usual popUpTo/launchSingleTop/restoreState pattern.
     val navigateToPrimary: (com.example.core.ui.BottomNavDestination) -> Unit = { destination ->
-        val route = when (destination) {
-            com.example.core.ui.BottomNavDestination.HOME -> Routes.HOME
-            com.example.core.ui.BottomNavDestination.SEARCH -> Routes.SEARCH
-            com.example.core.ui.BottomNavDestination.AI_ENGINE -> Routes.MODELS
-            com.example.core.ui.BottomNavDestination.SETTINGS -> Routes.SETTINGS
-        }
-        navController.navigate(route) {
-            popUpTo(Routes.HOME) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
+        if (destination == com.example.core.ui.BottomNavDestination.RECORD) {
+            // Record is an action, not one of the saved primary tabs: it pushes the recording
+            // flow onto the stack rather than switching between destinations, so it deliberately
+            // skips the popUpTo/restoreState handling below.
+            navController.navigate(Routes.RECORDING)
+        } else {
+            val route = when (destination) {
+                com.example.core.ui.BottomNavDestination.HOME -> Routes.HOME
+                com.example.core.ui.BottomNavDestination.SEARCH -> Routes.SEARCH
+                com.example.core.ui.BottomNavDestination.AI_ENGINE -> Routes.MODELS
+                com.example.core.ui.BottomNavDestination.SETTINGS -> Routes.SETTINGS
+                com.example.core.ui.BottomNavDestination.RECORD -> Routes.RECORDING
+            }
+            navController.navigate(route) {
+                popUpTo(Routes.HOME) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
         }
     }
 

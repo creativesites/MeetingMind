@@ -142,7 +142,8 @@ fun SearchScreen(
         bottomBar = {
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.SEARCH,
-                onNavigate = onNavigateBottomNav
+                onNavigate = onNavigateBottomNav,
+                onRecord = { onNavigateBottomNav(com.example.core.ui.BottomNavDestination.RECORD) }
             )
         }
     ) { innerPadding ->

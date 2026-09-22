@@ -12,6 +12,7 @@ import com.example.core.database.MeetMindDatabase
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -116,7 +117,11 @@ class PrivacyNoCloudPathTest {
     }
 
     @Test
-    fun `the pipeline's default cloud transport is unconfigured, so no credential ships in the app`() {
+    fun `a fresh install holds no Gemini credential, so no key ships in the app`() {
+        // The repository and its published releases are public, and a key compiled into an APK is
+        // recoverable from that APK. The only credential the app can ever hold is one the user
+        // typed into this device, so on a fresh install there is none and Internet mode reports
+        // itself unavailable.
         val context: Context = ApplicationProvider.getApplicationContext()
         val pipeline = MeetingProcessingPipeline(context, database)
 
@@ -124,8 +129,26 @@ class PrivacyNoCloudPathTest {
             .getDeclaredField("geminiTransport").apply { isAccessible = true }
             .get(pipeline) as com.example.ai.cloud.GeminiTransport
 
-        assertEquals(com.example.ai.cloud.UnconfiguredGeminiTransport::class.java, transport.javaClass)
-        assertFalse("an unmodified build must not be able to make a cloud call", transport.isConfigured())
+        assertFalse("no key has been entered, so nothing may be sent", transport.isConfigured())
+        assertNull(
+            "a key must never be readable from anywhere but this device's own storage",
+            kotlinx.coroutines.runBlocking { com.example.ai.cloud.GeminiCredentialStore(context).getApiKey() }
+        )
+    }
+
+    @Test
+    fun `no Gemini API key is embedded in the built application`() {
+        // A literal key in any compiled class would defeat the whole arrangement above. BuildConfig
+        // is where such a thing would conventionally be put, so it is checked explicitly.
+        val buildConfigFields = Class.forName("com.example.BuildConfig").declaredFields
+        for (field in buildConfigFields) {
+            field.isAccessible = true
+            val name = field.name.lowercase()
+            assertFalse(
+                "BuildConfig.${field.name} looks like an embedded credential",
+                name.contains("apikey") || name.contains("api_key") || name.contains("gemini") || name.contains("secret")
+            )
+        }
     }
 
     @Test

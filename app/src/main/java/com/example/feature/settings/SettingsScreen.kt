@@ -52,6 +52,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.BuildConfig
 import com.example.core.database.MeetMindDatabase
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.example.core.datastore.AppPreferencesState
 import com.example.core.datastore.UserPreferencesManager
 import com.example.core.repository.MeetingRepository
@@ -63,6 +66,7 @@ import com.example.ui.theme.InkSecondary
 import com.example.ui.theme.LineSoft
 import com.example.ui.theme.Speaker3
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -77,6 +81,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val database = MeetMindDatabase.getInstance(application)
     private val meetingRepository = MeetingRepository(application, database)
     private val userPrefs = UserPreferencesManager(application)
+    private val geminiCredentials = com.example.ai.cloud.GeminiCredentialStore(application)
+
+    /** Redacted, so a set key can be shown as set without being put back on screen. */
+    val geminiKeyDisplay: StateFlow<String?> = geminiCredentials.apiKeyFlow
+        .map { geminiCredentials.redact(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun setGeminiApiKey(key: String) {
+        viewModelScope.launch { geminiCredentials.setApiKey(key) }
+    }
+
+    fun clearGeminiApiKey() {
+        viewModelScope.launch { geminiCredentials.clear() }
+    }
 
     val preferencesState: StateFlow<AppPreferencesState> = userPrefs.preferencesFlow.stateIn(
         scope = viewModelScope,
@@ -147,6 +165,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val prefs by viewModel.preferencesState.collectAsState()
+    val geminiKeyDisplay by viewModel.geminiKeyDisplay.collectAsState()
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
 
@@ -155,7 +174,8 @@ fun SettingsScreen(
         bottomBar = {
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.SETTINGS,
-                onNavigate = onNavigateBottomNav
+                onNavigate = onNavigateBottomNav,
+                onRecord = { onNavigateBottomNav(com.example.core.ui.BottomNavDestination.RECORD) }
             )
         }
     ) { innerPadding ->
@@ -281,6 +301,18 @@ fun SettingsScreen(
                         onClick = { viewModel.setProcessingProfile(com.example.core.model.ProcessingProfile.INTERNET) },
                         testTag = "settings_processing_internet"
                     )
+                }
+                // Only shown once Internet mode is actually chosen: an API key field on a screen
+                // for someone who has no intention of using the cloud is noise, and reads as
+                // though the app wants one.
+                if (prefs.processingProfile == com.example.core.model.ProcessingProfile.INTERNET) {
+                    item {
+                        GeminiApiKeyRow(
+                            redactedKey = geminiKeyDisplay,
+                            onSave = { viewModel.setGeminiApiKey(it) },
+                            onClear = { viewModel.clearGeminiApiKey() }
+                        )
+                    }
                 }
             }
 
@@ -531,5 +563,87 @@ private fun SettingsRadioRow(title: String, subtitle: String, selected: Boolean,
             colors = RadioButtonDefaults.colors(selectedColor = Accent, unselectedColor = InkFaint),
             modifier = Modifier.testTag(testTag)
         )
+    }
+}
+
+/**
+ * Where the user enters their own Gemini API key.
+ *
+ * The key is stored on this device only — it is not in the app's source, its build, or the
+ * installable it came from, all of which are public. That is stated on the row rather than left
+ * implicit, because "where does my API key go" is a fair thing to want answered before typing one
+ * into a phone.
+ *
+ * The field is a password field and the stored value is only ever shown redacted, so a key cannot
+ * be read back off the screen once saved.
+ */
+@Composable
+private fun GeminiApiKeyRow(
+    redactedKey: String?,
+    onSave: (String) -> Unit,
+    onClear: () -> Unit
+) {
+    var editing by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp)) {
+        Text(text = "Gemini API key", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+        Text(
+            text = if (redactedKey != null) {
+                "Saved on this device: $redactedKey"
+            } else {
+                "Internet mode needs your own Gemini API key. It is stored on this device only — never in the app or its source."
+            },
+            fontSize = 12.5.sp,
+            color = InkSecondary,
+            lineHeight = 19.sp,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+
+        if (editing) {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                placeholder = { Text("Paste your key", fontSize = 13.sp, color = InkMuted) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .testTag("settings_gemini_key_field")
+            )
+            Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = {
+                        onSave(draft)
+                        draft = ""
+                        editing = false
+                    },
+                    enabled = draft.isNotBlank(),
+                    modifier = Modifier.testTag("settings_gemini_key_save")
+                ) { Text("Save", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+                TextButton(onClick = { draft = ""; editing = false }) {
+                    Text("Cancel", color = InkSecondary, fontSize = 13.sp)
+                }
+            }
+        } else {
+            Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = { editing = true },
+                    modifier = Modifier.testTag("settings_gemini_key_edit")
+                ) {
+                    Text(
+                        text = if (redactedKey != null) "Replace key" else "Add key",
+                        color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+                    )
+                }
+                if (redactedKey != null) {
+                    TextButton(onClick = onClear, modifier = Modifier.testTag("settings_gemini_key_clear")) {
+                        Text("Remove", color = InkSecondary, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
     }
 }

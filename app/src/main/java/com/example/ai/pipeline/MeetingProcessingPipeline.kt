@@ -23,8 +23,9 @@ import com.example.ai.modelmanagement.SherpaEngineManager
 import com.example.core.model.ModelCapability
 import com.example.ai.cloud.GeminiIntelligenceEngine
 import com.example.ai.cloud.GeminiTranscriptionEngine
+import com.example.ai.cloud.GeminiCredentialStore
+import com.example.ai.cloud.GeminiHttpTransport
 import com.example.ai.cloud.GeminiTransport
-import com.example.ai.cloud.UnconfiguredGeminiTransport
 import com.example.ai.diarization.defaultSpeakerNameFor
 import com.example.ai.diarization.speakerIndexOf
 import com.example.ai.transcript.CanonicalTranscriptAssembler
@@ -109,12 +110,15 @@ class MeetingProcessingPipeline(
     private val structureEngine: TranscriptStructureEngine = DeterministicTranscriptStructureEngine,
     /**
      * The one object in this pipeline that can reach the network, and only ever from
-     * [com.example.core.model.ProcessingProfile.INTERNET]. It defaults to
-     * [UnconfiguredGeminiTransport] — no credential is embedded in the app (see
-     * docs/FUTURE_BACKEND.md and the overhaul brief §35), so an unmodified build reports Internet
-     * mode unavailable rather than failing mid-upload.
+     * [com.example.core.model.ProcessingProfile.INTERNET].
+     *
+     * The real transport reads its credential from [GeminiCredentialStore] — the key the user
+     * entered on this device. Nothing is embedded in the app: the repository and its published
+     * releases are public, and a key compiled into an APK is recoverable from that APK. With no
+     * key entered, [GeminiHttpTransport] reports Internet mode unavailable and the pipeline falls
+     * back to on-device processing, exactly as it does for a quota error.
      */
-    private val geminiTransport: GeminiTransport = UnconfiguredGeminiTransport(),
+    private val geminiTransport: GeminiTransport = GeminiHttpTransport(GeminiCredentialStore(context)),
     private val cloudTranscriptionEngine: GeminiTranscriptionEngine = GeminiTranscriptionEngine(geminiTransport),
     private val cloudIntelligenceEngine: MeetingIntelligenceEngine = GeminiIntelligenceEngine(geminiTransport)
 ) {
