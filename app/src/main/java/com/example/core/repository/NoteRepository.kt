@@ -376,6 +376,30 @@ class NoteRepository(
     }
 
     /**
+     * The note for one calendar event occurrence — made the first time, found again after that —
+     * holding who was invited, where, and when (PLAN_V1 M8). Recording from the event files into it.
+     */
+    suspend fun noteForCalendarEvent(event: com.example.core.calendar.CalendarEvent, workflow: RecordingType): Note = withContext(Dispatchers.IO) {
+        val key = event.key
+        val escaped = key.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        noteDao.findByMetadata("%\"$CALENDAR_EVENT_KEY\":\"$escaped\"%")?.toDomain()?.let { return@withContext it }
+        val people = event.otherPeople
+        createNote(
+            workflow = workflow,
+            title = event.title,
+            eventDate = event.begin,
+            metadata = buildMap {
+                put(CALENDAR_EVENT_KEY, key)
+                put("eventStart", event.begin.toString())
+                put("eventEnd", event.end.toString())
+                if (people.isNotEmpty()) put("participants", people.joinToString(", "))
+                event.location?.let { put("location", it) }
+                event.calendarName?.let { put("calendar", it) }
+            }
+        )
+    }
+
+    /**
      * Notes related to [noteId], each with the reasons it matched (shared verses, tags, links,
      * similar wording). No model and no network: see [com.example.ai.notes.RelatedNotes].
      */
@@ -626,6 +650,8 @@ class NoteRepository(
     )
 
     companion object {
+        const val CALENDAR_EVENT_KEY = "calendarEvent"
+
         /**
          * [blocks] with a dated update added under the Updates section — after its last block,
          * or in place of its empty placeholder. Pure, so the open editor can apply it to the

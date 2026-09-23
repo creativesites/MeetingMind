@@ -208,7 +208,11 @@ fun RecordingScreen(
     /** Set when recording from inside a note, so the recording joins that note. */
     targetNoteId: String? = null,
     /** Pre-selects the type (Faith → Record sermon); the picker still shows so it can be changed. */
-    initialType: RecordingType? = null
+    initialType: RecordingType? = null,
+    /** A title that came with the request (a calendar event's); kept when the type changes. */
+    initialTitle: String? = null,
+    /** Speaker count from the event's guest list; the person can still change it. */
+    initialSpeakers: Int? = null
 ) {
     val context = LocalContext.current
     var hasAudioPermission by remember {
@@ -225,11 +229,11 @@ fun RecordingScreen(
     var typeChosen by remember { mutableStateOf(false) }
     var selectedType by remember { mutableStateOf(initialType ?: RecordingType.MEETING) }
     var customContextText by remember { mutableStateOf("") }
-    var meetingTitle by remember { mutableStateOf((initialType ?: RecordingType.MEETING).displayName) }
+    var meetingTitle by remember { mutableStateOf(initialTitle ?: (initialType ?: RecordingType.MEETING).displayName) }
     // Null = unspecified/"Not sure". Tracks whether the user has touched this control themselves
     // so a type-based suggestion never silently overwrites a choice they already made.
-    var selectedSpeakerCount by remember { mutableStateOf((initialType ?: RecordingType.MEETING).suggestedSpeakerCount()) }
-    var speakerCountTouched by remember { mutableStateOf(false) }
+    var selectedSpeakerCount by remember { mutableStateOf(initialSpeakers ?: (initialType ?: RecordingType.MEETING).suggestedSpeakerCount()) }
+    var speakerCountTouched by remember { mutableStateOf(initialSpeakers != null) }
 
     fun recordingContext() = com.example.core.model.RecordingContext(
         recordingType = selectedType,
@@ -274,7 +278,7 @@ fun RecordingScreen(
             refuseToStart = refuseToStart,
             onSelect = {
                 selectedType = it
-                meetingTitle = it.displayName
+                if (initialTitle == null) meetingTitle = it.displayName
                 if (!speakerCountTouched) selectedSpeakerCount = it.suggestedSpeakerCount()
             },
             onCustomContextChange = { customContextText = it },

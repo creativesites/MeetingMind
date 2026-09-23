@@ -106,6 +106,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { userPrefs.setBibleVersionId(id) }
     }
 
+    fun setCalendar(enabled: Boolean) {
+        viewModelScope.launch { userPrefs.setCalendarEnabled(enabled) }
+    }
+
     fun setFaithLock(enabled: Boolean) {
         viewModelScope.launch { userPrefs.setFaithLockEnabled(enabled) }
     }
@@ -178,6 +182,10 @@ fun SettingsScreen(
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showBibleVersions by remember { mutableStateOf(false) }
+    var calendarGranted by remember { mutableStateOf(com.example.core.calendar.CalendarEvents(context).hasPermission()) }
+    val calendarPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted -> calendarGranted = granted; if (granted) viewModel.setCalendar(true) }
     // The translations licensed to this app, as the service reports them.
     var bibleVersions by remember { mutableStateOf<List<com.example.core.scripture.BibleInfo>>(emptyList()) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -260,6 +268,23 @@ fun SettingsScreen(
                         subtitle = "Used to personalize your experience, like Ask AI addressing you by name.",
                         onClick = { showEditNameDialog = true },
                         modifier = Modifier.testTag("settings_name_row")
+                    )
+                }
+            }
+
+            settingsSection(title = "Calendar") {
+                settingsRow {
+                    SettingsSwitchRow(
+                        title = "Upcoming events on Home",
+                        subtitle = if (prefs.calendarEnabled && !calendarGranted) "Allow calendar access to show them — tap to ask again"
+                            else "Today's meetings and services from your phone's calendars, ready to record. Read only; nothing leaves the phone.",
+                        checked = prefs.calendarEnabled && calendarGranted,
+                        onCheckedChange = { on ->
+                            if (!on) viewModel.setCalendar(false)
+                            else if (calendarGranted) viewModel.setCalendar(true)
+                            else calendarPermission.launch(android.Manifest.permission.READ_CALENDAR)
+                        },
+                        testTag = "settings_calendar"
                     )
                 }
             }

@@ -384,8 +384,12 @@ fun NoteEditorScreen(
                     onTags = { showTags = true },
                     details = if (currentNote.workflow == com.example.core.model.RecordingType.SERMON) {
                         listOfNotNull(currentNote.metadata["speaker"], currentNote.metadata["church"]).ifEmpty { listOf("Add speaker & church") }
-                    } else emptyList(),
-                    onDetails = { showDetails = true }
+                    } else listOfNotNull(
+                        // A note made from a calendar event: who was invited, and where.
+                        currentNote.metadata["participants"]?.let { p -> "With " + p.split(", ").let { if (it.size <= 3) it.joinToString(", ") else it.take(2).joinToString(", ") + " +${it.size - 2}" } },
+                        currentNote.metadata["location"]
+                    ),
+                    onDetails = { if (currentNote.workflow == com.example.core.model.RecordingType.SERMON) showDetails = true }
                 )
             }
             aiJobs.firstOrNull()?.let { job ->

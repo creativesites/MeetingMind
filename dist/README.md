@@ -1,8 +1,19 @@
 # Installable builds
 
-`MeetingMind-v20-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v21-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
 
-## What's new in v20
+## What's new in v21
+
+- **Up next from your calendar** (Home, or Settings → Calendar): today's meetings and services
+  from every calendar on the phone. Tap Record and the recording is titled, typed and set to the
+  right number of speakers from the invite, and filed into a note that lists who was there. Read
+  only; nothing leaves the phone.
+- **AI for notes** (a note's ⋮ menu → AI tools, or ✨ in a notebook): Summarize, Find action items,
+  Ask, Organize into sections, and Related notes. Every point shows where it came from — tap to
+  jump there. Results wait for you if you leave; applying one can be undone.
+- Fixed: choosing a type in Home's Record row now opens the recorder on that type.
+
+## What was new in v20
 
 - **Background transcription that survives.** Minimise the processing screen (↓) and keep using the
   app or the phone; a pill shows progress on the main tabs and a notification tracks it. A finished

@@ -261,7 +261,10 @@ fun MeetMindApp() {
                 onNavigateToModels = { navController.navigate(Routes.MODELS) },
                 onNavigateToSettings = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SETTINGS) },
                 onNavigateBottomNav = navigateToPrimary,
-                onOpenProcessing = openProcessing
+                onOpenProcessing = openProcessing,
+                onNavigateToRecordType = { navController.navigate(Routes.recordTypeRoute(it)) },
+                onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) }
             )
         }
 
@@ -270,7 +273,9 @@ fun MeetMindApp() {
             route = Routes.RECORDING_PATTERN,
             arguments = listOf(
                 navArgument("noteId") { type = NavType.StringType; nullable = true; defaultValue = null },
-                navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null }
+                navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("title") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("speakers") { type = NavType.IntType; defaultValue = -1 }
             )
         ) { backStackEntry ->
             val vm: RecordingViewModel = viewModel()
@@ -284,7 +289,9 @@ fun MeetMindApp() {
                     }
                 },
                 targetNoteId = backStackEntry.arguments?.getString("noteId"),
-                initialType = backStackEntry.arguments?.getString("type")?.let { t -> RecordingType.entries.firstOrNull { it.name == t } }
+                initialType = backStackEntry.arguments?.getString("type")?.let { t -> RecordingType.entries.firstOrNull { it.name == t } },
+                initialTitle = backStackEntry.arguments?.getString("title")?.takeIf { it.isNotBlank() },
+                initialSpeakers = backStackEntry.arguments?.getInt("speakers")?.takeIf { it > 0 }
             )
         }
 

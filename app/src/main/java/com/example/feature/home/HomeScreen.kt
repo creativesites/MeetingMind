@@ -90,6 +90,7 @@ import com.example.core.model.RecordingType
 import com.example.ui.theme.Line
 import com.example.ui.theme.SurfaceSunk
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val database = MeetMindDatabase.getInstance(application)
@@ -124,6 +125,39 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val processingProfile: StateFlow<com.example.core.model.ProcessingProfile> = userPrefs.preferencesFlow
         .map { it.processingProfile }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.example.core.model.ProcessingProfile.OFFLINE)
+
+    // ------------------------------------------------------------ calendar (PLAN_V1 M8)
+
+    private val calendar = com.example.core.calendar.CalendarEvents(application)
+    private val notes = com.example.core.repository.NoteRepository(application, database)
+
+    val calendarEnabled: StateFlow<Boolean?> = userPrefs.preferencesFlow.map { it.calendarEnabled && calendar.hasPermission() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val calendarPromptDismissed: StateFlow<Boolean> = userPrefs.preferencesFlow.map { it.calendarPromptDismissed }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    private val _upNext = kotlinx.coroutines.flow.MutableStateFlow<List<com.example.core.calendar.CalendarEvent>>(emptyList())
+    val upNext: StateFlow<List<com.example.core.calendar.CalendarEvent>> = _upNext
+
+    fun refreshCalendar() = viewModelScope.launch {
+        val on = userPrefs.preferencesFlow.first().calendarEnabled && calendar.hasPermission()
+        _upNext.value = if (on) calendar.upNext() else emptyList()
+    }
+
+    fun setCalendarEnabled(enabled: Boolean) = viewModelScope.launch {
+        userPrefs.setCalendarEnabled(enabled)
+        if (enabled) userPrefs.setCalendarPromptDismissed(true)
+        refreshCalendar()
+    }
+
+    fun dismissCalendarPrompt() = viewModelScope.launch { userPrefs.setCalendarPromptDismissed(true) }
+
+    /** Opens (or makes) the event's note; [onReady] gets its id and the type it was filed as. */
+    fun noteForEvent(event: com.example.core.calendar.CalendarEvent, onReady: (String, RecordingType) -> Unit) = viewModelScope.launch {
+        val type = com.example.core.calendar.UpNext.suggestedType(event.title)
+        val note = notes.noteForCalendarEvent(event, type)
+        onReady(note.id, note.workflow)
+    }
 
     fun rememberRecordingType(type: RecordingType) {
         viewModelScope.launch { userPrefs.setLastRecordingType(type) }
@@ -173,7 +207,12 @@ fun HomeScreen(
     /** Opens the live progress of a recording that is still being processed. */
     onOpenProcessing: (String) -> Unit = onNavigateToMeeting,
     /** One tap, no type picker — the fastest path from "I want to record" to actually recording. */
-    onNavigateToQuickRecord: () -> Unit = onNavigateToRecord
+    onNavigateToQuickRecord: () -> Unit = onNavigateToRecord,
+    /** Record with a type already chosen (the Record row's type list). */
+    onNavigateToRecordType: (RecordingType) -> Unit = { onNavigateToRecord() },
+    /** Record a calendar event into its note, with its title and guest count filled in. */
+    onRecordEvent: (noteId: String, type: RecordingType, title: String, speakers: Int?) -> Unit = { _, _, _, _ -> onNavigateToRecord() },
+    onOpenNote: (String) -> Unit = {}
 ) {
     val meetings by viewModel.meetings.collectAsState()
     val activeJobs by viewModel.activeJobs.collectAsState()
@@ -185,6 +224,23 @@ fun HomeScreen(
     var expandedJobId by remember { mutableStateOf<String?>(null) }
 
     val rememberedType by viewModel.rememberedRecordingType.collectAsState()
+    val calendarOn by viewModel.calendarEnabled.collectAsState()
+    val calendarPromptDismissed by viewModel.calendarPromptDismissed.collectAsState()
+    val upNext by viewModel.upNext.collectAsState()
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    val calendarPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) viewModel.setCalendarEnabled(true) }
+    // Refresh when Home comes into view, and each minute while it's showing (Home leaves
+    // composition when another screen opens, which ends the loop).
+    androidx.compose.runtime.LaunchedEffect(calendarOn) {
+        if (calendarOn != true) return@LaunchedEffect
+        while (true) {
+            now = System.currentTimeMillis()
+            viewModel.refreshCalendar()
+            kotlinx.coroutines.delay(60_000)
+        }
+    }
     val processingProfile by viewModel.processingProfile.collectAsState()
 
     // "42 recordings · 19 hours captured" — both halves real, computed from what is actually
@@ -276,13 +332,40 @@ fun HomeScreen(
                     onStartWithType = { type ->
                         recordTypesExpanded = false
                         viewModel.rememberRecordingType(type)
-                        onNavigateToRecord()
+                        onNavigateToRecordType(type)
                     }
                 )
             }
 
             item {
                 HomeImportRow(onClick = onNavigateToImport)
+            }
+
+            // Up next, from the phone's calendars (PLAN_V1 M8).
+            if (calendarOn == true && upNext.isNotEmpty()) {
+                item(key = "upnext-h") {
+                    Text("UP NEXT", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted,
+                        modifier = Modifier.padding(start = 22.dp, top = 20.dp, bottom = 6.dp))
+                }
+                items(upNext, key = { "ev-" + it.key }) { event ->
+                    UpNextRow(
+                        event = event,
+                        now = now,
+                        onRecord = {
+                            viewModel.noteForEvent(event) { noteId, type ->
+                                onRecordEvent(noteId, type, event.title, com.example.core.calendar.UpNext.speakerCount(event))
+                            }
+                        },
+                        onNotes = { viewModel.noteForEvent(event) { noteId, _ -> onOpenNote(noteId) } }
+                    )
+                }
+            } else if (calendarOn == false && !calendarPromptDismissed) {
+                item(key = "calendar-invite") {
+                    CalendarInvite(
+                        onConnect = { calendarPermission.launch(android.Manifest.permission.READ_CALENDAR) },
+                        onDismiss = { viewModel.dismissCalendarPrompt() }
+                    )
+                }
             }
 
             items(activeJobs, key = { it.id }) { job ->
@@ -753,5 +836,65 @@ private fun HomeJobChip(label: String, onClick: () -> Unit) {
             color = InkSecondary,
             modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp)
         )
+    }
+}
+
+@Composable
+private fun UpNextRow(event: com.example.core.calendar.CalendarEvent, now: Long, onRecord: () -> Unit, onNotes: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val timeFormat = remember { android.text.format.DateFormat.getTimeFormat(context) }
+    val live = !event.allDay && event.begin <= now
+    Surface(
+        onClick = onNotes, shape = RoundedCornerShape(18.dp), color = Color.White,
+        border = BorderStroke(1.dp, if (live) Accent.copy(alpha = 0.5f) else Line),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp).testTag("home_up_next")
+    ) {
+        Row(Modifier.padding(start = 14.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(width = 4.dp, height = 38.dp).background(event.color?.let { Color(it) } ?: Accent, RoundedCornerShape(2.dp)))
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(
+                    com.example.core.calendar.UpNext.whenLabel(event, now, timeFormat) +
+                        (if (!event.allDay) " – " + timeFormat.format(java.util.Date(event.end)) else ""),
+                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (live) Accent else InkMuted
+                )
+                Text(event.title, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = Ink, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                val people = event.otherPeople
+                val sub = listOfNotNull(
+                    people.takeIf { it.isNotEmpty() }?.let { if (it.size <= 2) it.joinToString(", ") else "${it.first()} and ${it.size - 1} others" },
+                    event.location
+                ).joinToString(" · ")
+                if (sub.isNotEmpty()) Text(sub, fontSize = 12.5.sp, color = InkSecondary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            Surface(onClick = onRecord, shape = RoundedCornerShape(50), color = if (live) Accent else Ink, modifier = Modifier.testTag("home_up_next_record")) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Text(" Record", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalendarInvite(onConnect: () -> Unit, onDismiss: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(18.dp), color = SurfaceSunk, border = BorderStroke(1.dp, Line),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 16.dp).testTag("home_calendar_invite")
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("See what's up next", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(
+                "Show today's meetings and services from your phone's calendar, and record one with its title and people filled in. Read only — nothing leaves your phone.",
+                fontSize = 13.sp, lineHeight = 18.sp, color = InkSecondary, modifier = Modifier.padding(top = 4.dp)
+            )
+            Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(onClick = onConnect, shape = RoundedCornerShape(50), color = Ink) {
+                    Text("Show my calendar", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                }
+                Surface(onClick = onDismiss, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Line)) {
+                    Text("Not now", color = InkSecondary, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                }
+            }
+        }
     }
 }

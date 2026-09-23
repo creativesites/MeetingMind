@@ -62,6 +62,9 @@ interface NoteDao {
     @Query("SELECT * FROM notes ORDER BY updatedAt DESC")
     suspend fun getAll(): List<NoteEntity>
 
+    @Query("SELECT * FROM notes WHERE metadataJson LIKE :pattern ESCAPE '\\' LIMIT 1")
+    suspend fun findByMetadata(pattern: String): NoteEntity?
+
     @Query(
         "SELECT * FROM notes WHERE archivedAt IS NULL AND " +
             "(title LIKE '%' || :query || '%' OR plainText LIKE '%' || :query || '%') " +

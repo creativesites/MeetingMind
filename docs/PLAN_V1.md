@@ -275,8 +275,8 @@ These can be checked in code review.
 | M5 | Scripture — parser, YouVersion provider, verse sheet | done (v20) |
 | M6 | **Sermons end to end** | done (v20) |
 | M7 | Faith Notebook, plus the whole-Bible reader and search | done (v20) |
-| M8 | Device calendar | |
-| M9 | Note AI | |
+| M8 | Device calendar | done (v21) |
+| M9 | Note AI | done (v21) |
 
 Each milestone from M3 on ends with a tested arm64 APK in `dist/`.
 
@@ -315,6 +315,28 @@ Each milestone from M3 on ends with a tested arm64 APK in `dist/`.
   `androidx.biometric`: one less dependency, and it accepts fingerprint, face, PIN or pattern.
 - *M7, type.* Faith notes and verse text use the system serif rather than a bundled Source Serif —
   about 1 MB saved, and it reads well on Samsung and Pixel alike.
+- *M8.* The calendar is read through Android's own calendar provider, so every calendar already
+  synced to the phone works with no sign-in. It is off until the person turns it on (a one-time
+  invitation on Home, or Settings → Calendar), which is when READ_CALENDAR is asked for. Each event
+  occurrence gets one note (found again by its event id and start time) holding the guests, place
+  and time; Record files into that note with the title, a type guessed from the title, and a
+  speaker count from the guest list — all changeable before recording starts. Also fixed: the type
+  picked in Home's Record row now reaches the recorder.
+- *M9, engine.* One `NoteAiEngine` over `SourcePassage`s (note blocks and transcript paragraphs)
+  with its own contract, plus the Faith clause for Faith material. Passages go to the model as
+  `p1`, `p2`…; results are validated — citations must resolve, numbers must appear in what they
+  cite, and organised text must be the person's own words. Anything that fails is dropped, not
+  shown.
+- *M9, jobs.* Runs are rows in `note_ai_jobs` (migration 13→14) worked by `NoteAiWorker`, so a
+  result waits in the note if the app is closed. Results are offered, never written in without
+  the person choosing to; applying one is undoable, and organising keeps every sentence it didn't
+  use under "Other notes".
+- *M9, privacy.* In Internet mode a notebook run leaves private notes (prayers, journals) on the
+  phone and says so; a private note's text is only sent when the person runs a tool on that note.
+- *M9, related notes.* No embeddings: the existing on-device "embedding" is a 64-dimension hash of
+  words, not a semantic model. Related notes instead scores shared chapters, tags, links and TF-IDF
+  wording — instant, offline, and every match shows why. A real embedding model can replace the
+  wording part later without changing the feature.
 - *M7, storage.* Translations whose licence allows copies are kept on the phone (chapters as they
   are read, or the whole translation on request); copyrighted ones never are.
 

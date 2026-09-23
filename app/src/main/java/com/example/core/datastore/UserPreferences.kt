@@ -62,7 +62,11 @@ data class AppPreferencesState(
     /** YouVersion Bible id for verse text. BSB by default: openly licensed, always available. */
     val bibleVersionId: Int = com.example.core.scripture.BibleVersions.DEFAULT_ID,
     /** Faith notes need unlocking with fingerprint, face or screen lock (PLAN_V1 §6, privacy). */
-    val faithLockEnabled: Boolean = false
+    val faithLockEnabled: Boolean = false,
+    /** Show upcoming events from the phone's calendars on Home (PLAN_V1 M8). Off until turned on. */
+    val calendarEnabled: Boolean = false,
+    /** The person closed the "see your upcoming meetings" invitation on Home. */
+    val calendarPromptDismissed: Boolean = false
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -83,6 +87,8 @@ class UserPreferencesManager(private val context: Context) {
     private val LAST_RECORDING_TYPE = stringPreferencesKey("last_recording_type")
     private val BIBLE_VERSION_ID = intPreferencesKey("bible_version_id")
     private val FAITH_LOCK = booleanPreferencesKey("faith_lock")
+    private val CALENDAR_ENABLED = booleanPreferencesKey("calendar_enabled")
+    private val CALENDAR_PROMPT_DISMISSED = booleanPreferencesKey("calendar_prompt_dismissed")
 
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
         AppPreferencesState(
@@ -114,12 +120,22 @@ class UserPreferencesManager(private val context: Context) {
                 runCatching { com.example.core.model.RecordingType.valueOf(it) }.getOrNull()
             } ?: com.example.core.model.RecordingType.MEETING,
             bibleVersionId = prefs[BIBLE_VERSION_ID] ?: com.example.core.scripture.BibleVersions.DEFAULT_ID,
-            faithLockEnabled = prefs[FAITH_LOCK] ?: false
+            faithLockEnabled = prefs[FAITH_LOCK] ?: false,
+            calendarEnabled = prefs[CALENDAR_ENABLED] ?: false,
+            calendarPromptDismissed = prefs[CALENDAR_PROMPT_DISMISSED] ?: false
         )
     }
 
     suspend fun setBibleVersionId(id: Int) {
         context.dataStore.edit { it[BIBLE_VERSION_ID] = id }
+    }
+
+    suspend fun setCalendarEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[CALENDAR_ENABLED] = enabled }
+    }
+
+    suspend fun setCalendarPromptDismissed(dismissed: Boolean) {
+        context.dataStore.edit { it[CALENDAR_PROMPT_DISMISSED] = dismissed }
     }
 
     suspend fun setFaithLockEnabled(enabled: Boolean) {

@@ -5,7 +5,7 @@ object Routes {
     const val HOME = "home"
     /** Navigate here to record; [RECORDING_PATTERN] is the registered route. */
     const val RECORDING = "recording"
-    const val RECORDING_PATTERN = "recording?noteId={noteId}&type={type}"
+    const val RECORDING_PATTERN = "recording?noteId={noteId}&type={type}&title={title}&speakers={speakers}"
     const val NOTES = "notes"
     const val NOTEBOOK = "notebook/{notebookId}"
     const val NOTES_ARCHIVE = "notes_archive"
@@ -30,6 +30,11 @@ object Routes {
 
     /** Opens the recorder with [type] already picked. */
     fun recordTypeRoute(type: com.example.core.model.RecordingType) = "recording?type=${type.name}"
+
+    /** Records into [noteId] with its type, title and speaker count filled in (a calendar event). */
+    fun recordEventRoute(noteId: String, type: com.example.core.model.RecordingType, title: String, speakers: Int?) =
+        "recording?noteId=$noteId&type=${type.name}&title=${android.net.Uri.encode(title)}" +
+            (speakers?.let { "&speakers=$it" } ?: "")
 
     /** The Bible reader, at [reference] (a USFM passage id such as "JHN.3.16") or where it was left. */
     fun bibleRoute(reference: String? = null, search: Boolean = false) =

@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Read-only, requested only when the person turns on "Upcoming events" (PLAN_V1 M8). -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Read-only network-type check (Wi-Fi vs. cellular) — used only to honor the local
          "Wi-Fi only downloads" model-download preference; never for tracking or analytics. -->
