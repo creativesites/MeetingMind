@@ -249,4 +249,29 @@ class NoteRepositoryTest {
         assertTrue("my_notes" in keys)
         assertFalse("key_points" in keys)
     }
+
+    @Test
+    fun `generated sections are replaced on a re-run but the person's edits are kept`() = runBlocking {
+        val meeting = meetings.createInitialMeeting(title = "Sermon", source = MeetingSource.LOCAL_RECORDING, recordingType = RecordingType.SERMON)
+        val noteId = database.meetingDao().getMeetingById(meeting.id)!!.noteId!!
+        fun gen(text: String, key: String) = NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.PARAGRAPH, RichText.plain(text), source = BlockSource.AI, sectionKey = key)
+
+        notes.applyGeneratedSections(noteId, listOf(gen("first message", "key_message"), gen("first app", "application")), emptyList(), setOf("key_message", "application"))
+        var blocks = notes.getDocument(noteId)!!.blocks
+        assertEquals(NoteBlockType.RECORDING, blocks.first().type)
+        assertEquals("first message", blocks[1].content.text)
+        assertTrue(blocks.indexOfFirst { it.sectionKey == "my_notes" } > blocks.indexOfFirst { it.sectionKey == "application" })
+
+        // The person edits the application; a re-run must not touch it.
+        val app = blocks.first { it.content.text == "first app" }
+        notes.saveBlocks(noteId, blocks.map { if (it.id == app.id) it.copy(content = RichText.plain("my own words"), isUserEdited = true) else it })
+        notes.applyGeneratedSections(noteId, listOf(gen("second message", "key_message"), gen("second app", "application")), emptyList(), setOf("key_message", "application"))
+
+        blocks = notes.getDocument(noteId)!!.blocks
+        val texts = blocks.map { it.content.text }
+        assertTrue("second message" in texts)
+        assertFalse("first message" in texts)
+        assertTrue("my own words" in texts)
+        assertFalse("second app" in texts)
+    }
 }

@@ -95,6 +95,7 @@ internal enum class InsertAction(val label: String, val icon: ImageVector) {
     CAMERA("Take photo", Icons.Filled.PhotoCamera),
     VIDEO("Record video", Icons.Filled.Videocam),
     AUDIO("Audio file", Icons.Filled.AudioFile),
+    SCRIPTURE("Bible verse", Icons.Outlined.Book),
     RECORD("Record here", Icons.Filled.Mic),
     EXCERPT("Quote the recording", Icons.Filled.RecordVoiceOver),
     NOTE_LINK("Link a note", Icons.Filled.Link)
@@ -114,6 +115,7 @@ internal fun InsertSheet(hasRecordings: Boolean, onPick: (InsertAction) -> Unit,
             SectionLabel("Add")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 buildList {
+                    add(InsertAction.SCRIPTURE)
                     add(InsertAction.PHOTO); add(InsertAction.CAMERA); add(InsertAction.VIDEO); add(InsertAction.AUDIO)
                     add(InsertAction.RECORD)
                     if (hasRecordings) add(InsertAction.EXCERPT)
@@ -430,5 +432,57 @@ private fun MenuRow(label: String, selected: Boolean = false, destructive: Boole
         color = when { destructive -> Color(0xFFDC2626); selected -> Accent; else -> Ink },
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp)
+    )
+}
+
+/** Type a reference ("jn 3 16", "1 Cor 13:4-7"); it's checked against the Bible as you type. */
+@Composable
+internal fun ScriptureEntryDialog(onInsert: (com.example.core.scripture.ScriptureReference) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val parsed = remember(text) { com.example.core.scripture.ScriptureReferenceParser.parse(text) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = { Text("Add a Bible verse") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it.replace("\n", "") }, singleLine = true,
+                    placeholder = { Text("e.g. John 3:16 or Ps 23") }, modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    when {
+                        text.isBlank() -> "Book, chapter and verse — abbreviations are fine."
+                        parsed != null -> parsed.display()
+                        else -> "That isn't a reference in the Bible yet."
+                    },
+                    fontSize = 13.sp,
+                    color = if (parsed != null) Accent else InkMuted,
+                    fontWeight = if (parsed != null) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+        },
+        confirmButton = { TextButton(enabled = parsed != null, onClick = { parsed?.let(onInsert) }) { Text("Insert") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+internal fun SermonDetailsDialog(speaker: String, church: String, onSave: (String, String) -> Unit, onDismiss: () -> Unit) {
+    var s by remember { mutableStateOf(speaker) }
+    var c by remember { mutableStateOf(church) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = { Text("Sermon details") },
+        text = {
+            Column {
+                OutlinedTextField(value = s, onValueChange = { s = it.replace("\n", "") }, singleLine = true, label = { Text("Speaker") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = c, onValueChange = { c = it.replace("\n", "") }, singleLine = true, label = { Text("Church or event") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(s, c) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

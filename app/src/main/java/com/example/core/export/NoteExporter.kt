@@ -139,8 +139,11 @@ object NoteExportMapper {
         return blocks.dropWhile { it.isBlank() }.dropLastWhile { it.isBlank() }
     }
 
-    /** "JHN 3:16-17" until the scripture module supplies book names (M5). */
+    /** "John 3:16–17"; the raw USFM form only for a book code the app doesn't know. */
     fun describe(ref: ScriptureRef): String {
+        com.example.core.scripture.BibleBooks.byUsfm(ref.bookUsfm)?.let {
+            return com.example.core.scripture.ScriptureReference(it, ref.chapter, ref.verseStart, ref.verseEnd).display()
+        }
         val verses = when {
             ref.verseStart == null -> ""
             ref.verseEnd != null && ref.verseEnd != ref.verseStart -> ":${ref.verseStart}-${ref.verseEnd}"
@@ -154,7 +157,8 @@ object NoteExportMapper {
 class NoteExportService(
     private val context: Context,
     private val database: MeetMindDatabase = MeetMindDatabase.getInstance(context),
-    private val passageSource: PassageSource? = null
+    /** Verse text for scripture blocks, fetched at export time with its attribution. */
+    private val passageSource: PassageSource? = com.example.core.scripture.ScriptureService(context).passageSource()
 ) {
     suspend fun export(
         noteId: String,

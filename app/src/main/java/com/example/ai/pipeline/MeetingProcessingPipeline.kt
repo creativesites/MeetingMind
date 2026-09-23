@@ -600,6 +600,17 @@ class MeetingProcessingPipeline(
 
             embeddingDao.insertEmbeddings(embeddingEntities)
 
+            // Faith recordings: the scripture heard in them, and for a sermon its notes, go into the
+            // recording's note (docs/PLAN_V1.md §5). Best effort — a problem here must never fail a
+            // recording whose transcript is already safe.
+            if (recordingType in com.example.core.model.Workflows.faith) {
+                runCatching {
+                    writeFaithNotes(meetingId, recordingType, diarizedSegments, processingProfile) { step, percent ->
+                        updateJob(step, percent, ProcessingStage.SAVING_RESULTS)
+                    }
+                }.onFailure { Log.w(PERF_TAG, "Faith notes skipped: ${it.message}") }
+            }
+
             val updatedMeeting = existingMeeting.copy(
                 title = generatedTitle,
                 status = MeetingStatus.READY.name,
@@ -856,6 +867,38 @@ class MeetingProcessingPipeline(
         // Vocabulary is an optimisation. Failing to read it must never fail a transcription.
         Log.d(PERF_TAG, "Vocabulary hints unavailable: ${e.message}")
         emptyList()
+    }
+
+    /**
+     * Detects scripture in the transcript and, for a sermon, writes its notes — with Gemini in
+     * Internet mode, the on-device model otherwise, and detection alone when there is no model.
+     */
+    private suspend fun writeFaithNotes(
+        meetingId: String,
+        recordingType: com.example.core.model.RecordingType,
+        segments: List<TranscriptSegment>,
+        processingProfile: ProcessingProfile,
+        progress: suspend (String, Int) -> Unit
+    ) {
+        val noteId = database.meetingDao().getMeetingById(meetingId)?.noteId ?: return
+        progress("Finding scripture references...", 94)
+        val detections = com.example.core.scripture.ScriptureDetector.detect(segments)
+        val extraction = if (recordingType == com.example.core.model.RecordingType.SERMON) {
+            val resolved = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS)
+            resolved?.let { model ->
+                progress(if (model.isCloud) "Writing sermon notes with Google's AI..." else "Writing sermon notes...", 96)
+                try {
+                    (com.example.ai.faith.SermonExtractionEngine(model.languageModel, model.contextLengthTokens)
+                        .extract(segments) { part, parts -> if (parts > 1) Log.d(PERF_TAG, "Sermon notes part $part of $parts") }
+                        as? AiResult.Success)?.value
+                } finally {
+                    if (!model.isCloud) LlmEngineManager.release()
+                }
+            }
+        } else null
+        val generated = com.example.ai.faith.SermonNoteBuilder.build(noteId, meetingId, segments, extraction, detections)
+        com.example.core.repository.NoteRepository(context, database)
+            .applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys)
     }
 
     private suspend fun resolveSpeakerMerges(

@@ -58,7 +58,11 @@ data class AppPreferencesState(
      * regardless of this value (see docs/ARCHITECTURE.md §4b). */
     val userName: String? = null,
     /** The workflow Record starts with — see HomeViewModel.rememberedRecordingType. */
-    val lastRecordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.MEETING
+    val lastRecordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.MEETING,
+    /** YouVersion Bible id for verse text. BSB by default: openly licensed, always available. */
+    val bibleVersionId: Int = com.example.core.scripture.BibleVersions.DEFAULT_ID,
+    /** Faith notes need unlocking with fingerprint, face or screen lock (PLAN_V1 §6, privacy). */
+    val faithLockEnabled: Boolean = false
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -77,6 +81,8 @@ class UserPreferencesManager(private val context: Context) {
     private val PROCESSING_PROFILE = stringPreferencesKey("processing_profile")
     private val USER_NAME = stringPreferencesKey("user_name")
     private val LAST_RECORDING_TYPE = stringPreferencesKey("last_recording_type")
+    private val BIBLE_VERSION_ID = intPreferencesKey("bible_version_id")
+    private val FAITH_LOCK = booleanPreferencesKey("faith_lock")
 
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
         AppPreferencesState(
@@ -106,8 +112,18 @@ class UserPreferencesManager(private val context: Context) {
             userName = prefs[USER_NAME],
             lastRecordingType = prefs[LAST_RECORDING_TYPE]?.let {
                 runCatching { com.example.core.model.RecordingType.valueOf(it) }.getOrNull()
-            } ?: com.example.core.model.RecordingType.MEETING
+            } ?: com.example.core.model.RecordingType.MEETING,
+            bibleVersionId = prefs[BIBLE_VERSION_ID] ?: com.example.core.scripture.BibleVersions.DEFAULT_ID,
+            faithLockEnabled = prefs[FAITH_LOCK] ?: false
         )
+    }
+
+    suspend fun setBibleVersionId(id: Int) {
+        context.dataStore.edit { it[BIBLE_VERSION_ID] = id }
+    }
+
+    suspend fun setFaithLockEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[FAITH_LOCK] = enabled }
     }
 
     suspend fun setOnboardingCompleted(completed: Boolean) {

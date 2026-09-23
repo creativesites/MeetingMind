@@ -1,4 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -20,6 +21,18 @@ android {
     versionName = "1.0-v19"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    // YouVersion Platform app key (docs/PLAN_V1.md §7). Read from local.properties
+    // (youversion.appKey=...) or the YOUVERSION_APP_KEY environment variable — never committed to
+    // this public repository. It is designed to ship in the app; without it, verse text shows as
+    // unavailable and references still work.
+    val youVersionKey = run {
+      val props = Properties()
+      val local = rootProject.file("local.properties")
+      if (local.exists()) local.inputStream().use { props.load(it) }
+      props.getProperty("youversion.appKey") ?: System.getenv("YOUVERSION_APP_KEY") ?: ""
+    }
+    buildConfigField("String", "YOUVERSION_APP_KEY", "\"${youVersionKey.replace("\"", "")}\"")
   }
 
   signingConfigs {

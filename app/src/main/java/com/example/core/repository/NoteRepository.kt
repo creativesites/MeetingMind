@@ -300,6 +300,41 @@ class NoteRepository(
         if (updated != note) noteDao.upsert(updated.toEntity())
     }
 
+    /**
+     * Puts processing's generated sections into a note, replacing the previous run's.
+     *
+     * A section the person has edited is theirs and is left exactly as it is; only untouched
+     * generated blocks are replaced. New sections go straight after the recording, above the
+     * person's own sections. Scripture references are replaced the same way.
+     */
+    suspend fun applyGeneratedSections(
+        noteId: String,
+        generated: List<NoteBlock>,
+        refs: List<ScriptureRef>,
+        keys: Set<String>
+    ) = withContext(Dispatchers.IO) {
+        val current = noteDao.getBlocks(noteId).map { it.toDomain() }
+        if (noteDao.getById(noteId) == null) return@withContext
+        val editedKeys = current.filter { it.sectionKey in keys && (it.isUserEdited || it.source == BlockSource.USER) }
+            .mapNotNull { it.sectionKey }.toSet()
+        val kept = current.filterNot { it.sectionKey in keys && it.sectionKey !in editedKeys }
+        val fresh = generated.filter { it.sectionKey !in editedKeys }
+        val insertAt = kept.indexOfLast { it.type == NoteBlockType.RECORDING }.let { if (it < 0) 0 else it + 1 }
+        val merged = kept.toMutableList().apply { addAll(insertAt, fresh) }
+        val keptRefIds = kept.mapNotNull { it.payload[NoteBlock.PAYLOAD_SCRIPTURE_REF_ID] }.toSet()
+        val freshBlockIds = fresh.map { it.id }.toSet()
+        database.withTransaction {
+            scriptureDao.getForNote(noteId)
+                .filter { it.id !in keptRefIds && it.origin != com.example.core.model.ScriptureOrigin.USER.name }
+                .forEach { scriptureDao.delete(it.id) }
+            val newRefs = refs.filter { it.blockId in freshBlockIds }
+            if (newRefs.isNotEmpty()) scriptureDao.upsert(newRefs.map { it.toEntity() })
+            val now = clock()
+            noteDao.replaceBlocks(noteId, merged.mapIndexed { i, b -> b.copy(position = i).toEntity(now) })
+            noteDao.touch(noteId, now, plainTextWithRecordings(noteId, merged))
+        }
+    }
+
     private suspend fun plainTextWithRecordings(noteId: String, blocks: List<NoteBlock>): String {
         val summaries = noteDao.getMeetingsForNote(noteId).mapNotNull { it.summaryText?.takeIf { s -> s.isNotBlank() } }
         return (listOf(NoteCodec.plainTextOf(blocks)) + summaries).filter { it.isNotBlank() }.joinToString("\n")

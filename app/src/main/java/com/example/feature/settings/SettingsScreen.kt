@@ -102,6 +102,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         initialValue = AppPreferencesState()
     )
 
+    fun setBibleVersion(id: Int) {
+        viewModelScope.launch { userPrefs.setBibleVersionId(id) }
+    }
+
+    fun setFaithLock(enabled: Boolean) {
+        viewModelScope.launch { userPrefs.setFaithLockEnabled(enabled) }
+    }
+
     fun toggleWifiOnly(enabled: Boolean) {
         viewModelScope.launch {
             userPrefs.setWifiOnlyDownload(enabled)
@@ -168,6 +176,36 @@ fun SettingsScreen(
     val geminiKeyDisplay by viewModel.geminiKeyDisplay.collectAsState()
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
+    var showBibleVersions by remember { mutableStateOf(false) }
+
+    if (showBibleVersions) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showBibleVersions = false },
+            containerColor = Color.White,
+            title = { Text("Bible translation") },
+            text = {
+                Column {
+                    com.example.core.scripture.BibleVersions.common.forEach { v ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { viewModel.setBibleVersion(v.id); showBibleVersions = false }.padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(selected = v.id == prefs.bibleVersionId, onClick = { viewModel.setBibleVersion(v.id); showBibleVersions = false })
+                            Column {
+                                Text(v.abbreviation, fontWeight = FontWeight.SemiBold)
+                                Text(v.title, style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    Text(
+                        "Translations other than BSB and KJV appear once their licence is accepted for this app on platform.youversion.com.",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { showBibleVersions = false }) { Text("Done") } }
+        )
+    }
 
     Scaffold(
         containerColor = Color.White,
@@ -215,6 +253,27 @@ fun SettingsScreen(
                         subtitle = "Used to personalize your experience, like Ask AI addressing you by name.",
                         onClick = { showEditNameDialog = true },
                         modifier = Modifier.testTag("settings_name_row")
+                    )
+                }
+            }
+
+            settingsSection(title = "Bible & Faith") {
+                settingsRow {
+                    val version = com.example.core.scripture.BibleVersions.common.firstOrNull { it.id == prefs.bibleVersionId }
+                    SettingsNavRow(
+                        title = "Bible translation",
+                        subtitle = (version?.let { "${it.title} (${it.abbreviation})" } ?: "Translation ${prefs.bibleVersionId}") +
+                            if (com.example.BuildConfig.YOUVERSION_APP_KEY.isBlank()) " · verse text isn't set up in this build" else " · from YouVersion",
+                        onClick = { showBibleVersions = true }
+                    )
+                }
+                settingsRow {
+                    SettingsSwitchRow(
+                        title = "Lock Faith notes",
+                        subtitle = "Prayers, reflections and the Faith space need your fingerprint, face or screen lock to open.",
+                        checked = prefs.faithLockEnabled,
+                        onCheckedChange = { viewModel.setFaithLock(it) },
+                        testTag = "settings_faith_lock"
                     )
                 }
             }

@@ -362,6 +362,32 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     fun shareableUri(file: File): Uri = media.shareableUri(file)
 
+    /** Adds a Bible passage the person chose. Its text is fetched live wherever it's shown. */
+    fun insertScripture(reference: com.example.core.scripture.ScriptureReference) {
+        val blockId = NoteRepository.newId("block")
+        val refId = NoteRepository.newId("scripture")
+        insert(
+            listOf(
+                NoteBlock(
+                    id = blockId, noteId = noteId, position = 0, type = NoteBlockType.SCRIPTURE,
+                    content = RichText.plain(reference.display()),
+                    payload = mapOf(NoteBlock.PAYLOAD_SCRIPTURE_REF_ID to refId, "reference" to reference.display()),
+                    source = BlockSource.SCRIPTURE
+                )
+            )
+        )
+        viewModelScope.launch {
+            notes.addScriptureRefs(
+                listOf(
+                    com.example.core.model.ScriptureRef(
+                        refId, noteId, blockId, reference.usfm, reference.chapter, reference.verseStart, reference.verseEnd,
+                        null, com.example.core.model.ScriptureOrigin.USER, createdAt = System.currentTimeMillis()
+                    )
+                )
+            )
+        }
+    }
+
     fun insertNoteLink(target: Note) {
         insert(
             listOf(
@@ -464,6 +490,14 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
             titleDirty = false
             _saved.value = saveJob?.isActive != true
         }
+    }
+
+    /** Workflow fields such as a sermon's speaker and church. Blank removes the field. */
+    fun setMetadata(values: Map<String, String>) = viewModelScope.launch {
+        val current = _note.value ?: return@launch
+        val merged = (current.metadata + values).filterValues { it.isNotBlank() }
+        _note.value = current.copy(metadata = merged)
+        notes.updateNote(current.copy(metadata = merged))
     }
 
     fun setPinned(pinned: Boolean) = viewModelScope.launch { notes.setPinned(noteId, pinned) }

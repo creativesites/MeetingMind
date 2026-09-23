@@ -139,7 +139,10 @@ class PrivacyNoCloudPathTest {
     @Test
     fun `no Gemini API key is embedded in the built application`() {
         // A literal key in any compiled class would defeat the whole arrangement above. BuildConfig
-        // is where such a thing would conventionally be put, so it is checked explicitly.
+        // is where such a thing would conventionally be put, so it is checked explicitly. The one
+        // key that is meant to ship in the app, YOUVERSION_APP_KEY (a public, rate-limited app
+        // identifier for Bible text, per YouVersion's design), is not a Gemini credential and is
+        // deliberately not matched here.
         val buildConfigFields = Class.forName("com.example.BuildConfig").declaredFields
         for (field in buildConfigFields) {
             field.isAccessible = true

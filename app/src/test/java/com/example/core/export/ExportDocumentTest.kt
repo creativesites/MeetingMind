@@ -193,7 +193,7 @@ class ExportDocumentTest {
         val doc = note(listOf(block(NoteBlockType.SCRIPTURE, position = 0, payload = mapOf(NoteBlock.PAYLOAD_SCRIPTURE_REF_ID to "r1"))), refs = listOf(ref))
 
         val offline = NoteExportMapper.map(doc)
-        assertEquals(ExportBlock.Scripture("HEB 11:1", null, null), offline.blocks.single())
+        assertEquals(ExportBlock.Scripture("Hebrews 11:1", null, null), offline.blocks.single())
 
         val online = NoteExportMapper.map(doc, passages = mapOf("r1" to ExportPassage("Hebrews 11:1", "Now faith…", "NIV", "© Biblica")))
         assertEquals(ExportBlock.Scripture("Hebrews 11:1", "Now faith…", "NIV"), online.blocks.single())

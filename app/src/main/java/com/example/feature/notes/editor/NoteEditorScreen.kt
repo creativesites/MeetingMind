@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.AlertDialog
@@ -151,6 +152,9 @@ fun NoteEditorScreen(
     var showExport by remember { mutableStateOf(false) }
     var showExcerpts by remember { mutableStateOf(false) }
     var showNoteLinks by remember { mutableStateOf(false) }
+    var showScriptureEntry by remember { mutableStateOf(false) }
+    var verseSheetFor by remember { mutableStateOf<NoteBlock?>(null) }
+    var showDetails by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var blockMenuFor by remember { mutableStateOf<NoteBlock?>(null) }
@@ -222,6 +226,7 @@ fun NoteEditorScreen(
             InsertAction.RECORD -> scope.launch { viewModel.flush(); onRecordHere(viewModel.noteId) }
             InsertAction.EXCERPT -> showExcerpts = true
             InsertAction.NOTE_LINK -> showNoteLinks = true
+            InsertAction.SCRIPTURE -> showScriptureEntry = true
         }
     }
 
@@ -345,7 +350,11 @@ fun NoteEditorScreen(
                     isPrivate = currentNote.isPrivate,
                     tags = tags.map { it.name },
                     onNotebook = { showNotebooks = true },
-                    onTags = { showTags = true }
+                    onTags = { showTags = true },
+                    details = if (currentNote.workflow == com.example.core.model.RecordingType.SERMON) {
+                        listOfNotNull(currentNote.metadata["speaker"], currentNote.metadata["church"]).ifEmpty { listOf("Add speaker & church") }
+                    } else emptyList(),
+                    onDetails = { showDetails = true }
                 )
             }
             itemsIndexed(blocks, key = { _, b -> b.id }) { index, block ->
@@ -393,7 +402,8 @@ fun NoteEditorScreen(
                             onOpenAttachment = ::openAttachment,
                             onOpenRecording = onOpenRecording,
                             onOpenNote = onOpenNote,
-                            onPlay = { card -> card.audioPath?.let { PlaybackController.play(context, card.meetingId, card.title, File(it)) } }
+                            onPlay = { card -> card.audioPath?.let { PlaybackController.play(context, card.meetingId, card.title, File(it)) } },
+                            onOpenScripture = { verseSheetFor = it }
                         )
                     }
                 }
@@ -461,6 +471,28 @@ fun NoteEditorScreen(
         onDismiss = { showExport = false }
     )
     if (showExcerpts) ExcerptPickerSheet(load = { viewModel.excerptCandidates() }, onPick = { viewModel.insertExcerpt(it); showExcerpts = false }, onDismiss = { showExcerpts = false })
+    if (showDetails) note?.let { n ->
+        SermonDetailsDialog(
+            speaker = n.metadata["speaker"].orEmpty(),
+            church = n.metadata["church"].orEmpty(),
+            onSave = { speaker, church -> viewModel.setMetadata(mapOf("speaker" to speaker.trim(), "church" to church.trim())); showDetails = false },
+            onDismiss = { showDetails = false }
+        )
+    }
+    if (showScriptureEntry) ScriptureEntryDialog(onInsert = { viewModel.insertScripture(it); showScriptureEntry = false }, onDismiss = { showScriptureEntry = false })
+    verseSheetFor?.let { b ->
+        val ref = b.payload["reference"]?.let { com.example.core.scripture.ScriptureReferenceParser.parse(it) }
+        if (ref == null) verseSheetFor = null else {
+            val meetingId = b.payload[NoteBlock.PAYLOAD_MEETING_ID]
+            val at = b.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()
+            com.example.feature.scripture.VerseSheet(
+                reference = ref,
+                heardAtMs = at,
+                onPlay = if (meetingId != null && at != null) ({ onOpenRecording(meetingId, at) }) else null,
+                onDismiss = { verseSheetFor = null }
+            )
+        }
+    }
     if (showNoteLinks) NoteLinkPickerSheet(search = { viewModel.linkableNotes(it) }, onPick = { viewModel.insertNoteLink(it); showNoteLinks = false }, onDismiss = { showNoteLinks = false })
     blockMenuFor?.let { b ->
         BlockMenu(
@@ -504,7 +536,9 @@ private fun NoteMeta(
     isPrivate: Boolean,
     tags: List<String>,
     onNotebook: () -> Unit,
-    onTags: () -> Unit
+    onTags: () -> Unit,
+    details: List<String> = emptyList(),
+    onDetails: () -> Unit = {}
 ) {
     // Chips here are compact; the whole row is the touch area people aim for.
     androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalMinimumInteractiveComponentSize provides 0.dp) {
@@ -516,6 +550,7 @@ private fun NoteMeta(
         MetaChip(notebookName, Icons.Filled.Folder, onNotebook)
         MetaText(date)
         workflowLabel?.let { MetaText(it) }
+        details.forEach { MetaChip(it, Icons.Outlined.PersonOutline, onDetails) }
         if (isPrivate) MetaChip("Private", Icons.Filled.Lock, null)
         tags.forEach { MetaChip("#$it", null, onTags, accent = true) }
         MetaChip(if (tags.isEmpty()) "Add tag" else "+", Icons.Outlined.Tag.takeIf { tags.isEmpty() }, onTags)
@@ -558,7 +593,8 @@ private fun BlockContent(
     onOpenAttachment: (Attachment) -> Unit,
     onOpenRecording: (String, Long?) -> Unit,
     onOpenNote: (String) -> Unit,
-    onPlay: (RecordingCard) -> Unit
+    onPlay: (RecordingCard) -> Unit,
+    onOpenScripture: (NoteBlock) -> Unit
 ) {
     val attachment = block.payload[NoteBlock.PAYLOAD_ATTACHMENT_ID]?.let { attachments[it] }
     when {
@@ -589,7 +625,20 @@ private fun BlockContent(
         block.type == NoteBlockType.NOTE_LINK -> NoteLinkBlock(linkedTitle ?: "Linked note") {
             block.payload[NoteBlock.PAYLOAD_NOTE_ID]?.let(onOpenNote)
         }
-        block.type == NoteBlockType.SCRIPTURE -> ScriptureBlock(block)
+        block.type == NoteBlockType.SCRIPTURE -> {
+            val ref = remember(block.payload["reference"]) { block.payload["reference"]?.let { com.example.core.scripture.ScriptureReferenceParser.parse(it) } }
+            if (ref == null) ScriptureBlock(block) else {
+                val meetingId = block.payload[NoteBlock.PAYLOAD_MEETING_ID]
+                val at = block.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()
+                com.example.feature.scripture.ScriptureCard(
+                    reference = ref,
+                    heardAtMs = at,
+                    onOpen = { onOpenScripture(block) },
+                    onPlay = if (meetingId != null && at != null) ({ onOpenRecording(meetingId, at) }) else null,
+                    modifier = Modifier.padding(vertical = 5.dp)
+                )
+            }
+        }
     }
 }
 
