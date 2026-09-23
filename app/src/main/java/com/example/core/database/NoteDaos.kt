@@ -62,6 +62,21 @@ interface NoteDao {
     @Query("SELECT * FROM notes ORDER BY updatedAt DESC")
     suspend fun getAll(): List<NoteEntity>
 
+    /** Notes whose day (event date, else created) falls in [from, to) — the timeline's backbone. */
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND COALESCE(eventDate, createdAt) >= :from AND COALESCE(eventDate, createdAt) < :to ORDER BY COALESCE(eventDate, createdAt)")
+    suspend fun getNotesBetween(from: Long, to: Long): List<NoteEntity>
+
+    /** Prayer requests answered in [from, to), for the "Answered" milestone. */
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND answeredAt IS NOT NULL AND answeredAt >= :from AND answeredAt < :to")
+    suspend fun getAnsweredBetween(from: Long, to: Long): List<NoteEntity>
+
+    /** Notes from the same month and day in earlier years ("MM-dd", local time). */
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND COALESCE(eventDate, createdAt) < :before AND strftime('%m-%d', COALESCE(eventDate, createdAt) / 1000, 'unixepoch', 'localtime') = :monthDay ORDER BY COALESCE(eventDate, createdAt) DESC")
+    suspend fun getOnThisDay(monthDay: String, before: Long): List<NoteEntity>
+
+    @Query("SELECT * FROM meetings WHERE noteId IN (:noteIds)")
+    suspend fun getMeetingsForNotes(noteIds: List<String>): List<MeetingEntity>
+
     @Query("SELECT * FROM notes WHERE metadataJson LIKE :pattern ESCAPE '\\' LIMIT 1")
     suspend fun findByMetadata(pattern: String): NoteEntity?
 
@@ -207,6 +222,10 @@ interface AttachmentDao {
 
     @Query("SELECT * FROM attachments WHERE id = :id")
     suspend fun getById(id: String): AttachmentEntity?
+
+    /** Picture covers for the timeline: every image attachment of these notes, oldest first. */
+    @Query("SELECT * FROM attachments WHERE noteId IN (:noteIds) AND kind = 'IMAGE' ORDER BY createdAt")
+    suspend fun getImagesForNotes(noteIds: List<String>): List<AttachmentEntity>
 
     @Upsert
     suspend fun upsert(attachment: AttachmentEntity)

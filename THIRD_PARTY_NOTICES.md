@@ -61,3 +61,10 @@ MeetingMind incorporates the following open-source runtimes, models, and librari
 - **Firebase Android SDK** (Auth, Firestore): Apache License 2.0
 - **Coil**: Apache License 2.0
 - **OkHttp**: Apache License 2.0
+
+
+## Inter and Outfit fonts
+
+`app/src/main/res/font/inter_*.ttf` (Inter, © The Inter Project Authors) and
+`app/src/main/res/font/outfit_*.ttf` (Outfit, © The Outfit Project Authors), latin subsets from
+Fontsource. Licensed under the SIL Open Font License 1.1: https://openfontlicense.org

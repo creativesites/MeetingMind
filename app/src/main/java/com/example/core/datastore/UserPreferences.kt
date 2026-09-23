@@ -58,7 +58,7 @@ data class AppPreferencesState(
      * addressing them by name) — NOT for the single-speaker "You" label, which stays literal
      * regardless of this value (see docs/ARCHITECTURE.md §4b). */
     val userName: String? = null,
-    /** The workflow Record starts with — see HomeViewModel.rememberedRecordingType. */
+    /** The workflow Record last started with. */
     val lastRecordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.MEETING,
     /** YouVersion Bible id for verse text. BSB by default: openly licensed, always available. */
     val bibleVersionId: Int = com.example.core.scripture.BibleVersions.DEFAULT_ID,
@@ -69,7 +69,11 @@ data class AppPreferencesState(
     /** The person closed the "see your upcoming meetings" invitation on Home. */
     val calendarPromptDismissed: Boolean = false,
     /** Who the app is for: spaces used, look, avatar (PLAN_V2 F0). */
-    val identity: com.example.core.identity.AppIdentity = com.example.core.identity.AppIdentity()
+    val identity: com.example.core.identity.AppIdentity = com.example.core.identity.AppIdentity(),
+    /** Timeline layers the person turned on; null = the defaults for their spaces. */
+    val timelineLayers: Set<String>? = null,
+    /** The calendar view Home last showed: DAY, WEEK, MONTH, AGENDA or RIVER. */
+    val timelineView: String = "AGENDA"
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -95,6 +99,8 @@ class UserPreferencesManager(private val context: Context) {
     private val SPACES = stringSetPreferencesKey("identity_spaces")
     private val LOOK = stringPreferencesKey("identity_look")
     private val AVATAR_PATH = stringPreferencesKey("identity_avatar")
+    private val TIMELINE_LAYERS = stringSetPreferencesKey("timeline_layers")
+    private val TIMELINE_VIEW = stringPreferencesKey("timeline_view")
 
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
         AppPreferencesState(
@@ -135,7 +141,9 @@ class UserPreferencesManager(private val context: Context) {
                     ?: com.example.core.identity.LookAndFeel.PROFESSIONAL,
                 displayName = prefs[USER_NAME],
                 avatarPath = prefs[AVATAR_PATH]
-            )
+            ),
+            timelineLayers = prefs[TIMELINE_LAYERS],
+            timelineView = prefs[TIMELINE_VIEW] ?: "AGENDA"
         )
     }
 
@@ -153,6 +161,14 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setAvatarPath(path: String?) {
         context.dataStore.edit { if (path == null) it.remove(AVATAR_PATH) else it[AVATAR_PATH] = path }
+    }
+
+    suspend fun setTimelineLayers(layers: Set<String>) {
+        context.dataStore.edit { it[TIMELINE_LAYERS] = layers }
+    }
+
+    suspend fun setTimelineView(view: String) {
+        context.dataStore.edit { it[TIMELINE_VIEW] = view }
     }
 
     suspend fun setCalendarEnabled(enabled: Boolean) {

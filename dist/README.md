@@ -1,8 +1,24 @@
 # Installable builds
 
-`MeetingMind-v21-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v22-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
 
-## What's new in v21
+## What's new in v22
+
+- **A new Home: Today.** A hero whose sky follows the real time of day — the sun rises, arcs and
+  sets; at night a moon and stars — with a playful greeting, your streak, and what's up next
+  floating over it. Press and hold the card to tilt it.
+- **Your calendar, everywhere.** Agenda, Day, Week, Month and a picture-card Timeline of
+  everything you've recorded, written and planned. Choose what shows (Layers button); spaces you
+  don't use never appear. Long-press any card for quick actions.
+- **For you**: recordings in progress, your rhythms ("You usually record a sermon on Sundays
+  around 10:30"), On this day, and your week in review.
+- **Make it yours** (onboarding, or Settings → Profile): what you use MeetingMind for (Work,
+  Learning, Faith, Personal), a look (Professional, Sanctuary, Minimal), and your photo — tap the
+  avatar on Home to change it.
+- **Empty notes aren't kept.** A note you open and leave blank — even one with a template's
+  headings — is discarded and never shows in a list.
+
+## What was new in v21
 
 - **Up next from your calendar** (Home, or Settings → Calendar): today's meetings and services
   from every calendar on the phone. Tap Record and the recording is titled, typed and set to the

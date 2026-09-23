@@ -53,8 +53,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.core.datastore.AppPreferencesState
 import com.example.core.datastore.UserPreferencesManager
-import com.example.feature.home.HomeScreen
-import com.example.feature.home.HomeViewModel
 import com.example.feature.importing.ImportScreen
 import com.example.feature.importing.ImportViewModel
 import com.example.feature.meetingdetail.MeetingDetailScreen
@@ -248,33 +246,17 @@ fun MeetMindApp() {
 
         // HOME
         composable(Routes.HOME) {
-            val vm: HomeViewModel = viewModel()
-            HomeScreen(
+            // Home is the Today hub: the day, the calendar and the timeline (PLAN_V2 F1).
+            val vm: com.example.feature.today.TodayViewModel = viewModel()
+            com.example.feature.today.TodayScreen(
                 viewModel = vm,
-                onNavigateToRecord = {
-                    navController.navigate(Routes.RECORDING)
-                },
-                // "Quick Record" is a faster button to reach, not a different flow — it lands on
-                // exactly the same type/speaker picker as the regular Record entry (see
-                // RecordingScreen). Recording type and speaker count are first-class inputs to
-                // processing and are never silently skipped.
-                onNavigateToQuickRecord = {
-                    navController.navigate(Routes.RECORDING)
-                },
-                onNavigateToImport = {
-                    navController.navigate(Routes.IMPORT)
-                },
-                onNavigateToMeeting = { meetingId ->
-                    navController.navigate(Routes.meetingDetailRoute(meetingId))
-                },
-                onNavigateToSearch = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SEARCH) },
-                onNavigateToModels = { navController.navigate(Routes.MODELS) },
-                onNavigateToSettings = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SETTINGS) },
-                onNavigateBottomNav = navigateToPrimary,
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenProcessing = openProcessing,
-                onNavigateToRecordType = { navController.navigate(Routes.recordTypeRoute(it)) },
+                onRecord = { navController.navigate(Routes.RECORDING) },
+                onRecordType = { navController.navigate(Routes.recordTypeRoute(it)) },
                 onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
-                onOpenNote = { navController.navigate(Routes.noteRoute(it)) }
+                onSearch = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SEARCH) },
+                onNavigateBottomNav = navigateToPrimary
             )
         }
 

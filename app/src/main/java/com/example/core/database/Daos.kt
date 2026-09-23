@@ -115,6 +115,10 @@ interface ActionItemDao {
     @Query("SELECT * FROM action_items ORDER BY id DESC")
     fun getAllActionItems(): Flow<List<ActionItemEntity>>
 
+    /** Open tasks from these recordings, for timeline badges and meeting prep. */
+    @Query("SELECT * FROM action_items WHERE isCompleted = 0 AND meetingId IN (:meetingIds)")
+    suspend fun getOpenForMeetings(meetingIds: List<String>): List<ActionItemEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertActionItems(items: List<ActionItemEntity>)
 
