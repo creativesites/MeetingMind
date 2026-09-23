@@ -112,7 +112,10 @@ class NoteRepositoryTest {
         val meeting = meetings.createInitialMeeting(title = "Recording 1", source = MeetingSource.LOCAL_RECORDING, recordingType = RecordingType.LECTURE)
         val noteId = database.meetingDao().getMeetingById(meeting.id)!!.noteId!!
         assertEquals(RecordingType.LECTURE, notes.getNote(noteId)!!.workflow)
-        assertEquals(NoteBlockType.RECORDING, notes.getDocument(noteId)!!.blocks.single().type)
+        val blocks = notes.getDocument(noteId)!!.blocks
+        assertEquals(NoteBlockType.RECORDING, blocks.first().type)
+        // A lecture's own sections follow the recording, ready to fill in.
+        assertTrue(blocks.any { it.sectionKey == "my_notes" })
 
         meetings.updateMeetingTitle(meeting.id, "Grace that holds")
         assertEquals("Grace that holds", notes.getNote(noteId)!!.title)
@@ -224,5 +227,26 @@ class NoteRepositoryTest {
         val items = notes.observeCollectionItems(c.id).first()
         assertEquals(listOf("ROM", "JER"), items.map { it.bookUsfm })
         assertEquals(listOf(0, 1), items.map { it.position })
+    }
+
+    @Test
+    fun `a sermon note starts from its template, private sections marked, in the Faith notebook`() = runBlocking {
+        val note = notes.createNote(workflow = RecordingType.SERMON, title = "Sunday")
+        val doc = notes.getDocument(note.id)!!
+        val headings = doc.blocks.filter { it.type == NoteBlockType.HEADING_2 }.map { it.content.text }
+        assertEquals("Scripture", headings.first())
+        assertTrue("My prayer" in headings)
+        assertEquals("Faith", notes.getNotebook(doc.note.notebookId!!)!!.name)
+        assertFalse(doc.note.isPrivate)
+        assertTrue(notes.createNote(workflow = RecordingType.PRAYER).isPrivate)
+    }
+
+    @Test
+    fun `a recorded sermon's note gets only the person's own sections`() = runBlocking {
+        val meeting = meetings.createInitialMeeting(title = "Sermon", source = MeetingSource.LOCAL_RECORDING, recordingType = RecordingType.SERMON)
+        val noteId = database.meetingDao().getMeetingById(meeting.id)!!.noteId!!
+        val keys = notes.getDocument(noteId)!!.blocks.mapNotNull { it.sectionKey }.toSet()
+        assertTrue("my_notes" in keys)
+        assertFalse("key_points" in keys)
     }
 }

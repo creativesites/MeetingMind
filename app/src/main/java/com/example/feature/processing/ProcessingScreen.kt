@@ -91,6 +91,8 @@ data class ProcessingUiState(
     val recordingTitle: String = "",
     val progressPercent: Int = 0,
     val currentStageIndex: Int = 0,
+    /** The engine's real stage, which the type-derived rows are drawn from. */
+    val stage: ProcessingStage? = null,
     val isComplete: Boolean = false,
     val isQueued: Boolean = false,
     val error: String? = null,
@@ -220,6 +222,7 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                             recordingTitle = _uiState.value.recordingTitle,
                             progressPercent = percent,
                             currentStageIndex = stageIndexFor(stage),
+                            stage = stage,
                             isQueued = false
                         )
                     } else {
@@ -351,6 +354,11 @@ fun ProcessingScreen(
     var confirmStop by remember { mutableStateOf(false) }
 
     LaunchedEffect(meetingId) {
+        // The rows below are drawn from the recording's type and speaker count on every path.
+        viewModel.loadRecordingContext(meetingId).let { ctx ->
+            recordingType = ctx.recordingType
+            selectedSpeakerCount = ctx.speakerCountPreference
+        }
         // 1. Work already queued or running (including after the app was closed): follow it.
         val alreadyRunning = viewModel.attachIfAlreadyRunning(meetingId) { finishedId ->
             onProcessingComplete(finishedId)
@@ -491,7 +499,7 @@ fun ProcessingScreen(
             SectionCard {
                 Column(modifier = Modifier.padding(top = 18.dp, start = 18.dp, end = 18.dp, bottom = 4.dp)) {
                     Text(
-                        text = "Multi-Stage On-Device Execution",
+                        text = if (state.stage == null && !state.isComplete) "Waiting to start" else "What's happening",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -499,46 +507,22 @@ fun ProcessingScreen(
                 }
                 Spacer(modifier = Modifier.height(4.dp))
 
-                PipelineStageRow(
-                    stageNumber = 1,
-                    name = "Audio Preprocessing & Framing",
-                    isActive = state.currentStageIndex == 0,
-                    isDone = state.currentStageIndex > 0
-                )
-                PipelineStageRow(
-                    stageNumber = 2,
-                    name = "Voice Activity Detection (VAD)",
-                    isActive = state.currentStageIndex == 1,
-                    isDone = state.currentStageIndex > 1
-                )
-                PipelineStageRow(
-                    stageNumber = 3,
-                    name = "Speech-to-Text Transcription",
-                    isActive = state.currentStageIndex == 2,
-                    isDone = state.currentStageIndex > 2
-                )
-                PipelineStageRow(
-                    stageNumber = 4,
-                    // Honest about what's actually happening: a confirmed single speaker skips
-                    // diarization entirely (see MeetingProcessingPipeline) rather than running
-                    // — and this must never claim otherwise.
-                    name = if (selectedSpeakerCount == 1) "Speaker Detection (Skipped — Just One Speaker)" else "Speaker Diarization (Multi-Voice)",
-                    isActive = state.currentStageIndex == 3,
-                    isDone = state.currentStageIndex > 3
-                )
-                PipelineStageRow(
-                    stageNumber = 5,
-                    name = recordingType.intelligenceProfile().analyzingStageLabel.removeSuffix("..."),
-                    isActive = state.currentStageIndex == 4,
-                    isDone = state.currentStageIndex > 4
-                )
-                PipelineStageRow(
-                    stageNumber = 6,
-                    name = "Local Vector Embeddings & Indexing",
-                    isActive = state.currentStageIndex == 5,
-                    isDone = state.isComplete,
-                    showDivider = false
-                )
+                // Rows derived from the recording type (design spec §5.1): a row exists only for
+                // work the pipeline will really do, and says it in plain words.
+                val rows = com.example.core.model.Workflows.processingStageRows(recordingType, selectedSpeakerCount)
+                val current = state.stage
+                rows.forEachIndexed { i, row ->
+                    val lastOrdinal = row.stages.maxOf { it.ordinal }
+                    val done = state.isComplete || (current != null && current !in row.stages && current.ordinal > lastOrdinal &&
+                        current != ProcessingStage.FAILED && current != ProcessingStage.CANCELLED)
+                    PipelineStageRow(
+                        stageNumber = i + 1,
+                        name = row.label,
+                        isActive = !done && current != null && current in row.stages,
+                        isDone = done,
+                        showDivider = i < rows.lastIndex
+                    )
+                }
             }
 
             // 3. Bottom action(s)

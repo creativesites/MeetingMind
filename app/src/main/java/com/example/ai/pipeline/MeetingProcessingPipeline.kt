@@ -847,7 +847,11 @@ class MeetingProcessingPipeline(
         // getAllDirect() is already ordered by frequency then recency — the user's most-confirmed
         // corrections first.
         val learned = database.vocabularyDao().getAllDirect().map { it.canonicalForm }
-        (fromMeeting + learned).map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(MAX_VOCABULARY_HINTS)
+        // The workflow's own words last: a sermon adds the Bible's book names, so "Habakkuk" and
+        // "Philemon" aren't heard as something else.
+        val workflow = runCatching { com.example.core.model.RecordingType.valueOf(meeting.recordingType) }.getOrNull()
+            ?.let { com.example.core.model.Workflows.vocabularyHints(it) }.orEmpty()
+        (fromMeeting + learned + workflow).map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(MAX_VOCABULARY_HINTS)
     } catch (e: Exception) {
         // Vocabulary is an optimisation. Failing to read it must never fail a transcription.
         Log.d(PERF_TAG, "Vocabulary hints unavailable: ${e.message}")
@@ -900,7 +904,7 @@ class MeetingProcessingPipeline(
         /** Speaker id used when the user confirmed the recording is solo — no clustering ran. */
         const val SOLO_SPEAKER_ID = "speaker_0"
         const val LOCAL_TRANSCRIPTION_ENGINE = "parakeet-tdt-0.6b-v3"
-        const val MAX_VOCABULARY_HINTS = 64
+        const val MAX_VOCABULARY_HINTS = 120
         const val MIN_HINT_LENGTH = 3
         val WORD_SPLIT_REGEX = Regex("[^\\p{L}\\p{N}'-]+")
         const val DEFAULT_LLM_CONTEXT_TOKENS = 4096

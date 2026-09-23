@@ -99,6 +99,8 @@ data class NoteBlock(
         const val PAYLOAD_START_MS = "startMs"
         const val PAYLOAD_END_MS = "endMs"
         const val PAYLOAD_SPEAKER = "speaker"
+        /** Placeholder shown in an empty template block, e.g. "What stood out to you". */
+        const val PAYLOAD_HINT = "hint"
     }
 }
 

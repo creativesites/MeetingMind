@@ -236,7 +236,7 @@ fun NoteEditorScreen(
         }
     }
 
-    val serif = note?.isPrivate == true && note?.workflow?.name in setOf("JOURNAL")
+    val serif = note?.workflow?.let { com.example.core.model.Workflows.usesSerif(it) } == true
     val words = remember(blocks) { BlockEditing.wordCount(blocks) }
     val textFocused = selection != null
     val activeStyles = remember(selection, pendingOn, pendingOff, blocks) {
@@ -566,7 +566,7 @@ private fun BlockContent(
             block = block,
             number = if (block.type == NoteBlockType.NUMBERED) BlockEditing.numberFor(blocks, index) else 0,
             serif = serif,
-            placeholder = blockPlaceholderTypes[block.type] ?: if (isOnlyBlock) "Start writing…" else null,
+            placeholder = block.payload[NoteBlock.PAYLOAD_HINT] ?: blockPlaceholderTypes[block.type] ?: if (isOnlyBlock) "Start writing…" else null,
             focusRequest = focusRequest,
             onText = { text, cursor -> viewModel.onTextChanged(block.id, text, cursor) },
             onSelection = { s, e -> viewModel.onSelectionChanged(block.id, s, e) },

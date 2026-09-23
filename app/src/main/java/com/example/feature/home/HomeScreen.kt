@@ -603,10 +603,11 @@ private fun HomeRecordRow(
                     .background(SurfaceSunk)
                     .padding(horizontal = 18.dp, vertical = 4.dp)
             ) {
-                // The four the design lists, in its order. Every other type stays available on the
-                // full picker one step into the recording flow.
+                // The design's four, plus Sermon (docs/PLAN_V1.md §5). Every other type stays
+                // available on the full picker one step into the recording flow.
                 val quickTypes = listOf(
                     RecordingType.MEETING to "Speakers, decisions, tasks",
+                    RecordingType.SERMON to "Scripture, points, notes",
                     RecordingType.INTERVIEW to "Two speakers, verbatim",
                     RecordingType.LECTURE to "One speaker, notes",
                     RecordingType.VOICE_MEMO to "Just capture it"

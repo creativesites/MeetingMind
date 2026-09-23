@@ -494,7 +494,13 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     suspend fun exportTo(format: ExportFormat, includePrivate: Boolean, out: OutputStream): Boolean {
         flush()
         return withContext(Dispatchers.IO) {
-            runCatching { NoteExportService(getApplication(), database).export(noteId, format, out, NoteExportOptions(includePrivateSections = includePrivate)) }
+            val workflow = _note.value?.workflow ?: com.example.core.model.RecordingType.GENERAL
+            val options = NoteExportOptions(
+                includePrivateSections = includePrivate,
+                privateSectionKeys = com.example.core.model.Workflows.template(workflow).privateKeys,
+                serifBody = com.example.core.model.Workflows.usesSerif(workflow)
+            )
+            runCatching { NoteExportService(getApplication(), database).export(noteId, format, out, options) }
                 .getOrDefault(false)
         }
     }

@@ -17,6 +17,16 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
     CONVERSATION("Conversation", "General conversation summary"),
     RESEARCH("Research", "Notes and findings"),
     JOURNAL("Journal", "A personal, private entry"),
+    // The Faith workflows (docs/PLAN_V1.md §6). Same pipeline, templates and hooks as every other
+    // type — a workflow is configuration, never a separate code path.
+    SERMON("Sermon", "Scripture, structure, and sermon notes"),
+    BIBLE_STUDY("Bible study", "A passage, your observations and questions"),
+    DEVOTIONAL("Devotional", "Scripture, reflection and prayer"),
+    PRAYER("Prayer", "A prayer, written or spoken"),
+    PRAYER_REQUEST("Prayer request", "Something to pray about, and what happens"),
+    TESTIMONY("Testimony", "What happened, and what it meant"),
+    GRATITUDE("Gratitude", "What you're thankful for"),
+    REFLECTION("Reflection", "Your thoughts, in your words"),
     CUSTOM("Custom", "Tell MeetingMind what to focus on"),
     GENERAL("General", "No specific focus");
 
@@ -37,6 +47,9 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
         CONVERSATION -> "This is a general conversation. Summarize what was actually discussed without forcing it into a formal meeting structure."
         RESEARCH -> "This is a research recording. Focus on findings, sources, and open questions actually stated."
         JOURNAL -> "This is a personal journal entry. Focus on summarizing what the speaker actually said, respectfully and without embellishment."
+        SERMON -> "This is a sermon. Focus on the preacher's main message, the scripture passages they read or referred to, their key points in order, and the application they gave. Report what the preacher said about a passage; never interpret scripture yourself."
+        BIBLE_STUDY -> "This is a Bible study discussion. Focus on the passage studied, the observations and questions people raised, and any conclusions the group reached. Attribute views to whoever expressed them; never add your own interpretation."
+        DEVOTIONAL, PRAYER, TESTIMONY, GRATITUDE, REFLECTION, PRAYER_REQUEST -> "This is a personal faith reflection. Summarize only what the speaker said, in their own terms, respectfully and without adding spiritual interpretation or advice."
         CUSTOM -> "" // Replaced by the user's own custom context text, see below.
         GENERAL -> ""
     }
@@ -48,7 +61,7 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
      * unspecified ("Not sure"), which the user can always override either way.
      */
     fun suggestedSpeakerCount(): Int? = when (this) {
-        IDEA, VOICE_MEMO, DICTATION, JOURNAL -> 1
+        IDEA, VOICE_MEMO, DICTATION, JOURNAL, DEVOTIONAL, PRAYER, PRAYER_REQUEST, GRATITUDE, REFLECTION -> 1
         else -> null
     }
 
@@ -108,6 +121,26 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
             sectionTitle = "Reflections", topicsLabel = "Themes",
             analyzingStageLabel = "Summarizing your entry..."
         )
+        SERMON -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = true, extractFollowUps = false,
+            sectionTitle = "Sermon Notes", topicsLabel = "Key Points",
+            analyzingStageLabel = "Extracting themes & scripture references..."
+        )
+        BIBLE_STUDY -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = true, extractFollowUps = false,
+            sectionTitle = "Study Notes", topicsLabel = "Observations",
+            analyzingStageLabel = "Gathering observations & questions..."
+        )
+        TESTIMONY -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = false, extractFollowUps = false,
+            sectionTitle = "Testimony", topicsLabel = "Moments",
+            analyzingStageLabel = "Summarizing the testimony..."
+        )
+        DEVOTIONAL, PRAYER, PRAYER_REQUEST, GRATITUDE, REFLECTION -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = false, extractQuestions = false, extractFollowUps = false,
+            sectionTitle = "Reflections", topicsLabel = "Themes",
+            analyzingStageLabel = "Summarizing your words..."
+        )
         // The user told MeetingMind what to focus on directly — leave every category available
         // rather than guessing which ones their own instructions might need.
         CUSTOM -> IntelligenceProfile(
@@ -132,10 +165,14 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
      * cleanup prompt itself is identical for every recording type and is never weakened here.
      */
     fun cleanupGuidance(): String = when (this) {
-        IDEA, VOICE_MEMO, JOURNAL, DICTATION, RESEARCH ->
+        IDEA, VOICE_MEMO, JOURNAL, DICTATION, RESEARCH, DEVOTIONAL, PRAYER, PRAYER_REQUEST, GRATITUDE, REFLECTION, TESTIMONY ->
             "This is solo narration. Prioritize natural paragraphs and preserve the speaker's first-person voice; a pause within one thought is not a reason to break it into separate paragraphs."
         LECTURE ->
             "This is an explanatory monologue. Prioritize coherent paragraphs; preserve definitions and examples exactly as stated."
+        SERMON ->
+            "This is a sermon: a long, coherent monologue. Prioritize long paragraphs; preserve scripture quotations and references (book, chapter, verse) exactly as spoken."
+        BIBLE_STUDY ->
+            "This is a group Bible study. Preserve each speaker's turn boundaries; preserve scripture quotations and references exactly as spoken."
         MEETING ->
             "This is a multi-speaker meeting. Preserve each speaker's turn boundaries; only merge fragments within one person's own turn."
         INTERVIEW ->
@@ -177,12 +214,13 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
     fun transcriptMergePolicy(): TranscriptMergePolicy = when (this) {
         // Solo narration/notes: natural thinking pauses are extremely common and must not read as
         // paragraph breaks — merge aggressively into long, natural paragraphs.
-        IDEA, VOICE_MEMO, JOURNAL, DICTATION, RESEARCH -> TranscriptMergePolicy(
+        IDEA, VOICE_MEMO, JOURNAL, DICTATION, RESEARCH, DEVOTIONAL, PRAYER, PRAYER_REQUEST, GRATITUDE, REFLECTION, TESTIMONY -> TranscriptMergePolicy(
             maxGapMs = 3_000L, extendedGapMs = 7_000L,
             maxParagraphDurationMs = 90_000L, maxParagraphChars = 1_200
         )
-        // Explanatory monologue: favor long, coherent paragraphs over frequent breaks.
-        LECTURE -> TranscriptMergePolicy(
+        // Explanatory monologue: favor long, coherent paragraphs over frequent breaks. A sermon is
+        // the same shape — one voice, long arcs, pauses for effect that aren't paragraph breaks.
+        LECTURE, SERMON -> TranscriptMergePolicy(
             maxGapMs = 3_500L, extendedGapMs = 8_000L,
             maxParagraphDurationMs = 120_000L, maxParagraphChars = 1_600
         )
@@ -190,7 +228,7 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
         // signal, so gap tolerance stays close to natural conversational pacing — merge the
         // fragments *within* one person's turn, but don't paper over genuinely separate turns with
         // an overly generous gap.
-        MEETING, CONVERSATION, BRAINSTORM -> TranscriptMergePolicy(
+        MEETING, CONVERSATION, BRAINSTORM, BIBLE_STUDY -> TranscriptMergePolicy(
             maxGapMs = 1_500L, extendedGapMs = 3_000L,
             maxParagraphDurationMs = 45_000L, maxParagraphChars = 700
         )

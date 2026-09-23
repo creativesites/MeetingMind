@@ -127,10 +127,12 @@ class NoteRepository(
         workflow: RecordingType = RecordingType.GENERAL,
         title: String = "",
         notebookId: String? = null,
-        isPrivate: Boolean = workflow == RecordingType.JOURNAL,
+        isPrivate: Boolean = com.example.core.model.Workflows.isPrivateByDefault(workflow),
         eventDate: Long? = null,
         metadata: Map<String, String> = emptyMap(),
-        initialBlocks: List<NoteBlock> = emptyList()
+        initialBlocks: List<NoteBlock> = emptyList(),
+        /** Start from the workflow's template sections when no blocks are given. */
+        useTemplate: Boolean = true
     ): Note = withContext(Dispatchers.IO) {
         val now = clock()
         val id = newId("note")
@@ -138,7 +140,7 @@ class NoteRepository(
             id = id,
             title = title,
             workflow = workflow,
-            notebookId = notebookId ?: ensureDefaultNotebook().id,
+            notebookId = notebookId ?: defaultNotebookFor(workflow).id,
             createdAt = now,
             updatedAt = now,
             eventDate = eventDate ?: now,
@@ -148,7 +150,10 @@ class NoteRepository(
             answeredAt = null,
             metadata = metadata
         )
-        val blocks = (initialBlocks.ifEmpty { listOf(paragraph(id)) })
+        val templated = if (initialBlocks.isEmpty() && useTemplate) {
+            com.example.core.model.Workflows.startingBlocks(workflow, id, forRecording = false)
+        } else initialBlocks
+        val blocks = (templated.ifEmpty { listOf(paragraph(id)) })
             .mapIndexed { i, b -> b.copy(noteId = id, position = i) }
         val withText = note.copy(plainText = NoteCodec.plainTextOf(blocks))
         database.withTransaction {
@@ -255,19 +260,23 @@ class NoteRepository(
             id = noteId,
             title = title,
             workflow = workflow,
-            notebookId = ensureDefaultNotebook().id,
+            notebookId = defaultNotebookFor(workflow).id,
             createdAt = createdAt,
             updatedAt = now,
             eventDate = createdAt,
             pinned = false,
-            isPrivate = workflow == RecordingType.JOURNAL,
+            isPrivate = com.example.core.model.Workflows.isPrivateByDefault(workflow),
             status = NoteStatus.OPEN,
             answeredAt = null,
             metadata = mapOf(META_TITLE_FROM_RECORDING to "true")
         )
         database.withTransaction {
             noteDao.upsert(note.toEntity())
-            noteDao.replaceBlocks(noteId, listOf(recordingBlock(noteId, meetingId).toEntity(now)))
+            // The recording, then the person's own sections of the workflow's template; processing
+            // adds the AI sections above them once the transcript exists.
+            val starting = listOf(recordingBlock(noteId, meetingId)) +
+                com.example.core.model.Workflows.startingBlocks(workflow, noteId, forRecording = true)
+            noteDao.replaceBlocks(noteId, starting.mapIndexed { i, b -> b.copy(position = i).toEntity(now) })
             noteDao.attachMeeting(meetingId, noteId)
         }
         noteId
@@ -330,6 +339,12 @@ class NoteRepository(
     /** Deletes the notebook only. Its notes move out of it (the foreign key sets them to none). */
     suspend fun deleteNotebook(id: String) = withContext(Dispatchers.IO) {
         if (id != MeetMindDatabase.DEFAULT_NOTEBOOK_ID) notebookDao.delete(id)
+    }
+
+    /** Faith notes gather in the Faith notebook; everything else starts in My Notes. */
+    suspend fun defaultNotebookFor(workflow: RecordingType): Notebook {
+        val space = com.example.core.model.Workflows.space(workflow)
+        return if (space == NotebookSpace.FAITH) ensureSpaceNotebook(space) else ensureDefaultNotebook()
     }
 
     /** "My Notes" — recreated if it has gone missing, because new notes must land somewhere. */

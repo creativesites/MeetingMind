@@ -39,7 +39,20 @@ fun RecordingTypeGrid(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        val types = RecordingType.entries.filter { it != RecordingType.GENERAL }
+        // Grouped by space so Sermon sits with the other Faith types and Meeting with Work.
+        val bySpace = RecordingType.entries
+            .filter { it != RecordingType.GENERAL && com.example.core.model.Workflows.isRecordable(it) }
+            .groupBy { com.example.core.model.Workflows.space(it) }
+        com.example.core.model.NotebookSpace.entries.forEach { space ->
+            val types = bySpace[space].orEmpty()
+            if (types.isEmpty()) return@forEach
+            Text(
+                text = space.displayName.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
         types.chunked(2).forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -55,6 +68,7 @@ fun RecordingTypeGrid(
                 }
                 if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
             }
+        }
         }
     }
 }
