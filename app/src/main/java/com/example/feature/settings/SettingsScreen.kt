@@ -151,6 +151,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setSpaces(spaces: Set<com.example.core.model.NotebookSpace>) = viewModelScope.launch { userPrefs.setSpaces(spaces) }
+    fun setLook(look: com.example.core.identity.LookAndFeel) = viewModelScope.launch { userPrefs.setLook(look) }
+    fun setAvatar(uri: android.net.Uri) = viewModelScope.launch {
+        com.example.core.identity.AvatarStore.save(getApplication(), uri)?.let { userPrefs.setAvatarPath(it) }
+    }
+    fun removeAvatar() = viewModelScope.launch {
+        com.example.core.identity.AvatarStore.remove(getApplication()); userPrefs.setAvatarPath(null)
+    }
+
     fun setUserName(name: String) {
         viewModelScope.launch {
             userPrefs.setUserName(name)
@@ -181,6 +190,28 @@ fun SettingsScreen(
     val geminiKeyDisplay by viewModel.geminiKeyDisplay.collectAsState()
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
+    var showSpaces by remember { mutableStateOf(false) }
+    var showLook by remember { mutableStateOf(false) }
+    val avatarPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri -> if (uri != null) viewModel.setAvatar(uri) }
+    if (showSpaces) {
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showSpaces = false }, containerColor = Color.White) {
+            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+                Text("What's MeetingMind for you?", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                Text("Only these spaces show in Home, Notes and Record.", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+                com.example.core.identity.SpacesPicker(prefs.identity.spaces) { viewModel.setSpaces(it) }
+            }
+        }
+    }
+    if (showLook) {
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showLook = false }, containerColor = Color.White) {
+            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+                Text("Look & feel", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(bottom = 14.dp))
+                com.example.core.identity.LookPicker(prefs.identity.look) { viewModel.setLook(it) }
+            }
+        }
+    }
     var showBibleVersions by remember { mutableStateOf(false) }
     var calendarGranted by remember { mutableStateOf(com.example.core.calendar.CalendarEvents(context).hasPermission()) }
     val calendarPermission = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -261,6 +292,28 @@ fun SettingsScreen(
             }
 
             settingsSection(title = "Profile") {
+                settingsRow {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        com.example.core.identity.Avatar(prefs.identity, 56.dp, Modifier.testTag("settings_avatar")) {
+                            avatarPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }
+                        Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                            Text(prefs.userName?.takeIf { it.isNotBlank() } ?: "Add your name", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                            Text("Tap the photo to change it", fontSize = 12.5.sp, color = InkMuted)
+                        }
+                        if (prefs.identity.avatarPath != null) androidx.compose.material3.TextButton(onClick = { viewModel.removeAvatar() }) { Text("Remove", color = InkMuted) }
+                    }
+                }
+                settingsRow {
+                    SettingsNavRow(
+                        title = "What it's for",
+                        subtitle = prefs.identity.spaces.sortedBy { it.ordinal }.joinToString(" · ") { it.displayName },
+                        onClick = { showSpaces = true }
+                    )
+                }
+                settingsRow {
+                    SettingsNavRow(title = "Look & feel", subtitle = prefs.identity.look.label + " — " + prefs.identity.look.description, onClick = { showLook = true })
+                }
                 settingsRow {
                     SettingsValueRow(
                         title = "Name",

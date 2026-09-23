@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.ai.modelmanagement.ModelCatalog
 import com.example.core.model.DiarizationStrategy
@@ -66,7 +67,9 @@ data class AppPreferencesState(
     /** Show upcoming events from the phone's calendars on Home (PLAN_V1 M8). Off until turned on. */
     val calendarEnabled: Boolean = false,
     /** The person closed the "see your upcoming meetings" invitation on Home. */
-    val calendarPromptDismissed: Boolean = false
+    val calendarPromptDismissed: Boolean = false,
+    /** Who the app is for: spaces used, look, avatar (PLAN_V2 F0). */
+    val identity: com.example.core.identity.AppIdentity = com.example.core.identity.AppIdentity()
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -89,6 +92,9 @@ class UserPreferencesManager(private val context: Context) {
     private val FAITH_LOCK = booleanPreferencesKey("faith_lock")
     private val CALENDAR_ENABLED = booleanPreferencesKey("calendar_enabled")
     private val CALENDAR_PROMPT_DISMISSED = booleanPreferencesKey("calendar_prompt_dismissed")
+    private val SPACES = stringSetPreferencesKey("identity_spaces")
+    private val LOOK = stringPreferencesKey("identity_look")
+    private val AVATAR_PATH = stringPreferencesKey("identity_avatar")
 
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
         AppPreferencesState(
@@ -122,12 +128,31 @@ class UserPreferencesManager(private val context: Context) {
             bibleVersionId = prefs[BIBLE_VERSION_ID] ?: com.example.core.scripture.BibleVersions.DEFAULT_ID,
             faithLockEnabled = prefs[FAITH_LOCK] ?: false,
             calendarEnabled = prefs[CALENDAR_ENABLED] ?: false,
-            calendarPromptDismissed = prefs[CALENDAR_PROMPT_DISMISSED] ?: false
+            calendarPromptDismissed = prefs[CALENDAR_PROMPT_DISMISSED] ?: false,
+            identity = com.example.core.identity.AppIdentity(
+                spaces = com.example.core.identity.AppIdentity.parseSpaces(prefs[SPACES]),
+                look = prefs[LOOK]?.let { runCatching { com.example.core.identity.LookAndFeel.valueOf(it) }.getOrNull() }
+                    ?: com.example.core.identity.LookAndFeel.PROFESSIONAL,
+                displayName = prefs[USER_NAME],
+                avatarPath = prefs[AVATAR_PATH]
+            )
         )
     }
 
     suspend fun setBibleVersionId(id: Int) {
         context.dataStore.edit { it[BIBLE_VERSION_ID] = id }
+    }
+
+    suspend fun setSpaces(spaces: Set<com.example.core.model.NotebookSpace>) {
+        context.dataStore.edit { it[SPACES] = spaces.ifEmpty { setOf(com.example.core.model.NotebookSpace.PERSONAL) }.map { s -> s.name }.toSet() }
+    }
+
+    suspend fun setLook(look: com.example.core.identity.LookAndFeel) {
+        context.dataStore.edit { it[LOOK] = look.name }
+    }
+
+    suspend fun setAvatarPath(path: String?) {
+        context.dataStore.edit { if (path == null) it.remove(AVATAR_PATH) else it[AVATAR_PATH] = path }
     }
 
     suspend fun setCalendarEnabled(enabled: Boolean) {

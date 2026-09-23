@@ -132,7 +132,9 @@ class NoteRepository(
         metadata: Map<String, String> = emptyMap(),
         initialBlocks: List<NoteBlock> = emptyList(),
         /** Start from the workflow's template sections when no blocks are given. */
-        useTemplate: Boolean = true
+        useTemplate: Boolean = true,
+        /** Opened for the person to fill in: hidden, and discarded if left without content. */
+        draft: Boolean = false
     ): Note = withContext(Dispatchers.IO) {
         val now = clock()
         val id = newId("note")
@@ -148,7 +150,7 @@ class NoteRepository(
             isPrivate = isPrivate,
             status = NoteStatus.OPEN,
             answeredAt = null,
-            metadata = metadata
+            metadata = if (draft) metadata + (NoteContent.DRAFT to "1") + (NoteContent.DRAFT_TITLE to title) else metadata
         )
         val templated = if (initialBlocks.isEmpty() && useTemplate) {
             com.example.core.model.Workflows.startingBlocks(workflow, id, forRecording = false)
@@ -187,6 +189,15 @@ class NoteRepository(
             noteDao.replaceBlocks(noteId, ordered.map { it.toEntity(now) })
             noteDao.touch(noteId, now, plainTextWithRecordings(noteId, ordered))
         }
+    }
+
+    /** A draft that now has content becomes a real note, shown in lists. */
+    suspend fun keepDraft(noteId: String) = mutate(noteId) { it.copy(metadata = it.metadata - NoteContent.DRAFT - NoteContent.DRAFT_TITLE) }
+
+    /** Whether the stored note has anything of the person's in it. */
+    suspend fun hasUserContent(noteId: String): Boolean = withContext(Dispatchers.IO) {
+        val doc = getDocument(noteId) ?: return@withContext false
+        NoteContent.hasUserContent(doc.note, doc.blocks, doc.attachments.isNotEmpty(), doc.tags.isNotEmpty(), noteDao.getMeetingsForNote(noteId).isNotEmpty())
     }
 
     suspend fun setPinned(noteId: String, pinned: Boolean) = mutate(noteId) { it.copy(pinned = pinned) }
@@ -249,6 +260,10 @@ class NoteRepository(
             val blocks = noteDao.getBlocks(existing.id).map { it.toDomain() }
             val updated = blocks + recordingBlock(existing.id, meetingId)
             database.withTransaction {
+                if (existing.metadataJson.contains("\"${NoteContent.DRAFT}\":\"1\"")) {
+                    val keep = existing.toDomain().let { it.copy(metadata = it.metadata - NoteContent.DRAFT - NoteContent.DRAFT_TITLE) }
+                    noteDao.upsert(keep.toEntity())
+                }
                 noteDao.attachMeeting(meetingId, existing.id)
                 noteDao.replaceBlocks(existing.id, updated.mapIndexed { i, b -> b.copy(position = i).toEntity(now) })
                 noteDao.touch(existing.id, now, existing.plainText)
@@ -388,6 +403,7 @@ class NoteRepository(
             workflow = workflow,
             title = event.title,
             eventDate = event.begin,
+            draft = true,
             metadata = buildMap {
                 put(CALENDAR_EVENT_KEY, key)
                 put("eventStart", event.begin.toString())

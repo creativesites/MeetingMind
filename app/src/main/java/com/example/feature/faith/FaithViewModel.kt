@@ -92,7 +92,7 @@ class FaithViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Starts a Faith note of [type] from its template, and hands back its id. */
     fun create(type: RecordingType, onCreated: (String) -> Unit) = viewModelScope.launch {
-        onCreated(notes.createNote(workflow = type).id)
+        onCreated(notes.createNote(workflow = type, draft = true).id)
     }
 
     fun startDevotional(reference: ScriptureReference, onCreated: (String) -> Unit) = viewModelScope.launch {

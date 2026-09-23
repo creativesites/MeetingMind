@@ -125,7 +125,7 @@ class NotesViewModel(application: Application, val scope: NotesScope = NotesScop
 
     /** Creates an empty note (in this notebook, when inside one) and hands back its id. */
     fun createNote(onCreated: (String) -> Unit) = viewModelScope.launch {
-        val note = notes.createNote(notebookId = (scope as? NotesScope.InNotebook)?.notebookId)
+        val note = notes.createNote(notebookId = (scope as? NotesScope.InNotebook)?.notebookId, draft = true)
         onCreated(note.id)
     }
 

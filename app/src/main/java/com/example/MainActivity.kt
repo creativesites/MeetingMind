@@ -82,11 +82,21 @@ class MainActivity : ComponentActivity() {
         com.example.core.notify.DeepLinks.handle(intent)
         setContent {
             MeetMindTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                // Who the app is for — spaces, look, name, avatar — available to every screen.
+                val identityContext = androidx.compose.ui.platform.LocalContext.current
+                val identity by remember { UserPreferencesManager(identityContext).preferencesFlow }
+                    .collectAsState(initial = null)
+                val current = identity?.identity ?: com.example.core.identity.AppIdentity()
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.example.core.identity.LocalAppIdentity provides current,
+                    com.example.core.identity.LocalAppLook provides com.example.core.identity.AppLook.of(current.look)
                 ) {
-                    MeetMindApp()
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        MeetMindApp()
+                    }
                 }
             }
         }
@@ -181,7 +191,7 @@ fun MeetMindApp() {
     }
     val openNewNote: (openMediaPicker: Boolean) -> Unit = { media ->
         recoveryScope.launch {
-            val note = noteRepository.createNote()
+            val note = noteRepository.createNote(draft = true)
             navController.navigate(Routes.noteRoute(note.id, media))
         }
     }

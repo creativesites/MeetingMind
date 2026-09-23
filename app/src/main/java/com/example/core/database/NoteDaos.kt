@@ -29,7 +29,7 @@ interface NotebookDao {
     suspend fun delete(id: String)
 
     /** Note counts per notebook, for the library's notebook list. */
-    @Query("SELECT notebookId AS notebookId, COUNT(*) AS count FROM notes WHERE archivedAt IS NULL AND notebookId IS NOT NULL GROUP BY notebookId")
+    @Query("SELECT notebookId AS notebookId, COUNT(*) AS count FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND notebookId IS NOT NULL GROUP BY notebookId")
     fun observeNoteCounts(): Flow<List<NotebookNoteCount>>
 }
 
@@ -41,13 +41,13 @@ data class NoteTagName(val noteId: String, val name: String)
 
 @Dao
 interface NoteDao {
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' ORDER BY pinned DESC, updatedAt DESC")
     fun observeActive(): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND notebookId = :notebookId ORDER BY pinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND notebookId = :notebookId ORDER BY pinned DESC, updatedAt DESC")
     fun observeInNotebook(notebookId: String): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND workflow IN (:workflows) ORDER BY pinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND workflow IN (:workflows) ORDER BY pinned DESC, updatedAt DESC")
     fun observeByWorkflows(workflows: List<String>): Flow<List<NoteEntity>>
 
     @Query("SELECT * FROM notes WHERE archivedAt IS NOT NULL ORDER BY archivedAt DESC")
@@ -66,13 +66,13 @@ interface NoteDao {
     suspend fun findByMetadata(pattern: String): NoteEntity?
 
     @Query(
-        "SELECT * FROM notes WHERE archivedAt IS NULL AND " +
+        "SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND " +
             "(title LIKE '%' || :query || '%' OR plainText LIKE '%' || :query || '%') " +
             "ORDER BY pinned DESC, updatedAt DESC LIMIT :limit"
     )
     suspend fun searchText(query: String, limit: Int = 50): List<NoteEntity>
 
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND workflow = :workflow AND status = :status ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND workflow = :workflow AND status = :status ORDER BY updatedAt DESC")
     fun observeByWorkflowAndStatus(workflow: String, status: String): Flow<List<NoteEntity>>
 
     @Upsert

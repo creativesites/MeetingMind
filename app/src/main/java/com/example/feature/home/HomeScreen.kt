@@ -688,13 +688,16 @@ private fun HomeRecordRow(
             ) {
                 // The design's four, plus Sermon (docs/PLAN_V1.md §5). Every other type stays
                 // available on the full picker one step into the recording flow.
+                val identity = com.example.core.identity.LocalAppIdentity.current
                 val quickTypes = listOf(
                     RecordingType.MEETING to "Speakers, decisions, tasks",
                     RecordingType.SERMON to "Scripture, points, notes",
                     RecordingType.INTERVIEW to "Two speakers, verbatim",
                     RecordingType.LECTURE to "One speaker, notes",
                     RecordingType.VOICE_MEMO to "Just capture it"
-                )
+                ).filter { identity.allows(it.first) }
+                    // Faith-first puts Sermon at the top.
+                    .sortedBy { if (identity.faithFirst && it.first == RecordingType.SERMON) 0 else 1 }
                 quickTypes.forEachIndexed { index, (type, blurb) ->
                     if (index > 0) HorizontalDivider(color = LineFaint)
                     Row(

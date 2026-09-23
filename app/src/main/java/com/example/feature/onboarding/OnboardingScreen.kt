@@ -89,10 +89,28 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
         _userName.value = name
     }
 
+    /** What the app is for, and how it feels (PLAN_V2 F0). Everything on by default. */
+    private val _spaces = MutableStateFlow(com.example.core.model.NotebookSpace.entries.toSet())
+    val spaces: StateFlow<Set<com.example.core.model.NotebookSpace>> = _spaces.asStateFlow()
+    private val _look = MutableStateFlow(com.example.core.identity.LookAndFeel.PROFESSIONAL)
+    val look: StateFlow<com.example.core.identity.LookAndFeel> = _look.asStateFlow()
+    private var lookTouched = false
+
+    fun setSpaces(spaces: Set<com.example.core.model.NotebookSpace>) {
+        _spaces.value = spaces
+        // Faith on its own (or with Personal) suggests the warm look, until the person picks one.
+        if (!lookTouched) _look.value = if (spaces.all { it == com.example.core.model.NotebookSpace.FAITH || it == com.example.core.model.NotebookSpace.PERSONAL } && com.example.core.model.NotebookSpace.FAITH in spaces)
+            com.example.core.identity.LookAndFeel.SANCTUARY else com.example.core.identity.LookAndFeel.PROFESSIONAL
+    }
+
+    fun setLook(look: com.example.core.identity.LookAndFeel) { lookTouched = true; _look.value = look }
+
     fun completeOnboarding(onCompleted: () -> Unit) {
         viewModelScope.launch {
             prefs.setSelectedAsrModel(_selectedModel.value)
             prefs.setUserName(_userName.value)
+            prefs.setSpaces(_spaces.value)
+            prefs.setLook(_look.value)
             prefs.setOnboardingCompleted(true)
             onCompleted()
         }
@@ -112,8 +130,10 @@ fun OnboardingScreen(
     var currentStep by remember { mutableIntStateOf(0) }
     val selectedModel by viewModel.selectedModel.collectAsState()
     val userName by viewModel.userName.collectAsState()
+    val spaces by viewModel.spaces.collectAsState()
+    val look by viewModel.look.collectAsState()
     val caps = viewModel.deviceCapabilities
-    val stepCount = 4
+    val stepCount = 5
 
     Scaffold(containerColor = Color.White) { innerPadding ->
         Column(
@@ -153,7 +173,11 @@ fun OnboardingScreen(
                     userName = userName,
                     onUserNameChange = { viewModel.setUserName(it) }
                 )
-                3 -> OnboardingStepTwo(
+                3 -> OnboardingStepSpaces(
+                    spaces = spaces, onSpaces = viewModel::setSpaces,
+                    look = look, onLook = viewModel::setLook
+                )
+                4 -> OnboardingStepTwo(
                     caps = caps,
                     selectedModel = selectedModel,
                     onSelectModel = { viewModel.selectModel(it) }
@@ -369,6 +393,26 @@ private fun OnboardingStepIdentity(
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth().testTag("onboarding_name_field")
         )
+    }
+}
+
+/** What the app is for, and how it should feel. Changeable any time in Settings → Personalize. */
+@Composable
+private fun OnboardingStepSpaces(
+    spaces: Set<com.example.core.model.NotebookSpace>,
+    onSpaces: (Set<com.example.core.model.NotebookSpace>) -> Unit,
+    look: com.example.core.identity.LookAndFeel,
+    onLook: (com.example.core.identity.LookAndFeel) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text("What's MeetingMind for you?", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.7).sp, color = Ink)
+        Text(
+            "Pick what you'll use it for. The app only shows those — you can change this any time.",
+            fontSize = 15.sp, color = InkSecondary, lineHeight = 22.sp, modifier = Modifier.padding(top = 8.dp, bottom = 18.dp)
+        )
+        com.example.core.identity.SpacesPicker(spaces, onSpaces)
+        Text("How should it feel?", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
+        com.example.core.identity.LookPicker(look, onLook)
     }
 }
 

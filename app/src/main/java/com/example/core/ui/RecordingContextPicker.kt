@@ -40,8 +40,11 @@ fun RecordingTypeGrid(
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // Grouped by space so Sermon sits with the other Faith types and Meeting with Work.
+        val identity = com.example.core.identity.LocalAppIdentity.current
         val bySpace = RecordingType.entries
             .filter { it != RecordingType.GENERAL && com.example.core.model.Workflows.isRecordable(it) }
+            // Only the spaces this person uses (Settings → Personalize); the selected type always shows.
+            .filter { identity.allows(it) || it == selected }
             .groupBy { com.example.core.model.Workflows.space(it) }
         com.example.core.model.NotebookSpace.entries.forEach { space ->
             val types = bySpace[space].orEmpty()

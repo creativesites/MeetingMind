@@ -486,6 +486,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         titleJob?.cancel()
         titleJob = viewModelScope.launch {
             delay(SAVE_DELAY_MS)
+            if (!promoteDraftIfNeeded()) { titleDirty = false; _saved.value = true; return@launch }
             notes.renameNote(noteId, title)
             titleDirty = false
             _saved.value = saveJob?.isActive != true
@@ -600,8 +601,24 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     private suspend fun persist() {
         if (deleted || !_loaded.value) return
+        // A draft with nothing of the person's in it isn't written (PLAN_V2 F0).
+        if (!promoteDraftIfNeeded()) { _saved.value = true; return }
         notes.saveBlocks(noteId, _blocks.value)
         _saved.value = titleJob?.isActive != true
+    }
+
+    /**
+     * For a draft: true (and it becomes a real note) once it has content; false while it's still
+     * empty. Always true for a note that isn't a draft.
+     */
+    private suspend fun promoteDraftIfNeeded(): Boolean {
+        val note = _note.value ?: return true
+        if (!com.example.core.repository.NoteContent.isDraft(note)) return true
+        val hasContent = com.example.core.repository.NoteContent.hasUserContent(note, _blocks.value) || notes.hasUserContent(noteId)
+        if (!hasContent) return false
+        notes.keepDraft(noteId)
+        _note.value = note.copy(metadata = note.metadata - com.example.core.repository.NoteContent.DRAFT - com.example.core.repository.NoteContent.DRAFT_TITLE)
+        return true
     }
 
     /** Writes anything pending right now. */
@@ -609,7 +626,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         saveJob?.cancel()
         titleJob?.cancel()
         if (deleted || !_loaded.value) return
-        if (titleDirty) { notes.renameNote(noteId, _note.value?.title.orEmpty()); titleDirty = false }
+        if (titleDirty && promoteDraftIfNeeded()) { notes.renameNote(noteId, _note.value?.title.orEmpty()); titleDirty = false }
         persist()
     }
 
@@ -657,8 +674,15 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         // The view model's own scope is already cancelled here, so the last save runs on its own.
         if (!deleted && _loaded.value) {
             val blocks = _blocks.value
-            val title = _note.value?.title.takeIf { titleDirty }
+            val note = _note.value
+            val title = note?.title.takeIf { titleDirty }
             closingScope.launch {
+                val draft = note != null && com.example.core.repository.NoteContent.isDraft(note)
+                if (draft) {
+                    val hasContent = com.example.core.repository.NoteContent.hasUserContent(note!!, blocks) || notes.hasUserContent(noteId)
+                    if (!hasContent) { notes.deleteNote(noteId); return@launch }
+                    notes.keepDraft(noteId)
+                }
                 title?.let { notes.renameNote(noteId, it) }
                 notes.saveBlocks(noteId, blocks)
                 discardIfEmpty()
@@ -669,12 +693,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     /** A note opened and left without a word in it isn't kept. */
     private suspend fun discardIfEmpty() {
-        val doc = notes.getDocument(noteId) ?: return
-        val empty = doc.note.title.isBlank() &&
-            doc.blocks.all { it.type == NoteBlockType.PARAGRAPH && it.content.text.isBlank() } &&
-            doc.attachments.isEmpty() && doc.tags.isEmpty() &&
-            database.noteDao().getMeetingsForNote(noteId).isEmpty()
-        if (empty) notes.deleteNote(noteId)
+        if (notes.getNote(noteId) != null && !notes.hasUserContent(noteId)) notes.deleteNote(noteId)
     }
 
     private fun <T> List<T>.replace(index: Int, value: T): List<T> = toMutableList().apply { this[index] = value }

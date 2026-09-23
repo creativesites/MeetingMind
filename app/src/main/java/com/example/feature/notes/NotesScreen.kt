@@ -108,6 +108,7 @@ fun NotesScreen(
     val sort by viewModel.sort.collectAsState()
     val archivedCount by viewModel.archivedCount.collectAsState()
     val currentNotebook by viewModel.currentNotebook.collectAsState()
+    val appIdentity = com.example.core.identity.LocalAppIdentity.current
     val aiJobs by viewModel.aiJobs.collectAsState()
     var showAiMenu by remember { mutableStateOf(false) }
     var showAsk by remember { mutableStateOf(false) }
@@ -208,10 +209,10 @@ fun NotesScreen(
                 item(key = "spaces") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 22.dp), modifier = Modifier.padding(top = 18.dp)) {
                         item { Pill("All", space == null) { viewModel.space.value = null } }
-                        items(NotebookSpace.entries.toList()) { s -> Pill(s.displayName, space == s) { viewModel.space.value = if (space == s) null else s } }
+                        items(NotebookSpace.entries.filter { it in appIdentity.spaces }) { s -> Pill(s.displayName, space == s) { viewModel.space.value = if (space == s) null else s } }
                     }
                 }
-                if (onOpenFaith != null && (space == null || space == NotebookSpace.FAITH)) {
+                if (onOpenFaith != null && appIdentity.showsFaith && (space == null || space == NotebookSpace.FAITH)) {
                     item(key = "faith") {
                         Surface(
                             onClick = onOpenFaith, shape = RoundedCornerShape(18.dp), color = Ink,
