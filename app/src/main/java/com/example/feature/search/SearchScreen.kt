@@ -123,6 +123,7 @@ fun SearchScreen(
     viewModel: SearchViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToMeeting: (meetingId: String, startAtMs: Long?) -> Unit,
+    onNavigateToNote: (noteId: String) -> Unit = {},
     onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit = {}
 ) {
     val query by viewModel.query.collectAsState()
@@ -143,7 +144,7 @@ fun SearchScreen(
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.SEARCH,
                 onNavigate = onNavigateBottomNav,
-                onRecord = { onNavigateBottomNav(com.example.core.ui.BottomNavDestination.RECORD) }
+                showNewAction = true
             )
         }
     ) { innerPadding ->
@@ -267,7 +268,10 @@ fun SearchScreen(
                 } else {
                     items(results) { item ->
                         Column {
-                            SearchResultRow(item = item, onClick = { onNavigateToMeeting(item.meetingId, item.timestampMs) })
+                            SearchResultRow(item = item, onClick = {
+                                val noteId = item.noteId
+                                if (noteId != null) onNavigateToNote(noteId) else onNavigateToMeeting(item.meetingId, item.timestampMs)
+                            })
                             HorizontalDivider(color = LineFaint, modifier = Modifier.padding(start = 22.dp, end = 22.dp))
                         }
                     }

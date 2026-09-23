@@ -320,7 +320,9 @@ data class RecordingContext(
      *  user is confident about, forcing the diarization engine's clustering to exactly that many. */
     val speakerCountPreference: Int? = null,
     val customContext: String? = null,
-    val title: String? = null
+    val title: String? = null,
+    /** "Record here": file the recording into this existing note instead of a new one. */
+    val noteId: String? = null
 )
 
 data class Meeting(

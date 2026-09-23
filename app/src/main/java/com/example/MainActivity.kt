@@ -144,25 +144,32 @@ fun MeetMindApp() {
     // instance of the target (and saves the current one) via the app's single Home back-stack
     // entry, so repeatedly tapping tabs never piles up duplicate entries or re-navigate() is
     // treated as no-op churn — the usual popUpTo/launchSingleTop/restoreState pattern.
+    var showCreateSheet by remember { mutableStateOf(false) }
+    val noteRepository = remember { com.example.core.repository.NoteRepository(context, MeetMindDatabase.getInstance(context)) }
     val navigateToPrimary: (com.example.core.ui.BottomNavDestination) -> Unit = { destination ->
-        if (destination == com.example.core.ui.BottomNavDestination.RECORD) {
-            // Record is an action, not one of the saved primary tabs: it pushes the recording
-            // flow onto the stack rather than switching between destinations, so it deliberately
-            // skips the popUpTo/restoreState handling below.
-            navController.navigate(Routes.RECORDING)
+        if (destination == com.example.core.ui.BottomNavDestination.NEW) {
+            // New is an action, not one of the saved primary tabs: it opens the Create sheet
+            // rather than switching destinations.
+            showCreateSheet = true
         } else {
             val route = when (destination) {
                 com.example.core.ui.BottomNavDestination.HOME -> Routes.HOME
+                com.example.core.ui.BottomNavDestination.NOTES -> Routes.NOTES
                 com.example.core.ui.BottomNavDestination.SEARCH -> Routes.SEARCH
-                com.example.core.ui.BottomNavDestination.AI_ENGINE -> Routes.MODELS
                 com.example.core.ui.BottomNavDestination.SETTINGS -> Routes.SETTINGS
-                com.example.core.ui.BottomNavDestination.RECORD -> Routes.RECORDING
+                com.example.core.ui.BottomNavDestination.NEW -> Routes.HOME
             }
             navController.navigate(route) {
                 popUpTo(Routes.HOME) { saveState = true }
                 launchSingleTop = true
                 restoreState = true
             }
+        }
+    }
+    val openNewNote: (openMediaPicker: Boolean) -> Unit = { media ->
+        recoveryScope.launch {
+            val note = noteRepository.createNote()
+            navController.navigate(Routes.noteRoute(note.id, media))
         }
     }
 
@@ -206,13 +213,17 @@ fun MeetMindApp() {
                     navController.navigate(Routes.meetingDetailRoute(meetingId))
                 },
                 onNavigateToSearch = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SEARCH) },
-                onNavigateToModels = { navigateToPrimary(com.example.core.ui.BottomNavDestination.AI_ENGINE) },
-                onNavigateToSettings = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SETTINGS) }
+                onNavigateToModels = { navController.navigate(Routes.MODELS) },
+                onNavigateToSettings = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SETTINGS) },
+                onNavigateBottomNav = navigateToPrimary
             )
         }
 
         // RECORDING
-        composable(route = Routes.RECORDING) {
+        composable(
+            route = Routes.RECORDING_PATTERN,
+            arguments = listOf(navArgument("noteId") { type = NavType.StringType; nullable = true; defaultValue = null })
+        ) { backStackEntry ->
             val vm: RecordingViewModel = viewModel()
             RecordingScreen(
                 viewModel = vm,
@@ -220,9 +231,76 @@ fun MeetMindApp() {
                 onRecordingComplete = { meetingId, audioPath, durationMs ->
                     val route = Routes.processingRoute(meetingId, audioPath, durationMs)
                     navController.navigate(route) {
-                        popUpTo(Routes.RECORDING) { inclusive = true }
+                        popUpTo(Routes.RECORDING_PATTERN) { inclusive = true }
                     }
+                },
+                targetNoteId = backStackEntry.arguments?.getString("noteId")
+            )
+        }
+
+        // NOTES
+        composable(Routes.NOTES) {
+            val app = context.applicationContext as android.app.Application
+            val vm = remember { com.example.feature.notes.NotesViewModel(app, com.example.feature.notes.NotesScope.All) }
+            com.example.feature.notes.NotesScreen(
+                viewModel = vm,
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenNotebook = { navController.navigate(Routes.notebookRoute(it)) },
+                onOpenArchive = { navController.navigate(Routes.NOTES_ARCHIVE) },
+                onNavigateBack = null,
+                onNavigateBottomNav = navigateToPrimary
+            )
+        }
+        composable(Routes.NOTEBOOK, arguments = listOf(navArgument("notebookId") { type = NavType.StringType })) { backStackEntry ->
+            val notebookId = backStackEntry.arguments?.getString("notebookId").orEmpty()
+            val app = context.applicationContext as android.app.Application
+            val vm = remember(notebookId) { com.example.feature.notes.NotesViewModel(app, com.example.feature.notes.NotesScope.InNotebook(notebookId)) }
+            com.example.feature.notes.NotesScreen(
+                viewModel = vm,
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenNotebook = { navController.navigate(Routes.notebookRoute(it)) },
+                onOpenArchive = { navController.navigate(Routes.NOTES_ARCHIVE) },
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateBottomNav = navigateToPrimary
+            )
+        }
+        composable(Routes.NOTES_ARCHIVE) {
+            val app = context.applicationContext as android.app.Application
+            val vm = remember { com.example.feature.notes.NotesViewModel(app, com.example.feature.notes.NotesScope.Archived) }
+            com.example.feature.notes.NotesScreen(
+                viewModel = vm,
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenNotebook = { navController.navigate(Routes.notebookRoute(it)) },
+                onOpenArchive = {},
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateBottomNav = navigateToPrimary
+            )
+        }
+        composable(
+            Routes.NOTE,
+            arguments = listOf(
+                navArgument("noteId") { type = NavType.StringType },
+                navArgument("media") { type = NavType.BoolType; defaultValue = false }
+            )
+        ) { backStackEntry ->
+            val noteId = backStackEntry.arguments?.getString("noteId").orEmpty()
+            val media = backStackEntry.arguments?.getBoolean("media") ?: false
+            val app = context.applicationContext as android.app.Application
+            val vm: com.example.feature.notes.editor.NoteEditorViewModel = viewModel(
+                key = "note-$noteId",
+                factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                    @Suppress("UNCHECKED_CAST")
+                    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
+                        com.example.feature.notes.editor.NoteEditorViewModel(app, noteId) as T
                 }
+            )
+            com.example.feature.notes.editor.NoteEditorScreen(
+                viewModel = vm,
+                onNavigateBack = { navController.popBackStack() },
+                onOpenRecording = { meetingId, startAtMs -> navController.navigate(Routes.meetingDetailRoute(meetingId, startAtMs)) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onRecordHere = { navController.navigate(Routes.recordIntoNoteRoute(it)) },
+                startWithMediaPicker = media
             )
         }
 
@@ -291,7 +369,12 @@ fun MeetMindApp() {
                 onTranscribe = { transcribeMeetingId, audioPath, durationMs ->
                     navController.navigate(Routes.processingRoute(transcribeMeetingId, audioPath, durationMs))
                 },
-                initialJumpToMs = startAtMs.takeIf { it != Routes.NO_START_AT_MS }
+                initialJumpToMs = startAtMs.takeIf { it != Routes.NO_START_AT_MS },
+                onOpenNote = { noteId ->
+                    // Came here from that note: go back to it rather than stacking a second copy.
+                    if (navController.previousBackStackEntry?.arguments?.getString("noteId") == noteId) navController.popBackStack()
+                    else navController.navigate(Routes.noteRoute(noteId))
+                }
             )
         }
 
@@ -304,6 +387,7 @@ fun MeetMindApp() {
                 onNavigateToMeeting = { meetingId, startAtMs ->
                     navController.navigate(Routes.meetingDetailRoute(meetingId, startAtMs))
                 },
+                onNavigateToNote = { navController.navigate(Routes.noteRoute(it)) },
                 onNavigateBottomNav = navigateToPrimary
             )
         }
@@ -328,6 +412,21 @@ fun MeetMindApp() {
                 onNavigateBottomNav = navigateToPrimary
             )
         }
+    }
+
+    if (showCreateSheet) {
+        com.example.core.ui.CreateSheet(
+            onPick = { action ->
+                showCreateSheet = false
+                when (action) {
+                    com.example.core.ui.CreateAction.RECORD -> navController.navigate(Routes.RECORDING)
+                    com.example.core.ui.CreateAction.NOTE -> openNewNote(false)
+                    com.example.core.ui.CreateAction.MEDIA -> openNewNote(true)
+                    com.example.core.ui.CreateAction.IMPORT -> navController.navigate(Routes.IMPORT)
+                }
+            },
+            onDismiss = { showCreateSheet = false }
+        )
     }
 
     if (playbackState.isActive && !isOnActiveRecordingDetail) {

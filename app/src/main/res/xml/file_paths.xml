@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Exposes only the app's private recordings directory (context.filesDir/meetings/*) through the
-  FileProvider content:// scheme, so a recording's audio file can be shared via the Android
-  Sharesheet without granting broad file access. Nothing else under filesDir is exposed.
+  What the FileProvider may hand to other apps, and nothing more:
+  - recordings (filesDir/meetings/) so a recording's audio can be shared;
+  - note media (filesDir/notes/) so a photo or video in a note can be opened in a viewer;
+  - exports (cacheDir/exports/) so an exported PDF or Word file can be shared.
 -->
 <paths>
     <files-path name="recordings" path="meetings/" />
+    <files-path name="notes" path="notes/" />
+    <cache-path name="exports" path="exports/" />
 </paths>

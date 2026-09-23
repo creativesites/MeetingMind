@@ -1,5 +1,7 @@
 package com.example.feature.meetingdetail
 
+import androidx.compose.material.icons.filled.EditNote
+
 import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -748,7 +750,9 @@ fun MeetingDetailScreen(
     /** Set when arriving from a search result: jumps straight to the Transcript tab, seeks/plays
      * audio to this position, and highlights the matching segment — a search result must land the
      * user in context, not just at the recording's Overview. */
-    initialJumpToMs: Long? = null
+    initialJumpToMs: Long? = null,
+    /** Opens the note this recording belongs to. */
+    onOpenNote: (noteId: String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val meeting by viewModel.meeting.collectAsState()
@@ -951,6 +955,21 @@ fun MeetingDetailScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(top = 1.dp)
                         )
+                    }
+
+                    meeting?.noteId?.let { noteId ->
+                        Surface(
+                            onClick = { onOpenNote(noteId) },
+                            shape = RoundedCornerShape(50),
+                            color = AccentWash,
+                            modifier = Modifier.testTag("meeting_open_note_btn")
+                        ) {
+                            Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.EditNote, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Note", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                            }
+                        }
                     }
 
                     Box {

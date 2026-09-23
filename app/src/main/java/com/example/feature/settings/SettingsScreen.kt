@@ -175,7 +175,7 @@ fun SettingsScreen(
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.SETTINGS,
                 onNavigate = onNavigateBottomNav,
-                onRecord = { onNavigateBottomNav(com.example.core.ui.BottomNavDestination.RECORD) }
+                showNewAction = true
             )
         }
     ) { innerPadding ->
@@ -222,8 +222,8 @@ fun SettingsScreen(
             settingsSection(title = "AI & Models") {
                 settingsRow {
                     SettingsNavRow(
-                        title = "Manage AI Models",
-                        subtitle = "Download, pause, resume, or remove on-device models",
+                        title = "AI Engine",
+                        subtitle = "On-device models: download, pause, resume or remove",
                         onClick = onNavigateToModels
                     )
                 }

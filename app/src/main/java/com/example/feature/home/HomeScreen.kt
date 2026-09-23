@@ -169,6 +169,7 @@ fun HomeScreen(
     onNavigateToSearch: () -> Unit,
     onNavigateToModels: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit,
     /** One tap, no type picker — the fastest path from "I want to record" to actually recording. */
     onNavigateToQuickRecord: () -> Unit = onNavigateToRecord
 ) {
@@ -216,15 +217,8 @@ fun HomeScreen(
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.HOME,
                 onNavigate = { destination ->
-                    when (destination) {
-                        com.example.core.ui.BottomNavDestination.HOME -> Unit
-                        com.example.core.ui.BottomNavDestination.SEARCH -> onNavigateToSearch()
-                        com.example.core.ui.BottomNavDestination.AI_ENGINE -> onNavigateToModels()
-                        com.example.core.ui.BottomNavDestination.SETTINGS -> onNavigateToSettings()
-                        com.example.core.ui.BottomNavDestination.RECORD -> onNavigateToRecord()
-                    }
-                },
-                onRecord = onNavigateToRecord
+                    if (destination != com.example.core.ui.BottomNavDestination.HOME) onNavigateBottomNav(destination)
+                }
             )
         }
     ) { innerPadding ->

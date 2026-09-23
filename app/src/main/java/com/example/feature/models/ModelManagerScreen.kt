@@ -268,9 +268,9 @@ fun ModelManagerScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) { data -> Snackbar(snackbarData = data, containerColor = Ink, contentColor = Color.White) } },
         bottomBar = {
             com.example.core.ui.AppBottomNavigationBar(
-                current = com.example.core.ui.BottomNavDestination.AI_ENGINE,
+                current = com.example.core.ui.BottomNavDestination.SETTINGS,
                 onNavigate = onNavigateBottomNav,
-                onRecord = { onNavigateBottomNav(com.example.core.ui.BottomNavDestination.RECORD) }
+                showNewAction = true
             )
         }
     ) { innerPadding ->

@@ -17,13 +17,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Notes
+import androidx.compose.material.icons.automirrored.outlined.Notes
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -49,15 +49,13 @@ import com.example.ui.theme.InkSecondary
 import com.example.ui.theme.Line
 
 /**
- * The app's four primary destinations, plus Record.
+ * The app's four primary destinations, plus New.
  *
- * Record is now part of the bar rather than a separate FAB. It was previously deliberately kept
- * out so it wouldn't compete for one of four equal tabs — but in this layout it isn't one of the
- * tabs: it is a visually distinct filled action sitting between them, so it reads as the app's
- * primary verb instead of as a fifth destination. Having it here *and* as a Home FAB would have
- * given the same action two different affordances on the same screen.
+ * New is a filled action between the tabs, not a fifth destination: it opens the Create sheet,
+ * where Record comes first, then a written note, photos and import (docs/PLAN_V1.md §2). The AI
+ * Engine lives under Settings; it is something set up once, not somewhere people go daily.
  */
-enum class BottomNavDestination { HOME, SEARCH, RECORD, AI_ENGINE, SETTINGS }
+enum class BottomNavDestination { HOME, NOTES, NEW, SEARCH, SETTINGS }
 
 private data class NavItem(
     val destination: BottomNavDestination,
@@ -70,9 +68,9 @@ private data class NavItem(
 
 private val navItems = listOf(
     NavItem(BottomNavDestination.HOME, "Home", Icons.Filled.Home, Icons.Outlined.Home),
+    NavItem(BottomNavDestination.NOTES, "Notes", Icons.AutoMirrored.Filled.Notes, Icons.AutoMirrored.Outlined.Notes),
+    NavItem(BottomNavDestination.NEW, "New", Icons.Filled.Add, Icons.Filled.Add, isAction = true),
     NavItem(BottomNavDestination.SEARCH, "Search", Icons.Filled.Search, Icons.Outlined.Search),
-    NavItem(BottomNavDestination.RECORD, "Record", Icons.Filled.Mic, Icons.Filled.Mic, isAction = true),
-    NavItem(BottomNavDestination.AI_ENGINE, "AI Engine", Icons.Filled.Memory, Icons.Outlined.Memory),
     NavItem(BottomNavDestination.SETTINGS, "Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
 )
 
@@ -88,14 +86,14 @@ private val navItems = listOf(
  * Every primary screen shows this same bar, so bottom navigation never disappears on a primary
  * destination.
  *
- * @param onRecord Invoked by the central action. Null hides it — used on screens where starting a
- *   recording would interrupt something already in progress.
+ * @param showNewAction False hides the central New action — for screens where starting something
+ *   new would interrupt work in progress.
  */
 @Composable
 fun AppBottomNavigationBar(
     current: BottomNavDestination,
     onNavigate: (BottomNavDestination) -> Unit,
-    onRecord: (() -> Unit)? = null
+    showNewAction: Boolean = true
 ) {
     Box(
         modifier = Modifier
@@ -119,7 +117,7 @@ fun AppBottomNavigationBar(
             ) {
                 navItems.forEach { item ->
                     when {
-                        item.isAction -> if (onRecord != null) RecordAction(onRecord)
+                        item.isAction -> if (showNewAction) NewAction { onNavigate(BottomNavDestination.NEW) }
                         item.destination == current -> ActiveNavChip(item)
                         else -> InactiveNavIcon(item, onNavigate)
                     }
@@ -130,29 +128,29 @@ fun AppBottomNavigationBar(
 }
 
 @Composable
-private fun RecordAction(onRecord: () -> Unit) {
+private fun NewAction(onClick: () -> Unit) {
     Surface(
-        onClick = onRecord,
+        onClick = onClick,
         shape = RoundedCornerShape(percent = 50),
         color = Ink,
         modifier = Modifier
             .height(44.dp)
-            .testTag("bottom_nav_record")
-            .semantics { contentDescription = "Start recording" }
+            .testTag("bottom_nav_new")
+            .semantics { contentDescription = "Create: record, write a note, add photos or import" }
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 14.dp)
         ) {
             Icon(
-                imageVector = Icons.Filled.Mic,
+                imageVector = Icons.Filled.Add,
                 contentDescription = null,
                 tint = Color.White,
-                modifier = Modifier.size(17.dp)
+                modifier = Modifier.size(19.dp)
             )
-            Spacer(modifier = Modifier.width(5.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = "Record",
+                text = "New",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = (-0.1).sp,

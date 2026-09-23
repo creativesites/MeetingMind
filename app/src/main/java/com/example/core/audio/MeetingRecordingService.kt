@@ -227,7 +227,8 @@ class MeetingRecordingService : Service() {
                         audioFilePath = file.absolutePath,
                         recordingType = recordingContext.recordingType,
                         customContext = recordingContext.customContext,
-                        speakerCountPreference = recordingContext.speakerCountPreference
+                        speakerCountPreference = recordingContext.speakerCountPreference,
+                        noteId = recordingContext.noteId
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to persist finished recording $id — audio file is still on disk at ${file.absolutePath}", e)

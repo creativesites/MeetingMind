@@ -204,7 +204,9 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
 fun RecordingScreen(
     viewModel: RecordingViewModel,
     onNavigateBack: () -> Unit,
-    onRecordingComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit
+    onRecordingComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit,
+    /** Set when recording from inside a note, so the recording joins that note. */
+    targetNoteId: String? = null
 ) {
     val context = LocalContext.current
     var hasAudioPermission by remember {
@@ -230,7 +232,8 @@ fun RecordingScreen(
     fun recordingContext() = com.example.core.model.RecordingContext(
         recordingType = selectedType,
         speakerCountPreference = selectedSpeakerCount,
-        customContext = customContextText.trim().ifBlank { null }.takeIf { selectedType == RecordingType.CUSTOM }
+        customContext = customContextText.trim().ifBlank { null }.takeIf { selectedType == RecordingType.CUSTOM },
+        noteId = targetNoteId
     )
 
     val permissionLauncher = rememberLauncherForActivityResult(

@@ -241,7 +241,7 @@ These can be checked in code review.
 | M0 | This document; `PRODUCT_DIRECTION.md` updated | done |
 | M1 | Internet mode everywhere — one `LanguageModelFactory` | done |
 | M2 | Notes data layer, migration 12→13, export document model | done |
-| M3 | Notes UI — library, notebooks, editor, export, navigation | |
+| M3 | Notes UI — library, notebooks, editor, export, navigation | done (v19) |
 | M4 | Workflows widened — templates, processing rows | |
 | M5 | Scripture — parser, YouVersion provider, verse sheet | |
 | M6 | **Sermons end to end** | |

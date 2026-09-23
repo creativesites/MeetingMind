@@ -1,6 +1,6 @@
 # Installable builds
 
-`MeetingMind-v18-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v19-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
 
 **Why the APK is committed here rather than attached to a GitHub release:** releases could not be
 created from the environment this was built in (the GitHub API refuses release creation and tag
