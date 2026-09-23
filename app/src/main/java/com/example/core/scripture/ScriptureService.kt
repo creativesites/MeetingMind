@@ -11,10 +11,15 @@ import kotlinx.coroutines.flow.first
  * The app's one way to get verse text: the person's chosen translation, the provider's session
  * cache, and a single shared provider for the whole process.
  */
-class ScriptureService(context: Context, private val provider: ScriptureProvider = shared) {
+class ScriptureService(context: Context, private val provider: ScriptureProvider = library(context)) {
     private val prefs = UserPreferencesManager(context.applicationContext)
 
     val isConfigured: Boolean get() = provider.isConfigured
+
+    /** The whole-Bible side (reader, search, downloads), when the provider offers it. */
+    val bible: BibleProvider? get() = provider as? BibleProvider
+
+    suspend fun setDefaultVersion(id: Int) = prefs.setBibleVersionId(id)
 
     suspend fun defaultVersionId(): Int = prefs.preferencesFlow.first().bibleVersionId
 
@@ -35,7 +40,12 @@ class ScriptureService(context: Context, private val provider: ScriptureProvider
     }
 
     companion object {
-        private val shared: ScriptureProvider by lazy { YouVersionScriptureProvider() }
+        @Volatile private var shared: BibleLibrary? = null
+
+        /** One library per process: the YouVersion session cache in front, the phone's store behind. */
+        fun library(context: Context): BibleLibrary = shared ?: synchronized(this) {
+            shared ?: BibleLibrary(YouVersionScriptureProvider(), BibleStore.get(context.applicationContext)).also { shared = it }
+        }
     }
 }
 

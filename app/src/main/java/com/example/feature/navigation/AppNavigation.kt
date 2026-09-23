@@ -5,7 +5,7 @@ object Routes {
     const val HOME = "home"
     /** Navigate here to record; [RECORDING_PATTERN] is the registered route. */
     const val RECORDING = "recording"
-    const val RECORDING_PATTERN = "recording?noteId={noteId}"
+    const val RECORDING_PATTERN = "recording?noteId={noteId}&type={type}"
     const val NOTES = "notes"
     const val NOTEBOOK = "notebook/{notebookId}"
     const val NOTES_ARCHIVE = "notes_archive"
@@ -16,6 +16,10 @@ object Routes {
     const val SEARCH = "search"
     const val MODELS = "models"
     const val SETTINGS = "settings"
+    const val FAITH = "faith"
+    const val FAITH_JOURNEY = "faith_journey"
+    const val FAITH_SCRIPTURE = "faith_scripture"
+    const val BIBLE = "bible?ref={ref}&search={search}"
 
     /** Sentinel used when [MEETING_DETAIL]'s optional startAtMs query arg is absent — NavType.LongType has no nullable variant. */
     const val NO_START_AT_MS = -1L
@@ -23,6 +27,13 @@ object Routes {
 
     /** Records into an existing note ("Record here"). */
     fun recordIntoNoteRoute(noteId: String) = "recording?noteId=$noteId"
+
+    /** Opens the recorder with [type] already picked. */
+    fun recordTypeRoute(type: com.example.core.model.RecordingType) = "recording?type=${type.name}"
+
+    /** The Bible reader, at [reference] (a USFM passage id such as "JHN.3.16") or where it was left. */
+    fun bibleRoute(reference: String? = null, search: Boolean = false) =
+        "bible?search=$search" + (reference?.let { "&ref=$it" } ?: "")
 
     fun notebookRoute(notebookId: String) = "notebook/$notebookId"
 

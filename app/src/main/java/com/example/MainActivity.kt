@@ -209,6 +209,7 @@ fun MeetMindApp() {
             is com.example.core.notify.DeepLink.Processing -> openProcessing(link.meetingId)
             is com.example.core.notify.DeepLink.Recording -> navController.navigate(Routes.meetingDetailRoute(link.meetingId))
             com.example.core.notify.DeepLink.Models -> navController.navigate(Routes.MODELS) { launchSingleTop = true }
+            com.example.core.notify.DeepLink.Bible -> navController.navigate(Routes.bibleRoute()) { launchSingleTop = true }
             null -> Unit
         }
     }
@@ -267,7 +268,10 @@ fun MeetMindApp() {
         // RECORDING
         composable(
             route = Routes.RECORDING_PATTERN,
-            arguments = listOf(navArgument("noteId") { type = NavType.StringType; nullable = true; defaultValue = null })
+            arguments = listOf(
+                navArgument("noteId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null }
+            )
         ) { backStackEntry ->
             val vm: RecordingViewModel = viewModel()
             RecordingScreen(
@@ -279,8 +283,56 @@ fun MeetMindApp() {
                         popUpTo(Routes.RECORDING_PATTERN) { inclusive = true }
                     }
                 },
-                targetNoteId = backStackEntry.arguments?.getString("noteId")
+                targetNoteId = backStackEntry.arguments?.getString("noteId"),
+                initialType = backStackEntry.arguments?.getString("type")?.let { t -> RecordingType.entries.firstOrNull { it.name == t } }
             )
+        }
+
+        // FAITH — one view model shared by the space and its two sub-pages, all behind the optional lock.
+        composable(Routes.FAITH) {
+            val vm: com.example.feature.faith.FaithViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.example.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
+                com.example.feature.faith.FaithScreen(
+                    viewModel = vm,
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                    onRecordSermon = { navController.navigate(Routes.recordTypeRoute(RecordingType.SERMON)) },
+                    onOpenJourney = { navController.navigate(Routes.FAITH_JOURNEY) },
+                    onOpenScripture = { navController.navigate(Routes.FAITH_SCRIPTURE) },
+                    onOpenBible = { navController.navigate(Routes.bibleRoute()) },
+                    onSearchBible = { navController.navigate(Routes.bibleRoute(search = true)) },
+                    onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) }
+                )
+            }
+        }
+        composable(
+            Routes.BIBLE,
+            arguments = listOf(
+                navArgument("ref") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("search") { type = NavType.BoolType; defaultValue = false }
+            )
+        ) { backStackEntry ->
+            val vm: com.example.feature.bible.BibleViewModel = viewModel()
+            val ref = backStackEntry.arguments?.getString("ref")?.let { com.example.core.scripture.YouVersionScriptureProvider.parsePassageId(it) }
+            com.example.feature.bible.BibleScreen(
+                viewModel = vm,
+                initialReference = ref,
+                onNavigateBack = { navController.popBackStack() },
+                onStartNote = { r -> vm.startDevotional(r) { navController.navigate(Routes.noteRoute(it)) } },
+                startInSearch = backStackEntry.arguments?.getBoolean("search") == true
+            )
+        }
+        composable(Routes.FAITH_JOURNEY) {
+            val vm: com.example.feature.faith.FaithViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.example.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
+                com.example.feature.faith.FaithJourneyScreen(vm, onNavigateBack = { navController.popBackStack() }, onOpenNote = { navController.navigate(Routes.noteRoute(it)) })
+            }
+        }
+        composable(Routes.FAITH_SCRIPTURE) {
+            val vm: com.example.feature.faith.FaithViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.example.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
+                com.example.feature.faith.FaithScriptureScreen(vm, onNavigateBack = { navController.popBackStack() }, onOpenNote = { navController.navigate(Routes.noteRoute(it)) })
+            }
         }
 
         // NOTES
@@ -293,7 +345,8 @@ fun MeetMindApp() {
                 onOpenNotebook = { navController.navigate(Routes.notebookRoute(it)) },
                 onOpenArchive = { navController.navigate(Routes.NOTES_ARCHIVE) },
                 onNavigateBack = null,
-                onNavigateBottomNav = navigateToPrimary
+                onNavigateBottomNav = navigateToPrimary,
+                onOpenFaith = { navController.navigate(Routes.FAITH) }
             )
         }
         composable(Routes.NOTEBOOK, arguments = listOf(navArgument("notebookId") { type = NavType.StringType })) { backStackEntry ->
@@ -454,7 +507,8 @@ fun MeetMindApp() {
                 viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToModels = { navController.navigate(Routes.MODELS) },
-                onNavigateBottomNav = navigateToPrimary
+                onNavigateBottomNav = navigateToPrimary,
+                onOpenBible = { navController.navigate(Routes.bibleRoute()) }
             )
         }
     }

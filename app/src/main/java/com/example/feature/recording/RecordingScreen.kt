@@ -206,7 +206,9 @@ fun RecordingScreen(
     onNavigateBack: () -> Unit,
     onRecordingComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit,
     /** Set when recording from inside a note, so the recording joins that note. */
-    targetNoteId: String? = null
+    targetNoteId: String? = null,
+    /** Pre-selects the type (Faith → Record sermon); the picker still shows so it can be changed. */
+    initialType: RecordingType? = null
 ) {
     val context = LocalContext.current
     var hasAudioPermission by remember {
@@ -221,12 +223,12 @@ fun RecordingScreen(
     // to the whole processing pipeline (see RecordingContext); silently defaulting them was exactly
     // the "treats every recording like a meeting" problem this phase exists to fix.
     var typeChosen by remember { mutableStateOf(false) }
-    var selectedType by remember { mutableStateOf(RecordingType.MEETING) }
+    var selectedType by remember { mutableStateOf(initialType ?: RecordingType.MEETING) }
     var customContextText by remember { mutableStateOf("") }
-    var meetingTitle by remember { mutableStateOf(RecordingType.MEETING.displayName) }
+    var meetingTitle by remember { mutableStateOf((initialType ?: RecordingType.MEETING).displayName) }
     // Null = unspecified/"Not sure". Tracks whether the user has touched this control themselves
     // so a type-based suggestion never silently overwrites a choice they already made.
-    var selectedSpeakerCount by remember { mutableStateOf(RecordingType.MEETING.suggestedSpeakerCount()) }
+    var selectedSpeakerCount by remember { mutableStateOf((initialType ?: RecordingType.MEETING).suggestedSpeakerCount()) }
     var speakerCountTouched by remember { mutableStateOf(false) }
 
     fun recordingContext() = com.example.core.model.RecordingContext(

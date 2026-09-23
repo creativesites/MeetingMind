@@ -35,6 +35,8 @@ interface NotebookDao {
 
 data class NotebookNoteCount(val notebookId: String, val count: Int)
 
+data class NameCount(val name: String, val count: Int)
+
 @Dao
 interface NoteDao {
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
@@ -153,6 +155,21 @@ interface NoteDao {
             "WHERE nt.tagId = :tagId AND n.archivedAt IS NULL ORDER BY n.updatedAt DESC"
     )
     fun observeNotesWithTag(tagId: String): Flow<List<NoteEntity>>
+
+    /** How often each tag is used on notes of these workflows — the Faith space's themes. */
+    @Query(
+        "SELECT t.name AS name, COUNT(*) AS count FROM tags t JOIN note_tags nt ON nt.tagId = t.id " +
+            "JOIN notes n ON n.id = nt.noteId WHERE n.workflow IN (:workflows) AND n.archivedAt IS NULL " +
+            "GROUP BY t.id ORDER BY count DESC LIMIT 30"
+    )
+    fun observeTagCountsForWorkflows(workflows: List<String>): Flow<List<NameCount>>
+
+    /** Topics processing found in recordings of these workflows, by how many recordings raised them. */
+    @Query(
+        "SELECT tp.name AS name, COUNT(DISTINCT tp.meetingId) AS count FROM topics tp JOIN meetings m ON m.id = tp.meetingId " +
+            "WHERE m.recordingType IN (:workflows) GROUP BY lower(tp.name) ORDER BY count DESC LIMIT 30"
+    )
+    fun observeTopicCountsForWorkflows(workflows: List<String>): Flow<List<NameCount>>
 
     @Query("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tagId FROM note_tags)")
     suspend fun deleteUnusedTags()

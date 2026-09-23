@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.ContentCopy
@@ -150,12 +151,18 @@ fun VerseSheet(
     LaunchedEffect(Unit) { versionId = service.defaultVersionId() }
     val result = versionId?.let { rememberPassage(reference, it) }
     var showCollections by remember { mutableStateOf(false) }
+    var readChapter by remember { mutableStateOf(false) }
+    // The translations this app is licensed for, from the service; the built-in list until it answers.
+    var versions by remember { mutableStateOf(BibleVersions.common.filter { it.id == BibleVersions.DEFAULT_ID }) }
+    LaunchedEffect(Unit) {
+        service.bible?.bibles()?.takeIf { it.isNotEmpty() }?.let { list -> versions = list.map { com.example.core.scripture.BibleVersion(it.id, it.abbreviation, it.title) } }
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
         Column(Modifier.padding(horizontal = 22.dp).padding(bottom = 22.dp).navigationBarsPadding()) {
             Text(reference.display(), fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = Ink, letterSpacing = (-0.4).sp)
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                BibleVersions.common.forEach { v ->
+                versions.forEach { v ->
                     val selected = v.id == versionId
                     Surface(
                         onClick = { versionId = v.id }, shape = RoundedCornerShape(50),
@@ -185,8 +192,9 @@ fun VerseSheet(
             }
             Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (onPlay != null && heardAtMs != null) {
-                    SheetAction("Play where read", Icons.Filled.PlayArrow, primary = true, modifier = Modifier.weight(1f)) { onPlay(); onDismiss() }
+                    SheetAction("Play", Icons.Filled.PlayArrow, primary = true, modifier = Modifier.weight(1f)) { onPlay(); onDismiss() }
                 }
+                SheetAction("Read", Icons.AutoMirrored.Filled.MenuBook, modifier = Modifier.weight(1f)) { readChapter = true }
                 SheetAction("Save", Icons.Filled.BookmarkAdd, modifier = Modifier.weight(1f)) { showCollections = true }
                 SheetAction("Copy", Icons.Filled.ContentCopy, modifier = Modifier.weight(1f)) {
                     val found = result as? PassageResult.Found
@@ -199,6 +207,9 @@ fun VerseSheet(
                 }
             }
         }
+    }
+    if (readChapter) {
+        com.example.feature.bible.BibleDialog(initialReference = reference, onDismiss = { readChapter = false })
     }
     if (showCollections) {
         CollectionPicker(

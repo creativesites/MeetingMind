@@ -437,7 +437,12 @@ private fun MenuRow(label: String, selected: Boolean = false, destructive: Boole
 
 /** Type a reference ("jn 3 16", "1 Cor 13:4-7"); it's checked against the Bible as you type. */
 @Composable
-internal fun ScriptureEntryDialog(onInsert: (com.example.core.scripture.ScriptureReference) -> Unit, onDismiss: () -> Unit) {
+internal fun ScriptureEntryDialog(
+    onInsert: (com.example.core.scripture.ScriptureReference) -> Unit,
+    onDismiss: () -> Unit,
+    /** Opens the full Bible to browse (false) or search (true), and pick verses from there. */
+    onOpenBible: (search: Boolean) -> Unit = {}
+) {
     var text by remember { mutableStateOf("") }
     val parsed = remember(text) { com.example.core.scripture.ScriptureReferenceParser.parse(text) }
     AlertDialog(
@@ -461,6 +466,10 @@ internal fun ScriptureEntryDialog(onInsert: (com.example.core.scripture.Scriptur
                     fontWeight = if (parsed != null) FontWeight.SemiBold else FontWeight.Normal,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+                Row(Modifier.padding(top = 10.dp)) {
+                    TextButton(onClick = { onOpenBible(false) }) { Text("Browse the Bible") }
+                    TextButton(onClick = { onOpenBible(true) }) { Text("Search words") }
+                }
             }
         },
         confirmButton = { TextButton(enabled = parsed != null, onClick = { parsed?.let(onInsert) }) { Text("Insert") } },

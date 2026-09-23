@@ -1,5 +1,9 @@
 package com.example.feature.notes.editor
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.platform.testTag
+import com.example.ui.theme.SurfaceSunk
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -126,6 +130,14 @@ fun NoteEditorScreen(
     val snackbar = remember { SnackbarHostState() }
 
     val note by viewModel.note.collectAsState()
+
+    // Private Faith notes (prayers, reflections) sit behind the optional Faith lock.
+    var faithUnlocked by remember { mutableStateOf(com.example.feature.faith.FaithLock.isUnlocked()) }
+    val lockNeeded = note?.let { it.isPrivate && com.example.core.model.Workflows.space(it.workflow) == com.example.core.model.NotebookSpace.FAITH } == true
+    if (lockNeeded && !faithUnlocked) {
+        com.example.feature.faith.FaithLockGate(onCancel = onNavigateBack) { LaunchedEffect(Unit) { faithUnlocked = true } }
+        return
+    }
     val blocks by viewModel.blocks.collectAsState()
     val loaded by viewModel.loaded.collectAsState()
     val gone by viewModel.gone.collectAsState()
@@ -153,6 +165,8 @@ fun NoteEditorScreen(
     var showExcerpts by remember { mutableStateOf(false) }
     var showNoteLinks by remember { mutableStateOf(false) }
     var showScriptureEntry by remember { mutableStateOf(false) }
+    var showPrayerUpdate by remember { mutableStateOf(false) }
+    var bibleDialog by remember { mutableStateOf<Boolean?>(null) } // null = closed; true = open in search
     var verseSheetFor by remember { mutableStateOf<NoteBlock?>(null) }
     var showDetails by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
@@ -357,6 +371,18 @@ fun NoteEditorScreen(
                     onDetails = { showDetails = true }
                 )
             }
+            if (currentNote.workflow == com.example.core.model.RecordingType.PRAYER_REQUEST) {
+                item(key = "prayer") {
+                    PrayerRequestBanner(
+                        note = currentNote,
+                        testimony = backlinks.firstOrNull { it.workflow == com.example.core.model.RecordingType.TESTIMONY },
+                        onAddUpdate = { showPrayerUpdate = true },
+                        onMarkAnswered = { viewModel.markAnswered(onOpenNote) },
+                        onReopen = { viewModel.reopenRequest() },
+                        onTestimony = { existing -> if (existing != null) onOpenNote(existing) else viewModel.startTestimony(onOpenNote) }
+                    )
+                }
+            }
             itemsIndexed(blocks, key = { _, b -> b.id }) { index, block ->
                 val dragging = drag.draggingId == block.id
                 Row(
@@ -479,7 +505,22 @@ fun NoteEditorScreen(
             onDismiss = { showDetails = false }
         )
     }
-    if (showScriptureEntry) ScriptureEntryDialog(onInsert = { viewModel.insertScripture(it); showScriptureEntry = false }, onDismiss = { showScriptureEntry = false })
+    if (showScriptureEntry) ScriptureEntryDialog(
+        onInsert = { viewModel.insertScripture(it); showScriptureEntry = false },
+        onDismiss = { showScriptureEntry = false },
+        onOpenBible = { search -> showScriptureEntry = false; bibleDialog = search }
+    )
+    if (showPrayerUpdate) PrayerUpdateDialog(
+        onSave = { viewModel.addPrayerUpdate(it); showPrayerUpdate = false },
+        onDismiss = { showPrayerUpdate = false }
+    )
+    bibleDialog?.let { search ->
+        com.example.feature.bible.BibleDialog(
+            onDismiss = { bibleDialog = null },
+            onInsert = { ref, versionId -> viewModel.insertScripture(ref, versionId) },
+            startInSearch = search
+        )
+    }
     verseSheetFor?.let { b ->
         val ref = b.payload["reference"]?.let { com.example.core.scripture.ScriptureReferenceParser.parse(it) }
         if (ref == null) verseSheetFor = null else {
@@ -670,4 +711,74 @@ private class BlockDragState {
         move(from, to)
         offset += (current.offset - target.offset).toFloat()
     }
+}
+
+/** A prayer request's lifecycle: praying since, updates, answered, testimony. */
+@Composable
+private fun PrayerRequestBanner(
+    note: com.example.core.model.Note,
+    testimony: com.example.core.model.Note?,
+    onAddUpdate: () -> Unit,
+    onMarkAnswered: () -> Unit,
+    onReopen: () -> Unit,
+    onTestimony: (existingId: String?) -> Unit
+) {
+    val answered = note.status == com.example.core.model.NoteStatus.ANSWERED
+    val gold = Color(0xFFB7791F)
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (answered) Color(0x14B7791F) else SurfaceSunk,
+        border = BorderStroke(1.dp, if (answered) gold.copy(alpha = 0.35f) else Line),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp).testTag("prayer_banner")
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                if (answered) "Answered ${Formatters.formatDateRelative(note.answeredAt ?: note.updatedAt)}"
+                else "Praying since ${Formatters.formatDateRelative(note.createdAt)}",
+                fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (answered) gold else Ink
+            )
+            Text(
+                if (answered) "Remember what God did — write it down while it's fresh."
+                else "Add updates as things change. When it's answered, mark it and tell the story.",
+                fontSize = 13.sp, lineHeight = 18.sp, color = InkSecondary, modifier = Modifier.padding(top = 2.dp)
+            )
+            Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (answered) {
+                    Surface(onClick = { onTestimony(testimony?.id) }, shape = RoundedCornerShape(50), color = Ink) {
+                        Text(if (testimony != null) "Open testimony" else "Write testimony", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                    }
+                    Surface(onClick = onReopen, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Line)) {
+                        Text("Still praying", color = Ink, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                    }
+                } else {
+                    Surface(onClick = onAddUpdate, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Line)) {
+                        Text("Add update", color = Ink, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                    }
+                    Surface(onClick = onMarkAnswered, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.testTag("prayer_mark_answered")) {
+                        Text("Mark answered", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PrayerUpdateDialog(onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = { Text("Prayer update") },
+        text = {
+            OutlinedTextField(
+                value = text, onValueChange = { text = it }, minLines = 3,
+                placeholder = { Text("What has changed? What are you still asking for?") },
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { onSave(text) }) { Text("Add") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }

@@ -169,7 +169,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToModels: () -> Unit = {},
-    onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit = {}
+    onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit = {},
+    onOpenBible: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs by viewModel.preferencesState.collectAsState()
@@ -177,6 +178,11 @@ fun SettingsScreen(
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showBibleVersions by remember { mutableStateOf(false) }
+    // The translations licensed to this app, as the service reports them.
+    var bibleVersions by remember { mutableStateOf<List<com.example.core.scripture.BibleInfo>>(emptyList()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        bibleVersions = com.example.core.scripture.ScriptureService.library(context).bibles()
+    }
 
     if (showBibleVersions) {
         androidx.compose.material3.AlertDialog(
@@ -185,7 +191,8 @@ fun SettingsScreen(
             title = { Text("Bible translation") },
             text = {
                 Column {
-                    com.example.core.scripture.BibleVersions.common.forEach { v ->
+                    if (bibleVersions.isEmpty()) Text("Connect to the internet to see the translations available.")
+                    bibleVersions.forEach { v ->
                         Row(
                             Modifier.fillMaxWidth().clickable { viewModel.setBibleVersion(v.id); showBibleVersions = false }.padding(vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -198,7 +205,7 @@ fun SettingsScreen(
                         }
                     }
                     Text(
-                        "Translations other than BSB and KJV appear once their licence is accepted for this app on platform.youversion.com.",
+                        "More translations (NIV, KJV, ESV…) appear here once their licence is accepted for this app on platform.youversion.com.",
                         style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp)
                     )
                 }
@@ -259,12 +266,19 @@ fun SettingsScreen(
 
             settingsSection(title = "Bible & Faith") {
                 settingsRow {
-                    val version = com.example.core.scripture.BibleVersions.common.firstOrNull { it.id == prefs.bibleVersionId }
+                    val version = bibleVersions.firstOrNull { it.id == prefs.bibleVersionId }
                     SettingsNavRow(
                         title = "Bible translation",
-                        subtitle = (version?.let { "${it.title} (${it.abbreviation})" } ?: "Translation ${prefs.bibleVersionId}") +
+                        subtitle = (version?.let { "${it.title} (${it.abbreviation})" } ?: com.example.core.scripture.BibleVersions.common.firstOrNull { it.id == prefs.bibleVersionId }?.let { "${it.title} (${it.abbreviation})" } ?: "Translation ${prefs.bibleVersionId}") +
                             if (com.example.BuildConfig.YOUVERSION_APP_KEY.isBlank()) " · verse text isn't set up in this build" else " · from YouVersion",
                         onClick = { showBibleVersions = true }
+                    )
+                }
+                settingsRow {
+                    SettingsNavRow(
+                        title = "Bible on this phone",
+                        subtitle = "Read and search offline — download an open translation from the Bible's translation menu",
+                        onClick = onOpenBible
                     )
                 }
                 settingsRow {

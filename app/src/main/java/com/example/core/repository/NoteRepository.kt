@@ -340,6 +340,73 @@ class NoteRepository(
         return (listOf(NoteCodec.plainTextOf(blocks)) + summaries).filter { it.isNotBlank() }.joinToString("\n")
     }
 
+    // ---------------------------------------------------------------- prayer lifecycle
+
+    /** Adds a dated update under a prayer request's Updates section. */
+    suspend fun addPrayerUpdate(requestId: String, text: String) = withContext(Dispatchers.IO) {
+        val blocks = noteDao.getBlocks(requestId).map { it.toDomain() }
+        saveBlocks(requestId, withPrayerUpdate(blocks, requestId, text, clock()))
+    }
+
+    /** Marks a prayer request answered, today. */
+    suspend fun markAnswered(requestId: String) = setStatus(requestId, NoteStatus.ANSWERED)
+
+    /** Reopens a request marked answered by mistake. */
+    suspend fun reopenRequest(requestId: String) = setStatus(requestId, NoteStatus.OPEN)
+
+    /**
+     * Starts a testimony for an answered request, with "What I prayed for" filled from the
+     * request in the person's own words, and linked back to it.
+     */
+    suspend fun startTestimony(requestId: String): Note = withContext(Dispatchers.IO) {
+        val request = noteDao.getById(requestId)?.toDomain() ?: error("No such request")
+        val requestText = noteDao.getBlocks(requestId).map { it.toDomain() }
+            .filter { it.sectionKey == "request" && it.type != NoteBlockType.HEADING_2 && it.type.isText && it.content.text.isNotBlank() }
+            .joinToString("\n") { it.content.text }
+        val testimony = createNote(workflow = RecordingType.TESTIMONY, title = request.title.ifBlank { "Answered prayer" }.let { "Testimony: $it" })
+        if (requestText.isNotBlank()) {
+            val blocks = noteDao.getBlocks(testimony.id).map { it.toDomain() }
+            saveBlocks(testimony.id, blocks.map { b ->
+                if (b.sectionKey == "prayed_for" && b.type != NoteBlockType.HEADING_2 && b.content.isEmpty)
+                    b.copy(content = com.example.core.notes.RichText.plain(requestText)) else b
+            })
+        }
+        link(testimony.id, requestId, NoteLinkKind.TESTIMONY_OF)
+        testimony
+    }
+
+    /** A devotional that starts from a verse (the Verse of the Day, or one the person picked). */
+    suspend fun startDevotional(reference: com.example.core.scripture.ScriptureReference): Note = withContext(Dispatchers.IO) {
+        val note = createNote(workflow = RecordingType.DEVOTIONAL, title = reference.display())
+        val blockId = newId("block")
+        val refId = newId("scripture")
+        val scripture = NoteBlock(
+            id = blockId, noteId = note.id, position = 0, type = NoteBlockType.SCRIPTURE,
+            content = com.example.core.notes.RichText.plain(reference.display()),
+            payload = mapOf(NoteBlock.PAYLOAD_SCRIPTURE_REF_ID to refId, "reference" to reference.display()),
+            source = BlockSource.SCRIPTURE, sectionKey = "scripture"
+        )
+        val blocks = noteDao.getBlocks(note.id).map { it.toDomain() }
+        val emptyBody = blocks.indexOfFirst { it.sectionKey == "scripture" && it.type != NoteBlockType.HEADING_2 }
+        val withVerse = if (emptyBody >= 0) blocks.toMutableList().apply { set(emptyBody, scripture) } else blocks + scripture
+        saveBlocks(note.id, withVerse)
+        addScriptureRefs(listOf(ScriptureRef(refId, note.id, blockId, reference.usfm, reference.chapter, reference.verseStart, reference.verseEnd, null, com.example.core.model.ScriptureOrigin.USER, createdAt = clock())))
+        getNote(note.id)!!
+    }
+
+    fun observeThemes(workflows: Collection<RecordingType>): Flow<List<com.example.core.database.NameCount>> = combine(
+        noteDao.observeTagCountsForWorkflows(workflows.map { it.name }),
+        noteDao.observeTopicCountsForWorkflows(workflows.map { it.name })
+    ) { tags, topics ->
+        (tags + topics).groupBy { it.name.trim().lowercase() }
+            .map { (_, list) -> com.example.core.database.NameCount(list.first().name.trim(), list.sumOf { it.count }) }
+            .sortedByDescending { it.count }
+    }.flowOn(Dispatchers.IO)
+
+    fun observeFaithMedia(): Flow<List<Attachment>> =
+        attachmentDao.observeForWorkflows(com.example.core.model.Workflows.faith.map { it.name })
+            .map { list -> list.map { it.toDomain() } }.flowOn(Dispatchers.IO)
+
     // ---------------------------------------------------------------- notebooks
 
     fun observeNotebooks(): Flow<List<Notebook>> =
@@ -526,6 +593,27 @@ class NoteRepository(
     )
 
     companion object {
+        /**
+         * [blocks] with a dated update added under the Updates section — after its last block,
+         * or in place of its empty placeholder. Pure, so the open editor can apply it to the
+         * blocks it holds instead of racing its own autosave.
+         */
+        fun withPrayerUpdate(blocks: List<NoteBlock>, requestId: String, text: String, now: Long): List<NoteBlock> {
+            val date = java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(now))
+            val update = NoteBlock(
+                id = newId("block"), noteId = requestId, position = 0, type = NoteBlockType.PARAGRAPH,
+                content = com.example.core.notes.RichText.plain("$date — ${text.trim()}")
+                    .applyStyle(com.example.core.notes.InlineStyle.BOLD, 0, date.length),
+                sectionKey = "updates"
+            )
+            val lastIndex = blocks.indexOfLast { it.sectionKey == "updates" }
+            return if (lastIndex < 0) blocks + update else blocks.toMutableList().apply {
+                val last = this[lastIndex]
+                if (last.type.isText && last.type != NoteBlockType.HEADING_2 && last.content.isEmpty) set(lastIndex, update.copy(id = last.id))
+                else add(lastIndex + 1, update)
+            }
+        }
+
         /** Metadata flag: the note's title still follows its recording's title. */
         const val META_TITLE_FROM_RECORDING = "titleFromRecording"
 

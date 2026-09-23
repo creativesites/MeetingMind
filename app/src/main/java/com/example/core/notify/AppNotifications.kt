@@ -18,6 +18,7 @@ sealed interface DeepLink {
     data class Processing(val meetingId: String) : DeepLink
     data class Recording(val meetingId: String) : DeepLink
     data object Models : DeepLink
+    data object Bible : DeepLink
 }
 
 /**
@@ -40,6 +41,7 @@ object DeepLinks {
             "processing" -> meeting?.let { DeepLink.Processing(it) }
             "recording" -> meeting?.let { DeepLink.Recording(it) }
             "models" -> DeepLink.Models
+            "bible" -> DeepLink.Bible
             else -> null
         }
         intent.removeExtra(EXTRA_TARGET)
@@ -50,6 +52,7 @@ object DeepLinks {
             is DeepLink.Processing -> "processing" to link.meetingId
             is DeepLink.Recording -> "recording" to link.meetingId
             DeepLink.Models -> "models" to null
+            DeepLink.Bible -> "bible" to null
         }
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -89,8 +92,8 @@ object AppNotifications {
             }
         )
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_DOWNLOADS, "Model downloads", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Shows progress while an on-device AI model downloads"
+            NotificationChannel(CHANNEL_DOWNLOADS, "Downloads", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Shows progress while an AI model or a Bible translation downloads"
                 setShowBadge(false)
             }
         )
@@ -175,6 +178,37 @@ object AppNotifications {
                 .setContentText(if (ok) "It will be used for your next recording." else detail ?: "It will continue when you're back online.")
                 .setAutoCancel(true)
                 .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Models))
+                .build()
+        )
+    }
+
+    fun bibleDownloadId(bibleId: Int) = ID_DOWNLOAD_BASE + 1500 + (bibleId and 0x3FF)
+
+    fun bibleDownloadProgress(context: Context, label: String, done: Int, total: Int, book: String?, pauseIntent: PendingIntent?) =
+        NotificationCompat.Builder(context, CHANNEL_DOWNLOADS)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("Downloading the $label Bible")
+            .setContentText(if (done > 0) "$done of $total chapters" + (book?.let { " · $it" } ?: "") else "Starting…")
+            .setSubText(if (total > 1 && done > 0) "${done * 100 / total}%" else null)
+            .setProgress(total.coerceAtLeast(1), done.coerceIn(0, total.coerceAtLeast(1)), done <= 0)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Bible))
+            .apply { pauseIntent?.let { addAction(android.R.drawable.ic_media_pause, "Pause", it) } }
+            .build()
+
+    fun bibleDownloadFinished(context: Context, bibleId: Int, label: String, ok: Boolean) {
+        post(
+            context, bibleDownloadId(bibleId) + 500,
+            NotificationCompat.Builder(context, CHANNEL_DONE)
+                .setSmallIcon(if (ok) android.R.drawable.stat_sys_download_done else android.R.drawable.stat_notify_error)
+                .setContentTitle(if (ok) "The $label Bible is on your phone" else "Bible download paused")
+                .setContentText(if (ok) "Read and search it anywhere, even offline." else "Open the Bible to try again.")
+                .setAutoCancel(true)
+                .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Bible))
                 .build()
         )
     }

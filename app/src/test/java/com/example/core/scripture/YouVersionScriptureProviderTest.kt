@@ -56,10 +56,58 @@ class YouVersionScriptureProviderTest {
     }
 
     @Test
-    fun `a version without attribution is treated as unavailable`() = runBlocking {
-        val http = FakeHttp(mapOf("/v1/bibles/3034" to (200 to """{"id":3034,"abbreviation":"BSB"}""")))
-        val result = YouVersionScriptureProvider("key", http).passage(john316, 3034)
-        assertEquals(PassageResult.Reason.NOT_LICENSED, (result as PassageResult.Unavailable).reason)
+    fun `a version the API won't serve is unavailable, one without a copyright line shows its title`() = runBlocking {
+        val refused = YouVersionScriptureProvider("key", FakeHttp(mapOf("/v1/bibles/111" to (403 to "{}")))).passage(john316, 111)
+        assertEquals(PassageResult.Reason.NOT_LICENSED, (refused as PassageResult.Unavailable).reason)
+
+        // The live API returns the ASV with copyright and promotional_content both null.
+        val http = FakeHttp(
+            mapOf(
+                "/v1/bibles/12" to (200 to """{"id":12,"abbreviation":"ASV","copyright":null,"promotional_content":null,"title":"American Standard Version"}"""),
+                "/v1/bibles/12/passages/JHN.3.16?format=text" to (200 to """{"content":"For God so loved the world"}""")
+            )
+        )
+        val found = YouVersionScriptureProvider("key", http).passage(john316, 12) as PassageResult.Found
+        assertEquals("American Standard Version", found.passage.attribution)
+    }
+
+    private fun fixture(name: String) = javaClass.classLoader!!.getResource("youversion/$name")!!.readText()
+
+    @Test
+    fun `the translation list pages through and marks open versions`() = runBlocking {
+        val http = FakeHttp(mapOf("/v1/bibles?language_ranges[]=en&page_size=99" to (200 to fixture("bibles_en.json"))))
+        val bibles = YouVersionScriptureProvider("key", http).bibles()
+        assertEquals(11, bibles.size)
+        val bsb = bibles.first { it.id == 3034 }
+        assertEquals("BSB", bsb.abbreviation)
+        assertTrue(bsb.offlineAllowed)
+        assertEquals(66, bsb.books.size)
+        // The Orthodox Jewish Bible is copyrighted: readable online, never stored.
+        assertTrue(bibles.first { it.abbreviation == "TOJB2011" }.offlineAllowed.not())
+        assertTrue(bibles.all { it.attribution.isNotBlank() })
+    }
+
+    @Test
+    fun `a second page is requested with the token`() = runBlocking {
+        val page1 = """{"data":[{"id":1,"abbreviation":"AAA","title":"A"}],"next_page_token":"t/1+"}"""
+        val page2 = """{"data":[{"id":2,"abbreviation":"BBB","title":"B"}],"next_page_token":null}"""
+        val http = FakeHttp(
+            mapOf(
+                "/v1/bibles?language_ranges[]=en&page_size=99" to (200 to page1),
+                "/v1/bibles?language_ranges[]=en&page_size=99&page_token=t%2F1%2B" to (200 to page2)
+            )
+        )
+        assertEquals(listOf("AAA", "BBB"), YouVersionScriptureProvider("key", http).bibles().map { it.abbreviation })
+    }
+
+    @Test
+    fun `a chapter is fetched as html and split into verses`() = runBlocking {
+        val http = FakeHttp(mapOf(version, "/v1/bibles/3034/passages/PSA.23?format=html" to (200 to fixture("PSA.23_3034.json"))))
+        val psalm = BibleBooks.byUsfm("PSA")!!
+        val content = (YouVersionScriptureProvider("key", http).chapter(3034, psalm, 23) as ChapterResult.Found).content
+        assertEquals(6, content.verses.size)
+        assertEquals("BSB", content.abbreviation)
+        assertTrue(content.verses[0].text.startsWith("A Psalm of David."))
     }
 
     @Test

@@ -363,7 +363,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     fun shareableUri(file: File): Uri = media.shareableUri(file)
 
     /** Adds a Bible passage the person chose. Its text is fetched live wherever it's shown. */
-    fun insertScripture(reference: com.example.core.scripture.ScriptureReference) {
+    fun insertScripture(reference: com.example.core.scripture.ScriptureReference, versionId: Int? = null) {
         val blockId = NoteRepository.newId("block")
         val refId = NoteRepository.newId("scripture")
         insert(
@@ -381,7 +381,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                 listOf(
                     com.example.core.model.ScriptureRef(
                         refId, noteId, blockId, reference.usfm, reference.chapter, reference.verseStart, reference.verseEnd,
-                        null, com.example.core.model.ScriptureOrigin.USER, createdAt = System.currentTimeMillis()
+                        versionId, com.example.core.model.ScriptureOrigin.USER, createdAt = System.currentTimeMillis()
                     )
                 )
             )
@@ -498,6 +498,33 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         val merged = (current.metadata + values).filterValues { it.isNotBlank() }
         _note.value = current.copy(metadata = merged)
         notes.updateNote(current.copy(metadata = merged))
+    }
+
+    // ---------------------------------------------------------------- prayer requests
+
+    /** Adds a dated update to this prayer request, in the open editor's own blocks. */
+    fun addPrayerUpdate(text: String) {
+        if (text.isBlank()) return
+        update(NoteRepository.withPrayerUpdate(_blocks.value, noteId, text, System.currentTimeMillis()))
+        _message.value = "Update added"
+    }
+
+    /** Marks this request answered and opens a testimony pre-filled from it. */
+    fun markAnswered(onTestimony: (String) -> Unit) = viewModelScope.launch {
+        flush()
+        notes.markAnswered(noteId)
+        _note.value = _note.value?.copy(status = com.example.core.model.NoteStatus.ANSWERED, answeredAt = System.currentTimeMillis())
+        onTestimony(notes.startTestimony(noteId).id)
+    }
+
+    fun reopenRequest() = viewModelScope.launch {
+        notes.reopenRequest(noteId)
+        _note.value = _note.value?.copy(status = com.example.core.model.NoteStatus.OPEN, answeredAt = null)
+    }
+
+    fun startTestimony(onCreated: (String) -> Unit) = viewModelScope.launch {
+        flush()
+        onCreated(notes.startTestimony(noteId).id)
     }
 
     fun setPinned(pinned: Boolean) = viewModelScope.launch { notes.setPinned(noteId, pinned) }

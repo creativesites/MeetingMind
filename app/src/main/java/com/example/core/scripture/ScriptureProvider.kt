@@ -74,12 +74,14 @@ fun interface YouVersionHttp {
 class YouVersionScriptureProvider(
     private val appKey: String = BuildConfig.YOUVERSION_APP_KEY,
     private val http: YouVersionHttp = OkHttpYouVersion(appKey)
-) : ScriptureProvider {
+) : BibleProvider {
 
     override val isConfigured: Boolean get() = appKey.isNotBlank()
 
     private val passages = ConcurrentHashMap<String, Passage>()
-    private val versions = ConcurrentHashMap<Int, Pair<String, String>>() // id -> (abbreviation, attribution)
+    private val versions = ConcurrentHashMap<Int, BibleInfo>()
+    private val chapters = ConcurrentHashMap<String, ChapterContent>()
+    @Volatile private var bibleList: List<BibleInfo>? = null
 
     override suspend fun passage(reference: ScriptureReference, versionId: Int): PassageResult {
         if (!isConfigured) {
@@ -93,9 +95,9 @@ class YouVersionScriptureProvider(
                 PassageResult.Reason.NOT_LICENSED, "This translation isn't available. Choose another in Settings."
             )
             val text = fetchText(reference, versionId) ?: return PassageResult.Unavailable(
-                PassageResult.Reason.NOT_FOUND, "${reference.display()} couldn't be loaded in ${meta.first}."
+                PassageResult.Reason.NOT_FOUND, "${reference.display()} couldn't be loaded in ${meta.abbreviation}."
             )
-            val passage = Passage(reference, text, versionId, meta.first, meta.second)
+            val passage = Passage(reference, text, versionId, meta.abbreviation, meta.attribution)
             passages[cacheKey] = passage
             PassageResult.Found(passage)
         } catch (e: IOException) {
@@ -131,20 +133,77 @@ class YouVersionScriptureProvider(
         return parts.joinToString(" ").takeIf { it.isNotBlank() }
     }
 
-    /** Abbreviation and required attribution: the version's copyright, else its promotional line. */
-    private suspend fun version(versionId: Int): Pair<String, String>? {
+    /**
+     * A version's name and required attribution: its copyright, else its promotional line, else
+     * its title (open translations such as the ASV come without either). Null when the API won't
+     * serve the version to this app — it isn't licensed.
+     */
+    suspend fun version(versionId: Int): BibleInfo? {
         versions[versionId]?.let { return it }
         val (code, body) = http.get("/v1/bibles/$versionId")
         if (code != 200) return null
-        val json = JSONObject(body)
+        return infoFrom(JSONObject(body)).also { versions[versionId] = it }
+    }
+
+    private fun infoFrom(json: JSONObject): BibleInfo {
+        val id = json.optInt("id")
         val abbreviation = json.optString("localized_abbreviation").ifBlank { json.optString("abbreviation") }
-            .ifBlank { BibleVersions.abbreviation(versionId) ?: "Bible" }
-        val attribution = json.optString("copyright").trim().takeIf { it.isNotEmpty() && it != "null" }
+            .takeUnless { it == "null" }?.ifBlank { null } ?: BibleVersions.abbreviation(id) ?: "Bible"
+        val title = json.optString("localized_title").ifBlank { json.optString("title") }.takeUnless { it == "null" || it.isBlank() } ?: abbreviation
+        val stated = json.optString("copyright").trim().takeIf { it.isNotEmpty() && it != "null" }
             ?: json.optString("promotional_content").trim().takeIf { it.isNotEmpty() && it != "null" }
-            // No attribution means the text may not be shown (YouVersion's rule), so treat the
-            // version as unavailable rather than display it bare.
-            ?: return null
-        return (abbreviation to cleanText(attribution)).also { versions[versionId] = it }
+        val books = json.optJSONArray("books")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
+        return BibleInfo(
+            id = id,
+            abbreviation = abbreviation,
+            title = title,
+            attribution = stated?.let { cleanText(it) } ?: title,
+            books = books,
+            offlineAllowed = BibleLicensing.offlineAllowed(abbreviation, stated)
+        )
+    }
+
+    override suspend fun bibles(): List<BibleInfo> {
+        bibleList?.let { return it }
+        if (!isConfigured) return emptyList()
+        return try {
+            val all = mutableListOf<BibleInfo>()
+            var token: String? = null
+            for (page in 0 until 10) {
+                val query = "/v1/bibles?language_ranges[]=en&page_size=99" + (token?.let { "&page_token=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: "")
+                val (code, body) = http.get(query)
+                if (code != 200) break
+                val json = JSONObject(body)
+                val data = json.optJSONArray("data") ?: break
+                for (i in 0 until data.length()) all += infoFrom(data.getJSONObject(i))
+                token = json.optString("next_page_token").takeIf { it.isNotBlank() && it != "null" } ?: break
+            }
+            all.forEach { versions.putIfAbsent(it.id, it) }
+            all.sortedBy { it.abbreviation.lowercase() }.also { if (it.isNotEmpty()) bibleList = it }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    override suspend fun chapter(bibleId: Int, book: BibleBook, chapter: Int): ChapterResult {
+        if (!isConfigured) return ChapterResult.Unavailable(PassageResult.Reason.NOT_CONFIGURED, "The Bible isn't set up in this build.")
+        val key = "$bibleId/${book.usfm}.$chapter"
+        chapters[key]?.let { return ChapterResult.Found(it) }
+        return try {
+            val meta = version(bibleId)
+                ?: return ChapterResult.Unavailable(PassageResult.Reason.NOT_LICENSED, "This translation isn't available. Choose another.")
+            val (code, body) = http.get("/v1/bibles/$bibleId/passages/${book.usfm}.$chapter?format=html")
+            if (code != 200) return ChapterResult.Unavailable(PassageResult.Reason.NOT_FOUND, "${book.name} $chapter isn't in ${meta.abbreviation}.")
+            val verses = YouVersionChapterParser.parse(JSONObject(body).optString("content"))
+            if (verses.isEmpty()) return ChapterResult.Unavailable(PassageResult.Reason.NOT_FOUND, "${book.name} $chapter couldn't be read.")
+            val content = ChapterContent(bibleId, meta.abbreviation, meta.attribution, book, chapter, verses, fromDevice = false)
+            chapters[key] = content
+            ChapterResult.Found(content)
+        } catch (e: IOException) {
+            ChapterResult.Unavailable(PassageResult.Reason.OFFLINE, "You're offline. Download this translation to read without a connection.")
+        } catch (e: Exception) {
+            ChapterResult.Unavailable(PassageResult.Reason.ERROR, "This chapter couldn't be loaded.")
+        }
     }
 
     override suspend fun verseOfTheDay(dayOfYear: Int): ScriptureReference? = try {

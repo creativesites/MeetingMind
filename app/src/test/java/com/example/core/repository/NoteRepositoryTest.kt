@@ -274,4 +274,57 @@ class NoteRepositoryTest {
         assertTrue("my own words" in texts)
         assertFalse("second app" in texts)
     }
+
+    @Test
+    fun `a prayer request goes from open to answered to testimony`() = runBlocking {
+        val request = notes.createNote(workflow = com.example.core.model.RecordingType.PRAYER_REQUEST, title = "Mum's surgery")
+        assertTrue(request.isPrivate)
+        val blocks = notes.getDocument(request.id)!!.blocks
+        val body = blocks.first { it.sectionKey == "request" && it.type != NoteBlockType.HEADING_2 }
+        notes.saveBlocks(request.id, blocks.map { if (it.id == body.id) it.copy(content = RichText.plain("That the operation goes well")) else it })
+
+        now = 5_000L
+        notes.addPrayerUpdate(request.id, "Surgery booked for Friday")
+        val update = notes.getDocument(request.id)!!.blocks.last { it.sectionKey == "updates" }
+        assertTrue(update.content.text.endsWith("— Surgery booked for Friday"))
+
+        now = 9_000L
+        notes.markAnswered(request.id)
+        val answered = notes.getNote(request.id)!!
+        assertEquals(com.example.core.model.NoteStatus.ANSWERED, answered.status)
+        assertEquals(9_000L, answered.answeredAt)
+
+        val testimony = notes.startTestimony(request.id)
+        assertEquals(com.example.core.model.RecordingType.TESTIMONY, testimony.workflow)
+        val prayedFor = notes.getDocument(testimony.id)!!.blocks.first { it.sectionKey == "prayed_for" && it.type != NoteBlockType.HEADING_2 }
+        assertEquals("That the operation goes well", prayedFor.content.text)
+        assertEquals(NoteLinkKind.TESTIMONY_OF, notes.getLinks(request.id).single { it.fromNoteId == testimony.id }.kind)
+
+        notes.reopenRequest(request.id)
+        assertEquals(com.example.core.model.NoteStatus.OPEN, notes.getNote(request.id)!!.status)
+        assertEquals(null, notes.getNote(request.id)!!.answeredAt)
+    }
+
+    @Test
+    fun `a prayer update fills the empty placeholder before adding new lines`() {
+        val heading = NoteBlock("h", "n", 0, NoteBlockType.HEADING_2, content = RichText.plain("Updates"), sectionKey = "updates")
+        val empty = NoteBlock("e", "n", 1, NoteBlockType.PARAGRAPH, sectionKey = "updates")
+        val once = NoteRepository.withPrayerUpdate(listOf(heading, empty), "n", "First", 0L)
+        assertEquals(listOf("h", "e"), once.map { it.id })
+        val twice = NoteRepository.withPrayerUpdate(once, "n", "Second", 0L)
+        assertEquals(3, twice.size)
+        assertTrue(twice.last().content.text.endsWith("— Second"))
+    }
+
+    @Test
+    fun `a devotional from a verse starts with that passage`() = runBlocking {
+        val ref = com.example.core.scripture.ScriptureReferenceParser.parse("Psalm 23:1-3")!!
+        val devotional = notes.startDevotional(ref)
+        assertEquals("Psalm 23:1–3", devotional.title)
+        val doc = notes.getDocument(devotional.id)!!
+        assertEquals(1, doc.blocks.count { it.type == NoteBlockType.SCRIPTURE })
+        val stored = notes.observeAllScriptureRefs().first().single { it.noteId == devotional.id }
+        assertEquals("PSA" to 23, stored.bookUsfm to stored.chapter)
+        assertEquals(1 to 3, stored.verseStart to stored.verseEnd)
+    }
 }

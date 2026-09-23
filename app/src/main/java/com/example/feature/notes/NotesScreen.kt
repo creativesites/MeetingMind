@@ -24,6 +24,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
@@ -88,7 +91,9 @@ fun NotesScreen(
     onOpenNotebook: (String) -> Unit,
     onOpenArchive: () -> Unit,
     onNavigateBack: (() -> Unit)?,
-    onNavigateBottomNav: (BottomNavDestination) -> Unit
+    onNavigateBottomNav: (BottomNavDestination) -> Unit,
+    /** Opens the Faith space; shown on the library root. */
+    onOpenFaith: (() -> Unit)? = null
 ) {
     val notes by viewModel.visibleNotes.collectAsState()
     val loaded by viewModel.loaded.collectAsState()
@@ -196,6 +201,23 @@ fun NotesScreen(
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 22.dp), modifier = Modifier.padding(top = 18.dp)) {
                         item { Pill("All", space == null) { viewModel.space.value = null } }
                         items(NotebookSpace.entries.toList()) { s -> Pill(s.displayName, space == s) { viewModel.space.value = if (space == s) null else s } }
+                    }
+                }
+                if (onOpenFaith != null && (space == null || space == NotebookSpace.FAITH)) {
+                    item(key = "faith") {
+                        Surface(
+                            onClick = onOpenFaith, shape = RoundedCornerShape(18.dp), color = Ink,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 16.dp).testTag("notes_open_faith")
+                        ) {
+                            Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = Color(0xFFE9C46A), modifier = Modifier.size(22.dp))
+                                Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                                    Text("Faith", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif)
+                                    Text("Bible, verse of the day, prayer and your journey", fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.7f))
+                                }
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
+                            }
+                        }
                     }
                 }
                 item(key = "notebooks") {

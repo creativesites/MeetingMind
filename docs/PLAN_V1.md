@@ -195,8 +195,12 @@ Kotlin 2.4.
 
 - Every displayed passage **must show its version's attribution** (the copyright text from the
   version's metadata). The verse sheet and every export do.
-- Translations are licensed for on-demand display, not bulk storage. **So notes store the reference,
-  not the text.** Text is fetched when shown (the SDK caches it) and fetched again at export time.
+- Copyrighted translations (NIV, ESV, NLT…) are licensed for on-demand display, not storage.
+  **So notes store the reference, not the text.** Text is fetched when shown and again at export time.
+- Open translations — public domain or an open licence (BSB, WEB, ASV, LSV…) — may be copied, so
+  the app keeps them on the phone: each chapter read is kept, and a whole translation can be
+  downloaded for offline reading and search. `BibleLicensing` decides, and the store refuses
+  anything else as a second check.
 - Offline, a reference still shows — *"Hebrews 11:1 · text unavailable offline"* — and still links
   to the moment it was said.
 - The app key comes from `local.properties` or an environment variable into `BuildConfig`. It is
@@ -204,6 +208,31 @@ Kotlin 2.4.
   so it does.
 - Setup is a one-time step for the developer: register the app at platform.youversion.com and
   accept the licence for each translation to offer (NIV, KJV, and so on).
+
+### 7.1 The whole Bible (added in M7)
+
+A verse lookup isn't enough for Faith: people read chapters, search for a word they half remember,
+and take passages into their notes. So the Faith features talk to one interface and never to a
+vendor:
+
+```
+BibleProvider  (bibles · chapter · passage · search · verse of the day)
+   └── BibleLibrary          phone first, network second
+         ├── BibleStore       SQLite + FTS4 on the phone: open translations only
+         └── YouVersionScriptureProvider   REST, session cache
+```
+
+- **Reader** (`feature/bible`): translation menu (the list the API says this app is licensed for),
+  books and chapters, paragraphs and poetry as the translation sets them, tap verses to select a
+  run, then insert into a note, start a devotional, save to a collection, copy or share. Opens as a
+  route from Faith and as a full-screen picker from the editor and the verse sheet.
+- **Search**: YouVersion has no search endpoint, so search runs over a translation downloaded to the
+  phone (`BibleDownloadWorker`: 1,189 chapter requests, four at a time, about 2–3 minutes, resumable,
+  with a notification). Typing a reference ("Rom 8:28") jumps straight there without a download.
+- **Other providers**: API.Bible (has server-side search and audio) and Bible Brain (audio) fit
+  behind `BibleProvider` without touching the Faith UI. Deciding between them is a licensing
+  decision — which translations, and on commercial terms — so it waits until MeetingMind's pricing
+  is known. Licensed translations appear automatically once accepted at platform.youversion.com.
 
 ## 8. The AI boundary
 
@@ -242,10 +271,10 @@ These can be checked in code review.
 | M1 | Internet mode everywhere — one `LanguageModelFactory` | done |
 | M2 | Notes data layer, migration 12→13, export document model | done |
 | M3 | Notes UI — library, notebooks, editor, export, navigation | done (v19) |
-| M4 | Workflows widened — templates, processing rows | |
-| M5 | Scripture — parser, YouVersion provider, verse sheet | |
-| M6 | **Sermons end to end** | |
-| M7 | Faith Notebook | |
+| M4 | Workflows widened — templates, processing rows | done (v20) |
+| M5 | Scripture — parser, YouVersion provider, verse sheet | done (v20) |
+| M6 | **Sermons end to end** | done (v20) |
+| M7 | Faith Notebook, plus the whole-Bible reader and search | done (v20) |
 | M8 | Device calendar | |
 | M9 | Note AI | |
 
@@ -268,6 +297,26 @@ Each milestone from M3 on ends with a tested arm64 APK in `dist/`.
 - *M2, search.* Notes join search by title and text now. Note *embeddings* move to M9, where
   "related notes" is the feature that needs them; searching by meaning over notes before then would
   be an embedding pass with nothing using it but search.
+- *Background work (between M3 and M4).* Opening a recording's processing screen used to enqueue
+  it again, so a transcript that finished overnight appeared to start over. The screen now checks
+  the recording's state first; `ProcessingScheduler` never enqueues twice; decoding checkpoints each
+  finished window so an interrupted transcription resumes rather than restarting; interrupted work
+  is re-queued at launch. Model downloads moved to background work with HTTP Range resume.
+- *M4.* The eight Faith workflows are `RecordingType`s with templates, like every other type. The
+  processing screen's rows come from the workflow (`Workflows.processingStageRows`).
+- *M5.* The reference parser is deterministic and needs a cue before accepting ambiguous book names
+  ("John", "Acts", "Job") so a person called John isn't a Bible reference. The version list comes
+  from the API rather than a fixed list: this app's key currently serves 11 English translations,
+  all open; NIV, KJV and others appear once their licences are accepted.
+- *M6.* Sermon notes are built from the transcript by one extraction pass whose quotes must be
+  verbatim and whose citations must resolve. Regenerating never overwrites a section the person
+  edited.
+- *M7, lock.* The Faith lock uses the phone's own screen lock (KeyguardManager) rather than
+  `androidx.biometric`: one less dependency, and it accepts fingerprint, face, PIN or pattern.
+- *M7, type.* Faith notes and verse text use the system serif rather than a bundled Source Serif —
+  about 1 MB saved, and it reads well on Samsung and Pixel alike.
+- *M7, storage.* Translations whose licence allows copies are kept on the phone (chapters as they
+  are read, or the whole translation on request); copyrighted ones never are.
 
 ## 11. How v1 is accepted
 
