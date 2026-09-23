@@ -170,6 +170,8 @@ fun HomeScreen(
     onNavigateToModels: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit,
+    /** Opens the live progress of a recording that is still being processed. */
+    onOpenProcessing: (String) -> Unit = onNavigateToMeeting,
     /** One tap, no type picker — the fastest path from "I want to record" to actually recording. */
     onNavigateToQuickRecord: () -> Unit = onNavigateToRecord
 ) {
@@ -290,7 +292,7 @@ fun HomeScreen(
                     percent = job.progressPercent,
                     expanded = expandedJobId == job.id,
                     onToggleExpanded = { expandedJobId = if (expandedJobId == job.id) null else job.id },
-                    onOpen = { onNavigateToMeeting(job.meetingId) }
+                    onOpen = { onOpenProcessing(job.meetingId) }
                 )
             }
 

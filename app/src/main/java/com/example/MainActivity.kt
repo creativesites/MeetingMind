@@ -1,5 +1,11 @@
 package com.example
 
+import androidx.compose.ui.unit.dp
+
+import androidx.compose.foundation.layout.padding
+
+import androidx.compose.foundation.layout.navigationBarsPadding
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -73,6 +79,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        com.example.core.notify.DeepLinks.handle(intent)
         setContent {
             MeetMindTheme {
                 Surface(
@@ -83,6 +90,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        // A notification tapped while the app is already open.
+        com.example.core.notify.DeepLinks.handle(intent)
     }
 }
 
@@ -173,6 +186,37 @@ fun MeetMindApp() {
         }
     }
 
+    // Anything Android stopped mid-way (a force-stop, an app update) is picked up again.
+    LaunchedEffect(Unit) {
+        com.example.core.notify.AppNotifications.ensureChannels(context)
+        com.example.ai.pipeline.ProcessingScheduler.resumeInterrupted(context)
+    }
+
+    val openProcessing: (String) -> Unit = { meetingId ->
+        recoveryScope.launch {
+            val meeting = MeetMindDatabase.getInstance(context).meetingDao().getMeetingById(meetingId) ?: return@launch
+            navController.navigate(Routes.processingRoute(meetingId, meeting.audioFilePath.orEmpty(), meeting.durationMs)) {
+                launchSingleTop = true
+            }
+        }
+    }
+
+    // Notification taps.
+    val deepLink by com.example.core.notify.DeepLinks.pending.collectAsState()
+    LaunchedEffect(deepLink, prefsState?.onboardingCompleted) {
+        if (deepLink == null || prefsState?.onboardingCompleted != true) return@LaunchedEffect
+        when (val link = com.example.core.notify.DeepLinks.consume()) {
+            is com.example.core.notify.DeepLink.Processing -> openProcessing(link.meetingId)
+            is com.example.core.notify.DeepLink.Recording -> navController.navigate(Routes.meetingDetailRoute(link.meetingId))
+            com.example.core.notify.DeepLink.Models -> navController.navigate(Routes.MODELS) { launchSingleTop = true }
+            null -> Unit
+        }
+    }
+
+    val activeProcessing = com.example.core.ui.rememberActiveProcessing()
+    val routesWithNav = setOf(Routes.HOME, Routes.NOTES, Routes.SEARCH, Routes.SETTINGS)
+    val onProcessingScreen = currentRoute == Routes.PROCESSING
+
     Box(modifier = Modifier.fillMaxSize()) {
     NavHost(
         navController = navController,
@@ -215,7 +259,8 @@ fun MeetMindApp() {
                 onNavigateToSearch = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SEARCH) },
                 onNavigateToModels = { navController.navigate(Routes.MODELS) },
                 onNavigateToSettings = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SETTINGS) },
-                onNavigateBottomNav = navigateToPrimary
+                onNavigateBottomNav = navigateToPrimary,
+                onOpenProcessing = openProcessing
             )
         }
 
@@ -413,6 +458,18 @@ fun MeetMindApp() {
             )
         }
     }
+
+    // The minimised processing screen, on the main tabs and in the notes library.
+    val showPill = activeProcessing != null && !onProcessingScreen &&
+        (currentRoute in routesWithNav || currentRoute == Routes.NOTEBOOK || currentRoute == Routes.MODELS)
+    com.example.core.ui.ProcessingPill(
+        active = activeProcessing.takeIf { showPill },
+        onOpen = openProcessing,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .navigationBarsPadding()
+            .padding(bottom = (if (currentRoute in routesWithNav) 78.dp else 16.dp) + (if (playbackState.isActive) 64.dp else 0.dp))
+    )
 
     if (showCreateSheet) {
         com.example.core.ui.CreateSheet(

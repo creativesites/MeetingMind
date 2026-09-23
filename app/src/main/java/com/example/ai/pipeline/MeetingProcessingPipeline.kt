@@ -1,5 +1,7 @@
 package com.example.ai.pipeline
 
+import com.example.ai.asr.AsrCheckpointStore
+
 import android.content.Context
 import android.util.Log
 import com.example.ai.asr.SherpaParakeetSpeechRecognizer
@@ -99,7 +101,10 @@ class MeetingProcessingPipeline(
     // model isn't installed yet — there is deliberately no separate "Unavailable" default to
     // switch between: the real implementation *is* the unavailable-aware implementation.
     private val vad: VoiceActivityDetector = SileroVadDetector(modelStorage),
-    private val speechRecognizer: SpeechRecognizer = SherpaParakeetSpeechRecognizer(modelStorage),
+    private val speechRecognizer: SpeechRecognizer = SherpaParakeetSpeechRecognizer(
+        modelStorage,
+        checkpoints = AsrCheckpointStore(asrCheckpointDir(context))
+    ),
     private val diarizer: SpeakerDiarizer = SherpaSpeakerDiarizer(modelStorage),
     private val intelligenceEngine: MeetingIntelligenceEngine = RealMeetingIntelligenceEngine(
         languageModel = MediaPipeLanguageModel(context, modelStorage),
@@ -613,6 +618,8 @@ class MeetingProcessingPipeline(
                 qualityMetricsJson = quality.toJson()
             )
             meetingDao.updateMeeting(updatedMeeting)
+            // Finished: the resume checkpoint has done its job.
+            AsrCheckpointStore(asrCheckpointDir(context)).clear(meetingId)
             // The recording's note picks up its generated title and summary. A failure here must
             // never fail a recording that processed successfully.
             runCatching { com.example.core.repository.NoteRepository(context, database).syncFromRecording(meetingId) }
@@ -899,3 +906,6 @@ class MeetingProcessingPipeline(
         const val DEFAULT_LLM_CONTEXT_TOKENS = 4096
     }
 }
+
+/** Where interrupted local transcriptions keep their finished windows. */
+internal fun asrCheckpointDir(context: android.content.Context) = java.io.File(context.filesDir, "asr_checkpoints")

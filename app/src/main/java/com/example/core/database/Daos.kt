@@ -36,6 +36,9 @@ interface MeetingDao {
 
     @Query("SELECT COUNT(*) FROM meetings")
     fun getMeetingCountFlow(): Flow<Int>
+
+    @Query("SELECT * FROM meetings WHERE status = :status")
+    suspend fun getMeetingsWithStatus(status: String): List<MeetingEntity>
 }
 
 @Dao

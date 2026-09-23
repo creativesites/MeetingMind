@@ -1,13 +1,15 @@
 package com.example.ai.pipeline
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
-import androidx.core.app.NotificationCompat
+import android.os.PowerManager
 import androidx.work.CoroutineWorker
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import kotlinx.coroutines.flow.first
+import com.example.core.model.MeetingStatus
+import com.example.core.notify.AppNotifications
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -51,10 +53,21 @@ class MeetingProcessingWorker(
         val processingProfile = com.example.core.model.ProcessingProfile
             .fromNameOrDefault(inputData.getString(KEY_PROCESSING_PROFILE))
 
-        setForeground(createForegroundInfo("Preparing audio...", 5, recordingTitle))
+        AppNotifications.ensureChannels(applicationContext)
+        this.meetingId = meetingId
+        this.title = recordingTitle
+        setForeground(createForegroundInfo("Preparing audio…", 0))
+
+        // A foreground service keeps the process alive, but with the screen off the CPU still
+        // sleeps. Offline transcription is minutes of pure CPU work, so it holds a partial wake
+        // lock for as long as it runs — capped, so a hung run can never drain the battery.
+        val wakeLock = (applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MeetingMind:processing")
+            .apply { setReferenceCounted(false); acquire(WAKE_LOCK_TIMEOUT_MS) }
 
         val database = MeetMindDatabase.getInstance(applicationContext)
         val pipeline = MeetingProcessingPipeline(applicationContext, database)
+        var lastForegroundUpdate = 0L
 
         return try {
             val resultMeeting = pipeline.processMeeting(
@@ -69,21 +82,34 @@ class MeetingProcessingWorker(
                 processingProfile = processingProfile,
                 onProgress = { step, percent, stage ->
                     // onProgress is a plain (non-suspend) callback invoked from the pipeline's
-                    // coroutine; runBlocking here is safe because we're already off the main
-                    // thread (CoroutineWorker.doWork runs on its own dispatcher) and each call
-                    // is a short, sequential Data/notification update, never a long operation.
+                    // coroutine; runBlocking is safe here because doWork is already off the main
+                    // thread and each call is a short progress/notification update.
                     kotlinx.coroutines.runBlocking {
                         setProgress(
                             workDataOf(
                                 KEY_PROGRESS_STEP to step,
                                 KEY_PROGRESS_PERCENT to percent,
-                                KEY_PROGRESS_STAGE to stage.name
+                                KEY_PROGRESS_STAGE to stage.name,
+                                KEY_MEETING_ID to meetingId,
+                                KEY_RECORDING_TITLE to recordingTitle
                             )
                         )
-                        setForeground(createForegroundInfo(step, percent, recordingTitle))
+                        // The notification is refreshed at most once a second; Android drops
+                        // faster updates anyway and they cost battery.
+                        val now = System.currentTimeMillis()
+                        if (now - lastForegroundUpdate > 1_000) {
+                            lastForegroundUpdate = now
+                            setForeground(createForegroundInfo(step, percent))
+                        }
                     }
                 }
             )
+            val outcome = when (resultMeeting.status) {
+                MeetingStatus.READY.name -> AppNotifications.Outcome.READY
+                MeetingStatus.MODEL_REQUIRED.name -> AppNotifications.Outcome.NEEDS_MODEL
+                else -> AppNotifications.Outcome.FAILED
+            }
+            AppNotifications.processingFinished(applicationContext, meetingId, recordingTitle, outcome)
             Result.success(
                 workDataOf(
                     KEY_RESULT_MEETING_ID to resultMeeting.id,
@@ -91,20 +117,46 @@ class MeetingProcessingWorker(
                 )
             )
         } catch (e: java.util.concurrent.CancellationException) {
-            // Real cancellation, already cleaned up honestly inside the pipeline itself
-            // (NonCancellable Room writes) — nothing further to do here.
+            // Stopped on purpose (or by the system): the pipeline has already cleaned up.
+            if (isStopped && stopReasonIsSystem()) throw e // let WorkManager reschedule it
             Result.failure(workDataOf(KEY_ERROR to "Cancelled"))
         } catch (e: Exception) {
+            AppNotifications.processingFinished(applicationContext, meetingId, recordingTitle, AppNotifications.Outcome.FAILED, e.message)
             Result.failure(workDataOf(KEY_ERROR to (e.message ?: "Unknown processing error")))
+        } finally {
+            runCatching { if (wakeLock.isHeld) wakeLock.release() }
         }
     }
 
-    override suspend fun getForegroundInfo(): ForegroundInfo =
-        createForegroundInfo("Preparing audio...", 0, inputData.getString(KEY_RECORDING_TITLE) ?: "recording")
+    private var meetingId: String = ""
+    private var title: String = "recording"
 
-    private fun createForegroundInfo(step: String, percent: Int, recordingTitle: String): ForegroundInfo {
-        createChannelIfNeeded()
-        val notification = buildNotification(step, percent, recordingTitle)
+    /** True when Android, not the user, stopped the work — WorkManager will run it again. */
+    private fun stopReasonIsSystem(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && stopReason != android.app.job.JobParameters.STOP_REASON_CANCELLED_BY_APP &&
+            stopReason != android.app.job.JobParameters.STOP_REASON_USER
+
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        this.title = inputData.getString(KEY_RECORDING_TITLE) ?: "recording"
+        this.meetingId = inputData.getString(KEY_MEETING_ID).orEmpty()
+        return createForegroundInfo("Preparing audio…", 0)
+    }
+
+    private suspend fun createForegroundInfo(step: String, percent: Int): ForegroundInfo {
+        AppNotifications.ensureChannels(applicationContext)
+        val waiting = runCatching {
+            WorkManager.getInstance(applicationContext).getWorkInfosForUniqueWorkFlow(UNIQUE_WORK_NAME).first()
+                .count { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED }
+        }.getOrDefault(0)
+        val notification = AppNotifications.processingProgress(
+            context = applicationContext,
+            meetingId = meetingId,
+            title = title,
+            step = step,
+            percent = percent,
+            queuedBehind = waiting,
+            cancelIntent = WorkManager.getInstance(applicationContext).createCancelPendingIntent(id)
+        )
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
@@ -112,45 +164,12 @@ class MeetingProcessingWorker(
         }
     }
 
-    private fun buildNotification(step: String, percent: Int, recordingTitle: String): Notification {
-        val builder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setContentTitle("MeetingMind")
-            // Privacy: never surface transcript/summary content in a notification —
-            // only the generic recording title and current processing stage.
-            .setContentText("Processing \"$recordingTitle\" — $step")
-            .setSmallIcon(android.R.drawable.ic_popup_sync)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-
-        if (percent in 1..99) {
-            builder.setProgress(100, percent, false)
-        } else if (percent <= 0) {
-            builder.setProgress(0, 0, true) // indeterminate: stage-based, no fake percentage
-        }
-        return builder.build()
-    }
-
-    private fun createChannelIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "MeetingMind Processing",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Shows progress while MeetingMind analyzes a recording in the background"
-                setShowBadge(false)
-            }
-            val manager = applicationContext.getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
-        }
-    }
-
     companion object {
-        const val CHANNEL_ID = "meetmind_processing_channel"
-        const val NOTIFICATION_ID = 2001
+        const val NOTIFICATION_ID = AppNotifications.ID_PROCESSING
+        /** Six hours: far longer than any real run, short enough that a hang can't drain the battery. */
+        private const val WAKE_LOCK_TIMEOUT_MS = 6 * 60 * 60 * 1000L
+        /** On every processing request, so "is anything processing?" is one query. */
+        const val ALL_PROCESSING_TAG = "meetmind_processing"
 
         /** Only one AI-heavy job runs at a time — WorkManager queues subsequent requests under this name. */
         const val UNIQUE_WORK_NAME = "meetmind_ai_processing_queue"

@@ -1,5 +1,7 @@
 package com.example.feature.models
 
+import kotlinx.coroutines.flow.map
+
 import android.app.Application
 import android.content.Context
 import android.net.ConnectivityManager
@@ -105,29 +107,62 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
 
-    // modelId -> 0f..1f real download progress, reported live by ModelRepository/ModelDownloader.
-    private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
-    val downloadProgress: StateFlow<Map<String, Float>> = _downloadProgress.asStateFlow()
+    // Downloads run as WorkManager work (ModelDownloadWorker), so they continue with this screen
+    // closed. Everything below is read back from WorkManager rather than held here.
+    private val workManager = androidx.work.WorkManager.getInstance(application)
+    private val downloadWork = workManager.getWorkInfosByTagFlow(com.example.ai.modelmanagement.ModelDownloadWorker.TAG_ALL)
 
-    private val _downloadingModelIds = MutableStateFlow<Set<String>>(emptySet())
-    val downloadingModelIds: StateFlow<Set<String>> = _downloadingModelIds.asStateFlow()
+    private fun modelIdOf(info: androidx.work.WorkInfo): String? =
+        info.tags.firstOrNull { it.startsWith("model_download_id_") }?.removePrefix("model_download_id_")
 
-    // Stopped mid-download with bytes still on disk — the next installModel() call for this id
-    // resumes via HTTP Range instead of restarting, so "Resume" here is never a lie.
+    private val activeStates = setOf(androidx.work.WorkInfo.State.RUNNING, androidx.work.WorkInfo.State.ENQUEUED, androidx.work.WorkInfo.State.BLOCKED)
+
+    /** modelId -> 0f..1f real download progress. */
+    val downloadProgress: StateFlow<Map<String, Float>> = downloadWork.map { infos ->
+        infos.filter { it.state in activeStates }.mapNotNull { info ->
+            val id = modelIdOf(info) ?: return@mapNotNull null
+            val done = info.progress.getLong(com.example.ai.modelmanagement.ModelDownloadWorker.KEY_DONE, 0L)
+            val total = info.progress.getLong(com.example.ai.modelmanagement.ModelDownloadWorker.KEY_TOTAL, 0L)
+            id to if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else partialFraction(id)
+        }.toMap()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    val downloadingModelIds: StateFlow<Set<String>> = downloadWork.map { infos ->
+        infos.filter { it.state in activeStates }.mapNotNull(::modelIdOf).toSet()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    // Stopped mid-download with bytes still on disk: installing again continues from them.
     private val _pausedModelIds = MutableStateFlow<Set<String>>(emptySet())
     val pausedModelIds: StateFlow<Set<String>> = _pausedModelIds.asStateFlow()
-
-    private val installJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
 
     val availableStorageMb: Long get() = DeviceCapabilityDetector.getAvailableStorageMb()
 
     init {
         viewModelScope.launch { modelRepository.ensureCatalogSeeded() }
+        // A partial download left from before (paused, or the phone restarted) shows as paused.
+        viewModelScope.launch {
+            downloadingModelIds.collect { active ->
+                _pausedModelIds.value = com.example.ai.modelmanagement.ModelCatalog.entries
+                    .filter { it.id !in active && hasPartialBytes(it.id) }
+                    .map { it.id }.toSet()
+            }
+        }
+    }
+
+    private fun hasPartialBytes(modelId: String): Boolean {
+        val dir = LocalModelStorage(getApplication()).getModelDirectory(modelId)
+        return dir.listFiles()?.any { it.name.endsWith(".part") && it.length() > 0 } == true
+    }
+
+    private fun partialFraction(modelId: String): Float {
+        val model = com.example.ai.modelmanagement.ModelCatalog.entries.find { it.id == modelId } ?: return 0f
+        val dir = LocalModelStorage(getApplication()).getModelDirectory(modelId)
+        val have = dir.listFiles()?.sumOf { it.length() } ?: 0L
+        return if (model.sizeBytes > 0) (have.toFloat() / model.sizeBytes).coerceIn(0f, 1f) else 0f
     }
 
     /** True when the device's active network is Wi-Fi (or there's no usable connectivity info to
-     * say otherwise) — used to honor the "Wi-Fi only downloads" preference for real instead of
-     * just storing it unused. */
+     * say otherwise). */
     private fun isOnWifi(): Boolean {
         val connectivityManager = getApplication<Application>()
             .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
@@ -136,19 +171,13 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
         return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
     }
 
-    /** Attempts a real install — or, if [modelId] was previously paused, resumes it from the
-     * bytes already on disk via the downloader's HTTP Range support. Honestly reports back when
-     * no downloadable model source exists yet. Honors "Wi-Fi only downloads" by actually checking
-     * the active network before starting, rather than only storing the preference. Also refuses a
-     * *fresh* download outright when there isn't enough free storage for it, instead of letting
-     * it fail deep inside a partial write — a resume is allowed through even when storage is
-     * tight, since it only needs the remaining bytes, not the model's full size again. */
+    /**
+     * Starts a download, or continues a paused one from the bytes on disk. It runs in the
+     * background with its own notification; with "Wi-Fi only" on it waits for Wi-Fi rather than
+     * refusing. A fresh download is refused up front when there isn't room for it.
+     */
     fun installModel(modelId: String) {
-        if (modelId in _downloadingModelIds.value) return
-        if (userPrefsState.value.wifiOnlyDownload && !isOnWifi()) {
-            _statusMessage.value = "Connect to Wi-Fi to download models, or turn off \"Wi-Fi only downloads\" in Settings."
-            return
-        }
+        if (modelId in downloadingModelIds.value) return
         val resuming = modelId in _pausedModelIds.value
         if (!resuming) {
             val model = models.value.find { it.id == modelId }
@@ -159,51 +188,24 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
                 return
             }
         }
-        _pausedModelIds.value = _pausedModelIds.value - modelId
-        installJobs[modelId] = viewModelScope.launch {
-            _downloadingModelIds.value = _downloadingModelIds.value + modelId
-            if (!resuming) _downloadProgress.value = _downloadProgress.value + (modelId to 0f)
-            try {
-                val result = modelRepository.installModel(modelId) { bytesDownloaded, totalBytes ->
-                    val progress = if (totalBytes > 0) (bytesDownloaded.toFloat() / totalBytes.toFloat()) else 0f
-                    _downloadProgress.value = _downloadProgress.value + (modelId to progress.coerceIn(0f, 1f))
-                }
-                when (result) {
-                    is AiResult.Success -> Unit
-                    else -> _statusMessage.value = result.describeFailure() ?: "This model could not be installed."
-                }
-            } finally {
-                _downloadingModelIds.value = _downloadingModelIds.value - modelId
-                // A pause (or a cancel, which clears progress itself) already set the state it
-                // wants — don't let this cleanup stomp a paused row's saved progress.
-                if (modelId !in _pausedModelIds.value) {
-                    _downloadProgress.value = _downloadProgress.value - modelId
-                }
-                installJobs.remove(modelId)
-            }
+        val wifiOnly = userPrefsState.value.wifiOnlyDownload
+        if (wifiOnly && !isOnWifi()) {
+            _statusMessage.value = "Waiting for Wi-Fi — the download starts by itself when you connect."
         }
-    }
-
-    /** Stops the in-flight download but keeps every byte written so far on disk — a slow or
-     * intermittent connection (this app's primary target) shouldn't force a user to either sit
-     * and wait or lose their progress. [installModel] on the same id later resumes via HTTP
-     * Range instead of restarting. */
-    fun pauseDownload(modelId: String) {
-        installJobs[modelId]?.cancel()
-        installJobs.remove(modelId)
-        _downloadingModelIds.value = _downloadingModelIds.value - modelId
-        _pausedModelIds.value = _pausedModelIds.value + modelId
-        // _downloadProgress intentionally left as-is so the paused row keeps showing "how far".
-    }
-
-    /** Fully abandons a download: stops it (if running) and deletes whatever partial bytes are
-     * on disk, reclaiming the space. Distinct from [pauseDownload], which keeps those bytes. */
-    fun cancelDownload(modelId: String) {
-        installJobs[modelId]?.cancel()
-        installJobs.remove(modelId)
-        _downloadingModelIds.value = _downloadingModelIds.value - modelId
         _pausedModelIds.value = _pausedModelIds.value - modelId
-        _downloadProgress.value = _downloadProgress.value - modelId
+        com.example.ai.modelmanagement.ModelDownloadWorker.enqueue(getApplication(), modelId, wifiOnly)
+    }
+
+    /** Stops the download but keeps every byte written so far; [installModel] continues it. */
+    fun pauseDownload(modelId: String) {
+        com.example.ai.modelmanagement.ModelDownloadWorker.stop(getApplication(), modelId)
+        _pausedModelIds.value = _pausedModelIds.value + modelId
+    }
+
+    /** Abandons a download and deletes its partial bytes. */
+    fun cancelDownload(modelId: String) {
+        com.example.ai.modelmanagement.ModelDownloadWorker.stop(getApplication(), modelId)
+        _pausedModelIds.value = _pausedModelIds.value - modelId
         viewModelScope.launch { modelRepository.deleteModel(modelId) }
     }
 

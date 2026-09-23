@@ -1,5 +1,11 @@
 package com.example.feature.processing
 
+import androidx.compose.material3.TextButton
+
+import androidx.compose.material3.AlertDialog
+
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+
 import android.app.Application
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -182,43 +188,17 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                 return@launch
             }
 
-            val prefs = userPrefs.preferencesFlow.first()
             val meetingTitle = database.meetingDao().getMeetingById(meetingId)?.title ?: "Recording"
             _uiState.value = ProcessingUiState(recordingTitle = meetingTitle)
             lastMeetingId = meetingId
-
-            val inputData = workDataOf(
-                MeetingProcessingWorker.KEY_MEETING_ID to meetingId,
-                MeetingProcessingWorker.KEY_AUDIO_PATH to audioPath,
-                MeetingProcessingWorker.KEY_DURATION_MS to durationMs,
-                MeetingProcessingWorker.KEY_MODEL_ID to prefs.selectedAsrModelId,
-                // Resolved (not raw) so a model the user selected and later deleted falls back to
-                // one they still have installed, instead of failing with "no model installed".
-                MeetingProcessingWorker.KEY_LLM_MODEL_ID to com.example.ai.modelmanagement.LlmModelResolver.resolve(
-                    selectedModelId = prefs.selectedLlmModelId,
-                    modelStorage = com.example.ai.modelmanagement.LocalModelStorage(getApplication())
-                ),
-                MeetingProcessingWorker.KEY_EXPECTED_SPEAKER_COUNT to (expectedSpeakerCount ?: -1),
-                MeetingProcessingWorker.KEY_RECORDING_TITLE to meetingTitle,
-                MeetingProcessingWorker.KEY_CLEANUP_MODE to prefs.transcriptCleanupMode.name,
-                MeetingProcessingWorker.KEY_DIARIZATION_STRATEGY to prefs.diarizationStrategy.name,
-                MeetingProcessingWorker.KEY_PROCESSING_PROFILE to prefs.processingProfile.name
-            )
-            val request = OneTimeWorkRequestBuilder<MeetingProcessingWorker>()
-                .setInputData(inputData)
-                .addTag(MeetingProcessingWorker.meetingWorkTag(meetingId))
-                .build()
-            workId = request.id
-
-            // Only one AI-heavy job runs at a time; a recording requested while another is
-            // still processing is queued behind it rather than running concurrently.
-            workManager.enqueueUniqueWork(
-                MeetingProcessingWorker.UNIQUE_WORK_NAME,
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
-                request
-            )
-
-            observeWork(request.id, meetingId, onComplete)
+            val id = com.example.ai.pipeline.ProcessingScheduler.enqueue(
+                getApplication(), meetingId, audioPath, durationMs, expectedSpeakerCount
+            ) ?: run {
+                _uiState.value = _uiState.value.copy(error = "This recording's audio could not be found.")
+                return@launch
+            }
+            workId = id
+            observeWork(id, meetingId, onComplete)
         }
     }
 
@@ -298,11 +278,44 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
         ProcessingStage.FAILED, ProcessingStage.CANCELLED -> 5
     }
 
-    /** Cancels the real background work — WorkManager propagates this as coroutine
-     * cancellation inside the worker, which the pipeline's NonCancellable cleanup honors. */
+    /** Stops the background work — WorkManager propagates this as coroutine cancellation inside
+     * the worker, which the pipeline's NonCancellable cleanup honours. */
     fun cancelPipeline() {
+        lastMeetingId?.let { com.example.ai.pipeline.ProcessingScheduler.cancel(getApplication(), it) }
         workId?.let { workManager.cancelWorkById(it) }
         _uiState.value = _uiState.value.copy(error = "Processing cancelled by user")
+    }
+
+    /** What the recording's own record says, before anything is started. */
+    enum class Existing { READY, NEEDS_MODEL, FAILED, INTERRUPTED, NOT_STARTED }
+
+    suspend fun existingOutcome(meetingId: String): Existing {
+        val meeting = database.meetingDao().getMeetingById(meetingId) ?: return Existing.NOT_STARTED
+        _uiState.value = _uiState.value.copy(recordingTitle = meeting.title)
+        lastMeetingId = meetingId
+        return when (meeting.status) {
+            MeetingStatus.READY.name -> Existing.READY
+            MeetingStatus.MODEL_REQUIRED.name -> Existing.NEEDS_MODEL
+            MeetingStatus.PROCESSING.name -> Existing.INTERRUPTED
+            MeetingStatus.ERROR.name -> {
+                val job = database.processingJobDao().getJobForMeeting(meetingId).first()
+                _uiState.value = _uiState.value.copy(stepTitle = "Processing stopped", error = job?.errorMessage ?: "Processing didn't finish.")
+                Existing.FAILED
+            }
+            else -> Existing.NOT_STARTED
+        }
+    }
+
+    fun showNeedsModel() {
+        _uiState.value = ProcessingUiState(
+            stepTitle = "Recording saved",
+            recordingTitle = _uiState.value.recordingTitle,
+            progressPercent = 100,
+            currentStageIndex = 1,
+            isComplete = true,
+            modelRequired = true,
+            modelRequiredMessage = "Download the offline speech recognition model to transcribe this recording on your device."
+        )
     }
 
     /** A deliberate new attempt — only reachable from the FAILED state's Retry action, i.e. only
@@ -335,14 +348,30 @@ fun ProcessingScreen(
     var phase by remember(meetingId) { mutableStateOf(ProcessingScreenPhase.Checking) }
     var selectedSpeakerCount by remember { mutableStateOf<Int?>(null) } // null = Auto/"Not sure"
     var recordingType by remember { mutableStateOf(com.example.core.model.RecordingType.GENERAL) }
+    var confirmStop by remember { mutableStateOf(false) }
 
     LaunchedEffect(meetingId) {
+        // 1. Work already queued or running (including after the app was closed): follow it.
         val alreadyRunning = viewModel.attachIfAlreadyRunning(meetingId) { finishedId ->
             onProcessingComplete(finishedId)
         }
         if (alreadyRunning) {
             phase = ProcessingScreenPhase.Running
             return@LaunchedEffect
+        }
+        // 2. Nothing running: the recording's own status says whether this already happened.
+        //    A finished recording is never processed again just because this screen reopened.
+        when (viewModel.existingOutcome(meetingId)) {
+            ProcessingViewModel.Existing.READY -> { onProcessingComplete(meetingId); return@LaunchedEffect }
+            ProcessingViewModel.Existing.NEEDS_MODEL -> { viewModel.showNeedsModel(); phase = ProcessingScreenPhase.Running; return@LaunchedEffect }
+            ProcessingViewModel.Existing.FAILED -> { phase = ProcessingScreenPhase.Running; return@LaunchedEffect }
+            ProcessingViewModel.Existing.INTERRUPTED -> {
+                // Stopped by the system with no work left behind: carry on where it stopped.
+                phase = ProcessingScreenPhase.Running
+                viewModel.startPipeline(meetingId, audioPath, durationMs, null) { finishedId -> onProcessingComplete(finishedId) }
+                return@LaunchedEffect
+            }
+            ProcessingViewModel.Existing.NOT_STARTED -> Unit
         }
 
         val context = viewModel.loadRecordingContext(meetingId)
@@ -401,14 +430,13 @@ fun ProcessingScreen(
                     )
                 },
                 navigationIcon = {
+                    // Minimise, never cancel: processing carries on in the background and the
+                    // notification (or Home) brings you back here.
                     IconButton(
-                        onClick = {
-                            viewModel.cancelPipeline()
-                            onNavigateBack()
-                        },
-                        modifier = Modifier.testTag("processing_cancel_btn")
+                        onClick = onNavigateBack,
+                        modifier = Modifier.testTag("processing_minimise_btn")
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Cancel")
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Minimise — keeps running in the background")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -578,19 +606,34 @@ fun ProcessingScreen(
                         }
                     }
                 }
-            } else {
-                OutlinedButton(
-                    onClick = {
-                        viewModel.cancelPipeline()
-                        onNavigateBack()
-                    },
+            } else if (!state.isComplete) {
+                BackgroundHint()
+                Button(
+                    onClick = onNavigateBack,
                     shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
+                    modifier = Modifier.fillMaxWidth().height(50.dp).testTag("processing_background_btn")
                 ) {
-                    Text("Cancel Pipeline Processing")
+                    Text("Keep working — this continues in the background")
                 }
+                TextButton(
+                    onClick = { confirmStop = true },
+                    modifier = Modifier.fillMaxWidth().testTag("processing_cancel_btn")
+                ) {
+                    Text("Stop processing", color = MaterialTheme.colorScheme.error)
+                }
+            }
+            if (confirmStop) {
+                AlertDialog(
+                    onDismissRequest = { confirmStop = false },
+                    title = { Text("Stop processing?") },
+                    text = { Text("The recording is kept. You can start processing it again later from the recording.") },
+                    confirmButton = {
+                        TextButton(onClick = { confirmStop = false; viewModel.cancelPipeline(); onNavigateBack() }) {
+                            Text("Stop", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                    dismissButton = { TextButton(onClick = { confirmStop = false }) { Text("Keep going") } }
+                )
             }
         }
     }
@@ -761,6 +804,47 @@ private fun PipelineStageRow(
                 thickness = 0.75.dp,
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
+        }
+    }
+}
+
+/**
+ * Asks, once, to be let off battery optimisation. Samsung and others otherwise pause background
+ * work after a while with the screen off, which is exactly when a long offline transcription
+ * runs. Shown only while that restriction is actually in place.
+ */
+@Composable
+private fun BackgroundHint() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val power = remember { context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager }
+    var exempt by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) exempt = power.isIgnoringBatteryOptimizations(context.packageName)
+        }
+        lifecycle.lifecycle.addObserver(observer)
+        onDispose { lifecycle.lifecycle.removeObserver(observer) }
+    }
+    if (exempt) return
+    SectionCard {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Keep going with the screen off", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(
+                "Your phone may pause MeetingMind to save battery. Allow it to run in the background so long recordings finish while you do other things.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            TextButton(onClick = {
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                            .setData(android.net.Uri.parse("package:${context.packageName}"))
+                    )
+                }.onFailure {
+                    runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                }
+            }) { Text("Allow background running") }
         }
     }
 }

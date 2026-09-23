@@ -35,7 +35,9 @@ import kotlin.coroutines.coroutineContext
  */
 class SherpaParakeetSpeechRecognizer(
     private val modelStorage: ModelStorage,
-    private val modelId: String = ModelCatalog.parakeetTdtV3Int8.id
+    private val modelId: String = ModelCatalog.parakeetTdtV3Int8.id,
+    /** Where finished windows are remembered so an interrupted run resumes. Null disables it. */
+    private val checkpoints: AsrCheckpointStore? = null
 ) : SpeechRecognizer {
 
     override suspend fun transcribe(
@@ -98,17 +100,27 @@ class SherpaParakeetSpeechRecognizer(
                 return AiResult.Success(emptyList())
             }
 
+            // Windows finished by an earlier, interrupted run of this same recording.
+            val alreadyDone = checkpoints?.load(meetingId, modelId, windows).orEmpty()
             val perWindowWords = mutableListOf<List<CanonicalWord>>()
             for ((index, window) in windows.withIndex()) {
                 // Cancellation must reach the inner decode loop, not just the coroutine wrapping
                 // it: a 40-minute recording is dozens of windows and the user may leave at any
                 // point. Checked before each decode so at most one window's work is wasted.
                 coroutineContext.ensureActive()
-                onProgress(
-                    index.toFloat() / windows.size,
-                    "Transcribing ${index + 1} of ${windows.size}..."
-                )
-                perWindowWords += decodeWindow(recognizer, decoded.samples, sampleRate, window)
+                val done = alreadyDone[index]
+                if (done != null) {
+                    perWindowWords += done
+                } else {
+                    onProgress(
+                        index.toFloat() / windows.size,
+                        if (alreadyDone.isNotEmpty()) "Resuming — transcribing ${index + 1} of ${windows.size}..."
+                        else "Transcribing ${index + 1} of ${windows.size}..."
+                    )
+                    val words = decodeWindow(recognizer, decoded.samples, sampleRate, window)
+                    checkpoints?.append(meetingId, modelId, windows, index, words)
+                    perWindowWords += words
+                }
             }
 
             val words = AsrWindowReconciler.reconcile(perWindowWords)
