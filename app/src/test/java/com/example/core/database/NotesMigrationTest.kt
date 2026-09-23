@@ -33,7 +33,7 @@ class NotesMigrationTest {
     private var migrated: MeetMindDatabase? = null
 
     private val notesTables = listOf(
-        "scripture_collection_items", "scripture_collections", "scripture_refs", "note_links",
+        "note_ai_jobs", "scripture_collection_items", "scripture_collections", "scripture_refs", "note_links",
         "note_tags", "tags", "attachments", "note_blocks", "notes", "notebooks"
     )
 
@@ -90,7 +90,7 @@ class NotesMigrationTest {
 
     private fun openMigrated(): MeetMindDatabase =
         Room.databaseBuilder(context, MeetMindDatabase::class.java, dbName)
-            .addMigrations(MeetMindDatabase.MIGRATION_12_13)
+            .addMigrations(MeetMindDatabase.MIGRATION_12_13, MeetMindDatabase.MIGRATION_13_14)
             .allowMainThreadQueries()
             .build()
             .also { migrated = it }

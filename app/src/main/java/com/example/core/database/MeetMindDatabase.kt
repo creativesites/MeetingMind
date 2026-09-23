@@ -32,9 +32,10 @@ import androidx.room.migration.Migration
         NoteLinkEntity::class,
         ScriptureRefEntity::class,
         ScriptureCollectionEntity::class,
-        ScriptureCollectionItemEntity::class
+        ScriptureCollectionItemEntity::class,
+        NoteAiJobEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class MeetMindDatabase : RoomDatabase() {
@@ -56,6 +57,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun attachmentDao(): AttachmentDao
     abstract fun scriptureDao(): ScriptureDao
+    abstract fun noteAiJobDao(): NoteAiJobDao
 
     companion object {
         @Volatile
@@ -368,6 +370,20 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /** Note AI jobs (M9). Must match [NoteAiJobEntity] exactly; `NoteAiMigrationTest` checks. */
+        internal val NOTE_AI_SCHEMA_SQL: List<String> = listOf(
+            """CREATE TABLE IF NOT EXISTS `note_ai_jobs` (`id` TEXT NOT NULL, `targetKind` TEXT NOT NULL, `targetId` TEXT NOT NULL,
+                `tool` TEXT NOT NULL, `status` TEXT NOT NULL, `inputJson` TEXT NOT NULL, `resultJson` TEXT, `errorMessage` TEXT,
+                `engine` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))""",
+            "CREATE INDEX IF NOT EXISTS `index_note_ai_jobs_targetId` ON `note_ai_jobs` (`targetId`)"
+        )
+
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                NOTE_AI_SCHEMA_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
         /** CREATE statements for the notes tables, in dependency order. */
         internal val NOTES_SCHEMA_SQL: List<String> = listOf(
             """CREATE TABLE IF NOT EXISTS `notebooks` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `space` TEXT NOT NULL,
@@ -428,7 +444,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

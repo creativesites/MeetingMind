@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -48,6 +49,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -106,6 +108,10 @@ fun NotesScreen(
     val sort by viewModel.sort.collectAsState()
     val archivedCount by viewModel.archivedCount.collectAsState()
     val currentNotebook by viewModel.currentNotebook.collectAsState()
+    val aiJobs by viewModel.aiJobs.collectAsState()
+    var showAiMenu by remember { mutableStateOf(false) }
+    var showAsk by remember { mutableStateOf(false) }
+    var aiSheetOpen by remember { mutableStateOf(false) }
 
     val isRoot = viewModel.scope == NotesScope.All
     val isArchive = viewModel.scope == NotesScope.Archived
@@ -174,6 +180,8 @@ fun NotesScreen(
                         }
                     }
                     currentNotebook?.let { nb ->
+                        Spacer(Modifier.width(8.dp))
+                        CircleAction(Icons.Filled.AutoAwesome, "AI for this notebook") { showAiMenu = true }
                         Spacer(Modifier.width(8.dp))
                         CircleAction(Icons.Filled.MoreVert, "Notebook options") { notebookMenu = nb }
                     }
@@ -305,6 +313,37 @@ fun NotesScreen(
             onDismiss = { notebookDialog = null }
         )
     }
+    if (showAiMenu) com.example.feature.notes.ai.NoteAiMenu(
+        forNotebook = true,
+        onPick = { tool ->
+            showAiMenu = false
+            if (tool == com.example.ai.notes.NoteAiTool.ASK) showAsk = true else { viewModel.runAi(tool); aiSheetOpen = true }
+        },
+        onRelated = null,
+        onDismiss = { showAiMenu = false }
+    )
+    if (showAsk) com.example.feature.notes.ai.AskDialog(
+        forNotebook = true,
+        onAsk = { q -> showAsk = false; viewModel.runAi(com.example.ai.notes.NoteAiTool.ASK, q); aiSheetOpen = true },
+        onDismiss = { showAsk = false }
+    )
+    val aiJob = aiJobs.firstOrNull()
+    if (aiJob != null && !aiSheetOpen && currentNotebook != null) {
+        // A result finished while the sheet was closed: offer it again.
+        LaunchedEffect(aiJob.id, aiJob.status) {
+            if (aiJob.status == com.example.ai.notes.NoteAiStatus.SUCCEEDED) aiSheetOpen = true
+        }
+    }
+    if (aiSheetOpen && aiJob != null) com.example.feature.notes.ai.NoteAiResultSheet(
+        job = aiJob,
+        primaryLabel = "Save as note",
+        onPrimary = { items -> aiSheetOpen = false; viewModel.saveAiResult(aiJob, items, onOpenNote) },
+        onApplyOrganized = null,
+        onShowSource = { p -> p.noteId?.let { aiSheetOpen = false; onOpenNote(it) } },
+        onCancel = { viewModel.cancelAi(aiJob.id) },
+        onClose = { aiSheetOpen = false },
+        onDiscard = { aiSheetOpen = false; viewModel.dismissAi(aiJob.id) }
+    )
     notebookMenu?.let { nb ->
         AlertDialog(
             onDismissRequest = { notebookMenu = null },

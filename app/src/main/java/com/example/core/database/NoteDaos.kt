@@ -37,6 +37,8 @@ data class NotebookNoteCount(val notebookId: String, val count: Int)
 
 data class NameCount(val name: String, val count: Int)
 
+data class NoteTagName(val noteId: String, val name: String)
+
 @Dao
 interface NoteDao {
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
@@ -126,6 +128,12 @@ interface NoteDao {
 
     @Query("DELETE FROM note_links WHERE id = :id")
     suspend fun deleteLink(id: String)
+
+    @Query("SELECT * FROM note_links")
+    suspend fun getAllLinks(): List<NoteLinkEntity>
+
+    @Query("SELECT nt.noteId AS noteId, t.name AS name FROM note_tags nt JOIN tags t ON t.id = nt.tagId")
+    suspend fun getAllNoteTags(): List<NoteTagName>
 
     // ---- tags ----
 
@@ -234,6 +242,9 @@ interface ScriptureDao {
     @Query("SELECT * FROM scripture_refs ORDER BY bookUsfm, chapter, COALESCE(verseStart, 0)")
     fun observeAll(): Flow<List<ScriptureRefEntity>>
 
+    @Query("SELECT * FROM scripture_refs")
+    suspend fun getAll(): List<ScriptureRefEntity>
+
     @Query("SELECT * FROM scripture_collections ORDER BY name COLLATE NOCASE")
     fun observeCollections(): Flow<List<ScriptureCollectionEntity>>
 
@@ -254,4 +265,22 @@ interface ScriptureDao {
 
     @Query("DELETE FROM scripture_collection_items WHERE id = :id")
     suspend fun deleteCollectionItem(id: String)
+}
+
+@Dao
+interface NoteAiJobDao {
+    @Query("SELECT * FROM note_ai_jobs WHERE id = :id")
+    suspend fun getById(id: String): NoteAiJobEntity?
+
+    @Query("SELECT * FROM note_ai_jobs WHERE targetId = :targetId ORDER BY createdAt DESC")
+    fun observeForTarget(targetId: String): Flow<List<NoteAiJobEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(job: NoteAiJobEntity)
+
+    @Query("DELETE FROM note_ai_jobs WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("DELETE FROM note_ai_jobs WHERE targetId = :targetId AND status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')")
+    suspend fun deleteFinished(targetId: String)
 }

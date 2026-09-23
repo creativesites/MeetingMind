@@ -82,6 +82,47 @@ class NotesViewModel(application: Application, val scope: NotesScope = NotesScop
         (scope as? NotesScope.InNotebook)?.let { nb -> books.firstOrNull { it.id == nb.notebookId } }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    // ------------------------------------------------------------ notebook AI
+
+    private val noteAi = com.example.ai.notes.NoteAiRepository(application)
+
+    val aiJobs: StateFlow<List<com.example.ai.notes.NoteAiJob>> =
+        ((scope as? NotesScope.InNotebook)?.let { noteAi.observe(it.notebookId) } ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun runAi(tool: com.example.ai.notes.NoteAiTool, question: String? = null) {
+        val nb = (scope as? NotesScope.InNotebook)?.notebookId ?: return
+        viewModelScope.launch { noteAi.run(com.example.ai.notes.NoteAiTarget.NOTEBOOK, nb, tool, question) }
+    }
+
+    fun cancelAi(jobId: String) = viewModelScope.launch { noteAi.cancel(jobId) }
+    fun dismissAi(jobId: String) = viewModelScope.launch { noteAi.dismiss(jobId) }
+
+    /** Keeps a notebook result as a new note in this notebook, each point still pointing at its note. */
+    fun saveAiResult(job: com.example.ai.notes.NoteAiJob, items: List<com.example.ai.notes.CitedItem>, onCreated: (String) -> Unit) = viewModelScope.launch {
+        val nb = (scope as? NotesScope.InNotebook)?.notebookId ?: return@launch
+        val result = job.result ?: return@launch
+        val name = currentNotebook.value?.name ?: "notebook"
+        val date = java.text.SimpleDateFormat("d MMM", java.util.Locale.getDefault()).format(java.util.Date())
+        val type = if (job.tool == com.example.ai.notes.NoteAiTool.EXTRACT_ACTIONS) com.example.core.model.NoteBlockType.CHECKLIST else com.example.core.model.NoteBlockType.BULLET
+        val blocks = buildList {
+            items.forEach { item ->
+                add(com.example.core.model.NoteBlock(NoteRepository.newId("block"), "", 0, type,
+                    com.example.core.notes.RichText.plain(item.detail?.let { "${item.text} — $it" } ?: item.text),
+                    source = com.example.core.model.BlockSource.AI))
+                // Where it came from, as a line under it.
+                val from = item.sourceIds.mapNotNull { result.sources[it]?.label?.substringBefore(" · ") }.distinct()
+                if (from.isNotEmpty()) add(com.example.core.model.NoteBlock(NoteRepository.newId("block"), "", 0, com.example.core.model.NoteBlockType.PARAGRAPH,
+                    com.example.core.notes.RichText.plain("From: " + from.joinToString(", ")).applyStyle(com.example.core.notes.InlineStyle.ITALIC, 0, 5 + from.joinToString(", ").length),
+                    source = com.example.core.model.BlockSource.AI, indent = 1))
+            }
+        }
+        val title = (if (job.tool == com.example.ai.notes.NoteAiTool.EXTRACT_ACTIONS) "Action items" else "Summary") + " · $name · $date"
+        val note = notes.createNote(title = title, notebookId = nb, initialBlocks = blocks, useTemplate = false)
+        noteAi.dismiss(job.id)
+        onCreated(note.id)
+    }
+
     /** Creates an empty note (in this notebook, when inside one) and hands back its id. */
     fun createNote(onCreated: (String) -> Unit) = viewModelScope.launch {
         val note = notes.createNote(notebookId = (scope as? NotesScope.InNotebook)?.notebookId)

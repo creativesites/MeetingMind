@@ -613,6 +613,39 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         persist()
     }
 
+    // ------------------------------------------------------------ note AI
+
+    private val noteAi = com.example.ai.notes.NoteAiRepository(application)
+
+    /** This note's AI runs: the one in flight, or the last result waiting to be used. */
+    val aiJobs: StateFlow<List<com.example.ai.notes.NoteAiJob>> =
+        noteAi.observe(noteId).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun runAi(tool: com.example.ai.notes.NoteAiTool, question: String? = null) = viewModelScope.launch {
+        flush()
+        noteAi.run(com.example.ai.notes.NoteAiTarget.NOTE, noteId, tool, question)
+    }
+
+    suspend fun relatedNotes() = notes.relatedNotes(noteId)
+
+    fun cancelAi(jobId: String) = viewModelScope.launch { noteAi.cancel(jobId) }
+    fun dismissAi(jobId: String) = viewModelScope.launch { noteAi.dismiss(jobId) }
+
+    fun applySummary(jobId: String, points: List<com.example.ai.notes.CitedItem>) {
+        update(com.example.ai.notes.NoteAiApply.withSummary(_blocks.value, noteId, points))
+        dismissAi(jobId); _message.value = "Summary added — Undo to remove it"
+    }
+
+    fun applyActions(jobId: String, actions: List<com.example.ai.notes.CitedItem>) {
+        update(com.example.ai.notes.NoteAiApply.withActions(_blocks.value, noteId, actions))
+        dismissAi(jobId); _message.value = "${actions.size} action ${if (actions.size == 1) "item" else "items"} added"
+    }
+
+    fun applyOrganized(jobId: String, result: com.example.ai.notes.NoteAiOutcome.Sections) {
+        update(com.example.ai.notes.NoteAiApply.organized(_blocks.value, noteId, result))
+        dismissAi(jobId); _message.value = "Organised — Undo puts it back as it was"
+    }
+
     /** Puts the caret in [blockId] at [cursor]. */
     fun focusBlock(blockId: String, cursor: Int) = requestFocus(FocusTarget(blockId, cursor))
 

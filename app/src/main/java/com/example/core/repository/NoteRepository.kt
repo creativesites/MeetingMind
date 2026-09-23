@@ -375,6 +375,39 @@ class NoteRepository(
         testimony
     }
 
+    /**
+     * Notes related to [noteId], each with the reasons it matched (shared verses, tags, links,
+     * similar wording). No model and no network: see [com.example.ai.notes.RelatedNotes].
+     */
+    suspend fun relatedNotes(noteId: String, limit: Int = 8): List<Pair<Note, com.example.ai.notes.RelatedNote>> = withContext(Dispatchers.IO) {
+        val notes = noteDao.getAll().filter { it.archivedAt == null }.map { it.toDomain() }
+        val tags = noteDao.getAllNoteTags().groupBy({ it.noteId }, { it.name })
+        val refs = scriptureDao.getAll().groupBy { it.noteId }
+        val links = noteDao.getAllLinks()
+        val linked = HashMap<String, MutableSet<String>>()
+        links.forEach { l ->
+            linked.getOrPut(l.fromNoteId) { mutableSetOf() } += l.toNoteId
+            linked.getOrPut(l.toNoteId) { mutableSetOf() } += l.fromNoteId
+        }
+        val signals = notes.map { n ->
+            val passages = refs[n.id].orEmpty().map { "${it.bookUsfm} ${it.chapter}" }.toSet()
+            com.example.ai.notes.NoteSignals(
+                noteId = n.id,
+                text = n.title + " " + n.plainText,
+                tags = tags[n.id].orEmpty().toSet(),
+                passages = passages,
+                passageLabels = passages.associateWith { key ->
+                    val (usfm, chapter) = key.split(' ')
+                    (com.example.core.scripture.BibleBooks.byUsfm(usfm)?.name ?: usfm) + " " + chapter
+                },
+                linked = linked[n.id].orEmpty()
+            )
+        }
+        val target = signals.firstOrNull { it.noteId == noteId } ?: return@withContext emptyList()
+        val byId = notes.associateBy { it.id }
+        com.example.ai.notes.RelatedNotes.find(target, signals, limit).mapNotNull { r -> byId[r.noteId]?.let { it to r } }
+    }
+
     /** A devotional that starts from a verse (the Verse of the Day, or one the person picked). */
     suspend fun startDevotional(reference: com.example.core.scripture.ScriptureReference): Note = withContext(Dispatchers.IO) {
         val note = createNote(workflow = RecordingType.DEVOTIONAL, title = reference.display())

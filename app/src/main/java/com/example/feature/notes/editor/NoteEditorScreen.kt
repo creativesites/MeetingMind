@@ -1,6 +1,7 @@
 package com.example.feature.notes.editor
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.platform.testTag
 import com.example.ui.theme.SurfaceSunk
@@ -166,6 +167,12 @@ fun NoteEditorScreen(
     var showNoteLinks by remember { mutableStateOf(false) }
     var showScriptureEntry by remember { mutableStateOf(false) }
     var showPrayerUpdate by remember { mutableStateOf(false) }
+    val aiJobs by viewModel.aiJobs.collectAsState()
+    var showAiMenu by remember { mutableStateOf(false) }
+    var showAsk by remember { mutableStateOf(false) }
+    var aiSheetOpen by remember { mutableStateOf(false) }
+    var related by remember { mutableStateOf<List<Pair<com.example.core.model.Note, com.example.ai.notes.RelatedNote>>?>(null) }
+    var showRelated by remember { mutableStateOf(false) }
     var bibleDialog by remember { mutableStateOf<Boolean?>(null) } // null = closed; true = open in search
     var verseSheetFor by remember { mutableStateOf<NoteBlock?>(null) }
     var showDetails by remember { mutableStateOf(false) }
@@ -245,6 +252,15 @@ fun NoteEditorScreen(
     }
 
     val listState = rememberLazyListState()
+    // Bring a block into view when something asks for it (a citation, a new block) and it's off screen.
+    LaunchedEffect(focus?.serial) {
+        val target = focus?.target?.blockId ?: return@LaunchedEffect
+        if (listState.layoutInfo.visibleItemsInfo.any { it.key == target }) return@LaunchedEffect
+        val index = blocks.indexOfFirst { it.id == target }.takeIf { it >= 0 } ?: return@LaunchedEffect
+        val leading = 2 + (if (aiJobs.isNotEmpty() && !aiSheetOpen) 1 else 0) +
+            (if (note?.workflow == com.example.core.model.RecordingType.PRAYER_REQUEST) 1 else 0)
+        runCatching { listState.animateScrollToItem(leading + index) }
+    }
     val drag = remember { BlockDragState() }
     val titleFocus = remember { FocusRequester() }
     var titleFocused by remember { mutableStateOf(false) }
@@ -287,6 +303,7 @@ fun NoteEditorScreen(
                 Box {
                     IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = Ink) }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, containerColor = Color.White) {
+                        DropdownMenuItem(text = { Text("AI tools") }, leadingIcon = { Icon(Icons.Filled.AutoAwesome, null, tint = Accent) }, onClick = { showMenu = false; showAiMenu = true })
                         DropdownMenuItem(text = { Text("Export & share") }, leadingIcon = { Icon(Icons.Filled.IosShare, null) }, onClick = { showMenu = false; showExport = true })
                         DropdownMenuItem(text = { Text("Move to notebook") }, leadingIcon = { Icon(Icons.Filled.Folder, null) }, onClick = { showMenu = false; showNotebooks = true })
                         DropdownMenuItem(text = { Text("Tags") }, leadingIcon = { Icon(Icons.Outlined.Tag, null) }, onClick = { showMenu = false; showTags = true })
@@ -370,6 +387,28 @@ fun NoteEditorScreen(
                     } else emptyList(),
                     onDetails = { showDetails = true }
                 )
+            }
+            aiJobs.firstOrNull()?.let { job ->
+                if (!aiSheetOpen) item(key = "ai-banner") {
+                    val working = job.status == com.example.ai.notes.NoteAiStatus.QUEUED || job.status == com.example.ai.notes.NoteAiStatus.RUNNING
+                    Surface(
+                        onClick = { aiSheetOpen = true }, shape = RoundedCornerShape(14.dp), color = Accent.copy(alpha = 0.08f),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 10.dp).testTag("note_ai_banner")
+                    ) {
+                        Row(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Accent, modifier = Modifier.size(17.dp))
+                            Text(
+                                when {
+                                    working -> "${job.tool.label}: working…"
+                                    job.status == com.example.ai.notes.NoteAiStatus.SUCCEEDED -> "${job.tool.label}: ready to view"
+                                    else -> "${job.tool.label} didn't finish"
+                                },
+                                fontSize = 14.sp, color = Ink, modifier = Modifier.weight(1f).padding(start = 10.dp)
+                            )
+                            Text("View", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                        }
+                    }
+                }
             }
             if (currentNote.workflow == com.example.core.model.RecordingType.PRAYER_REQUEST) {
                 item(key = "prayer") {
@@ -510,6 +549,54 @@ fun NoteEditorScreen(
         onDismiss = { showScriptureEntry = false },
         onOpenBible = { search -> showScriptureEntry = false; bibleDialog = search }
     )
+    if (showAiMenu) com.example.feature.notes.ai.NoteAiMenu(
+        forNotebook = false,
+        onPick = { tool ->
+            showAiMenu = false
+            if (tool == com.example.ai.notes.NoteAiTool.ASK) showAsk = true else { viewModel.runAi(tool); aiSheetOpen = true }
+        },
+        onRelated = {
+            showAiMenu = false; showRelated = true; related = null
+            scope.launch { related = viewModel.relatedNotes() }
+        },
+        onDismiss = { showAiMenu = false }
+    )
+    if (showAsk) com.example.feature.notes.ai.AskDialog(
+        forNotebook = false,
+        onAsk = { q -> showAsk = false; viewModel.runAi(com.example.ai.notes.NoteAiTool.ASK, q); aiSheetOpen = true },
+        onDismiss = { showAsk = false }
+    )
+    if (showRelated) com.example.feature.notes.ai.RelatedNotesSheet(
+        related = related,
+        onOpen = { showRelated = false; onOpenNote(it) },
+        onDismiss = { showRelated = false }
+    )
+    if (aiSheetOpen) {
+        val job = aiJobs.firstOrNull()
+        if (job == null) {
+            // The job row appears a moment after the tap; until then there's nothing to show.
+            LaunchedEffect(Unit) { kotlinx.coroutines.delay(4000); if (viewModel.aiJobs.value.isEmpty()) aiSheetOpen = false }
+        } else com.example.feature.notes.ai.NoteAiResultSheet(
+            job = job,
+            primaryLabel = if (job.tool == com.example.ai.notes.NoteAiTool.EXTRACT_ACTIONS) "Add to note" else "Add summary to note",
+            onPrimary = { items ->
+                aiSheetOpen = false
+                if (job.tool == com.example.ai.notes.NoteAiTool.EXTRACT_ACTIONS) viewModel.applyActions(job.id, items) else viewModel.applySummary(job.id, items)
+            },
+            onApplyOrganized = { result -> aiSheetOpen = false; viewModel.applyOrganized(job.id, result) },
+            onShowSource = { p ->
+                aiSheetOpen = false
+                when {
+                    blocks.any { it.id == p.id } -> viewModel.focusBlock(p.id, 0)
+                    p.noteId != null && p.noteId != viewModel.noteId -> onOpenNote(p.noteId)
+                    else -> scope.launch { snackbar.showSnackbar("That's from the recording: “${p.text.take(80)}…”") }
+                }
+            },
+            onCancel = { viewModel.cancelAi(job.id) },
+            onClose = { aiSheetOpen = false },
+            onDiscard = { aiSheetOpen = false; viewModel.dismissAi(job.id) }
+        )
+    }
     if (showPrayerUpdate) PrayerUpdateDialog(
         onSave = { viewModel.addPrayerUpdate(it); showPrayerUpdate = false },
         onDismiss = { showPrayerUpdate = false }

@@ -199,3 +199,25 @@ data class ScriptureCollectionItemEntity(
     val position: Int,
     val addedAt: Long
 )
+
+/**
+ * A note AI run (docs/PLAN_V1.md M9): what was asked, over which note or notebook, and — once it
+ * has run — the validated result. A row exists before the work is queued, so a result survives the
+ * app being closed while it runs. Not tied to a meeting, which is why it isn't an [AiJobEntity].
+ */
+@androidx.room.Entity(tableName = "note_ai_jobs", indices = [androidx.room.Index(value = ["targetId"])])
+data class NoteAiJobEntity(
+    @androidx.room.PrimaryKey val id: String,
+    /** NOTE or NOTEBOOK. */
+    val targetKind: String,
+    val targetId: String,
+    val tool: String,
+    val status: String,
+    val inputJson: String,
+    val resultJson: String?,
+    val errorMessage: String?,
+    /** Which model produced the result, for the "made by" line. */
+    val engine: String?,
+    val createdAt: Long,
+    val updatedAt: Long
+)
