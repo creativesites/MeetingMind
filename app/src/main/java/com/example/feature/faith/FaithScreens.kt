@@ -1,6 +1,9 @@
 package com.example.feature.faith
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -166,15 +169,16 @@ fun FaithScreen(
                 }
             }
 
-            // Start something.
+            // Begin: one wide card to record a sermon, then the ways to write, as tinted tiles.
             item {
-                Column(Modifier.padding(top = 24.dp)) {
-                    SectionTitle("Start")
-                    FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        QuickTile("Record sermon", Icons.Filled.Mic, Ink, Color.White, onRecordSermon)
-                        listOf(RecordingType.DEVOTIONAL, RecordingType.PRAYER, RecordingType.PRAYER_REQUEST, RecordingType.GRATITUDE,
-                            RecordingType.TESTIMONY, RecordingType.REFLECTION, RecordingType.BIBLE_STUDY).forEach { type ->
-                            QuickTile(type.displayName, faithIcon(type), GoldWash, Gold) { viewModel.create(type, onOpenNote) }
+                Column(Modifier.padding(top = 28.dp)) {
+                    SectionTitle("Begin")
+                    RecordSermonCard(onRecordSermon)
+                    Column(Modifier.padding(horizontal = 20.dp).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        StartKinds.chunked(2).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                row.forEach { kind -> StartTile(kind, Modifier.weight(1f)) { viewModel.create(kind.type, onOpenNote) } }
+                            }
                         }
                     }
                 }
@@ -317,18 +321,66 @@ private fun VerseOfTheDayCard(votd: VerseOfTheDay?, onRead: () -> Unit, onStartD
     }
 }
 
+/** A way to begin: the kind of note, what it's for, and its own colour. */
+private data class StartKind(val type: RecordingType, val line: String, val tint: Color)
+
+private val StartKinds = listOf(
+    StartKind(RecordingType.DEVOTIONAL, "Begin with a verse", Color(0xFFB7791F)),
+    StartKind(RecordingType.PRAYER, "Talk to God, in your words", Color(0xFF7C3AED)),
+    StartKind(RecordingType.PRAYER_REQUEST, "Hold on to what you're asking", Color(0xFFDB2777)),
+    StartKind(RecordingType.GRATITUDE, "Count today's blessings", Color(0xFF059669)),
+    StartKind(RecordingType.TESTIMONY, "Tell what God has done", Color(0xFFEA580C)),
+    StartKind(RecordingType.REFLECTION, "Sit with a thought", Color(0xFF2563EB)),
+    StartKind(RecordingType.BIBLE_STUDY, "Observe, reflect, apply", Color(0xFF0F766E))
+)
+
 @Composable
-private fun QuickTile(label: String, icon: ImageVector, background: Color, tint: Color, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(16.dp), color = if (background == GoldWash) Color.White else background,
-        border = if (background == GoldWash) BorderStroke(1.dp, Line) else null, modifier = Modifier.width(104.dp)) {
-        Column(Modifier.padding(vertical = 14.dp, horizontal = 10.dp)) {
-            Box(Modifier.size(32.dp).clip(CircleShape).background(if (background == GoldWash) GoldWash else Color.White.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+private fun RecordSermonCard(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick, shape = RoundedCornerShape(26.dp), color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(118.dp).testTagSafe("faith_record_sermon")
+    ) {
+        Box(
+            Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF1B1530), Color(0xFF3A2A1A))))
+        ) {
+            // Warm light from the right.
+            Box(Modifier.align(Alignment.CenterEnd).size(170.dp).offset(x = 40.dp)
+                .background(Brush.radialGradient(listOf(Gold.copy(alpha = 0.45f), Color.Transparent)), CircleShape))
+            Row(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Record a sermon", fontSize = 21.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif, color = Color.White)
+                    Text("Scripture, key points and notes — gathered for you", fontSize = 13.sp, lineHeight = 18.sp, color = Color.White.copy(alpha = 0.72f), modifier = Modifier.padding(top = 4.dp))
+                }
+                Box(Modifier.size(56.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFFF6D365), Gold))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Mic, contentDescription = null, tint = Color(0xFF1B1530), modifier = Modifier.size(26.dp))
+                }
             }
-            Text(label, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = if (background == GoldWash) Ink else Color.White, modifier = Modifier.padding(top = 10.dp), maxLines = 2)
         }
     }
 }
+
+@Composable
+private fun StartTile(kind: StartKind, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick, shape = RoundedCornerShape(22.dp), color = Color.White,
+        border = BorderStroke(1.dp, kind.tint.copy(alpha = 0.18f)), shadowElevation = 1.dp,
+        modifier = modifier.height(122.dp)
+    ) {
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(kind.tint.copy(alpha = 0.10f), Color.White)))) {
+            Column(Modifier.padding(14.dp)) {
+                Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(kind.tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+                    Icon(faithIcon(kind.type), contentDescription = null, tint = kind.tint, modifier = Modifier.size(19.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                Text(kind.type.displayName, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif, color = Ink, maxLines = 1)
+                Text(kind.line, fontSize = 12.sp, lineHeight = 16.sp, color = InkSecondary, maxLines = 2)
+            }
+        }
+    }
+}
+
+private fun Modifier.testTagSafe(tag: String) = this.then(Modifier.testTag(tag))
+
 
 @Composable
 private fun SectionTitle(text: String, trailing: String? = null, onTrailing: (() -> Unit)? = null, top: androidx.compose.ui.unit.Dp = 0.dp) {

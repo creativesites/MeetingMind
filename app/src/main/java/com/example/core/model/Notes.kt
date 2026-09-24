@@ -96,6 +96,9 @@ data class NoteBlock(
         const val PAYLOAD_ATTACHMENT_ID = "attachmentId"
         const val PAYLOAD_NOTE_ID = "noteId"
         const val PAYLOAD_SCRIPTURE_REF_ID = "scriptureRefId"
+        /** Verse text the person typed themselves, shown instead of the fetched text. */
+        const val PAYLOAD_USER_TEXT = "userText"
+        const val PAYLOAD_USER_LABEL = "userLabel"
         const val PAYLOAD_START_MS = "startMs"
         const val PAYLOAD_END_MS = "endMs"
         const val PAYLOAD_SPEAKER = "speaker"

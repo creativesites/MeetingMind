@@ -144,13 +144,19 @@ object DocxDocumentRenderer {
             val index = media.size + 1
             val m = Media("rIdImage$index", "image$index.${info.extension}", file.path, info)
             media += m
-            // Fit to the text column, never enlarge, and keep a tall photo on one page.
-            var cx = minOf(CONTENT_WIDTH_EMU, info.width.toLong() * 9525L)
-            var cy = cx * info.height / info.width
+            // Fill the text column and keep a tall photo on one page; screenshot bars are cropped.
+            val top = block.cropTop.coerceIn(0, info.height / 3)
+            val bottom = block.cropBottom.coerceIn(0, info.height / 3)
+            val shownHeight = (info.height - top - bottom).coerceAtLeast(1)
+            var cx = CONTENT_WIDTH_EMU
+            var cy = cx * shownHeight / info.width
             if (cy > MAX_IMAGE_HEIGHT_EMU) {
                 cy = MAX_IMAGE_HEIGHT_EMU
-                cx = cy * info.width / info.height
+                cx = cy * info.width / shownHeight
             }
+            // srcRect is in thousandths of a percent of the source.
+            val srcRect = if (top + bottom == 0) "" else
+                "<a:srcRect t=\"${top * 100000L / info.height}\" b=\"${bottom * 100000L / info.height}\"/>"
             val id = drawingId++
             val name = xml(block.caption ?: file.name)
             body.append("<w:p><w:pPr><w:jc w:val=\"center\"/><w:keepNext/></w:pPr><w:r><w:drawing>")
@@ -159,7 +165,7 @@ object DocxDocumentRenderer {
                 .append("<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect=\"1\"/></wp:cNvGraphicFramePr>")
                 .append("<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">")
                 .append("<pic:pic><pic:nvPicPr><pic:cNvPr id=\"$id\" name=\"${m.fileName}\"/><pic:cNvPicPr/></pic:nvPicPr>")
-                .append("<pic:blipFill><a:blip r:embed=\"${m.relId}\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>")
+                .append("<pic:blipFill><a:blip r:embed=\"${m.relId}\"/>$srcRect<a:stretch><a:fillRect/></a:stretch></pic:blipFill>")
                 .append("<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"$cx\" cy=\"$cy\"/></a:xfrm>")
                 .append("<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>")
                 .append("</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>")

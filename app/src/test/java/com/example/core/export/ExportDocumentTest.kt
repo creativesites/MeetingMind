@@ -124,8 +124,8 @@ class ExportDocumentTest {
         assertEquals(png.length().toInt(), parts.getValue("word/media/image1.png").size)
         assertTrue(String(parts.getValue("[Content_Types].xml")).contains("Extension=\"png\" ContentType=\"image/png\""))
         val body = String(parts.getValue("word/document.xml"))
-        // 400 px at 96 dpi = 3,810,000 EMU wide; half as tall.
-        assertTrue(body.contains("<wp:extent cx=\"3810000\" cy=\"1905000\"/>"))
+        // Filled to the text column (9026 twips = 5,731,510 EMU); half as tall.
+        assertTrue(body.contains("<wp:extent cx=\"5731510\" cy=\"2865755\"/>"))
         assertTrue(body.contains("Baptism Sunday"))
     }
 
@@ -215,5 +215,31 @@ class ExportDocumentTest {
         assertEquals(ExportBlock.Recording("Sunday service", "01:00:00", "About grace"), out.blocks[0])
         assertEquals(ExportBlock.Image("/x/p.jpg", "Choir"), out.blocks[1])
         assertEquals(ExportBlock.Excerpt("Pastor · 01:05", "Grace is enough"), out.blocks[2])
+    }
+
+    @Test
+    fun `a chosen cover leads, typed verse text is kept, screenshots are cropped`() {
+        val cover = Attachment("c1", "n1", AttachmentKind.IMAGE, "/x/cover.jpg", "image/jpeg", 10, createdAt = 0)
+        val shot = Attachment("s1", "n1", AttachmentKind.IMAGE, "/x/shot.png", "image/png", 10, createdAt = 0)
+        val base = note(
+            listOf(
+                block(NoteBlockType.SCRIPTURE, position = 0, payload = mapOf("reference" to "Psalm 23:1", NoteBlock.PAYLOAD_USER_TEXT to "The Lord is my shepherd", NoteBlock.PAYLOAD_USER_LABEL to "NIV")),
+                block(NoteBlockType.IMAGE, position = 1, payload = mapOf(NoteBlock.PAYLOAD_ATTACHMENT_ID to "s1"))
+            ),
+            attachments = listOf(cover, shot)
+        )
+        val doc = base.copy(note = base.note.copy(metadata = base.note.metadata + (com.example.core.repository.NoteRepository.COVER_KEY to "c1")))
+        val out = NoteExportMapper.map(doc, crops = mapOf("s1" to (80 to 120)))
+        assertEquals(ExportBlock.Image("/x/cover.jpg", null), out.blocks[0])
+        assertEquals(ExportBlock.Scripture("Psalm 23:1", "The Lord is my shepherd", "NIV"), out.blocks[1])
+        assertEquals(ExportBlock.Image("/x/shot.png", null, 80, 120), out.blocks[2])
+    }
+
+    @Test
+    fun `only pictures the exact size of the screen count as screenshots`() {
+        assertEquals(80 to 120, ScreenshotBars.crop(1080, 2400, 1080, 2400, 80, 120))
+        assertEquals(80 to 120, ScreenshotBars.crop(1080, 2400, 2400, 1080, 80, 120))
+        assertEquals(null, ScreenshotBars.crop(1080, 1920, 1080, 2400, 80, 120))
+        assertEquals(null, ScreenshotBars.crop(0, 0, 1080, 2400, 80, 120))
     }
 }

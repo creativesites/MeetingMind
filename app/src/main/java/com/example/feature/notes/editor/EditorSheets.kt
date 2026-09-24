@@ -2,6 +2,8 @@ package com.example.feature.notes.editor
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -435,44 +437,74 @@ private fun MenuRow(label: String, selected: Boolean = false, destructive: Boole
     )
 }
 
-/** Type a reference ("jn 3 16", "1 Cor 13:4-7"); it's checked against the Bible as you type. */
+/**
+ * Type one reference or many ("John 3:16-18; Rom 8:28, 31-39", one per line, whole chapters):
+ * each is checked against the Bible as you type. With a single passage the person can also type
+ * or paste its text themselves — useful offline or for a translation the app doesn't carry.
+ */
 @Composable
 internal fun ScriptureEntryDialog(
-    onInsert: (com.example.core.scripture.ScriptureReference) -> Unit,
+    onInsert: (refs: List<com.example.core.scripture.ScriptureReference>, userText: String?, label: String?) -> Unit,
     onDismiss: () -> Unit,
     /** Opens the full Bible to browse (false) or search (true), and pick verses from there. */
     onOpenBible: (search: Boolean) -> Unit = {}
 ) {
     var text by remember { mutableStateOf("") }
-    val parsed = remember(text) { com.example.core.scripture.ScriptureReferenceParser.parse(text) }
+    var ownText by remember { mutableStateOf("") }
+    var ownLabel by remember { mutableStateOf("") }
+    var typeOwn by remember { mutableStateOf(false) }
+    val parsed = remember(text) { com.example.core.scripture.ScriptureReferenceParser.parseList(text) }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Color.White,
-        title = { Text("Add a Bible verse") },
+        title = { Text("Add Bible verses") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
-                    value = text, onValueChange = { text = it.replace("\n", "") }, singleLine = true,
-                    placeholder = { Text("e.g. John 3:16 or Ps 23") }, modifier = Modifier.fillMaxWidth()
+                    value = text, onValueChange = { text = it }, minLines = 2, maxLines = 5,
+                    placeholder = { Text("John 3:16-21; Ps 23\nRom 8:28, 31-39") }, modifier = Modifier.fillMaxWidth()
                 )
                 Text(
                     when {
-                        text.isBlank() -> "Book, chapter and verse — abbreviations are fine."
-                        parsed != null -> parsed.display()
-                        else -> "That isn't a reference in the Bible yet."
+                        text.isBlank() -> "One or many — separate them with ; , or new lines. Whole chapters work too."
+                        parsed.isEmpty() -> "That isn't a reference in the Bible yet."
+                        parsed.size == 1 -> parsed[0].display()
+                        else -> "${parsed.size} passages: " + parsed.joinToString(" · ") { it.display() }
                     },
                     fontSize = 13.sp,
-                    color = if (parsed != null) Accent else InkMuted,
-                    fontWeight = if (parsed != null) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (parsed.isNotEmpty()) Accent else InkMuted,
+                    fontWeight = if (parsed.isNotEmpty()) FontWeight.SemiBold else FontWeight.Normal,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+                if (parsed.size <= 1) {
+                    Text(
+                        if (typeOwn) "Use the app's Bible text instead" else "Type or paste the verse text yourself",
+                        fontSize = 13.sp, color = Accent, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(top = 10.dp).clip(RoundedCornerShape(8.dp)).clickable { typeOwn = !typeOwn }.padding(vertical = 4.dp)
+                    )
+                    if (typeOwn) {
+                        OutlinedTextField(
+                            value = ownText, onValueChange = { ownText = it }, minLines = 3, maxLines = 10,
+                            label = { Text("Verse text") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                        )
+                        OutlinedTextField(
+                            value = ownLabel, onValueChange = { ownLabel = it.replace("\n", "") }, singleLine = true,
+                            label = { Text("Translation (optional), e.g. NIV") }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                        )
+                    }
+                }
                 Row(Modifier.padding(top = 10.dp)) {
                     TextButton(onClick = { onOpenBible(false) }) { Text("Browse the Bible") }
                     TextButton(onClick = { onOpenBible(true) }) { Text("Search words") }
                 }
             }
         },
-        confirmButton = { TextButton(enabled = parsed != null, onClick = { parsed?.let(onInsert) }) { Text("Insert") } },
+        confirmButton = {
+            TextButton(enabled = parsed.isNotEmpty(), onClick = {
+                val own = ownText.trim().takeIf { typeOwn && parsed.size == 1 && it.isNotEmpty() }
+                onInsert(parsed, own, ownLabel.trim().takeIf { own != null && it.isNotEmpty() })
+            }) { Text(if (parsed.size > 1) "Insert ${parsed.size}" else "Insert") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

@@ -258,7 +258,7 @@ fun TodayScreen(
                 CalendarView.AGENDA -> item(key = "agenda") {
                     AgendaView(items, selectedDay, ::open, { quick = it }, onPlan = { day -> viewModel.planNote(day, onOpenNote) })
                 }
-                CalendarView.DAY -> item(key = "day") { DayView(items, selectedDay, ::open) { quick = it } }
+                CalendarView.DAY -> item(key = "day") { DayView(items, selectedDay, ::open, { quick = it }, onPlan = { day -> viewModel.planNote(day, onOpenNote) }) }
                 CalendarView.WEEK -> item(key = "week") {
                     WeekView(items, TimelineDays.startOfWeek(selectedDay), onDay = { viewModel.select(it); viewModel.setView(CalendarView.DAY) }, onOpen = ::open)
                 }

@@ -1,8 +1,30 @@
 # Installable builds
 
-`MeetingMind-v22-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v23-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
 
-## What's new in v22
+## What's new in v23
+
+- **Cards that tell things apart.** Home and Timeline cards are clean white cards by default,
+  showing the type, the time, the title and a two-line summary (a recording's summary, or the
+  opening lines of a note). A card with a picture uses it as its background, with a shade so the
+  text stays readable. Prefer the colourful gradient cards? Settings → Look → Card style → Vivid.
+- **Cover images.** A note's ⋮ menu → Cover image: pick a photo to use as its cover on Home and
+  the Timeline, and at the top of exported documents.
+- **A better Day view.** Items are cards pinned to their time, spaced by the real gaps in your day
+  ("4 h free"), with a line for now. Items at about the same time stack into a deck; tap +N to
+  spread them out.
+- **Faith → Begin** is redesigned: a Record a sermon hero and a tile for each kind of entry.
+- **Read everything in the note.** Long passages, transcript excerpts and a recording's summary
+  open in place; "Read the transcript here" shows the transcript inside the note (tap a line to
+  play from it). Videos play inline, with a full-screen button.
+- **Add many verses at once**: "John 3:16-21; Ps 23, Rom 8:28, 31-39", one per line or
+  separated by ; or , — or type or paste a verse's text yourself.
+- **Better PDF and Word exports.** Pictures fill the page width, screenshots of the phone lose
+  their status and navigation bars, the cover leads the document, and full passages and
+  summaries are printed.
+- Empty or junk themes (like "[]") are no longer shown.
+
+## What was new in v22
 
 - **A new Home: Today.** A hero whose sky follows the real time of day — the sun rises, arcs and
   sets; at night a moon and stars — with a playful greeting, your streak, and what's up next

@@ -14,6 +14,12 @@ enum class LookAndFeel(val label: String, val description: String) {
     MINIMAL("Minimal", "Quiet — greys, fewer flourishes")
 }
 
+/** How timeline and calendar cards look. */
+enum class CardStyle(val label: String, val description: String) {
+    CLASSIC("Classic", "Clean white cards; photos fill the card when there is one"),
+    VIVID("Vivid", "Colourful gradient cards for everything")
+}
+
 /**
  * Who the app is for, as the person told us: which spaces they use and how it should feel.
  * Everything that differs between "a faith app" and "a work app" reads this — nothing branches on
@@ -23,7 +29,8 @@ data class AppIdentity(
     val spaces: Set<NotebookSpace> = NotebookSpace.entries.toSet(),
     val look: LookAndFeel = LookAndFeel.PROFESSIONAL,
     val displayName: String? = null,
-    val avatarPath: String? = null
+    val avatarPath: String? = null,
+    val cardStyle: CardStyle = CardStyle.CLASSIC
 ) {
     val showsFaith: Boolean get() = NotebookSpace.FAITH in spaces
     /** Faith is what this person mostly comes for. */

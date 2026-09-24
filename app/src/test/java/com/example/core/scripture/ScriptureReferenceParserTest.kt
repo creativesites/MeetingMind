@@ -122,4 +122,21 @@ class ScriptureReferenceParserTest {
         assertEquals("Rom 8:28", m.text)
         assertEquals(text.indexOf("Rom"), m.start)
     }
+
+    // ---- typed lists
+
+    private fun list(text: String) = ScriptureReferenceParser.parseList(text).map { it.display() }
+
+    @Test fun `a list separated by semicolons and new lines`() =
+        assertEquals(listOf("John 3:16–21", "Psalm 23", "Romans 8:28"), list("John 3:16-21; Ps 23\nRom 8:28"))
+
+    @Test fun `parts without a book continue the one before`() {
+        assertEquals(listOf("Romans 8:28", "Romans 8:31–39"), list("Rom 8:28, 31-39"))
+        assertEquals(listOf("John 3:16", "John 4:1–6"), list("John 3:16; 4:1-6"))
+    }
+
+    @Test fun `whole chapters and junk parts`() =
+        assertEquals(listOf("Isaiah 53", "Isaiah 54"), list("Isaiah 53; hello; 54"))
+
+    @Test fun `nothing typed is nothing`() = assertTrue(list("  ;; ").isEmpty())
 }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -344,10 +345,12 @@ internal fun ImageBlock(
     }
 }
 
+/** A video: its first frame until tapped, then it plays right here, with controls. */
 @Composable
 internal fun VideoBlock(block: NoteBlock, attachment: Attachment?, onOpen: (Attachment) -> Unit, onCaption: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         if (attachment == null) { MissingMedia("This video is no longer available"); return@Column }
+        var playing by remember(attachment.path) { mutableStateOf(false) }
         val frame by produceState<Bitmap?>(null, attachment.path) {
             value = withContext(Dispatchers.IO) {
                 runCatching {
@@ -362,18 +365,39 @@ internal fun VideoBlock(block: NoteBlock, attachment: Attachment?, onOpen: (Atta
         }
         val ratio = if ((attachment.width ?: 0) > 0 && (attachment.height ?: 0) > 0) (attachment.width!!.toFloat() / attachment.height!!).coerceIn(0.5f, 2.2f) else 16f / 9f
         Box(
-            Modifier.fillMaxWidth().aspectRatio(ratio).clip(RoundedCornerShape(16.dp)).background(Ink).clickable { onOpen(attachment) },
+            Modifier.fillMaxWidth().aspectRatio(ratio).clip(RoundedCornerShape(16.dp)).background(Ink),
             contentAlignment = Alignment.Center
         ) {
-            frame?.let { Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().fillMaxHeight()) }
-            Surface(shape = CircleShape, color = Color.White.copy(alpha = 0.92f), modifier = Modifier.size(54.dp)) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = "Play video", tint = Ink, modifier = Modifier.padding(12.dp))
-            }
-            attachment.durationMs?.let {
-                Text(
-                    Formatters.formatDurationHms(it), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp).background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+            if (playing) {
+                androidx.compose.ui.viewinterop.AndroidView(
+                    factory = { ctx ->
+                        android.widget.VideoView(ctx).apply {
+                            setVideoPath(attachment.path)
+                            val controller = android.widget.MediaController(ctx)
+                            controller.setAnchorView(this)
+                            setMediaController(controller)
+                            setOnPreparedListener { it.start() }
+                            setOnCompletionListener { playing = false }
+                        }
+                    },
+                    onRelease = { it.stopPlayback() },
+                    modifier = Modifier.fillMaxSize()
                 )
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(8.dp).size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)).clickable { onOpen(attachment) },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open full screen", tint = Color.White, modifier = Modifier.size(16.dp)) }
+            } else {
+                frame?.let { Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().fillMaxHeight()) }
+                Surface(onClick = { playing = true }, shape = CircleShape, color = Color.White.copy(alpha = 0.92f), modifier = Modifier.size(54.dp)) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Play video", tint = Ink, modifier = Modifier.padding(12.dp))
+                }
+                attachment.durationMs?.let {
+                    Text(
+                        Formatters.formatDurationHms(it), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp).background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
         }
         CaptionField(block.content.text, onCaption)
@@ -452,9 +476,21 @@ private fun MissingMedia(text: String) {
     }
 }
 
-/** A recording in the note: play it here, or open the full transcript. */
+/**
+ * A recording in the note: play it, read its summary in full, and read the whole transcript right
+ * here — tap any paragraph to hear it.
+ */
 @Composable
-internal fun RecordingBlock(card: RecordingCard?, onPlay: (RecordingCard) -> Unit, onOpen: (RecordingCard) -> Unit) {
+internal fun RecordingBlock(
+    card: RecordingCard?,
+    onPlay: (RecordingCard) -> Unit,
+    onOpen: (RecordingCard) -> Unit,
+    loadTranscript: suspend (String) -> List<com.example.core.model.TranscriptSegment> = { emptyList() },
+    onPlayAt: (String, Long) -> Unit = { _, _ -> }
+) {
+    var summaryOpen by remember { mutableStateOf(false) }
+    var transcriptOpen by remember { mutableStateOf(false) }
+    var shown by remember { mutableIntStateOf(40) }
     Surface(
         shape = RoundedCornerShape(18.dp), color = Color.White, border = BorderStroke(1.dp, Line),
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
@@ -463,7 +499,7 @@ internal fun RecordingBlock(card: RecordingCard?, onPlay: (RecordingCard) -> Uni
             Text("This recording has been deleted.", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(16.dp))
             return@Surface
         }
-        Column(Modifier.clickable { onOpen(card) }.padding(14.dp)) {
+        Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     onClick = { onPlay(card) }, enabled = card.audioPath != null,
@@ -473,7 +509,7 @@ internal fun RecordingBlock(card: RecordingCard?, onPlay: (RecordingCard) -> Uni
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(card.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(card.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     val status = when (card.status) {
                         "PROCESSING" -> "Processing…"
                         "ERROR" -> "Processing didn't finish"
@@ -485,12 +521,55 @@ internal fun RecordingBlock(card: RecordingCard?, onPlay: (RecordingCard) -> Uni
                         Text(" ${Formatters.formatDurationHms(card.durationMs)} · $status", fontSize = 12.sp, color = InkMuted)
                     }
                 }
-                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open transcript", tint = InkMuted, modifier = Modifier.size(18.dp))
+                IconButtonSmall(Icons.AutoMirrored.Filled.OpenInNew, "Open the recording") { onOpen(card) }
             }
             card.summary?.takeIf { it.isNotBlank() }?.let {
-                Text(it, fontSize = 14.sp, lineHeight = 21.sp, color = InkSecondary, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp))
+                Text(
+                    it, fontSize = 14.sp, lineHeight = 21.sp, color = InkSecondary,
+                    maxLines = if (summaryOpen) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 10.dp).clickable { summaryOpen = !summaryOpen }
+                )
+                if (it.length > 220) Toggle(if (summaryOpen) "Show less" else "Read the whole summary") { summaryOpen = !summaryOpen }
+            }
+            if (card.status == "READY" || card.status == "COMPLETED") {
+                Toggle(if (transcriptOpen) "Hide transcript" else "Read the transcript here") { transcriptOpen = !transcriptOpen }
+            }
+            if (transcriptOpen) {
+                val segments by produceState<List<com.example.core.model.TranscriptSegment>?>(null, card.meetingId) { value = loadTranscript(card.meetingId) }
+                when {
+                    segments == null -> Text("Loading…", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 8.dp))
+                    segments!!.isEmpty() -> Text("No transcript yet.", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 8.dp))
+                    else -> Column(Modifier.padding(top = 8.dp)) {
+                        segments!!.take(shown).forEach { seg ->
+                            Column(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onPlayAt(card.meetingId, seg.startMs) }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp)
+                            ) {
+                                Text(
+                                    listOfNotNull(seg.speakerName, Formatters.formatDurationHms(seg.startMs)).joinToString(" · "),
+                                    fontSize = 11.5.sp, color = Accent, fontWeight = FontWeight.Medium
+                                )
+                                Text(seg.cleanedText ?: seg.text, fontSize = 14.sp, lineHeight = 21.sp, color = Ink)
+                            }
+                        }
+                        if (segments!!.size > shown) Toggle("Show ${minOf(40, segments!!.size - shown)} more of ${segments!!.size - shown} left") { shown += 40 }
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun Toggle(label: String, onClick: () -> Unit) {
+    Text(label, fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(top = 8.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 4.dp, horizontal = 2.dp))
+}
+
+@Composable
+private fun IconButtonSmall(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
+    Box(Modifier.size(36.dp).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(icon, contentDescription = description, tint = InkMuted, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -502,7 +581,10 @@ internal fun ExcerptBlock(block: NoteBlock, onOpen: () -> Unit) {
         Icon(Icons.Filled.FormatQuote, contentDescription = null, tint = Accent, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(8.dp))
         Column {
-            Text(block.content.text, fontSize = 15.sp, lineHeight = 23.sp, color = Ink, fontStyle = FontStyle.Italic)
+            var open by remember { mutableStateOf(false) }
+            Text(block.content.text, fontSize = 15.sp, lineHeight = 23.sp, color = Ink, fontStyle = FontStyle.Italic,
+                maxLines = if (open || block.content.text.length < 400) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis)
+            if (block.content.text.length >= 400) Toggle(if (open) "Show less" else "Read all") { open = !open }
             Text(listOfNotNull(speaker, at).joinToString(" · ").ifBlank { "From the recording" }, fontSize = 12.sp, color = Accent, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp))
         }
     }

@@ -49,14 +49,21 @@ object NoteExportMapper {
         recordings: Map<String, RecordingExportInfo> = emptyMap(),
         passages: Map<String, ExportPassage> = emptyMap(),
         options: NoteExportOptions = NoteExportOptions(),
-        locale: Locale = Locale.getDefault()
+        locale: Locale = Locale.getDefault(),
+        /** Screenshot bars to trim, by attachment id: (top px, bottom px). */
+        crops: Map<String, Pair<Int, Int>> = emptyMap()
     ): ExportDocument {
         val attachments = doc.attachments.associateBy { it.id }
         val refs = doc.scriptureRefs.associateBy { it.id }
         val blocks = doc.blocks
             .sortedBy { it.position }
             .filter { options.includePrivateSections || it.sectionKey == null || it.sectionKey !in options.privateSectionKeys }
-            .mapNotNull { block -> mapBlock(block, attachments, refs, recordings, passages) }
+            .mapNotNull { block -> mapBlock(block, attachments, refs, recordings, passages, crops) }
+        // The cover the person chose leads the document, unless it's already the first picture.
+        val cover = doc.note.metadata[NoteRepository.COVER_KEY]?.let { attachments[it] }
+            ?.takeIf { it.path.isNotBlank() }
+            ?.let { a -> ExportBlock.Image(a.path, null, crops[a.id]?.first ?: 0, crops[a.id]?.second ?: 0) }
+            ?.takeIf { c -> blocks.none { it is ExportBlock.Image && it.path == c.path } }
 
         val subtitle = buildList {
             (doc.note.eventDate ?: doc.note.createdAt).let {
@@ -71,7 +78,7 @@ object NoteExportMapper {
         return ExportDocument(
             title = doc.note.title.ifBlank { "Untitled note" },
             subtitle = subtitle,
-            blocks = trimEmptyEdges(blocks),
+            blocks = listOfNotNull(cover) + trimEmptyEdges(blocks),
             closingNotes = attributions,
             serifBody = options.serifBody
         )
@@ -82,7 +89,8 @@ object NoteExportMapper {
         attachments: Map<String, com.example.core.model.Attachment>,
         refs: Map<String, ScriptureRef>,
         recordings: Map<String, RecordingExportInfo>,
-        passages: Map<String, ExportPassage>
+        passages: Map<String, ExportPassage>,
+        crops: Map<String, Pair<Int, Int>> = emptyMap()
     ): ExportBlock? = when (block.type) {
         NoteBlockType.PARAGRAPH -> ExportBlock.Paragraph(block.content)
         NoteBlockType.HEADING_1 -> ExportBlock.Heading(1, block.content)
@@ -97,14 +105,17 @@ object NoteExportMapper {
             val refId = block.payload[NoteBlock.PAYLOAD_SCRIPTURE_REF_ID]
             val passage = refId?.let { passages[it] }
             val fallbackReference = block.payload["reference"] ?: refId?.let { refs[it] }?.let { describe(it) }
+            val typed = block.payload[NoteBlock.PAYLOAD_USER_TEXT]?.takeIf { it.isNotBlank() }
             when {
+                // Text the person typed is exported as written, with the label they gave it.
+                typed != null -> ExportBlock.Scripture(fallbackReference ?: passage?.reference ?: "Scripture", typed, block.payload[NoteBlock.PAYLOAD_USER_LABEL])
                 passage != null -> ExportBlock.Scripture(passage.reference, passage.text, passage.versionAbbreviation)
                 fallbackReference != null -> ExportBlock.Scripture(fallbackReference, null, null)
                 else -> null
             }
         }
         NoteBlockType.IMAGE -> block.payload[NoteBlock.PAYLOAD_ATTACHMENT_ID]?.let { attachments[it] }
-            ?.let { ExportBlock.Image(it.path, it.caption ?: block.content.text.takeIf { t -> t.isNotBlank() }) }
+            ?.let { ExportBlock.Image(it.path, it.caption ?: block.content.text.takeIf { t -> t.isNotBlank() }, crops[it.id]?.first ?: 0, crops[it.id]?.second ?: 0) }
         NoteBlockType.VIDEO, NoteBlockType.AUDIO -> {
             val attachment = block.payload[NoteBlock.PAYLOAD_ATTACHMENT_ID]?.let { attachments[it] }
             val kind = if (block.type == NoteBlockType.VIDEO) "Video" else "Audio clip"
@@ -186,11 +197,48 @@ class NoteExportService(
         val passages = passageSource?.let { source ->
             doc.scriptureRefs.mapNotNull { ref -> runCatching { source.passage(ref) }.getOrNull()?.let { ref.id to it } }.toMap()
         } ?: emptyMap()
-        return NoteExportMapper.map(doc, recordings, passages, options)
+        return NoteExportMapper.map(doc, recordings, passages, options, crops = ScreenshotBars.cropsFor(context, doc.attachments))
     }
 
     companion object {
         /** The formats a note can be exported as, in the order the export sheet lists them. */
         val NOTE_FORMATS = listOf(ExportFormat.PDF, ExportFormat.DOCX, ExportFormat.MARKDOWN)
+    }
+}
+
+/**
+ * Finds pictures that are screenshots of this phone — exactly the screen's size — and works out
+ * how much to trim: the status bar at the top and the navigation bar at the bottom. The person
+ * kept the screenshot for what's on screen, not for the phone's clock and battery.
+ */
+object ScreenshotBars {
+    fun cropsFor(context: Context, attachments: List<com.example.core.model.Attachment>): Map<String, Pair<Int, Int>> {
+        val metrics = runCatching {
+            val wm = context.getSystemService(android.view.WindowManager::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= 30) wm.maximumWindowMetrics.bounds.let { it.width() to it.height() }
+            else android.util.DisplayMetrics().also { @Suppress("DEPRECATION") wm.defaultDisplay.getRealMetrics(it) }.let { it.widthPixels to it.heightPixels }
+        }.getOrNull() ?: return emptyMap()
+        val top = dimen(context, "status_bar_height")
+        val bottom = dimen(context, "navigation_bar_height")
+        if (top == 0 && bottom == 0) return emptyMap()
+        return attachments.mapNotNull { a ->
+            val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            runCatching { android.graphics.BitmapFactory.decodeFile(a.path, o) }
+            crop(o.outWidth, o.outHeight, metrics.first, metrics.second, top, bottom)?.let { a.id to it }
+        }.toMap()
+    }
+
+    /** The bars to trim for a [w]×[h] picture on a [screenW]×[screenH] phone; null if it isn't a screenshot. */
+    fun crop(w: Int, h: Int, screenW: Int, screenH: Int, top: Int, bottom: Int): Pair<Int, Int>? {
+        if (w <= 0 || h <= 0) return null
+        val portrait = w == minOf(screenW, screenH) && h == maxOf(screenW, screenH)
+        if (!portrait || top + bottom >= h / 3) return null
+        return top to bottom
+    }
+
+    @android.annotation.SuppressLint("DiscouragedApi", "InternalInsetResource")
+    private fun dimen(context: Context, name: String): Int {
+        val id = context.resources.getIdentifier(name, "dimen", "android")
+        return if (id > 0) context.resources.getDimensionPixelSize(id) else 0
     }
 }

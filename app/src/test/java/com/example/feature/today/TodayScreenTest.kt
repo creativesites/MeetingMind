@@ -43,7 +43,10 @@ class TodayScreenTest {
             val rec = notes.createNote(RecordingType.MEETING, title = "Product sync", eventDate = now - 3_600_000L)
             db.meetingDao().insertMeeting(MeetingEntity("m1", "Product sync", now - 3_600_000L, 40 * 60_000L, "LOCAL_RECORDING", "/a.wav", "READY", 3, "en", null, noteId = rec.id))
             notes.createNote(RecordingType.SERMON, title = "Grace that holds", eventDate = now - 7_200_000L)
-            notes.createNote(title = "Ideas for Q4", eventDate = now - 60_000L)
+            notes.createNote(title = "Ideas for Q4", eventDate = now - 60_000L,
+                initialBlocks = listOf(com.example.core.model.NoteBlock("b", "", 0, com.example.core.model.NoteBlockType.PARAGRAPH,
+                    com.example.core.notes.RichText.plain("Launch the referral programme before the holidays; ask Tom about pricing tiers."))), useTemplate = false)
+            notes.createNote(title = "Follow-up with design", eventDate = now - 3_600_000L + 10 * 60_000L)
         }
     }
     @After fun tearDown() { MeetMindDatabase.setInstanceForTest(null); db.close() }
@@ -68,10 +71,13 @@ class TodayScreenTest {
                     onRecordEvent = { _, _, _, _ -> }, onSearch = {}, onNavigateBottomNav = {})
             }
         }
-        settle { vm.items.value.size == 3 }
+        settle { vm.items.value.size == 4 }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/today_full.png")
-        assertEquals(setOf("Product sync", "Grace that holds", "Ideas for Q4"), vm.items.value.map { it.title }.toSet())
+        assertEquals(setOf("Product sync", "Grace that holds", "Ideas for Q4", "Follow-up with design"), vm.items.value.map { it.title }.toSet())
+        compose.onNodeWithTag("view_day").performClick()
+        settle { vm.view.value == CalendarView.DAY && vm.items.value.isNotEmpty() }
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/today_day.png")
 
         compose.onNodeWithTag("view_month").performClick()
         settle { vm.view.value == CalendarView.MONTH }

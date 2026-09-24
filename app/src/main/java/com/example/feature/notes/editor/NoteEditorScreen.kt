@@ -2,6 +2,7 @@ package com.example.feature.notes.editor
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.platform.testTag
 import com.example.ui.theme.SurfaceSunk
@@ -80,6 +81,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -167,6 +169,9 @@ fun NoteEditorScreen(
     var showNoteLinks by remember { mutableStateOf(false) }
     var showScriptureEntry by remember { mutableStateOf(false) }
     var showPrayerUpdate by remember { mutableStateOf(false) }
+    val coverPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri -> if (uri != null) viewModel.setCover(uri) }
     val aiJobs by viewModel.aiJobs.collectAsState()
     var showAiMenu by remember { mutableStateOf(false) }
     var showAsk by remember { mutableStateOf(false) }
@@ -303,6 +308,10 @@ fun NoteEditorScreen(
                 Box {
                     IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = Ink) }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, containerColor = Color.White) {
+                        DropdownMenuItem(text = { Text("Cover image") }, leadingIcon = { Icon(Icons.Filled.Image, null) }, onClick = {
+                            showMenu = false
+                            coverPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        })
                         DropdownMenuItem(text = { Text("AI tools") }, leadingIcon = { Icon(Icons.Filled.AutoAwesome, null, tint = Accent) }, onClick = { showMenu = false; showAiMenu = true })
                         DropdownMenuItem(text = { Text("Export & share") }, leadingIcon = { Icon(Icons.Filled.IosShare, null) }, onClick = { showMenu = false; showExport = true })
                         DropdownMenuItem(text = { Text("Move to notebook") }, leadingIcon = { Icon(Icons.Filled.Folder, null) }, onClick = { showMenu = false; showNotebooks = true })
@@ -354,6 +363,24 @@ fun NoteEditorScreen(
                 .padding(padding),
             contentPadding = PaddingValues(start = 14.dp, end = 20.dp, bottom = 120.dp)
         ) {
+            val coverPath = currentNote.metadata[com.example.core.repository.NoteRepository.COVER_KEY]?.let { attachments[it]?.path }
+            if (coverPath != null && java.io.File(coverPath).exists()) item(key = "cover") {
+                Box(Modifier.padding(start = 8.dp, bottom = 12.dp).fillMaxWidth().height(200.dp).clip(RoundedCornerShape(20.dp))) {
+                    coil.compose.AsyncImage(
+                        model = java.io.File(coverPath), contentDescription = "Cover",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                    )
+                    Row(Modifier.align(Alignment.BottomEnd).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Surface(onClick = { coverPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            shape = RoundedCornerShape(50), color = Color.Black.copy(alpha = 0.55f)) {
+                            Text("Change cover", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                        }
+                        Surface(onClick = { viewModel.removeCover() }, shape = RoundedCornerShape(50), color = Color.Black.copy(alpha = 0.55f)) {
+                            Text("Remove", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                        }
+                    }
+                }
+            }
             item(key = "title") {
                 Column(Modifier.padding(start = 22.dp, top = 6.dp)) {
                     Box {
@@ -549,7 +576,7 @@ fun NoteEditorScreen(
         )
     }
     if (showScriptureEntry) ScriptureEntryDialog(
-        onInsert = { viewModel.insertScripture(it); showScriptureEntry = false },
+        onInsert = { refs, own, label -> viewModel.insertScriptures(refs, own, label); showScriptureEntry = false },
         onDismiss = { showScriptureEntry = false },
         onOpenBible = { search -> showScriptureEntry = false; bibleDialog = search }
     )
@@ -749,7 +776,9 @@ private fun BlockContent(
         block.type == NoteBlockType.RECORDING -> RecordingBlock(
             card = block.payload[NoteBlock.PAYLOAD_MEETING_ID]?.let { recordings[it] },
             onPlay = onPlay,
-            onOpen = { onOpenRecording(it.meetingId, null) }
+            onOpen = { onOpenRecording(it.meetingId, null) },
+            loadTranscript = { viewModel.transcriptOf(it) },
+            onPlayAt = { meetingId, ms -> onOpenRecording(meetingId, ms) }
         )
         block.type == NoteBlockType.TRANSCRIPT_EXCERPT -> ExcerptBlock(block) {
             block.payload[NoteBlock.PAYLOAD_MEETING_ID]?.let { onOpenRecording(it, block.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()) }
@@ -765,6 +794,8 @@ private fun BlockContent(
                 com.example.feature.scripture.ScriptureCard(
                     reference = ref,
                     heardAtMs = at,
+                    userText = block.payload[NoteBlock.PAYLOAD_USER_TEXT],
+                    userLabel = block.payload[NoteBlock.PAYLOAD_USER_LABEL],
                     onOpen = { onOpenScripture(block) },
                     onPlay = if (meetingId != null && at != null) ({ onOpenRecording(meetingId, at) }) else null,
                     modifier = Modifier.padding(vertical = 5.dp)

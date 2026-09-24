@@ -350,6 +350,32 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         }
     }
 
+    /** A recording's transcript, for reading it in place inside the note. */
+    suspend fun transcriptOf(meetingId: String): List<com.example.core.model.TranscriptSegment> =
+        com.example.core.repository.TranscriptRepository(database).getTranscriptDirect(meetingId).segments
+
+    /** The note's cover picture: shown on its timeline card and at the top of the note. */
+    fun setCover(uri: Uri) {
+        viewModelScope.launch {
+            val attachment = media.import(noteId, uri) ?: run { _message.value = "Couldn't use that picture"; return@launch }
+            val old = _note.value?.metadata?.get(NoteRepository.COVER_KEY)
+            setMetadata(mapOf(NoteRepository.COVER_KEY to attachment.id)).join()
+            old?.let { dropUnusedAttachment(it) }
+        }
+    }
+
+    fun removeCover() {
+        viewModelScope.launch {
+            val old = _note.value?.metadata?.get(NoteRepository.COVER_KEY) ?: return@launch
+            setMetadata(mapOf(NoteRepository.COVER_KEY to "")).join()
+            dropUnusedAttachment(old)
+        }
+    }
+
+    private suspend fun dropUnusedAttachment(id: String) {
+        if (_blocks.value.none { it.payload[NoteBlock.PAYLOAD_ATTACHMENT_ID] == id }) notes.deleteAttachment(id)
+    }
+
     /** A capture target for the camera; call [adoptCapture] once it has written the file. */
     fun captureTarget(video: Boolean) = media.newCaptureTarget(noteId, if (video) "mp4" else "jpg")
 
@@ -363,29 +389,43 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     fun shareableUri(file: File): Uri = media.shareableUri(file)
 
     /** Adds a Bible passage the person chose. Its text is fetched live wherever it's shown. */
-    fun insertScripture(reference: com.example.core.scripture.ScriptureReference, versionId: Int? = null) {
-        val blockId = NoteRepository.newId("block")
-        val refId = NoteRepository.newId("scripture")
-        insert(
-            listOf(
-                NoteBlock(
-                    id = blockId, noteId = noteId, position = 0, type = NoteBlockType.SCRIPTURE,
-                    content = RichText.plain(reference.display()),
-                    payload = mapOf(NoteBlock.PAYLOAD_SCRIPTURE_REF_ID to refId, "reference" to reference.display()),
-                    source = BlockSource.SCRIPTURE
-                )
+    fun insertScripture(reference: com.example.core.scripture.ScriptureReference, versionId: Int? = null) =
+        insertScriptures(listOf(reference), versionId = versionId)
+
+    /**
+     * Adds passages in the order given, as one block each. [userText] is text the person typed
+     * for a single passage; it is shown instead of the fetched text, labelled as theirs.
+     */
+    fun insertScriptures(
+        references: List<com.example.core.scripture.ScriptureReference>,
+        userText: String? = null,
+        userLabel: String? = null,
+        versionId: Int? = null
+    ) {
+        if (references.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val made = references.map { reference ->
+            val blockId = NoteRepository.newId("block")
+            val refId = NoteRepository.newId("scripture")
+            val payload = buildMap {
+                put(NoteBlock.PAYLOAD_SCRIPTURE_REF_ID, refId)
+                put("reference", reference.display())
+                if (userText != null && references.size == 1) {
+                    put(NoteBlock.PAYLOAD_USER_TEXT, userText)
+                    userLabel?.let { put(NoteBlock.PAYLOAD_USER_LABEL, it) }
+                }
+            }
+            val block = NoteBlock(
+                id = blockId, noteId = noteId, position = 0, type = NoteBlockType.SCRIPTURE,
+                content = RichText.plain(reference.display()), payload = payload, source = BlockSource.SCRIPTURE
             )
-        )
-        viewModelScope.launch {
-            notes.addScriptureRefs(
-                listOf(
-                    com.example.core.model.ScriptureRef(
-                        refId, noteId, blockId, reference.usfm, reference.chapter, reference.verseStart, reference.verseEnd,
-                        versionId, com.example.core.model.ScriptureOrigin.USER, createdAt = System.currentTimeMillis()
-                    )
-                )
+            block to com.example.core.model.ScriptureRef(
+                refId, noteId, blockId, reference.usfm, reference.chapter, reference.verseStart, reference.verseEnd,
+                versionId, com.example.core.model.ScriptureOrigin.USER, createdAt = now
             )
         }
+        insert(made.map { it.first })
+        viewModelScope.launch { notes.addScriptureRefs(made.map { it.second }) }
     }
 
     fun insertNoteLink(target: Note) {

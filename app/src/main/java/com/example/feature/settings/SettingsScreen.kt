@@ -153,6 +153,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setSpaces(spaces: Set<com.example.core.model.NotebookSpace>) = viewModelScope.launch { userPrefs.setSpaces(spaces) }
     fun setLook(look: com.example.core.identity.LookAndFeel) = viewModelScope.launch { userPrefs.setLook(look) }
+    fun setCardStyle(style: com.example.core.identity.CardStyle) = viewModelScope.launch { userPrefs.setCardStyle(style) }
     fun setAvatar(uri: android.net.Uri) = viewModelScope.launch {
         com.example.core.identity.AvatarStore.save(getApplication(), uri)?.let { userPrefs.setAvatarPath(it) }
     }
@@ -209,6 +210,19 @@ fun SettingsScreen(
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
                 Text("Look & feel", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(bottom = 14.dp))
                 com.example.core.identity.LookPicker(prefs.identity.look) { viewModel.setLook(it) }
+                Text("Cards", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 20.dp, bottom = 10.dp))
+                com.example.core.identity.CardStyle.entries.forEach { style ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { viewModel.setCardStyle(style) }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.RadioButton(selected = prefs.identity.cardStyle == style, onClick = { viewModel.setCardStyle(style) })
+                        Column {
+                            Text(style.label, fontWeight = FontWeight.SemiBold, color = Ink)
+                            Text(style.description, fontSize = 12.5.sp, color = InkMuted)
+                        }
+                    }
+                }
             }
         }
     }

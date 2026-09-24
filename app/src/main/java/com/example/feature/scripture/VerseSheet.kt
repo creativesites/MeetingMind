@@ -95,9 +95,13 @@ fun ScriptureCard(
     heardAtMs: Long?,
     onOpen: () -> Unit,
     onPlay: (() -> Unit)?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Text the person typed for this passage; shown instead of fetching. */
+    userText: String? = null,
+    userLabel: String? = null
 ) {
-    val result = rememberPassage(reference)
+    val result = if (userText.isNullOrBlank()) rememberPassage(reference)
+        else PassageResult.Found(com.example.core.scripture.Passage(reference, userText, 0, userLabel ?: "Your text", "Typed by you"))
     Column(
         modifier
             .fillMaxWidth()
@@ -123,10 +127,19 @@ fun ScriptureCard(
         }
         when (result) {
             null -> Text("Loading…", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 8.dp))
-            is PassageResult.Found -> Text(
-                result.passage.text, fontSize = 15.sp, lineHeight = 23.sp, color = InkSecondary, fontFamily = FontFamily.Serif,
-                maxLines = 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp)
-            )
+            is PassageResult.Found -> {
+                // Long passages open in place: no need to leave the note to read them all.
+                var open by remember(reference) { mutableStateOf(false) }
+                val long = result.passage.text.length > 420
+                Text(
+                    result.passage.text, fontSize = 15.sp, lineHeight = 23.sp, color = InkSecondary, fontFamily = FontFamily.Serif,
+                    maxLines = if (open || !long) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp)
+                )
+                if (long) Text(
+                    if (open) "Show less" else "Read the whole passage", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(vertical = 4.dp)
+                )
+            }
             is PassageResult.Unavailable -> Text(result.message, fontSize = 13.sp, color = InkMuted, fontStyle = FontStyle.Italic, modifier = Modifier.padding(top = 8.dp))
         }
     }

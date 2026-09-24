@@ -471,8 +471,9 @@ class NoteRepository(
         noteDao.observeTagCountsForWorkflows(workflows.map { it.name }),
         noteDao.observeTopicCountsForWorkflows(workflows.map { it.name })
     ) { tags, topics ->
-        (tags + topics).groupBy { it.name.trim().lowercase() }
-            .map { (_, list) -> com.example.core.database.NameCount(list.first().name.trim(), list.sumOf { it.count }) }
+        (tags + topics).mapNotNull { nc -> com.example.core.common.Labels.clean(nc.name)?.let { nc.copy(name = it) } }
+            .groupBy { it.name.lowercase() }
+            .map { (_, list) -> com.example.core.database.NameCount(list.first().name, list.sumOf { it.count }) }
             .sortedByDescending { it.count }
     }.flowOn(Dispatchers.IO)
 
@@ -667,6 +668,8 @@ class NoteRepository(
 
     companion object {
         const val CALENDAR_EVENT_KEY = "calendarEvent"
+        /** Metadata: the attachment id of the note's chosen cover picture. */
+        const val COVER_KEY = "cover"
 
         /**
          * [blocks] with a dated update added under the Updates section — after its last block,

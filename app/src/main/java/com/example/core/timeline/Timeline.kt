@@ -52,6 +52,8 @@ data class TimelineItem(
     val end: Long?,
     val title: String,
     val subtitle: String?,
+    /** A line or two that tells similar items apart: a recording's summary, a note's first words. */
+    val summary: String? = null,
     /** A picture for the card: a note's photo. Null → the card draws its layer's gradient. */
     val coverPath: String?,
     val accent: Long,
@@ -105,7 +107,7 @@ object TimelineDays {
  */
 object TimelineAssembler {
 
-    data class MeetingInfo(val id: String, val durationMs: Long, val status: String, val createdAt: Long)
+    data class MeetingInfo(val id: String, val durationMs: Long, val status: String, val createdAt: Long, val summary: String? = null)
 
     fun assemble(
         notes: List<Note>,
@@ -127,6 +129,7 @@ object TimelineAssembler {
                     id = "ev:${e.key}", layer = TimelineLayer.EVENTS, kind = ItemKind.EVENT, start = e.begin, end = e.end,
                     title = e.title, subtitle = listOfNotNull(e.location, e.calendarName).joinToString(" · ").ifBlank { null },
                     coverPath = note?.let { coverByNote[it.id] }, accent = e.color?.toLong()?.and(0xFFFFFFFFL) ?: TimelineLayer.EVENTS.color,
+                    summary = note?.let { summaryOf(it, meetingsByNote[it.id].orEmpty()) },
                     workflow = note?.workflow, people = e.otherPeople,
                     badge = when { recorded -> "Recorded"; note != null -> "Notes" ; else -> null },
                     allDay = e.allDay,
@@ -156,10 +159,10 @@ object TimelineAssembler {
                 start = start, end = if (duration > 0) start + duration else null,
                 title = n.title.ifBlank { n.workflow.displayName },
                 subtitle = listOfNotNull(
-                    n.workflow.displayName.takeIf { n.workflow != RecordingType.GENERAL },
                     duration.takeIf { it > 0 }?.let { formatDuration(it) },
                     n.metadata["speaker"], n.metadata["participants"]?.let { "With $it" }
                 ).joinToString(" · ").ifBlank { null },
+                summary = summaryOf(n, meetings),
                 coverPath = coverByNote[n.id], accent = layer.color, workflow = n.workflow,
                 people = n.metadata["participants"]?.split(", ").orEmpty(),
                 badge = when {
@@ -186,6 +189,20 @@ object TimelineAssembler {
         return items.sortedWith(compareBy<TimelineItem> { it.allDay.not() }.thenBy { it.start })
     }
 
+    /**
+     * What makes this one recognisable at a glance: the recording's summary when there is one,
+     * else the note's own first words — skipping the title and template headings, which every
+     * note of a kind shares.
+     */
+    fun summaryOf(n: Note, meetings: List<MeetingInfo>): String? {
+        meetings.firstNotNullOfOrNull { it.summary?.trim()?.takeIf { s -> s.isNotEmpty() } }?.let { return clip(it) }
+        val skip = (com.example.core.model.Workflows.template(n.workflow).sections.map { it.title.trim().lowercase() } + n.title.trim().lowercase()).toSet()
+        val lines = n.plainText.lines().map { it.trim() }.filter { it.isNotEmpty() && it.lowercase() !in skip }
+        return lines.take(3).joinToString(" · ").takeIf { it.isNotBlank() }?.let(::clip)
+    }
+
+    private fun clip(s: String) = if (s.length <= 180) s else s.take(177).trimEnd() + "…"
+
     fun formatDuration(ms: Long): String {
         val minutes = (ms / 60_000).toInt()
         return if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "${maxOf(minutes, 1)} min"
@@ -208,8 +225,7 @@ class TimelineRepository(
         val meetings = if (ids.isEmpty()) emptyList() else ids.chunked(500).flatMap { noteDao.getMeetingsForNotes(it) }
         val openTasks = if (meetings.isEmpty()) emptyMap() else meetings.map { it.id }.chunked(500)
             .flatMap { database.actionItemDao().getOpenForMeetings(it) }.groupingBy { it.meetingId }.eachCount()
-        val covers = if (ids.isEmpty()) emptyMap() else ids.chunked(500).flatMap { database.attachmentDao().getImagesForNotes(it) }
-            .groupBy { it.noteId }.mapValues { it.value.first().path }
+        val covers = coversFor(notes + answered)
         val events = if (includeCalendar && TimelineLayer.EVENTS in layers && calendar.hasPermission()) calendar.between(from, to) else emptyList()
         TimelineAssembler.assemble(
             notes, meetings.groupBy { it.noteId.orEmpty() }.mapValues { (_, list) -> list.map { it.info() } },
@@ -221,8 +237,7 @@ class TimelineRepository(
     suspend fun onThisDay(day: Long): List<TimelineItem> = withContext(Dispatchers.IO) {
         val md = java.text.SimpleDateFormat("MM-dd", java.util.Locale.US).format(java.util.Date(day))
         val notes = database.noteDao().getOnThisDay(md, TimelineDays.startOfDay(day)).map { it.toDomain() }
-        val covers = if (notes.isEmpty()) emptyMap() else database.attachmentDao().getImagesForNotes(notes.map { it.id })
-            .groupBy { it.noteId }.mapValues { it.value.first().path }
+        val covers = coversFor(notes)
         notes.map { n ->
             val years = Calendar.getInstance().apply { timeInMillis = day }.get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = n.eventDate ?: n.createdAt }.get(Calendar.YEAR)
             TimelineItem(
@@ -243,5 +258,17 @@ class TimelineRepository(
         }
     }
 
-    private fun MeetingEntity.info() = TimelineAssembler.MeetingInfo(id, durationMs, status, createdAt)
+    private fun MeetingEntity.info() = TimelineAssembler.MeetingInfo(id, durationMs, status, createdAt, summaryText)
+
+    /** A note's chosen cover, else its first photo. */
+    private suspend fun coversFor(notes: List<Note>): Map<String, String> {
+        if (notes.isEmpty()) return emptyMap()
+        val attachmentDao = database.attachmentDao()
+        val first = notes.map { it.id }.distinct().chunked(500).flatMap { attachmentDao.getImagesForNotes(it) }
+            .groupBy { it.noteId }.mapValues { it.value.first().path }
+        val chosen = notes.mapNotNull { n ->
+            n.metadata[NoteRepository.COVER_KEY]?.takeIf { it.isNotBlank() }?.let { id -> attachmentDao.getById(id)?.let { n.id to it.path } }
+        }.toMap()
+        return first + chosen
+    }
 }

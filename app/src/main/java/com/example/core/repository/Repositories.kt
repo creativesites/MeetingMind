@@ -497,7 +497,7 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
     }.flowOn(Dispatchers.IO)
 
     fun getTopics(meetingId: String): Flow<List<Topic>> = topicDao.getTopicsForMeeting(meetingId).map { list ->
-        list.map { Topic(it.id, it.meetingId, it.name, it.relevance) }
+        list.mapNotNull { t -> com.example.core.common.Labels.clean(t.name)?.let { Topic(t.id, t.meetingId, it, t.relevance) } }
     }.flowOn(Dispatchers.IO)
 
     fun getChatMessages(meetingId: String): Flow<List<ChatMessage>> = chatMessageDao.getChatMessagesForMeeting(meetingId).map { list ->

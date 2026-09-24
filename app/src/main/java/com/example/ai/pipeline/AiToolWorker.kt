@@ -245,7 +245,7 @@ class AiToolWorker(
                 }
 
             TranscriptAiToolType.IDENTIFY_TOPICS -> database.topicDao().getTopicsForMeetingDirect(meetingId)
-                .map { ToolFinding(text = it.name) }
+                .mapNotNull { t -> com.example.core.common.Labels.clean(t.name)?.let { ToolFinding(text = it) } }
 
             else -> emptyList()
         }

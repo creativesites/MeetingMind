@@ -100,6 +100,7 @@ class UserPreferencesManager(private val context: Context) {
     private val LOOK = stringPreferencesKey("identity_look")
     private val AVATAR_PATH = stringPreferencesKey("identity_avatar")
     private val TIMELINE_LAYERS = stringSetPreferencesKey("timeline_layers")
+    private val CARD_STYLE = stringPreferencesKey("identity_card_style")
     private val TIMELINE_VIEW = stringPreferencesKey("timeline_view")
 
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
@@ -140,7 +141,9 @@ class UserPreferencesManager(private val context: Context) {
                 look = prefs[LOOK]?.let { runCatching { com.example.core.identity.LookAndFeel.valueOf(it) }.getOrNull() }
                     ?: com.example.core.identity.LookAndFeel.PROFESSIONAL,
                 displayName = prefs[USER_NAME],
-                avatarPath = prefs[AVATAR_PATH]
+                avatarPath = prefs[AVATAR_PATH],
+                cardStyle = prefs[CARD_STYLE]?.let { runCatching { com.example.core.identity.CardStyle.valueOf(it) }.getOrNull() }
+                    ?: com.example.core.identity.CardStyle.CLASSIC
             ),
             timelineLayers = prefs[TIMELINE_LAYERS],
             timelineView = prefs[TIMELINE_VIEW] ?: "AGENDA"
@@ -157,6 +160,10 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setLook(look: com.example.core.identity.LookAndFeel) {
         context.dataStore.edit { it[LOOK] = look.name }
+    }
+
+    suspend fun setCardStyle(style: com.example.core.identity.CardStyle) {
+        context.dataStore.edit { it[CARD_STYLE] = style.name }
     }
 
     suspend fun setAvatarPath(path: String?) {

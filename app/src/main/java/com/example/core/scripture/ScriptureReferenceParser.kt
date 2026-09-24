@@ -67,6 +67,32 @@ object ScriptureReferenceParser {
      */
     fun parse(text: String): ScriptureReference? = findAll(text, lenient = true).firstOrNull()?.reference
 
+    /**
+     * Parses a typed list of references: "John 3:16-18; Rom 8:28, 31-39", one per line, or a whole
+     * chapter. A part without a book continues the one before it: "8:28, 31" is Romans 8:28 and
+     * Romans 8:31, "4:1-6" after John 3 is John 4:1–6. Parts that aren't references are skipped.
+     */
+    fun parseList(text: String): List<ScriptureReference> {
+        val out = mutableListOf<ScriptureReference>()
+        var last: ScriptureReference? = null
+        for (raw in text.split(Regex("[;,\\n]"))) {
+            val part = raw.trim().trimEnd('.')
+            if (part.isEmpty()) continue
+            val found = findAll(part, lenient = true).map { it.reference }
+            if (found.isNotEmpty()) { out += found; last = found.last(); continue }
+            val prev = last ?: continue
+            val name = prev.book.name
+            val guess = when {
+                Regex("""\d+\s*[:.]\s*\d+.*""").matches(part) -> parse("$name $part")
+                Regex("""\d+(\s*[-–—]\s*\d+)?""").matches(part) && prev.verseStart != null -> parse("$name ${prev.chapter}:$part")
+                Regex("""\d+""").matches(part) -> parse("$name $part")
+                else -> null
+            }
+            if (guess != null) { out += guess; last = guess }
+        }
+        return out.distinct()
+    }
+
     // ------------------------------------------------------------------ tokens
 
     private enum class Kind { WORD, NUMBER, COLON, DASH, COMMA, OTHER }

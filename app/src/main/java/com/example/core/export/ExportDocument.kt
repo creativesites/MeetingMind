@@ -45,7 +45,12 @@ sealed interface ExportBlock {
     data class Excerpt(val label: String?, val text: String) : ExportBlock
 
     /** An image file already on disk. */
-    data class Image(val path: String, val caption: String?) : ExportBlock
+    /**
+     * A picture, drawn across the full content width. [cropTop] and [cropBottom] are source pixels
+     * to trim — a phone screenshot's status and navigation bars, which aren't part of what the
+     * person meant to keep.
+     */
+    data class Image(val path: String, val caption: String?, val cropTop: Int = 0, val cropBottom: Int = 0) : ExportBlock
 
     /** A recording in the note: its title, length and summary. The audio itself is not exported. */
     data class Recording(val title: String, val detail: String?, val summary: String?) : ExportBlock

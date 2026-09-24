@@ -816,7 +816,7 @@ class MeetingProcessingPipeline(
             }
         )
         topicDao.insertTopics(
-            summary.topics.map {
+            summary.topics.mapNotNull { com.example.core.common.Labels.clean(it) }.distinctBy { it.lowercase() }.map {
                 TopicEntity(
                     id = UUID.randomUUID().toString(),
                     meetingId = meetingId,

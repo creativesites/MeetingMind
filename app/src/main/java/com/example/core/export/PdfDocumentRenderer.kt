@@ -33,7 +33,7 @@ object PdfDocumentRenderer {
 
     private const val PAGE_WIDTH = 595 // A4 at 72 dpi
     private const val PAGE_HEIGHT = 842
-    private const val MARGIN = 56f
+    private const val MARGIN = 46f
     private const val FOOTER_SPACE = 28f
     private const val CONTENT_WIDTH = (PAGE_WIDTH - 2 * MARGIN).toInt()
 
@@ -192,10 +192,15 @@ object PdfDocumentRenderer {
                 text(RichText.plain("[Image not available]"), body(italic = true, color = MUTED), after = 6f)
                 return
             }
-            val maxHeight = (bottom - MARGIN) * 0.8f
-            var w = minOf(CONTENT_WIDTH.toFloat(), bounds.outWidth.toFloat())
-            var h = w * bounds.outHeight / bounds.outWidth
-            if (h > maxHeight) { h = maxHeight; w = h * bounds.outWidth / bounds.outHeight }
+            val cropTop = block.cropTop.coerceIn(0, bounds.outHeight / 3)
+            val cropBottom = block.cropBottom.coerceIn(0, bounds.outHeight / 3)
+            val srcH = bounds.outHeight - cropTop - cropBottom
+            // Pictures fill the content width; a very tall one (a long screenshot) is capped at a
+            // full page and centred.
+            val maxHeight = bottom - MARGIN
+            var w = CONTENT_WIDTH.toFloat()
+            var h = w * srcH / bounds.outWidth
+            if (h > maxHeight) { h = maxHeight; w = h * bounds.outWidth / srcH }
             // Decode only as many pixels as the page can show (about 2x for print sharpness).
             var sample = 1
             while (bounds.outWidth / (sample * 2) >= w * 2) sample *= 2
@@ -206,7 +211,8 @@ object PdfDocumentRenderer {
             }
             if (y + h > bottom) newPage()
             val left = MARGIN + (CONTENT_WIDTH - w) / 2f
-            canvas.drawBitmap(bitmap, null, RectF(left, y, left + w, y + h), Paint(Paint.FILTER_BITMAP_FLAG))
+            val src = android.graphics.Rect(0, cropTop / sample, bitmap.width, bitmap.height - cropBottom / sample)
+            canvas.drawBitmap(bitmap, src, RectF(left, y, left + w, y + h), Paint(Paint.FILTER_BITMAP_FLAG))
             bitmap.recycle()
             y += h + 4f
             block.caption?.takeIf { it.isNotBlank() }?.let {
@@ -282,7 +288,7 @@ object PdfDocumentRenderer {
             return builder
         }
 
-        private fun body(size: Float = 10.5f, italic: Boolean = false, color: Int = INK) =
+        private fun body(size: Float = 11f, italic: Boolean = false, color: Int = INK) =
             paint(size, color, italic = italic, face = bodyFace)
 
         private fun paint(size: Float, color: Int, bold: Boolean = false, italic: Boolean = false, face: Typeface = bodyFace) =
