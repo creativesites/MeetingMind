@@ -138,7 +138,11 @@ class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
         _ui.value = _ui.value.copy(savedNoteId = note.id)
     }
 
-    fun reset() { _ui.value = _ui.value.copy(started = false, lines = emptyList(), error = null, savedNoteId = null, muted = false) }
+    fun reset() {
+        session?.end(); session = null
+        jobs.forEach { it.cancel() }; jobs.clear()
+        _ui.value = _ui.value.copy(started = false, lines = emptyList(), error = null, savedNoteId = null, muted = false)
+    }
 
     override fun onCleared() { end(); super.onCleared() }
 }

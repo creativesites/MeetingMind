@@ -184,7 +184,9 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToModels: () -> Unit = {},
     onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit = {},
-    onOpenBible: () -> Unit = {}
+    onOpenBible: () -> Unit = {},
+    onOpenSetup: () -> Unit = {},
+    onReplayTour: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs by viewModel.preferencesState.collectAsState()
@@ -385,6 +387,20 @@ fun SettingsScreen(
             }
 
             settingsSection(title = "AI & Models") {
+                settingsRow {
+                    SettingsNavRow(
+                        title = "Setup guide",
+                        subtitle = "What the app needs to transcribe and summarise, and one tap to get it",
+                        onClick = onOpenSetup
+                    )
+                }
+                settingsRow {
+                    SettingsNavRow(
+                        title = "Show me around again",
+                        subtitle = "Replay the quick tour of Home",
+                        onClick = onReplayTour
+                    )
+                }
                 settingsRow {
                     SettingsNavRow(
                         title = "AI Engine",

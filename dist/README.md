@@ -1,6 +1,50 @@
 # Installable builds
 
-`MeetingMind-v27-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v28-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+
+## What's new in v28
+
+- **A new icon**, and one brand colour system taken from it (cyan to violet on deep navy).
+- **A new welcome.** First run is now six short steps:
+  1. A welcome.
+  2. What the app does.
+  3. Your name.
+  4. What you'll use it for.
+  5. How the AI runs.
+  6. Microphone and notification permissions.
+- **Setup people can't get wrong.**
+  - The app explains its AI as three jobs instead of model names:
+    - **Hearing** (speech to text)
+    - **Who spoke** (telling voices apart)
+    - **Thinking** (summaries and answers)
+  - One tap gets all three, sized for your phone, and they download in the background.
+  - Home keeps a setup card until you're done. "Later" hides it for a day.
+  - If you downloaded only a language model, it tells you plainly that the app can't hear
+    yet, and that warning can't be snoozed.
+  - Record shows the same reminder.
+  - Settings → Setup guide explains each piece and offers Internet mode as the alternative.
+- **Record is front and centre on Home.** A big Record button sits under the header, with Note
+  and Import beside it. The New button in the bar now uses the brand colours.
+- **Getting started.** New people see four first steps that tick themselves off:
+  1. Record something.
+  2. Write a note.
+  3. Show your calendar.
+  4. Read today's devotional.
+- **A quick tour** of Home on first run: Record, New, stories, what's next, search and setup.
+  Replay it from Settings → Show me around again.
+- **Story rings are one family:**
+  - New stories get the brand gradient ring; ones you've seen turn grey.
+  - Every story has the same deep-navy face.
+  - No more rainbow.
+- **Fixes:**
+  - **Pray with me and Talk it through now connect.** The Gemini Live connection was being
+    dropped by a keep-alive the server doesn't answer. It now fails clearly, within 15 seconds,
+    with a reason you can act on (bad key, quota, no connection), and "Pray again" retries.
+  - **Writing a new devotional no longer spins forever.** Each AI model gets a time limit, then
+    the classic stands in. The picture and voice are made after the words appear. If writing
+    fails you see why, with Try again.
+  - **Share on the prayer story works.** The three buttons didn't fit on a phone, and tapping
+    Share also turned the page and closed the stories.
 
 ## What's new in v27
 

@@ -3,6 +3,10 @@ package com.example.feature.stories
 import android.content.Context
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.assertIsDisplayed
+import org.junit.Assert.assertEquals
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.core.database.MeetMindDatabase
@@ -63,6 +67,20 @@ class StoriesTest {
         compose.setContent { MeetMindTheme { StoryPager(stories, null, {}, {}, {}, autoAdvance = false) } }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/story_verse.png")
+    }
+
+    @Test fun `share on the last prayer story shares, and doesn't close the stories`() {
+        val prayer = Story(StoryKind.PRAYER, "A prayer", title = "A prayer for today", body = "Lord, steady my heart today.", background = BackgroundSpec.Pack("dawn"),
+            share = ShareCardContent("A prayer for today", "Lord, steady my heart today.", quoted = false), open = StoryOpen.Devotional, openLabel = "Open the devotional")
+        var shared = 0
+        var closed = 0
+        compose.setContent { MeetMindTheme { StoryPager(listOf(prayer), null, onClose = { closed++ }, onOpen = {}, onShare = { shared++ }, autoAdvance = false, onAction = {}) } }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/story_prayer.png")
+        compose.onNodeWithTag("story_share").assertIsDisplayed().performClick()
+        compose.waitForIdle()
+        assertEquals(1, shared)
+        assertEquals(0, closed)
     }
 
     @Test fun `the share studio`() {

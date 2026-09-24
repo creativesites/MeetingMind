@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -40,6 +41,22 @@ import java.util.Calendar
 enum class CalendarView(val label: String) { AGENDA("Agenda"), DAY("Day"), WEEK("Week"), MONTH("Month"), RIVER("Timeline") }
 
 /** A quick lens on Today, separate from the person's settings: everything, or one space. */
+/** The "Getting started" checklist (see TodayViewModel.gettingStarted). */
+data class GettingStarted(
+    val recorded: Boolean = false,
+    val wrote: Boolean = false,
+    val calendar: Boolean = false,
+    val devotional: Boolean = false,
+    val showsFaith: Boolean = false,
+    val dismissed: Boolean = false,
+    /** Nothing recorded or written yet: Home shows the welcome instead of an empty calendar. */
+    val isNew: Boolean = true
+) {
+    val steps: Int get() = if (showsFaith) 4 else 3
+    val done: Int get() = listOf(recorded, wrote, calendar).count { it } + (if (showsFaith && devotional) 1 else 0)
+    val visible: Boolean get() = !dismissed && done < steps
+}
+
 enum class TodayFocus(val label: String) { ALL("Everything"), FAITH("Faith"), WORK("Work & study") }
 
 /** What Home's "Up next" tile shows. */
@@ -90,6 +107,29 @@ class TodayViewModel(application: Application) : AndroidViewModel(application) {
         com.example.core.devotional.DevotionalRepository(application).observe(com.example.core.devotional.LocalDay.today())
             .let { f -> kotlinx.coroutines.flow.flow { try { f.collect { emit(it) } } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; emit(null) } } }
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** First steps for someone new, each ticking itself off as it happens. */
+    val gettingStarted: StateFlow<GettingStarted?> = kotlinx.coroutines.flow.combine(
+        database.meetingDao().getMeetingCountFlow(),
+        database.noteDao().observeWrittenCount(),
+        prefs.preferencesFlow,
+        devotional
+    ) { recordings, written, p, d ->
+        GettingStarted(
+            recorded = recordings > 0, wrote = written > 0,
+            calendar = p.calendarEnabled && calendar.hasPermission(),
+            devotional = d?.note?.metadata?.get(com.example.core.devotional.DevotionalNotes.META_OPENED) != null,
+            showsFaith = p.identity.showsFaith,
+            dismissed = p.gettingStartedDismissed,
+            isNew = recordings == 0 && written == 0
+        )
+    }.catch { emit(GettingStarted()) }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Null until known, so the tour doesn't flash for people who've seen it. */
+    val tourCompleted: StateFlow<Boolean?> = prefs.preferencesFlow.map { it.tourCompleted }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun finishTour() = viewModelScope.launch { prefs.setTourCompleted(true) }
+    fun dismissGettingStarted() = viewModelScope.launch { prefs.setGettingStartedDismissed(true) }
 
     private val _focus = MutableStateFlow(TodayFocus.ALL)
     val focus: StateFlow<TodayFocus> = _focus.asStateFlow()

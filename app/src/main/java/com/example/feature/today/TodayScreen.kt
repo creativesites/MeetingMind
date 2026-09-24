@@ -53,6 +53,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import com.example.core.ui.coachTarget
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -112,8 +114,21 @@ fun TodayScreen(
     onSearch: () -> Unit,
     onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit,
     onOpenDevotional: () -> Unit = {},
-    onOpenStories: (com.example.feature.stories.StoryKind?) -> Unit = {}
+    onOpenStories: (com.example.feature.stories.StoryKind?) -> Unit = {},
+    onNewNote: () -> Unit = {},
+    onImport: () -> Unit = {},
+    /** Offline setup; null hides the card (tests, or before it's known). */
+    setup: com.example.core.setup.SetupState? = null,
+    setupSnoozed: Boolean = false,
+    onSetUp: () -> Unit = {},
+    onOpenSetup: () -> Unit = {},
+    onSnoozeSetup: () -> Unit = {},
+    /** Runs the first-run tour when it hasn't been seen. */
+    tourEnabled: Boolean = false
 ) {
+    val coachTargets = remember { com.example.core.ui.CoachTargets() }
+    val tourDone by viewModel.tourCompleted.collectAsState()
+    val start by viewModel.gettingStarted.collectAsState()
     val storyKinds by viewModel.stories.collectAsState()
     val devotional by viewModel.devotional.collectAsState()
     val identity by viewModel.identity.collectAsState()
@@ -181,6 +196,15 @@ fun TodayScreen(
     val inboxCount = jobs.size + (if (rhythm != null) 1 else 0) + (if ((upNext as? UpNextTile.Event)?.prep != null) 1 else 0) + (if (memories.isNotEmpty()) 1 else 0)
     val switchTo = when (focus) { TodayFocus.ALL -> TodayFocus.FAITH; TodayFocus.FAITH -> TodayFocus.WORK; TodayFocus.WORK -> TodayFocus.ALL }
 
+    // The setup card nags until setup is done; "thinking only" can't be snoozed — it's a real problem.
+    val showSetup = setup != null && (setup.needsAttention || setup.thinkingOnly || setup.downloading) && (!setupSnoozed || setup.thinkingOnly || setup.downloading)
+    var tourReady by remember { mutableStateOf(false) }
+    LaunchedEffect(tourEnabled, tourDone) {
+        if (tourEnabled && tourDone == false) { listState.scrollToItem(0); kotlinx.coroutines.delay(900); tourReady = true }
+    }
+
+    com.example.core.ui.ProvideCoachTargets(coachTargets) {
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = Color.White,
         bottomBar = {
@@ -212,6 +236,31 @@ fun TodayScreen(
             if (focus != TodayFocus.ALL) item(key = "focus") {
                 Surface(onClick = { viewModel.setFocus(TodayFocus.ALL) }, shape = CircleShape, color = look.accentSoft, modifier = Modifier.padding(start = 20.dp, top = 6.dp)) {
                     Text("Showing ${focus.label} · tap for everything", color = look.accent, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                }
+            }
+
+            item(key = "capture") {
+                QuickCapture(
+                    onRecord = onRecord, onNote = onNewNote, onImport = onImport,
+                    subtitle = if (identity.showsFaith) "Meeting, sermon, a thought" else "Meeting, class, a thought",
+                    modifier = Modifier.padding(top = 14.dp)
+                )
+            }
+            if (showSetup) item(key = "setup") {
+                com.example.feature.setup.SetupCard(
+                    setup!!, onSetUp = onSetUp, onDetails = onOpenSetup,
+                    onLater = if (setup.thinkingOnly) null else onSnoozeSetup,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp).coachTarget("setup")
+                )
+            }
+            start?.takeIf { it.visible && (it.isNew || it.done < 2) }?.let { st ->
+                item(key = "start") {
+                    GettingStartedCard(
+                        st, onRecord = onRecord, onNote = onNewNote,
+                        onCalendar = { calendarPermission.launch(android.Manifest.permission.READ_CALENDAR) },
+                        onDevotional = onOpenDevotional, onDismiss = { viewModel.dismissGettingStarted() },
+                        modifier = Modifier.padding(top = 14.dp)
+                    )
                 }
             }
 
@@ -323,6 +372,14 @@ fun TodayScreen(
                 }
             }
         }
+    }
+    if (tourReady && tourDone == false) {
+        com.example.core.ui.CoachMarkOverlay(coachTargets, homeTourSteps(storyKinds.isNotEmpty(), showSetup)) {
+            tourReady = false
+            viewModel.finishTour()
+        }
+    }
+    }
     }
 
     quick?.let { item ->
@@ -493,26 +550,27 @@ private fun StoryRings(kinds: List<com.example.feature.stories.StoryKind>, onOpe
     val seen = remember(kinds) { com.example.feature.stories.StoriesSeen.seen(context) }
     androidx.compose.foundation.lazy.LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp),
-        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp).testTag("story_rings")
+        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp).coachTarget("stories").testTag("story_rings")
     ) {
         items(kinds.size) { i ->
             val kind = kinds[i]
             val watched = kind.name in seen
+            val gap = MaterialTheme.colorScheme.background
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { onOpen(kind) }) {
+                // One visual system: the icon's cyan→violet ring means "new", grey means "seen";
+                // every story shares the same deep-navy face, so the row reads as one family.
                 Box(
                     Modifier.size(64.dp).clip(CircleShape)
-                        .background(if (watched) androidx.compose.ui.graphics.SolidColor(Color(0xFFE2E8F0)) else Brush.sweepGradient(listOf(Color(0xFFF6D365), Color(0xFFE1306C), Color(0xFF7C3AED), Color(0xFFF6D365))))
-                        .padding(3.dp).clip(CircleShape).background(Color.White).padding(2.dp).clip(CircleShape),
+                        .background(if (watched) androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant) else Brush.sweepGradient(com.example.ui.theme.Brand.ring))
+                        .padding(if (watched) 1.5.dp else 2.5.dp).clip(CircleShape).background(gap).padding(2.dp).clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(com.example.ui.theme.Brand.NavyLift, com.example.ui.theme.Brand.Navy))),
                     contentAlignment = Alignment.Center
                 ) {
-                    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
-                        drawIntoCanvas {
-                            com.example.core.share.BackgroundPack.draw(it.nativeCanvas, com.example.core.share.BackgroundPack.forDay(java.time.LocalDate.now().toEpochDay(), i + 1), size.width.toInt(), size.height.toInt())
-                        }
-                    }
-                    Icon(storyIcon(kind), contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                    // A soft glow of the brand behind the glyph, dimmer once seen.
+                    Box(Modifier.size(40.dp).background(Brush.radialGradient(listOf(com.example.ui.theme.Brand.Indigo.copy(alpha = if (watched) 0.18f else 0.45f), Color.Transparent)), CircleShape))
+                    Icon(storyIcon(kind), contentDescription = null, tint = Color.White.copy(alpha = if (watched) 0.7f else 1f), modifier = Modifier.size(24.dp))
                 }
-                Text(kind.ring, fontSize = 11.5.sp, color = if (watched) Color(0xFF94A3B8) else Color(0xFF0F172A), modifier = Modifier.padding(top = 5.dp), maxLines = 1)
+                Text(kind.ring, fontSize = 11.5.sp, color = if (watched) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 5.dp), maxLines = 1)
             }
         }
     }

@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -129,12 +130,15 @@ fun AppBottomNavigationBar(
 
 @Composable
 private fun NewAction(onClick: () -> Unit) {
+    // The one action on every screen, in the brand's colours so it's the first thing you find.
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(percent = 50),
-        color = Ink,
+        color = Color.Transparent,
         modifier = Modifier
             .height(44.dp)
+            .coachTarget("new")
+            .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.example.ui.theme.Brand.Blue, com.example.ui.theme.Brand.Indigo, com.example.ui.theme.Brand.Violet)), RoundedCornerShape(percent = 50))
             .testTag("bottom_nav_new")
             .semantics { contentDescription = "Create: record, write a note, add photos or import" }
     ) {

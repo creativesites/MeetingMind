@@ -170,6 +170,9 @@ fun DevotionalContent(
         }
         when {
             today == null && state.writing -> item { Writing() }
+            today == null && state.writeError != null -> item {
+                Callout("Couldn't write today's devotional", "${state.writeError} Try again, or pick a classic in settings.", "Try again") { onRewrite() }
+            }
             today == null -> item {
                 Intro(enabled = state.profile.enabled, onSettings = onSettings, onRewrite = onRewrite)
             }

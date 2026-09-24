@@ -41,6 +41,10 @@ data class NoteTagName(val noteId: String, val name: String)
 
 @Dao
 interface NoteDao {
+    /** Notes the person wrote (not drafts, not the daily devotional) — for "getting started". */
+    @Query("SELECT COUNT(*) FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND workflow != 'DEVOTIONAL'")
+    fun observeWrittenCount(): kotlinx.coroutines.flow.Flow<Int>
+
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' ORDER BY pinned DESC, updatedAt DESC")
     fun observeActive(): Flow<List<NoteEntity>>
 

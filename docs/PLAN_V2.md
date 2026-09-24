@@ -500,7 +500,8 @@ update (a new `docs/PLAN_V2.md` recording these decisions), commit and push.
 | F4 | Stories and share studio | done (v25) |
 | F5 | Offline Bible library (HelloAO) | done (v27) |
 | F6 | Reading plans, prayer list, widgets | done (v27) |
-| F7 | Talk it through (Gemini Live) | done (v26, with Pray with me) |
+| F7 | Talk it through (Gemini Live) | done (v26, with Pray with me; fixed in v28) |
+| — | Launch readiness: new icon, onboarding, setup guide, getting started, tour | done (v28) |
 
 **Decisions made while building**
 

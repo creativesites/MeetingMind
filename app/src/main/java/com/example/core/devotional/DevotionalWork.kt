@@ -13,6 +13,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.example.core.datastore.UserPreferencesManager
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -26,6 +27,7 @@ object DevotionalScheduler {
     private const val DAILY = "devotional-daily"
     private const val NOTIFY = "devotional-notify"
     private const val NOW = "devotional-now"
+    private const val EXTRAS = "devotional-extras"
     const val LEAD_MINUTES = 90
 
     fun sync(context: Context, profile: DevotionalProfile) {
@@ -53,6 +55,15 @@ object DevotionalScheduler {
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
         runCatching { WorkManager.getInstance(context).enqueueUniqueWork(NOW, if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request) }
+    }
+
+    /** The picture and the voice, after the words — so the page never waits on them. */
+    internal fun finishLater(context: Context) {
+        val request = OneTimeWorkRequestBuilder<DevotionalWorker>()
+            .setInputData(workDataOf(DevotionalWorker.KEY_MODE to DevotionalWorker.MODE_EXTRAS))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build())
+            .build()
+        runCatching { WorkManager.getInstance(context).enqueueUniqueWork(EXTRAS, ExistingWorkPolicy.REPLACE, request) }
     }
 
     fun observeWriting(context: Context) = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(NOW)
@@ -94,19 +105,35 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
                 }
                 Result.success()
             }
-            else -> {
-                val replace = inputData.getBoolean(KEY_REPLACE, false)
-                val ask = com.example.ai.devotional.DevotionalAsk.fromJson(inputData.getString(KEY_ASK))
-                val written = runCatching { repo.ensure(LocalDate.now(), replace = replace, ask = ask) }.getOrNull()
-                if (written == null) return if (runAttemptCount < 2) Result.retry() else Result.failure()
-                if (profile.autoImage) runCatching { repo.paint(written, profile) }
-                com.example.core.widget.Widgets.refresh(applicationContext)
-                if (profile.voice.autoVoice && written.note.metadata[DevotionalVoice.META_AUDIO] == null) {
-                    runCatching { DevotionalVoice(applicationContext).record(written) }
-                }
-                if (inputData.getBoolean(KEY_NOTIFY, true) && profile.enabled) DevotionalScheduler.notifyAt(applicationContext, profile.deliveryMinutes)
+            MODE_EXTRAS -> {
+                val today = repo.find(LocalDay.today()) ?: return Result.success()
+                extras(repo, today, profile)
                 Result.success()
             }
+            else -> {
+                val replace = inputData.getBoolean(KEY_REPLACE, false)
+                val onDemand = !inputData.getBoolean(KEY_NOTIFY, true)
+                val ask = com.example.ai.devotional.DevotionalAsk.fromJson(inputData.getString(KEY_ASK))
+                // Never "writing…" forever: a stuck model or network gives up and the classic stands in.
+                val attempt = runCatching { withTimeoutOrNull(WRITE_TIMEOUT_MS) { repo.ensure(LocalDate.now(), replace = replace, ask = ask) } }
+                val written = attempt.getOrNull()
+                if (written == null) {
+                    val why = attempt.exceptionOrNull()?.message ?: if (attempt.isSuccess) "It took too long to write." else "Something went wrong."
+                    // Someone is waiting on the page: say so now rather than retrying quietly.
+                    return if (!onDemand && runAttemptCount < 2) Result.retry() else Result.failure(workDataOf(KEY_ERROR to why))
+                }
+                com.example.core.widget.Widgets.refresh(applicationContext)
+                if (onDemand) DevotionalScheduler.finishLater(applicationContext) else extras(repo, written, profile)
+                if (!onDemand && profile.enabled) DevotionalScheduler.notifyAt(applicationContext, profile.deliveryMinutes)
+                Result.success()
+            }
+        }
+    }
+
+    private suspend fun extras(repo: DevotionalRepository, written: DailyDevotional, profile: DevotionalProfile) {
+        if (profile.autoImage) runCatching { withTimeoutOrNull(EXTRA_TIMEOUT_MS) { repo.paint(written, profile) } }
+        if (profile.voice.autoVoice && written.note.metadata[DevotionalVoice.META_AUDIO] == null) {
+            runCatching { withTimeoutOrNull(EXTRA_TIMEOUT_MS * 3) { DevotionalVoice(applicationContext).record(written) } }
         }
     }
 
@@ -117,5 +144,9 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
         const val KEY_ASK = "ask"
         const val MODE_WRITE = "write"
         const val MODE_NOTIFY = "notify"
+        const val MODE_EXTRAS = "extras"
+        const val KEY_ERROR = "error"
+        const val WRITE_TIMEOUT_MS = 150_000L
+        const val EXTRA_TIMEOUT_MS = 90_000L
     }
 }

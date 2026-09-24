@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.meetmind.qxynvp"
     minSdk = 24
     targetSdk = 36
-    versionCode = 27
-    versionName = "1.0-v27"
+    versionCode = 28
+    versionName = "1.0-v28"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

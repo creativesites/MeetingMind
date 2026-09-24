@@ -58,8 +58,14 @@ class PrayWithMeTest {
         assertTrue(setup.has("inputAudioTranscription") && setup.has("outputAudioTranscription"))
         val audio = JSONObject(GeminiLiveVoice.audioMessage(byteArrayOf(1, 2))).getJSONObject("realtimeInput").getJSONObject("audio")
         assertEquals("audio/pcm;rate=16000", audio.getString("mimeType"))
-        val text = JSONObject(GeminiLiveVoice.textMessage("Hello")).getJSONObject("clientContent")
-        assertTrue(text.getBoolean("turnComplete"))
+        assertEquals("Hello", JSONObject(GeminiLiveVoice.textMessage("Hello")).getJSONObject("realtimeInput").getString("text"))
+        assertTrue(JSONObject(GeminiLiveVoice.audioEndMessage()).getJSONObject("realtimeInput").getBoolean("audioStreamEnd"))
+    }
+
+    @Test fun `live failures read in plain words`() {
+        assertTrue(GeminiLiveVoice.explain(1007, "API key not valid. Please pass a valid API key.", null).contains("API key"))
+        assertTrue(GeminiLiveVoice.explain(1011, "Resource has been exhausted (e.g. check quota).", null).contains("quota"))
+        assertTrue(GeminiLiveVoice.explain(null, null, "timeout").contains("timeout"))
     }
 
     @Test fun `server messages become events and audio`() {

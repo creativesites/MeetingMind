@@ -27,6 +27,7 @@ object Routes {
     const val PLANS = "reading_plans"
     const val PRAYER_LIST = "prayer_list"
     const val PRAY = "pray?mode={mode}"
+    const val SETUP = "setup"
     fun prayRoute(mode: String? = null) = "pray" + (mode?.let { "?mode=$it" } ?: "")
 
     fun storiesRoute(start: String? = null) = "stories" + (start?.let { "?start=$it" } ?: "")

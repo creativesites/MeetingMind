@@ -58,13 +58,16 @@ enum class LiveVoiceState { CONNECTING, LISTENING, SPEAKING, PAUSED, ENDED, FAIL
 class GeminiLiveVoice(
     private val apiKey: String,
     private val setup: JSONObject,
-    private val client: OkHttpClient = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).pingInterval(20, TimeUnit.SECONDS).build()
+    // No WebSocket pings: the Live endpoint doesn't answer them, and OkHttp would drop the
+    // conversation after one missed pong. A setup timeout guards the start instead.
+    private val client: OkHttpClient = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).connectTimeout(15, TimeUnit.SECONDS).build()
 ) {
     companion object {
         const val MODEL = "gemini-3.8-live"
         private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
         private const val IN_RATE = 16_000
         private const val OUT_RATE = 24_000
+        private const val SETUP_TIMEOUT_MS = 15_000L
 
         /** The first message: model, voice, instructions, and transcripts both ways. */
         fun setupMessage(systemInstruction: String, voice: String, model: String = MODEL): JSONObject = JSONObject().put("setup", JSONObject()
@@ -79,9 +82,24 @@ class GeminiLiveVoice(
         fun audioMessage(pcm: ByteArray): String = JSONObject().put("realtimeInput", JSONObject()
             .put("audio", JSONObject().put("data", Base64.encodeToString(pcm, Base64.NO_WRAP)).put("mimeType", "audio/pcm;rate=$IN_RATE"))).toString()
 
-        fun textMessage(text: String): String = JSONObject().put("clientContent", JSONObject()
-            .put("turns", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", text)))))
-            .put("turnComplete", true)).toString()
+        fun textMessage(text: String): String = JSONObject().put("realtimeInput", JSONObject().put("text", text)).toString()
+
+        /** Tells the server the microphone went quiet (muted), so it doesn't wait for more speech. */
+        fun audioEndMessage(): String = JSONObject().put("realtimeInput", JSONObject().put("audioStreamEnd", true)).toString()
+
+        /** Plain words for a socket that closed or failed, from Gemini's own reason where it gave one. */
+        fun explain(code: Int?, reason: String?, fallback: String?): String {
+            val r = reason.orEmpty()
+            return when {
+                r.contains("API key", true) -> "Gemini didn't accept your API key. Check it in Settings → Internet mode."
+                r.contains("not found", true) || r.contains("not supported", true) -> "This Gemini key can't use the live voice model yet ($r)."
+                r.contains("quota", true) || r.contains("exhausted", true) || code == 429 -> "Gemini's free quota is used up for now. Try again later."
+                r.contains("permission", true) || code == 403 -> "This Gemini key isn't allowed to use live voice ($r)."
+                r.isNotBlank() -> "Gemini closed the conversation: $r"
+                !fallback.isNullOrBlank() -> "Couldn't reach Gemini: $fallback"
+                else -> "Couldn't reach Gemini. Check your connection and try again."
+            }
+        }
 
         /** Reads one server message into events and audio. */
         fun parse(raw: String, onAudio: (ByteArray) -> Unit): List<LiveVoiceEvent> {
@@ -100,7 +118,7 @@ class GeminiLiveVoice(
                 if (sc.optBoolean("interrupted")) out += LiveVoiceEvent.Interrupted
                 if (sc.optBoolean("turnComplete")) out += LiveVoiceEvent.TurnDone
             }
-            o.optJSONObject("error")?.let { out += LiveVoiceEvent.Failed(it.optString("message", "The conversation stopped.")) }
+            o.optJSONObject("error")?.let { out += LiveVoiceEvent.Failed(explain(it.optInt("code"), it.optString("message"), "The conversation stopped.")) }
             return out
         }
     }
@@ -122,19 +140,33 @@ class GeminiLiveVoice(
     @Volatile private var ready = false
 
     fun start() {
-        val request = Request.Builder().url("$URL?key=$apiKey").build()
+        val request = Request.Builder().url("$URL?key=${apiKey.trim()}").build()
         socket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) { webSocket.send(setup.toString()) }
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                webSocket.send(setup.toString())
+                scope.launch {
+                    kotlinx.coroutines.delay(SETUP_TIMEOUT_MS)
+                    if (!ready && _state.value == LiveVoiceState.CONNECTING) {
+                        _state.value = LiveVoiceState.FAILED
+                        _events.tryEmit(LiveVoiceEvent.Failed("Gemini didn't answer in time. Check your connection and try again."))
+                        runCatching { webSocket.cancel() }
+                    }
+                }
+            }
             override fun onMessage(webSocket: WebSocket, text: String) = handle(text)
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) = handle(bytes.utf8())
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                _state.value = LiveVoiceState.FAILED
-                _events.tryEmit(LiveVoiceEvent.Failed(response?.let { "Gemini ${it.code}: ${it.message}" } ?: (t.message ?: "Connection lost.")))
+                if (_state.value != LiveVoiceState.FAILED && _state.value != LiveVoiceState.ENDED) {
+                    _state.value = LiveVoiceState.FAILED
+                    _events.tryEmit(LiveVoiceEvent.Failed(explain(response?.code, response?.message, t.message)))
+                }
                 stopAudio()
             }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(1000, null) }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                if (_state.value != LiveVoiceState.FAILED) _state.value = LiveVoiceState.ENDED
-                _events.tryEmit(if (code != 1000 && reason.isNotBlank()) LiveVoiceEvent.Failed(reason) else LiveVoiceEvent.Closed)
+                val failed = code != 1000 && _state.value != LiveVoiceState.ENDED
+                if (_state.value != LiveVoiceState.FAILED) _state.value = if (failed) LiveVoiceState.FAILED else LiveVoiceState.ENDED
+                _events.tryEmit(if (failed) LiveVoiceEvent.Failed(explain(code, reason, "closed ($code)")) else LiveVoiceEvent.Closed)
                 stopAudio()
             }
         })
@@ -157,7 +189,9 @@ class GeminiLiveVoice(
     /** Sends typed words (a prayer list, or a thought) into the conversation. */
     fun say(text: String) { if (ready) socket?.send(textMessage(text)) }
 
-    fun setMuted(value: Boolean) { muted = value; _state.value = if (value) LiveVoiceState.PAUSED else LiveVoiceState.LISTENING }
+    fun setMuted(value: Boolean) {
+        if (value && !muted && ready) socket?.send(audioEndMessage())
+        muted = value; _state.value = if (value) LiveVoiceState.PAUSED else LiveVoiceState.LISTENING }
 
     @SuppressLint("MissingPermission")
     private fun startAudio() {
@@ -212,6 +246,7 @@ class GeminiLiveVoice(
     }
 
     fun end() {
+        _state.value = LiveVoiceState.ENDED
         runCatching { socket?.close(1000, "Amen") }
         stopAudio()
         _state.value = LiveVoiceState.ENDED

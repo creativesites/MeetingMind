@@ -73,7 +73,13 @@ data class AppPreferencesState(
     /** Timeline layers the person turned on; null = the defaults for their spaces. */
     val timelineLayers: Set<String>? = null,
     /** The calendar view Home last showed: DAY, WEEK, MONTH, AGENDA or RIVER. */
-    val timelineView: String = "AGENDA"
+    val timelineView: String = "AGENDA",
+    /** "Remind me later" on the setup card: hidden until this time (epoch ms), then it's back. */
+    val setupSnoozedUntil: Long = 0,
+    /** The first-run guided tour of Home has been shown (finished or skipped). */
+    val tourCompleted: Boolean = false,
+    /** The "Getting started" checklist on Home was closed. */
+    val gettingStartedDismissed: Boolean = false
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -102,6 +108,9 @@ class UserPreferencesManager(private val context: Context) {
     private val TIMELINE_LAYERS = stringSetPreferencesKey("timeline_layers")
     private val CARD_STYLE = stringPreferencesKey("identity_card_style")
     private val TIMELINE_VIEW = stringPreferencesKey("timeline_view")
+    private val SETUP_SNOOZED_UNTIL = androidx.datastore.preferences.core.longPreferencesKey("setup_snoozed_until")
+    private val TOUR_COMPLETED = booleanPreferencesKey("tour_completed")
+    private val GETTING_STARTED_DISMISSED = booleanPreferencesKey("getting_started_dismissed")
     private val DEVOTIONAL_PROFILE = stringPreferencesKey("devotional_profile")
 
     /** How the person wants their daily devotional (PLAN_V2 F2). */
@@ -166,7 +175,10 @@ class UserPreferencesManager(private val context: Context) {
                     ?: com.example.core.identity.CardStyle.CLASSIC
             ),
             timelineLayers = prefs[TIMELINE_LAYERS],
-            timelineView = prefs[TIMELINE_VIEW] ?: "AGENDA"
+            timelineView = prefs[TIMELINE_VIEW] ?: "AGENDA",
+            setupSnoozedUntil = prefs[SETUP_SNOOZED_UNTIL] ?: 0L,
+            tourCompleted = prefs[TOUR_COMPLETED] ?: false,
+            gettingStartedDismissed = prefs[GETTING_STARTED_DISMISSED] ?: false
         )
     }
 
@@ -208,6 +220,18 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setFaithLockEnabled(enabled: Boolean) {
         context.dataStore.edit { it[FAITH_LOCK] = enabled }
+    }
+
+    suspend fun setSetupSnoozedUntil(epochMs: Long) {
+        context.dataStore.edit { it[SETUP_SNOOZED_UNTIL] = epochMs }
+    }
+
+    suspend fun setGettingStartedDismissed(dismissed: Boolean) {
+        context.dataStore.edit { it[GETTING_STARTED_DISMISSED] = dismissed }
+    }
+
+    suspend fun setTourCompleted(done: Boolean) {
+        context.dataStore.edit { it[TOUR_COMPLETED] = done }
     }
 
     suspend fun setOnboardingCompleted(completed: Boolean) {

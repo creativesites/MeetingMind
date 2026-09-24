@@ -216,7 +216,9 @@ fun RecordingScreen(
     /** A title that came with the request (a calendar event's); kept when the type changes. */
     initialTitle: String? = null,
     /** Speaker count from the event's guest list; the person can still change it. */
-    initialSpeakers: Int? = null
+    initialSpeakers: Int? = null,
+    /** Shown under Quick record while offline setup isn't finished (the setup banner). */
+    setupNotice: @Composable () -> Unit = {}
 ) {
     val context = LocalContext.current
     var hasAudioPermission by remember {
@@ -297,7 +299,8 @@ fun RecordingScreen(
                 if (!speakerCountTouched) selectedSpeakerCount = RecordingType.GENERAL.suggestedSpeakerCount()
                 typeChosen = true
             },
-            onCancel = onNavigateBack
+            onCancel = onNavigateBack,
+            setupNotice = setupNotice
         )
         return
     }
@@ -366,7 +369,8 @@ private fun RecordingTypePickerScreen(
     onSelectSpeakerCount: (Int?) -> Unit,
     onStart: () -> Unit,
     onQuickRecord: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    setupNotice: @Composable () -> Unit = {}
 ) {
     Scaffold(
         containerColor = Color.White,
@@ -417,6 +421,7 @@ private fun RecordingTypePickerScreen(
                     }
                 }
             }
+            Box(Modifier.padding(horizontal = 20.dp)) { setupNotice() }
             Text(
                 "Or tell MeetingMind what it is — it listens for the right things.",
                 fontSize = 14.sp, color = Color(0xFF475569), modifier = Modifier.padding(horizontal = 20.dp)

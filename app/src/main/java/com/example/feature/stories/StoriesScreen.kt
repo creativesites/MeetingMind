@@ -173,13 +173,15 @@ fun StoryPager(
                         holding = true
                         var dragging = false
                         var lastY = 0f
+                        // A button on the story (Share, Listen, Close) took the tap: don't also turn the page.
+                        var childTook = down.isConsumed
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             val moved = change.position.y - down.position.y
                             if (!dragging && kotlin.math.abs(moved) > viewConfiguration.touchSlop && kotlin.math.abs(moved) > kotlin.math.abs(change.position.x - down.position.x)) dragging = true
                             if (dragging) { lastY = moved; scope.launch { drag.snapTo(moved) }; change.consume() }
-                            if (!change.pressed) break
+                            if (!change.pressed) { if (!dragging && change.isConsumed) childTook = true; break }
                         }
                         val heldMs = (currentEvent.changes.firstOrNull()?.uptimeMillis ?: down.uptimeMillis) - down.uptimeMillis
                         holding = false
@@ -188,6 +190,7 @@ fun StoryPager(
                             dragging && lastY < -size.height * 0.12f -> { story.open?.let(onOpen); scope.launch { drag.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 0.8f)) } }
                             dragging -> scope.launch { drag.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 0.75f, stiffness = 400f)) }
                             // Only a quick tap moves; a hold (to read) just pauses and resumes.
+                            childTook -> Unit
                             heldMs < 220 -> if (down.position.x < size.width / 3f) go(index - 1) else go(index + 1)
                         }
                     }
@@ -230,18 +233,22 @@ fun StoryPager(
             ) {
                 story.open?.let { o ->
                     Surface(onClick = { onOpen(o) }, shape = RoundedCornerShape(50), color = Color.Black.copy(alpha = 0.35f)) {
-                        Text("${story.openLabel ?: "Open"}  ↑", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                        Text("${if (story.kind == StoryKind.PRAYER) "Devotional" else story.openLabel ?: "Open"}  ↑", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
                     }
                 }
                 if (story.kind == StoryKind.PRAYER && onAction != null) Surface(onClick = { onAction(story) }, shape = RoundedCornerShape(50), color = Color(0xFFF6D365)) {
-                    Text("Pray it aloud", color = Color(0xFF1B1530), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                    Text("Pray it aloud", color = Color(0xFF1B1530), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
                 }
                 Spacer(Modifier.weight(1f))
-                if (story.share != null) Surface(onClick = { onShare(story) }, shape = RoundedCornerShape(50), color = Color.White) {
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Share, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Share", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                // Three buttons don't fit a phone's width with a labelled Share, so it becomes a circle.
+                val crowded = story.open != null && story.kind == StoryKind.PRAYER && onAction != null
+                if (story.share != null) Surface(onClick = { onShare(story) }, shape = RoundedCornerShape(50), color = Color.White, modifier = Modifier.testTag("story_share")) {
+                    Row(Modifier.padding(horizontal = if (crowded) 12.dp else 16.dp, vertical = if (crowded) 12.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Share, contentDescription = if (crowded) "Share" else null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                        if (!crowded) {
+                            Spacer(Modifier.width(6.dp))
+                            Text("Share", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }

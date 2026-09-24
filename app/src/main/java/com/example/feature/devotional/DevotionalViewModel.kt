@@ -27,6 +27,8 @@ data class DevotionalUiState(
     val today: DailyDevotional? = null,
     val profile: DevotionalProfile = DevotionalProfile(),
     val writing: Boolean = false,
+    /** Why the last on-demand write failed, for a "Try again" card. */
+    val writeError: String? = null,
     val season: LiturgicalDay? = null,
     val date: LocalDate = LocalDate.now(),
     val voice: VoiceUi = VoiceUi()
@@ -55,8 +57,12 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
     private val requested = MutableStateFlow(false)
 
     private val writingFlow = runCatching { DevotionalScheduler.observeWriting(app) }.getOrNull()
-        ?.map { infos -> infos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED } }
-        ?.catch { emit(false) } ?: flowOf(false)
+        ?.map { infos ->
+            val busy = infos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+            if (!busy) requested.value = false
+            busy to infos.firstOrNull { it.state == WorkInfo.State.FAILED }?.outputData?.getString(com.example.core.devotional.DevotionalWorker.KEY_ERROR)
+        }
+        ?.catch { emit(false to null) } ?: flowOf(false to null)
 
     private val voiceWork = runCatching { com.example.core.devotional.DevotionalVoiceWorker.observe(app) }.getOrNull()
         ?.map { infos ->
@@ -65,12 +71,13 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
                 infos.any { it.state == WorkInfo.State.FAILED })
         }?.catch { emit(Triple(false, 0f, false)) } ?: flowOf(Triple(false, 0f, false))
 
-    private val base = combine(repo.observe(day), repo.profile, writingFlow, requested) { today, profile, writing, asked ->
+    private val base = combine(repo.observe(day), repo.profile, writingFlow, requested) { today, profile, (writing, error), asked ->
         DevotionalUiState(
             loading = false,
             today = today,
             profile = profile,
             writing = writing || (asked && today == null),
+            writeError = error.takeIf { !writing && !asked },
             season = LiturgicalCalendar.dayOf(day.date, profile.tradition),
             date = day.date
         )

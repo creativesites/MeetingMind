@@ -249,7 +249,9 @@ class GeminiHttpTransport(
         val parts = candidates?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
         buildString {
             for (i in 0 until (parts?.length() ?: 0)) {
-                append(parts!!.optJSONObject(i)?.optString("text").orEmpty())
+                val part = parts!!.optJSONObject(i) ?: continue
+                if (part.optBoolean("thought")) continue // a thinking summary, not the answer
+                append(part.optString("text"))
             }
         }.takeIf { it.isNotBlank() }
     } catch (e: org.json.JSONException) {

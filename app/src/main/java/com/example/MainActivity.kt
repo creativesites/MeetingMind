@@ -263,6 +263,9 @@ fun MeetMindApp() {
         composable(Routes.HOME) {
             // Home is the Today hub: the day, the calendar and the timeline (PLAN_V2 F1).
             val vm: com.example.feature.today.TodayViewModel = viewModel()
+            val setupVm: com.example.feature.setup.SetupViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val setupState by setupVm.state.collectAsState()
+            val setupSnoozedUntil by setupVm.snoozedUntil.collectAsState()
             com.example.feature.today.TodayScreen(
                 viewModel = vm,
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
@@ -273,7 +276,24 @@ fun MeetMindApp() {
                 onSearch = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SEARCH) },
                 onNavigateBottomNav = navigateToPrimary,
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
-                onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) }
+                onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
+                onNewNote = { openNewNote(false) },
+                onImport = { navController.navigate(Routes.IMPORT) },
+                setup = setupState,
+                setupSnoozed = setupSnoozedUntil > System.currentTimeMillis(),
+                onSetUp = { setupVm.setUp() },
+                onOpenSetup = { navController.navigate(Routes.SETUP) },
+                onSnoozeSetup = { setupVm.snooze() },
+                tourEnabled = true
+            )
+        }
+
+        composable(Routes.SETUP) {
+            val vm: com.example.feature.setup.SetupViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.example.feature.setup.SetupScreen(
+                vm, onBack = { navController.popBackStack() },
+                onInternetMode = { navController.navigate(Routes.SETTINGS) },
+                onAdvanced = { navController.navigate(Routes.MODELS) }
             )
         }
 
@@ -300,7 +320,14 @@ fun MeetMindApp() {
                 targetNoteId = backStackEntry.arguments?.getString("noteId"),
                 initialType = backStackEntry.arguments?.getString("type")?.let { t -> RecordingType.entries.firstOrNull { it.name == t } },
                 initialTitle = backStackEntry.arguments?.getString("title")?.takeIf { it.isNotBlank() },
-                initialSpeakers = backStackEntry.arguments?.getInt("speakers")?.takeIf { it > 0 }
+                initialSpeakers = backStackEntry.arguments?.getInt("speakers")?.takeIf { it > 0 },
+                setupNotice = {
+                    val setupVm: com.example.feature.setup.SetupViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+                    val setup by setupVm.state.collectAsState()
+                    setup?.takeIf { !it.offlineReady && (!it.internetReady || it.thinkingOnly) }?.let { st ->
+                        com.example.feature.setup.SetupBanner(st, onClick = { navController.navigate(Routes.SETUP) })
+                    }
+                }
             )
         }
 
@@ -601,7 +628,14 @@ fun MeetMindApp() {
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToModels = { navController.navigate(Routes.MODELS) },
                 onNavigateBottomNav = navigateToPrimary,
-                onOpenBible = { navController.navigate(Routes.bibleRoute()) }
+                onOpenBible = { navController.navigate(Routes.bibleRoute()) },
+                onOpenSetup = { navController.navigate(Routes.SETUP) },
+                onReplayTour = {
+                    recoveryScope.launch {
+                        com.example.core.datastore.UserPreferencesManager(context).setTourCompleted(false)
+                        navigateToPrimary(com.example.core.ui.BottomNavDestination.HOME)
+                    }
+                }
             )
         }
     }

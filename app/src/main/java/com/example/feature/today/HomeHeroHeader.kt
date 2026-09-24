@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import com.example.core.ui.coachTarget
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -203,7 +204,7 @@ private fun TopRow(
 private fun DockButton(background: Color, tag: String, onClick: () -> Unit, content: @Composable BoxScope.() -> Unit) {
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.size(38.dp).clip(CircleShape).background(background).clickable(onClick = onClick).testTag(tag),
+        modifier = Modifier.coachTarget(tag).size(38.dp).clip(CircleShape).background(background).clickable(onClick = onClick).testTag(tag),
         content = content
     )
 }
@@ -325,6 +326,7 @@ private fun HeroStage(
                     translationX = rotY.value * -2.6f * density
                     translationY = -rotX.value * 2.2f * density
                 }
+                .coachTarget("tile")
                 .testTag("home_up_next_tile")
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 14.dp)) {

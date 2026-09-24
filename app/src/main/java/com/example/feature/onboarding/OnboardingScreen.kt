@@ -1,7 +1,25 @@
 package com.example.feature.onboarding
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,8 +29,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -21,18 +42,21 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -40,33 +64,41 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.R
 import com.example.core.common.DeviceCapabilityDetector
 import com.example.core.datastore.UserPreferencesManager
 import com.example.core.model.DeviceCapabilities
-import com.example.ui.theme.Accent
-import com.example.ui.theme.Ink
-import com.example.ui.theme.InkFaint
-import com.example.ui.theme.InkMuted
-import com.example.ui.theme.InkSecondary
-import com.example.ui.theme.LineSoft
-import com.example.ui.theme.SuccessGreen
+import com.example.core.model.ProcessingProfile
+import com.example.core.setup.SetupGuide
+import com.example.core.setup.SetupPart
+import com.example.ui.theme.Brand
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+/** How the person wants the app's AI to run, chosen on the setup step. */
+enum class SetupChoice { OFFLINE_PACK, INTERNET, LATER }
 
 class OnboardingViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = UserPreferencesManager(application)
@@ -76,18 +108,12 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     val selectedModel: StateFlow<String> = _selectedModel.asStateFlow()
 
     /** What the user typed on the identity step — never pre-filled from the device name, Google
-     * account, or any contact data (Phase 15 §5: "Do not assume the user's name from device/
-     * account information"). Starts blank; staying blank is a valid choice, not an error. */
+     * account, or any contact data (Phase 15 §5). Staying blank is a valid choice. */
     private val _userName = MutableStateFlow("")
     val userName: StateFlow<String> = _userName.asStateFlow()
 
-    fun selectModel(modelId: String) {
-        _selectedModel.value = modelId
-    }
-
-    fun setUserName(name: String) {
-        _userName.value = name
-    }
+    fun selectModel(modelId: String) { _selectedModel.value = modelId }
+    fun setUserName(name: String) { _userName.value = name }
 
     /** What the app is for, and how it feels (PLAN_V2 F0). Everything on by default. */
     private val _spaces = MutableStateFlow(com.example.core.model.NotebookSpace.entries.toSet())
@@ -105,131 +131,107 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setLook(look: com.example.core.identity.LookAndFeel) { lookTouched = true; _look.value = look }
 
+    /** The offline pack by default: most people want it to just work, privately. */
+    private val _setup = MutableStateFlow(SetupChoice.OFFLINE_PACK)
+    val setup: StateFlow<SetupChoice> = _setup.asStateFlow()
+    fun setSetup(choice: SetupChoice) { _setup.value = choice }
+
+    private val _wifiOnly = MutableStateFlow(false)
+    val wifiOnly: StateFlow<Boolean> = _wifiOnly.asStateFlow()
+    fun setWifiOnly(value: Boolean) { _wifiOnly.value = value }
+
+    /** What the offline pack is on this phone: each job's model and size. */
+    val pack = SetupPart.entries.map { it to SetupGuide.modelsFor(it, deviceCapabilities.totalRamGb) }
+    val packBytes: Long = pack.sumOf { (_, models) -> models.sumOf { it.sizeBytes } }
+
     fun completeOnboarding(onCompleted: () -> Unit) {
         viewModelScope.launch {
             prefs.setSelectedAsrModel(_selectedModel.value)
             prefs.setUserName(_userName.value)
             prefs.setSpaces(_spaces.value)
             prefs.setLook(_look.value)
+            prefs.setWifiOnlyDownload(_wifiOnly.value)
+            when (_setup.value) {
+                SetupChoice.OFFLINE_PACK -> runCatching {
+                    val app = getApplication<Application>()
+                    SetupGuide.downloadMissing(app, SetupGuide.observe(app).first(), _wifiOnly.value)
+                }
+                SetupChoice.INTERNET -> prefs.setProcessingProfile(ProcessingProfile.INTERNET)
+                SetupChoice.LATER -> Unit
+            }
             prefs.setOnboardingCompleted(true)
             onCompleted()
         }
     }
 }
 
+private const val STEPS = 6
+
 /**
- * Onboarding (Phase 15 §Part 2) — restyled onto the same Ink/Accent flat-row token system as
- * Settings/AI Engine/meeting detail, so the very first thing a user sees already matches the
- * rest of the app instead of looking like a different, older design pass.
+ * First run: a warm welcome in the brand's navy, then five short steps — what it does, your name,
+ * what it's for, how the AI runs (the offline pack is explained as three jobs so nobody stops at
+ * one model), and the two permissions that matter. Everything can be changed later.
  */
 @Composable
-fun OnboardingScreen(
-    viewModel: OnboardingViewModel,
-    onFinishOnboarding: () -> Unit
-) {
-    var currentStep by remember { mutableIntStateOf(0) }
-    val selectedModel by viewModel.selectedModel.collectAsState()
+fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> Unit) {
+    var step by rememberSaveable { mutableIntStateOf(0) }
+    var forward by remember { mutableStateOf(true) }
     val userName by viewModel.userName.collectAsState()
     val spaces by viewModel.spaces.collectAsState()
     val look by viewModel.look.collectAsState()
-    val caps = viewModel.deviceCapabilities
-    val stepCount = 5
+    val setup by viewModel.setup.collectAsState()
+    val wifiOnly by viewModel.wifiOnly.collectAsState()
 
-    Scaffold(containerColor = Color.White) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(24.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Step Indicators
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    repeat(stepCount) { index ->
-                        Box(
-                            modifier = Modifier
-                                .size(width = if (index == currentStep) 24.dp else 8.dp, height = 8.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(if (index == currentStep) Ink else LineSoft)
-                        )
+    fun next() { forward = true; if (step < STEPS - 1) step++ else viewModel.completeOnboarding(onFinishOnboarding) }
+    fun back() { forward = false; if (step > 0) step-- }
+
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Brand.Navy, Brand.NavyLift, Brand.Navy))).testTag("onboarding")) {
+        // The icon's light, softly behind everything.
+        Box(Modifier.size(420.dp).align(Alignment.TopEnd).graphicsLayer { translationX = 160f; translationY = -120f }
+            .background(Brush.radialGradient(listOf(Brand.Violet.copy(alpha = 0.22f), Color.Transparent)), CircleShape))
+        Box(Modifier.size(380.dp).align(Alignment.BottomStart).graphicsLayer { translationX = -160f; translationY = 120f }
+            .background(Brush.radialGradient(listOf(Brand.Cyan.copy(alpha = 0.14f), Color.Transparent)), CircleShape))
+
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
+            if (step > 0) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    repeat(STEPS - 1) { i ->
+                        Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp))
+                            .background(if (i < step) Brush.horizontalGradient(Brand.sweep) else Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.15f)))))
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Step Content
-            when (currentStep) {
-                0 -> OnboardingStepZero()
-                1 -> OnboardingStepOne()
-                2 -> OnboardingStepIdentity(
-                    userName = userName,
-                    onUserNameChange = { viewModel.setUserName(it) }
-                )
-                3 -> OnboardingStepSpaces(
-                    spaces = spaces, onSpaces = viewModel::setSpaces,
-                    look = look, onLook = viewModel::setLook
-                )
-                4 -> OnboardingStepTwo(
-                    caps = caps,
-                    selectedModel = selectedModel,
-                    onSelectModel = { viewModel.selectModel(it) }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Bottom Actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (currentStep > 0) {
-                    Text(
-                        text = "Back",
-                        fontSize = 15.sp,
-                        color = InkSecondary,
-                        modifier = Modifier
-                            .clickable { currentStep-- }
-                            .testTag("onboarding_back_btn")
-                            .padding(vertical = 12.dp, horizontal = 4.dp)
-                    )
-                } else {
-                    Spacer(modifier = Modifier.width(1.dp))
+            AnimatedContent(
+                targetState = step,
+                transitionSpec = {
+                    val dir = if (forward) 1 else -1
+                    (slideInHorizontally(tween(320)) { it / 5 * dir } + fadeIn(tween(320))) togetherWith (slideOutHorizontally(tween(220)) { -it / 5 * dir } + fadeOut(tween(180)))
+                },
+                label = "step", modifier = Modifier.weight(1f)
+            ) { s ->
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
+                    when (s) {
+                        0 -> Welcome()
+                        1 -> WhatItDoes()
+                        2 -> NameStep(userName, viewModel::setUserName)
+                        3 -> SpacesStep(spaces, viewModel::setSpaces, look, viewModel::setLook)
+                        4 -> SetupStep(viewModel, setup, viewModel::setSetup, wifiOnly, viewModel::setWifiOnly)
+                        else -> PermissionsStep()
+                    }
                 }
-
-                Button(
-                    onClick = {
-                        if (currentStep < stepCount - 1) {
-                            currentStep++
-                        } else {
-                            viewModel.completeOnboarding(onFinishOnboarding)
-                        }
-                    },
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Ink),
-                    modifier = Modifier.testTag("onboarding_next_btn")
-                ) {
-                    Text(
-                        text = if (currentStep == stepCount - 1) "Get Started" else "Continue",
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (step > 0) Text("Back", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { back() }.padding(vertical = 12.dp, horizontal = 4.dp).testTag("onboarding_back_btn"))
+                Spacer(Modifier.weight(1f))
+                Surface(onClick = { next() }, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = Modifier.testTag("onboarding_next_btn")) {
+                    Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            when (step) { 0 -> "Get started"; STEPS - 1 -> "Start using MeetingMind"; 2 -> if (userName.isBlank()) "Skip" else "Continue"; else -> "Continue" },
+                            color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    }
                 }
             }
         }
@@ -237,262 +239,190 @@ fun OnboardingScreen(
 }
 
 @Composable
-private fun OnboardingStepZero() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = Accent.copy(alpha = 0.10f),
-            modifier = Modifier.size(100.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = Accent, modifier = Modifier.size(48.dp))
-            }
+private fun Welcome() {
+    val t = rememberInfiniteTransition(label = "glow")
+    val glow by t.animateFloat(0.85f, 1.12f, infiniteRepeatable(tween(2600), RepeatMode.Reverse), label = "g")
+    Column(Modifier.fillMaxWidth().padding(top = 72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(220.dp)) {
+            Box(Modifier.size(220.dp).graphicsLayer { scaleX = glow; scaleY = glow }.background(Brush.radialGradient(listOf(Brand.Indigo.copy(alpha = 0.45f), Color.Transparent)), CircleShape))
+            Image(painterResource(R.drawable.brand_mark), contentDescription = "MeetingMind", modifier = Modifier.size(width = 150.dp, height = 128.dp))
         }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
+        Text("MeetingMind", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp, modifier = Modifier.padding(top = 18.dp))
         Text(
-            text = "Private by Default",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = (-0.7).sp,
-            color = Ink,
-            textAlign = TextAlign.Center
+            "Remember every conversation.\nPrivately, on your phone.",
+            color = Color.White.copy(alpha = 0.72f), fontSize = 18.sp, lineHeight = 26.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp)
         )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = "Your recordings and transcripts never leave this phone. Everything is processed and stored strictly on-device.",
-            fontSize = 15.5.sp,
-            color = InkSecondary,
-            textAlign = TextAlign.Center,
-            lineHeight = 24.sp
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            FeatureBullet(icon = Icons.Default.CheckCircle, title = "No Cloud Uploads", subtitle = "Audio and text stay in app-private storage")
-            HorizontalDivider(color = LineSoft, modifier = Modifier.padding(vertical = 12.dp))
-            FeatureBullet(icon = Icons.Default.CheckCircle, title = "No API Keys Required", subtitle = "Runs local models without third-party rate limits")
+        Row(Modifier.padding(top = 36.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Pill(Icons.Filled.Lock, "Private")
+            Pill(Icons.Filled.PhoneAndroid, "Works offline")
+            Pill(Icons.Filled.AutoAwesome, "AI notes")
         }
     }
 }
 
 @Composable
-private fun OnboardingStepOne() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = Accent.copy(alpha = 0.10f),
-            modifier = Modifier.size(100.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = Accent, modifier = Modifier.size(48.dp))
-            }
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        Text(
-            text = "Your Meetings, Organized",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = (-0.7).sp,
-            color = Ink,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = "MeetingMind transcribes your meetings, identifies speakers, extracts key decisions, assigns action items, and allows grounded Q&A.",
-            fontSize = 15.5.sp,
-            color = InkSecondary,
-            textAlign = TextAlign.Center,
-            lineHeight = 24.sp
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            FeatureBullet(icon = Icons.Default.Mic, title = "Record or Import", subtitle = "Live mic recording or import audio/video files")
-            HorizontalDivider(color = LineSoft, modifier = Modifier.padding(vertical = 12.dp))
-            FeatureBullet(icon = Icons.Default.Memory, title = "Speaker Diarization & RAG", subtitle = "Search by speaker or ask questions with citations")
-        }
-    }
-}
-
-/**
- * Collects the user's own name, typed by them — never pre-filled from the device name, Google
- * account, or contacts (Phase 15 §5). Optional: leaving it blank is a valid choice and just means
- * personalization features that could use a name (e.g. Ask AI addressing them by it) don't have
- * one to use yet, rather than blocking onboarding on it. Also editable later in Settings.
- */
-@Composable
-private fun OnboardingStepIdentity(
-    userName: String,
-    onUserNameChange: (String) -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = Accent.copy(alpha = 0.10f),
-            modifier = Modifier.size(100.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Accent, modifier = Modifier.size(48.dp))
-            }
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        Text(
-            text = "What should we call you?",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = (-0.7).sp,
-            color = Ink,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = "Used to personalize your experience — like Ask AI addressing you by name. Optional, and stored only on this device. You can change this later in Settings.",
-            fontSize = 15.5.sp,
-            color = InkSecondary,
-            textAlign = TextAlign.Center,
-            lineHeight = 24.sp
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        OutlinedTextField(
-            value = userName,
-            onValueChange = onUserNameChange,
-            placeholder = { Text("Your name", color = InkFaint) },
-            singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Accent,
-                unfocusedBorderColor = LineSoft,
-                cursorColor = Accent,
-                focusedTextColor = Ink,
-                unfocusedTextColor = Ink
-            ),
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth().testTag("onboarding_name_field")
-        )
-    }
-}
-
-/** What the app is for, and how it should feel. Changeable any time in Settings → Personalize. */
-@Composable
-private fun OnboardingStepSpaces(
-    spaces: Set<com.example.core.model.NotebookSpace>,
-    onSpaces: (Set<com.example.core.model.NotebookSpace>) -> Unit,
-    look: com.example.core.identity.LookAndFeel,
-    onLook: (com.example.core.identity.LookAndFeel) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text("What's MeetingMind for you?", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.7).sp, color = Ink)
-        Text(
-            "Pick what you'll use it for. The app only shows those — you can change this any time.",
-            fontSize = 15.sp, color = InkSecondary, lineHeight = 22.sp, modifier = Modifier.padding(top = 8.dp, bottom = 18.dp)
-        )
-        com.example.core.identity.SpacesPicker(spaces, onSpaces)
-        Text("How should it feel?", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
-        com.example.core.identity.LookPicker(look, onLook)
-    }
-}
-
-/**
- * There is exactly one real on-device speech-to-text model in [com.example.ai.modelmanagement.ModelCatalog]
- * (Parakeet TDT 0.6B v3 INT8) — no lighter/heavier tier actually exists to offer a choice between,
- * so this step is informational rather than a picker. [onSelectModel] still runs once (with the
- * one real model id) so [OnboardingViewModel.completeOnboarding] has something real to persist.
- */
-@Composable
-private fun OnboardingStepTwo(
-    caps: DeviceCapabilities,
-    selectedModel: String,
-    onSelectModel: (String) -> Unit
-) {
-    androidx.compose.runtime.LaunchedEffect(caps.recommendedAsrModelId) {
-        onSelectModel(caps.recommendedAsrModelId)
-    }
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = "Your On-Device Speech Model",
-            fontSize = 26.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = (-0.6).sp,
-            color = Ink,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "Detected ${caps.totalRamGb} GB RAM (${caps.cpuArch}, ${caps.devicePerformanceTier}).",
-            fontSize = 13.5.sp,
-            color = InkMuted,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(imageVector = Icons.Default.Mic, contentDescription = null, tint = Accent, modifier = Modifier.size(20.dp))
-            Column {
-                Text("Parakeet TDT 0.6B v3 (INT8)", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                Text("On-device speech-to-text, ~639 MB — downloaded on the next screen", fontSize = 12.5.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = "You'll download this model (and the others you choose to enable) after onboarding, in AI Engine.",
-            fontSize = 12.5.sp,
-            color = InkMuted,
-            textAlign = TextAlign.Center
-        )
+private fun Pill(icon: ImageVector, label: String) {
+    Row(Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = Brand.Cyan, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 12.5.sp)
     }
 }
 
 @Composable
-private fun FeatureBullet(
-    icon: ImageVector,
-    title: String,
-    subtitle: String
-) {
-    Row(
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Icon(imageVector = icon, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(20.dp))
+private fun StepTitle(title: String, line: String) {
+    Text(title, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.6).sp, lineHeight = 34.sp, modifier = Modifier.padding(top = 12.dp))
+    Text(line, color = Color.White.copy(alpha = 0.7f), fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
+}
+
+@Composable
+private fun WhatItDoes() {
+    StepTitle("Here's what it does", "Press record. MeetingMind listens, writes it all down, and hands you what matters.")
+    Feature(Icons.Filled.Mic, "Record anything", "Meetings, lectures, sermons, calls, voice notes — even with the screen off.")
+    Feature(Icons.Filled.AutoAwesome, "Transcripts and summaries", "Who said what, the decisions, the action items. Ask questions about any recording.")
+    Feature(Icons.Filled.EditNote, "Notes that connect", "Write, add photos and scripture. Recordings become notes you can share or export.")
+    Feature(Icons.Filled.CalendarMonth, "Your day at a glance", "Today shows what's next, preps you for meetings and keeps everything on a timeline.")
+}
+
+@Composable
+private fun Feature(icon: ImageVector, title: String, line: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Brand.Blue, Brand.Violet))), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.width(14.dp))
         Column {
-            Text(title, fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text(subtitle, fontSize = 12.5.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
+            Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(line, color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 2.dp))
         }
+    }
+}
+
+@Composable
+private fun NameStep(name: String, onName: (String) -> Unit) {
+    StepTitle("What should we call you?", "For greetings, and so Ask AI can address you. Optional, and it stays on this phone.")
+    OutlinedTextField(
+        value = name, onValueChange = onName, singleLine = true,
+        placeholder = { Text("Your first name", color = Color.White.copy(alpha = 0.35f)) },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Brand.Cyan, unfocusedBorderColor = Color.White.copy(alpha = 0.2f), cursorColor = Brand.Cyan,
+            focusedTextColor = Color.White, unfocusedTextColor = Color.White
+        ),
+        shape = RoundedCornerShape(16.dp), textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp),
+        modifier = Modifier.fillMaxWidth().testTag("onboarding_name_field")
+    )
+}
+
+@Composable
+private fun SpacesStep(
+    spaces: Set<com.example.core.model.NotebookSpace>, onSpaces: (Set<com.example.core.model.NotebookSpace>) -> Unit,
+    look: com.example.core.identity.LookAndFeel, onLook: (com.example.core.identity.LookAndFeel) -> Unit
+) {
+    StepTitle("What's it for?", "Pick what you'll use it for — the app shows only those. Change it any time in Settings.")
+    com.example.core.identity.SpacesPicker(spaces, onSpaces)
+    Text("How should it feel?", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
+    com.example.core.identity.LookPicker(look, onLook)
+    Spacer(Modifier.height(12.dp))
+}
+
+@Composable
+private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (SetupChoice) -> Unit, wifiOnly: Boolean, onWifiOnly: (Boolean) -> Unit) {
+    StepTitle("How should the AI run?", "Recording always works. Turning recordings into transcripts and summaries needs a little AI setup.")
+    ChoiceCard(
+        selected = choice == SetupChoice.OFFLINE_PACK, onClick = { onChoice(SetupChoice.OFFLINE_PACK) },
+        icon = Icons.Filled.PhoneAndroid, title = "Offline pack", badge = "Recommended",
+        line = "Private and free. Three pieces, one download (${SetupGuide.formatBytes(vm.packBytes)}) that keeps going in the background.",
+        tag = "setup_choice_offline"
+    ) {
+        Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            vm.pack.forEach { (part, models) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text("${part.title}: ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(part.job.removeSuffix("."), color = Color.White.copy(alpha = 0.65f), fontSize = 12.5.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                    Text(SetupGuide.formatBytes(models.sumOf { it.sizeBytes }), color = Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp)
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Wait for Wi-Fi", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Switch(checked = wifiOnly, onCheckedChange = onWifiOnly, colors = SwitchDefaults.colors(checkedTrackColor = Brand.Indigo))
+            }
+        }
+    }
+    ChoiceCard(
+        selected = choice == SetupChoice.INTERNET, onClick = { onChoice(SetupChoice.INTERNET) },
+        icon = Icons.Filled.Cloud, title = "Internet mode", badge = null,
+        line = "No big downloads — Gemini does the work. Needs a connection and your own Gemini API key (add it in Settings). Recordings are sent to Google.",
+        tag = "setup_choice_internet"
+    )
+    ChoiceCard(
+        selected = choice == SetupChoice.LATER, onClick = { onChoice(SetupChoice.LATER) },
+        icon = Icons.Filled.Schedule, title = "Decide later", badge = null,
+        line = "Look around first. Home will remind you — you'll need this before recordings can be transcribed.",
+        tag = "setup_choice_later"
+    )
+    Spacer(Modifier.height(12.dp))
+}
+
+@Composable
+private fun ChoiceCard(selected: Boolean, onClick: () -> Unit, icon: ImageVector, title: String, badge: String?, line: String, tag: String, extra: @Composable () -> Unit = {}) {
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(20.dp))
+            .background(Color.White.copy(alpha = if (selected) 0.1f else 0.05f))
+            .border(if (selected) 1.5.dp else 1.dp, if (selected) Brush.linearGradient(Brand.sweep) else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.1f), Color.White.copy(alpha = 0.1f))), RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick).padding(16.dp).testTag(tag)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = if (selected) Brand.Cyan else Color.White.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            badge?.let { Text(it, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Brush.horizontalGradient(listOf(Brand.Blue, Brand.Violet))).padding(horizontal = 9.dp, vertical = 3.dp)) }
+        }
+        Text(line, color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 6.dp))
+        if (selected) extra()
+    }
+}
+
+@Composable
+private fun PermissionsStep() {
+    val context = LocalContext.current
+    fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
+    var mic by remember { mutableStateOf(granted(Manifest.permission.RECORD_AUDIO)) }
+    val needsNotify = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    var notify by remember { mutableStateOf(!needsNotify || granted(Manifest.permission.POST_NOTIFICATIONS)) }
+    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { mic = it }
+    val notifyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notify = it }
+
+    StepTitle("Two quick permissions", "So recording and reminders work when you need them. You can change these in Android settings.")
+    PermissionRow(Icons.Filled.Mic, "Microphone", "To record. Audio stays on this phone unless you choose Internet mode.", mic, "perm_mic") {
+        micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+    PermissionRow(Icons.Filled.Notifications, "Notifications", "To tell you when a transcript is ready, setup has finished, or your devotional arrives.", notify, "perm_notify") {
+        if (needsNotify) notifyLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    Text(
+        "After this, a short tour shows you around Home.",
+        color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp, modifier = Modifier.padding(top = 18.dp)
+    )
+}
+
+@Composable
+private fun PermissionRow(icon: ImageVector, title: String, line: String, granted: Boolean, tag: String, onAllow: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Brand.Blue, Brand.Violet))), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(line, color = Color.White.copy(alpha = 0.65f), fontSize = 12.5.sp, lineHeight = 17.sp)
+        }
+        Spacer(Modifier.width(8.dp))
+        if (granted) Box(Modifier.size(30.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.Check, contentDescription = "Allowed", tint = Color.White, modifier = Modifier.size(18.dp))
+        } else Text("Allow", color = Brand.Cyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(50)).border(1.dp, Brand.Cyan.copy(alpha = 0.6f), RoundedCornerShape(50)).clickable(onClick = onAllow).padding(horizontal = 14.dp, vertical = 7.dp).testTag(tag))
     }
 }

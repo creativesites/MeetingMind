@@ -80,6 +80,11 @@ class DevotionalEngine(
     private val verseOfTheDay: suspend (LocalDate) -> ScriptureReference? = { null },
     private val locale: Locale = Locale.getDefault()
 ) {
+    companion object {
+        const val CLOUD_TIMEOUT_MS = 60_000L
+        const val DEVICE_TIMEOUT_MS = 100_000L
+    }
+
     /** Why the last [write] fell back, for the "why is this a classic today?" line. */
     var lastFallbackReason: String? = null
         private set
@@ -115,8 +120,12 @@ class DevotionalEngine(
         for (candidate in runCatching { candidates() }.getOrDefault(emptyList())) {
             val shared = if (candidate.isCloud && !profile.sharePrivateWithCloud) signals.general else signals.general + signals.private
             val brief = DevotionalBrief(passage, text, profile, day, weekday, shared, name, ask?.about)
-            val result = runCatching { candidate.model.generate(DevotionalContract.prompt(brief), maxOutputTokens = profile.words * 2 + 600) }
-                .getOrElse { AiResult.Failed(it.message ?: "failed", it) }
+            // Each model gets a fair turn, not forever: a hung download or network moves on to the next.
+            val result = runCatching {
+                kotlinx.coroutines.withTimeoutOrNull(if (candidate.isCloud) CLOUD_TIMEOUT_MS else DEVICE_TIMEOUT_MS) {
+                    candidate.model.generate(DevotionalContract.prompt(brief), maxOutputTokens = profile.words * 2 + 600)
+                } ?: AiResult.Failed(if (candidate.isCloud) "Gemini took too long to answer." else "The on-device model took too long.")
+            }.getOrElse { AiResult.Failed(it.message ?: "failed", it) }
             val raw = (result as? AiResult.Success)?.value
             if (raw == null) { lastFallbackReason = (result as? AiResult.Failed)?.message ?: "The AI model wasn't available."; continue }
             val answer = DevotionalContract.parse(raw)

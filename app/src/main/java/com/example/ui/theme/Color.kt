@@ -131,3 +131,21 @@ val AccentWash = Color(0x1A6366F1)  // 10% — citation chips, selection highlig
 val Speaker2 = CleanMacPurple       // 0xFFA855F7
 val Speaker3 = CleanMacEmerald      // 0xFF10B981
 val Speaker4 = CleanMacAmber        // 0xFFF59E0B
+
+/**
+ * The brand, taken from the app icon: a cyan-to-violet "M" on deep navy. One gradient for
+ * everything that says "this is MeetingMind" — story rings, onboarding, the setup card, the tour.
+ */
+object Brand {
+    val Navy = Color(0xFF060D2E)
+    val NavyLift = Color(0xFF111A45)
+    val Cyan = Color(0xFF3DDCFB)
+    val Blue = Color(0xFF2F6BFF)
+    val Indigo = Color(0xFF5B4BF5)
+    val Violet = Color(0xFF9B6BFF)
+    val Lilac = Color(0xFFD29BFF)
+    /** Left to right, as on the icon. */
+    val sweep = listOf(Cyan, Blue, Indigo, Violet, Lilac)
+    /** A closed loop for rings (ends where it starts, so there's no seam). */
+    val ring = listOf(Cyan, Blue, Indigo, Violet, Lilac, Cyan)
+}
