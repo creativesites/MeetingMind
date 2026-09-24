@@ -20,6 +20,9 @@ sealed interface DeepLink {
     data object Models : DeepLink
     data object Bible : DeepLink
     data object Devotional : DeepLink
+    data object PrayerList : DeepLink
+    data object ReadingPlans : DeepLink
+    data object Home : DeepLink
 }
 
 /**
@@ -44,6 +47,9 @@ object DeepLinks {
             "models" -> DeepLink.Models
             "bible" -> DeepLink.Bible
             "devotional" -> DeepLink.Devotional
+            "prayerlist" -> DeepLink.PrayerList
+            "plans" -> DeepLink.ReadingPlans
+            "home" -> DeepLink.Home
             else -> null
         }
         intent.removeExtra(EXTRA_TARGET)
@@ -56,6 +62,9 @@ object DeepLinks {
             DeepLink.Models -> "models" to null
             DeepLink.Bible -> "bible" to null
             DeepLink.Devotional -> "devotional" to null
+            DeepLink.PrayerList -> "prayerlist" to null
+            DeepLink.ReadingPlans -> "plans" to null
+            DeepLink.Home -> "home" to null
         }
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -130,6 +139,29 @@ object AppNotifications {
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Devotional))
                 .addAction(android.R.drawable.ic_menu_view, "Open", DeepLinks.pendingIntent(context, DeepLink.Devotional))
+                .build()
+        )
+    }
+
+    const val CHANNEL_REMINDERS = "meetmind_reminders"
+
+    /** A gentle reminder: prayer times, today's reading, evening reflection, a meeting soon. */
+    fun faithReminder(context: Context, id: Int, title: String, text: String, link: DeepLink) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+                NotificationChannel(CHANNEL_REMINDERS, "Reminders", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "Prayer times, reading plans, evening reflection and meetings" }
+            )
+        }
+        post(
+            context, 6000 + id,
+            NotificationCompat.Builder(context, CHANNEL_REMINDERS)
+                .setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(DeepLinks.pendingIntent(context, link))
                 .build()
         )
     }

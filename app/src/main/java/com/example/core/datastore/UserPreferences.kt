@@ -108,6 +108,17 @@ class UserPreferencesManager(private val context: Context) {
     val devotionalProfile: Flow<com.example.core.devotional.DevotionalProfile> =
         context.dataStore.data.map { com.example.core.devotional.DevotionalProfile.fromJson(it[DEVOTIONAL_PROFILE]) }
 
+    private val FAITH_REMINDERS = stringPreferencesKey("faith_reminders")
+
+    /** Prayer, reading, evening and meeting reminders (PLAN_V2 F6). */
+    val reminderSettings: Flow<com.example.core.faith.ReminderSettings> =
+        context.dataStore.data.map { com.example.core.faith.ReminderSettings.fromJson(it[FAITH_REMINDERS]) }
+
+    suspend fun setReminderSettings(settings: com.example.core.faith.ReminderSettings) {
+        context.dataStore.edit { it[FAITH_REMINDERS] = settings.toJson() }
+        com.example.core.faith.ReminderScheduler.sync(context, settings)
+    }
+
     suspend fun setDevotionalProfile(profile: com.example.core.devotional.DevotionalProfile) {
         context.dataStore.edit { it[DEVOTIONAL_PROFILE] = profile.toJson() }
     }

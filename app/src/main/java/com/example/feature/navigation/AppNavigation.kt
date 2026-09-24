@@ -24,6 +24,8 @@ object Routes {
     fun devotionalRoute(play: String? = null) = "devotional" + (play?.let { "?play=$it" } ?: "")
     const val STORIES = "stories?start={start}"
     const val SHARE = "share"
+    const val PLANS = "reading_plans"
+    const val PRAYER_LIST = "prayer_list"
     const val PRAY = "pray?mode={mode}"
     fun prayRoute(mode: String? = null) = "pray" + (mode?.let { "?mode=$it" } ?: "")
 

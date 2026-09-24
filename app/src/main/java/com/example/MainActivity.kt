@@ -85,6 +85,8 @@ class MainActivity : ComponentActivity() {
             runCatching {
                 val profile = UserPreferencesManager(applicationContext).devotionalProfile.first()
                 com.example.core.devotional.DevotionalScheduler.sync(applicationContext, profile)
+                com.example.core.faith.ReminderScheduler.sync(applicationContext, UserPreferencesManager(applicationContext).reminderSettings.first())
+                com.example.core.widget.Widgets.refresh(applicationContext)
             }
         }
         setContent {
@@ -228,6 +230,9 @@ fun MeetMindApp() {
             com.example.core.notify.DeepLink.Models -> navController.navigate(Routes.MODELS) { launchSingleTop = true }
             com.example.core.notify.DeepLink.Bible -> navController.navigate(Routes.bibleRoute()) { launchSingleTop = true }
             com.example.core.notify.DeepLink.Devotional -> navController.navigate(Routes.devotionalRoute()) { launchSingleTop = true }
+            com.example.core.notify.DeepLink.PrayerList -> navController.navigate(Routes.PRAYER_LIST) { launchSingleTop = true }
+            com.example.core.notify.DeepLink.ReadingPlans -> navController.navigate(Routes.PLANS) { launchSingleTop = true }
+            com.example.core.notify.DeepLink.Home -> Unit
             null -> Unit
         }
     }
@@ -315,7 +320,9 @@ fun MeetMindApp() {
                     onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },
                     onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                     onShare = { req -> com.example.feature.share.ShareRequests.pending = req; navController.navigate(Routes.SHARE) },
-                    onPrayWithMe = { navController.navigate(Routes.prayRoute()) }
+                    onPrayWithMe = { navController.navigate(Routes.prayRoute()) },
+                    onOpenPlans = { navController.navigate(Routes.PLANS) },
+                    onOpenPrayerList = { navController.navigate(Routes.PRAYER_LIST) }
                 )
             }
         }
@@ -359,6 +366,16 @@ fun MeetMindApp() {
                     onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) }
                 )
+            }
+        }
+        composable(Routes.PLANS) {
+            val vm: com.example.feature.faith.FaithExtrasViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.example.feature.faith.ReadingPlansScreen(vm, onNavigateBack = { navController.popBackStack() }, onRead = { navController.navigate(Routes.bibleRoute(it.passageId())) })
+        }
+        composable(Routes.PRAYER_LIST) {
+            val vm: com.example.feature.faith.FaithExtrasViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.example.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
+                com.example.feature.faith.PrayerListScreen(vm, onNavigateBack = { navController.popBackStack() })
             }
         }
         composable(Routes.SHARE) {

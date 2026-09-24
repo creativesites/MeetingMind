@@ -118,8 +118,12 @@ fun FaithScreen(
     onReadPassage: (ScriptureReference) -> Unit = {},
     onOpenDevotional: () -> Unit = {},
     onShare: (com.example.feature.share.ShareRequest) -> Unit = {},
-    onPrayWithMe: () -> Unit = {}
+    onPrayWithMe: () -> Unit = {},
+    onOpenPlans: () -> Unit = {},
+    onOpenPrayerList: () -> Unit = {}
 ) {
+    val extras: FaithExtrasViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    androidx.compose.runtime.LaunchedEffect(Unit) { extras.refresh() }
     val votd by viewModel.verseOfTheDay.collectAsState()
     val devotional by viewModel.todayDevotional.collectAsState()
     val requests by viewModel.openRequests.collectAsState()
@@ -148,6 +152,10 @@ fun FaithScreen(
 
             // Today's devotional, written for the day (PLAN_V2 F2).
             item { TodayDevotionalCard(devotional?.devotional, onOpenDevotional) }
+
+            // The daily rhythm: today's reading and who to pray for.
+            item { Spacer(Modifier.height(14.dp)); ReadingPlanCard(extras, onOpenPlans, onRead = onReadPassage) }
+            item { Spacer(Modifier.height(10.dp)); PrayingForCard(extras, onOpenPrayerList) }
 
             // Today: the Verse of the Day, leading into a devotional.
             item {

@@ -1,8 +1,45 @@
 # Installable builds
 
-`MeetingMind-v26-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v27-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
 
-## What's new in v26
+## What's new in v27
+
+- **A much bigger Bible.**
+  - Over 1,200 open translations in hundreds of languages: translation button → More
+    translations & languages.
+  - Read any of them online, or download a whole translation in one go for offline reading
+    and search.
+  - Chapters now show section headings, and Psalms keep their lines and titles.
+- **Listen to the Bible.** In the Berean Standard Bible (BSB), tap Listen at the top of a
+  chapter.
+  - Choose from four narrators.
+  - The verse being read is highlighted and followed as it goes.
+  - Select a verse and tap "Listen here" to start from it.
+- **Study any verse.** Select it and tap Study for cross-references (with their text) and what
+  the classic commentators say: Matthew Henry, JFB, Clarke, Gill, Calvin, Keil & Delitzsch,
+  and Tyndale.
+- **Highlight verses** in five colours. They show up in Faith → Scripture.
+- **Verse of the Day works offline.**
+- **Reading plans** (Faith → Reading plan):
+  - Plans: the Bible in a year, Old & New together, the New Testament in 90 days, the Gospels
+    in 30 days, Psalms & Proverbs, Advent and Lent.
+  - See today's reading, mark it read, and track your progress.
+  - "I've caught up" clears missed days.
+  - Today's reading also appears as a story.
+- **Praying for** (Faith → Praying for): add people and things you pray for. Three come up each
+  day, in turn; tap Prayed. It keeps a quiet 28-day history, and today's names appear in your
+  stories.
+- **Reminders** (Praying for → the bell):
+  - Morning, midday and evening prayer times, naming who to pray for.
+  - A nudge for today's reading.
+  - An evening reflection.
+  - A reminder 15 minutes before calendar events.
+  - Quiet hours are respected.
+- **Home-screen widgets:**
+  - Verse of the Day, on a picture.
+  - Today at a glance: your next event, and today's devotional one tap away.
+
+## What was new in v26
 
 - **Pray with me** (Faith → Begin, or "Pray with me" on the devotional's prayer). A spoken prayer
   companion using Gemini Live:

@@ -27,7 +27,7 @@ import java.util.Locale
 
 enum class StoryKind(val ring: String) {
     VERSE("Verse"), DEVOTIONAL("Devotional"), PRAYER("Prayer"), WORD("Word"), QUOTE("Quote"),
-    DAY("Your day"), PRAYING_FOR("Praying"), MEMORY("On this day"), RECAP("Recap")
+    DAY("Your day"), READING("Reading"), PRAYING_FOR("Praying"), MEMORY("On this day"), RECAP("Recap")
 }
 
 /** Where a story leads when opened. */
@@ -129,16 +129,27 @@ class StoryBuilder(private val context: Context, private val database: MeetMindD
             }
         }
 
+        // Today's reading from the plan the person is following.
+        if (identity.showsFaith) runCatching {
+            val plan = com.example.core.faith.FaithStore.get(context).active().firstOrNull { !it.finished }
+            if (plan != null) {
+                val day = plan.nextUnread ?: plan.dayFor(epoch)
+                val readings = plan.plan.days[day]
+                out += Story(StoryKind.READING, "Today's reading", title = "${plan.plan.name} · day ${day + 1}", body = com.example.core.faith.ReadingPlans.describe(readings),
+                    background = bg(8), footer = "${plan.percent}% of the way", open = StoryOpen.Passage(readings.first()), openLabel = "Read it")
+            }
+        }
+
         if (identity.showsFaith) runCatching {
             val requests = database.noteDao().getUpdatedSince(0, 400).map { with(NoteCodec) { it.toDomain() } }
                 .filter { it.workflow == RecordingType.PRAYER_REQUEST && it.status == NoteStatus.OPEN && it.archivedAt == null }
-            if (requests.isNotEmpty()) {
-                // Three a day, rotating, so every request is carried in turn.
-                val start = Math.floorMod(epoch * 3, requests.size.toLong()).toInt()
-                val today = (0 until minOf(3, requests.size)).map { requests[(start + it) % requests.size] }
-                out += Story(StoryKind.PRAYING_FOR, "Praying for", title = "Carry these today", body = "", background = bg(6),
-                    lines = today.map { it.title.ifBlank { "A prayer request" } }, open = StoryOpen.Note(today.first().id), openLabel = "Open")
-            }
+            val people = com.example.core.faith.PrayerRotation.today(com.example.core.faith.FaithStore.get(context).people(), epoch)
+            // Three requests a day, rotating, so every request is carried in turn — with today's people.
+            val start = if (requests.isEmpty()) 0 else Math.floorMod(epoch * 3, requests.size.toLong()).toInt()
+            val todayRequests = (0 until minOf(3, requests.size)).map { requests[(start + it) % requests.size] }
+            val lines = people.map { p -> p.name + if (p.note.isNotBlank()) " — ${p.note}" else "" } + todayRequests.map { it.title.ifBlank { "A prayer request" } }
+            if (lines.isNotEmpty()) out += Story(StoryKind.PRAYING_FOR, "Praying for", title = "Carry these today", body = "", background = bg(6),
+                lines = lines.take(6), open = todayRequests.firstOrNull()?.let { StoryOpen.Note(it.id) }, openLabel = "Open")
         }
 
         runCatching {

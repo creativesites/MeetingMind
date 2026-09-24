@@ -100,6 +100,7 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
                 val written = runCatching { repo.ensure(LocalDate.now(), replace = replace, ask = ask) }.getOrNull()
                 if (written == null) return if (runAttemptCount < 2) Result.retry() else Result.failure()
                 if (profile.autoImage) runCatching { repo.paint(written, profile) }
+                com.example.core.widget.Widgets.refresh(applicationContext)
                 if (profile.voice.autoVoice && written.note.metadata[DevotionalVoice.META_AUDIO] == null) {
                     runCatching { DevotionalVoice(applicationContext).record(written) }
                 }

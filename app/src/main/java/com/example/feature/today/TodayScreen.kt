@@ -525,6 +525,7 @@ private fun storyIcon(kind: com.example.feature.stories.StoryKind): ImageVector 
     com.example.feature.stories.StoryKind.WORD -> Icons.Filled.AutoAwesome
     com.example.feature.stories.StoryKind.QUOTE -> Icons.Filled.FormatQuote
     com.example.feature.stories.StoryKind.DAY -> Icons.Filled.Event
+    com.example.feature.stories.StoryKind.READING -> Icons.Filled.MenuBook
     com.example.feature.stories.StoryKind.PRAYING_FOR -> Icons.Filled.Favorite
     com.example.feature.stories.StoryKind.MEMORY -> Icons.Filled.History
     com.example.feature.stories.StoryKind.RECAP -> Icons.Filled.Mic
