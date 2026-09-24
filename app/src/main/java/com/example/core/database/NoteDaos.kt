@@ -87,6 +87,9 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson LIKE :pattern ESCAPE '\\' ORDER BY createdAt DESC LIMIT :limit")
     suspend fun findAllByMetadata(pattern: String, limit: Int): List<NoteEntity>
 
+    @Query("SELECT * FROM notes WHERE metadataJson LIKE :pattern ESCAPE '\\' AND archivedAt IS NULL ORDER BY createdAt ASC")
+    fun observeAllByMetadata(pattern: String): Flow<List<NoteEntity>>
+
     @Query("SELECT * FROM notes WHERE metadataJson LIKE :pattern ESCAPE '\\' ORDER BY createdAt DESC LIMIT 1")
     fun observeByMetadata(pattern: String): Flow<NoteEntity?>
 

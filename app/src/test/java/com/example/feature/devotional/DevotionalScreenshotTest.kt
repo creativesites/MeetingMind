@@ -33,9 +33,10 @@ class DevotionalScreenshotTest {
 
     private val date = LocalDate.of(2026, 9, 24)
 
-    private fun daily(d: Devotional): DailyDevotional {
-        val (blocks, refs) = DevotionalNotes.build("n1", d)
-        val note = Note("n1", d.title, RecordingType.DEVOTIONAL, null, 0, 0, 0, false, false, NoteStatus.OPEN, null, DevotionalNotes.metadata(d))
+    private fun daily(d: Devotional, id: String = "n1", created: Long = 0, key: String? = null): DailyDevotional {
+        val (blocks, refs) = DevotionalNotes.build(id, d)
+        val meta = DevotionalNotes.metadata(d).let { m -> if (key != null) m + (DevotionalNotes.META_KEY to key) else m }
+        val note = Note(id, d.title, RecordingType.DEVOTIONAL, null, created, created, 0, false, false, NoteStatus.OPEN, null, meta)
         return DailyDevotional(note, d, NoteDocument(note, blocks, emptyList(), emptyList(), refs))
     }
 
@@ -67,5 +68,29 @@ class DevotionalScreenshotTest {
 
     @Test fun `before it's written there's an invitation`() {
         capture(DevotionalUiState(loading = false, season = LiturgicalCalendar.dayOf(date), date = date), "devotional_intro")
+    }
+
+    @Test fun `several devotionals in a day, and a failed new one says so`() {
+        val base = Devotional(
+            day = LocalDay.of(date), origin = DevotionalOrigin.CLASSIC, title = "Morning, 24 September",
+            scripture = listOf(ScriptureReferenceParser.parse("Psalm 46:1")!!), reflection = listOf("God is our refuge and strength."), label = "Charles Spurgeon · Morning and Evening"
+        )
+        val morning = daily(base, "a", 1_790_000_000_000L, key = "${date}-earlier-1")
+        val phone = daily(base.copy(origin = DevotionalOrigin.DEVICE_AI, title = "Held in the middle of it", label = DevotionalLabels.DEVICE), "b", 1_790_010_000_000L)
+        capture(
+            DevotionalUiState(loading = false, today = phone, all = listOf(morning, phone), writeError = "Gemini took too long to answer.", season = LiturgicalCalendar.dayOf(date), date = date),
+            "devotional_many"
+        )
+    }
+
+    @Test fun `the new devotional sheet lets you choose who writes it`() {
+        compose.setContent {
+            MeetMindTheme {
+                AskDevotionalSheet(com.example.core.devotional.DevotionalProfile(), {}, {},
+                    writers = setOf(com.example.ai.devotional.DevotionalWriter.AUTO, com.example.ai.devotional.DevotionalWriter.CLASSIC, com.example.ai.devotional.DevotionalWriter.DEVICE))
+            }
+        }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/devotional_new_sheet.png")
     }
 }

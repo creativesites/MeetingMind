@@ -128,7 +128,7 @@ fun PraySetupContent(ui: PrayUi, startMode: PrayMode?, onNavigateBack: () -> Uni
                 Surface(shape = RoundedCornerShape(20.dp), color = Color.White.copy(alpha = 0.08f)) {
                     Column(Modifier.padding(18.dp)) {
                         Text("This needs Gemini", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                        Text("Turn on Internet mode and add your Gemini key in Settings. Your voice goes to Gemini only while you pray here.", fontSize = 13.sp, lineHeight = 19.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 4.dp))
+                        Text("Add your Gemini API key in Settings. Your voice goes to Gemini only while you pray here — recordings can stay on your phone.", fontSize = 13.sp, lineHeight = 19.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 4.dp))
                         Surface(onClick = onOpenSettings, shape = RoundedCornerShape(50), color = Gold, modifier = Modifier.padding(top = 12.dp)) {
                             Text("Open Settings", color = Night, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
                         }
@@ -257,6 +257,7 @@ private fun PraySessionContent(viewModel: PrayWithMeViewModel, ui: PrayUi, onClo
                 },
                 fontSize = 20.sp, fontFamily = FontFamily.Serif, color = Color.White, modifier = Modifier.padding(top = 10.dp)
             )
+            if (ui.state == LiveVoiceState.CONNECTING && ui.stage.isNotBlank()) Text(ui.stage, fontSize = 13.sp, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(top = 4.dp).testTag("pray_stage"))
             ui.error?.let { Text(it, fontSize = 13.sp, color = Color(0xFFFCA5A5), textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp, vertical = 6.dp)) }
 
             LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 14.dp), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp, vertical = 8.dp)) {

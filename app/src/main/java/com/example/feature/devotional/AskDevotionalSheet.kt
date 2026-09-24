@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai.devotional.DevotionalAsk
+import com.example.ai.devotional.DevotionalWriter
 import com.example.core.devotional.DevotionalProfile
 import com.example.core.devotional.DevotionalTone
 import com.example.core.devotional.DevotionalTopics
@@ -44,7 +45,16 @@ import com.example.ui.theme.InkSecondary
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun AskDevotionalSheet(profile: DevotionalProfile, onWrite: (DevotionalAsk?) -> Unit, onDismiss: () -> Unit) {
+fun AskDevotionalSheet(
+    profile: DevotionalProfile,
+    onWrite: (DevotionalAsk?) -> Unit,
+    onDismiss: () -> Unit,
+    writers: Set<DevotionalWriter> = setOf(DevotionalWriter.AUTO, DevotionalWriter.CLASSIC)
+) {
+    // Gemini when it's set up, else the phone's model, else a classic — the person can change it.
+    var writer by remember(writers) {
+        mutableStateOf(listOf(DevotionalWriter.GEMINI, DevotionalWriter.DEVICE, DevotionalWriter.CLASSIC).firstOrNull { it in writers } ?: DevotionalWriter.CLASSIC)
+    }
     var about by remember { mutableStateOf("") }
     var passage by remember { mutableStateOf("") }
     var topics by remember { mutableStateOf(emptySet<String>()) }
@@ -54,8 +64,25 @@ fun AskDevotionalSheet(profile: DevotionalProfile, onWrite: (DevotionalAsk?) -> 
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Color.White) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).navigationBarsPadding()) {
-            Text("Write me one", fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text("Tell it what you'd like today — or just ask for a different one.", fontSize = 14.sp, color = InkSecondary, modifier = Modifier.padding(top = 2.dp, bottom = 14.dp))
+            Text("A new devotional", fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text("It's added to today — the one you're reading stays.", fontSize = 14.sp, color = InkSecondary, modifier = Modifier.padding(top = 2.dp, bottom = 6.dp))
+
+            Label("Who writes it?")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(DevotionalWriter.GEMINI, DevotionalWriter.DEVICE, DevotionalWriter.CLASSIC).forEach { w ->
+                    WriterChoice(w, selected = writer == w, available = w in writers, modifier = Modifier.weight(1f)) { writer = w }
+                }
+            }
+            Text(
+                when (writer) {
+                    DevotionalWriter.GEMINI -> "Written by Gemini online. Your words below are sent to Google for this one request."
+                    DevotionalWriter.DEVICE -> "Written privately by the language model on this phone. Can take a minute."
+                    DevotionalWriter.CLASSIC -> "A public-domain classic (Spurgeon's Morning & Evening) — no AI."
+                    DevotionalWriter.AUTO -> ""
+                },
+                fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted, modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
+            )
+            if (writer != DevotionalWriter.CLASSIC) {
 
             OutlinedTextField(
                 value = about, onValueChange = { about = it.take(600) }, minLines = 3,
@@ -81,14 +108,40 @@ fun AskDevotionalSheet(profile: DevotionalProfile, onWrite: (DevotionalAsk?) -> 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(3, 7, 12).forEach { m -> Choice("$m min", (minutes ?: profile.minutes) == m) { minutes = m } }
             }
-            Text("Written by AI for today, and labelled as such. Your words go to the AI only when Internet mode is on.", fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted, modifier = Modifier.padding(top = 16.dp))
+            Text("Written by AI and labelled as such. Verses always come from the Bible itself.", fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted, modifier = Modifier.padding(top = 16.dp))
+            }
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                val custom = DevotionalAsk(about.trim().ifBlank { null }, parsed?.display(), topics, tone, minutes)
-                PillButton(if (custom.custom) "Write it" else "Surprise me", filled = true, modifier = Modifier.testTag("ask_write")) { onWrite(custom.takeIf { it.custom }) }
-                if (custom.custom) PillButton("Just a different one", filled = false) { onWrite(null) }
+                val custom = DevotionalAsk(about.trim().ifBlank { null }, parsed?.display(), topics, tone, minutes, writer = writer)
+                val canWrite = writer in writers
+                PillButton(
+                    when { !canWrite -> "Not set up"; writer == DevotionalWriter.CLASSIC -> "Give me a classic"; custom.custom -> "Write it"; else -> "Surprise me" },
+                    filled = true, modifier = Modifier.testTag("ask_write")
+                ) { if (canWrite) onWrite(if (writer == DevotionalWriter.CLASSIC) DevotionalAsk(writer = writer) else custom) }
             }
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun WriterChoice(w: DevotionalWriter, selected: Boolean, available: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    androidx.compose.material3.Surface(
+        onClick = onClick, enabled = available, shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        color = if (selected) Color(0xFF1B1530) else Color.White,
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) Color(0xFF1B1530) else Color(0xFFE2E8F0)),
+        modifier = modifier.testTag("writer_${w.name.lowercase()}")
+    ) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
+            Text(w.label, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = when { selected -> Color.White; available -> Ink; else -> InkMuted })
+            Text(
+                when (w) {
+                    DevotionalWriter.GEMINI -> if (available) "Online" else "Add a key in Settings"
+                    DevotionalWriter.DEVICE -> if (available) "Private" else "No model yet"
+                    else -> "No AI"
+                },
+                fontSize = 11.sp, color = if (selected) Color.White.copy(alpha = 0.7f) else InkMuted, maxLines = 1
+            )
         }
     }
 }

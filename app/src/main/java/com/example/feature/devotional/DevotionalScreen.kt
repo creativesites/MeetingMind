@@ -23,6 +23,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.EditNote
@@ -109,7 +112,10 @@ fun DevotionalScreen(
         onSettings = { showSettings = true },
         onOpenNote = onOpenNote,
         onReadPassage = onReadPassage,
-        onRewrite = { showAsk = true },
+        onRewrite = { viewModel.refreshWriters(); showAsk = true },
+        onSelect = viewModel::select,
+        onMakeCurrent = viewModel::makeCurrent,
+        onDismissError = viewModel::dismissError,
         onFeedback = { d, v -> viewModel.feedback(d, v) },
         onSaveResponse = { d, t -> viewModel.saveResponse(d, t) },
         onListen = { viewModel.listen() },
@@ -119,12 +125,13 @@ fun DevotionalScreen(
     )
     if (showAsk) AskDevotionalSheet(
         profile = state.profile,
+        writers = state.writers,
         onWrite = { ask -> showAsk = false; viewModel.rewrite(ask) },
         onDismiss = { showAsk = false }
     )
     if (showSettings) DevotionalSettingsSheet(
         profile = state.profile,
-        onSave = { p, rewrite -> viewModel.saveProfile(p, rewrite); showSettings = false },
+        onSave = { p, rewrite -> viewModel.saveProfile(p); if (rewrite) viewModel.rewrite(); showSettings = false },
         onDismiss = { showSettings = false }
     )
 }
@@ -143,6 +150,9 @@ fun DevotionalContent(
     onListenFrom: (com.example.ai.voice.VoiceSection, Boolean) -> Unit = { _, _ -> },
     onLive: (com.example.core.prayer.PrayMode) -> Unit = {},
     onShare: (DailyDevotional) -> Unit = {},
+    onSelect: (DailyDevotional) -> Unit = {},
+    onMakeCurrent: (DailyDevotional) -> Unit = {},
+    onDismissError: () -> Unit = {},
     /** Verse text is fetched live; screenshots pass false to keep the page deterministic. */
     liveScripture: Boolean = true
 ) {
@@ -152,6 +162,15 @@ fun DevotionalContent(
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink) }
                 Text("Today's devotional", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
+                // Always here: a new one, whenever the person wants, by the writer they choose.
+                Surface(onClick = onRewrite, enabled = !state.writing, shape = RoundedCornerShape(50), color = Night, modifier = Modifier.testTag("devotional_new")) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (state.writing) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Color(0xFFF6D365))
+                        else Icon(Icons.Filled.Add, contentDescription = null, tint = Color(0xFFF6D365), modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (state.writing) "Writing…" else "New", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
                 IconButton(onClick = onSettings) { Icon(Icons.Filled.Tune, contentDescription = "Devotional settings", tint = Ink) }
             }
         }
@@ -163,15 +182,17 @@ fun DevotionalContent(
                 if (today != null && today.devotional.origin != DevotionalOrigin.MINE && today.devotional.origin != DevotionalOrigin.CARE) ListenPill(state.voice, onListen)
             }
         }
+        if (state.all.size > 1 && today != null) item { DayList(state.all, today, state.date, onSelect, onMakeCurrent) }
         if (today != null && state.voice.marks.size > 1) item { SectionChips(state.voice, onListenFrom) }
         if (today != null && state.writing) item { RewritingBanner() }
+        if (today != null && state.writeError != null && !state.writing) item { ErrorBanner(state.writeError, onRetry = onRewrite, onDismiss = onDismissError) }
         today?.note?.metadata?.get(com.example.core.devotional.META_ASKED)?.let { asked ->
             item { Text("Written for: “$asked”", fontSize = 13.sp, lineHeight = 18.sp, color = InkSecondary, fontStyle = FontStyle.Italic, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp)) }
         }
         when {
             today == null && state.writing -> item { Writing() }
             today == null && state.writeError != null -> item {
-                Callout("Couldn't write today's devotional", "${state.writeError} Try again, or pick a classic in settings.", "Try again") { onRewrite() }
+                Callout("Couldn't write today's devotional", "${state.writeError}", "Try again") { onRewrite() }
             }
             today == null -> item {
                 Intro(enabled = state.profile.enabled, onSettings = onSettings, onRewrite = onRewrite)
@@ -226,6 +247,58 @@ fun DevotionalContent(
 }
 
 private val DATE = DateTimeFormatter.ofPattern("EEEE, d MMMM")
+
+/** Who wrote a devotional, in a word, for the day's list. */
+private fun writerLabel(d: DailyDevotional): String = when (d.devotional.origin) {
+    DevotionalOrigin.CLOUD_AI -> "Gemini"
+    DevotionalOrigin.DEVICE_AI -> "On phone"
+    DevotionalOrigin.CLASSIC -> "Classic"
+    DevotionalOrigin.MINE -> "My page"
+    DevotionalOrigin.CARE -> "Care"
+}
+
+/** Every devotional written today: tap to read one; the day's own is marked, and any can become it. */
+@Composable
+private fun DayList(all: List<DailyDevotional>, shown: DailyDevotional, date: LocalDate, onSelect: (DailyDevotional) -> Unit, onMakeCurrent: (DailyDevotional) -> Unit) {
+    val dayKey = DevotionalNotes.key(com.example.core.devotional.LocalDay.of(date))
+    val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        Text("Today's devotionals · ${all.size}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(horizontal = 20.dp))
+        androidx.compose.foundation.lazy.LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("devotional_day_list")) {
+            items(all.size) { i ->
+                val d = all[i]
+                val on = d.note.id == shown.note.id
+                val current = d.note.metadata[DevotionalNotes.META_KEY] == dayKey
+                Surface(onClick = { onSelect(d) }, shape = RoundedCornerShape(16.dp), color = if (on) Night else Color.White,
+                    border = if (on) null else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE7E1D6)), modifier = Modifier.width(168.dp)) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${writerLabel(d)} · ${time.format(java.util.Date(d.note.createdAt))}", fontSize = 11.5.sp, color = if (on) Color(0xFFF6D365) else Gold, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
+                            if (current) Icon(Icons.Filled.Star, contentDescription = "Today's", tint = if (on) Color(0xFFF6D365) else Gold, modifier = Modifier.size(14.dp))
+                        }
+                        Text(d.devotional.title, fontSize = 13.5.sp, fontFamily = FontFamily.Serif, color = if (on) Color.White else Ink, maxLines = 2, lineHeight = 18.sp, modifier = Modifier.padding(top = 3.dp))
+                    }
+                }
+            }
+        }
+        if (shown.note.metadata[DevotionalNotes.META_KEY] != dayKey) {
+            Text("★ Make this today's devotional", fontSize = 13.sp, color = Gold, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 20.dp).clip(RoundedCornerShape(8.dp)).clickable { onMakeCurrent(shown) }.padding(vertical = 4.dp).testTag("devotional_make_current"))
+        }
+    }
+}
+
+@Composable
+private fun ErrorBanner(message: String, onRetry: () -> Unit, onDismiss: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFFFEF2F2)).padding(14.dp).testTag("devotional_error"), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Couldn't write a new one", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF991B1B))
+            Text("$message The one you're reading is unchanged.", fontSize = 12.5.sp, lineHeight = 17.sp, color = Color(0xFF7F1D1D))
+            Text("Try again", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF991B1B), modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onRetry).padding(vertical = 2.dp))
+        }
+        IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss", tint = Color(0xFF991B1B)) }
+    }
+}
 
 @Composable
 private fun Hero(date: LocalDate, season: LiturgicalDay?, d: Devotional?, writing: Boolean, cover: String? = null, actions: @Composable () -> Unit = {}) {

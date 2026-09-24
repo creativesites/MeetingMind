@@ -29,6 +29,10 @@ data class DevotionalUiState(
     val writing: Boolean = false,
     /** Why the last on-demand write failed, for a "Try again" card. */
     val writeError: String? = null,
+    /** Every devotional of the day, oldest first, when there's more than one. */
+    val all: List<DailyDevotional> = emptyList(),
+    /** Who can write a new one right now. */
+    val writers: Set<com.example.ai.devotional.DevotionalWriter> = setOf(com.example.ai.devotional.DevotionalWriter.AUTO, com.example.ai.devotional.DevotionalWriter.CLASSIC),
     val season: LiturgicalDay? = null,
     val date: LocalDate = LocalDate.now(),
     val voice: VoiceUi = VoiceUi()
@@ -60,7 +64,7 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
         ?.map { infos ->
             val busy = infos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
             if (!busy) requested.value = false
-            busy to infos.firstOrNull { it.state == WorkInfo.State.FAILED }?.outputData?.getString(com.example.core.devotional.DevotionalWorker.KEY_ERROR)
+            busy to (if (busy) null else DevotionalScheduler.lastError(app))
         }
         ?.catch { emit(false to null) } ?: flowOf(false to null)
 
@@ -71,13 +75,25 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
                 infos.any { it.state == WorkInfo.State.FAILED })
         }?.catch { emit(Triple(false, 0f, false)) } ?: flowOf(Triple(false, 0f, false))
 
-    private val base = combine(repo.observe(day), repo.profile, writingFlow, requested) { today, profile, (writing, error), asked ->
+    /** The devotional the person picked from the day's list; null follows the day's current one. */
+    private val selected = MutableStateFlow<String?>(null)
+    private val errorDismissed = MutableStateFlow<String?>(null)
+    private val writers = MutableStateFlow(setOf(com.example.ai.devotional.DevotionalWriter.AUTO, com.example.ai.devotional.DevotionalWriter.CLASSIC))
+
+    private val shown = combine(repo.observeDay(day), selected) { all, pick ->
+        val current = all.lastOrNull { it.note.metadata[com.example.core.devotional.DevotionalNotes.META_KEY] == com.example.core.devotional.DevotionalNotes.key(day) }
+        all to (all.firstOrNull { it.note.id == pick } ?: current ?: all.lastOrNull())
+    }
+
+    private val base = combine(shown, repo.profile, writingFlow, requested, combine(errorDismissed, writers) { d, w -> d to w }) { (all, today), profile, (writing, error), asked, (dismissed, available) ->
         DevotionalUiState(
             loading = false,
             today = today,
             profile = profile,
             writing = writing || (asked && today == null),
-            writeError = error.takeIf { !writing && !asked },
+            writeError = error.takeIf { !writing && !asked && it != dismissed },
+            all = all,
+            writers = available,
             season = LiturgicalCalendar.dayOf(day.date, profile.tradition),
             date = day.date
         )
@@ -158,11 +174,27 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
         return t.document.attachments.firstOrNull { it.id == id }?.path?.takeIf { java.io.File(it).exists() }
     }
 
-    /** A different devotional for today — plain, or written to what the person asked for. */
+    /**
+     * A new devotional for today, by the writer the person chose. It's added to the day — the one
+     * being read is kept — and shown once written. Nothing is ever written without being asked,
+     * except the day's first.
+     */
     fun rewrite(ask: com.example.ai.devotional.DevotionalAsk? = null) {
         requested.value = true
+        selected.value = null
+        errorDismissed.value = null
         DevotionalScheduler.writeNow(getApplication(), replace = true, ask = ask)
     }
+
+    /** Shows one of the day's devotionals. */
+    fun select(daily: DailyDevotional) { selected.value = daily.note.id }
+
+    /** Makes the one being read the day's devotional (for stories, widgets and Home). */
+    fun makeCurrent(daily: DailyDevotional) = viewModelScope.launch { runCatching { repo.makeCurrent(daily) }; selected.value = null }
+
+    fun dismissError() { errorDismissed.value = state.value.writeError }
+
+    fun refreshWriters() = viewModelScope.launch { writers.value = runCatching { repo.writersAvailable() }.getOrDefault(writers.value) }
 
     fun opened(daily: DailyDevotional) = viewModelScope.launch {
         runCatching { repo.markOpened(daily) }
@@ -175,8 +207,6 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveResponse(daily: DailyDevotional, text: String) = viewModelScope.launch { repo.saveResponse(daily, text) }
 
-    fun saveProfile(profile: DevotionalProfile, rewriteToday: Boolean) = viewModelScope.launch {
-        repo.setProfile(profile)
-        if (rewriteToday) rewrite()
-    }
+    /** Saving settings shapes tomorrow's devotional; a new one today is always the person's call. */
+    fun saveProfile(profile: DevotionalProfile) = viewModelScope.launch { repo.setProfile(profile) }
 }

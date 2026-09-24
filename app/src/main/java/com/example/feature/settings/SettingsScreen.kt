@@ -96,6 +96,30 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { geminiCredentials.clear() }
     }
 
+    /** The result of "Check Gemini key": one line per service, or null before it's run. */
+    private val _keyCheck = kotlinx.coroutines.flow.MutableStateFlow<List<Pair<String, String?>>?>(null)
+    val keyCheck: StateFlow<List<Pair<String, String?>>?> = _keyCheck
+    private val _checking = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val checking: StateFlow<Boolean> = _checking
+
+    /** Tries the key for real: a one-word text answer, then a live voice session (no microphone). */
+    fun checkGeminiKey() = viewModelScope.launch {
+        val key = geminiCredentials.getApiKey() ?: run { _keyCheck.value = listOf("Key" to "No key saved yet."); return@launch }
+        _checking.value = true
+        _keyCheck.value = null
+        val text = runCatching {
+            val transport = com.example.ai.cloud.GeminiHttpTransport(geminiCredentials)
+            when (val r = transport.execute(com.example.ai.cloud.GeminiRequest(com.example.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL, "", "Reply with the single word OK."))) {
+                is com.example.ai.common.AiResult.Success -> null
+                is com.example.ai.common.AiResult.Failed -> r.message
+                else -> "No answer."
+            }
+        }.getOrElse { it.message ?: "Failed." }
+        val live = runCatching { com.example.ai.live.GeminiLiveVoice.probe(key) }.getOrElse { it.message ?: "Failed." }
+        _keyCheck.value = listOf("Writing (devotionals, summaries)" to text, "Live voice (Pray with me)" to live)
+        _checking.value = false
+    }
+
     val preferencesState: StateFlow<AppPreferencesState> = userPrefs.preferencesFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -513,14 +537,19 @@ fun SettingsScreen(
                         testTag = "settings_on_device_only"
                     )
                 }
-                if (prefs.processingProfile.requiresNetwork) {
-                    item {
-                        GeminiApiKeyRow(
-                            redactedKey = geminiKeyDisplay,
-                            onSave = { viewModel.setGeminiApiKey(it) },
-                            onClear = { viewModel.clearGeminiApiKey() }
-                        )
-                    }
+                // Always offered: Pray with me and "New devotional → Gemini" use the key even when
+                // recordings stay on the phone.
+                item {
+                    GeminiApiKeyRow(
+                        redactedKey = geminiKeyDisplay,
+                        onSave = { viewModel.setGeminiApiKey(it) },
+                        onClear = { viewModel.clearGeminiApiKey() }
+                    )
+                }
+                if (geminiKeyDisplay != null) item {
+                    val check by viewModel.keyCheck.collectAsState()
+                    val checking by viewModel.checking.collectAsState()
+                    GeminiKeyCheck(check, checking, onCheck = { viewModel.checkGeminiKey() })
                 }
             }
 
@@ -715,6 +744,31 @@ private fun SettingsRadioRow(title: String, subtitle: String, selected: Boolean,
             colors = RadioButtonDefaults.colors(selectedColor = Accent, unselectedColor = InkFaint),
             modifier = Modifier.testTag(testTag)
         )
+    }
+}
+
+/** "Check Gemini key": tests writing and live voice with the saved key, and says what works. */
+@Composable
+private fun GeminiKeyCheck(result: List<Pair<String, String?>>?, checking: Boolean, onCheck: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).testTag("settings_gemini_check")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Check Gemini key", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
+            if (checking) androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            else TextButton(onClick = onCheck, modifier = Modifier.testTag("settings_gemini_check_btn")) { Text(if (result == null) "Check" else "Check again") }
+        }
+        Text(
+            if (checking) "Trying writing, then live voice… (up to 30 seconds)" else "Tries writing and live voice with your key, so you know what works.",
+            fontSize = 12.5.sp, color = InkMuted
+        )
+        result?.forEach { (what, problem) ->
+            Row(Modifier.padding(top = 6.dp)) {
+                Text(if (problem == null) "✓" else "✗", color = if (problem == null) com.example.ui.theme.SuccessGreen else Color(0xFFDC2626), fontWeight = FontWeight.Bold, modifier = Modifier.width(20.dp))
+                Column {
+                    Text(what, fontSize = 13.5.sp, fontWeight = FontWeight.Medium, color = Ink)
+                    Text(problem ?: "Works", fontSize = 12.5.sp, color = if (problem == null) InkSecondary else Color(0xFFB91C1C))
+                }
+            }
+        }
     }
 }
 

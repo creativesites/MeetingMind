@@ -54,6 +54,7 @@ object DevotionalScheduler {
             ))
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
+        setLastError(context, null)
         runCatching { WorkManager.getInstance(context).enqueueUniqueWork(NOW, if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request) }
     }
 
@@ -64,6 +65,12 @@ object DevotionalScheduler {
             .setConstraints(Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build())
             .build()
         runCatching { WorkManager.getInstance(context).enqueueUniqueWork(EXTRAS, ExistingWorkPolicy.REPLACE, request) }
+    }
+
+    /** Why the last on-demand write failed (null once one succeeds), for the page to say. */
+    fun lastError(context: Context): String? = context.getSharedPreferences("devotional_work", Context.MODE_PRIVATE).getString("error", null)
+    fun setLastError(context: Context, message: String?) {
+        context.getSharedPreferences("devotional_work", Context.MODE_PRIVATE).edit().apply { if (message == null) remove("error") else putString("error", message) }.apply()
     }
 
     fun observeWriting(context: Context) = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(NOW)
@@ -115,13 +122,15 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
                 val onDemand = !inputData.getBoolean(KEY_NOTIFY, true)
                 val ask = com.example.ai.devotional.DevotionalAsk.fromJson(inputData.getString(KEY_ASK))
                 // Never "writing…" forever: a stuck model or network gives up and the classic stands in.
-                val attempt = runCatching { withTimeoutOrNull(WRITE_TIMEOUT_MS) { repo.ensure(LocalDate.now(), replace = replace, ask = ask) } }
+                val attempt = runCatching { withTimeoutOrNull(WRITE_TIMEOUT_MS) { repo.ensure(LocalDate.now(), another = replace, ask = ask) } }
                 val written = attempt.getOrNull()
                 if (written == null) {
-                    val why = attempt.exceptionOrNull()?.message ?: if (attempt.isSuccess) "It took too long to write." else "Something went wrong."
+                    val why = attempt.exceptionOrNull()?.message ?: if (attempt.isSuccess) "It took too long to write. Try again, or choose another writer." else "Something went wrong."
+                    if (onDemand) DevotionalScheduler.setLastError(applicationContext, why)
                     // Someone is waiting on the page: say so now rather than retrying quietly.
                     return if (!onDemand && runAttemptCount < 2) Result.retry() else Result.failure(workDataOf(KEY_ERROR to why))
                 }
+                if (onDemand) DevotionalScheduler.setLastError(applicationContext, null)
                 com.example.core.widget.Widgets.refresh(applicationContext)
                 if (onDemand) DevotionalScheduler.finishLater(applicationContext) else extras(repo, written, profile)
                 if (!onDemand && profile.enabled) DevotionalScheduler.notifyAt(applicationContext, profile.deliveryMinutes)

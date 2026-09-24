@@ -39,6 +39,8 @@ data class DailyDevotional(val note: Note, val devotional: Devotional, val docum
  */
 private const val META_VARIANT = "devotionalVariant"
 const val META_ASKED = "devotionalAsked"
+const val META_WRITER = "devotionalWriter"
+private const val EARLIER = "-earlier-"
 
 class DevotionalRepository(
     private val context: Context,
@@ -62,6 +64,32 @@ class DevotionalRepository(
             .map { entity -> entity?.takeIf { it.archivedAt == null }?.let { load(it.id) } }
             .flowOn(Dispatchers.IO)
 
+    /**
+     * Every devotional of [day] (morning), oldest first: the day's current one and any the person
+     * asked for or set aside. Nothing written for the day is ever thrown away.
+     */
+    fun observeDay(day: LocalDay): Flow<List<DailyDevotional>> =
+        noteDao.observeAllByMetadata("%\"${DevotionalNotes.META_KEY}\":\"${day.iso}%")
+            .map { list ->
+                list.filter { e -> keyOf(e.metadataJson).let { it == day.iso || it?.startsWith("${day.iso}$EARLIER") == true } }
+                    .mapNotNull { load(it.id) }
+            }
+            .flowOn(Dispatchers.IO)
+
+    private fun keyOf(metadataJson: String?): String? =
+        runCatching { org.json.JSONObject(metadataJson ?: "{}").optString(DevotionalNotes.META_KEY) }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    /** Makes [daily] the day's devotional (the one stories, widgets and Home show); the current one steps aside. */
+    suspend fun makeCurrent(daily: DailyDevotional) = writing.withLock {
+        withContext(Dispatchers.IO) {
+            val day = daily.devotional.day
+            val key = DevotionalNotes.key(day)
+            if (daily.note.metadata[DevotionalNotes.META_KEY] == key) return@withContext
+            find(day)?.let { setAside(it) }
+            editMeta(daily.note.id) { it + (DevotionalNotes.META_KEY to key) }
+        }
+    }
+
     suspend fun find(day: LocalDay, evening: Boolean = false): DailyDevotional? = withContext(Dispatchers.IO) {
         noteDao.findByMetadata(pattern(DevotionalNotes.key(day, evening)))?.takeIf { it.archivedAt == null }?.let { load(it.id) }
     }
@@ -75,28 +103,30 @@ class DevotionalRepository(
     private val writing = Mutex()
 
     /**
-     * Writes [date]'s devotional unless there already is one. With [replace], a fresh one is
-     * written; the old one is kept (renamed out of the way) if the person responded to it,
-     * otherwise removed.
+     * Writes [date]'s devotional unless there already is one. With [another], a new one is
+     * written for the day and becomes current; the one before is kept (set aside, still listed for
+     * the day). If writing fails nothing changes — the error is thrown, never a blank page saved.
      */
     suspend fun ensure(
-        date: LocalDate = LocalDate.now(), replace: Boolean = false, evening: Boolean = false,
+        date: LocalDate = LocalDate.now(), another: Boolean = false, evening: Boolean = false,
         ask: com.example.ai.devotional.DevotionalAsk? = null
     ): DailyDevotional? = writing.withLock {
         withContext(Dispatchers.IO) {
             val day = LocalDay.of(date)
             val existing = find(day, evening)
-            if (existing != null && !replace) return@withContext existing
+            if (existing != null && !another) return@withContext existing
             val profile = prefs.devotionalProfile.first()
-            // Each "a different one" steps further, so it never repeats what was just read.
-            val variant = if (replace) (existing?.note?.metadata?.get(META_VARIANT)?.toIntOrNull() ?: 0) + 1 else 0
+            // Each new one steps further, so it never repeats what was just read.
+            val variant = if (another) (existing?.note?.metadata?.get(META_VARIANT)?.toIntOrNull() ?: 0) + 1 else 0
             val request = (ask ?: com.example.ai.devotional.DevotionalAsk()).copy(variant = variant)
             val (devotional, reason) = write(date, profile, evening, request)
-            if (existing != null) retire(existing)
-            save(devotional, profile, evening, reason, extra = buildMap {
+            val saved = save(devotional, profile, evening, reason, extra = buildMap {
                 put(META_VARIANT, variant.toString())
                 ask?.about?.takeIf { it.isNotBlank() }?.let { put(META_ASKED, it.take(300)) }
+                put(META_WRITER, request.writer.name)
             })
+            if (saved != null && existing != null && existing.note.id != saved.note.id) setAside(existing)
+            saved
         }
     }
 
@@ -108,7 +138,7 @@ class DevotionalRepository(
         val app = prefs.preferencesFlow.first()
         val scripture = ScriptureService(context)
         val engine = DevotionalEngine(
-            candidates = { candidates(app.processingProfile) },
+            candidates = { candidates(app.processingProfile, ask?.writer ?: com.example.ai.devotional.DevotionalWriter.AUTO) },
             verseText = { ref -> (scripture.passage(ref) as? PassageResult.Found)?.passage?.text },
             classics = ClassicDevotionals.get(context),
             quotes = Quotes.get(context),
@@ -123,15 +153,36 @@ class DevotionalRepository(
         }
     }
 
-    private suspend fun candidates(processing: ProcessingProfile): List<ModelCandidate> {
+    private suspend fun candidates(processing: ProcessingProfile, writer: com.example.ai.devotional.DevotionalWriter): List<ModelCandidate> {
         val factory = com.example.ai.routing.LanguageModelFactory(
             context = context,
             modelStorage = com.example.ai.modelmanagement.LocalModelStorage(context),
             geminiTransport = com.example.ai.cloud.GeminiHttpTransport(com.example.ai.cloud.GeminiCredentialStore(context))
         )
-        val first = runCatching { factory.resolve(processing, ModelCapability.SUMMARIZATION) }.getOrNull()
-        val local = if (first?.isCloud == true) runCatching { factory.resolveLocal(ModelCapability.SUMMARIZATION, com.example.core.model.ModelTier.RECOMMENDED) }.getOrNull() else null
-        return listOfNotNull(first, local).map { ModelCandidate(it.languageModel, it.modelId, it.isCloud) }
+        fun local() = runCatching { factory.resolveLocal(ModelCapability.SUMMARIZATION, com.example.core.model.ModelTier.RECOMMENDED) }.getOrNull()
+        // Asking for Gemini by name uses it even when recordings stay offline: it's this one request.
+        suspend fun cloud() = runCatching { factory.resolve(ProcessingProfile.INTERNET, ModelCapability.SUMMARIZATION) }.getOrNull()?.takeIf { it.isCloud }
+        val chosen = when (writer) {
+            com.example.ai.devotional.DevotionalWriter.DEVICE -> listOfNotNull(local())
+            com.example.ai.devotional.DevotionalWriter.GEMINI -> listOfNotNull(cloud())
+            com.example.ai.devotional.DevotionalWriter.CLASSIC -> emptyList()
+            com.example.ai.devotional.DevotionalWriter.AUTO -> {
+                val first = runCatching { factory.resolve(processing, ModelCapability.SUMMARIZATION) }.getOrNull()
+                listOfNotNull(first, if (first?.isCloud == true) local() else null)
+            }
+        }
+        return chosen.map { ModelCandidate(it.languageModel, it.modelId, it.isCloud) }
+    }
+
+    /** Which writers can run now, for the "New devotional" sheet. */
+    suspend fun writersAvailable(): Set<com.example.ai.devotional.DevotionalWriter> = withContext(Dispatchers.IO) {
+        val storage = com.example.ai.modelmanagement.LocalModelStorage(context)
+        buildSet {
+            add(com.example.ai.devotional.DevotionalWriter.CLASSIC)
+            add(com.example.ai.devotional.DevotionalWriter.AUTO)
+            if (com.example.ai.modelmanagement.ModelCatalog.entries.any { ModelCapability.SUMMARIZATION in it.capability && storage.isInstalled(it.id) }) add(com.example.ai.devotional.DevotionalWriter.DEVICE)
+            if (com.example.ai.cloud.GeminiCredentialStore(context).getApiKey() != null) add(com.example.ai.devotional.DevotionalWriter.GEMINI)
+        }
     }
 
     /** What's been happening lately, sorted by who may read it. */
@@ -214,13 +265,10 @@ class DevotionalRepository(
         return load(note.id)
     }
 
-    private suspend fun retire(old: DailyDevotional) {
-        if (old.response.isBlank() && old.note.metadata[DevotionalNotes.META_FEEDBACK] == null) {
-            notes.deleteNote(old.note.id)
-        } else {
-            val meta = old.note.metadata + (DevotionalNotes.META_KEY to "${old.note.metadata[DevotionalNotes.META_KEY]}-earlier-${System.currentTimeMillis()}")
-            notes.updateNote(old.note.copy(metadata = meta))
-        }
+    /** Moves a devotional out of the day's current slot, keeping it (and its response) for the day. */
+    private suspend fun setAside(old: DailyDevotional) {
+        val key = old.note.metadata[DevotionalNotes.META_KEY] ?: return
+        editMeta(old.note.id) { it + (DevotionalNotes.META_KEY to "$key$EARLIER${System.currentTimeMillis()}") }
     }
 
     /**

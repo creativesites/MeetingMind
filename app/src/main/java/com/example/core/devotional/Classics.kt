@@ -44,12 +44,16 @@ class ClassicDevotionals(private val readings: List<ClassicReading>) {
 
         @Volatile private var cached: ClassicDevotionals? = null
 
+        /** Loads once. A failed load isn't remembered, so one bad moment can't leave every later day empty. */
         fun get(context: Context): ClassicDevotionals =
             cached ?: synchronized(this) {
                 cached ?: runCatching { context.assets.open(ASSET).use { parse(GZIPInputStream(it)) } }
-                    .getOrElse { ClassicDevotionals(emptyList()) }
-                    .also { cached = it }
+                    .getOrNull()?.takeIf { it.size > 0 }?.also { cached = it }
+                    ?: ClassicDevotionals(emptyList())
             }
+
+        /** For tests, where app assets aren't packaged. */
+        fun useForTest(classics: ClassicDevotionals?) { cached = classics }
 
         fun parse(input: InputStream): ClassicDevotionals {
             val array = JSONArray(input.bufferedReader(Charsets.UTF_8).readText())

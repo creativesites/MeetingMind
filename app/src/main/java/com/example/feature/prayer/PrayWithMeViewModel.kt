@@ -40,7 +40,9 @@ data class PrayUi(
     val lines: List<PrayLine> = emptyList(),
     val error: String? = null,
     val savedNoteId: String? = null,
-    val muted: Boolean = false
+    val muted: Boolean = false,
+    /** While connecting: where it's got to. */
+    val stage: String = ""
 )
 
 class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
@@ -63,7 +65,8 @@ class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
             }.getOrDefault(emptyList())
             val today = runCatching { DevotionalRepository(app).find(LocalDay.today())?.devotional }.getOrNull()
             _ui.value = _ui.value.copy(
-                available = prefs.processingProfile == ProcessingProfile.INTERNET && key != null,
+                // Live prayer is online by nature and chosen here, so a key is enough; recordings can stay offline.
+                available = key != null,
                 requests = requests,
                 devotional = today?.let { d -> listOfNotNull(d.title, d.scripture.firstOrNull()?.display(), d.reflection.joinToString(" "), d.question).joinToString("\n") },
                 devotionalPrayer = today?.prayer
@@ -82,6 +85,7 @@ class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
             session = live
             _ui.value = _ui.value.copy(started = true, lines = emptyList(), error = null, savedNoteId = null)
             jobs += launch { live.state.collect { s -> _ui.value = _ui.value.copy(state = s) } }
+            jobs += launch { live.stage.collect { s -> _ui.value = _ui.value.copy(stage = s) } }
             jobs += launch {
                 live.events.collect { e ->
                     when (e) {

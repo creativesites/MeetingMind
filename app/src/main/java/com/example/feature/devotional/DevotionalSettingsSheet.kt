@@ -131,7 +131,7 @@ fun DevotionalSettingsSheet(profile: DevotionalProfile, onSave: (DevotionalProfi
             val changedContent = p.copy(enabled = profile.enabled, deliveryMinutes = profile.deliveryMinutes, lessOf = profile.lessOf, moreOf = profile.moreOf) != profile
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PillButton("Save", filled = true) { onSave(p, false) }
-                if (changedContent) PillButton("Save and rewrite today's", filled = false) { onSave(p, true) }
+                if (changedContent) PillButton("Save and write a new one", filled = false) { onSave(p, true) }
             }
             Spacer(Modifier.height(24.dp))
         }

@@ -1,6 +1,33 @@
 # Installable builds
 
-`MeetingMind-v28-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v29-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+
+## What's new in v29
+
+- **New devotional, whenever you want.** Tap **New** at the top of the devotional page and choose
+  who writes it:
+  - **Gemini** (online)
+  - **On this phone** (private, using your downloaded model)
+  - **A classic** (no AI)
+
+  Options you haven't set up are greyed out with the reason.
+- **Several devotionals a day.** Each new one is added to the day and nothing is thrown away.
+  - A row of today's devotionals lets you flip between them.
+  - ★ marks the day's own devotional, the one stories, widgets and Home show, and any of them can
+    become it.
+- **You're in control.** The app writes the day's first devotional itself; after that it writes
+  one only when you ask. Saving settings no longer rewrites today's.
+- **No more blank devotionals.**
+  - If the writer you chose fails, you're told why and the one you're reading stays.
+  - Before, a failed write could replace a good devotional with an empty page.
+  - A second cause is fixed too: if the bundled classics failed to load once, the app remembered
+    "none" for the rest of the session. It now tries again.
+- **Pray with me:**
+  - Needs only a Gemini key; Internet mode no longer has to be on.
+  - Shows where it is while connecting.
+  - Always ends with a clear message within 20 seconds instead of "Getting ready…" forever.
+- **Settings → Check Gemini key** tests writing and live voice with your key and says exactly what
+  works. The key can now be added in Offline mode too.
 
 ## What's new in v28
 

@@ -67,7 +67,37 @@ class GeminiLiveVoice(
         private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
         private const val IN_RATE = 16_000
         private const val OUT_RATE = 24_000
-        private const val SETUP_TIMEOUT_MS = 15_000L
+        private const val SETUP_TIMEOUT_MS = 20_000L
+
+        /**
+         * Checks a key end to end without the microphone: opens the live socket, sends setup and
+         * waits for Gemini to confirm. Returns null when it works, or what went wrong.
+         */
+        suspend fun probe(apiKey: String, model: String = MODEL, timeoutMs: Long = 20_000L): String? {
+            val result = kotlinx.coroutines.CompletableDeferred<String?>()
+            val client = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).connectTimeout(15, TimeUnit.SECONDS).build()
+            var opened = false
+            val ws = client.newWebSocket(Request.Builder().url("$URL?key=${apiKey.trim()}").build(), object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    opened = true
+                    webSocket.send(setupMessage("Reply briefly.", "Sulafat", model).toString())
+                }
+                override fun onMessage(webSocket: WebSocket, text: String) { check(text) }
+                override fun onMessage(webSocket: WebSocket, bytes: ByteString) { check(bytes.utf8()) }
+                private fun check(raw: String) {
+                    val events = parse(raw) {}
+                    if (LiveVoiceEvent.Ready in events) result.complete(null)
+                    events.filterIsInstance<LiveVoiceEvent.Failed>().firstOrNull()?.let { result.complete(it.message) }
+                }
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { result.complete(explain(code, reason, "closed ($code)")) }
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { result.complete(explain(response?.code, response?.message, t.message)) }
+            })
+            val answer = kotlinx.coroutines.withTimeoutOrNull(timeoutMs) { result.await() }
+                ?: if (opened) "Connected, but Gemini didn't start a live session in time." else "Couldn't reach Gemini's live service."
+            runCatching { ws.close(1000, null) }
+            client.dispatcher.executorService.shutdown()
+            return answer
+        }
 
         /** The first message: model, voice, instructions, and transcripts both ways. */
         fun setupMessage(systemInstruction: String, voice: String, model: String = MODEL): JSONObject = JSONObject().put("setup", JSONObject()
@@ -138,20 +168,33 @@ class GeminiLiveVoice(
     private var micJob: Job? = null
     @Volatile private var muted = false
     @Volatile private var ready = false
+    @Volatile private var opened = false
+
+    /** Where the connection is, in words, while it's getting ready — so a stall says where. */
+    private val _stage = MutableStateFlow("Connecting to Gemini…")
+    val stage: StateFlow<String> = _stage.asStateFlow()
 
     fun start() {
         val request = Request.Builder().url("$URL?key=${apiKey.trim()}").build()
+        // One clock for the whole start — reaching Google, the handshake, and setup — so a stall
+        // anywhere ends in a clear message rather than "Getting ready…" forever.
+        scope.launch {
+            kotlinx.coroutines.delay(SETUP_TIMEOUT_MS)
+            if (!ready && _state.value == LiveVoiceState.CONNECTING) {
+                val where = _stage.value
+                _state.value = LiveVoiceState.FAILED
+                _events.tryEmit(LiveVoiceEvent.Failed(
+                    if (opened) "Gemini connected but didn't start the voice session. The live model may not be available for this key — try Settings → Check Gemini key."
+                    else "Couldn't reach Gemini ($where). Check your connection and try again."
+                ))
+                runCatching { socket?.cancel() }
+            }
+        }
         socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                opened = true
+                _stage.value = "Connected — starting the voice…"
                 webSocket.send(setup.toString())
-                scope.launch {
-                    kotlinx.coroutines.delay(SETUP_TIMEOUT_MS)
-                    if (!ready && _state.value == LiveVoiceState.CONNECTING) {
-                        _state.value = LiveVoiceState.FAILED
-                        _events.tryEmit(LiveVoiceEvent.Failed("Gemini didn't answer in time. Check your connection and try again."))
-                        runCatching { webSocket.cancel() }
-                    }
-                }
             }
             override fun onMessage(webSocket: WebSocket, text: String) = handle(text)
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) = handle(bytes.utf8())

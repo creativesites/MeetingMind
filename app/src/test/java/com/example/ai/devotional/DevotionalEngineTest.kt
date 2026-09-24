@@ -175,4 +175,27 @@ class DevotionalEngineTest {
         assertTrue(DevotionalContract.crisisIn(listOf("I keep thinking about suicide")))
         assertFalse(DevotionalContract.crisisIn(listOf("Died to self, alive in Christ", "a killer workout")))
     }
+
+    @Test fun `a chosen writer is kept to, and failing is said rather than papered over`() = runBlocking {
+        // Gemini chosen, Gemini fails: no classic stand-in, no blank page — an error.
+        val e = runCatching { engine(FakeModel(null) to true, FakeModel(good) to false).write(thursday, profile, ask = DevotionalAsk(writer = DevotionalWriter.GEMINI)) }.exceptionOrNull()
+        assertTrue(e is DevotionalUnavailable)
+        // The phone chosen: only the phone's model is used, even when Gemini is there.
+        val cloud = FakeModel(good)
+        val d = engine(cloud to true, FakeModel(good) to false).write(thursday, profile, ask = DevotionalAsk(writer = DevotionalWriter.DEVICE))
+        assertEquals(DevotionalOrigin.DEVICE_AI, d.origin)
+        assertTrue(cloud.prompts.isEmpty())
+        // Nothing on the phone: said so.
+        assertTrue(runCatching { engine(FakeModel(good) to true).write(thursday, profile, ask = DevotionalAsk(writer = DevotionalWriter.DEVICE)) }.exceptionOrNull() is DevotionalUnavailable)
+        // A classic, by choice, even with AI around.
+        assertEquals(DevotionalOrigin.CLASSIC, engine(FakeModel(good) to true).write(thursday, profile, ask = DevotionalAsk(writer = DevotionalWriter.CLASSIC)).origin)
+        // The automatic chain still ends in a classic, never an empty page, even many "another"s in.
+        val auto = engine(FakeModel(null) to true).write(thursday, profile, ask = DevotionalAsk(variant = 9))
+        assertEquals(DevotionalOrigin.CLASSIC, auto.origin)
+        assertTrue(auto.reflection.isNotEmpty())
+    }
+
+    @Test fun `the writer survives the trip through the work queue`() {
+        assertEquals(DevotionalWriter.GEMINI, DevotionalAsk.fromJson(DevotionalAsk(writer = DevotionalWriter.GEMINI).toJson())!!.writer)
+    }
 }
