@@ -1,8 +1,29 @@
 # Installable builds
 
-`MeetingMind-v23-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v24-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
 
-## What's new in v23
+## What's new in v24
+
+- **A daily devotional** (Faith → Today's devotional, or the card on Home). Each day brings
+  Scripture, a reflection, "Today I will", a prayer, a word for today, a quote from the great
+  Christian writers and hymns, and a question to sit with. There's a space for your response.
+- **It knows your week.** It can draw on the sermons you've heard, what you're praying about,
+  how full your calendar is, the topics and life season you pick, and what you tell it about
+  yourself. Your prayer requests and journal are only sent to Gemini if you allow it; the
+  on-phone model may always use them, because nothing leaves your phone.
+- **Honest by design.** AI devotionals are always labelled. Verses are shown from the Bible
+  itself, and the passage is chosen on your phone, not by the AI. Anything that claims to speak
+  for God or promises an outcome is removed. If your recent writing sounds like you're in
+  danger, you get support lines instead of a devotional that day.
+- **Always there.** With no internet or no model you get the day's reading from Spurgeon's
+  *Morning and Evening* (1865), which is bundled with the app. You can also choose the classic
+  every day, a mix (a classic on Sundays), or your own guided page.
+- **Make it yours** (the ⚙ on the devotional): arrival time and notification, voice (pastor,
+  friend, teacher, poet, scholar), 3, 7 or 12 minutes, topics, a life season, your tradition
+  (it knows the church year, Lent, Advent and Easter, including Orthodox Pascha), and what to
+  include. Tell it "More like this" or "Less" and it adjusts.
+
+## What was new in v23
 
 - **Cards that tell things apart.** Home and Timeline cards are clean white cards by default,
   showing the type, the time, the title and a two-line summary (a recording's summary, or the

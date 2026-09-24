@@ -80,6 +80,16 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE metadataJson LIKE :pattern ESCAPE '\\' LIMIT 1")
     suspend fun findByMetadata(pattern: String): NoteEntity?
 
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson LIKE :pattern ESCAPE '\\' ORDER BY createdAt DESC LIMIT :limit")
+    suspend fun findAllByMetadata(pattern: String, limit: Int): List<NoteEntity>
+
+    @Query("SELECT * FROM notes WHERE metadataJson LIKE :pattern ESCAPE '\\' ORDER BY createdAt DESC LIMIT 1")
+    fun observeByMetadata(pattern: String): Flow<NoteEntity?>
+
+    /** Notes changed since [since], newest first — the devotional's view of "lately". */
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND updatedAt >= :since ORDER BY updatedAt DESC LIMIT :limit")
+    suspend fun getUpdatedSince(since: Long, limit: Int = 80): List<NoteEntity>
+
     @Query(
         "SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND " +
             "(title LIKE '%' || :query || '%' OR plainText LIKE '%' || :query || '%') " +

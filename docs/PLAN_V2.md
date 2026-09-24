@@ -494,7 +494,8 @@ update (a new `docs/PLAN_V2.md` recording these decisions), commit and push.
 | --- | --- | --- |
 | F0 | Empty-note drafts, app identity (spaces, look, avatar) | done (v22) |
 | F1 | Today hub: hero, timeline, views, layers, intelligence | done (v22) |
-| F2 | Daily devotional engine | |
+| — | Polish: classic cards, covers, Day view, Begin, inline reading, multi-verse, exports | done (v23) |
+| F2 | Daily devotional engine | done (v24) |
 | F3 | Voice: the preacher | |
 | F4 | Stories and share studio | |
 | F5 | Offline Bible library (HelloAO) | |

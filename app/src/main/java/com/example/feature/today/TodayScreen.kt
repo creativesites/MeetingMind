@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -102,8 +103,10 @@ fun TodayScreen(
     onRecordType: (RecordingType) -> Unit,
     onRecordEvent: (noteId: String, type: RecordingType, title: String, speakers: Int?) -> Unit,
     onSearch: () -> Unit,
-    onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit
+    onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit,
+    onOpenDevotional: () -> Unit = {}
 ) {
+    val devotional by viewModel.devotional.collectAsState()
     val identity by viewModel.identity.collectAsState()
     val look = LocalAppLook.current
     val view by viewModel.view.collectAsState()
@@ -157,8 +160,12 @@ fun TodayScreen(
             label = "Today", title = u.item.title, subtitle = u.item.subtitle ?: timeLabel(u.item, fmt),
             icon = itemIcon(u.item), accent = Color(u.item.accent), onClick = { open(u.item) }
         )
-        UpNextTile.Nothing -> HeroTile(
-            label = "Nothing scheduled", title = if (identity.faithFirst) "Start today with God" else "Capture something",
+        UpNextTile.Nothing -> if (identity.faithFirst) HeroTile(
+            label = "Today's devotional", title = devotional?.devotional?.title ?: "Start today with God",
+            subtitle = devotional?.devotional?.scripture?.firstOrNull()?.display() ?: "Scripture, a reflection and a prayer",
+            icon = Icons.Filled.WbSunny, accent = Color(0xFFB7791F), onClick = onOpenDevotional
+        ) else HeroTile(
+            label = "Nothing scheduled", title = "Capture something",
             subtitle = "Tap to record", icon = HeroTiles.recordIcon(), accent = look.accent, onClick = onRecord
         )
     }
@@ -201,6 +208,15 @@ fun TodayScreen(
 
             // For you: rhythms, memories, the week, recordings in progress, the calendar invitation.
             val forYou = buildList<@Composable () -> Unit> {
+                if (identity.showsFaith && focus != TodayFocus.WORK) add {
+                    val d = devotional?.devotional
+                    ForYouCard(
+                        Icons.Filled.WbSunny, Color(0xFFB7791F), "Today's devotional",
+                        d?.title ?: "A word for your day",
+                        d?.let { listOfNotNull(it.scripture.firstOrNull()?.display(), if (devotional?.note?.metadata?.get(com.example.core.devotional.DevotionalNotes.META_OPENED) == null) "New" else "Read").joinToString(" · ") }
+                            ?: "Scripture, a reflection and a prayer"
+                    ) { onOpenDevotional() }
+                }
                 jobs.forEach { job -> add { ForYouCard(Icons.Filled.Sync, look.accent, "Processing · ${job.progressPercent}%", job.meetingTitle, job.currentStep) { onOpenProcessing(job.meetingId) } } }
                 rhythm?.let { r -> add { ForYouCard(Icons.Filled.Mic, Color(0xFFE11D48), "Your rhythm", "Record ${r.type.displayName.lowercase()}?", Rhythms.describe(r)) { onRecordType(r.type) } } }
                 memories.firstOrNull()?.let { m -> add { ForYouCard(Icons.Filled.History, Color(0xFF8B5CF6), "On this day", m.title, m.subtitle ?: "") { open(m) } } }

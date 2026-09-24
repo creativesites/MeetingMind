@@ -84,6 +84,12 @@ class TodayViewModel(application: Application) : AndroidViewModel(application) {
     val activeJobs: StateFlow<List<ProcessingJobEntity>> = database.processingJobDao().getActiveJobs()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** Today's devotional, once written (PLAN_V2 F2). */
+    val devotional: StateFlow<com.example.core.devotional.DailyDevotional?> =
+        com.example.core.devotional.DevotionalRepository(application).observe(com.example.core.devotional.LocalDay.today())
+            .let { f -> kotlinx.coroutines.flow.flow { try { f.collect { emit(it) } } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; emit(null) } } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     private val _focus = MutableStateFlow(TodayFocus.ALL)
     val focus: StateFlow<TodayFocus> = _focus.asStateFlow()
 

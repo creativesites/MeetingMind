@@ -109,9 +109,11 @@ fun FaithScreen(
     onOpenScripture: () -> Unit,
     onOpenBible: () -> Unit = {},
     onSearchBible: () -> Unit = {},
-    onReadPassage: (ScriptureReference) -> Unit = {}
+    onReadPassage: (ScriptureReference) -> Unit = {},
+    onOpenDevotional: () -> Unit = {}
 ) {
     val votd by viewModel.verseOfTheDay.collectAsState()
+    val devotional by viewModel.todayDevotional.collectAsState()
     val requests by viewModel.openRequests.collectAsState()
     val answered by viewModel.answeredCount.collectAsState()
     val onThisDay by viewModel.onThisDay.collectAsState()
@@ -135,6 +137,9 @@ fun FaithScreen(
                     }
                 }
             }
+
+            // Today's devotional, written for the day (PLAN_V2 F2).
+            item { TodayDevotionalCard(devotional?.devotional, onOpenDevotional) }
 
             // Today: the Verse of the Day, leading into a devotional.
             item {
@@ -288,6 +293,36 @@ fun FaithScreen(
             },
             confirmButton = { androidx.compose.material3.TextButton(onClick = { themeSheet = null }) { Text("Close") } }
         )
+    }
+}
+
+@Composable
+private fun TodayDevotionalCard(today: com.example.core.devotional.Devotional?, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick, shape = RoundedCornerShape(26.dp), color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 16.dp).testTagSafe("faith_today_devotional")
+    ) {
+        Box(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFFFFE8C7), Color(0xFFFFF6E9), Color(0xFFF3E8FF))))) {
+            Box(Modifier.align(Alignment.TopEnd).size(150.dp).offset(x = 40.dp, y = (-50).dp)
+                .background(Brush.radialGradient(listOf(Color(0xFFFFC266).copy(alpha = 0.7f), Color.Transparent)), CircleShape))
+            Column(Modifier.padding(20.dp)) {
+                Text("TODAY'S DEVOTIONAL", fontSize = 11.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = Gold)
+                Text(
+                    today?.title ?: "A word for your day",
+                    fontSize = 21.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp)
+                )
+                Text(
+                    today?.let { listOfNotNull(it.scripture.firstOrNull()?.display(), it.label).joinToString(" · ") }
+                        ?: "Scripture, a reflection and a prayer — written for you, or a classic.",
+                    fontSize = 13.sp, lineHeight = 18.sp, color = InkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp)
+                )
+                Row(Modifier.padding(top = 14.dp).clip(RoundedCornerShape(50)).background(Ink).padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.WbSunny, contentDescription = null, tint = Color(0xFFF6D365), modifier = Modifier.size(15.dp))
+                    Text(if (today != null) "  Read today's" else "  Begin", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                }
+            }
+        }
     }
 }
 

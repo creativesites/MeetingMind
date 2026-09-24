@@ -102,6 +102,15 @@ class UserPreferencesManager(private val context: Context) {
     private val TIMELINE_LAYERS = stringSetPreferencesKey("timeline_layers")
     private val CARD_STYLE = stringPreferencesKey("identity_card_style")
     private val TIMELINE_VIEW = stringPreferencesKey("timeline_view")
+    private val DEVOTIONAL_PROFILE = stringPreferencesKey("devotional_profile")
+
+    /** How the person wants their daily devotional (PLAN_V2 F2). */
+    val devotionalProfile: Flow<com.example.core.devotional.DevotionalProfile> =
+        context.dataStore.data.map { com.example.core.devotional.DevotionalProfile.fromJson(it[DEVOTIONAL_PROFILE]) }
+
+    suspend fun setDevotionalProfile(profile: com.example.core.devotional.DevotionalProfile) {
+        context.dataStore.edit { it[DEVOTIONAL_PROFILE] = profile.toJson() }
+    }
 
     val preferencesFlow: Flow<AppPreferencesState> = context.dataStore.data.map { prefs ->
         AppPreferencesState(

@@ -45,6 +45,8 @@ import com.example.core.model.RecordingType
 import com.example.core.repository.MeetingRepository
 import com.example.core.ui.MiniPlayerBar
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -78,6 +80,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         com.example.core.notify.DeepLinks.handle(intent)
+        // Keep the daily devotional's timetable in step with its settings (survives updates).
+        lifecycleScope.launch {
+            runCatching {
+                val profile = UserPreferencesManager(applicationContext).devotionalProfile.first()
+                com.example.core.devotional.DevotionalScheduler.sync(applicationContext, profile)
+            }
+        }
         setContent {
             MeetMindTheme {
                 // Who the app is for — spaces, look, name, avatar — available to every screen.
@@ -218,6 +227,7 @@ fun MeetMindApp() {
             is com.example.core.notify.DeepLink.Recording -> navController.navigate(Routes.meetingDetailRoute(link.meetingId))
             com.example.core.notify.DeepLink.Models -> navController.navigate(Routes.MODELS) { launchSingleTop = true }
             com.example.core.notify.DeepLink.Bible -> navController.navigate(Routes.bibleRoute()) { launchSingleTop = true }
+            com.example.core.notify.DeepLink.Devotional -> navController.navigate(Routes.DEVOTIONAL) { launchSingleTop = true }
             null -> Unit
         }
     }
@@ -256,7 +266,8 @@ fun MeetMindApp() {
                 onRecordType = { navController.navigate(Routes.recordTypeRoute(it)) },
                 onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
                 onSearch = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SEARCH) },
-                onNavigateBottomNav = navigateToPrimary
+                onNavigateBottomNav = navigateToPrimary,
+                onOpenDevotional = { navController.navigate(Routes.DEVOTIONAL) }
             )
         }
 
@@ -300,6 +311,18 @@ fun MeetMindApp() {
                     onOpenScripture = { navController.navigate(Routes.FAITH_SCRIPTURE) },
                     onOpenBible = { navController.navigate(Routes.bibleRoute()) },
                     onSearchBible = { navController.navigate(Routes.bibleRoute(search = true)) },
+                    onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },
+                    onOpenDevotional = { navController.navigate(Routes.DEVOTIONAL) }
+                )
+            }
+        }
+        composable(Routes.DEVOTIONAL) {
+            val vm: com.example.feature.devotional.DevotionalViewModel = viewModel()
+            com.example.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
+                com.example.feature.devotional.DevotionalScreen(
+                    viewModel = vm,
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                     onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) }
                 )
             }

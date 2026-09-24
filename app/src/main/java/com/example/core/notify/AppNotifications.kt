@@ -19,6 +19,7 @@ sealed interface DeepLink {
     data class Recording(val meetingId: String) : DeepLink
     data object Models : DeepLink
     data object Bible : DeepLink
+    data object Devotional : DeepLink
 }
 
 /**
@@ -42,6 +43,7 @@ object DeepLinks {
             "recording" -> meeting?.let { DeepLink.Recording(it) }
             "models" -> DeepLink.Models
             "bible" -> DeepLink.Bible
+            "devotional" -> DeepLink.Devotional
             else -> null
         }
         intent.removeExtra(EXTRA_TARGET)
@@ -53,6 +55,7 @@ object DeepLinks {
             is DeepLink.Recording -> "recording" to link.meetingId
             DeepLink.Models -> "models" to null
             DeepLink.Bible -> "bible" to null
+            DeepLink.Devotional -> "devotional" to null
         }
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -77,6 +80,8 @@ object AppNotifications {
     const val CHANNEL_WORK = "meetmind_processing_channel"
     const val CHANNEL_DOWNLOADS = "meetmind_downloads"
     const val CHANNEL_DONE = "meetmind_finished"
+    const val CHANNEL_DEVOTIONAL = "meetmind_devotional"
+    private const val ID_DEVOTIONAL = 5001
 
     const val ID_PROCESSING = 2001
     private const val ID_DOWNLOAD_BASE = 3000
@@ -98,9 +103,34 @@ object AppNotifications {
             }
         )
         manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_DEVOTIONAL, "Daily devotional", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Tells you when today's devotional is ready"
+            }
+        )
+        manager.createNotificationChannel(
             NotificationChannel(CHANNEL_DONE, "Finished", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Tells you when a transcript is ready or a download has finished"
             }
+        )
+    }
+
+    /**
+     * Today's devotional is ready. Only its title shows — a devotional can touch on private
+     * things, and lock screens are public.
+     */
+    fun devotionalReady(context: Context, title: String, label: String) {
+        post(
+            context, ID_DEVOTIONAL,
+            NotificationCompat.Builder(context, CHANNEL_DEVOTIONAL)
+                .setSmallIcon(android.R.drawable.ic_menu_day)
+                .setContentTitle("Your devotional for today")
+                .setContentText(title)
+                .setSubText(label)
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Devotional))
+                .addAction(android.R.drawable.ic_menu_view, "Open", DeepLinks.pendingIntent(context, DeepLink.Devotional))
+                .build()
         )
     }
 

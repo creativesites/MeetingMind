@@ -20,6 +20,7 @@ object Routes {
     const val FAITH_JOURNEY = "faith_journey"
     const val FAITH_SCRIPTURE = "faith_scripture"
     const val BIBLE = "bible?ref={ref}&search={search}"
+    const val DEVOTIONAL = "devotional"
 
     /** Sentinel used when [MEETING_DETAIL]'s optional startAtMs query arg is absent — NavType.LongType has no nullable variant. */
     const val NO_START_AT_MS = -1L

@@ -39,6 +39,12 @@ data class VerseOfTheDay(val reference: ScriptureReference, val passage: Passage
 class FaithViewModel(application: Application) : AndroidViewModel(application) {
 
     private val notes = NoteRepository(application, MeetMindDatabase.getInstance(application))
+
+    /** Today's devotional, when it has been written. */
+    val todayDevotional: kotlinx.coroutines.flow.StateFlow<com.example.core.devotional.DailyDevotional?> =
+        com.example.core.devotional.DevotionalRepository(application).observe(com.example.core.devotional.LocalDay.today())
+            .kotlinx_catch()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val scripture = ScriptureService(application)
 
     val faithNotes: StateFlow<List<Note>> = notes.observeNotesForWorkflows(Workflows.faith)
@@ -124,3 +130,6 @@ class FaithViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 }
+
+private fun <T> kotlinx.coroutines.flow.Flow<T?>.kotlinx_catch(): kotlinx.coroutines.flow.Flow<T?> =
+    kotlinx.coroutines.flow.flow { try { collect { emit(it) } } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; emit(null) } }
