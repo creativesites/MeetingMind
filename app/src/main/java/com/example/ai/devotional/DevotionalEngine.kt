@@ -43,13 +43,15 @@ data class DevotionalAsk(
     val tone: com.example.core.devotional.DevotionalTone? = null,
     val minutes: Int? = null,
     val variant: Int = 0,
-    val writer: DevotionalWriter = DevotionalWriter.AUTO
+    val writer: DevotionalWriter = DevotionalWriter.AUTO,
+    /** The hour it's asked for (it'll be read now); null for the scheduled morning one. */
+    val hour: Int? = null
 ) {
     val custom get() = !about.isNullOrBlank() || !passage.isNullOrBlank() || topics.isNotEmpty() || tone != null || minutes != null
 
     fun toJson(): String = org.json.JSONObject().apply {
         about?.let { put("about", it) }; passage?.let { put("passage", it) }; put("topics", org.json.JSONArray(topics.toList()))
-        tone?.let { put("tone", it.name) }; minutes?.let { put("minutes", it) }; put("variant", variant); put("writer", writer.name)
+        tone?.let { put("tone", it.name) }; minutes?.let { put("minutes", it) }; put("variant", variant); put("writer", writer.name); hour?.let { put("hour", it) }
     }.toString()
 
     companion object {
@@ -62,7 +64,8 @@ data class DevotionalAsk(
                 topics = (0 until (t?.length() ?: 0)).map { t!!.getString(it) }.toSet(),
                 tone = runCatching { com.example.core.devotional.DevotionalTone.valueOf(o.getString("tone")) }.getOrNull(),
                 minutes = o.optInt("minutes", 0).takeIf { it > 0 }, variant = o.optInt("variant", 0),
-                writer = runCatching { DevotionalWriter.valueOf(o.getString("writer")) }.getOrDefault(DevotionalWriter.AUTO)
+                writer = runCatching { DevotionalWriter.valueOf(o.getString("writer")) }.getOrDefault(DevotionalWriter.AUTO),
+                hour = if (o.has("hour")) o.optInt("hour") else null
             )
         }
     }
@@ -92,8 +95,7 @@ class DevotionalEngine(
     private val classics: ClassicDevotionals,
     private val quotes: List<Quote>,
     private val verseOfTheDay: suspend (LocalDate) -> ScriptureReference? = { null },
-    private val locale: Locale = Locale.getDefault()
-) {
+    private val locale: Locale = Locale.getDefault()) {
     companion object {
         const val CLOUD_TIMEOUT_MS = 60_000L
         const val DEVICE_TIMEOUT_MS = 100_000L
@@ -143,7 +145,8 @@ class DevotionalEngine(
         if (pool.isEmpty() && writer == DevotionalWriter.GEMINI) throw DevotionalUnavailable("Gemini isn't set up. Add your API key in Settings, or choose On this phone.")
         for (candidate in pool) {
             val shared = if (candidate.isCloud && !profile.sharePrivateWithCloud) signals.general else signals.general + signals.private
-            val brief = DevotionalBrief(passage, text, profile, day, weekday, shared, name, ask?.about)
+            // On demand, it's read now — say so; the scheduled one comes out in the morning but stays time-neutral.
+            val brief = DevotionalBrief(passage, text, profile, day, weekday, shared, name, ask?.about, hour = ask?.hour)
             // Each model gets a fair turn, not forever: a hung download or network moves on to the next.
             val result = runCatching {
                 kotlinx.coroutines.withTimeoutOrNull(if (candidate.isCloud) CLOUD_TIMEOUT_MS else DEVICE_TIMEOUT_MS) {

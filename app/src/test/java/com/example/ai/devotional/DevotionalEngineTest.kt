@@ -198,4 +198,16 @@ class DevotionalEngineTest {
     @Test fun `the writer survives the trip through the work queue`() {
         assertEquals(DevotionalWriter.GEMINI, DevotionalAsk.fromJson(DevotionalAsk(writer = DevotionalWriter.GEMINI).toJson())!!.writer)
     }
+
+    @Test fun `it knows the time of day it's read, and the morning one stays time-neutral`() = runBlocking {
+        val model = FakeModel(good)
+        engine(model to true).write(thursday, profile, ask = DevotionalAsk(hour = 16))
+        assertTrue(model.prompts.single().contains("afternoon") && model.prompts.single().contains("Don't say \"good morning\""))
+        val scheduled = FakeModel(good)
+        engine(scheduled to true).write(thursday, profile)
+        assertTrue(scheduled.prompts.single().contains("avoid time-specific greetings"))
+        assertTrue(DevotionalContract.timeLine(21).contains("evening"))
+        assertTrue(DevotionalContract.timeLine(2).contains("late at night"))
+        assertEquals(16, DevotionalAsk.fromJson(DevotionalAsk(hour = 16).toJson())!!.hour)
+    }
 }

@@ -29,6 +29,20 @@ enum class PrayerStyle(val label: String, val instruction: String) {
     QUIET("Quiet & contemplative", "Pray slowly and simply, with space and silence between short phrases. Invite stillness.")
 }
 
+/**
+ * Songs to worship with before praying. Public-domain hymns, so the companion can sing the words;
+ * anything else the person starts, it follows gently without singing out the full lyrics.
+ */
+object WorshipSongs {
+    val hymns = listOf(
+        "Amazing Grace", "How Great Thou Art", "Blessed Assurance", "What a Friend We Have in Jesus",
+        "It Is Well with My Soul", "Holy, Holy, Holy", "Be Thou My Vision", "Nearer, My God, to Thee",
+        "Rock of Ages", "Jesus Loves Me", "Come, Thou Fount of Every Blessing", "Abide with Me"
+    )
+    /** "I'll start — follow me": the person leads with a song of their own. */
+    const val THEIR_OWN = "I'll start one — follow me"
+}
+
 /** Everything that shapes one time of prayer. */
 data class PraySetup(
     val mode: PrayMode = PrayMode.TOGETHER,
@@ -40,7 +54,11 @@ data class PraySetup(
     val requests: List<String> = emptyList(),
     /** Today's devotional, when praying from or talking about it. */
     val devotional: String? = null,
-    val name: String? = null
+    val name: String? = null,
+    /** Worship first: a hymn to sing together, or [WorshipSongs.THEIR_OWN]. Null to go straight to prayer. */
+    val worship: String? = null,
+    /** How the companion sounds, from the chosen voice ("a passionate African Pentecostal preacher…"). */
+    val persona: String? = null
 )
 
 /**
@@ -57,12 +75,24 @@ object PrayerCompanion {
         - Stay within historic, mainstream Christian faith, in the person's tradition. Don't take sides where Christians differ.
         - This is spoken aloud: keep each turn short (usually 2–5 sentences), warm and unhurried. Leave room for them. End prayers with "Amen" when a prayer is complete.
         - If they say "Amen" to finish, close with a one-line blessing.
+        - When they're speaking, stop and listen. Never talk over them, and don't answer your own questions.
+    """.trimIndent()
+
+    /** How it sings, when asked: simply and reverently, and only words it may sing. */
+    val SINGING = """
+        Singing: if they ask to sing or worship, you may sing. Sing warmly and simply, slowly, with a clear melody, like one person leading a small group — not a performance.
+        - Sing public-domain hymns (e.g. Amazing Grace, How Great Thou Art, Blessed Assurance) freely: usually one verse and the chorus, then pause.
+        - If they start a modern worship song, don't sing out its full lyrics: hum along, echo a short line or two, or offer a public-domain hymn with a similar theme.
+        - After singing, let a moment of quiet pass, then gently move into prayer.
     """.trimIndent()
 
     fun systemInstruction(s: PraySetup): String = buildString {
         appendLine(BOUNDARIES)
         appendLine()
+        appendLine(SINGING)
+        appendLine()
         appendLine("How to pray this time: ${s.mode.instruction}")
+        s.persona?.let { appendLine("Your voice and manner: $it. Keep that manner in how you speak and pray.") }
         appendLine("Style: ${s.style.instruction}")
         appendLine("Their tradition: ${s.tradition.label}.")
         s.name?.takeIf { it.isNotBlank() }?.let { appendLine("Their first name is $it; use it sparingly.") }
@@ -72,10 +102,20 @@ object PrayerCompanion {
     }
 
     /** The first thing sent, so the companion speaks first. */
-    fun opening(s: PraySetup): String = when (s.mode) {
+    fun opening(s: PraySetup): String = s.worship?.let { worshipOpening(it) } ?: when (s.mode) {
         PrayMode.TALK_IT_THROUGH -> "Please greet me briefly and ask me one question about today's devotional."
         PrayMode.LISTEN -> "Please greet me in one short sentence and invite me to pray whenever I'm ready."
         PrayMode.ONE_AT_A_TIME -> if (s.requests.isEmpty() && s.about.isBlank()) "Please greet me briefly and ask what I'd like to pray about, one thing at a time." else "Please greet me briefly and begin with the first thing on my list."
         else -> if (s.requests.isEmpty() && s.about.isBlank()) "Please greet me briefly and ask what's on my heart today." else "Please greet me briefly and begin."
     }
+
+    /** Starting with worship: the hymn, or following the person's own song. */
+    fun worshipOpening(song: String): String =
+        if (song == WorshipSongs.THEIR_OWN) "Please greet me in one short sentence and tell me to start singing whenever I'm ready — then follow me gently, humming or echoing, and when the song ends, lead us into prayer."
+        else "Please greet me in one short sentence, then let's worship first: sing \"$song\" with me, slowly — one verse and the chorus. Then pause, and lead us into prayer."
+
+    /** Mid-conversation: "let's sing". */
+    fun singNow(song: String?): String =
+        if (song == null || song == WorshipSongs.THEIR_OWN) "Let's worship for a moment. I'll start a song — follow me gently."
+        else "Let's worship for a moment. Please sing \"$song\" with me — one verse and the chorus."
 }

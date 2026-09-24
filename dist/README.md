@@ -1,6 +1,49 @@
 # Installable builds
 
-`MeetingMind-v29-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v30-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+
+## What's new in v30
+
+- **Pray with me hears you now.**
+  - **The cause:** the companion's voice was played like music, so the phone's echo canceller
+    couldn't remove it. The mic heard the companion, so it answered itself, interrupted itself,
+    and drowned out your voice.
+  - **The fix:** the voice now plays like a phone call, so echo cancellation works; it uses the
+    loudspeaker, or your headset if one is connected. While the companion talks, the mic stays
+    closed to its echo. When you really start speaking, it stops at once and listens.
+  - **Steadier turns:** the screen follows what you actually hear, so it no longer flickers
+    between Listening and Praying.
+  - **Room to pause:** Gemini is set to allow longer pauses, so a breath mid-prayer doesn't end
+    your turn.
+- **Typing works too**, in a new message box that grows as you type. Send replaces Amen while
+  you're typing, and typed words stop the companion and go in as your turn.
+- **A new Pray with me screen:**
+  - A slowly moving light that warms when the companion speaks and cools when it listens.
+  - A living orb ringed by the voice: gold for the companion, cyan for you.
+  - A ring around the mic button that shows your own voice arriving.
+  - A header with the mode and a timer, and conversation-style captions you can hide.
+  - Quick asks: Sing with me, Pray for me now, A verse for this, Quiet moment, and Slower,
+    please.
+  - A closing summary.
+- **Sing with me.**
+  - Choose a hymn to worship with before praying, or start your own song and it follows along.
+  - Tap "Sing with me" at any time. Notes float up while it sings.
+  - It sings public-domain hymns; for modern songs it hums or echoes a line rather than singing
+    the full lyrics.
+- **Church voices,** for reading devotionals and for Pray with me:
+  - **Pentecostal preacher:** fiery and joyful, with a Zambian English accent.
+  - **Church mother:** a tender praying grandmother.
+  - **Priest or sister** (Catholic).
+  - **Liturgical reader** (Anglican, Methodist and Reformed).
+  - The existing voices remain.
+  - In Pray with me, the voice also sets the companion's manner.
+- **Devotionals know the time of day.**
+  - One written in the afternoon or evening is written for then, not the morning.
+  - The read-aloud greeting says good afternoon or good evening.
+  - The scheduled morning devotional avoids "good morning" in case it's read later.
+- **Read-aloud pauses are real pauses.** Pause tags are never sent to the voice model any more,
+  so they can't be read out; the app inserts real silence between sections.
+- Fixed: the words the companion says now keep their spaces ("It is", not "Itis").
 
 ## What's new in v29
 

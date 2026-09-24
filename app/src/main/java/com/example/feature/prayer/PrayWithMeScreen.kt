@@ -102,13 +102,16 @@ fun PraySetupContent(ui: PrayUi, startMode: PrayMode?, onNavigateBack: () -> Uni
     var withDevotional by rememberSaveable { mutableStateOf(startMode == PrayMode.TALK_IT_THROUGH) }
     var voiceStyle by rememberSaveable { mutableStateOf(PreacherStyle.GENTLE_FRIEND) }
     var gender by rememberSaveable { mutableStateOf(VoiceGender.FEMALE) }
+    var worship by rememberSaveable { mutableStateOf<String?>(null) }
     val talk = mode == PrayMode.TALK_IT_THROUGH
 
     fun begin() {
         val setup = PraySetup(
             mode = mode, style = style, about = about,
             requests = ui.requests.filter { it.first in chosen }.map { it.second },
-            devotional = if (withDevotional || talk) listOfNotNull(ui.devotional, ui.devotionalPrayer?.let { "Its prayer: $it" }).joinToString("\n").ifBlank { null } else null
+            devotional = if (withDevotional || talk) listOfNotNull(ui.devotional, ui.devotionalPrayer?.let { "Its prayer: $it" }).joinToString("\n").ifBlank { null } else null,
+            worship = if (talk) null else worship,
+            persona = voiceStyle.style
         )
         onStart(setup, if (gender == VoiceGender.MALE) voiceStyle.male else voiceStyle.female)
     }
@@ -166,10 +169,23 @@ fun PraySetupContent(ui: PrayUi, startMode: PrayMode?, onNavigateBack: () -> Uni
                     Text("Pray from today's devotional", fontSize = 15.sp, color = Color.White)
                 }
             }
-            Label("Voice")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PreacherStyle.entries.forEach { s -> DarkChip(s.label, voiceStyle == s) { voiceStyle = s } }
+            if (!talk) {
+                Label("Begin with worship? (optional)")
+                Text("Sing a hymn together first, or start your own song and it follows you.", fontSize = 13.sp, lineHeight = 18.sp, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(bottom = 10.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("pray_worship")) {
+                    DarkChip("No, straight to prayer", worship == null) { worship = null }
+                    DarkChip("♪ " + com.example.core.prayer.WorshipSongs.THEIR_OWN, worship == com.example.core.prayer.WorshipSongs.THEIR_OWN) { worship = com.example.core.prayer.WorshipSongs.THEIR_OWN }
+                    com.example.core.prayer.WorshipSongs.hymns.forEach { h -> DarkChip(h, worship == h) { worship = h } }
+                }
             }
+            Label("Voice")
+            PreacherStyle.entries.groupBy { it.tradition }.forEach { (tradition, styles) ->
+                Text(tradition, fontSize = 12.sp, color = Color.White.copy(alpha = 0.5f), modifier = Modifier.padding(top = 6.dp, bottom = 6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    styles.forEach { s -> DarkChip(s.label, voiceStyle == s) { voiceStyle = s } }
+                }
+            }
+            Text(voiceStyle.line, fontSize = 13.sp, color = Gold.copy(alpha = 0.85f), fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, modifier = Modifier.padding(top = 8.dp))
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 VoiceGender.entries.forEach { g -> DarkChip(g.label, gender == g) { gender = g } }
             }
@@ -216,99 +232,4 @@ private fun DarkChip(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun Label(text: String) {
     Text(text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Gold.copy(alpha = 0.9f), modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
-}
-
-@Composable
-private fun PraySessionContent(viewModel: PrayWithMeViewModel, ui: PrayUi, onClose: () -> Unit, onOpenNote: (String) -> Unit) {
-    val level by viewModel.level.collectAsState()
-    var typing by remember { mutableStateOf(false) }
-    var draft by remember { mutableStateOf("") }
-    val ended = ui.state == LiveVoiceState.ENDED || ui.state == LiveVoiceState.FAILED
-    val speaking = ui.state == LiveVoiceState.SPEAKING
-    val breathe = rememberInfiniteTransition(label = "breathe")
-    val slow by breathe.animateFloat(0.94f, 1.06f, infiniteRepeatable(tween(2600), RepeatMode.Reverse), label = "slow")
-    val lvl by animateFloatAsState(level, tween(140), label = "lvl")
-    val listState = rememberLazyListState()
-    LaunchedEffect(ui.lines.size, ui.lines.lastOrNull()?.text?.length) { if (ui.lines.isNotEmpty()) listState.animateScrollToItem(ui.lines.size - 1) }
-
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Night, Color(0xFF1B1530), Color(0xFF2B2140)))).testTag("pray_session")) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close", tint = Color.White) }
-                Spacer(Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(18.dp))
-            // The orb: breathes while listening, swells with the voice while it prays.
-            Box(Modifier.size(210.dp), contentAlignment = Alignment.Center) {
-                val s = if (ended) 1f else slow + lvl * (if (speaking) 0.35f else 0.2f)
-                Box(Modifier.size(210.dp).graphicsLayer { scaleX = s; scaleY = s }
-                    .background(Brush.radialGradient(listOf((if (speaking) Gold else Color(0xFF93C5FD)).copy(alpha = 0.45f), Color.Transparent)), CircleShape))
-                Box(Modifier.size(118.dp).graphicsLayer { scaleX = 0.96f + lvl * 0.12f; scaleY = 0.96f + lvl * 0.12f }.clip(CircleShape)
-                    .background(Brush.linearGradient(if (speaking) listOf(Color(0xFFFFE9A8), Color(0xFFE0A33A)) else listOf(Color(0xFFDBEAFE), Color(0xFF6366F1)))))
-            }
-            Text(
-                when (ui.state) {
-                    LiveVoiceState.CONNECTING -> "Getting ready…"
-                    LiveVoiceState.LISTENING -> "I'm listening"
-                    LiveVoiceState.SPEAKING -> "Praying…"
-                    LiveVoiceState.PAUSED -> "Microphone off"
-                    LiveVoiceState.ENDED -> "Amen"
-                    LiveVoiceState.FAILED -> "The connection stopped"
-                },
-                fontSize = 20.sp, fontFamily = FontFamily.Serif, color = Color.White, modifier = Modifier.padding(top = 10.dp)
-            )
-            if (ui.state == LiveVoiceState.CONNECTING && ui.stage.isNotBlank()) Text(ui.stage, fontSize = 13.sp, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(top = 4.dp).testTag("pray_stage"))
-            ui.error?.let { Text(it, fontSize = 13.sp, color = Color(0xFFFCA5A5), textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp, vertical = 6.dp)) }
-
-            LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 14.dp), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp, vertical = 8.dp)) {
-                items(ui.lines) { l ->
-                    Text(
-                        l.text, fontSize = if (l.mine) 15.sp else 18.sp, lineHeight = if (l.mine) 21.sp else 27.sp,
-                        fontFamily = if (l.mine) FontFamily.Default else FontFamily.Serif,
-                        color = if (l.mine) Color.White.copy(alpha = 0.6f) else Color.White,
-                        textAlign = if (l.mine) TextAlign.End else TextAlign.Start,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
-                    )
-                }
-            }
-
-            if (ended) {
-                Row(Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (ui.lines.isNotEmpty()) {
-                        val saved = ui.savedNoteId
-                        Surface(onClick = { if (saved != null) onOpenNote(saved) else viewModel.save() }, shape = RoundedCornerShape(50), color = Gold) {
-                            Text(if (saved != null) "Open saved prayer" else "Keep this as a note", color = Night, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
-                        }
-                    }
-                    Surface(onClick = { viewModel.reset() }, shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.12f)) {
-                        Text("Pray again", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
-                    }
-                }
-            } else {
-                if (typing) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = draft, onValueChange = { draft = it }, placeholder = { Text("Type instead…", color = Color.White.copy(alpha = 0.4f)) },
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = Gold, unfocusedBorderColor = Color.White.copy(alpha = 0.25f), cursorColor = Gold),
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = { viewModel.say(draft); draft = "" }) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Gold) }
-                }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    SessionButton(if (ui.muted) Icons.Filled.MicOff else Icons.Filled.Mic, if (ui.muted) "Unmute" else "Mute", Color.White.copy(alpha = 0.12f)) { viewModel.toggleMute() }
-                    Surface(onClick = { viewModel.end() }, shape = RoundedCornerShape(50), color = Gold, modifier = Modifier.testTag("pray_amen")) {
-                        Text("Amen", fontSize = 18.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Night, modifier = Modifier.padding(horizontal = 34.dp, vertical = 16.dp))
-                    }
-                    SessionButton(Icons.Filled.Keyboard, "Type", Color.White.copy(alpha = 0.12f)) { typing = !typing }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SessionButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, bg: Color, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        IconButton(onClick = onClick, modifier = Modifier.size(56.dp).clip(CircleShape).background(bg)) { Icon(icon, contentDescription = label, tint = Color.White) }
-        Text(label, fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 4.dp))
-    }
 }

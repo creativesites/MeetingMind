@@ -144,5 +144,88 @@ class PrayWithMeTest {
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/mini_player.png")
     }
-}
 
+    @Test fun `live setup lets prayer breathe with low sensitivity and a long silence before the turn ends`() {
+        val aad = GeminiLiveVoice.setupMessage("x", "Kore").getJSONObject("setup").getJSONObject("realtimeInputConfig").getJSONObject("automaticActivityDetection")
+        assertEquals("END_SENSITIVITY_LOW", aad.getString("endOfSpeechSensitivity"))
+        assertEquals("START_SENSITIVITY_LOW", aad.getString("startOfSpeechSensitivity"))
+        assertTrue(aad.getInt("silenceDurationMs") >= 1000)
+    }
+
+    @Test fun `transcript pieces keep their spaces, even a lone one, and a new speaker starts a line`() {
+        var lines = emptyList<PrayLine>()
+        listOf("Hello,", " Winston.", " It", " ", "is", " so good", " .").forEach { lines = PrayLines.append(lines, false, it) }
+        assertEquals("Hello, Winston. It is so good.", lines.single().text)
+        lines = PrayLines.append(lines, true, " Amen")
+        assertEquals(PrayLine(true, "Amen"), lines.last())
+        assertEquals(lines, PrayLines.append(lines, false, ""))
+        // Pieces arriving with a server's lone-space piece — the one that used to be dropped.
+        assertEquals(listOf(" "), GeminiLiveVoice.parse("""{"serverContent":{"outputTranscription":{"text":" "}}}""") {}.filterIsInstance<LiveVoiceEvent.Said>().map { it.text })
+    }
+
+    @Test fun `the mic stays closed to echo while the companion talks, and opens when you really speak`() {
+        val gate = com.example.ai.live.BargeIn(threshold = 0.16f, framesNeeded = 3)
+        assertTrue(gate.decide(0.02f, companionAudible = false)) // quiet room, nobody talking: open
+        // Companion talking: its echo (moderate levels) is held back…
+        repeat(10) { assertFalse(gate.decide(0.10f, companionAudible = true)) }
+        // …a single loud blip isn't enough…
+        assertFalse(gate.decide(0.3f, companionAudible = true))
+        assertFalse(gate.decide(0.05f, companionAudible = true))
+        // …but a sustained voice is: after three loud frames the person has the floor.
+        assertFalse(gate.decide(0.3f, true)); assertFalse(gate.decide(0.3f, true)); assertTrue(gate.decide(0.3f, true))
+        assertTrue(gate.decide(0.12f, true)) // and keeps it through softer words
+    }
+
+    @Test fun `worship first, a persona, and singing only what may be sung`() {
+        val s = PraySetup(worship = "Amazing Grace", persona = "a passionate African Pentecostal preacher")
+        val sys = PrayerCompanion.systemInstruction(s)
+        assertTrue(sys.contains("Pentecostal preacher") && sys.contains("public-domain hymns") && sys.contains("don't sing out its full lyrics"))
+        assertTrue(PrayerCompanion.opening(s).contains("sing \"Amazing Grace\""))
+        assertTrue(PrayerCompanion.opening(s.copy(worship = com.example.core.prayer.WorshipSongs.THEIR_OWN)).contains("follow me"))
+        assertTrue(PrayerCompanion.singNow(null).contains("follow me"))
+        assertTrue(com.example.core.prayer.WorshipSongs.hymns.none { it.contains("Great Is Thy Faithfulness") })
+    }
+
+    @Test fun `church voices include Pentecostal with a Zambian accent, Catholic, and more`() {
+        val pente = com.example.ai.voice.PreacherStyle.PENTECOSTAL
+        assertTrue(pente.style.contains("Zambian") && pente.tradition.startsWith("Pentecostal"))
+        assertTrue(com.example.ai.voice.PreacherStyle.entries.map { it.tradition }.toSet().containsAll(setOf("Catholic", "Evangelical & Baptist", "Anglican, Methodist & Reformed")))
+    }
+
+    @Test fun `live session looks alive`() {
+        val vm = PrayWithMeViewModel(ApplicationProvider.getApplicationContext())
+        val lines = listOf(
+            PrayLine(false, "Hello, Winston. It is so good to be with you. What is on your heart that you'd like to bring before the Lord today?"),
+            PrayLine(true, "My mum's surgery on Friday."),
+            PrayLine(false, "Lord, we lift up Winston's mother to you. Guide the hands of every doctor and nurse, and fill her with your peace.")
+        )
+        val base = PrayUi(available = true, started = true, lines = lines, startedAt = System.currentTimeMillis() - 192_000, mode = PrayMode.TOGETHER)
+        compose.setContent { MeetMindTheme { PraySessionContent(vm, base.copy(state = com.example.ai.live.LiveVoiceState.SPEAKING), {}, {}) } }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/pray_live_speaking.png")
+    }
+
+    @Test fun `live session while singing, and when it ends`() {
+        val vm = PrayWithMeViewModel(ApplicationProvider.getApplicationContext())
+        compose.setContent {
+            MeetMindTheme {
+                PraySessionContent(vm, PrayUi(available = true, started = true, singing = true, song = "Amazing Grace", state = com.example.ai.live.LiveVoiceState.SPEAKING,
+                    lines = listOf(PrayLine(false, "Amazing grace, how sweet the sound, that saved a wretch like me…")), startedAt = System.currentTimeMillis() - 40_000), {}, {})
+            }
+        }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/pray_live_singing.png")
+    }
+
+    @Test fun `live session ended`() {
+        val vm = PrayWithMeViewModel(ApplicationProvider.getApplicationContext())
+        compose.setContent {
+            MeetMindTheme {
+                PraySessionContent(vm, PrayUi(available = true, started = true, state = com.example.ai.live.LiveVoiceState.ENDED,
+                    lines = listOf(PrayLine(false, "Go in peace, Winston. Amen.")), startedAt = System.currentTimeMillis() - 610_000), {}, {})
+            }
+        }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/pray_live_ended.png")
+    }
+}

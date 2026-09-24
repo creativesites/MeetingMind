@@ -120,7 +120,9 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
             else -> {
                 val replace = inputData.getBoolean(KEY_REPLACE, false)
                 val onDemand = !inputData.getBoolean(KEY_NOTIFY, true)
-                val ask = com.example.ai.devotional.DevotionalAsk.fromJson(inputData.getString(KEY_ASK))
+                val asked = com.example.ai.devotional.DevotionalAsk.fromJson(inputData.getString(KEY_ASK))
+                // Asked for now: it's read now, so it knows whether it's afternoon or evening.
+                val ask = if (onDemand) (asked ?: com.example.ai.devotional.DevotionalAsk()).copy(hour = java.time.LocalTime.now().hour) else asked
                 // Never "writing…" forever: a stuck model or network gives up and the classic stands in.
                 val attempt = runCatching { withTimeoutOrNull(WRITE_TIMEOUT_MS) { repo.ensure(LocalDate.now(), another = replace, ask = ask) } }
                 val written = attempt.getOrNull()

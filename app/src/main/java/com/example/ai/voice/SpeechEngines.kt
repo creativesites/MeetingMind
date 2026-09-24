@@ -30,15 +30,17 @@ class GeminiSpeech(private val interactions: GeminiInteractions) : SpeechEngine 
         val chunks = SpeechScript.chunks(segments)
         if (chunks.isEmpty()) return AiResult.Failed("Nothing to read.")
         val clips = mutableListOf<Pcm>()
-        chunks.forEachIndexed { i, text ->
+        chunks.forEachIndexed { i, chunk ->
             var result: AiResult<com.example.ai.cloud.GeneratedMedia> = AiResult.Failed("not tried")
             for (model in MODELS) {
-                result = interactions.media(GeminiInteractions.speechRequest(model, text, settings.deliveryStyle, settings.voiceName), "audio")
+                result = interactions.media(GeminiInteractions.speechRequest(model, chunk.text, settings.deliveryStyle, settings.voiceName), "audio")
                 if (result is AiResult.Success) break
             }
             val media = (result as? AiResult.Success)?.value ?: return result as AiResult<Pcm>
-            val pcm = if (media.mimeType.contains("l16")) Wav.fromL16(media.bytes, 24_000) else Wav.read(media.bytes)
-            clips += pcm ?: return AiResult.Failed("Gemini's audio couldn't be read.")
+            val pcm = (if (media.mimeType.contains("l16")) Wav.fromL16(media.bytes, 24_000) else Wav.read(media.bytes))
+                ?: return AiResult.Failed("Gemini's audio couldn't be read.")
+            clips += pcm
+            if (chunk.pauseAfterMs > 0) clips += Wav.silence(chunk.pauseAfterMs, pcm.sampleRate)
             onProgress((i + 1f) / chunks.size)
         }
         label = "Gemini voice · ${settings.voiceName}"
@@ -74,7 +76,7 @@ class DeviceSpeech(private val context: Context, private val locale: Locale = Lo
                 val file = File(dir, "seg_$i.wav")
                 val id = "seg_$i"
                 val done = CompletableDeferred<Boolean>().also { pending[id] = it }
-                if (tts.synthesizeToFile(s.text, null, file, id) != TextToSpeech.SUCCESS) return AiResult.Failed("The phone's voice couldn't read this.")
+                if (tts.synthesizeToFile(SpeechScript.stripTags(s.text), null, file, id) != TextToSpeech.SUCCESS) return AiResult.Failed("The phone's voice couldn't read this.")
                 val ok = withTimeoutOrNull(120_000) { done.await() } == true
                 val pcm = if (ok) Wav.read(file) else null
                 file.delete()

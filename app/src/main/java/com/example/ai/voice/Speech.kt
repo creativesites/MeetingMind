@@ -4,14 +4,31 @@ import com.example.core.devotional.Devotional
 import com.example.core.devotional.DevotionalOrigin
 import com.example.core.scripture.ScriptureReference
 
-/** Who reads the devotional: a preset that maps to a Gemini voice and a delivery style. */
-enum class PreacherStyle(val label: String, val line: String, val style: String, val male: String, val female: String) {
+/**
+ * Who reads the devotional: a preset that maps to a Gemini voice and a delivery style. The style
+ * is `speech_metadata.style`, which also carries accent — so a Lusaka Pentecostal preacher sounds
+ * like one. [tradition] groups them in the picker.
+ */
+enum class PreacherStyle(val label: String, val line: String, val style: String, val male: String, val female: String, val tradition: String = "Any church") {
     WARM_PASTOR("Warm pastor", "Unhurried, kind, like Sunday morning",
         "a warm, unhurried pastor speaking to one person he cares about; gentle, sincere, with natural pauses", "Algieba", "Sulafat"),
+    PENTECOSTAL("Pentecostal preacher", "Fiery, joyful, full of faith — Sunday service in Lusaka",
+        "a passionate African Pentecostal preacher with a warm Zambian English accent; fervent, joyful and full of faith, rising with conviction and a preacher's rhythm, " +
+            "saying 'Amen' and 'Hallelujah' with real feeling, lively but always clear and never shouting",
+        "Fenrir", "Kore", "Pentecostal & charismatic"),
+    CHURCH_MOTHER("Church mother", "Tender and prayerful, like a praying grandmother",
+        "a warm African church mother with a gentle Zambian English accent; tender, faith-filled and unhurried, like a grandmother praying over her child",
+        "Charon", "Aoede", "Pentecostal & charismatic"),
+    CATHOLIC_PRIEST("Priest or sister", "Reverent and prayerful, like a homily at Mass",
+        "a reverent Catholic priest giving a short homily at Mass; prayerful, measured and dignified, warm and pastoral, with quiet pauses for reflection",
+        "Charon", "Schedar", "Catholic"),
+    BOLD_PREACHER("Bold preacher", "Stirring and confident",
+        "a confident, stirring evangelical preacher with conviction and energy, building to encouragement, never shouting", "Alnilam", "Kore", "Evangelical & Baptist"),
+    LITURGICAL_READER("Liturgical reader", "Clear and dignified, like a cathedral reading",
+        "a dignified reader in Anglican or Reformed worship; clear diction, a measured, reverent pace, letting the words of Scripture carry the weight",
+        "Rasalgethi", "Erinome", "Anglican, Methodist & Reformed"),
     GENTLE_FRIEND("Gentle friend", "Soft and close, like a friend across the table",
         "a gentle friend speaking softly and personally, relaxed and reassuring", "Achird", "Vindemiatrix"),
-    BOLD_PREACHER("Bold preacher", "Stirring and confident",
-        "a confident, stirring preacher with conviction and energy, building to encouragement, never shouting", "Alnilam", "Kore"),
     CALM_TEACHER("Calm teacher", "Clear and steady",
         "a calm, clear Bible teacher, steady and thoughtful", "Iapetus", "Erinome"),
     STORYTELLER("Storyteller", "Vivid, with a storyteller's rhythm",
@@ -75,9 +92,18 @@ enum class VoiceSection(val label: String) {
  */
 object SpeechScript {
 
-    fun build(d: Devotional, verseText: Map<ScriptureReference, String>, settings: VoiceSettings, name: String? = null): List<SpeechSegment> = buildList {
-        val greeting = name?.takeIf { it.isNotBlank() }?.let { "Good morning, $it." } ?: "Good morning."
-        val opening = if (d.origin == DevotionalOrigin.CLASSIC) "$greeting Today's reading is from ${d.engine ?: "a classic devotional"}." else "$greeting This is your devotional for today: ${d.title}."
+    /** "Good morning" in the morning — and good afternoon, evening, or just "Hello" late at night. */
+    fun greetingFor(hour: Int): String = when (hour) {
+        in 4..11 -> "Good morning"
+        in 12..16 -> "Good afternoon"
+        in 17..21 -> "Good evening"
+        else -> "Hello"
+    }
+
+    fun build(d: Devotional, verseText: Map<ScriptureReference, String>, settings: VoiceSettings, name: String? = null, hour: Int = java.time.LocalTime.now().hour): List<SpeechSegment> = buildList {
+        val hello = greetingFor(hour)
+        val greeting = name?.takeIf { it.isNotBlank() }?.let { "$hello, $it." } ?: "$hello."
+        val opening = if (d.origin == DevotionalOrigin.CLASSIC) "$greeting Today's reading is from ${d.engine ?: "a classic devotional"}." else "$greeting This is your devotional: ${d.title}."
         add(SpeechSegment(SpeechSegment.Kind.INTRO, opening, 700))
         d.keyText?.let { add(SpeechSegment(SpeechSegment.Kind.SCRIPTURE, it.trim('“', '”', '"'), 600)) }
         d.scripture.forEach { ref ->
@@ -118,31 +144,24 @@ object SpeechScript {
         .trim()
 
     /**
-     * Groups segments into requests of at most [maxChars], each text with Gemini's inline pause
-     * tags between segments. Never splits a segment unless it alone is too long (then by sentence).
+     * The script as speech requests: one per segment (long ones split by sentence under
+     * [maxChars]), each with the silence to put after it. Pauses are real silence joined in on the
+     * phone — never inline tags, which a TTS model can end up reading out loud.
      */
-    fun chunks(segments: List<SpeechSegment>, maxChars: Int = 2400): List<String> {
-        val out = mutableListOf<String>()
-        val current = StringBuilder()
-        fun flush() { if (current.isNotBlank()) out += current.toString().trim(); current.clear() }
+    fun chunks(segments: List<SpeechSegment>, maxChars: Int = 2400): List<SpeechChunk> = buildList {
         for (s in segments) {
-            val pieces = if (s.text.length <= maxChars) listOf(s.text) else s.text.split(Regex("(?<=[.!?])\\s+")).fold(mutableListOf<String>()) { acc, sentence ->
+            val text = stripTags(s.text).takeIf { it.isNotBlank() } ?: continue
+            val pieces = if (text.length <= maxChars) listOf(text) else text.split(Regex("(?<=[.!?])\\s+")).fold(mutableListOf<String>()) { acc, sentence ->
                 if (acc.isNotEmpty() && acc.last().length + sentence.length + 1 <= maxChars) acc[acc.size - 1] = acc.last() + " " + sentence else acc += sentence
                 acc
             }
-            pieces.forEachIndexed { i, piece ->
-                val tag = if (i < pieces.size - 1) " " else pauseTag(s.pauseAfterMs)
-                if (current.length + piece.length + tag.length > maxChars) flush()
-                current.append(piece).append(tag)
-            }
+            pieces.forEachIndexed { i, piece -> add(SpeechChunk(piece.trim(), if (i == pieces.lastIndex) s.pauseAfterMs else 150)) }
         }
-        flush()
-        return out
     }
 
-    fun pauseTag(ms: Long) = when {
-        ms <= 0 -> " "
-        ms < 1000 -> " <short pause> "
-        else -> " <long pause> "
-    }
+    /** Anything in angle or square brackets ("<short pause>", "[pause]") — stage directions, not words. */
+    fun stripTags(text: String): String = text.replace(Regex("""<[^<>]{1,40}>|\[(?:short |long )?pause]""", RegexOption.IGNORE_CASE), " ").replace(Regex("\\s+"), " ").trim()
 }
+
+/** One speech request's words and the silence after them. */
+data class SpeechChunk(val text: String, val pauseAfterMs: Long)

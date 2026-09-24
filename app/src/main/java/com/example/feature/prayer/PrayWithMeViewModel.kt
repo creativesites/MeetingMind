@@ -29,6 +29,23 @@ import kotlinx.coroutines.launch
 /** One line of the conversation: who, and what. */
 data class PrayLine(val mine: Boolean, val text: String)
 
+object PrayLines {
+    /**
+     * Adds a streamed transcript piece. Pieces arrive a word or so at a time, spaces included
+     * (sometimes a piece is only a space); they're joined as they come and tidied, and a change of
+     * speaker starts a new line.
+     */
+    fun append(lines: List<PrayLine>, mine: Boolean, piece: String): List<PrayLine> {
+        if (piece.isEmpty()) return lines
+        val last = lines.lastOrNull()
+        return if (last != null && last.mine == mine) lines.dropLast(1) + last.copy(text = tidy(last.text + piece))
+        else if (piece.isBlank()) lines
+        else lines + PrayLine(mine, tidy(piece).trimStart())
+    }
+
+    private fun tidy(s: String) = s.replace(Regex("[ \\t]+"), " ").replace(Regex(" ([,.!?;:])"), "$1")
+}
+
 data class PrayUi(
     /** Null until checked; false when Internet mode or a key is missing. */
     val available: Boolean? = null,
@@ -42,7 +59,14 @@ data class PrayUi(
     val savedNoteId: String? = null,
     val muted: Boolean = false,
     /** While connecting: where it's got to. */
-    val stage: String = ""
+    val stage: String = "",
+    /** When the conversation began (for the timer). */
+    val startedAt: Long = 0,
+    /** Singing together right now (from "Sing with me" until the song's turn ends). */
+    val singing: Boolean = false,
+    val mode: PrayMode = PrayMode.TOGETHER,
+    /** The hymn picked at the start, offered again by "Sing". */
+    val song: String? = null
 )
 
 class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
@@ -50,7 +74,11 @@ class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
     val ui: StateFlow<PrayUi> = _ui.asStateFlow()
     private var session: GeminiLiveVoice? = null
     private var jobs = mutableListOf<Job>()
-    val level: StateFlow<Float> get() = session?.level ?: MutableStateFlow(0f)
+    // Mirrored from the session so the screen can collect them before the session exists.
+    private val _level = MutableStateFlow(0f)
+    val level: StateFlow<Float> = _level.asStateFlow()
+    private val _userLevel = MutableStateFlow(0f)
+    val userLevel: StateFlow<Float> = _userLevel.asStateFlow()
     private var current: PraySetup? = null
 
     init {
@@ -81,9 +109,12 @@ class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
             val name = UserPreferencesManager(getApplication()).preferencesFlow.first().identity.displayName?.substringBefore(' ')
             val full = setup.copy(name = name)
             current = full
-            val live = GeminiLiveVoice(key, GeminiLiveVoice.setupMessage(PrayerCompanion.systemInstruction(full), voice))
+            val live = GeminiLiveVoice(key, GeminiLiveVoice.setupMessage(PrayerCompanion.systemInstruction(full), voice), getApplication())
             session = live
-            _ui.value = _ui.value.copy(started = true, lines = emptyList(), error = null, savedNoteId = null)
+            _ui.value = _ui.value.copy(started = true, lines = emptyList(), error = null, savedNoteId = null, startedAt = System.currentTimeMillis(),
+                mode = full.mode, song = full.worship, singing = full.worship != null)
+            jobs += launch { live.level.collect { _level.value = it } }
+            jobs += launch { live.userLevel.collect { _userLevel.value = it } }
             jobs += launch { live.state.collect { s -> _ui.value = _ui.value.copy(state = s) } }
             jobs += launch { live.stage.collect { s -> _ui.value = _ui.value.copy(stage = s) } }
             jobs += launch {
@@ -92,6 +123,7 @@ class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
                         LiveVoiceEvent.Ready -> live.say(PrayerCompanion.opening(full))
                         is LiveVoiceEvent.Heard -> append(true, e.text)
                         is LiveVoiceEvent.Said -> append(false, e.text)
+                        LiveVoiceEvent.TurnDone -> if (_ui.value.singing && _ui.value.lines.lastOrNull()?.mine == false) _ui.value = _ui.value.copy(singing = false)
                         is LiveVoiceEvent.Failed -> _ui.value = _ui.value.copy(error = e.message)
                         else -> Unit
                     }
@@ -103,14 +135,24 @@ class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Joins streamed transcript pieces into lines, one per speaker turn. */
     private fun append(mine: Boolean, piece: String) {
-        val lines = _ui.value.lines.toMutableList()
-        val last = lines.lastOrNull()
-        if (last != null && last.mine == mine) lines[lines.size - 1] = last.copy(text = (last.text + piece).replace(Regex("\\s+"), " "))
-        else lines += PrayLine(mine, piece.trim())
-        _ui.value = _ui.value.copy(lines = lines)
+        _ui.value = _ui.value.copy(lines = PrayLines.append(_ui.value.lines, mine, piece))
     }
 
-    fun say(text: String) { if (text.isNotBlank()) { append(true, text.trim()); session?.say(text.trim()) } }
+    /** Typed words: shown as the person's own line, and sent as their turn. */
+    fun say(text: String) {
+        val t = text.trim().takeIf { it.isNotEmpty() } ?: return
+        _ui.value = _ui.value.copy(lines = _ui.value.lines + PrayLine(true, t))
+        session?.say(t)
+    }
+
+    /** "Sing with me": a hymn now, the one chosen at the start, or following the person's own song. */
+    fun sing(song: String? = _ui.value.song) {
+        _ui.value = _ui.value.copy(singing = true)
+        session?.say(PrayerCompanion.singNow(song))
+    }
+
+    /** The quick asks under the conversation. */
+    fun ask(prompt: String) { session?.say(prompt) }
 
     fun toggleMute() {
         val m = !_ui.value.muted

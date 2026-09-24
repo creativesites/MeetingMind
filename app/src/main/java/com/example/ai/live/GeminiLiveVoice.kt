@@ -58,6 +58,8 @@ enum class LiveVoiceState { CONNECTING, LISTENING, SPEAKING, PAUSED, ENDED, FAIL
 class GeminiLiveVoice(
     private val apiKey: String,
     private val setup: JSONObject,
+    /** For the phone's call audio mode (echo cancellation); null in tests. */
+    private val context: android.content.Context? = null,
     // No WebSocket pings: the Live endpoint doesn't answer them, and OkHttp would drop the
     // conversation after one missed pong. A setup timeout guards the start instead.
     private val client: OkHttpClient = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).connectTimeout(15, TimeUnit.SECONDS).build()
@@ -68,6 +70,8 @@ class GeminiLiveVoice(
         private const val IN_RATE = 16_000
         private const val OUT_RATE = 24_000
         private const val SETUP_TIMEOUT_MS = 20_000L
+        /** Echo can linger in the room for a moment after the voice stops. */
+        private const val ECHO_TAIL_MS = 250L
 
         /**
          * Checks a key end to end without the microphone: opens the live socket, sends setup and
@@ -107,7 +111,14 @@ class GeminiLiveVoice(
                 .put("speechConfig", JSONObject().put("voiceConfig", JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice)))))
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
             .put("inputAudioTranscription", JSONObject())
-            .put("outputAudioTranscription", JSONObject()))
+            .put("outputAudioTranscription", JSONObject())
+            // Prayer has pauses: don't end someone's turn at the first breath, and don't take a
+            // cough or a bit of echo as them starting to speak.
+            .put("realtimeInputConfig", JSONObject().put("automaticActivityDetection", JSONObject()
+                .put("startOfSpeechSensitivity", "START_SENSITIVITY_LOW")
+                .put("endOfSpeechSensitivity", "END_SENSITIVITY_LOW")
+                .put("prefixPaddingMs", 200)
+                .put("silenceDurationMs", 1100))))
 
         fun audioMessage(pcm: ByteArray): String = JSONObject().put("realtimeInput", JSONObject()
             .put("audio", JSONObject().put("data", Base64.encodeToString(pcm, Base64.NO_WRAP)).put("mimeType", "audio/pcm;rate=$IN_RATE"))).toString()
@@ -143,8 +154,9 @@ class GeminiLiveVoice(
                         if (data.isNotEmpty()) onAudio(Base64.decode(data, Base64.DEFAULT))
                     }
                 }
-                sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { out += LiveVoiceEvent.Heard(it) }
-                sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { out += LiveVoiceEvent.Said(it) }
+                // Pieces can be a lone space — that space is what separates two words, so keep it.
+                sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotEmpty() }?.let { out += LiveVoiceEvent.Heard(it) }
+                sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotEmpty() }?.let { out += LiveVoiceEvent.Said(it) }
                 if (sc.optBoolean("interrupted")) out += LiveVoiceEvent.Interrupted
                 if (sc.optBoolean("turnComplete")) out += LiveVoiceEvent.TurnDone
             }
@@ -161,18 +173,39 @@ class GeminiLiveVoice(
     /** 0–1 loudness of whoever is talking, for the orb. */
     private val _level = MutableStateFlow(0f)
     val level: StateFlow<Float> = _level.asStateFlow()
+    /** 0–1 loudness of the person's own voice, even while the companion talks (for the ring). */
+    private val _userLevel = MutableStateFlow(0f)
+    val userLevel: StateFlow<Float> = _userLevel.asStateFlow()
+
+    /** Where the connection is, in words, while it's getting ready — so a stall says where. */
+    private val _stage = MutableStateFlow("Connecting to Gemini…")
+    val stage: StateFlow<String> = _stage.asStateFlow()
 
     private var socket: WebSocket? = null
     private var recorder: AudioRecord? = null
     private var player: AudioTrack? = null
     private var micJob: Job? = null
+    private var playJob: Job? = null
+    private var watchJob: Job? = null
     @Volatile private var muted = false
     @Volatile private var ready = false
     @Volatile private var opened = false
 
-    /** Where the connection is, in words, while it's getting ready — so a stall says where. */
-    private val _stage = MutableStateFlow("Connecting to Gemini…")
-    val stage: StateFlow<String> = _stage.asStateFlow()
+    // Playback: audio arrives faster than it plays. It's queued and written by its own coroutine
+    // (never on the socket's thread), and what's *audible* is tracked from the play head — so the
+    // screen says "speaking" exactly while the voice is heard, and the mic knows when it's safe.
+    private val queue = kotlinx.coroutines.channels.Channel<ByteArray>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    @Volatile private var framesWritten = 0L
+    @Volatile private var turnDone = true
+    @Volatile private var quietSince = 0L
+    private val audible: Boolean get() {
+        val p = player ?: return false
+        val head = runCatching { p.playbackHeadPosition.toLong() and 0xFFFFFFFFL }.getOrDefault(framesWritten)
+        return framesWritten - head > OUT_RATE / 50 || !queue.isEmpty
+    }
+
+    private var audioManager: android.media.AudioManager? = null
+    private var previousMode = android.media.AudioManager.MODE_NORMAL
 
     fun start() {
         val request = Request.Builder().url("$URL?key=${apiKey.trim()}").build()
@@ -216,12 +249,12 @@ class GeminiLiveVoice(
     }
 
     private fun handle(text: String) {
-        val events = parse(text) { pcm -> play(pcm) }
+        val events = parse(text) { pcm -> turnDone = false; queue.trySend(pcm) }
         events.forEach { e ->
             when (e) {
                 LiveVoiceEvent.Ready -> { ready = true; startAudio(); _state.value = LiveVoiceState.LISTENING }
-                LiveVoiceEvent.Interrupted -> { player?.pause(); player?.flush(); player?.play(); _state.value = LiveVoiceState.LISTENING }
-                LiveVoiceEvent.TurnDone -> if (_state.value == LiveVoiceState.SPEAKING) _state.value = LiveVoiceState.LISTENING
+                LiveVoiceEvent.Interrupted -> stopPlayback()
+                LiveVoiceEvent.TurnDone -> turnDone = true
                 is LiveVoiceEvent.Failed -> _state.value = LiveVoiceState.FAILED
                 else -> Unit
             }
@@ -229,49 +262,129 @@ class GeminiLiveVoice(
         }
     }
 
-    /** Sends typed words (a prayer list, or a thought) into the conversation. */
-    fun say(text: String) { if (ready) socket?.send(textMessage(text)) }
+    /** Drops whatever is still queued or playing — they've started speaking, or typed. */
+    private fun stopPlayback() {
+        while (queue.tryReceive().isSuccess) Unit
+        player?.let { p -> runCatching { p.pause(); p.flush(); p.play() } }
+        framesWritten = 0
+        runCatching { player?.let { framesWritten = it.playbackHeadPosition.toLong() and 0xFFFFFFFFL } }
+        if (_state.value == LiveVoiceState.SPEAKING) _state.value = if (muted) LiveVoiceState.PAUSED else LiveVoiceState.LISTENING
+    }
+
+    /**
+     * Sends typed words into the conversation: whatever the companion was saying stops, and the
+     * words go in as the person's turn.
+     */
+    fun say(text: String) {
+        if (!ready || text.isBlank()) return
+        stopPlayback()
+        socket?.send(textMessage(text.trim()))
+    }
 
     fun setMuted(value: Boolean) {
         if (value && !muted && ready) socket?.send(audioEndMessage())
-        muted = value; _state.value = if (value) LiveVoiceState.PAUSED else LiveVoiceState.LISTENING }
+        muted = value
+        if (_state.value != LiveVoiceState.SPEAKING) _state.value = if (value) LiveVoiceState.PAUSED else LiveVoiceState.LISTENING
+    }
 
     @SuppressLint("MissingPermission")
     private fun startAudio() {
+        // Call audio: the platform's echo canceller only removes what's played on the voice-call
+        // path. Played as media, the companion hears itself through the mic and answers itself.
+        context?.let { ctx ->
+            val am = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
+            audioManager = am
+            am?.let {
+                previousMode = it.mode
+                runCatching { it.mode = android.media.AudioManager.MODE_IN_COMMUNICATION }
+                runCatching { routeToSpeaker(it) }
+            }
+        }
+
+        val inMin = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val rec = runCatching { AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(inMin, IN_RATE / 5 * 2)) }.getOrNull()
         val outMin = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         player = AudioTrack.Builder()
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             .setAudioFormat(AudioFormat.Builder().setSampleRate(OUT_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
             .setBufferSizeInBytes(maxOf(outMin, OUT_RATE))
             .setTransferMode(AudioTrack.MODE_STREAM)
+            .apply { if (rec != null && rec.state == AudioRecord.STATE_INITIALIZED) setSessionId(rec.audioSessionId) }
             .build().also { it.play() }
+        framesWritten = 0
 
-        val inMin = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        // Voice-communication input gets the phone's echo cancellation, so the companion
-        // doesn't hear itself through the speaker.
-        val rec = runCatching { AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(inMin, IN_RATE / 5 * 2)) }.getOrNull()
+        playJob = scope.launch {
+            for (pcm in queue) {
+                val p = player ?: break
+                _level.value = rms(pcm, pcm.size)
+                var off = 0
+                while (off < pcm.size && isActive) {
+                    val n = p.write(pcm, off, pcm.size - off)
+                    if (n <= 0) break
+                    off += n
+                    framesWritten += n / 2
+                }
+            }
+        }
+        // What the screen shows follows what's heard, not what's arrived.
+        watchJob = scope.launch {
+            while (isActive) {
+                val speaking = audible
+                val st = _state.value
+                if (speaking && (st == LiveVoiceState.LISTENING || st == LiveVoiceState.PAUSED)) _state.value = LiveVoiceState.SPEAKING
+                if (!speaking && st == LiveVoiceState.SPEAKING && (turnDone || queue.isEmpty)) {
+                    quietSince = System.currentTimeMillis()
+                    _state.value = if (muted) LiveVoiceState.PAUSED else LiveVoiceState.LISTENING
+                }
+                if (!speaking) _level.value = _level.value * 0.8f
+                kotlinx.coroutines.delay(40)
+            }
+        }
+
         if (rec == null || rec.state != AudioRecord.STATE_INITIALIZED) {
-            _events.tryEmit(LiveVoiceEvent.Failed("The microphone isn't available.")); return
+            _events.tryEmit(LiveVoiceEvent.Failed("The microphone isn't available. Allow microphone access for MeetingMind, or type instead."))
+            return
         }
         runCatching { if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(rec.audioSessionId)?.enabled = true }
         runCatching { if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(rec.audioSessionId)?.enabled = true }
+        runCatching { if (android.media.audiofx.AutomaticGainControl.isAvailable()) android.media.audiofx.AutomaticGainControl.create(rec.audioSessionId)?.enabled = true }
         recorder = rec
         rec.startRecording()
         micJob = scope.launch {
             val buffer = ByteArray(IN_RATE / 10 * 2) // 100 ms
+            val silence = ByteArray(buffer.size)
+            val gate = BargeIn()
             while (isActive) {
                 val n = rec.read(buffer, 0, buffer.size)
                 if (n <= 0) continue
-                if (_state.value != LiveVoiceState.SPEAKING) _level.value = rms(buffer, n)
-                if (!muted) socket?.send(audioMessage(buffer.copyOf(n)))
+                val level = rms(buffer, n)
+                _userLevel.value = level
+                if (_state.value != LiveVoiceState.SPEAKING) _level.value = level
+                if (muted) continue
+                // While the companion is audible (and a moment after), the mic stays closed unless
+                // the person clearly starts talking — then it stops and listens to them.
+                val companionAudible = audible || System.currentTimeMillis() - quietSince < ECHO_TAIL_MS
+                val open = gate.decide(level, companionAudible)
+                if (open && companionAudible && audible) stopPlayback()
+                socket?.send(audioMessage(if (open) buffer.copyOf(n) else silence.copyOf(n)))
             }
         }
     }
 
-    private fun play(pcm: ByteArray) {
-        _state.value = LiveVoiceState.SPEAKING
-        _level.value = rms(pcm, pcm.size)
-        player?.write(pcm, 0, pcm.size)
+    /** A headset if one's connected, otherwise the loudspeaker (call audio defaults to the earpiece). */
+    private fun routeToSpeaker(am: android.media.AudioManager) {
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            val devices = am.availableCommunicationDevices
+            val headset = devices.firstOrNull { d ->
+                d.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET || d.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    d.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET || d.type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET
+            }
+            val target = headset ?: devices.firstOrNull { d -> d.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            if (target != null) am.setCommunicationDevice(target)
+        } else {
+            @Suppress("DEPRECATION")
+            if (!am.isWiredHeadsetOn && !am.isBluetoothScoOn) am.isSpeakerphoneOn = true
+        }
     }
 
     private fun rms(bytes: ByteArray, n: Int): Float {
@@ -283,16 +396,47 @@ class GeminiLiveVoice(
     }
 
     private fun stopAudio() {
-        micJob?.cancel()
+        micJob?.cancel(); playJob?.cancel(); watchJob?.cancel()
         runCatching { recorder?.stop() }; runCatching { recorder?.release() }; recorder = null
         runCatching { player?.stop() }; runCatching { player?.release() }; player = null
+        audioManager?.let { am ->
+            runCatching {
+                if (android.os.Build.VERSION.SDK_INT >= 31) am.clearCommunicationDevice()
+                else {
+                    @Suppress("DEPRECATION")
+                    am.isSpeakerphoneOn = false
+                }
+            }
+            runCatching { am.mode = previousMode }
+        }
+        audioManager = null
     }
 
     fun end() {
         _state.value = LiveVoiceState.ENDED
         runCatching { socket?.close(1000, "Amen") }
         stopAudio()
-        _state.value = LiveVoiceState.ENDED
         scope.cancel()
+    }
+}
+
+/**
+ * Decides, every 100 ms of microphone, whether to pass the person's voice on. While the companion
+ * is quiet everything goes through. While it's audible, only a sustained voice clearly louder than
+ * leftover echo does (about a quarter of a second) — that's someone starting to speak, and it
+ * interrupts the companion. Without this, the companion hears itself and answers itself.
+ */
+class BargeIn(private val threshold: Float = 0.16f, private val framesNeeded: Int = 3) {
+    private var loud = 0
+    /** Opened by the person talking over the companion (not just left open from before it spoke). */
+    private var bargedIn = false
+
+    fun decide(level: Float, companionAudible: Boolean): Boolean {
+        if (!companionAudible) { loud = 0; bargedIn = false; return true }
+        if (bargedIn && level > threshold * 0.6f) return true
+        bargedIn = false
+        loud = if (level > threshold) loud + 1 else 0
+        if (loud >= framesNeeded) { bargedIn = true; loud = 0 }
+        return bargedIn
     }
 }

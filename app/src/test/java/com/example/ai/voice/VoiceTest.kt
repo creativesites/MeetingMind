@@ -53,7 +53,7 @@ class VoiceTest {
 
     @Test fun `the script reads the real verse text, prays with an Amen, and ends with the word for today`() {
         val ref = devotional.scripture.first()
-        val script = SpeechScript.build(devotional, mapOf(ref to "28 Come to Me, all you who are weary."), VoiceSettings(), "Ana")
+        val script = SpeechScript.build(devotional, mapOf(ref to "28 Come to Me, all you who are weary."), VoiceSettings(), "Ana", hour = 8)
         assertTrue(script.first().text.startsWith("Good morning, Ana."))
         val scripture = script.first { it.kind == SpeechSegment.Kind.SCRIPTURE }.text
         assertEquals("Matthew chapter 11, verses 28 to 30. Come to Me, all you who are weary.", scripture)
@@ -65,13 +65,21 @@ class VoiceTest {
         assertTrue(silent.any { it.text == "Our reading is Matthew chapter 11, verses 28 to 30." })
     }
 
-    @Test fun `chunks respect the size limit and carry pause tags`() {
-        val script = SpeechScript.build(devotional.copy(reflection = List(20) { "A sentence that goes on for a while to fill space. And another one here." }), emptyMap(), VoiceSettings())
+    @Test fun `chunks respect the size limit and pause with silence, never tags`() {
+        val script = SpeechScript.build(devotional.copy(reflection = List(20) { "A sentence that goes on for a while to fill space. And another one here." } + "Wait <short pause> and rest [pause] here."), emptyMap(), VoiceSettings())
         val chunks = SpeechScript.chunks(script, maxChars = 300)
         assertTrue(chunks.size > 3)
-        assertTrue(chunks.all { it.length <= 300 })
-        assertTrue(chunks.any { it.contains("<long pause>") })
-        assertTrue(chunks.joinToString(" ").contains("Go in peace."))
+        assertTrue(chunks.all { it.text.length <= 300 })
+        assertTrue(chunks.none { it.text.contains("<") || it.text.contains("pause", ignoreCase = true) })
+        assertTrue(chunks.any { it.pauseAfterMs >= 1000 })
+        assertTrue(chunks.joinToString(" ") { it.text }.contains("Go in peace."))
+    }
+
+    @Test fun `the greeting knows the time of day`() {
+        assertTrue(SpeechScript.build(devotional, emptyMap(), VoiceSettings(), "Ana", hour = 16).first().text.startsWith("Good afternoon, Ana."))
+        assertTrue(SpeechScript.build(devotional, emptyMap(), VoiceSettings(), "Ana", hour = 20).first().text.startsWith("Good evening, Ana."))
+        assertEquals("Good morning", SpeechScript.greetingFor(7))
+        assertEquals("Hello", SpeechScript.greetingFor(1))
     }
 
     @Test fun `speech request has the documented shape and media is found in the steps`() {

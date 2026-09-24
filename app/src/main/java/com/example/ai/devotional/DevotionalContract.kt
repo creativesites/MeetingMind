@@ -19,7 +19,9 @@ data class DevotionalBrief(
     val signals: List<String>,
     val name: String?,
     /** What the person asked for in their own words, when they asked for one on demand. */
-    val request: String? = null
+    val request: String? = null,
+    /** The hour it's being read (0–23); null for the scheduled morning devotional. */
+    val hour: Int? = null
 )
 
 /** The model's answer, before checking. */
@@ -68,6 +70,7 @@ object DevotionalContract {
             appendLine("Tradition: ${p.tradition.label}${if (p.tradition == Tradition.CATHOLIC || p.tradition == Tradition.ORTHODOX || p.tradition == Tradition.ANGLICAN) " (use its usual vocabulary respectfully)" else ""}.")
             appendLine("Voice: ${p.tone.guidance}.")
             appendLine("Day: ${brief.weekday}${brief.season?.let { ", ${it.describe()}" } ?: ""}.")
+            appendLine(timeLine(brief.hour))
             appendLine("Passage: ${brief.passage.display()}")
             brief.passageText?.let { appendLine("Passage text (for your understanding; do not copy it out): ${it.take(1500)}") }
             if (p.topics.isNotEmpty()) appendLine("They'd like to grow in: ${p.topics.joinToString(", ")}.")
@@ -87,6 +90,18 @@ object DevotionalContract {
             appendLine("Return a JSON object with:")
             sections.forEach { appendLine("- $it") }
         }
+    }
+
+    /**
+     * When it will be read. People write devotionals whenever they like through the day, so it
+     * never assumes morning: it names the actual part of the day, and otherwise stays time-neutral.
+     */
+    fun timeLine(hour: Int?): String = when (hour) {
+        null -> "Time: it's delivered in the morning, but may be read at any hour — avoid time-specific greetings like \"good morning\" or \"as you start your day\"."
+        in 4..11 -> "Time: it's being read in the morning. Speak to the day ahead."
+        in 12..16 -> "Time: it's being read in the afternoon, mid-day. Don't say \"good morning\" or talk about starting the day; meet them in the middle of it."
+        in 17..21 -> "Time: it's being read in the evening. Don't say \"good morning\"; help them look back on the day and rest."
+        else -> "Time: it's being read late at night. Don't say \"good morning\"; be quiet and restful, pointing to peace and sleep."
     }
 
     fun parse(raw: String): DevotionalAnswer? {
