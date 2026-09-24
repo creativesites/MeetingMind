@@ -20,6 +20,40 @@ import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 
+/**
+ * A devotional asked for on demand (PLAN_V2 F2, "write me one"): anything left null follows the
+ * profile. [variant] > 0 asks for a different one than the day's first.
+ */
+data class DevotionalAsk(
+    val about: String? = null,
+    val passage: String? = null,
+    val topics: Set<String> = emptySet(),
+    val tone: com.example.core.devotional.DevotionalTone? = null,
+    val minutes: Int? = null,
+    val variant: Int = 0
+) {
+    val custom get() = !about.isNullOrBlank() || !passage.isNullOrBlank() || topics.isNotEmpty() || tone != null || minutes != null
+
+    fun toJson(): String = org.json.JSONObject().apply {
+        about?.let { put("about", it) }; passage?.let { put("passage", it) }; put("topics", org.json.JSONArray(topics.toList()))
+        tone?.let { put("tone", it.name) }; minutes?.let { put("minutes", it) }; put("variant", variant)
+    }.toString()
+
+    companion object {
+        fun fromJson(raw: String?): DevotionalAsk? {
+            if (raw.isNullOrBlank()) return null
+            val o = runCatching { org.json.JSONObject(raw) }.getOrNull() ?: return null
+            val t = o.optJSONArray("topics")
+            return DevotionalAsk(
+                about = o.optString("about").takeIf { it.isNotBlank() }, passage = o.optString("passage").takeIf { it.isNotBlank() },
+                topics = (0 until (t?.length() ?: 0)).map { t!!.getString(it) }.toSet(),
+                tone = runCatching { com.example.core.devotional.DevotionalTone.valueOf(o.getString("tone")) }.getOrNull(),
+                minutes = o.optInt("minutes", 0).takeIf { it > 0 }, variant = o.optInt("variant", 0)
+            )
+        }
+    }
+}
+
 /** A model the engine may try, best first. */
 data class ModelCandidate(val model: LanguageModel, val id: String, val isCloud: Boolean)
 
@@ -55,26 +89,32 @@ class DevotionalEngine(
         profile: DevotionalProfile,
         signals: DevotionalSignals = DevotionalSignals(),
         name: String? = null,
-        evening: Boolean = false
+        evening: Boolean = false,
+        ask: DevotionalAsk? = null
     ): Devotional {
         lastFallbackReason = null
+        val profile = if (ask == null) profile else profile.copy(
+            tone = ask.tone ?: profile.tone, minutes = ask.minutes ?: profile.minutes,
+            topics = if (ask.topics.isNotEmpty()) ask.topics else profile.topics
+        )
+        val variant = ask?.variant ?: 0
         val day = LiturgicalCalendar.dayOf(date, profile.tradition)
-        val source = when (profile.source) {
+        val source = if (ask?.custom == true) DevotionalSource.AI else when (profile.source) {
             DevotionalSource.MIX -> if (date.dayOfWeek == DayOfWeek.SUNDAY) DevotionalSource.CLASSIC else DevotionalSource.AI
             else -> profile.source
         }
-        if (source == DevotionalSource.CLASSIC || evening) return classic(date, evening, profile) ?: mine(date, profile)
+        if (source == DevotionalSource.CLASSIC || evening) return classicVariant(date, evening, profile, variant) ?: mine(date, profile)
         if (source == DevotionalSource.MINE) return mine(date, profile)
 
         // The care check comes before any AI writing, and never leaves the phone.
         if (DevotionalContract.crisisIn(signals.recentWords)) return care(date)
 
-        val passage = passageFor(date, profile)
+        val passage = ask?.passage?.let { ScriptureReferenceParser.parse(it) } ?: passageFor(date, profile, variant)
         val text = runCatching { verseText(passage) }.getOrNull()
         val weekday = date.dayOfWeek.getDisplayName(TextStyle.FULL, locale)
         for (candidate in runCatching { candidates() }.getOrDefault(emptyList())) {
             val shared = if (candidate.isCloud && !profile.sharePrivateWithCloud) signals.general else signals.general + signals.private
-            val brief = DevotionalBrief(passage, text, profile, day, weekday, shared, name)
+            val brief = DevotionalBrief(passage, text, profile, day, weekday, shared, name, ask?.about)
             val result = runCatching { candidate.model.generate(DevotionalContract.prompt(brief), maxOutputTokens = profile.words * 2 + 600) }
                 .getOrElse { AiResult.Failed(it.message ?: "failed", it) }
             val raw = (result as? AiResult.Success)?.value
@@ -90,13 +130,18 @@ class DevotionalEngine(
             )
         }
         if (lastFallbackReason == null) lastFallbackReason = "No AI model is set up, so today's reading is a classic."
-        return classic(date, false, profile) ?: mine(date, profile)
+        return classicVariant(date, false, profile, variant) ?: mine(date, profile)
     }
 
     /** Today's passage: the season's or the person's topics, then the Verse of the Day, then the classic's. */
-    suspend fun passageFor(date: LocalDate, profile: DevotionalProfile): ScriptureReference {
+    suspend fun passageFor(date: LocalDate, profile: DevotionalProfile, variant: Int = 0): ScriptureReference {
         val follows = profile.tradition != com.example.core.devotional.Tradition.NON_DENOMINATIONAL || profile.topics.isEmpty()
-        val day = if (follows) LiturgicalCalendar.dayOf(date, profile.tradition).takeIf { it.season != com.example.core.devotional.LiturgicalSeason.ORDINARY } else null
+        val day = if (follows && variant == 0) LiturgicalCalendar.dayOf(date, profile.tradition).takeIf { it.season != com.example.core.devotional.LiturgicalSeason.ORDINARY } else null
+        // A different one: step through the topic lists, or through the classic's key verses.
+        if (variant > 0) {
+            TopicPassages.pick(date.plusDays(variant * 37L), profile.topics + profile.moreOf, profile.lessOf, null)?.let { return it }
+            classics.forDate(date.minusDays(variant * 11L), evening = variant % 2 == 1)?.reference?.let { return it }
+        }
         return TopicPassages.pick(date, profile.topics + profile.moreOf, profile.lessOf, day)
             ?: runCatching { verseOfTheDay(date) }.getOrNull()
             ?: classics.forDate(date)?.reference
@@ -135,6 +180,13 @@ class DevotionalEngine(
             question = if (profile.includeQuestion) whole(answer.question) else null,
             label = DevotionalLabels.CLOUD
         )
+    }
+
+    /** The day's classic, or — for "a different one" — the evening reading, then readings from nearby days. */
+    fun classicVariant(date: LocalDate, evening: Boolean, profile: DevotionalProfile, variant: Int): Devotional? = when {
+        variant <= 0 -> classic(date, evening, profile)
+        variant == 1 -> classic(date, !evening, profile)
+        else -> classic(date.minusDays((variant - 1) * 7L), variant % 2 == 0, profile)?.copy(day = LocalDay.of(date))
     }
 
     fun classic(date: LocalDate, evening: Boolean, profile: DevotionalProfile): Devotional? {

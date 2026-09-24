@@ -42,7 +42,11 @@ data class VoiceUi(
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val voiceLabel: String? = null,
-    val failed: Boolean = false
+    val failed: Boolean = false,
+    /** Sections recorded, with their start times — for jumping and for "pray it aloud". */
+    val marks: List<Pair<com.example.ai.voice.VoiceSection, Long>> = emptyList(),
+    /** The section playing now. */
+    val current: com.example.ai.voice.VoiceSection? = null
 )
 
 class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
@@ -81,7 +85,10 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
             playing = mine && playback.phase == com.example.core.audio.PlaybackPhase.PLAYING,
             positionMs = if (mine) playback.positionMs else 0, durationMs = if (mine) playback.durationMs else 0,
             voiceLabel = s.today?.note?.metadata?.get(com.example.core.devotional.DevotionalVoice.META_AUDIO_VOICE),
-            failed = failed && !preparing
+            failed = failed && !preparing,
+            marks = com.example.ai.voice.VoiceSection.decode(s.today?.note?.metadata?.get(com.example.core.devotional.DevotionalVoice.META_AUDIO_MARKS)),
+            current = if (mine) com.example.ai.voice.VoiceSection.decode(s.today?.note?.metadata?.get(com.example.core.devotional.DevotionalVoice.META_AUDIO_MARKS))
+                .lastOrNull { it.second <= playback.positionMs }?.first else null
         ))
     }.catch { emit(DevotionalUiState(loading = false)) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DevotionalUiState())
@@ -94,28 +101,39 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private var playWhenReady = false
+    private var pendingSection: com.example.ai.voice.VoiceSection? = null
+    private var pendingOnly = false
 
-    /** Plays today's devotional aloud, recording the voice first if needed; tapping again pauses. */
-    fun listen() = viewModelScope.launch {
+    /**
+     * Plays today's devotional aloud — from [section] if given, and with [only] just that section
+     * (the prayer, prayed on its own). Records the voice first if needed; tapping again pauses.
+     */
+    fun listen(section: com.example.ai.voice.VoiceSection? = null, only: Boolean = false) = viewModelScope.launch {
         val s = state.value
-        val today = s.today ?: return@launch
-        if (s.voice.playing) { com.example.core.audio.PlaybackController.pause(); return@launch }
+        val today = s.today ?: run { pendingSection = section; pendingOnly = only; playWhenReady = true; return@launch }
+        if (s.voice.playing && section == null) { com.example.core.audio.PlaybackController.pause(); return@launch }
         val file = com.example.core.devotional.DevotionalVoice(getApplication()).audioOf(today)
-        if (file != null) {
-            com.example.core.audio.PlaybackController.play(getApplication(), com.example.core.devotional.DevotionalVoice.playbackId(today.note.id), today.devotional.title, file)
-        } else {
-            playWhenReady = true
+        if (file == null) {
+            playWhenReady = true; pendingSection = section; pendingOnly = only
             com.example.core.devotional.DevotionalVoiceWorker.enqueue(getApplication(), day)
+            return@launch
         }
+        val id = com.example.core.devotional.DevotionalVoice.playbackId(today.note.id)
+        val range = section?.let { com.example.ai.voice.VoiceSection.range(s.voice.marks, it) }
+        if (range != null) com.example.core.audio.PlaybackController.playRange(getApplication(), id, today.devotional.title, file, range.first, if (only) range.second else null)
+        else com.example.core.audio.PlaybackController.play(getApplication(), id, today.devotional.title, file)
     }
 
     init {
-        // When a requested recording lands, start it.
+        // When a requested recording lands (or today's devotional arrives), start it.
         viewModelScope.launch {
             state.collect { s ->
-                if (playWhenReady && s.voice.hasAudio && !s.voice.preparing) {
+                if (playWhenReady && s.today != null && s.voice.hasAudio && !s.voice.preparing) {
                     playWhenReady = false
-                    listen()
+                    listen(pendingSection, pendingOnly)
+                } else if (playWhenReady && s.today != null && !s.voice.hasAudio && !s.voice.preparing && !s.voice.failed) {
+                    // Arrived without a voice yet: record it.
+                    com.example.core.devotional.DevotionalVoiceWorker.enqueue(getApplication(), day)
                 }
             }
         }
@@ -126,15 +144,17 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
     /** The devotional's recorded voice, if any (resolved in the background, cached). */
     fun audioPath(t: DailyDevotional): String? = attachmentPath(t, com.example.core.devotional.DevotionalVoice.META_AUDIO)
     fun coverPath(t: DailyDevotional): String? = attachmentPath(t, com.example.core.repository.NoteRepository.COVER_KEY)
+        ?: com.example.core.share.BackgroundLibrary.forDay(getApplication(), day.date.toEpochDay())?.file?.path
 
     private fun attachmentPath(t: DailyDevotional, key: String): String? {
         val id = t.note.metadata[key] ?: return null
         return t.document.attachments.firstOrNull { it.id == id }?.path?.takeIf { java.io.File(it).exists() }
     }
 
-    fun rewrite() {
+    /** A different devotional for today — plain, or written to what the person asked for. */
+    fun rewrite(ask: com.example.ai.devotional.DevotionalAsk? = null) {
         requested.value = true
-        DevotionalScheduler.writeNow(getApplication(), replace = true)
+        DevotionalScheduler.writeNow(getApplication(), replace = true, ask = ask)
     }
 
     fun opened(daily: DailyDevotional) = viewModelScope.launch {

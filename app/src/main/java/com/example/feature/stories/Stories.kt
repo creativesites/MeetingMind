@@ -66,7 +66,10 @@ class StoryBuilder(private val context: Context, private val database: MeetMindD
     suspend fun build(identity: AppIdentity, date: LocalDate = LocalDate.now()): List<Story> {
         val out = mutableListOf<Story>()
         val epoch = date.toEpochDay()
-        fun bg(salt: Int) = BackgroundSpec.Pack(BackgroundPack.forDay(epoch, salt).id)
+        // Faith stories sit on the photo library; the rest on painted backgrounds.
+        fun bg(salt: Int): BackgroundSpec = if (identity.showsFaith && salt in 1..4)
+            com.example.core.share.BackgroundLibrary.forDay(context, epoch, salt)?.let { BackgroundSpec.Photo(it.file.path) } ?: BackgroundSpec.Pack(BackgroundPack.forDay(epoch, salt).id)
+            else BackgroundSpec.Pack(BackgroundPack.forDay(epoch, salt).id)
 
         if (identity.showsFaith) {
             val scripture = ScriptureService(context)
@@ -89,13 +92,14 @@ class StoryBuilder(private val context: Context, private val database: MeetMindD
                 out += Story(
                     StoryKind.DEVOTIONAL, "Today's devotional", title = d.title,
                     body = d.reflection.first().let { if (it.length > 320) it.take(317).substringBeforeLast(' ') + "…" else it },
-                    footer = listOfNotNull(d.scripture.firstOrNull()?.display(), d.label).joinToString(" · "),
+                    footer = d.scripture.firstOrNull()?.display(),
                     background = bgD, open = StoryOpen.Devotional, openLabel = "Read it all",
-                    share = ShareCardContent("Today's devotional", d.reflection.first().take(280), d.title, d.label, quoted = false)
+                    share = ShareCardContent("Today's devotional", d.reflection.first().take(280), d.title,
+                        d.label.takeIf { d.origin == com.example.core.devotional.DevotionalOrigin.CLASSIC }, quoted = false)
                 )
                 d.prayer?.let { p ->
                     out += Story(StoryKind.PRAYER, "A prayer for today", body = p, background = bg(3), quoted = false,
-                        share = ShareCardContent("A prayer for today", p, null, null, quoted = false), open = StoryOpen.Devotional, openLabel = "Pray with the devotional")
+                        share = ShareCardContent("A prayer for today", p, null, null, quoted = false), open = StoryOpen.Devotional, openLabel = "Open the devotional")
                 }
                 d.motivation?.let { m ->
                     out += Story(StoryKind.WORD, "A word for today", body = m, background = BackgroundSpec.Pack("indigo"),

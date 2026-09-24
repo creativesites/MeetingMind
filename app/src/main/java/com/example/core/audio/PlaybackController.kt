@@ -223,6 +223,7 @@ object PlaybackController {
     }
 
     fun togglePlayPause() {
+        stopAtMs = null
         val controller = mediaController ?: return
         if (controller.isPlaying) controller.pause() else controller.play()
     }
@@ -278,6 +279,25 @@ object PlaybackController {
 
     fun clearLoop() = setLoop(null)
 
+    private val _speed = MutableStateFlow(1f)
+    val speed: StateFlow<Float> = _speed.asStateFlow()
+
+    fun setSpeed(value: Float) {
+        _speed.value = value
+        mediaController?.setPlaybackSpeed(value)
+    }
+
+    fun seekBy(deltaMs: Long) = seekTo((_state.value.positionMs + deltaMs).coerceAtLeast(0L))
+
+    /** Pause when playback reaches this position (a devotional's prayer, played on its own). */
+    @Volatile private var stopAtMs: Long? = null
+
+    /** Plays [file] from [fromMs] and pauses at [toMs] — one section of a recording. */
+    fun playRange(context: Context, recordingId: String, title: String, file: File, fromMs: Long, toMs: Long?) {
+        stopAtMs = toMs
+        playAt(context, recordingId, title, file, fromMs)
+    }
+
     private fun refreshFromPlayer() {
         val controller = mediaController ?: return
         if (controller.mediaItemCount == 0) return
@@ -289,6 +309,7 @@ object PlaybackController {
             previousPhase = _state.value.phase
         )
         val positionMs = controller.currentPosition.coerceAtLeast(0L)
+        stopAtMs?.let { stop -> if (positionMs >= stop && controller.isPlaying) { stopAtMs = null; controller.pause() } }
         val loopRange = _state.value.loopRange
         if (shouldLoopBack(positionMs, loopRange)) {
             controller.seekTo(loopRange!!.first.coerceIn(0L, controller.duration.coerceAtLeast(0L)))

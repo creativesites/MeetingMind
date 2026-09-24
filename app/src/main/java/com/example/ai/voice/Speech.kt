@@ -41,7 +41,32 @@ data class VoiceSettings(
 
 /** One stretch of speech and the pause after it. */
 data class SpeechSegment(val kind: Kind, val text: String, val pauseAfterMs: Long) {
-    enum class Kind { INTRO, SCRIPTURE, REFLECTION, APPLICATION, PRAYER, MOTIVATION, QUOTE, QUESTION, OUTRO }
+    enum class Kind(val section: VoiceSection) {
+        INTRO(VoiceSection.SCRIPTURE), SCRIPTURE(VoiceSection.SCRIPTURE), REFLECTION(VoiceSection.REFLECTION),
+        APPLICATION(VoiceSection.APPLY), QUESTION(VoiceSection.APPLY), PRAYER(VoiceSection.PRAYER),
+        QUOTE(VoiceSection.WORD), MOTIVATION(VoiceSection.WORD), OUTRO(VoiceSection.WORD)
+    }
+}
+
+/** The parts of a spoken devotional a listener can jump to. */
+enum class VoiceSection(val label: String) {
+    SCRIPTURE("Scripture"), REFLECTION("Reflection"), APPLY("Today"), PRAYER("Prayer"), WORD("A word");
+
+    companion object {
+        /** "SCRIPTURE:0,REFLECTION:31000,…" ⇄ marks, in order. */
+        fun encode(marks: List<Pair<VoiceSection, Long>>) = marks.joinToString(",") { "${it.first.name}:${it.second}" }
+        fun decode(raw: String?): List<Pair<VoiceSection, Long>> = raw.orEmpty().split(',').mapNotNull { part ->
+            val (name, ms) = part.split(':').takeIf { it.size == 2 } ?: return@mapNotNull null
+            val section = entries.firstOrNull { it.name == name } ?: return@mapNotNull null
+            ms.toLongOrNull()?.let { section to it }
+        }
+
+        /** Where [section] starts and ends (the next section's start), or null if it wasn't recorded. */
+        fun range(marks: List<Pair<VoiceSection, Long>>, section: VoiceSection): Pair<Long, Long?>? {
+            val i = marks.indexOfFirst { it.first == section }.takeIf { it >= 0 } ?: return null
+            return marks[i].second to marks.getOrNull(i + 1)?.second
+        }
+    }
 }
 
 /**

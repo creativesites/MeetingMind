@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FormatAlignCenter
 import androidx.compose.material.icons.filled.FormatAlignLeft
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -116,22 +117,19 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
     val scope = rememberCoroutineScope()
     var style by remember { mutableStateOf(ShareStyle(background = request.background ?: BackgroundSpec.Pack(BackgroundPack.forDay(java.time.LocalDate.now().toEpochDay()).id))) }
     val generated = remember { mutableStateListOf<String>() }
-    val photos = remember { mutableStateListOf<String>() }
+    var libraryVersion by remember { mutableStateOf(0) }
+    val library = remember(libraryVersion) { com.example.core.share.BackgroundLibrary.all(context) }
+    var showLibrary by remember { mutableStateOf(false) }
     var generating by remember { mutableStateOf(false) }
     var showStyles by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
 
+    // A photo added here joins the library, so it's there next time too.
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) scope.launch {
-            val file = withContext(Dispatchers.IO) {
-                runCatching {
-                    val f = File(File(context.cacheDir, "shares").apply { mkdirs() }, "photo_${System.currentTimeMillis()}.jpg")
-                    context.contentResolver.openInputStream(uri)?.use { i -> f.outputStream().use { i.copyTo(it) } }
-                    f
-                }.getOrNull()
-            }
-            file?.let { photos.add(0, it.path); style = style.copy(background = BackgroundSpec.Photo(it.path)) }
+            val img = withContext(Dispatchers.IO) { com.example.core.share.BackgroundLibrary.add(context, uri) }
+            img?.let { libraryVersion++; style = style.copy(background = BackgroundSpec.Photo(it.file.path)) }
         }
     }
 
@@ -149,6 +147,10 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
         }
     }
 
+    if (showLibrary) BackgroundsSheet(
+        onDismiss = { showLibrary = false; libraryVersion++ },
+        onPick = { img -> showLibrary = false; libraryVersion++; style = style.copy(background = BackgroundSpec.Photo(img.file.path)) }
+    )
     Column(Modifier.fillMaxSize().background(Color(0xFF0E0B18)).statusBarsPadding().testTag("share_studio")) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White) }
@@ -171,8 +173,10 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
                 }
                 LazyRow(Modifier.padding(top = 12.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     item { ActionTile(Icons.Filled.AutoAwesome, if (generating) "Making…" else "New picture", Gold, busy = generating) { showStyles = !showStyles } }
-                    item { ActionTile(Icons.Filled.AddPhotoAlternate, "Your photo", Color(0xFF475569)) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } }
-                    items(generated + photos) { path -> PhotoTile(path, (style.background as? BackgroundSpec.Photo)?.path == path) { style = style.copy(background = BackgroundSpec.Photo(path)) } }
+                    item { ActionTile(Icons.Filled.AddPhotoAlternate, "Add photo", Color(0xFF475569)) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } }
+                    item { ActionTile(Icons.Filled.GridView, "All", Color(0xFF475569)) { showLibrary = true } }
+                    items(generated) { path -> PhotoTile(path, (style.background as? BackgroundSpec.Photo)?.path == path) { style = style.copy(background = BackgroundSpec.Photo(path)) } }
+                    items(library, key = { it.id }) { img -> PhotoTile(img.thumb.path, (style.background as? BackgroundSpec.Photo)?.path == img.file.path) { style = style.copy(background = BackgroundSpec.Photo(img.file.path)) } }
                     items(BackgroundPack.all) { bg -> PackTile(bg, (style.background as? BackgroundSpec.Pack)?.id == bg.id) { style = style.copy(background = BackgroundSpec.Pack(bg.id)) } }
                 }
                 if (showStyles) Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

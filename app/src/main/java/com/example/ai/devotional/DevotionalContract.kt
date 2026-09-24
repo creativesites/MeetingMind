@@ -17,7 +17,9 @@ data class DevotionalBrief(
     val weekday: String,
     /** Short lines about the person's recent life, already filtered for what may be sent. */
     val signals: List<String>,
-    val name: String?
+    val name: String?,
+    /** What the person asked for in their own words, when they asked for one on demand. */
+    val request: String? = null
 )
 
 /** The model's answer, before checking. */
@@ -74,6 +76,9 @@ object DevotionalContract {
             p.season?.let { appendLine("Life season: $it.") }
             p.aboutMe.trim().takeIf { it.isNotEmpty() }?.let { appendLine("About them, in their words: ${it.take(400)}") }
             brief.name?.takeIf { it.isNotBlank() }?.let { appendLine("Their first name: $it (use it at most once).") }
+            brief.request?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                appendLine("They asked for a devotional about this, in their words — let it shape everything, gently: ${it.take(600)}")
+            }
             if (brief.signals.isNotEmpty()) {
                 appendLine("What's been happening (use gently, never quote it back verbatim):")
                 brief.signals.take(8).forEach { appendLine("- ${it.take(160)}") }

@@ -44,9 +44,12 @@ object DevotionalScheduler {
     }
 
     /** Writes today's devotional now (opening Today before it was due, say). */
-    fun writeNow(context: Context, replace: Boolean = false) {
+    fun writeNow(context: Context, replace: Boolean = false, ask: com.example.ai.devotional.DevotionalAsk? = null) {
         val request = OneTimeWorkRequestBuilder<DevotionalWorker>()
-            .setInputData(workDataOf(DevotionalWorker.KEY_MODE to DevotionalWorker.MODE_WRITE, DevotionalWorker.KEY_REPLACE to replace, DevotionalWorker.KEY_NOTIFY to false))
+            .setInputData(workDataOf(
+                DevotionalWorker.KEY_MODE to DevotionalWorker.MODE_WRITE, DevotionalWorker.KEY_REPLACE to replace,
+                DevotionalWorker.KEY_NOTIFY to false, DevotionalWorker.KEY_ASK to ask?.toJson()
+            ))
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
         runCatching { WorkManager.getInstance(context).enqueueUniqueWork(NOW, if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request) }
@@ -93,7 +96,8 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
             }
             else -> {
                 val replace = inputData.getBoolean(KEY_REPLACE, false)
-                val written = runCatching { repo.ensure(LocalDate.now(), replace = replace) }.getOrNull()
+                val ask = com.example.ai.devotional.DevotionalAsk.fromJson(inputData.getString(KEY_ASK))
+                val written = runCatching { repo.ensure(LocalDate.now(), replace = replace, ask = ask) }.getOrNull()
                 if (written == null) return if (runAttemptCount < 2) Result.retry() else Result.failure()
                 if (profile.autoImage) runCatching { repo.paint(written, profile) }
                 if (profile.voice.autoVoice && written.note.metadata[DevotionalVoice.META_AUDIO] == null) {
@@ -109,6 +113,7 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
         const val KEY_MODE = "mode"
         const val KEY_REPLACE = "replace"
         const val KEY_NOTIFY = "notify"
+        const val KEY_ASK = "ask"
         const val MODE_WRITE = "write"
         const val MODE_NOTIFY = "notify"
     }

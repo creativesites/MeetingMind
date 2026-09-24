@@ -20,7 +20,8 @@ object Routes {
     const val FAITH_JOURNEY = "faith_journey"
     const val FAITH_SCRIPTURE = "faith_scripture"
     const val BIBLE = "bible?ref={ref}&search={search}"
-    const val DEVOTIONAL = "devotional"
+    const val DEVOTIONAL = "devotional?play={play}"
+    fun devotionalRoute(play: String? = null) = "devotional" + (play?.let { "?play=$it" } ?: "")
     const val STORIES = "stories?start={start}"
     const val SHARE = "share"
 

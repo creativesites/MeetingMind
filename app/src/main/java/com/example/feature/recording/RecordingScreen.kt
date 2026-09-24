@@ -59,6 +59,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
@@ -298,220 +302,23 @@ fun RecordingScreen(
         return
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(
-                        onClick = { showDiscardDialog = true },
-                        modifier = Modifier
-                            .padding(start = 4.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface)
-                            .testTag("record_close_btn")
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close & Discard")
-                    }
-                },
-                actions = {
-                    if (state == RecordingState.RECORDING || state == RecordingState.PAUSED) {
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = if (state == RecordingState.RECORDING) RecordingRed.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.padding(end = 16.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                if (state == RecordingState.RECORDING) {
-                                    Icon(Icons.Default.FiberManualRecord, contentDescription = null, tint = RecordingRed, modifier = Modifier.size(10.dp))
-                                }
-                                Text(
-                                    text = Formatters.formatDurationHms(durationMs),
-                                    style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace),
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (state == RecordingState.RECORDING) RecordingRed else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        }
-    ) { innerPadding ->
-        if (!hasAudioPermission) {
-            // Permission request Bento Card
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Card(
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = IndigoPrimary.copy(alpha = 0.15f),
-                            modifier = Modifier.size(64.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Mic,
-                                    contentDescription = null,
-                                    tint = IndigoPrimaryLight,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = "Microphone Permission Required",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Text(
-                            text = "MeetingMind processes all speech 100% on your device with no internet connection needed. Please grant microphone access to capture real-time audio.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Button(
-                            onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Grant Permission & Start")
-                        }
-                    }
-                }
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = meetingTitle,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                WaveformCenterButton(
-                    amplitude = amplitude,
-                    isRecording = state == RecordingState.RECORDING,
-                    isPaused = state == RecordingState.PAUSED,
-                    onToggle = {
-                        if (state == RecordingState.RECORDING) {
-                            viewModel.pauseRecording()
-                        } else if (state == RecordingState.PAUSED) {
-                            viewModel.resumeRecording()
-                        }
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = if (state == RecordingState.RECORDING) "Listening…" else "Paused",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = if (state == RecordingState.RECORDING) {
-                        "Recording safely on your device"
-                    } else {
-                        "Tap the button to resume"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // In-flight storage/battery warning (design spec §3.8): a single quiet line, never
-                // a modal interrupting a live recording.
-                val capacityWarning by viewModel.capacityWarning.collectAsState()
-                capacityWarning?.let { warning ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = warning,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.testTag("record_capacity_warning")
-                    )
-                }
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(bottom = 24.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        IconButton(
-                            onClick = { showDiscardDialog = true },
-                            modifier = Modifier
-                                .size(52.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .testTag("record_discard_btn")
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Discard", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text("Discard", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        IconButton(
-                            onClick = {
-                                viewModel.finishRecording { meetingId, path, dur ->
-                                    onRecordingComplete(meetingId, path, dur)
-                                }
-                            },
-                            modifier = Modifier
-                                .size(60.dp)
-                                .clip(CircleShape)
-                                .background(SuccessGreen)
-                                .testTag("record_finish_btn")
-                        ) {
-                            Icon(Icons.Default.Done, contentDescription = "Finish", tint = Color.White, modifier = Modifier.size(28.dp))
-                        }
-                        Text("Finish", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = SuccessGreen)
-                    }
-                }
-            }
-        }
-    }
+    val capacityWarning by viewModel.capacityWarning.collectAsState()
+    LiveRecordingSurface(
+        type = selectedType,
+        title = meetingTitle,
+        hasPermission = hasAudioPermission,
+        state = state,
+        amplitude = amplitude,
+        durationMs = durationMs,
+        capacityWarning = capacityWarning,
+        onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+        onDiscard = { showDiscardDialog = true },
+        onToggle = {
+            if (state == RecordingState.RECORDING) viewModel.pauseRecording()
+            else if (state == RecordingState.PAUSED) viewModel.resumeRecording()
+        },
+        onFinish = { viewModel.finishRecording { meetingId, path, dur -> onRecordingComplete(meetingId, path, dur) } }
+    )
 
     if (showDiscardDialog) {
         AlertDialog(
@@ -562,87 +369,209 @@ private fun RecordingTypePickerScreen(
     onCancel: () -> Unit
 ) {
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("What are you recording?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onCancel) {
-                        Icon(Icons.Default.Close, contentDescription = "Cancel")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-            )
+        containerColor = Color.White,
+        bottomBar = {
+            Column(Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                Text(
+                    text = if (refuseToStart) "Not enough storage to start a recording ($storageLine)." else storageLine,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (refuseToStart) MaterialTheme.colorScheme.error else Color(0xFF94A3B8),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("record_storage_line")
+                )
+                Button(
+                    onClick = onStart, enabled = !refuseToStart, shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+                    modifier = Modifier.fillMaxWidth().height(54.dp).testTag("record_type_start_btn")
+                ) {
+                    Icon(Icons.Default.FiberManualRecord, contentDescription = null, tint = RecordingRed, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Record ${selected.displayName.lowercase()}", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                }
+            }
         }
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(20.dp)
-                .verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxSize().padding(innerPadding).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 20.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onCancel) { Icon(Icons.Default.Close, contentDescription = "Cancel") }
+                Text("New recording", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
+            }
+            // The fastest path: one tap, no questions.
+            Surface(
+                onClick = onQuickRecord, enabled = !refuseToStart, shape = RoundedCornerShape(26.dp), color = Color.Transparent,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(120.dp).testTag("record_type_quick_btn")
+            ) {
+                Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF1E1B4B), Color(0xFF4338CA), Color(0xFFE11D48))))) {
+                    Box(Modifier.align(Alignment.CenterEnd).size(160.dp).padding(end = 0.dp).background(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.25f), Color.Transparent)), CircleShape))
+                    Row(Modifier.fillMaxSize().padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Quick record", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                            Text("Start now — sort it out later", fontSize = 13.sp, color = Color.White.copy(alpha = 0.75f), modifier = Modifier.padding(top = 3.dp))
+                        }
+                        Box(Modifier.size(58.dp).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Mic, contentDescription = null, tint = RecordingRed, modifier = Modifier.size(28.dp))
+                        }
+                    }
+                }
+            }
             Text(
-                text = "This helps MeetingMind know what to pay attention to. You can always skip and just record.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                "Or tell MeetingMind what it is — it listens for the right things.",
+                fontSize = 14.sp, color = Color(0xFF475569), modifier = Modifier.padding(horizontal = 20.dp)
             )
-
-            com.example.core.ui.RecordingTypeGrid(selected = selected, onSelect = onSelect)
-
+            Box(Modifier.padding(horizontal = 20.dp)) { com.example.core.ui.RecordingTypeGrid(selected = selected, onSelect = onSelect) }
             if (selected == RecordingType.CUSTOM) {
                 OutlinedTextField(
-                    value = customContext,
-                    onValueChange = onCustomContextChange,
+                    value = customContext, onValueChange = onCustomContextChange,
                     label = { Text("What should MeetingMind focus on?") },
                     placeholder = { Text("e.g. Focus on pricing objections and next steps") },
-                    modifier = Modifier.fillMaxWidth().testTag("custom_context_field")
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).testTag("custom_context_field")
                 )
             }
-
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "Who is speaking? (optional)",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Helps the on-device speaker detector — skip it if you're not sure.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Who's speaking?", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
+                Text("Optional — it helps tell voices apart.", fontSize = 12.5.sp, color = Color(0xFF94A3B8))
                 com.example.core.ui.SpeakerCountRow(selected = selectedSpeakerCount, onSelect = onSelectSpeakerCount)
             }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(4.dp))
+/** Colours for the live screen, by what's being recorded. */
+private fun liveColors(type: RecordingType): List<Color> = when (type) {
+    in com.example.core.model.Workflows.faith -> listOf(Color(0xFF120E1F), Color(0xFF2B2140), Color(0xFF3A2A1A))
+    RecordingType.LECTURE, RecordingType.RESEARCH -> listOf(Color(0xFF071A1F), Color(0xFF0E3B44), Color(0xFF0F5C5A))
+    else -> listOf(Color(0xFF0B1024), Color(0xFF1E1B4B), Color(0xFF312E81))
+}
 
-            // Pre-flight storage line (design spec §3.8): honest capacity, never a guess dressed
-            // up as a fact — see RecordingCapacity.formatStorageLine.
-            Text(
-                text = if (refuseToStart) "Not enough storage to start a recording ($storageLine)." else storageLine,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (refuseToStart) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().testTag("record_storage_line")
-            )
+/**
+ * The live recording: a dark stage tinted by the kind of recording, a large timer, the sound of
+ * the last seconds flowing past as a waveform, and three big controls within thumb's reach.
+ */
+@Composable
+private fun LiveRecordingSurface(
+    type: RecordingType,
+    title: String,
+    hasPermission: Boolean,
+    state: RecordingState,
+    amplitude: Float,
+    durationMs: Long,
+    capacityWarning: String?,
+    onRequestPermission: () -> Unit,
+    onDiscard: () -> Unit,
+    onToggle: () -> Unit,
+    onFinish: () -> Unit
+) {
+    val recording = state == RecordingState.RECORDING
+    val accent = if (type in com.example.core.model.Workflows.faith) Color(0xFFF6D365) else Color(0xFFFB7185)
+    // The last few seconds of level, sampled steadily so the wave flows at a constant pace.
+    val history = remember { mutableStateListOf<Float>().apply { repeat(64) { add(0f) } } }
+    val latest = androidx.compose.runtime.rememberUpdatedState(amplitude)
+    LaunchedEffect(recording) {
+        while (recording) {
+            history.removeAt(0); history.add(latest.value.coerceIn(0f, 1f))
+            kotlinx.coroutines.delay(70)
+        }
+    }
+    val halo = androidx.compose.animation.core.rememberInfiniteTransition(label = "halo")
+    val pulse by halo.animateFloat(1f, 1.18f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1100), androidx.compose.animation.core.RepeatMode.Reverse), label = "pulse")
+    val level by androidx.compose.animation.core.animateFloatAsState(if (recording) amplitude.coerceIn(0f, 1f) else 0f, androidx.compose.animation.core.tween(120), label = "level")
 
-            Button(
-                onClick = onStart,
-                enabled = !refuseToStart,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("record_type_start_btn")
-            ) {
-                Text("Start Recording")
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(liveColors(type)))) {
+        Box(Modifier.align(Alignment.TopEnd).size(320.dp).background(Brush.radialGradient(listOf(accent.copy(alpha = 0.18f), Color.Transparent)), CircleShape))
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onDiscard, modifier = Modifier.testTag("record_close_btn")) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close & Discard", tint = Color.White)
+                }
+                Surface(shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.1f)) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Mic, contentDescription = null, tint = accent, modifier = Modifier.size(14.dp))
+                        Text("  ${type.displayName}", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                if (hasPermission) Surface(shape = RoundedCornerShape(50), color = if (recording) RecordingRed.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(end = 12.dp)) {
+                    Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(if (recording) RecordingRed.copy(alpha = if (pulse > 1.09f) 1f else 0.45f) else Color.White.copy(alpha = 0.5f)))
+                        Text(if (recording) "  REC" else "  PAUSED", fontSize = 11.sp, letterSpacing = 1.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
-            OutlinedButton(
-                onClick = onQuickRecord,
-                enabled = !refuseToStart,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().testTag("record_type_quick_btn")
-            ) {
-                Text("Quick Record")
+
+            if (!hasPermission) {
+                Spacer(Modifier.weight(1f))
+                Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.size(84.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Mic, contentDescription = null, tint = accent, modifier = Modifier.size(38.dp))
+                    }
+                    Text("MeetingMind needs your microphone", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 20.dp))
+                    Text("Recordings are saved on your phone. Nothing is sent anywhere unless you turn on Internet mode.", fontSize = 14.sp, lineHeight = 20.sp, color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+                    Button(onClick = onRequestPermission, shape = RoundedCornerShape(50), colors = ButtonDefaults.buttonColors(containerColor = Color.White), modifier = Modifier.padding(top = 22.dp).height(50.dp)) {
+                        Text("Allow microphone & start", color = Color(0xFF0F172A), fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Spacer(Modifier.weight(1.3f))
+                return@Column
+            }
+
+            Spacer(Modifier.weight(0.7f))
+            Text(title, fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center, maxLines = 2, modifier = Modifier.padding(horizontal = 32.dp))
+            Text(
+                Formatters.formatDurationHms(durationMs), fontSize = 64.sp, fontWeight = FontWeight.Light, color = Color.White,
+                fontFamily = FontFamily.Monospace, letterSpacing = (-1).sp, modifier = Modifier.padding(top = 6.dp)
+            )
+            Text(if (recording) "Listening — recording safely on your phone" else "Paused — tap to carry on", fontSize = 13.sp, color = Color.White.copy(alpha = 0.6f))
+            capacityWarning?.let {
+                Text(it, fontSize = 12.sp, color = Color(0xFFFCA5A5), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp, start = 24.dp, end = 24.dp).testTag("record_capacity_warning"))
+            }
+            Spacer(Modifier.weight(0.4f))
+
+            // The last seconds of sound, flowing right to left.
+            Canvas(Modifier.fillMaxWidth().height(120.dp).padding(horizontal = 16.dp)) {
+                val n = history.size
+                val step = size.width / n
+                val bar = step * 0.55f
+                history.forEachIndexed { i, v ->
+                    val h = (8f + v * size.height * 0.95f).coerceAtMost(size.height)
+                    val fade = 0.25f + 0.75f * (i.toFloat() / n)
+                    drawRoundRect(
+                        color = (if (recording) accent else Color.White).copy(alpha = fade * (if (recording) 0.9f else 0.35f)),
+                        topLeft = Offset(i * step, (size.height - h) / 2f), size = Size(bar, h), cornerRadius = CornerRadius(bar / 2f, bar / 2f)
+                    )
+                }
+            }
+            Spacer(Modifier.weight(0.6f))
+
+            Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 28.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                LiveControl("Discard", Icons.Default.Close, Color.White.copy(alpha = 0.12f), Color.White, Modifier.testTag("record_discard_btn"), onDiscard)
+                Box(contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(128.dp).graphicsLayer { val s = if (recording) (pulse + level * 0.25f) else 1f; scaleX = s; scaleY = s }
+                        .background(Brush.radialGradient(listOf(accent.copy(alpha = if (recording) 0.35f else 0.12f), Color.Transparent)), CircleShape))
+                    IconButton(
+                        onClick = onToggle,
+                        modifier = Modifier.size(88.dp).clip(CircleShape).background(if (recording) RecordingRed else Color.White).testTag("record_pause_resume_btn")
+                    ) {
+                        Icon(if (recording) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (recording) "Pause recording" else "Resume recording",
+                            tint = if (recording) Color.White else Color(0xFF0F172A), modifier = Modifier.size(38.dp))
+                    }
+                }
+                LiveControl("Finish", Icons.Default.Done, SuccessGreen, Color.White, Modifier.testTag("record_finish_btn"), onFinish)
             }
         }
+    }
+}
+
+@Composable
+private fun LiveControl(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, bg: Color, tint: Color, modifier: Modifier, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(onClick = onClick, modifier = modifier.size(60.dp).clip(CircleShape).background(bg)) {
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(26.dp))
+        }
+        Text(label, fontSize = 12.sp, color = Color.White.copy(alpha = 0.75f), modifier = Modifier.padding(top = 6.dp))
     }
 }
 

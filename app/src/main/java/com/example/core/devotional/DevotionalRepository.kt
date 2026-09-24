@@ -37,6 +37,9 @@ data class DailyDevotional(val note: Note, val devotional: Devotional, val docum
  * Finds, writes and keeps the daily devotional (PLAN_V2 F2). What it knows about the person is
  * gathered here, on the phone; private lines only reach a cloud model with the person's say-so.
  */
+private const val META_VARIANT = "devotionalVariant"
+const val META_ASKED = "devotionalAsked"
+
 class DevotionalRepository(
     private val context: Context,
     private val database: MeetMindDatabase = MeetMindDatabase.getInstance(context),
@@ -76,15 +79,24 @@ class DevotionalRepository(
      * written; the old one is kept (renamed out of the way) if the person responded to it,
      * otherwise removed.
      */
-    suspend fun ensure(date: LocalDate = LocalDate.now(), replace: Boolean = false, evening: Boolean = false): DailyDevotional? = writing.withLock {
+    suspend fun ensure(
+        date: LocalDate = LocalDate.now(), replace: Boolean = false, evening: Boolean = false,
+        ask: com.example.ai.devotional.DevotionalAsk? = null
+    ): DailyDevotional? = writing.withLock {
         withContext(Dispatchers.IO) {
             val day = LocalDay.of(date)
             val existing = find(day, evening)
             if (existing != null && !replace) return@withContext existing
             val profile = prefs.devotionalProfile.first()
-            val (devotional, reason) = write(date, profile, evening)
+            // Each "a different one" steps further, so it never repeats what was just read.
+            val variant = if (replace) (existing?.note?.metadata?.get(META_VARIANT)?.toIntOrNull() ?: 0) + 1 else 0
+            val request = (ask ?: com.example.ai.devotional.DevotionalAsk()).copy(variant = variant)
+            val (devotional, reason) = write(date, profile, evening, request)
             if (existing != null) retire(existing)
-            save(devotional, profile, evening, reason)
+            save(devotional, profile, evening, reason, extra = buildMap {
+                put(META_VARIANT, variant.toString())
+                ask?.about?.takeIf { it.isNotBlank() }?.let { put(META_ASKED, it.take(300)) }
+            })
         }
     }
 
@@ -92,7 +104,7 @@ class DevotionalRepository(
     var lastFallbackReason: String? = null
         private set
 
-    private suspend fun write(date: LocalDate, profile: DevotionalProfile, evening: Boolean): Pair<Devotional, String?> {
+    private suspend fun write(date: LocalDate, profile: DevotionalProfile, evening: Boolean, ask: com.example.ai.devotional.DevotionalAsk?): Pair<Devotional, String?> {
         val app = prefs.preferencesFlow.first()
         val scripture = ScriptureService(context)
         val engine = DevotionalEngine(
@@ -104,7 +116,7 @@ class DevotionalRepository(
         )
         val signals = if (profile.source == DevotionalSource.CLASSIC) DevotionalSignals() else signals(date)
         return try {
-            val d = engine.write(date, profile, signals, app.identity.displayName?.substringBefore(' '), evening)
+            val d = engine.write(date, profile, signals, app.identity.displayName?.substringBefore(' '), evening, ask)
             d to engine.lastFallbackReason.takeIf { d.origin == DevotionalOrigin.CLASSIC && profile.source != DevotionalSource.CLASSIC }
         } finally {
             runCatching { com.example.ai.modelmanagement.LlmEngineManager.release() }
@@ -168,7 +180,7 @@ class DevotionalRepository(
         DevotionalSignals(general, private, words)
     }
 
-    private suspend fun save(d: Devotional, profile: DevotionalProfile, evening: Boolean, reason: String?): DailyDevotional? {
+    private suspend fun save(d: Devotional, profile: DevotionalProfile, evening: Boolean, reason: String?, extra: Map<String, String> = emptyMap()): DailyDevotional? {
         lastFallbackReason = reason
         val zone = ZoneId.systemDefault()
         val at = d.day.date.atStartOfDay(zone).toInstant().toEpochMilli() + profile.deliveryMinutes * 60_000L + (if (evening) 12 * 3_600_000L else 0L)
@@ -177,7 +189,7 @@ class DevotionalRepository(
             title = d.title,
             isPrivate = false,
             eventDate = at,
-            metadata = DevotionalNotes.metadata(d, evening) + (reason?.let { mapOf("devotionalFallback" to it) } ?: emptyMap()),
+            metadata = DevotionalNotes.metadata(d, evening) + extra + (reason?.let { mapOf("devotionalFallback" to it) } ?: emptyMap()),
             initialBlocks = listOf(com.example.core.model.NoteBlock("tmp", "tmp", 0, com.example.core.model.NoteBlockType.PARAGRAPH)),
             useTemplate = false
         )
@@ -229,14 +241,19 @@ class DevotionalRepository(
                 mimeType = "image/png", sizeBytes = file.length(), caption = "Picture for ${daily.devotional.title} (AI-generated)", createdAt = System.currentTimeMillis()
             )
         )
-        val fresh = notes.getNote(daily.note.id) ?: return false
-        notes.updateNote(fresh.copy(metadata = fresh.metadata + (NoteRepository.COVER_KEY to attachment.id)))
+        editMeta(daily.note.id) { it + (NoteRepository.COVER_KEY to attachment.id) }
         return true
     }
 
+    /** Changes a devotional's metadata on the stored note as it is now, so concurrent edits aren't lost. */
+    private suspend fun editMeta(noteId: String, change: (Map<String, String>) -> Map<String, String>) = writingMeta.withLock {
+        val fresh = notes.getNote(noteId) ?: return@withLock
+        notes.updateNote(fresh.copy(metadata = change(fresh.metadata)))
+    }
+    private val writingMeta = Mutex()
+
     suspend fun setFeedback(daily: DailyDevotional, value: String?) {
-        val meta = if (value == null) daily.note.metadata - DevotionalNotes.META_FEEDBACK else daily.note.metadata + (DevotionalNotes.META_FEEDBACK to value)
-        notes.updateNote(daily.note.copy(metadata = meta))
+        editMeta(daily.note.id) { m -> if (value == null) m - DevotionalNotes.META_FEEDBACK else m + (DevotionalNotes.META_FEEDBACK to value) }
         if (value == "more" || value == "less") {
             val topics = daily.devotional.scripture.flatMap { TopicPassages.topicsOf(it) }.toSet()
             if (topics.isNotEmpty()) {
@@ -251,7 +268,7 @@ class DevotionalRepository(
 
     suspend fun markOpened(daily: DailyDevotional) {
         if (daily.note.metadata[DevotionalNotes.META_OPENED] != null) return
-        notes.updateNote(daily.note.copy(metadata = daily.note.metadata + (DevotionalNotes.META_OPENED to System.currentTimeMillis().toString())))
+        editMeta(daily.note.id) { it + (DevotionalNotes.META_OPENED to System.currentTimeMillis().toString()) }
     }
 
     suspend fun saveResponse(daily: DailyDevotional, text: String) {

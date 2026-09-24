@@ -6,8 +6,10 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -94,7 +96,8 @@ fun StoriesScreen(
     startAt: StoryKind?,
     onClose: () -> Unit,
     onOpen: (StoryOpen) -> Unit,
-    onShare: (Story) -> Unit
+    onShare: (Story) -> Unit,
+    onPray: () -> Unit = {}
 ) {
     val stories by viewModel.stories.collectAsState()
     val list = stories
@@ -109,10 +112,11 @@ fun StoriesScreen(
                 }
             }
         }
-        else -> StoryPager(list, startAt, onClose, onOpen, onShare, viewModel::seen)
+        else -> StoryPager(list, startAt, onClose, onOpen, onShare, viewModel::seen, onAction = { onPray() })
     }
 }
 
+@OptIn(androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
 fun StoryPager(
     stories: List<Story>,
@@ -121,72 +125,124 @@ fun StoryPager(
     onOpen: (StoryOpen) -> Unit,
     onShare: (Story) -> Unit,
     onSeen: (Story) -> Unit = {},
-    autoAdvance: Boolean = true
+    autoAdvance: Boolean = true,
+    /** A story's own action beside Open, e.g. "Pray" — null when it has none. */
+    onAction: ((Story) -> Unit)? = null
 ) {
     var index by remember { mutableIntStateOf(stories.indexOfFirst { it.kind == startAt }.coerceAtLeast(0)) }
-    var paused by remember { mutableStateOf(false) }
-    var dragY by remember { mutableFloatStateOf(0f) }
+    var forward by remember { mutableStateOf(true) }
+    var holding by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val drag = remember { Animatable(0f) }
     val progress = remember(index) { Animatable(0f) }
     val story = stories[index]
+    val chrome by androidx.compose.animation.core.animateFloatAsState(if (holding) 0f else 1f, tween(180), label = "chrome")
 
-    LaunchedEffect(index) { onSeen(story) }
-    LaunchedEffect(index, paused) {
-        if (!autoAdvance || paused) { progress.stop(); return@LaunchedEffect }
-        progress.animateTo(1f, tween(((1f - progress.value) * STORY_MS).toInt(), easing = LinearEasing))
-        if (index < stories.size - 1) index++ else onClose()
+    fun go(to: Int) {
+        when {
+            to < 0 -> scope.launch { progress.snapTo(0f) }
+            to >= stories.size -> onClose()
+            else -> { forward = to > index; index = to }
+        }
     }
 
-    Box(
-        Modifier.fillMaxSize().background(Color.Black)
-            .offset { IntOffset(0, dragY.coerceAtLeast(0f).roundToInt()) }
-            .pointerInput(stories.size) {
-                detectTapGestures(
-                    onPress = { paused = true; tryAwaitRelease(); paused = false },
-                    onTap = { o -> if (o.x < size.width / 3f) { if (index > 0) index-- } else { if (index < stories.size - 1) index++ else onClose() } }
-                )
-            }
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragEnd = {
-                        when {
-                            dragY > 220f -> onClose()
-                            dragY < -180f -> story.open?.let(onOpen)
+    LaunchedEffect(index) { onSeen(story) }
+    // Progress runs while nobody's holding or dragging; a pause resumes from where it stopped.
+    LaunchedEffect(index, holding) {
+        if (!autoAdvance || holding) { progress.stop(); return@LaunchedEffect }
+        val remaining = ((1f - progress.value) * STORY_MS).toInt().coerceAtLeast(1)
+        progress.animateTo(1f, tween(remaining, easing = LinearEasing))
+        go(index + 1)
+    }
+
+    val dy = drag.value.coerceAtLeast(0f)
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Box(
+            Modifier.fillMaxSize()
+                .graphicsLayer {
+                    val s = 1f - (dy / size.height).coerceIn(0f, 1f) * 0.18f
+                    scaleX = s; scaleY = s
+                    translationY = dy * 0.6f
+                    alpha = 1f - (dy / size.height).coerceIn(0f, 1f) * 0.5f
+                    clip = dy > 0f
+                    shape = RoundedCornerShape((dy / 12f).coerceAtMost(28f).dp)
+                }
+                .pointerInput(stories.size) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        holding = true
+                        var dragging = false
+                        var lastY = 0f
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            val moved = change.position.y - down.position.y
+                            if (!dragging && kotlin.math.abs(moved) > viewConfiguration.touchSlop && kotlin.math.abs(moved) > kotlin.math.abs(change.position.x - down.position.x)) dragging = true
+                            if (dragging) { lastY = moved; scope.launch { drag.snapTo(moved) }; change.consume() }
+                            if (!change.pressed) break
                         }
-                        dragY = 0f
-                    },
-                    onVerticalDrag = { _, d -> dragY += d }
-                )
-            }
-            .testTag("stories")
-    ) {
-        StoryBackground(story.background)
-        StoryBody(story)
-        Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                stories.indices.forEach { i ->
-                    val fill = when { i < index -> 1f; i == index -> progress.value; else -> 0f }
-                    Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.3f))) {
-                        Box(Modifier.fillMaxWidth(fill).height(3.dp).background(Color.White))
+                        val heldMs = (currentEvent.changes.firstOrNull()?.uptimeMillis ?: down.uptimeMillis) - down.uptimeMillis
+                        holding = false
+                        when {
+                            dragging && lastY > size.height * 0.18f -> onClose()
+                            dragging && lastY < -size.height * 0.12f -> { story.open?.let(onOpen); scope.launch { drag.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 0.8f)) } }
+                            dragging -> scope.launch { drag.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 0.75f, stiffness = 400f)) }
+                            // Only a quick tap moves; a hold (to read) just pauses and resumes.
+                            heldMs < 220 -> if (down.position.x < size.width / 3f) go(index - 1) else go(index + 1)
+                        }
                     }
                 }
-            }
-            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(story.eyebrow, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 6.dp))
-                IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White) }
-            }
-        }
-        Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-            story.open?.let { o ->
-                Surface(onClick = { onOpen(o) }, shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.18f)) {
-                    Text("${story.openLabel ?: "Open"}  ↑", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                .testTag("stories")
+        ) {
+            androidx.compose.animation.AnimatedContent(
+                targetState = index,
+                transitionSpec = {
+                    val dir = if (forward) 1 else -1
+                    (androidx.compose.animation.fadeIn(tween(260)) + androidx.compose.animation.scaleIn(tween(320), initialScale = 1.04f) +
+                        androidx.compose.animation.slideInHorizontally(tween(320)) { it / 10 * dir }) togetherWith
+                        (androidx.compose.animation.fadeOut(tween(220)) + androidx.compose.animation.scaleOut(tween(280), targetScale = 0.96f))
+                },
+                label = "story"
+            ) { i ->
+                Box(Modifier.fillMaxSize()) {
+                    StoryBackground(stories[i].background)
+                    StoryBody(stories[i])
                 }
             }
-            Spacer(Modifier.weight(1f))
-            if (story.share != null) Surface(onClick = { onShare(story) }, shape = RoundedCornerShape(50), color = Color.White) {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Share, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Share", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            // Top bar and actions fade while the story is held, so it can be read.
+            Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp).graphicsLayer { alpha = chrome }) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    stories.indices.forEach { i ->
+                        val fill = when { i < index -> 1f; i == index -> progress.value; else -> 0f }
+                        Box(Modifier.weight(1f).height(2.5.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.3f))) {
+                            Box(Modifier.fillMaxWidth(fill).height(2.5.dp).background(Color.White))
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(story.eyebrow, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 6.dp))
+                    IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White) }
+                }
+            }
+            Row(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 18.dp).graphicsLayer { alpha = chrome },
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                story.open?.let { o ->
+                    Surface(onClick = { onOpen(o) }, shape = RoundedCornerShape(50), color = Color.Black.copy(alpha = 0.35f)) {
+                        Text("${story.openLabel ?: "Open"}  ↑", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                    }
+                }
+                if (story.kind == StoryKind.PRAYER && onAction != null) Surface(onClick = { onAction(story) }, shape = RoundedCornerShape(50), color = Color(0xFFF6D365)) {
+                    Text("Pray it aloud", color = Color(0xFF1B1530), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                if (story.share != null) Surface(onClick = { onShare(story) }, shape = RoundedCornerShape(50), color = Color.White) {
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Share, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Share", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
@@ -218,7 +274,9 @@ private fun StoryBody(story: Story) {
     val dark = (story.background as? BackgroundSpec.Pack)?.let { BackgroundPack.byId(it.id).dark } ?: true
     val ink = if (dark) Color.White else Color(0xFF0F172A)
     val accent = if (dark) Color(0xFFF6D365) else Color(0xFFB7791F)
-    Column(Modifier.fillMaxSize().padding(horizontal = 30.dp, vertical = 120.dp), verticalArrangement = Arrangement.Center) {
+    val rise = remember { Animatable(24f) }
+    LaunchedEffect(Unit) { rise.animateTo(0f, tween(420, easing = androidx.compose.animation.core.FastOutSlowInEasing)) }
+    Column(Modifier.fillMaxSize().padding(horizontal = 30.dp, vertical = 120.dp).graphicsLayer { translationY = rise.value * density; alpha = 1f - rise.value / 24f }, verticalArrangement = Arrangement.Center) {
         story.title?.let { Text(it, color = accent, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 14.dp)) }
         if (story.body.isNotBlank()) Text(
             if (story.quoted) "“${story.body.trim('“', '”')}”" else story.body,

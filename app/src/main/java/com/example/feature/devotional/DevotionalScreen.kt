@@ -2,6 +2,7 @@ package com.example.feature.devotional
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
@@ -88,10 +90,16 @@ fun DevotionalScreen(
     onNavigateBack: () -> Unit,
     onOpenNote: (String) -> Unit,
     onReadPassage: (ScriptureReference) -> Unit,
-    onShare: (com.example.feature.share.ShareRequest) -> Unit = {}
+    onShare: (com.example.feature.share.ShareRequest) -> Unit = {},
+    /** "prayer": pray today's prayer aloud as soon as the page opens (from a story). */
+    playOnOpen: String? = null
 ) {
     val state by viewModel.state.collectAsState()
-    LaunchedEffect(Unit) { viewModel.ensureToday() }
+    LaunchedEffect(Unit) {
+        viewModel.ensureToday()
+        if (playOnOpen == "prayer") viewModel.listen(com.example.ai.voice.VoiceSection.PRAYER, only = true)
+    }
+    var showAsk by rememberSaveable { mutableStateOf(false) }
     state.today?.let { t -> LaunchedEffect(t.note.id) { viewModel.opened(t) } }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     DevotionalContent(
@@ -100,11 +108,17 @@ fun DevotionalScreen(
         onSettings = { showSettings = true },
         onOpenNote = onOpenNote,
         onReadPassage = onReadPassage,
-        onRewrite = viewModel::rewrite,
+        onRewrite = { showAsk = true },
         onFeedback = { d, v -> viewModel.feedback(d, v) },
         onSaveResponse = { d, t -> viewModel.saveResponse(d, t) },
         onListen = { viewModel.listen() },
+        onListenFrom = { section, only -> viewModel.listen(section, only) },
         onShare = { t -> onShare(shareRequest(t, viewModel.audioPath(t), viewModel.coverPath(t))) }
+    )
+    if (showAsk) AskDevotionalSheet(
+        profile = state.profile,
+        onWrite = { ask -> showAsk = false; viewModel.rewrite(ask) },
+        onDismiss = { showAsk = false }
     )
     if (showSettings) DevotionalSettingsSheet(
         profile = state.profile,
@@ -124,6 +138,7 @@ fun DevotionalContent(
     onFeedback: (DailyDevotional, String?) -> Unit,
     onSaveResponse: (DailyDevotional, String) -> Unit,
     onListen: () -> Unit = {},
+    onListenFrom: (com.example.ai.voice.VoiceSection, Boolean) -> Unit = { _, _ -> },
     onShare: (DailyDevotional) -> Unit = {},
     /** Verse text is fetched live; screenshots pass false to keep the page deterministic. */
     liveScripture: Boolean = true
@@ -138,10 +153,17 @@ fun DevotionalContent(
             }
         }
         item {
-            val cover = today?.let { t -> t.note.metadata[com.example.core.repository.NoteRepository.COVER_KEY]?.let { id -> t.document.attachments.firstOrNull { it.id == id }?.path } }
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val fallback = remember(state.date) { com.example.core.share.BackgroundLibrary.forDay(context, state.date.toEpochDay())?.file?.path }
+            val cover = today?.let { t -> t.note.metadata[com.example.core.repository.NoteRepository.COVER_KEY]?.let { id -> t.document.attachments.firstOrNull { it.id == id }?.path } } ?: fallback
             Hero(state.date, state.season, today?.devotional, writing = state.writing && today == null, cover = cover) {
                 if (today != null && today.devotional.origin != DevotionalOrigin.MINE && today.devotional.origin != DevotionalOrigin.CARE) ListenPill(state.voice, onListen)
             }
+        }
+        if (today != null && state.voice.marks.size > 1) item { SectionChips(state.voice, onListenFrom) }
+        if (today != null && state.writing) item { RewritingBanner() }
+        today?.note?.metadata?.get(com.example.core.devotional.META_ASKED)?.let { asked ->
+            item { Text("Written for: “$asked”", fontSize = 13.sp, lineHeight = 18.sp, color = InkSecondary, fontStyle = FontStyle.Italic, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp)) }
         }
         when {
             today == null && state.writing -> item { Writing() }
@@ -171,7 +193,7 @@ fun DevotionalContent(
                     val checks = today.document.blocks.filter { it.sectionKey == DevotionalNotes.S_APPLICATION && it.type == NoteBlockType.CHECKLIST }.sortedBy { it.position }
                     d.application.forEachIndexed { i, a -> item { CheckRow(a, checks.getOrNull(i)?.checked == true) } }
                 }
-                d.prayer?.let { p -> item { PrayerCard(p) } }
+                d.prayer?.let { p -> item { PrayerCard(p, praying = state.voice.current == com.example.ai.voice.VoiceSection.PRAYER && state.voice.playing) { onListenFrom(com.example.ai.voice.VoiceSection.PRAYER, true) } } }
                 d.motivation?.let { m -> item { WordForToday(m) } }
                 d.insight?.let { q -> item { QuoteCard(q.text, listOf(q.author, q.source).filter { it.isNotBlank() }.joinToString(", ")) } }
                 d.question?.let { q -> item { QuestionCard(q) } }
@@ -220,10 +242,6 @@ private fun Hero(date: LocalDate, season: LiturgicalDay?, d: Devotional?, writin
             }
             d?.let { dev ->
                 Row(Modifier.padding(top = 16.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (dev.origin == DevotionalOrigin.CLOUD_AI || dev.origin == DevotionalOrigin.DEVICE_AI) {
-                        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Color(0xFFF6D365), modifier = Modifier.size(13.dp))
-                        Spacer(Modifier.width(5.dp))
-                    }
                     Text(shortLabel(dev), fontSize = 11.5.sp, color = Color.White.copy(alpha = 0.9f), fontWeight = FontWeight.Medium)
                 }
             }
@@ -333,12 +351,21 @@ private fun CheckRow(text: String, checked: Boolean) {
 }
 
 @Composable
-private fun PrayerCard(text: String) {
+private fun PrayerCard(text: String, praying: Boolean = false, onPray: () -> Unit = {}) {
     Column(
         Modifier.padding(horizontal = 16.dp, vertical = 18.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
             .background(Brush.verticalGradient(listOf(Color(0xFFFFF4DC), Color(0xFFFFFBF2)))).padding(22.dp)
     ) {
-        Text("PRAYER", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("PRAYER", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold, modifier = Modifier.weight(1f))
+            Surface(onClick = onPray, shape = RoundedCornerShape(50), color = if (praying) Gold else Color.White, modifier = Modifier.testTag("pray_aloud")) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (praying) Icons.Filled.GraphicEq else Icons.Filled.PlayArrow, contentDescription = null, tint = if (praying) Color.White else Gold, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(if (praying) "Praying…" else "Pray it aloud", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = if (praying) Color.White else Gold)
+                }
+            }
+        }
         Text(text, fontSize = 17.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, color = Color(0xFF3A2A1A), modifier = Modifier.padding(top = 10.dp))
     }
 }
@@ -391,17 +418,70 @@ private fun Callout(title: String, body: String, action: String, onClick: () -> 
 @Composable
 private fun Response(today: DailyDevotional, onSave: (DailyDevotional, String) -> Unit) {
     var text by remember(today.note.id) { mutableStateOf(today.response) }
-    val dirty = text.trim() != today.response.trim()
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 18.dp)) {
-        Text("MY RESPONSE", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
-        OutlinedTextField(
-            value = text, onValueChange = { text = it }, minLines = 3,
-            placeholder = { Text("What is God stirring in you? This stays on your phone.") },
-            modifier = Modifier.fillMaxWidth().testTag("devotional_response")
-        )
-        if (dirty) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = { onSave(today, text) }) { Text("Save", color = Accent, fontWeight = FontWeight.SemiBold) }
+    var saved by remember(today.note.id) { mutableStateOf(today.response) }
+    // Saves as you pause, and when you leave — nothing to remember to press.
+    LaunchedEffect(text) {
+        if (text.trim() == saved.trim()) return@LaunchedEffect
+        kotlinx.coroutines.delay(700)
+        onSave(today, text); saved = text
+    }
+    val latest = androidx.compose.runtime.rememberUpdatedState(text)
+    androidx.compose.runtime.DisposableEffect(today.note.id) {
+        onDispose { if (latest.value.trim() != saved.trim()) onSave(today, latest.value) }
+    }
+    Column(
+        Modifier.padding(horizontal = 16.dp, vertical = 18.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
+            .background(Color.White).border(1.dp, Gold.copy(alpha = 0.25f), RoundedCornerShape(24.dp)).padding(22.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("MY RESPONSE", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold, modifier = Modifier.weight(1f))
+            if (text.isNotBlank()) Text(if (text.trim() == saved.trim()) "Saved" else "Saving…", fontSize = 11.sp, color = InkMuted)
         }
+        androidx.compose.foundation.text.BasicTextField(
+            value = text, onValueChange = { text = it },
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 17.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, color = Ink),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(Gold),
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp).testTag("devotional_response"),
+            decorationBox = { inner ->
+                Box {
+                    if (text.isEmpty()) Text("What is God stirring in you today? It stays on your phone.", fontSize = 17.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, color = InkMuted)
+                    inner()
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun SectionChips(voice: VoiceUi, onListenFrom: (com.example.ai.voice.VoiceSection, Boolean) -> Unit) {
+    androidx.compose.foundation.lazy.LazyRow(
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(top = 10.dp).testTag("voice_sections")
+    ) {
+        items(voice.marks.size) { i ->
+            val (section, at) = voice.marks[i]
+            val on = voice.current == section && voice.playing
+            Surface(onClick = { onListenFrom(section, false) }, shape = RoundedCornerShape(50), color = if (on) Night else Color.White, border = BorderStroke(1.dp, if (on) Night else Color(0xFFE2E8F0))) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (on) Icons.Filled.GraphicEq else Icons.Filled.PlayArrow, contentDescription = null, tint = if (on) Color(0xFFF6D365) else Gold, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(section.label, fontSize = 13.sp, color = if (on) Color.White else Ink, fontWeight = FontWeight.Medium)
+                    Text("  ${com.example.core.common.Formatters.formatDurationHms(at)}", fontSize = 11.sp, color = if (on) Color.White.copy(alpha = 0.6f) else InkMuted)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RewritingBanner() {
+    Row(
+        Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Gold.copy(alpha = 0.12f)).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Gold)
+        Spacer(Modifier.width(12.dp))
+        Text("Writing a new one for you… it will appear here.", fontSize = 14.sp, color = Ink)
     }
 }
 
@@ -409,7 +489,8 @@ private fun Response(today: DailyDevotional, onSave: (DailyDevotional, String) -
 private fun Feedback(today: DailyDevotional, onFeedback: (DailyDevotional, String?) -> Unit) {
     val current = today.feedback
     Column(Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
-        Text("Did this speak to you?", fontSize = 14.sp, color = InkSecondary, fontWeight = FontWeight.Medium)
+        Text(when (current) { "up", "more" -> "Glad it spoke to you — more like this."; "down", "less" -> "Thanks — we'll steer a little differently."; else -> "Did this speak to you?" },
+            fontSize = 14.sp, color = InkSecondary, fontWeight = FontWeight.Medium)
         Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FeedbackChip(if (current == "up") Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp, null, current == "up") { onFeedback(today, if (current == "up") null else "up") }
             FeedbackChip(if (current == "down") Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown, null, current == "down") { onFeedback(today, if (current == "down") null else "down") }
@@ -422,12 +503,12 @@ private fun Feedback(today: DailyDevotional, onFeedback: (DailyDevotional, Strin
 @Composable
 private fun FeedbackChip(icon: androidx.compose.ui.graphics.vector.ImageVector?, label: String?, selected: Boolean, onClick: () -> Unit) {
     Surface(
-        onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Gold.copy(alpha = 0.16f) else Color.White,
+        onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Gold else Color.White,
         border = BorderStroke(1.dp, if (selected) Gold else Color(0xFFE2E8F0))
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            icon?.let { Icon(it, contentDescription = null, tint = if (selected) Gold else InkSecondary, modifier = Modifier.size(16.dp)) }
-            label?.let { Text(it, fontSize = 13.sp, color = if (selected) Gold else InkSecondary, fontWeight = FontWeight.Medium) }
+            icon?.let { Icon(it, contentDescription = null, tint = if (selected) Color.White else InkSecondary, modifier = Modifier.size(16.dp)) }
+            label?.let { Text(it, fontSize = 13.sp, color = if (selected) Color.White else InkSecondary, fontWeight = FontWeight.SemiBold) }
         }
     }
 }
@@ -436,13 +517,7 @@ private fun FeedbackChip(icon: androidx.compose.ui.graphics.vector.ImageVector?,
 private fun Footer(today: DailyDevotional, onOpenNote: (String) -> Unit, onRewrite: () -> Unit, onShare: (DailyDevotional) -> Unit) {
     val d = today.devotional
     Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
-        val line = when (d.origin) {
-            DevotionalOrigin.CLOUD_AI, DevotionalOrigin.DEVICE_AI ->
-                "${d.label}${d.engine?.let { " by $it" } ?: ""}. Bible verses are shown from the Bible itself, never written by AI. Weigh every word against Scripture."
-            DevotionalOrigin.CLASSIC -> d.label
-            else -> d.label
-        }
-        Text(line, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted)
+        if (d.origin == DevotionalOrigin.CLASSIC) Text(d.label, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted)
         today.note.metadata["devotionalFallback"]?.let {
             Text(it, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted, fontStyle = FontStyle.Italic, modifier = Modifier.padding(top = 6.dp))
         }
@@ -462,7 +537,7 @@ private fun Footer(today: DailyDevotional, onOpenNote: (String) -> Unit, onRewri
             Surface(onClick = onRewrite, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Color(0xFFE2E8F0))) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
-                    Text("A different one", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
+                    Text("Write me another", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -484,10 +559,10 @@ internal fun shareRequest(t: DailyDevotional, audioPath: String?, coverPath: Str
         ?: d.title
     val ref = listOfNotNull(d.title.takeIf { it != text }, d.scripture.firstOrNull()?.display()).joinToString(" · ").ifBlank { null }
     return com.example.feature.share.ShareRequest(
-        content = com.example.core.share.ShareCardContent("Today's devotional", text, ref, d.label, quoted = d.origin == DevotionalOrigin.CLASSIC),
+        content = com.example.core.share.ShareCardContent("Today's devotional", text, ref, d.label.takeIf { d.origin == DevotionalOrigin.CLASSIC }, quoted = d.origin == DevotionalOrigin.CLASSIC),
         theme = listOfNotNull(d.title, d.scripture.firstOrNull()?.display()).joinToString(", "),
         background = coverPath?.let { com.example.core.share.BackgroundSpec.Photo(it) },
         audioPath = audioPath,
-        caption = "${d.title} — ${d.label}"
+        caption = d.title
     )
 }

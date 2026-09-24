@@ -43,6 +43,8 @@ class DevotionalVoice(
     companion object {
         const val META_AUDIO = "devotionalAudio"
         const val META_AUDIO_VOICE = "devotionalAudioVoice"
+        /** Where each section starts in the recording: [com.example.ai.voice.VoiceSection.encode]. */
+        const val META_AUDIO_MARKS = "devotionalAudioMarks"
 
         fun playbackId(noteId: String) = "devotional:$noteId"
     }
@@ -65,6 +67,32 @@ class DevotionalVoice(
         return null
     }
 
+    /**
+     * Records section by section, so each section's start is known exactly and a listener can
+     * jump to it — or hear only the prayer. One engine reads the whole thing, so the voice never
+     * changes mid-way.
+     */
+    private suspend fun synthesizeSections(segments: List<SpeechSegment>, settings: VoiceSettings, onProgress: (Float) -> Unit): Triple<Pcm, String, List<Pair<com.example.ai.voice.VoiceSection, Long>>>? {
+        val sections = mutableListOf<Pair<com.example.ai.voice.VoiceSection, MutableList<SpeechSegment>>>()
+        segments.forEach { s -> if (sections.lastOrNull()?.first == s.kind.section) sections.last().second += s else sections += s.kind.section to mutableListOf(s) }
+        for (engine in engines()) {
+            val clips = mutableListOf<Pcm>()
+            val marks = mutableListOf<Pair<com.example.ai.voice.VoiceSection, Long>>()
+            var at = 0L
+            var ok = true
+            for ((i, section) in sections.withIndex()) {
+                val result = runCatching { engine.synthesize(section.second, settings) { p -> onProgress((i + p) / sections.size) } }.getOrNull()
+                val pcm = (result as? AiResult.Success)?.value
+                if (pcm == null) { ok = false; break }
+                marks += section.first to at
+                clips += pcm
+                at += pcm.durationMs
+            }
+            if (ok) Wav.concat(clips)?.let { return Triple(it, engine.label, marks) }
+        }
+        return null
+    }
+
     /** Records [daily] aloud and attaches it. Returns the audio file, or null if no voice could read it. */
     suspend fun record(daily: DailyDevotional, onProgress: (Float) -> Unit = {}): File? {
         val profile = prefs.devotionalProfile.first()
@@ -74,7 +102,7 @@ class DevotionalVoice(
         }.filterValues { it != null }.mapValues { it.value!! }
         val name = prefs.preferencesFlow.first().identity.displayName?.substringBefore(' ')
         val segments = SpeechScript.build(daily.devotional, verses, profile.voice, name)
-        val (pcm, label) = synthesize(segments, profile.voice, onProgress) ?: return null
+        val (pcm, label, marks) = synthesizeSections(segments, profile.voice, onProgress) ?: return null
 
         // Replace an earlier recording of the same devotional (first: it may share the file name).
         daily.note.metadata[META_AUDIO]?.let { old -> runCatching { notes.deleteAttachment(old) } }
@@ -90,7 +118,8 @@ class DevotionalVoice(
             )
         )
         val fresh = notes.getNote(daily.note.id) ?: return file
-        notes.updateNote(fresh.copy(metadata = fresh.metadata + (META_AUDIO to attachment.id) + (META_AUDIO_VOICE to label)))
+        notes.updateNote(fresh.copy(metadata = fresh.metadata + (META_AUDIO to attachment.id) + (META_AUDIO_VOICE to label) +
+            (META_AUDIO_MARKS to com.example.ai.voice.VoiceSection.encode(marks))))
         return file
     }
 

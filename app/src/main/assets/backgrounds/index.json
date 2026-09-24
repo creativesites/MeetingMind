@@ -1,0 +1,236 @@
+[
+ {
+  "id": "photo_1000",
+  "name": "Snowfield light",
+  "file": "backgrounds/bg_1000.webp",
+  "thumb": "backgrounds/bg_1000_thumb.webp",
+  "author": "Lukas Budimaier",
+  "source": "https://unsplash.com/photos/6cY-FvMlmkQ",
+  "bright": 166
+ },
+ {
+  "id": "photo_508",
+  "name": "Cathedral",
+  "file": "backgrounds/bg_508.webp",
+  "thumb": "backgrounds/bg_508_thumb.webp",
+  "author": "Jeff Sheldon",
+  "source": "https://unsplash.com/photos/u3gES0SUsnI",
+  "bright": 117
+ },
+ {
+  "id": "photo_510",
+  "name": "Mountain chapel",
+  "file": "backgrounds/bg_510.webp",
+  "thumb": "backgrounds/bg_510_thumb.webp",
+  "author": "Jeff Sheldon",
+  "source": "https://unsplash.com/photos/4IPe3tnBKK0",
+  "bright": 174
+ },
+ {
+  "id": "photo_991",
+  "name": "Golden morning",
+  "file": "backgrounds/bg_991.webp",
+  "thumb": "backgrounds/bg_991_thumb.webp",
+  "author": "Fritz Bielmeier",
+  "source": "https://unsplash.com/photos/ooJi3CJQRa8",
+  "bright": 129
+ },
+ {
+  "id": "photo_994",
+  "name": "Still sea at dawn",
+  "file": "backgrounds/bg_994.webp",
+  "thumb": "backgrounds/bg_994_thumb.webp",
+  "author": "Jonathan Bean",
+  "source": "https://unsplash.com/photos/ywnnwzcdR5o",
+  "bright": 150
+ },
+ {
+  "id": "photo_987",
+  "name": "Above the clouds",
+  "file": "backgrounds/bg_987.webp",
+  "thumb": "backgrounds/bg_987_thumb.webp",
+  "author": "Sebastien Gabriel",
+  "source": "https://unsplash.com/photos/2W5LoumSdfw",
+  "bright": 132
+ },
+ {
+  "id": "photo_206",
+  "name": "Orchard sunrise",
+  "file": "backgrounds/bg_206.webp",
+  "thumb": "backgrounds/bg_206_thumb.webp",
+  "author": "Philipp Reiner",
+  "source": "https://unsplash.com/photos/qPJ6eRAMmCM",
+  "bright": 160
+ },
+ {
+  "id": "photo_476",
+  "name": "Forest light",
+  "file": "backgrounds/bg_476.webp",
+  "thumb": "backgrounds/bg_476_thumb.webp",
+  "author": "Mr. Marco",
+  "source": "https://unsplash.com/photos/QP1dUyQ8WsI",
+  "bright": 86
+ },
+ {
+  "id": "photo_502",
+  "name": "Green forest",
+  "file": "backgrounds/bg_502.webp",
+  "thumb": "backgrounds/bg_502_thumb.webp",
+  "author": "Sven Schlager",
+  "source": "https://unsplash.com/photos/xzjouTJASSA",
+  "bright": 60
+ },
+ {
+  "id": "photo_477",
+  "name": "Lone tree",
+  "file": "backgrounds/bg_477.webp",
+  "thumb": "backgrounds/bg_477_thumb.webp",
+  "author": "Jasper van der Meij",
+  "source": "https://unsplash.com/photos/Xo3uIN_Q1Y0",
+  "bright": 84
+ },
+ {
+  "id": "photo_434",
+  "name": "Mountain lake",
+  "file": "backgrounds/bg_434.webp",
+  "thumb": "backgrounds/bg_434_thumb.webp",
+  "author": "Ales Krivec",
+  "source": "https://unsplash.com/photos/DgtRKZOOE0w",
+  "bright": 121
+ },
+ {
+  "id": "photo_468",
+  "name": "Meadow tree",
+  "file": "backgrounds/bg_468.webp",
+  "thumb": "backgrounds/bg_468_thumb.webp",
+  "author": "Silvestri Matteo",
+  "source": "https://unsplash.com/photos/6-C0VRsagUw",
+  "bright": 182
+ },
+ {
+  "id": "photo_416",
+  "name": "Misty sunrise",
+  "file": "backgrounds/bg_416.webp",
+  "thumb": "backgrounds/bg_416_thumb.webp",
+  "author": "Elaine Li",
+  "source": "https://unsplash.com/photos/9jYj32TN9Ts",
+  "bright": 127
+ },
+ {
+  "id": "photo_481",
+  "name": "Quiet lake",
+  "file": "backgrounds/bg_481.webp",
+  "thumb": "backgrounds/bg_481_thumb.webp",
+  "author": "Dustin Scarpitti",
+  "source": "https://unsplash.com/photos/RdF3apSExR0",
+  "bright": 149
+ },
+ {
+  "id": "photo_509",
+  "name": "Waterfall",
+  "file": "backgrounds/bg_509.webp",
+  "thumb": "backgrounds/bg_509_thumb.webp",
+  "author": "Jeff Sheldon",
+  "source": "https://unsplash.com/photos/SdSc4sWVMRU",
+  "bright": 123
+ },
+ {
+  "id": "photo_1039",
+  "name": "Green valley",
+  "file": "backgrounds/bg_1039.webp",
+  "thumb": "backgrounds/bg_1039_thumb.webp",
+  "author": "Andrew Coelho",
+  "source": "https://unsplash.com/photos/VB-w_3dnyvI",
+  "bright": 91
+ },
+ {
+  "id": "photo_480",
+  "name": "Meadow path",
+  "file": "backgrounds/bg_480.webp",
+  "thumb": "backgrounds/bg_480_thumb.webp",
+  "author": "Drew Geraets",
+  "source": "https://unsplash.com/photos/NtrxaEdbMXU",
+  "bright": 115
+ },
+ {
+  "id": "photo_492",
+  "name": "Dandelions",
+  "file": "backgrounds/bg_492.webp",
+  "thumb": "backgrounds/bg_492_thumb.webp",
+  "author": "Jason Long",
+  "source": "https://unsplash.com/photos/FOeDIUwYiSw",
+  "bright": 147
+ },
+ {
+  "id": "photo_385",
+  "name": "Calm water",
+  "file": "backgrounds/bg_385.webp",
+  "thumb": "backgrounds/bg_385_thumb.webp",
+  "author": "Griffin Keller",
+  "source": "https://unsplash.com/photos/7oS_26cb1Wo",
+  "bright": 162
+ },
+ {
+  "id": "photo_110",
+  "name": "Evening field",
+  "file": "backgrounds/bg_110.webp",
+  "thumb": "backgrounds/bg_110_thumb.webp",
+  "author": "Kenneth Thewissen",
+  "source": "https://unsplash.com/photos/D76DklsG-5U",
+  "bright": 128
+ },
+ {
+  "id": "photo_213",
+  "name": "Pink sea",
+  "file": "backgrounds/bg_213.webp",
+  "thumb": "backgrounds/bg_213_thumb.webp",
+  "author": "Kelly Sikkema",
+  "source": "https://unsplash.com/photos/X7dy114KWs4",
+  "bright": 175
+ },
+ {
+  "id": "photo_450",
+  "name": "Glacier lake",
+  "file": "backgrounds/bg_450.webp",
+  "thumb": "backgrounds/bg_450_thumb.webp",
+  "author": "Tanvi Malik",
+  "source": "https://unsplash.com/photos/OeC1wIsKNpk",
+  "bright": 147
+ },
+ {
+  "id": "photo_484",
+  "name": "Golden hills",
+  "file": "backgrounds/bg_484.webp",
+  "thumb": "backgrounds/bg_484_thumb.webp",
+  "author": "David Marcu",
+  "source": "https://unsplash.com/photos/GyALQFQ9cp4",
+  "bright": 113
+ },
+ {
+  "id": "photo_324",
+  "name": "Woodland path",
+  "file": "backgrounds/bg_324.webp",
+  "thumb": "backgrounds/bg_324_thumb.webp",
+  "author": "Sonja Langford",
+  "source": "https://unsplash.com/photos/L_F8jAsRWtU",
+  "bright": 78
+ },
+ {
+  "id": "photo_459",
+  "name": "Sun in the grass",
+  "file": "backgrounds/bg_459.webp",
+  "thumb": "backgrounds/bg_459_thumb.webp",
+  "author": "Jake Givens",
+  "source": "https://unsplash.com/photos/ocwmWiNAWGs",
+  "bright": 169
+ },
+ {
+  "id": "photo_1056",
+  "name": "Sky reflection",
+  "file": "backgrounds/bg_1056.webp",
+  "thumb": "backgrounds/bg_1056_thumb.webp",
+  "author": "Susanne Feldt",
+  "source": "https://unsplash.com/photos/SIoHky3TPeo",
+  "bright": 182
+ }
+]

@@ -40,6 +40,11 @@ import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -260,16 +265,25 @@ fun FaithScreen(
 
             if (media.isNotEmpty()) {
                 item {
-                    SectionTitle("Media", top = 28.dp)
-                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(media.take(20), key = { it.id }) { a ->
-                            Box(Modifier.size(88.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceSunk).clickable { onOpenNote(a.noteId) }, contentAlignment = Alignment.Center) {
-                                if (a.kind == AttachmentKind.IMAGE) AsyncImage(File(a.path), contentDescription = a.caption, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                else Icon(if (a.kind == AttachmentKind.VIDEO) Icons.Filled.Mic else Icons.Filled.Mic, contentDescription = null, tint = InkMuted)
-                            }
+                    SectionTitle("Photos, videos & voice", trailing = "${media.size}", top = 28.dp)
+                    val titles = remember(notes) { notes.associate { it.id to it.title.ifBlank { it.workflow.displayName } } }
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(media.take(24), key = { it.id }) { a -> FaithMediaCard(a, titles[a.noteId]) { onOpenNote(a.noteId) } }
+                    }
+                }
+            }
+            item {
+                var showBackgrounds by remember { mutableStateOf(false) }
+                Surface(onClick = { showBackgrounds = true }, shape = RoundedCornerShape(16.dp), color = SurfaceSunk, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp)) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Wallpaper, contentDescription = null, tint = Gold, modifier = Modifier.size(20.dp))
+                        Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                            Text("Backgrounds", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                            Text("Pictures for your stories, devotional and share cards — add your own", fontSize = 12.sp, color = InkSecondary)
                         }
                     }
                 }
+                if (showBackgrounds) com.example.feature.share.BackgroundsSheet(onDismiss = { showBackgrounds = false })
             }
 
             item { SectionTitle("Recent", top = 28.dp) }
@@ -323,7 +337,7 @@ private fun TodayDevotionalCard(today: com.example.core.devotional.Devotional?, 
                     maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp)
                 )
                 Text(
-                    today?.let { listOfNotNull(it.scripture.firstOrNull()?.display(), it.label).joinToString(" · ") }
+                    today?.let { t -> t.scripture.firstOrNull()?.display() ?: t.engine?.takeIf { t.origin == com.example.core.devotional.DevotionalOrigin.CLASSIC } }
                         ?: "Scripture, a reflection and a prayer — written for you, or a classic.",
                     fontSize = 13.sp, lineHeight = 18.sp, color = InkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp)
                 )
@@ -579,6 +593,84 @@ private fun CollectionRow(id: String, name: String, viewModel: FaithViewModel, o
                     Text(ref.display(), fontSize = 12.sp, color = Gold, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
                 }
             }
+        }
+    }
+}
+
+/**
+ * One photo, video or voice recording from the Faith notes: what it is, where it's from and how
+ * long, at a glance. Videos show a real frame; voice pulses gently while it plays.
+ */
+@Composable
+private fun FaithMediaCard(a: com.example.core.model.Attachment, noteTitle: String?, onOpen: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val playback by com.example.core.audio.PlaybackController.state.collectAsState()
+    val playing = playback.recordingId == "media:${a.id}" && playback.phase == com.example.core.audio.PlaybackPhase.PLAYING
+    val generated = a.caption?.contains("AI-generated") == true
+    val (kindLabel, tint) = when (a.kind) {
+        AttachmentKind.IMAGE -> (if (generated) "Devotional picture" else "Photo") to Color(0xFF0EA5E9)
+        AttachmentKind.VIDEO -> "Video" to Color(0xFFE11D48)
+        AttachmentKind.AUDIO -> (if (a.caption?.startsWith("Listen:") == true) "Devotional voice" else "Voice") to Gold
+        else -> "File" to InkMuted
+    }
+    Surface(onClick = {
+        if (a.kind == AttachmentKind.AUDIO) {
+            if (playing) com.example.core.audio.PlaybackController.pause()
+            else com.example.core.audio.PlaybackController.play(context, "media:${a.id}", noteTitle ?: kindLabel, File(a.path))
+        } else onOpen()
+    }, shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 2.dp, modifier = Modifier.size(width = 148.dp, height = 196.dp)) {
+        Box(Modifier.fillMaxSize()) {
+            when (a.kind) {
+                AttachmentKind.IMAGE -> AsyncImage(File(a.path), contentDescription = a.caption, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                AttachmentKind.VIDEO -> {
+                    val frame by androidx.compose.runtime.produceState<android.graphics.Bitmap?>(null, a.path) {
+                        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            runCatching { android.media.MediaMetadataRetriever().run { setDataSource(a.path); getFrameAtTime(1_000_000).also { release() } } }.getOrNull()
+                        }
+                    }
+                    frame?.let { androidx.compose.foundation.Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                        ?: Box(Modifier.fillMaxSize().background(Color(0xFF1F2937)))
+                    Box(Modifier.align(Alignment.Center).size(44.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = "Play video", tint = Color.White, modifier = Modifier.size(26.dp))
+                    }
+                }
+                else -> Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF1B1530), Color(0xFF3A2A1A)))), contentAlignment = Alignment.Center) {
+                    VoiceBars(playing)
+                    Box(Modifier.align(Alignment.BottomEnd).padding(10.dp).size(34.dp).clip(CircleShape).background(Color(0xFFF6D365)), contentAlignment = Alignment.Center) {
+                        Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (playing) "Pause" else "Play", tint = Color(0xFF1B1530), modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+            // What it is, and where it's from.
+            Row(Modifier.padding(8.dp).clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(6.dp).clip(CircleShape).background(tint))
+                Text("  $kindLabel", fontSize = 10.5.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                a.durationMs?.takeIf { it > 0 }?.let { Text(" · ${Formatters.formatDurationHms(it)}", fontSize = 10.5.sp, color = Color.White.copy(alpha = 0.8f)) }
+            }
+            if (a.kind != AttachmentKind.AUDIO) Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))).padding(10.dp)) {
+                MediaCaption(noteTitle, a.createdAt)
+            } else Box(Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 12.dp, end = 50.dp)) { MediaCaption(noteTitle, a.createdAt) }
+        }
+    }
+}
+
+@Composable
+private fun MediaCaption(title: String?, at: Long) {
+    Column {
+        Text(title ?: "From a note", fontSize = 12.sp, lineHeight = 15.sp, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(java.text.SimpleDateFormat("d MMM", java.util.Locale.getDefault()).format(java.util.Date(at)), fontSize = 10.5.sp, color = Color.White.copy(alpha = 0.75f))
+    }
+}
+
+/** Gentle bars that breathe — faster while the voice is playing. */
+@Composable
+private fun VoiceBars(playing: Boolean) {
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "bars")
+    val phase by t.animateFloat(0f, (2 * Math.PI).toFloat(), androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(if (playing) 900 else 2600, easing = androidx.compose.animation.core.LinearEasing)), label = "phase")
+    Row(Modifier.padding(bottom = 30.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        repeat(9) { i ->
+            val h = 10f + 26f * ((kotlin.math.sin(phase + i * 0.7f) + 1f) / 2f) * (if (playing) 1f else 0.55f)
+            Box(Modifier.size(width = 4.dp, height = h.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFF6D365).copy(alpha = 0.85f)))
         }
     }
 }
