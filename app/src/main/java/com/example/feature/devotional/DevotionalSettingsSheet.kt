@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.example.core.devotional.DevotionalProfile
 import com.example.core.devotional.DevotionalSource
 import com.example.core.devotional.DevotionalTone
@@ -113,6 +114,8 @@ fun DevotionalSettingsSheet(profile: DevotionalProfile, onSave: (DevotionalProfi
                 ) { p = p.copy(sharePrivateWithCloud = it) }
             }
 
+            VoiceSection(p.voice) { p = p.copy(voice = it) }
+
             Label("Tradition")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Tradition.entries.forEach { t -> Chip(t.label, p.tradition == t) { p = p.copy(tradition = t) } }
@@ -154,4 +157,45 @@ private fun ToggleRow(title: String, subtitle: String?, checked: Boolean, onChan
         }
         Switch(checked = checked, onCheckedChange = onChange, colors = SwitchDefaults.colors(checkedTrackColor = Gold))
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun VoiceSection(voice: com.example.ai.voice.VoiceSettings, onChange: (com.example.ai.voice.VoiceSettings) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var previewing by remember { mutableStateOf(false) }
+    var previewFailed by remember { mutableStateOf(false) }
+    Label("Read aloud by")
+    com.example.ai.voice.PreacherStyle.entries.forEach { s ->
+        Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.Top) {
+            RadioButton(selected = voice.style == s, onClick = { onChange(voice.copy(style = s)) }, colors = RadioButtonDefaults.colors(selectedColor = Gold))
+            Column(Modifier.padding(top = 10.dp)) {
+                Text(s.label, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Ink)
+                Text(s.line, fontSize = 12.5.sp, color = InkSecondary)
+            }
+        }
+    }
+    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        com.example.ai.voice.VoiceGender.entries.forEach { g -> Chip(g.label, voice.gender == g) { onChange(voice.copy(gender = g)) } }
+    }
+    Label("Pace")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(0.85f to "Slower", 1.0f to "Natural", 1.15f to "Brisk").forEach { (r, l) -> Chip(l, kotlin.math.abs(voice.rate - r) < 0.01f) { onChange(voice.copy(rate = r)) } }
+    }
+    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        PillButton(if (previewing) "Preparing…" else "Hear it", filled = false) {
+            if (previewing) return@PillButton
+            previewing = true; previewFailed = false
+            scope.launch {
+                val file = runCatching { com.example.core.devotional.DevotionalVoice(context).preview(voice) }.getOrNull()
+                previewing = false
+                if (file != null) com.example.core.audio.PlaybackController.play(context, "preview:${voice.voiceName}", "Voice preview", file) else previewFailed = true
+            }
+        }
+        if (previewFailed) Text("  No voice is available right now.", fontSize = 12.sp, color = InkMuted)
+    }
+    Text("Gemini's voices need Internet mode and your key; otherwise your phone's own voice reads it.", fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted, modifier = Modifier.padding(top = 6.dp))
+    ToggleRow("Pray the prayer aloud", null, voice.speakPrayer) { onChange(voice.copy(speakPrayer = it)) }
+    ToggleRow("Have the voice ready each morning", "Records it with the devotional, so Listen starts instantly", voice.autoVoice) { onChange(voice.copy(autoVoice = it)) }
 }

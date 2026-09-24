@@ -74,7 +74,9 @@ data class DevotionalProfile(
     /** Topics the person asked for less of ("Less like this"). */
     val lessOf: Set<String> = emptySet(),
     /** Topics the person asked for more of ("More like this"). */
-    val moreOf: Set<String> = emptySet()
+    val moreOf: Set<String> = emptySet(),
+    /** How it's read aloud (PLAN_V2 F3). */
+    val voice: com.example.ai.voice.VoiceSettings = com.example.ai.voice.VoiceSettings()
 ) {
     val words: Int get() = when { minutes <= 3 -> 280; minutes <= 7 -> 650; else -> 1100 }
 
@@ -84,6 +86,8 @@ data class DevotionalProfile(
         put("aboutMe", aboutMe); put("prayer", includePrayer); put("motivation", includeMotivation)
         put("insight", includeInsight); put("question", includeQuestion); put("delivery", deliveryMinutes)
         put("sharePrivate", sharePrivateWithCloud); put("less", JSONArray(lessOf.toList())); put("more", JSONArray(moreOf.toList()))
+        put("voiceStyle", voice.style.name); put("voiceGender", voice.gender.name); put("speakPrayer", voice.speakPrayer)
+        put("autoVoice", voice.autoVoice); put("rate", voice.rate.toDouble())
     }.toString()
 
     companion object {
@@ -109,7 +113,14 @@ data class DevotionalProfile(
                 deliveryMinutes = o.optInt("delivery", d.deliveryMinutes).coerceIn(0, 24 * 60 - 1),
                 sharePrivateWithCloud = o.optBoolean("sharePrivate", d.sharePrivateWithCloud),
                 lessOf = set("less") ?: d.lessOf,
-                moreOf = set("more") ?: d.moreOf
+                moreOf = set("more") ?: d.moreOf,
+                voice = com.example.ai.voice.VoiceSettings(
+                    style = runCatching { com.example.ai.voice.PreacherStyle.valueOf(o.getString("voiceStyle")) }.getOrDefault(d.voice.style),
+                    gender = runCatching { com.example.ai.voice.VoiceGender.valueOf(o.getString("voiceGender")) }.getOrDefault(d.voice.gender),
+                    speakPrayer = o.optBoolean("speakPrayer", d.voice.speakPrayer),
+                    autoVoice = o.optBoolean("autoVoice", d.voice.autoVoice),
+                    rate = o.optDouble("rate", d.voice.rate.toDouble()).toFloat().coerceIn(0.7f, 1.3f)
+                )
             )
         }
     }

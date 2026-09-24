@@ -568,7 +568,13 @@ fun MeetMindApp() {
             onTogglePlayPause = { PlaybackController.togglePlayPause() },
             onStop = { PlaybackController.stop() },
             onOpen = {
-                playbackState.recordingId?.let { navController.navigate(Routes.meetingDetailRoute(it)) }
+                playbackState.recordingId?.let { id ->
+                    when {
+                        id.startsWith("devotional:") -> navController.navigate(Routes.DEVOTIONAL) { launchSingleTop = true }
+                        id.startsWith("preview") -> Unit
+                        else -> navController.navigate(Routes.meetingDetailRoute(id))
+                    }
+                }
             },
             modifier = Modifier.align(Alignment.BottomCenter)
         )

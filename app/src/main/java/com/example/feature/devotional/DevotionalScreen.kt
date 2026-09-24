@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
@@ -98,7 +100,8 @@ fun DevotionalScreen(
         onReadPassage = onReadPassage,
         onRewrite = viewModel::rewrite,
         onFeedback = { d, v -> viewModel.feedback(d, v) },
-        onSaveResponse = { d, t -> viewModel.saveResponse(d, t) }
+        onSaveResponse = { d, t -> viewModel.saveResponse(d, t) },
+        onListen = { viewModel.listen() }
     )
     if (showSettings) DevotionalSettingsSheet(
         profile = state.profile,
@@ -117,6 +120,7 @@ fun DevotionalContent(
     onRewrite: () -> Unit,
     onFeedback: (DailyDevotional, String?) -> Unit,
     onSaveResponse: (DailyDevotional, String) -> Unit,
+    onListen: () -> Unit = {},
     /** Verse text is fetched live; screenshots pass false to keep the page deterministic. */
     liveScripture: Boolean = true
 ) {
@@ -129,7 +133,11 @@ fun DevotionalContent(
                 IconButton(onClick = onSettings) { Icon(Icons.Filled.Tune, contentDescription = "Devotional settings", tint = Ink) }
             }
         }
-        item { Hero(state.date, state.season, today?.devotional, writing = state.writing && today == null) }
+        item {
+            Hero(state.date, state.season, today?.devotional, writing = state.writing && today == null) {
+                if (today != null && today.devotional.origin != DevotionalOrigin.MINE && today.devotional.origin != DevotionalOrigin.CARE) ListenPill(state.voice, onListen)
+            }
+        }
         when {
             today == null && state.writing -> item { Writing() }
             today == null -> item {
@@ -176,7 +184,7 @@ fun DevotionalContent(
 private val DATE = DateTimeFormatter.ofPattern("EEEE, d MMMM")
 
 @Composable
-private fun Hero(date: LocalDate, season: LiturgicalDay?, d: Devotional?, writing: Boolean) {
+private fun Hero(date: LocalDate, season: LiturgicalDay?, d: Devotional?, writing: Boolean, actions: @Composable () -> Unit = {}) {
     val tint = season?.season?.color?.let { Color(it) } ?: Gold
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(28.dp))
@@ -211,6 +219,7 @@ private fun Hero(date: LocalDate, season: LiturgicalDay?, d: Devotional?, writin
                     Text(shortLabel(dev), fontSize = 11.5.sp, color = Color.White.copy(alpha = 0.9f), fontWeight = FontWeight.Medium)
                 }
             }
+            actions()
         }
     }
 }
@@ -218,6 +227,35 @@ private fun Hero(date: LocalDate, season: LiturgicalDay?, d: Devotional?, writin
 private fun shortLabel(d: Devotional) = when (d.origin) {
     DevotionalOrigin.CLASSIC -> "Classic · ${d.engine ?: "public domain"}"
     else -> d.label
+}
+
+@Composable
+private fun ListenPill(voice: VoiceUi, onListen: () -> Unit) {
+    val label = when {
+        voice.preparing -> "Preparing the voice… ${(voice.progress * 100).toInt()}%"
+        voice.playing -> "Pause"
+        voice.positionMs > 0 -> "Resume"
+        voice.failed -> "Couldn't prepare the voice — try again"
+        else -> "Listen"
+    }
+    Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Surface(onClick = onListen, enabled = !voice.preparing, shape = RoundedCornerShape(50), color = Color(0xFFF6D365), modifier = Modifier.testTag("devotional_listen")) {
+            Row(Modifier.padding(start = 12.dp, end = 18.dp, top = 9.dp, bottom = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (voice.preparing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Night)
+                else Icon(if (voice.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = null, tint = Night, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Night)
+            }
+        }
+        if (voice.durationMs > 0) {
+            Spacer(Modifier.width(10.dp))
+            Text("${com.example.core.common.Formatters.formatDurationHms(voice.positionMs)} / ${com.example.core.common.Formatters.formatDurationHms(voice.durationMs)}",
+                fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f))
+        }
+    }
+    voice.voiceLabel?.takeIf { !voice.preparing }?.let {
+        Text(it, fontSize = 11.sp, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.padding(top = 6.dp, start = 4.dp))
+    }
 }
 
 @Composable
