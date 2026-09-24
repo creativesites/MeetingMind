@@ -314,7 +314,8 @@ fun MeetMindApp() {
                     onSearchBible = { navController.navigate(Routes.bibleRoute(search = true)) },
                     onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },
                     onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
-                    onShare = { req -> com.example.feature.share.ShareRequests.pending = req; navController.navigate(Routes.SHARE) }
+                    onShare = { req -> com.example.feature.share.ShareRequests.pending = req; navController.navigate(Routes.SHARE) },
+                    onPrayWithMe = { navController.navigate(Routes.prayRoute()) }
                 )
             }
         }
@@ -348,6 +349,18 @@ fun MeetMindApp() {
                 )
             }
         }
+        composable(Routes.PRAY, arguments = listOf(navArgument("mode") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
+            val vm: com.example.feature.prayer.PrayWithMeViewModel = viewModel()
+            val mode = entry.arguments?.getString("mode")?.let { m -> com.example.core.prayer.PrayMode.entries.firstOrNull { it.name == m } }
+            com.example.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
+                com.example.feature.prayer.PrayWithMeScreen(
+                    viewModel = vm, startMode = mode,
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                    onOpenSettings = { navController.navigate(Routes.SETTINGS) }
+                )
+            }
+        }
         composable(Routes.SHARE) {
             val request = remember { com.example.feature.share.ShareRequests.pending }
             if (request == null) LaunchedEffect(Unit) { navController.popBackStack() }
@@ -362,7 +375,8 @@ fun MeetMindApp() {
                     onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                     onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },
                     onShare = { req -> com.example.feature.share.ShareRequests.pending = req; navController.navigate(Routes.SHARE) },
-                    playOnOpen = entry.arguments?.getString("play")
+                    playOnOpen = entry.arguments?.getString("play"),
+                    onLive = { mode -> navController.navigate(Routes.prayRoute(mode.name)) }
                 )
             }
         }

@@ -92,7 +92,8 @@ fun DevotionalScreen(
     onReadPassage: (ScriptureReference) -> Unit,
     onShare: (com.example.feature.share.ShareRequest) -> Unit = {},
     /** "prayer": pray today's prayer aloud as soon as the page opens (from a story). */
-    playOnOpen: String? = null
+    playOnOpen: String? = null,
+    onLive: (com.example.core.prayer.PrayMode) -> Unit = {}
 ) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(Unit) {
@@ -113,6 +114,7 @@ fun DevotionalScreen(
         onSaveResponse = { d, t -> viewModel.saveResponse(d, t) },
         onListen = { viewModel.listen() },
         onListenFrom = { section, only -> viewModel.listen(section, only) },
+        onLive = onLive,
         onShare = { t -> onShare(shareRequest(t, viewModel.audioPath(t), viewModel.coverPath(t))) }
     )
     if (showAsk) AskDevotionalSheet(
@@ -139,6 +141,7 @@ fun DevotionalContent(
     onSaveResponse: (DailyDevotional, String) -> Unit,
     onListen: () -> Unit = {},
     onListenFrom: (com.example.ai.voice.VoiceSection, Boolean) -> Unit = { _, _ -> },
+    onLive: (com.example.core.prayer.PrayMode) -> Unit = {},
     onShare: (DailyDevotional) -> Unit = {},
     /** Verse text is fetched live; screenshots pass false to keep the page deterministic. */
     liveScripture: Boolean = true
@@ -193,13 +196,24 @@ fun DevotionalContent(
                     val checks = today.document.blocks.filter { it.sectionKey == DevotionalNotes.S_APPLICATION && it.type == NoteBlockType.CHECKLIST }.sortedBy { it.position }
                     d.application.forEachIndexed { i, a -> item { CheckRow(a, checks.getOrNull(i)?.checked == true) } }
                 }
-                d.prayer?.let { p -> item { PrayerCard(p, praying = state.voice.current == com.example.ai.voice.VoiceSection.PRAYER && state.voice.playing) { onListenFrom(com.example.ai.voice.VoiceSection.PRAYER, true) } } }
+                d.prayer?.let { p -> item { PrayerCard(p, praying = state.voice.current == com.example.ai.voice.VoiceSection.PRAYER && state.voice.playing, onPrayWithMe = { onLive(com.example.core.prayer.PrayMode.TOGETHER) }) { onListenFrom(com.example.ai.voice.VoiceSection.PRAYER, true) } } }
                 d.motivation?.let { m -> item { WordForToday(m) } }
                 d.insight?.let { q -> item { QuoteCard(q.text, listOf(q.author, q.source).filter { it.isNotBlank() }.joinToString(", ")) } }
                 d.question?.let { q -> item { QuestionCard(q) } }
                 if (d.origin != DevotionalOrigin.CARE) {
                     item { Response(today, onSaveResponse) }
                     item { Feedback(today, onFeedback) }
+                }
+                if (d.origin != DevotionalOrigin.CARE) item {
+                    Surface(onClick = { onLive(com.example.core.prayer.PrayMode.TALK_IT_THROUGH) }, shape = RoundedCornerShape(22.dp), color = Night, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
+                        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Talk it through", fontSize = 17.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                Text("Reflect on this out loud with a thoughtful companion", fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.7f))
+                            }
+                            Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = Color(0xFFF6D365))
+                        }
+                    }
                 }
                 item { Footer(today, onOpenNote, onRewrite, onShare) }
             }
@@ -351,7 +365,7 @@ private fun CheckRow(text: String, checked: Boolean) {
 }
 
 @Composable
-private fun PrayerCard(text: String, praying: Boolean = false, onPray: () -> Unit = {}) {
+private fun PrayerCard(text: String, praying: Boolean = false, onPrayWithMe: () -> Unit = {}, onPray: () -> Unit = {}) {
     Column(
         Modifier.padding(horizontal = 16.dp, vertical = 18.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
             .background(Brush.verticalGradient(listOf(Color(0xFFFFF4DC), Color(0xFFFFFBF2)))).padding(22.dp)
@@ -364,6 +378,13 @@ private fun PrayerCard(text: String, praying: Boolean = false, onPray: () -> Uni
                     Spacer(Modifier.width(5.dp))
                     Text(if (praying) "Praying…" else "Pray it aloud", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = if (praying) Color.White else Gold)
                 }
+            }
+        }
+        Surface(onClick = onPrayWithMe, shape = RoundedCornerShape(50), color = Night, modifier = Modifier.padding(top = 12.dp).testTag("pray_with_me")) {
+            Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = Color(0xFFF6D365), modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Pray with me", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
             }
         }
         Text(text, fontSize = 17.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, color = Color(0xFF3A2A1A), modifier = Modifier.padding(top = 10.dp))

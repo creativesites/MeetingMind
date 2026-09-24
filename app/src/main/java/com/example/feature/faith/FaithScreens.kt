@@ -117,7 +117,8 @@ fun FaithScreen(
     onSearchBible: () -> Unit = {},
     onReadPassage: (ScriptureReference) -> Unit = {},
     onOpenDevotional: () -> Unit = {},
-    onShare: (com.example.feature.share.ShareRequest) -> Unit = {}
+    onShare: (com.example.feature.share.ShareRequest) -> Unit = {},
+    onPrayWithMe: () -> Unit = {}
 ) {
     val votd by viewModel.verseOfTheDay.collectAsState()
     val devotional by viewModel.todayDevotional.collectAsState()
@@ -194,6 +195,8 @@ fun FaithScreen(
                 Column(Modifier.padding(top = 28.dp)) {
                     SectionTitle("Begin")
                     RecordSermonCard(onRecordSermon)
+                    Spacer(Modifier.height(10.dp))
+                    PrayWithMeCard(onPrayWithMe)
                     Column(Modifier.padding(horizontal = 20.dp).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         StartKinds.chunked(2).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -400,6 +403,28 @@ private val StartKinds = listOf(
     StartKind(RecordingType.REFLECTION, "Sit with a thought", Color(0xFF2563EB)),
     StartKind(RecordingType.BIBLE_STUDY, "Observe, reflect, apply", Color(0xFF0F766E))
 )
+
+@Composable
+private fun PrayWithMeCard(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick, shape = RoundedCornerShape(26.dp), color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(104.dp).testTagSafe("faith_pray_with_me")
+    ) {
+        Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF0E1A3A), Color(0xFF3B2F6B), Color(0xFF7C5CA8))))) {
+            Box(Modifier.align(Alignment.CenterEnd).size(150.dp).offset(x = 30.dp)
+                .background(Brush.radialGradient(listOf(Color(0xFFDBEAFE).copy(alpha = 0.45f), Color.Transparent)), CircleShape))
+            Row(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Pray with me", fontSize = 21.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif, color = Color.White)
+                    Text("Someone to pray with, out loud — your way", fontSize = 13.sp, color = Color.White.copy(alpha = 0.72f), modifier = Modifier.padding(top = 4.dp))
+                }
+                Box(Modifier.size(52.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFFDBEAFE), Color(0xFF818CF8)))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.VolunteerActivism, contentDescription = null, tint = Color(0xFF1E1B4B), modifier = Modifier.size(24.dp))
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun RecordSermonCard(onClick: () -> Unit) {

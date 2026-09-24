@@ -1,8 +1,44 @@
 # Installable builds
 
-`MeetingMind-v25-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v26-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
 
-## What's new in v25
+## What's new in v26
+
+- **Pray with me** (Faith → Begin, or "Pray with me" on the devotional's prayer). A spoken prayer
+  companion using Gemini Live:
+  - Modes: pray together, pray for me, take turns, one thing at a time, or mostly listen.
+  - Styles: conversational, ACTS, from the Psalms, liturgical, or quiet.
+  - Tell it what's on your heart, pick items from your prayer list, or pray from today's
+    devotional.
+  - Choose its voice, talk or type, mute, and say Amen to finish. You can keep the prayer as
+    a note.
+  - It needs Internet mode and your Gemini key.
+- **Talk it through** (on the devotional): reflect on the day's reading out loud with a
+  thoughtful companion.
+- **Listen by section.** Jump straight to Scripture, Reflection, Today, Prayer or A word.
+  "Pray it aloud" reads only the prayer, from the devotional or from the prayer story.
+  Re-record the voice once to get sections on an existing devotional.
+- **Write me another.** Say what's on your heart, pick a passage, topics, voice and length,
+  and a new devotional is written just for today. A plain "different one" now really is
+  different, even offline.
+- **Devotional tidy-ups.** "AI-written devotional" appears once, in the header. My response
+  is a styled card that saves as you type. Your "Did this speak to you?" choice stays
+  selected.
+- **Smoother stories.** Holding a story pauses it and letting go carries on from the same
+  point. Stories glide between each other, and swiping down springs back if you don't close.
+- **Backgrounds.** 26 built-in photos (skies, light, water, fields, forests, a cathedral and a
+  chapel) are used for stories, the devotional and share cards. Add your own from Faith →
+  Backgrounds or in the share studio.
+- **Faith media feels alive.**
+  - Each card says what it is: photo, video (with a real frame), voice or devotional picture.
+  - It also shows which note it's from, the date and the length.
+  - Voice plays right there, with moving bars.
+- **New player.** A floating pill with a progress ring, a live equaliser and 10-second
+  skips. Tap it for Now Playing, with a scrubber and speeds from 0.8× to 1.5×.
+- **New Record page.** A Quick record hero and the type picker, then a dark live stage tinted
+  by type, with a big timer, a flowing waveform and large controls.
+
+## What was new in v25
 
 - **Listen to your devotional** (the Listen button on the devotional). It's read by one of five
   preacher voices: warm pastor, gentle friend, bold preacher, calm teacher or storyteller. Each

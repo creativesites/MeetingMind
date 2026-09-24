@@ -88,3 +88,36 @@ each reading; none of CCEL's markup or editorial apparatus is included.
 `app/src/main/assets/devotionals/quotes.json` contains short quotations from public-domain
 writers and hymns, published before 1929 or by authors who died more than 70 years ago. Each
 one is shown with its author and source.
+
+## Built-in background photos
+
+`app/src/main/assets/backgrounds/` contains 26 photos from Unsplash, used under the Unsplash
+License (https://unsplash.com/license): free to use, including commercially, with no permission
+needed. They were obtained through Lorem Picsum and were resized and re-encoded as WebP.
+
+- Snowfield light: photo by Lukas Budimaier (https://unsplash.com/photos/6cY-FvMlmkQ)
+- Cathedral: photo by Jeff Sheldon (https://unsplash.com/photos/u3gES0SUsnI)
+- Mountain chapel: photo by Jeff Sheldon (https://unsplash.com/photos/4IPe3tnBKK0)
+- Golden morning: photo by Fritz Bielmeier (https://unsplash.com/photos/ooJi3CJQRa8)
+- Still sea at dawn: photo by Jonathan Bean (https://unsplash.com/photos/ywnnwzcdR5o)
+- Above the clouds: photo by Sebastien Gabriel (https://unsplash.com/photos/2W5LoumSdfw)
+- Orchard sunrise: photo by Philipp Reiner (https://unsplash.com/photos/qPJ6eRAMmCM)
+- Forest light: photo by Mr. Marco (https://unsplash.com/photos/QP1dUyQ8WsI)
+- Green forest: photo by Sven Schlager (https://unsplash.com/photos/xzjouTJASSA)
+- Lone tree: photo by Jasper van der Meij (https://unsplash.com/photos/Xo3uIN_Q1Y0)
+- Mountain lake: photo by Ales Krivec (https://unsplash.com/photos/DgtRKZOOE0w)
+- Meadow tree: photo by Silvestri Matteo (https://unsplash.com/photos/6-C0VRsagUw)
+- Misty sunrise: photo by Elaine Li (https://unsplash.com/photos/9jYj32TN9Ts)
+- Quiet lake: photo by Dustin Scarpitti (https://unsplash.com/photos/RdF3apSExR0)
+- Waterfall: photo by Jeff Sheldon (https://unsplash.com/photos/SdSc4sWVMRU)
+- Green valley: photo by Andrew Coelho (https://unsplash.com/photos/VB-w_3dnyvI)
+- Meadow path: photo by Drew Geraets (https://unsplash.com/photos/NtrxaEdbMXU)
+- Dandelions: photo by Jason Long (https://unsplash.com/photos/FOeDIUwYiSw)
+- Calm water: photo by Griffin Keller (https://unsplash.com/photos/7oS_26cb1Wo)
+- Evening field: photo by Kenneth Thewissen (https://unsplash.com/photos/D76DklsG-5U)
+- Pink sea: photo by Kelly Sikkema (https://unsplash.com/photos/X7dy114KWs4)
+- Glacier lake: photo by Tanvi Malik (https://unsplash.com/photos/OeC1wIsKNpk)
+- Golden hills: photo by David Marcu (https://unsplash.com/photos/GyALQFQ9cp4)
+- Woodland path: photo by Sonja Langford (https://unsplash.com/photos/L_F8jAsRWtU)
+- Sun in the grass: photo by Jake Givens (https://unsplash.com/photos/ocwmWiNAWGs)
+- Sky reflection: photo by Susanne Feldt (https://unsplash.com/photos/SIoHky3TPeo)
