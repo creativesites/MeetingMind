@@ -45,6 +45,25 @@ class BibleDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
         AppNotifications.ensureChannels(applicationContext)
         setForeground(foregroundInfo(0, 1, null))
 
+        // Open translations from the Free Use Bible API arrive in one file, streamed book by book.
+        if (HelloAo.isHelloAo(bibleId)) {
+            var last = 0L
+            val ok = runCatching {
+                library.importHelloAo(bibleId) { done, total ->
+                    val now = System.currentTimeMillis()
+                    if (now - last > 600 || done == total) {
+                        last = now
+                        setProgressAsync(workDataOf(KEY_DONE to done, KEY_TOTAL to total, KEY_UNIT to "books"))
+                        runCatching { setForegroundAsync(foregroundInfo(done, total, null)) }
+                    }
+                }
+            }.getOrDefault(false)
+            return if (ok) {
+                AppNotifications.bibleDownloadFinished(applicationContext, bibleId, info.abbreviation, ok = true); Result.success()
+            } else if (runAttemptCount < MAX_ATTEMPTS) Result.retry()
+            else { AppNotifications.bibleDownloadFinished(applicationContext, bibleId, info.abbreviation, ok = false); Result.failure() }
+        }
+
         val work = BibleBooks.all.filter { info.has(it) }.flatMap { b -> (1..b.chapterCount).map { b to it } }
         val done = AtomicInteger(work.count { (b, c) -> library.hasChapter(bibleId, b, c) })
         val failed = AtomicInteger(0)
@@ -106,6 +125,7 @@ class BibleDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
         const val KEY_DONE = "done"
         const val KEY_TOTAL = "total"
         const val KEY_ERROR = "error"
+        const val KEY_UNIT = "unit"
         const val TAG_ALL = "meetmind_bible_download"
         private const val PARALLEL = 4
         private const val MAX_ATTEMPTS = 10

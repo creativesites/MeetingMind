@@ -30,12 +30,170 @@ class BibleStore(context: Context, name: String? = FILE_NAME) :
         )
         db.execSQL("CREATE INDEX verses_by_chapter ON verses (bible_id, book, chapter, verse)")
         db.execSQL("CREATE VIRTUAL TABLE verses_fts USING fts4(text, tokenize=unicode61)")
+        createV2(db, addColumns = true)
+    }
+
+    /**
+     * Version 2 (PLAN_V2 F5): section headings, narrated audio, commentaries, cross-references and
+     * highlights. Additive only — existing downloads (and highlights, from now on) survive.
+     */
+    private fun createV2(db: SQLiteDatabase, addColumns: Boolean) {
+        if (addColumns) {
+            db.execSQL("ALTER TABLE bibles ADD COLUMN source TEXT")
+            db.execSQL("ALTER TABLE bibles ADD COLUMN language TEXT")
+        }
+        db.execSQL("CREATE TABLE IF NOT EXISTS headings (bible_id INTEGER NOT NULL, book TEXT NOT NULL, chapter INTEGER NOT NULL, before_verse INTEGER NOT NULL, text TEXT NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS headings_by_chapter ON headings (bible_id, book, chapter)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS audio (bible_id INTEGER NOT NULL, book TEXT NOT NULL, chapter INTEGER NOT NULL, narrator TEXT NOT NULL, url TEXT NOT NULL, timings TEXT NOT NULL, PRIMARY KEY (bible_id, book, chapter, narrator))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS commentary (source TEXT NOT NULL, book TEXT NOT NULL, chapter INTEGER NOT NULL, verse INTEGER NOT NULL, text TEXT NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS commentary_by_chapter ON commentary (source, book, chapter)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS commentary_chapters (source TEXT NOT NULL, book TEXT NOT NULL, chapter INTEGER NOT NULL, PRIMARY KEY (source, book, chapter))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS crossrefs (book TEXT NOT NULL, chapter INTEGER NOT NULL, verse INTEGER NOT NULL, to_book TEXT NOT NULL, to_chapter INTEGER NOT NULL, to_start INTEGER, to_end INTEGER, score INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS crossrefs_by_verse ON crossrefs (book, chapter, verse)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS crossref_chapters (book TEXT NOT NULL, chapter INTEGER NOT NULL, PRIMARY KEY (book, chapter))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS highlights (book TEXT NOT NULL, chapter INTEGER NOT NULL, verse INTEGER NOT NULL, color TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (book, chapter, verse))")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Everything here can be downloaded again, so a new layout simply starts over.
-        listOf("verses_fts", "verses", "chapters", "bibles").forEach { db.execSQL("DROP TABLE IF EXISTS $it") }
-        onCreate(db)
+        if (oldVersion < 2) createV2(db, addColumns = true)
+    }
+
+    // ---------------------------------------------------------------- v2: headings, audio
+
+    fun saveExtras(bibleId: Int, book: BibleBook, chapter: Int, headings: List<ChapterHeading>, audio: List<ChapterAudio>) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try { writeExtras(db, bibleId, book, chapter, headings, audio); db.setTransactionSuccessful() } finally { db.endTransaction() }
+    }
+
+    private fun writeExtras(db: SQLiteDatabase, bibleId: Int, book: BibleBook, chapter: Int, headings: List<ChapterHeading>, audio: List<ChapterAudio>) {
+        val args = arrayOf(bibleId.toString(), book.usfm, chapter.toString())
+        db.execSQL("DELETE FROM headings WHERE bible_id = ? AND book = ? AND chapter = ?", args)
+        headings.forEach { h -> db.insert("headings", null, ContentValues().apply { put("bible_id", bibleId); put("book", book.usfm); put("chapter", chapter); put("before_verse", h.beforeVerse); put("text", h.text) }) }
+        audio.forEach { a ->
+            db.insertWithOnConflict("audio", null, ContentValues().apply {
+                put("bible_id", bibleId); put("book", book.usfm); put("chapter", chapter); put("narrator", a.narrator); put("url", a.url)
+                put("timings", a.timings.joinToString(","))
+            }, SQLiteDatabase.CONFLICT_REPLACE)
+        }
+    }
+
+    fun headings(bibleId: Int, book: BibleBook, chapter: Int): List<ChapterHeading> = readableDatabase.rawQuery(
+        "SELECT before_verse, text FROM headings WHERE bible_id = ? AND book = ? AND chapter = ? ORDER BY before_verse", arrayOf(bibleId.toString(), book.usfm, chapter.toString())
+    ).use { c -> buildList { while (c.moveToNext()) add(ChapterHeading(c.getInt(0), c.getString(1))) } }
+
+    fun audio(bibleId: Int, book: BibleBook, chapter: Int): List<ChapterAudio> = readableDatabase.rawQuery(
+        "SELECT narrator, url, timings FROM audio WHERE bible_id = ? AND book = ? AND chapter = ?", arrayOf(bibleId.toString(), book.usfm, chapter.toString())
+    ).use { c -> buildList { while (c.moveToNext()) add(ChapterAudio(c.getString(0), c.getString(1), c.getString(2).split(',').mapNotNull { it.toDoubleOrNull() })) } }
+        .sortedByDescending { it.timings.isNotEmpty() }
+
+    /** Stores a whole book's chapters in one transaction — how a downloaded translation arrives. */
+    fun saveBook(info: BibleInfo, source: String?, chapters: List<Pair<ChapterContent, Pair<List<ChapterHeading>, List<ChapterAudio>>>>) {
+        if (!info.offlineAllowed) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            upsertBible(db, info, source)
+            for ((content, extras) in chapters) {
+                if (content.verses.isEmpty()) continue
+                writeChapter(db, info, content)
+                writeExtras(db, info.id, content.book, content.chapter, extras.first, extras.second)
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    private fun upsertBible(db: SQLiteDatabase, info: BibleInfo, source: String?) {
+        db.insertWithOnConflict("bibles", null, ContentValues().apply {
+            put("id", info.id); put("abbreviation", info.abbreviation); put("title", info.title); put("attribution", info.attribution)
+        }, SQLiteDatabase.CONFLICT_IGNORE)
+        if (source != null) db.execSQL("UPDATE bibles SET source = ? WHERE id = ?", arrayOf(source, info.id))
+    }
+
+    /** The external id a stored translation came from ("helloao:BSB"), when known. */
+    fun source(bibleId: Int): String? = readableDatabase.rawQuery("SELECT source FROM bibles WHERE id = ?", arrayOf(bibleId.toString()))
+        .use { if (it.moveToFirst()) it.getString(0) else null }
+
+    // ---------------------------------------------------------------- v2: commentary, cross-references
+
+    fun commentary(source: String, book: BibleBook, chapter: Int): List<CommentaryEntry>? {
+        val db = readableDatabase
+        val has = db.rawQuery("SELECT 1 FROM commentary_chapters WHERE source = ? AND book = ? AND chapter = ?", arrayOf(source, book.usfm, chapter.toString())).use { it.moveToFirst() }
+        if (!has) return null
+        return db.rawQuery("SELECT verse, text FROM commentary WHERE source = ? AND book = ? AND chapter = ? ORDER BY verse", arrayOf(source, book.usfm, chapter.toString()))
+            .use { c -> buildList { while (c.moveToNext()) add(CommentaryEntry(c.getInt(0), c.getString(1))) } }
+    }
+
+    fun saveCommentary(source: String, book: BibleBook, chapter: Int, entries: List<CommentaryEntry>) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL("DELETE FROM commentary WHERE source = ? AND book = ? AND chapter = ?", arrayOf(source, book.usfm, chapter.toString()))
+            entries.forEach { e -> db.insert("commentary", null, ContentValues().apply { put("source", source); put("book", book.usfm); put("chapter", chapter); put("verse", e.verse); put("text", e.text) }) }
+            db.insertWithOnConflict("commentary_chapters", null, ContentValues().apply { put("source", source); put("book", book.usfm); put("chapter", chapter) }, SQLiteDatabase.CONFLICT_IGNORE)
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    fun crossRefs(book: BibleBook, chapter: Int): List<CrossRef>? {
+        val db = readableDatabase
+        val has = db.rawQuery("SELECT 1 FROM crossref_chapters WHERE book = ? AND chapter = ?", arrayOf(book.usfm, chapter.toString())).use { it.moveToFirst() }
+        if (!has) return null
+        return db.rawQuery("SELECT verse, to_book, to_chapter, to_start, to_end, score FROM crossrefs WHERE book = ? AND chapter = ? ORDER BY verse, score DESC", arrayOf(book.usfm, chapter.toString()))
+            .use { c ->
+                buildList {
+                    while (c.moveToNext()) {
+                        val b = BibleBooks.byUsfm(c.getString(1)) ?: continue
+                        add(CrossRef(c.getInt(0), ScriptureReference(b, c.getInt(2), if (c.isNull(3)) null else c.getInt(3), if (c.isNull(4)) null else c.getInt(4)), c.getInt(5)))
+                    }
+                }
+            }
+    }
+
+    fun saveCrossRefs(book: BibleBook, chapter: Int, refs: List<CrossRef>) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL("DELETE FROM crossrefs WHERE book = ? AND chapter = ?", arrayOf(book.usfm, chapter.toString()))
+            refs.forEach { r ->
+                db.insert("crossrefs", null, ContentValues().apply {
+                    put("book", book.usfm); put("chapter", chapter); put("verse", r.fromVerse); put("to_book", r.to.usfm); put("to_chapter", r.to.chapter)
+                    r.to.verseStart?.let { put("to_start", it) }; r.to.verseEnd?.let { put("to_end", it) }; put("score", r.score)
+                })
+            }
+            db.insertWithOnConflict("crossref_chapters", null, ContentValues().apply { put("book", book.usfm); put("chapter", chapter) }, SQLiteDatabase.CONFLICT_IGNORE)
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    // ---------------------------------------------------------------- v2: highlights (the person's own)
+
+    fun highlights(book: BibleBook, chapter: Int): Map<Int, String> = readableDatabase.rawQuery(
+        "SELECT verse, color FROM highlights WHERE book = ? AND chapter = ?", arrayOf(book.usfm, chapter.toString())
+    ).use { c -> buildMap { while (c.moveToNext()) put(c.getInt(0), c.getString(1)) } }
+
+    fun setHighlight(book: BibleBook, chapter: Int, verses: IntRange, color: String?) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (v in verses) {
+                if (color == null) db.execSQL("DELETE FROM highlights WHERE book = ? AND chapter = ? AND verse = ?", arrayOf(book.usfm, chapter.toString(), v.toString()))
+                else db.insertWithOnConflict("highlights", null, ContentValues().apply { put("book", book.usfm); put("chapter", chapter); put("verse", v); put("color", color); put("created_at", System.currentTimeMillis()) }, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    /** Every highlight, newest first — for the Scripture page. */
+    fun allHighlights(limit: Int = 500): List<Triple<ScriptureReference, String, Long>> = readableDatabase.rawQuery(
+        "SELECT book, chapter, verse, color, created_at FROM highlights ORDER BY created_at DESC LIMIT ?", arrayOf(limit.toString())
+    ).use { c ->
+        buildList {
+            while (c.moveToNext()) {
+                val b = BibleBooks.byUsfm(c.getString(0)) ?: continue
+                add(Triple(ScriptureReference(b, c.getInt(1), c.getInt(2)), c.getString(3), c.getLong(4)))
+            }
+        }
     }
 
     fun chapter(info: BibleInfo, book: BibleBook, chapter: Int): ChapterContent? {
@@ -65,14 +223,22 @@ class BibleStore(context: Context, name: String? = FILE_NAME) :
     ).use { it.moveToFirst() }
 
     /** Stores one chapter, replacing any earlier copy. Refuses translations that may not be kept. */
-    fun saveChapter(info: BibleInfo, content: ChapterContent): Boolean {
+    fun saveChapter(info: BibleInfo, content: ChapterContent, source: String? = null): Boolean {
         if (!info.offlineAllowed || content.verses.isEmpty()) return false
         val db = writableDatabase
         db.beginTransaction()
         try {
-            db.insertWithOnConflict("bibles", null, ContentValues().apply {
-                put("id", info.id); put("abbreviation", info.abbreviation); put("title", info.title); put("attribution", info.attribution)
-            }, SQLiteDatabase.CONFLICT_IGNORE)
+            upsertBible(db, info, source)
+            writeChapter(db, info, content)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return true
+    }
+
+    private fun writeChapter(db: SQLiteDatabase, info: BibleInfo, content: ChapterContent) {
+        run {
             deleteChapter(db, info.id, content.book.usfm, content.chapter)
             val bookIndex = BibleBooks.all.indexOf(content.book)
             for (v in content.verses) {
@@ -84,11 +250,7 @@ class BibleStore(context: Context, name: String? = FILE_NAME) :
                 db.insert("verses_fts", null, ContentValues().apply { put("docid", rowId); put("text", v.text) })
             }
             db.insert("chapters", null, ContentValues().apply { put("bible_id", info.id); put("book", content.book.usfm); put("chapter", content.chapter) })
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
         }
-        return true
     }
 
     private fun deleteChapter(db: SQLiteDatabase, bibleId: Int, book: String, chapter: Int) {
@@ -125,6 +287,8 @@ class BibleStore(context: Context, name: String? = FILE_NAME) :
             db.execSQL("DELETE FROM verses_fts WHERE docid IN (SELECT id FROM verses WHERE bible_id = ?)", args)
             db.execSQL("DELETE FROM verses WHERE bible_id = ?", args)
             db.execSQL("DELETE FROM chapters WHERE bible_id = ?", args)
+            db.execSQL("DELETE FROM headings WHERE bible_id = ?", args)
+            db.execSQL("DELETE FROM audio WHERE bible_id = ?", args)
             db.execSQL("DELETE FROM bibles WHERE id = ?", args)
             db.setTransactionSuccessful()
         } finally {
@@ -155,7 +319,7 @@ class BibleStore(context: Context, name: String? = FILE_NAME) :
 
     companion object {
         const val FILE_NAME = "bible_offline.db"
-        private const val VERSION = 1
+        private const val VERSION = 2
 
         /** Builds an FTS query from what the person typed, keeping only letters, digits and quoted phrases. */
         fun ftsQuery(query: String): String? {

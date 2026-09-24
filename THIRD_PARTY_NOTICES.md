@@ -121,3 +121,16 @@ needed. They were obtained through Lorem Picsum and were resized and re-encoded 
 - Woodland path: photo by Sonja Langford (https://unsplash.com/photos/L_F8jAsRWtU)
 - Sun in the grass: photo by Jake Givens (https://unsplash.com/photos/ocwmWiNAWGs)
 - Sky reflection: photo by Susanne Feldt (https://unsplash.com/photos/SIoHky3TPeo)
+
+## Free Use Bible API (bible.helloao.org)
+
+Translations, audio narrations, commentaries and cross-references are fetched from the Free Use
+Bible API by the AO Lab, which allows free use, including commercial use, without a key. Each
+translation is shown with its own name and licence link.
+
+- **Commentaries** (Matthew Henry, Jamieson-Fausset-Brown, Adam Clarke, John Gill, John Calvin,
+  Keil & Delitzsch): public domain. Tyndale Open Study Notes are used under their open licence.
+- **Cross-references**: the Open Bible Cross References dataset (openbible.info), licensed
+  CC BY 4.0 and adapted by the Free Use Bible API.
+- **Audio narrations and verse timings**: served by the Free Use Bible API and openbible.com
+  for the Berean Standard Bible.

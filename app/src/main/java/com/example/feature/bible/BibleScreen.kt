@@ -13,6 +13,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -206,6 +211,9 @@ fun BibleScreen(
                     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(ref.display(), text))
                     Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
                 },
+                onHighlight = { color -> viewModel.highlight(color) },
+                onStudy = { viewModel.openStudy(ref) },
+                onListenHere = if (viewModel.extras.value.audio.isNotEmpty()) ({ viewModel.listen(ref.verseStart); viewModel.clearSelection() }) else null,
                 onShare = {
                     val text = ready?.result?.content?.let { quote(it, ref) } ?: ref.display()
                     runCatching {
@@ -217,6 +225,10 @@ fun BibleScreen(
         }
     }
 
+    val study by viewModel.study.collectAsState()
+    study?.let { st ->
+        StudySheet(st, onCommentary = viewModel::chooseCommentary, onOpen = { r -> viewModel.closeStudy(); viewModel.open(r.book, r.chapter, r.verseStart, r.verseEnd) }, onDismiss = { viewModel.closeStudy() })
+    }
     if (versionSheet) {
         VersionSheet(
             viewModel = viewModel,
@@ -270,6 +282,10 @@ private fun quote(content: ChapterContent, ref: ScriptureReference): String =
 @Composable
 private fun Reader(viewModel: BibleViewModel, content: ChapterState, selection: IntRange?) {
     val focus by viewModel.focus.collectAsState()
+    val extras by viewModel.extras.collectAsState()
+    val reading by viewModel.readingVerse.collectAsState()
+    val playing by viewModel.audioPlaying.collectAsState()
+    val narrator by viewModel.narrator.collectAsState()
     when (content) {
         ChapterState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(26.dp))
@@ -280,12 +296,19 @@ private fun Reader(viewModel: BibleViewModel, content: ChapterState, selection: 
         }
         is ChapterState.Ready -> {
             val c = content.result.content
-            val paragraphs = remember(c) { paragraphsOf(c.verses) }
+            val headingAt = remember(extras.headings) { extras.headings.associate { it.beforeVerse to it.text } }
+            val paragraphs = remember(c, headingAt) { paragraphsOf(c.verses, headingAt.keys) }
             val listState = rememberLazyListState()
             LaunchedEffect(c, focus) {
                 val target = focus ?: return@LaunchedEffect
                 val index = paragraphs.indexOfFirst { p -> p.any { it.number >= target } }
                 if (index >= 0) listState.scrollToItem(index + 1)
+            }
+            // Follow the narrator: keep the verse being read in view.
+            LaunchedEffect(reading) {
+                val v = reading ?: return@LaunchedEffect
+                val index = paragraphs.indexOfFirst { p -> p.any { it.number == v } }
+                if (index >= 0 && listState.layoutInfo.visibleItemsInfo.none { it.index == index + 1 }) listState.animateScrollToItem(index + 1)
             }
             LazyColumn(state = listState, contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 24.dp), modifier = Modifier.fillMaxSize().testTag("bible_reader")) {
                 item {
@@ -293,10 +316,14 @@ private fun Reader(viewModel: BibleViewModel, content: ChapterState, selection: 
                         "${bookLabel(c.book)} ${c.chapter}", fontSize = 28.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold,
                         color = Ink, modifier = Modifier.padding(top = 10.dp, bottom = 12.dp)
                     )
+                    if (extras.audio.isNotEmpty()) ListenRow(extras.audio, narrator, playing, onListen = { viewModel.listen() }, onNarrator = viewModel::chooseNarrator)
                 }
                 items(paragraphs) { verses ->
+                    headingAt[verses.first().number]?.let { h ->
+                        Text(h, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(top = 10.dp, bottom = 8.dp))
+                    }
                     Text(
-                        text = paragraphText(verses, selection) { viewModel.tapVerse(it) },
+                        text = paragraphText(verses, selection, extras.highlights, reading) { viewModel.tapVerse(it) },
                         fontSize = 19.sp, lineHeight = 31.sp, fontFamily = FontFamily.Serif, color = Ink,
                         modifier = Modifier.padding(start = if (verses.first().poetry) 14.dp else 0.dp, bottom = 12.dp)
                     )
@@ -330,22 +357,32 @@ private fun ChapterStep(label: String, icon: androidx.compose.ui.graphics.vector
 }
 
 /** Groups verses into the paragraphs (and poetry stanzas) the translation sets them in. */
-internal fun paragraphsOf(verses: List<ChapterVerse>): List<List<ChapterVerse>> {
+internal fun paragraphsOf(verses: List<ChapterVerse>, headingVerses: Set<Int> = emptySet()): List<List<ChapterVerse>> {
     val out = mutableListOf<MutableList<ChapterVerse>>()
     for (v in verses) {
         val last = out.lastOrNull()
-        if (last == null || v.paragraph || v.poetry != last.last().poetry || v.poetry) out += mutableListOf(v) else last += v
+        if (last == null || v.paragraph || v.number in headingVerses || v.poetry != last.last().poetry || v.poetry) out += mutableListOf(v) else last += v
     }
     return out
 }
 
-private fun paragraphText(verses: List<ChapterVerse>, selection: IntRange?, onTap: (Int) -> Unit): AnnotatedString = buildAnnotatedString {
+/** The colours a verse can be highlighted in, by name (stored as the name). */
+val HighlightColors = linkedMapOf(
+    "yellow" to Color(0xFFFFF1A6), "green" to Color(0xFFD4F5D9), "blue" to Color(0xFFD6E8FF), "pink" to Color(0xFFFFDDE6), "purple" to Color(0xFFE9DDFF)
+)
+
+private fun paragraphText(verses: List<ChapterVerse>, selection: IntRange?, highlights: Map<Int, String> = emptyMap(), reading: Int? = null, onTap: (Int) -> Unit): AnnotatedString = buildAnnotatedString {
     verses.forEachIndexed { i, v ->
         val selected = selection != null && v.number in selection
+        val bg = when {
+            selected -> SelectedWash
+            v.number == reading -> Color(0xFFFFE7A3)
+            else -> highlights[v.number]?.let { HighlightColors[it] } ?: Color.Transparent
+        }
         withLink(
             LinkAnnotation.Clickable(
                 tag = "v${v.number}",
-                styles = TextLinkStyles(style = SpanStyle(color = Ink, background = if (selected) SelectedWash else Color.Transparent)),
+                styles = TextLinkStyles(style = SpanStyle(color = Ink, background = bg)),
                 linkInteractionListener = { onTap(v.number) }
             )
         ) {
@@ -367,13 +404,34 @@ private fun SelectionBar(
     onSave: () -> Unit,
     onCopy: () -> Unit,
     onShare: () -> Unit,
-    onClear: () -> Unit
+    onClear: () -> Unit,
+    onHighlight: (String?) -> Unit = {},
+    onStudy: () -> Unit = {},
+    onListenHere: (() -> Unit)? = null
 ) {
     Surface(color = Color.White, shadowElevation = 10.dp, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(reference.display(), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
                 IconButton(onClick = onClear) { Icon(Icons.Filled.Close, contentDescription = "Clear selection", tint = InkSecondary) }
+            }
+            // Highlight colours, then study and listen.
+            Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HighlightColors.forEach { (name, color) ->
+                    Box(Modifier.size(28.dp).clip(CircleShape).background(color).border(1.dp, Color(0x22000000), CircleShape).clickable { onHighlight(name) }.testTag("highlight_$name"))
+                }
+                Box(Modifier.size(28.dp).clip(CircleShape).border(1.dp, Line, CircleShape).clickable { onHighlight(null) }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Close, contentDescription = "Remove highlight", tint = InkMuted, modifier = Modifier.size(14.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                Surface(onClick = onStudy, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("bible_study")) {
+                    Text("Study", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                }
+                onListenHere?.let { go ->
+                    Surface(onClick = go, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line)) {
+                        Text("Listen here", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                    }
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Surface(onClick = onPrimary, shape = RoundedCornerShape(12.dp), color = Ink, modifier = Modifier.weight(1.6f).testTag("bible_insert")) {
@@ -605,8 +663,9 @@ private fun VersionSheet(
                         Text(
                             when {
                                 stored?.complete == true -> "On your phone · searchable"
-                                downloading -> "Downloading… ${download?.done ?: 0}/${download?.total ?: 0}"
+                                downloading -> "Downloading… ${download?.done ?: 0}/${download?.total ?: 0} ${download?.unit ?: ""}"
                                 stored != null -> "${stored.chapters} chapters saved as you read"
+                                com.example.core.scripture.HelloAo.isHelloAo(b.id) -> "Free to keep · read online or download"
                                 b.offlineAllowed -> "Online · can be downloaded"
                                 else -> "Online only"
                             },
@@ -621,6 +680,113 @@ private fun VersionSheet(
                     }
                 }
             }
+            item { MoreTranslations(viewModel, onChosen = onDismiss) }
+        }
+    }
+}
+
+@Composable
+private fun ListenRow(audio: List<com.example.core.scripture.ChapterAudio>, narrator: String?, playing: Boolean, onListen: () -> Unit, onNarrator: (String) -> Unit) {
+    val current = audio.firstOrNull { it.narrator == narrator } ?: audio.first()
+    Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Surface(onClick = onListen, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.testTag("bible_listen")) {
+            Row(Modifier.padding(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (playing) "Pause" else "Listen", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(audio.size) { i ->
+                val a = audio[i]
+                val on = a.narrator == current.narrator
+                Surface(onClick = { onNarrator(a.narrator) }, shape = RoundedCornerShape(50), color = if (on) Gold.copy(alpha = 0.16f) else Color.White, border = BorderStroke(1.dp, if (on) Gold else Line)) {
+                    Text(a.narrator.replaceFirstChar { it.uppercase() } + if (a.timings.isEmpty()) "" else " ·", fontSize = 12.sp, color = if (on) Ink else InkSecondary, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                }
+            }
+        }
+    }
+}
+
+/** A verse's cross-references (Open Bible, CC BY) and what the classic commentators say. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StudySheet(state: StudyState, onCommentary: (String) -> Unit, onOpen: (ScriptureReference) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+        LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding().testTag("study_sheet"), contentPadding = PaddingValues(horizontal = 22.dp, vertical = 4.dp)) {
+            item {
+                Text(state.reference.display(), fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
+                Text("SEE ALSO", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
+            }
+            val refs = state.crossRefs
+            when {
+                refs == null -> item { CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.padding(8.dp).size(20.dp)) }
+                refs.isEmpty() -> item { Text(if (state.offline) "Connect once to load cross-references for this chapter." else "No cross-references for this verse.", fontSize = 14.sp, color = InkSecondary) }
+                else -> items(refs.size) { i ->
+                    val (r, text) = refs[i]
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onOpen(r.to) }.padding(vertical = 8.dp)) {
+                        Text(r.to.display(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                        text?.let { Text(it, fontSize = 15.sp, lineHeight = 22.sp, fontFamily = FontFamily.Serif, color = InkSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+                    }
+                }
+            }
+            item {
+                Text("Cross-references: Open Bible (openbible.info), CC BY 4.0.", fontSize = 10.5.sp, color = InkMuted, modifier = Modifier.padding(top = 4.dp))
+                Text("WHAT COMMENTATORS SAY", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp))
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(com.example.core.scripture.HelloAo.commentaries.size) { i ->
+                        val c = com.example.core.scripture.HelloAo.commentaries[i]
+                        val on = c.id == state.commentaryId
+                        Surface(onClick = { onCommentary(c.id) }, shape = RoundedCornerShape(50), color = if (on) Ink else Color.White, border = BorderStroke(1.dp, if (on) Ink else Line)) {
+                            Text(c.short, fontSize = 12.5.sp, color = if (on) Color.White else InkSecondary, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                        }
+                    }
+                }
+                val name = com.example.core.scripture.HelloAo.commentaries.firstOrNull { it.id == state.commentaryId }?.name
+                when {
+                    state.loadingCommentary -> CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.padding(12.dp).size(20.dp))
+                    state.commentary.isNullOrBlank() -> Text(if (state.commentary == null) "Connect once to load this commentary for the chapter." else "$name has nothing on this verse.", fontSize = 14.sp, color = InkSecondary, modifier = Modifier.padding(top = 10.dp))
+                    else -> Text(state.commentary, fontSize = 15.sp, lineHeight = 23.sp, fontFamily = FontFamily.Serif, color = Ink, modifier = Modifier.padding(top = 10.dp))
+                }
+                Text("$name — public domain, via the Free Use Bible API.", fontSize = 10.5.sp, color = InkMuted, modifier = Modifier.padding(top = 10.dp, bottom = 24.dp))
+            }
+        }
+    }
+}
+
+/** Every translation in the Free Use Bible API, searchable by name or language. */
+@Composable
+private fun MoreTranslations(viewModel: BibleViewModel, onChosen: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    val catalog by viewModel.catalog.collectAsState()
+    Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp)) {
+        Surface(onClick = { open = !open; if (open) viewModel.loadCatalog() }, shape = RoundedCornerShape(14.dp), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = Modifier.fillMaxWidth().testTag("more_translations")) {
+            Column(Modifier.padding(14.dp)) {
+                Text("More translations & languages", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                Text("1,200+ open translations from the Free Use Bible API — free to keep on your phone.", fontSize = 12.sp, color = InkSecondary)
+            }
+        }
+        if (open) {
+            androidx.compose.material3.OutlinedTextField(
+                value = query, onValueChange = { query = it }, singleLine = true, placeholder = { Text("Search: Spanish, KJV, Swahili…") },
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+            )
+            val q = query.trim().lowercase()
+            val shown = catalog.filter { t -> q.isEmpty() || listOf(t.name, t.englishName, t.shortName, t.languageName, t.language).any { it.lowercase().contains(q) } }
+                .sortedWith(compareBy({ it.language != "eng" }, { it.languageName }, { it.shortName }))
+            if (catalog.isEmpty()) Text("Loading the catalogue… (needs a connection the first time)", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 10.dp))
+            shown.take(80).forEach { t ->
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { viewModel.chooseTranslation(t); onChosen() }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${t.shortName} · ${t.languageName}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                        Text(t.name + if (t.books < 66) " · ${t.books} books" else "", fontSize = 12.sp, color = InkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    IconButton(onClick = { viewModel.downloadTranslation(t) }) { Icon(Icons.Filled.CloudDownload, contentDescription = "Download ${t.shortName}", tint = Ink) }
+                }
+            }
+            if (shown.size > 80) Text("Keep typing to narrow ${shown.size} translations.", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(vertical = 6.dp))
         }
     }
 }

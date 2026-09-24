@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.first
  * The app's one way to get verse text: the person's chosen translation, the provider's session
  * cache, and a single shared provider for the whole process.
  */
-class ScriptureService(context: Context, private val provider: ScriptureProvider = library(context)) {
+class ScriptureService(private val context: Context, private val provider: ScriptureProvider = library(context)) {
     private val prefs = UserPreferencesManager(context.applicationContext)
 
     val isConfigured: Boolean get() = provider.isConfigured
@@ -26,7 +26,11 @@ class ScriptureService(context: Context, private val provider: ScriptureProvider
     suspend fun passage(reference: ScriptureReference, versionId: Int? = null): PassageResult =
         provider.passage(reference, versionId ?: defaultVersionId())
 
-    suspend fun verseOfTheDay(dayOfYear: Int): ScriptureReference? = provider.verseOfTheDay(dayOfYear)
+    /** Today's verse: YouVersion's when reachable, else the key verse of the day's classic reading — so it works offline. */
+    suspend fun verseOfTheDay(dayOfYear: Int): ScriptureReference? =
+        runCatching { provider.verseOfTheDay(dayOfYear) }.getOrNull()
+            ?: com.example.core.devotional.ClassicDevotionals.get(context.applicationContext)
+                .forDate(java.time.LocalDate.ofYearDay(java.time.LocalDate.now().year, dayOfYear.coerceIn(1, 365)))?.reference
 
     /** Verse text for exports, fetched at export time and never stored (PLAN_V1 §7). */
     fun passageSource(): PassageSource = PassageSource { ref -> exportPassage(ref) }
@@ -44,7 +48,10 @@ class ScriptureService(context: Context, private val provider: ScriptureProvider
 
         /** One library per process: the YouVersion session cache in front, the phone's store behind. */
         fun library(context: Context): BibleLibrary = shared ?: synchronized(this) {
-            shared ?: BibleLibrary(YouVersionScriptureProvider(), BibleStore.get(context.applicationContext)).also { shared = it }
+            shared ?: BibleLibrary(
+                YouVersionScriptureProvider(), BibleStore.get(context.applicationContext),
+                HelloAoClient(), java.io.File(context.applicationContext.filesDir, "helloao_catalog.json")
+            ).also { shared = it }
         }
     }
 }

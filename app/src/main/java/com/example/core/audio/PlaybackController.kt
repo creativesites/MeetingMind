@@ -106,7 +106,7 @@ object PlaybackController {
     private var segmentsRecordingId: String? = null
     private var segments: List<TranscriptSegment> = emptyList()
 
-    private data class PlayRequest(val recordingId: String, val title: String, val file: File, val seekToMs: Long?)
+    private data class PlayRequest(val recordingId: String, val title: String, val uri: Uri, val seekToMs: Long?)
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -149,7 +149,7 @@ object PlaybackController {
                     refreshFromPlayer()
                     pendingPlayRequest?.let { req ->
                         pendingPlayRequest = null
-                        playInternal(req.recordingId, req.title, req.file, req.seekToMs)
+                        playInternal(req.recordingId, req.title, req.uri, req.seekToMs)
                     }
                 } catch (e: Exception) {
                     _state.value = _state.value.copy(phase = PlaybackPhase.ERROR, errorMessage = "Could not connect to playback service.")
@@ -176,6 +176,11 @@ object PlaybackController {
             _state.value = PlaybackState(phase = PlaybackPhase.ERROR, recordingId = recordingId, title = title, errorMessage = "Audio file is missing.")
             return
         }
+        playUriAt(context, recordingId, title, Uri.fromFile(file), positionMs)
+    }
+
+    /** Streams [uri] (an audio Bible chapter, say) through the same single player. */
+    fun playUriAt(context: Context, recordingId: String, title: String, uri: Uri, positionMs: Long?) {
         ensureConnected(context)
         val controller = mediaController
         val alreadyLoaded = isRecordingReadyToResume(
@@ -186,7 +191,7 @@ object PlaybackController {
             phase = _state.value.phase
         )
         if (controller == null) {
-            pendingPlayRequest = PlayRequest(recordingId, title, file, positionMs)
+            pendingPlayRequest = PlayRequest(recordingId, title, uri, positionMs)
             _state.value = PlaybackState(phase = PlaybackPhase.LOADING, recordingId = recordingId, title = title)
             return
         }
@@ -200,16 +205,16 @@ object PlaybackController {
             refreshFromPlayer()
             return
         }
-        playInternal(recordingId, title, file, positionMs)
+        playInternal(recordingId, title, uri, positionMs)
     }
 
-    private fun playInternal(recordingId: String, title: String, file: File, seekToMs: Long?) {
+    private fun playInternal(recordingId: String, title: String, uri: Uri, seekToMs: Long?) {
         val controller = mediaController ?: return
         pendingSeekMs = seekToMs
         _state.value = PlaybackState(phase = PlaybackPhase.LOADING, recordingId = recordingId, title = title)
         val mediaItem = MediaItem.Builder()
             .setMediaId(recordingId)
-            .setUri(Uri.fromFile(file))
+            .setUri(uri)
             .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
             .build()
         controller.setMediaItem(mediaItem)

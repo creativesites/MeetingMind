@@ -579,6 +579,32 @@ fun FaithScriptureScreen(viewModel: FaithViewModel, onNavigateBack: () -> Unit, 
                 item { SectionTitle("Collections", top = 10.dp) }
                 items(collections, key = { "c-" + it.id }) { c -> CollectionRow(c.id, c.name, viewModel, onVerse = { sheet = it }) }
             }
+            item {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val highlights by androidx.compose.runtime.produceState(emptyList<Triple<ScriptureReference, String, Long>>()) {
+                    value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { com.example.core.scripture.BibleStore.get(context).allHighlights(60) }.getOrDefault(emptyList()) }
+                }
+                if (highlights.isNotEmpty()) {
+                    SectionTitle("Highlighted", trailing = "${highlights.size}", top = 22.dp)
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // Consecutive highlighted verses of one colour read as one passage.
+                        val merged = highlights.sortedWith(compareBy({ BibleBooks.all.indexOf(it.first.book) }, { it.first.chapter }, { it.first.verseStart })).fold(mutableListOf<Triple<ScriptureReference, String, Long>>()) { acc, h ->
+                            val last = acc.lastOrNull()
+                            val lr = last?.first
+                            if (lr != null && lr.book == h.first.book && lr.chapter == h.first.chapter && last.second == h.second && (lr.verseEnd ?: lr.verseStart!!) + 1 == h.first.verseStart)
+                                acc[acc.size - 1] = Triple(lr.copy(verseEnd = h.first.verseStart), last.second, last.third)
+                            else acc += h
+                            acc
+                        }
+                        merged.forEach { (ref, color, _) ->
+                            Surface(onClick = { sheet = ref }, shape = RoundedCornerShape(50), color = com.example.feature.bible.HighlightColors[color] ?: AccentWash) {
+                                Text(ref.display(), fontSize = 12.sp, color = Ink, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                            }
+                        }
+                    }
+                }
+            }
             item { SectionTitle("In your notes", trailing = "${refs.size}", top = 22.dp) }
             if (byBook.isEmpty()) item { Text("References from sermons and notes appear here, book by book.", color = InkSecondary, modifier = Modifier.padding(horizontal = 20.dp)) }
             byBook.forEach { (book, list) ->

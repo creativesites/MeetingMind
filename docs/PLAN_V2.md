@@ -498,7 +498,7 @@ update (a new `docs/PLAN_V2.md` recording these decisions), commit and push.
 | F2 | Daily devotional engine | done (v24) |
 | F3 | Voice: the preacher | done (v25) |
 | F4 | Stories and share studio | done (v25) |
-| F5 | Offline Bible library (HelloAO) | |
+| F5 | Offline Bible library (HelloAO) | done (v27) |
 | F6 | Reading plans, prayer list, widgets | |
 | F7 | Talk it through (Gemini Live) | done (v26, with Pray with me) |
 

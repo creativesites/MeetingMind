@@ -42,8 +42,25 @@ sealed interface ChapterState {
     data class Missing(val message: String, val offline: Boolean) : ChapterState
 }
 
-/** A download in progress or waiting for a connection. */
-data class DownloadState(val bibleId: Int, val done: Int, val total: Int, val waiting: Boolean)
+/** A download in progress or waiting for a connection. [unit] is "chapters" or "books". */
+data class DownloadState(val bibleId: Int, val done: Int, val total: Int, val waiting: Boolean, val unit: String = "chapters")
+
+/** What the reader shows around the text: section headings, narrations and the person's highlights. */
+data class ReaderExtras(
+    val headings: List<com.example.core.scripture.ChapterHeading> = emptyList(),
+    val audio: List<com.example.core.scripture.ChapterAudio> = emptyList(),
+    val highlights: Map<Int, String> = emptyMap()
+)
+
+/** The study sheet for a verse: cross-references and commentary. */
+data class StudyState(
+    val reference: ScriptureReference,
+    val crossRefs: List<Pair<com.example.core.scripture.CrossRef, String?>>? = null,
+    val commentaryId: String = com.example.core.scripture.HelloAo.commentaries.first().id,
+    val commentary: String? = null,
+    val loadingCommentary: Boolean = true,
+    val offline: Boolean = false
+)
 
 data class SearchState(
     val query: String = "",
@@ -108,8 +125,9 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
             DownloadState(
                 info.id,
                 w.progress.getInt(BibleDownloadWorker.KEY_DONE, 0),
-                w.progress.getInt(BibleDownloadWorker.KEY_TOTAL, 1189),
-                waiting = w.state == WorkInfo.State.ENQUEUED
+                w.progress.getInt(BibleDownloadWorker.KEY_TOTAL, if (com.example.core.scripture.HelloAo.isHelloAo(info.id)) 66 else 1189),
+                waiting = w.state == WorkInfo.State.ENQUEUED,
+                unit = w.progress.getString(BibleDownloadWorker.KEY_UNIT) ?: if (com.example.core.scripture.HelloAo.isHelloAo(info.id)) "books" else "chapters"
             )
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -201,6 +219,7 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
                 is ChapterResult.Found -> ChapterState.Ready(r)
                 is ChapterResult.Unavailable -> ChapterState.Missing(r.message, r.reason == com.example.core.scripture.PassageResult.Reason.OFFLINE)
             }
+            loadExtras(info.id, book, chapter)
         }
     }
 
@@ -260,6 +279,111 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
             refreshOffline(); refreshCanSearch()
         }
     }
+
+    // ---------------------------------------------------------------- F5: headings, audio, highlights, study
+
+    private val _extras = MutableStateFlow(ReaderExtras())
+    val extras: StateFlow<ReaderExtras> = _extras.asStateFlow()
+
+    private suspend fun loadExtras(bibleId: Int, book: BibleBook, chapter: Int) {
+        val headings = runCatching { library.headings(bibleId, book, chapter) }.getOrDefault(emptyList())
+        val highlights = withContext(Dispatchers.IO) { runCatching { store.highlights(book, chapter) }.getOrDefault(emptyMap()) }
+        _extras.value = ReaderExtras(headings, emptyList(), highlights)
+        val audio = runCatching { library.audio(bibleId, book, chapter) }.getOrDefault(emptyList())
+        if (_book.value == book && _chapter.value == chapter) _extras.value = _extras.value.copy(audio = audio)
+    }
+
+    private val _narrator = MutableStateFlow(place.getString("narrator", null))
+    val narrator: StateFlow<String?> = _narrator.asStateFlow()
+
+    fun chooseNarrator(name: String) { _narrator.value = name; place.edit().putString("narrator", name).apply() }
+
+    private fun playbackId() = "bible:${_current.value?.id}:${_book.value.usfm}:${_chapter.value}"
+
+    private fun chosenAudio(): com.example.core.scripture.ChapterAudio? {
+        val all = _extras.value.audio
+        return all.firstOrNull { it.narrator == _narrator.value } ?: all.firstOrNull()
+    }
+
+    /** The verse being read aloud right now, for highlighting and following. */
+    val readingVerse: StateFlow<Int?> = kotlinx.coroutines.flow.combine(com.example.core.audio.PlaybackController.state, _extras, _narrator) { p, _, _ ->
+        if (p.recordingId != playbackId() || p.phase != com.example.core.audio.PlaybackPhase.PLAYING && p.phase != com.example.core.audio.PlaybackPhase.PAUSED) null
+        else chosenAudio()?.verseAt(p.positionMs)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val audioPlaying: StateFlow<Boolean> = com.example.core.audio.PlaybackController.state.map { it.recordingId == playbackId() && it.isPlaying }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** Plays the chapter aloud (from [verse] when given); tapping again pauses. */
+    fun listen(verse: Int? = null) {
+        val audio = chosenAudio() ?: return
+        val state = com.example.core.audio.PlaybackController.state.value
+        if (verse == null && state.recordingId == playbackId() && state.isPlaying) { com.example.core.audio.PlaybackController.pause(); return }
+        val title = "${if (_book.value.usfm == "PSA") "Psalm" else _book.value.name} ${_chapter.value} · ${_current.value?.abbreviation ?: ""}"
+        val at = verse?.let { audio.startOf(it) }
+        com.example.core.audio.PlaybackController.playUriAt(getApplication(), playbackId(), title, android.net.Uri.parse(audio.url), at ?: if (state.recordingId == playbackId()) null else 0L)
+    }
+
+    /** Colours the selected verses ([color] null clears them). */
+    fun highlight(color: String?) {
+        val range = _selection.value ?: return
+        val book = _book.value; val chapter = _chapter.value
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { store.setHighlight(book, chapter, range, color) }
+            _extras.value = _extras.value.copy(highlights = withContext(Dispatchers.IO) { store.highlights(book, chapter) })
+            clearSelection()
+        }
+    }
+
+    private val _study = MutableStateFlow<StudyState?>(null)
+    val study: StateFlow<StudyState?> = _study.asStateFlow()
+
+    /** Opens the study sheet for the selected (or given) verse. */
+    fun openStudy(reference: ScriptureReference? = selectedReference()) {
+        val ref = reference ?: return
+        val commentaryId = place.getString("commentary", null) ?: com.example.core.scripture.HelloAo.commentaries.first().id
+        _study.value = StudyState(ref, commentaryId = commentaryId)
+        viewModelScope.launch {
+            val verse = ref.verseStart ?: 1
+            val refs = library.crossRefs(ref.book, ref.chapter)
+            val mine = refs?.filter { it.fromVerse in verse..(ref.verseEnd ?: verse) }?.sortedByDescending { it.score }?.distinctBy { it.to }?.take(12)
+            val bibleId = _current.value?.id
+            val withText = mine?.map { r ->
+                r to (bibleId?.let { id -> (runCatching { library.passage(r.to, id) }.getOrNull() as? com.example.core.scripture.PassageResult.Found)?.passage?.text })
+            }
+            _study.value = _study.value?.copy(crossRefs = withText ?: emptyList(), offline = refs == null)
+        }
+        loadCommentary(commentaryId)
+    }
+
+    fun chooseCommentary(id: String) {
+        place.edit().putString("commentary", id).apply()
+        loadCommentary(id)
+    }
+
+    private fun loadCommentary(id: String) {
+        val s = _study.value ?: return
+        _study.value = s.copy(commentaryId = id, loadingCommentary = true, commentary = null)
+        viewModelScope.launch {
+            val entries = library.commentary(id, s.reference.book, s.reference.chapter)
+            val verse = s.reference.verseStart ?: 1
+            // An entry speaks to its verse and on to the next entry.
+            val text = entries?.lastOrNull { it.verse <= verse }?.text ?: entries?.firstOrNull()?.text
+            _study.value = _study.value?.copy(commentary = text ?: if (entries == null) null else "", loadingCommentary = false, offline = _study.value?.offline == true || entries == null)
+        }
+    }
+
+    fun closeStudy() { _study.value = null }
+
+    /** The free catalogue, for "More translations". */
+    private val _catalog = MutableStateFlow<List<com.example.core.scripture.HelloAoTranslation>>(emptyList())
+    val catalog: StateFlow<List<com.example.core.scripture.HelloAoTranslation>> = _catalog.asStateFlow()
+
+    fun loadCatalog() = viewModelScope.launch { _catalog.value = runCatching { library.helloAoCatalog() }.getOrDefault(emptyList()) }
+
+    fun chooseTranslation(t: com.example.core.scripture.HelloAoTranslation) = chooseBible(t.info())
+
+    fun downloadTranslation(t: com.example.core.scripture.HelloAoTranslation) = BibleDownloadWorker.enqueue(getApplication(), t.intId, wifiOnly = false)
 
     private fun refreshOffline() {
         viewModelScope.launch {
