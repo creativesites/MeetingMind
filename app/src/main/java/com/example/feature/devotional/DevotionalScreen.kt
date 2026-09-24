@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Tune
@@ -86,7 +87,8 @@ fun DevotionalScreen(
     viewModel: DevotionalViewModel,
     onNavigateBack: () -> Unit,
     onOpenNote: (String) -> Unit,
-    onReadPassage: (ScriptureReference) -> Unit
+    onReadPassage: (ScriptureReference) -> Unit,
+    onShare: (com.example.feature.share.ShareRequest) -> Unit = {}
 ) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(Unit) { viewModel.ensureToday() }
@@ -101,7 +103,8 @@ fun DevotionalScreen(
         onRewrite = viewModel::rewrite,
         onFeedback = { d, v -> viewModel.feedback(d, v) },
         onSaveResponse = { d, t -> viewModel.saveResponse(d, t) },
-        onListen = { viewModel.listen() }
+        onListen = { viewModel.listen() },
+        onShare = { t -> onShare(shareRequest(t, viewModel.audioPath(t), viewModel.coverPath(t))) }
     )
     if (showSettings) DevotionalSettingsSheet(
         profile = state.profile,
@@ -121,6 +124,7 @@ fun DevotionalContent(
     onFeedback: (DailyDevotional, String?) -> Unit,
     onSaveResponse: (DailyDevotional, String) -> Unit,
     onListen: () -> Unit = {},
+    onShare: (DailyDevotional) -> Unit = {},
     /** Verse text is fetched live; screenshots pass false to keep the page deterministic. */
     liveScripture: Boolean = true
 ) {
@@ -134,7 +138,8 @@ fun DevotionalContent(
             }
         }
         item {
-            Hero(state.date, state.season, today?.devotional, writing = state.writing && today == null) {
+            val cover = today?.let { t -> t.note.metadata[com.example.core.repository.NoteRepository.COVER_KEY]?.let { id -> t.document.attachments.firstOrNull { it.id == id }?.path } }
+            Hero(state.date, state.season, today?.devotional, writing = state.writing && today == null, cover = cover) {
                 if (today != null && today.devotional.origin != DevotionalOrigin.MINE && today.devotional.origin != DevotionalOrigin.CARE) ListenPill(state.voice, onListen)
             }
         }
@@ -174,7 +179,7 @@ fun DevotionalContent(
                     item { Response(today, onSaveResponse) }
                     item { Feedback(today, onFeedback) }
                 }
-                item { Footer(today, onOpenNote, onRewrite) }
+                item { Footer(today, onOpenNote, onRewrite, onShare) }
             }
         }
         item { Spacer(Modifier.height(40.dp)) }
@@ -184,15 +189,18 @@ fun DevotionalContent(
 private val DATE = DateTimeFormatter.ofPattern("EEEE, d MMMM")
 
 @Composable
-private fun Hero(date: LocalDate, season: LiturgicalDay?, d: Devotional?, writing: Boolean, actions: @Composable () -> Unit = {}) {
+private fun Hero(date: LocalDate, season: LiturgicalDay?, d: Devotional?, writing: Boolean, cover: String? = null, actions: @Composable () -> Unit = {}) {
     val tint = season?.season?.color?.let { Color(it) } ?: Gold
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(28.dp))
             .background(Brush.linearGradient(listOf(Night, Color(0xFF2B2140), Color(0xFF3A2A1A))))
     ) {
-        Box(Modifier.align(Alignment.TopEnd).size(220.dp).offset(x = 70.dp, y = (-60).dp)
+        if (cover != null) {
+            coil.compose.AsyncImage(model = java.io.File(cover), contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.matchParentSize())
+            Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.25f), Night.copy(alpha = 0.85f)))))
+        } else Box(Modifier.align(Alignment.TopEnd).size(220.dp).offset(x = 70.dp, y = (-60).dp)
             .background(Brush.radialGradient(listOf(Gold.copy(alpha = 0.55f), Color.Transparent)), CircleShape))
-        Column(Modifier.padding(22.dp)) {
+        Column(Modifier.padding(start = 22.dp, end = 22.dp, bottom = 22.dp, top = if (cover != null) 120.dp else 22.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(date.format(DATE), fontSize = 13.sp, color = Color.White.copy(alpha = 0.75f), fontWeight = FontWeight.Medium)
                 season?.let {
@@ -425,7 +433,7 @@ private fun FeedbackChip(icon: androidx.compose.ui.graphics.vector.ImageVector?,
 }
 
 @Composable
-private fun Footer(today: DailyDevotional, onOpenNote: (String) -> Unit, onRewrite: () -> Unit) {
+private fun Footer(today: DailyDevotional, onOpenNote: (String) -> Unit, onRewrite: () -> Unit, onShare: (DailyDevotional) -> Unit) {
     val d = today.devotional
     Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
         val line = when (d.origin) {
@@ -438,7 +446,13 @@ private fun Footer(today: DailyDevotional, onOpenNote: (String) -> Unit, onRewri
         today.note.metadata["devotionalFallback"]?.let {
             Text(it, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted, fontStyle = FontStyle.Italic, modifier = Modifier.padding(top = 6.dp))
         }
-        Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Surface(onClick = { onShare(today) }, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.padding(top = 14.dp).testTag("devotional_share")) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(8.dp))
+                Text("Share to WhatsApp, Instagram…", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Surface(onClick = { onOpenNote(today.note.id) }, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Color(0xFFE2E8F0))) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.EditNote, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
@@ -459,4 +473,21 @@ private fun Footer(today: DailyDevotional, onOpenNote: (String) -> Unit, onRewri
 fun DevotionalProfile.summary(): String = buildString {
     append(source.label)
     append(" · ${minutes} min · ${tone.label}")
+}
+
+/** What sharing a devotional sends: its word for today (or opening), titled, with its label. */
+internal fun shareRequest(t: DailyDevotional, audioPath: String?, coverPath: String?): com.example.feature.share.ShareRequest {
+    val d = t.devotional
+    val text = d.keyText?.takeIf { d.origin == DevotionalOrigin.CLASSIC }
+        ?: d.motivation
+        ?: d.reflection.firstOrNull()?.let { p -> p.split(Regex("(?<=[.!?])\\s+")).fold("") { acc, s -> if (acc.length > 180) acc else "$acc $s" }.trim() }
+        ?: d.title
+    val ref = listOfNotNull(d.title.takeIf { it != text }, d.scripture.firstOrNull()?.display()).joinToString(" · ").ifBlank { null }
+    return com.example.feature.share.ShareRequest(
+        content = com.example.core.share.ShareCardContent("Today's devotional", text, ref, d.label, quoted = d.origin == DevotionalOrigin.CLASSIC),
+        theme = listOfNotNull(d.title, d.scripture.firstOrNull()?.display()).joinToString(", "),
+        background = coverPath?.let { com.example.core.share.BackgroundSpec.Photo(it) },
+        audioPath = audioPath,
+        caption = "${d.title} — ${d.label}"
+    )
 }

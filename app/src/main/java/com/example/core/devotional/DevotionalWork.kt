@@ -95,6 +95,7 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
                 val replace = inputData.getBoolean(KEY_REPLACE, false)
                 val written = runCatching { repo.ensure(LocalDate.now(), replace = replace) }.getOrNull()
                 if (written == null) return if (runAttemptCount < 2) Result.retry() else Result.failure()
+                if (profile.autoImage) runCatching { repo.paint(written, profile) }
                 if (profile.voice.autoVoice && written.note.metadata[DevotionalVoice.META_AUDIO] == null) {
                     runCatching { DevotionalVoice(applicationContext).record(written) }
                 }

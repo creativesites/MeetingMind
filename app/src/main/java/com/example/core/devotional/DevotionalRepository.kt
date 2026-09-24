@@ -211,6 +211,29 @@ class DevotionalRepository(
         }
     }
 
+    /**
+     * Paints the day's picture with Gemini and makes it the devotional's cover — it becomes the
+     * story background, the timeline card and the share card's first choice. No-op offline.
+     */
+    suspend fun paint(daily: DailyDevotional, profile: DevotionalProfile): Boolean {
+        if (daily.note.metadata[NoteRepository.COVER_KEY] != null) return true
+        val images = com.example.core.share.ImageBackgrounds(context)
+        if (!images.available()) return false
+        val style = runCatching { com.example.core.share.ImageStyle.valueOf(profile.imageStyle) }.getOrDefault(com.example.core.share.ImageStyle.LANDSCAPE)
+        val theme = listOfNotNull(daily.devotional.title, daily.devotional.scripture.firstOrNull()?.display(), daily.devotional.motivation).joinToString(" — ")
+        val target = java.io.File(java.io.File(context.filesDir, "devotional_images").apply { mkdirs() }, "${daily.note.id}.png")
+        val file = (images.generate(theme, style, com.example.core.share.ShareFormat.STORY, target) as? com.example.ai.common.AiResult.Success)?.value ?: return false
+        val attachment = notes.addAttachment(
+            com.example.core.model.Attachment(
+                id = NoteRepository.newId("att"), noteId = daily.note.id, kind = com.example.core.model.AttachmentKind.IMAGE, path = file.path,
+                mimeType = "image/png", sizeBytes = file.length(), caption = "Picture for ${daily.devotional.title} (AI-generated)", createdAt = System.currentTimeMillis()
+            )
+        )
+        val fresh = notes.getNote(daily.note.id) ?: return false
+        notes.updateNote(fresh.copy(metadata = fresh.metadata + (NoteRepository.COVER_KEY to attachment.id)))
+        return true
+    }
+
     suspend fun setFeedback(daily: DailyDevotional, value: String?) {
         val meta = if (value == null) daily.note.metadata - DevotionalNotes.META_FEEDBACK else daily.note.metadata + (DevotionalNotes.META_FEEDBACK to value)
         notes.updateNote(daily.note.copy(metadata = meta))

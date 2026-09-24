@@ -39,6 +39,13 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.VolunteerActivism
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -104,8 +111,10 @@ fun TodayScreen(
     onRecordEvent: (noteId: String, type: RecordingType, title: String, speakers: Int?) -> Unit,
     onSearch: () -> Unit,
     onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit,
-    onOpenDevotional: () -> Unit = {}
+    onOpenDevotional: () -> Unit = {},
+    onOpenStories: (com.example.feature.stories.StoryKind?) -> Unit = {}
 ) {
+    val storyKinds by viewModel.stories.collectAsState()
     val devotional by viewModel.devotional.collectAsState()
     val identity by viewModel.identity.collectAsState()
     val look = LocalAppLook.current
@@ -204,6 +213,10 @@ fun TodayScreen(
                 Surface(onClick = { viewModel.setFocus(TodayFocus.ALL) }, shape = CircleShape, color = look.accentSoft, modifier = Modifier.padding(start = 20.dp, top = 6.dp)) {
                     Text("Showing ${focus.label} · tap for everything", color = look.accent, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
                 }
+            }
+
+            if (storyKinds.isNotEmpty()) item(key = "stories") {
+                StoryRings(storyKinds, onOpenStories)
             }
 
             // For you: rhythms, memories, the week, recordings in progress, the calendar invitation.
@@ -471,4 +484,48 @@ private fun LayersSheet(
             }
         }
     }
+}
+
+/** Today's stories as rings, like the apps people already know. Watched ones dim. */
+@Composable
+private fun StoryRings(kinds: List<com.example.feature.stories.StoryKind>, onOpen: (com.example.feature.stories.StoryKind?) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val seen = remember(kinds) { com.example.feature.stories.StoriesSeen.seen(context) }
+    androidx.compose.foundation.lazy.LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp).testTag("story_rings")
+    ) {
+        items(kinds.size) { i ->
+            val kind = kinds[i]
+            val watched = kind.name in seen
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { onOpen(kind) }) {
+                Box(
+                    Modifier.size(64.dp).clip(CircleShape)
+                        .background(if (watched) androidx.compose.ui.graphics.SolidColor(Color(0xFFE2E8F0)) else Brush.sweepGradient(listOf(Color(0xFFF6D365), Color(0xFFE1306C), Color(0xFF7C3AED), Color(0xFFF6D365))))
+                        .padding(3.dp).clip(CircleShape).background(Color.White).padding(2.dp).clip(CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                        drawIntoCanvas {
+                            com.example.core.share.BackgroundPack.draw(it.nativeCanvas, com.example.core.share.BackgroundPack.forDay(java.time.LocalDate.now().toEpochDay(), i + 1), size.width.toInt(), size.height.toInt())
+                        }
+                    }
+                    Icon(storyIcon(kind), contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                }
+                Text(kind.ring, fontSize = 11.5.sp, color = if (watched) Color(0xFF94A3B8) else Color(0xFF0F172A), modifier = Modifier.padding(top = 5.dp), maxLines = 1)
+            }
+        }
+    }
+}
+
+private fun storyIcon(kind: com.example.feature.stories.StoryKind): ImageVector = when (kind) {
+    com.example.feature.stories.StoryKind.VERSE -> Icons.Filled.MenuBook
+    com.example.feature.stories.StoryKind.DEVOTIONAL -> Icons.Filled.WbSunny
+    com.example.feature.stories.StoryKind.PRAYER -> Icons.Filled.VolunteerActivism
+    com.example.feature.stories.StoryKind.WORD -> Icons.Filled.AutoAwesome
+    com.example.feature.stories.StoryKind.QUOTE -> Icons.Filled.FormatQuote
+    com.example.feature.stories.StoryKind.DAY -> Icons.Filled.Event
+    com.example.feature.stories.StoryKind.PRAYING_FOR -> Icons.Filled.Favorite
+    com.example.feature.stories.StoryKind.MEMORY -> Icons.Filled.History
+    com.example.feature.stories.StoryKind.RECAP -> Icons.Filled.Mic
 }

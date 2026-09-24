@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -110,7 +111,8 @@ fun FaithScreen(
     onOpenBible: () -> Unit = {},
     onSearchBible: () -> Unit = {},
     onReadPassage: (ScriptureReference) -> Unit = {},
-    onOpenDevotional: () -> Unit = {}
+    onOpenDevotional: () -> Unit = {},
+    onShare: (com.example.feature.share.ShareRequest) -> Unit = {}
 ) {
     val votd by viewModel.verseOfTheDay.collectAsState()
     val devotional by viewModel.todayDevotional.collectAsState()
@@ -146,6 +148,14 @@ fun FaithScreen(
                 VerseOfTheDayCard(
                     votd = votd,
                     onRead = { votd?.let { onReadPassage(it.reference) } },
+                    onShare = {
+                        val v = votd
+                        val found = v?.passage as? PassageResult.Found
+                        if (v != null && found != null) onShare(com.example.feature.share.ShareRequest(
+                            com.example.core.share.ShareCardContent("Verse of the day", found.passage.text, "${v.reference.display()} · ${found.passage.versionAbbreviation}", found.passage.attribution),
+                            theme = found.passage.text.take(200)
+                        ))
+                    },
                     onStartDevotional = { votd?.let { v -> viewModel.startDevotional(v.reference, onOpenNote) } }
                 )
             }
@@ -327,7 +337,7 @@ private fun TodayDevotionalCard(today: com.example.core.devotional.Devotional?, 
 }
 
 @Composable
-private fun VerseOfTheDayCard(votd: VerseOfTheDay?, onRead: () -> Unit, onStartDevotional: () -> Unit) {
+private fun VerseOfTheDayCard(votd: VerseOfTheDay?, onRead: () -> Unit, onStartDevotional: () -> Unit, onShare: () -> Unit = {}) {
     Surface(shape = RoundedCornerShape(24.dp), color = Ink, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 18.dp)) {
         Column(Modifier.clickable(enabled = votd != null, onClick = onRead).padding(20.dp)) {
             Text("VERSE OF THE DAY", fontSize = 11.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE9C46A))
@@ -344,10 +354,18 @@ private fun VerseOfTheDayCard(votd: VerseOfTheDay?, onRead: () -> Unit, onStartD
                         fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White, modifier = Modifier.padding(top = 10.dp)
                     )
                     found?.let { Text(it.passage.attribution, fontSize = 9.sp, lineHeight = 12.sp, color = Color.White.copy(alpha = 0.5f), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp)) }
-                    Surface(onClick = onStartDevotional, shape = RoundedCornerShape(50), color = Color.White, modifier = Modifier.padding(top = 16.dp)) {
-                        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.WbSunny, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
-                            Text("  Start a devotional", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                    Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(onClick = onStartDevotional, shape = RoundedCornerShape(50), color = Color.White) {
+                            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.WbSunny, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
+                                Text("  Write on it", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                            }
+                        }
+                        if (found != null) Surface(onClick = onShare, shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.14f), modifier = Modifier.padding(start = 10.dp)) {
+                            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Text("  Share", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                            }
                         }
                     }
                 }

@@ -21,6 +21,10 @@ object Routes {
     const val FAITH_SCRIPTURE = "faith_scripture"
     const val BIBLE = "bible?ref={ref}&search={search}"
     const val DEVOTIONAL = "devotional"
+    const val STORIES = "stories?start={start}"
+    const val SHARE = "share"
+
+    fun storiesRoute(start: String? = null) = "stories" + (start?.let { "?start=$it" } ?: "")
 
     /** Sentinel used when [MEETING_DETAIL]'s optional startAtMs query arg is absent — NavType.LongType has no nullable variant. */
     const val NO_START_AT_MS = -1L

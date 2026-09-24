@@ -497,7 +497,7 @@ update (a new `docs/PLAN_V2.md` recording these decisions), commit and push.
 | — | Polish: classic cards, covers, Day view, Begin, inline reading, multi-verse, exports | done (v23) |
 | F2 | Daily devotional engine | done (v24) |
 | F3 | Voice: the preacher | done (v25) |
-| F4 | Stories and share studio | |
+| F4 | Stories and share studio | done (v25) |
 | F5 | Offline Bible library (HelloAO) | |
 | F6 | Reading plans, prayer list, widgets | |
 | F7 | Talk it through (Gemini Live) | |

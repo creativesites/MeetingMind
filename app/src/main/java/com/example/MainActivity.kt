@@ -267,7 +267,8 @@ fun MeetMindApp() {
                 onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
                 onSearch = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SEARCH) },
                 onNavigateBottomNav = navigateToPrimary,
-                onOpenDevotional = { navController.navigate(Routes.DEVOTIONAL) }
+                onOpenDevotional = { navController.navigate(Routes.DEVOTIONAL) },
+                onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) }
             )
         }
 
@@ -312,9 +313,44 @@ fun MeetMindApp() {
                     onOpenBible = { navController.navigate(Routes.bibleRoute()) },
                     onSearchBible = { navController.navigate(Routes.bibleRoute(search = true)) },
                     onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },
-                    onOpenDevotional = { navController.navigate(Routes.DEVOTIONAL) }
+                    onOpenDevotional = { navController.navigate(Routes.DEVOTIONAL) },
+                    onShare = { req -> com.example.feature.share.ShareRequests.pending = req; navController.navigate(Routes.SHARE) }
                 )
             }
+        }
+        composable(
+            Routes.STORIES,
+            arguments = listOf(navArgument("start") { type = NavType.StringType; nullable = true; defaultValue = null })
+        ) { backStackEntry ->
+            val vm: com.example.feature.stories.StoriesViewModel = viewModel()
+            val start = backStackEntry.arguments?.getString("start")?.let { s -> com.example.feature.stories.StoryKind.entries.firstOrNull { it.name == s } }
+            com.example.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
+                com.example.feature.stories.StoriesScreen(
+                    viewModel = vm,
+                    startAt = start,
+                    onClose = { navController.popBackStack() },
+                    onOpen = { o ->
+                        navController.popBackStack()
+                        when (o) {
+                            com.example.feature.stories.StoryOpen.Devotional -> navController.navigate(Routes.DEVOTIONAL)
+                            is com.example.feature.stories.StoryOpen.Note -> navController.navigate(Routes.noteRoute(o.id))
+                            is com.example.feature.stories.StoryOpen.Recording -> navController.navigate(Routes.meetingDetailRoute(o.id))
+                            is com.example.feature.stories.StoryOpen.Passage -> navController.navigate(Routes.bibleRoute(o.reference.passageId()))
+                        }
+                    },
+                    onShare = { story ->
+                        story.share?.let { c ->
+                            com.example.feature.share.ShareRequests.pending = com.example.feature.share.ShareRequest(c, theme = story.title ?: story.body.take(160), background = story.background)
+                            navController.navigate(Routes.SHARE)
+                        }
+                    }
+                )
+            }
+        }
+        composable(Routes.SHARE) {
+            val request = remember { com.example.feature.share.ShareRequests.pending }
+            if (request == null) LaunchedEffect(Unit) { navController.popBackStack() }
+            else com.example.feature.share.ShareStudioScreen(request = request, onNavigateBack = { navController.popBackStack() })
         }
         composable(Routes.DEVOTIONAL) {
             val vm: com.example.feature.devotional.DevotionalViewModel = viewModel()
@@ -323,7 +359,8 @@ fun MeetMindApp() {
                     viewModel = vm,
                     onNavigateBack = { navController.popBackStack() },
                     onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
-                    onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) }
+                    onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },
+                    onShare = { req -> com.example.feature.share.ShareRequests.pending = req; navController.navigate(Routes.SHARE) }
                 )
             }
         }
@@ -416,6 +453,7 @@ fun MeetMindApp() {
             )
             com.example.feature.notes.editor.NoteEditorScreen(
                 viewModel = vm,
+                onShareCard = { req -> com.example.feature.share.ShareRequests.pending = req; navController.navigate(Routes.SHARE) },
                 onNavigateBack = { navController.popBackStack() },
                 onOpenRecording = { meetingId, startAtMs -> navController.navigate(Routes.meetingDetailRoute(meetingId, startAtMs)) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },

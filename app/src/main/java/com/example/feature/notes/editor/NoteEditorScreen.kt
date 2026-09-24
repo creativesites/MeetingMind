@@ -124,7 +124,8 @@ fun NoteEditorScreen(
     onOpenNote: (noteId: String) -> Unit,
     onRecordHere: (noteId: String) -> Unit,
     /** Opens straight into the photo picker, for "New → Photo or video". */
-    startWithMediaPicker: Boolean = false
+    startWithMediaPicker: Boolean = false,
+    onShareCard: (com.example.feature.share.ShareRequest) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -313,6 +314,18 @@ fun NoteEditorScreen(
                             coverPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
                         })
                         DropdownMenuItem(text = { Text("AI tools") }, leadingIcon = { Icon(Icons.Filled.AutoAwesome, null, tint = Accent) }, onClick = { showMenu = false; showAiMenu = true })
+                        DropdownMenuItem(text = { Text("Share as a picture") }, leadingIcon = { Icon(Icons.Filled.Image, null) }, onClick = {
+                            showMenu = false
+                            note?.let { n ->
+                                val body = n.plainText.lineSequence().map { it.trim() }
+                                    .filter { it.isNotEmpty() && it != n.title.trim() && it !in com.example.core.model.Workflows.template(n.workflow).sections.map { s -> s.title } }
+                                    .joinToString(" ").take(300).ifBlank { n.title }
+                                onShareCard(com.example.feature.share.ShareRequest(
+                                    com.example.core.share.ShareCardContent(n.workflow.displayName, body, n.title.takeIf { it.isNotBlank() && it != body }, null, quoted = false),
+                                    theme = n.title.ifBlank { body.take(120) }
+                                ))
+                            }
+                        })
                         DropdownMenuItem(text = { Text("Export & share") }, leadingIcon = { Icon(Icons.Filled.IosShare, null) }, onClick = { showMenu = false; showExport = true })
                         DropdownMenuItem(text = { Text("Move to notebook") }, leadingIcon = { Icon(Icons.Filled.Folder, null) }, onClick = { showMenu = false; showNotebooks = true })
                         DropdownMenuItem(text = { Text("Tags") }, leadingIcon = { Icon(Icons.Outlined.Tag, null) }, onClick = { showMenu = false; showTags = true })

@@ -3,10 +3,14 @@
   What the FileProvider may hand to other apps, and nothing more:
   - recordings (filesDir/meetings/) so a recording's audio can be shared;
   - note media (filesDir/notes/) so a photo or video in a note can be opened in a viewer;
-  - exports (cacheDir/exports/) so an exported PDF or Word file can be shared.
+  - exports (cacheDir/exports/) so an exported PDF or Word file can be shared;
+  - share cards (cacheDir/shares/), devotional audio and pictures, for the share studio.
 -->
 <paths>
     <files-path name="recordings" path="meetings/" />
     <files-path name="notes" path="notes/" />
     <cache-path name="exports" path="exports/" />
+    <cache-path name="shares" path="shares/" />
+    <files-path name="devotional_audio" path="devotional_audio/" />
+    <files-path name="devotional_images" path="devotional_images/" />
 </paths>

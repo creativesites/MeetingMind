@@ -121,12 +121,28 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val paths = mutableMapOf<String, String?>()
+
+    /** The devotional's recorded voice, if any (resolved in the background, cached). */
+    fun audioPath(t: DailyDevotional): String? = attachmentPath(t, com.example.core.devotional.DevotionalVoice.META_AUDIO)
+    fun coverPath(t: DailyDevotional): String? = attachmentPath(t, com.example.core.repository.NoteRepository.COVER_KEY)
+
+    private fun attachmentPath(t: DailyDevotional, key: String): String? {
+        val id = t.note.metadata[key] ?: return null
+        return t.document.attachments.firstOrNull { it.id == id }?.path?.takeIf { java.io.File(it).exists() }
+    }
+
     fun rewrite() {
         requested.value = true
         DevotionalScheduler.writeNow(getApplication(), replace = true)
     }
 
-    fun opened(daily: DailyDevotional) = viewModelScope.launch { runCatching { repo.markOpened(daily) } }
+    fun opened(daily: DailyDevotional) = viewModelScope.launch {
+        runCatching { repo.markOpened(daily) }
+        // Written offline earlier? Paint the picture now that we may be online.
+        val profile = state.value.profile
+        if (profile.autoImage && daily.devotional.origin != com.example.core.devotional.DevotionalOrigin.CARE) runCatching { repo.paint(daily, profile) }
+    }
 
     fun feedback(daily: DailyDevotional, value: String?) = viewModelScope.launch { repo.setFeedback(daily, value) }
 

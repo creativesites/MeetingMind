@@ -1,8 +1,35 @@
 # Installable builds
 
-`MeetingMind-v24-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v25-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
 
-## What's new in v24
+## What's new in v25
+
+- **Listen to your devotional** (the Listen button on the devotional). It's read by one of five
+  preacher voices: warm pastor, gentle friend, bold preacher, calm teacher or storyteller. Each
+  comes as a male or female voice and has a pace setting. The Scripture is read in full from
+  the Bible text. The prayer is prayed aloud, with a pause before the Amen, and the word for
+  today comes last. Gemini's voices are used in Internet mode; otherwise your phone's own voice
+  reads it. It keeps playing with the screen locked, and the mini-player follows you around
+  the app. You can have it recorded every morning so it starts instantly (⚙ → Read aloud by).
+- **Today's stories.** Rings under the Home hero open full-screen stories: Verse of the Day,
+  today's devotional, a prayer, a word for today, a quote, your day, who you're praying for,
+  on this day, and your latest meeting recap. Tap to move, hold to pause, swipe down to close,
+  swipe up to open.
+- **Share studio.** Share the Verse of the Day, your devotional, a story, or any note (⋮ →
+  Share as a picture) as a beautiful card:
+  - Formats: Story/Status, square or wide.
+  - Backgrounds: 16 built-in, your own photo, or a new picture painted by Gemini (landscape,
+    abstract light, watercolour, minimal).
+  - Fonts: Lora, Playfair, Inter and Outfit.
+  - Size, alignment and shade controls.
+  - Send it straight to WhatsApp (including Status), Instagram Stories, your photos or any
+    app. The devotional's audio can be shared too, and arrives on WhatsApp as a voice
+    message.
+  - Bible translations and sources are always credited on the card.
+- **A picture for each day.** In Internet mode, each devotional gets its own painted picture.
+  It becomes the devotional's cover, its story background and its share card.
+
+## What was new in v24
 
 - **A daily devotional** (Faith → Today's devotional, or the card on Home). Each day brings
   Scripture, a reflection, "Today I will", a prayer, a word for today, a quote from the great

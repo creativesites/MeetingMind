@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -140,6 +141,22 @@ class TodayViewModel(application: Application) : AndroidViewModel(application) {
             combine(database.noteDao().observeActive(), database.meetingDao().getAllMeetings(), layers, view, _focus) { _, _, _, _, _ -> Unit }
                 .debounce(250)
                 .collect { reload() }
+        }
+        viewModelScope.launch {
+            // Stories follow who the app is for, and today's devotional.
+            combine(identity, devotional) { i, d -> i.spaces to d?.note?.id }.distinctUntilChanged().debounce(400).collect { loadStories() }
+        }
+    }
+
+    /** Today's stories, for the rings under the hero (PLAN_V2 F4). */
+    private val _stories = MutableStateFlow<List<com.example.feature.stories.StoryKind>>(emptyList())
+    val stories: StateFlow<List<com.example.feature.stories.StoryKind>> = _stories.asStateFlow()
+
+    fun loadStories() {
+        viewModelScope.launch {
+            _stories.value = runCatching {
+                com.example.feature.stories.StoryBuilder(getApplication(), database).build(identity.value).map { it.kind }
+            }.getOrDefault(emptyList())
         }
     }
 

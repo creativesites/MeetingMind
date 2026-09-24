@@ -76,7 +76,10 @@ data class DevotionalProfile(
     /** Topics the person asked for more of ("More like this"). */
     val moreOf: Set<String> = emptySet(),
     /** How it's read aloud (PLAN_V2 F3). */
-    val voice: com.example.ai.voice.VoiceSettings = com.example.ai.voice.VoiceSettings()
+    val voice: com.example.ai.voice.VoiceSettings = com.example.ai.voice.VoiceSettings(),
+    /** Paint a picture for each day's devotional with Gemini (Internet mode only) (PLAN_V2 F4). */
+    val autoImage: Boolean = true,
+    val imageStyle: String = "LANDSCAPE"
 ) {
     val words: Int get() = when { minutes <= 3 -> 280; minutes <= 7 -> 650; else -> 1100 }
 
@@ -88,6 +91,7 @@ data class DevotionalProfile(
         put("sharePrivate", sharePrivateWithCloud); put("less", JSONArray(lessOf.toList())); put("more", JSONArray(moreOf.toList()))
         put("voiceStyle", voice.style.name); put("voiceGender", voice.gender.name); put("speakPrayer", voice.speakPrayer)
         put("autoVoice", voice.autoVoice); put("rate", voice.rate.toDouble())
+        put("autoImage", autoImage); put("imageStyle", imageStyle)
     }.toString()
 
     companion object {
@@ -120,7 +124,9 @@ data class DevotionalProfile(
                     speakPrayer = o.optBoolean("speakPrayer", d.voice.speakPrayer),
                     autoVoice = o.optBoolean("autoVoice", d.voice.autoVoice),
                     rate = o.optDouble("rate", d.voice.rate.toDouble()).toFloat().coerceIn(0.7f, 1.3f)
-                )
+                ),
+                autoImage = o.optBoolean("autoImage", d.autoImage),
+                imageStyle = o.optString("imageStyle", d.imageStyle).ifBlank { d.imageStyle }
             )
         }
     }

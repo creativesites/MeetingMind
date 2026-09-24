@@ -116,6 +116,12 @@ fun DevotionalSettingsSheet(profile: DevotionalProfile, onSave: (DevotionalProfi
 
             VoiceSection(p.voice) { p = p.copy(voice = it) }
 
+            Label("Picture")
+            ToggleRow("Paint a picture for each day", "Made by Gemini when Internet mode is on; used for stories and sharing", p.autoImage) { p = p.copy(autoImage = it) }
+            if (p.autoImage) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.example.core.share.ImageStyle.entries.forEach { s -> Chip(s.label, p.imageStyle == s.name) { p = p.copy(imageStyle = s.name) } }
+            }
+
             Label("Tradition")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Tradition.entries.forEach { t -> Chip(t.label, p.tradition == t) { p = p.copy(tradition = t) } }

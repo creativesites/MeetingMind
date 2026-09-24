@@ -68,3 +68,23 @@ MeetingMind incorporates the following open-source runtimes, models, and librari
 `app/src/main/res/font/inter_*.ttf` (Inter, © The Inter Project Authors) and
 `app/src/main/res/font/outfit_*.ttf` (Outfit, © The Outfit Project Authors), latin subsets from
 Fontsource. Licensed under the SIL Open Font License 1.1: https://openfontlicense.org
+Copies of Inter and Outfit are also in `app/src/main/assets/fonts/`, where the share-card renderer loads them.
+
+## Lora and Playfair Display fonts
+
+`app/src/main/assets/fonts/lora*.ttf` (Lora, © The Lora Project Authors) and
+`app/src/main/assets/fonts/playfair.ttf` (Playfair Display, © The Playfair Project Authors), taken
+from the google/fonts repository. Licensed under the SIL Open Font License 1.1: https://openfontlicense.org
+
+## Morning and Evening (C. H. Spurgeon, 1865)
+
+`app/src/main/assets/devotionals/spurgeon_morning_evening.json.gz` holds the text of Spurgeon's
+*Morning and Evening: Daily Readings* (1865), which is in the public domain. The text was taken
+from the Christian Classics Ethereal Library edition (ccel.org), keeping only the plain text of
+each reading; none of CCEL's markup or editorial apparatus is included.
+
+## Quotes
+
+`app/src/main/assets/devotionals/quotes.json` contains short quotations from public-domain
+writers and hymns, published before 1929 or by authors who died more than 70 years ago. Each
+one is shown with its author and source.
