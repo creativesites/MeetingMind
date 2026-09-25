@@ -21,3 +21,4 @@ meetingmind-upload-key.jks
 *.jks
 *.p12
 local.properties
+*.aab
