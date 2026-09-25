@@ -16,3 +16,8 @@
 local.properties
 .env
 debug.keystore
+# Signing credentials (local only)
+meetingmind-upload-key.jks
+*.jks
+*.p12
+local.properties

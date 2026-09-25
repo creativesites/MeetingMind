@@ -33,15 +33,18 @@ android {
       props.getProperty("youversion.appKey") ?: System.getenv("YOUVERSION_APP_KEY") ?: ""
     }
     buildConfigField("String", "YOUVERSION_APP_KEY", "\"${youVersionKey.replace("\"", "")}\"")
+    // System Gemini API key for closed testing (via SYSTEM_GEMINI_API_KEY env var)
+    val systemGeminiKey = System.getenv("SYSTEM_GEMINI_API_KEY") ?: ""
+    buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"${systemGeminiKey.replace("\"", "")}\"")
+    buildConfigField("Boolean", "SYSTEM_GEMINI_MODE", "true")
   }
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
+      storeFile = file("${rootDir}/meetingmind-upload-key.jks")
+      storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "Higibertigibet22491#"
       keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      keyPassword = System.getenv("KEY_PASSWORD") ?: "Higibertigibet22491#"
     }
   }
 
