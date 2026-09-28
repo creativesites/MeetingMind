@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
@@ -165,12 +166,14 @@ fun NoteEditorScreen(
     val recordings by viewModel.recordings.collectAsState()
     val linkedTitles by viewModel.linkedTitles.collectAsState()
     val message by viewModel.message.collectAsState()
+    val aiEdit by viewModel.aiEdit.collectAsState()
 
     var showInsert by remember { mutableStateOf(false) }
     var showLink by remember { mutableStateOf(false) }
     var showTags by remember { mutableStateOf(false) }
     var showNotebooks by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
+    var showCopyAs by remember { mutableStateOf(false) }
     var showExcerpts by remember { mutableStateOf(false) }
     var showNoteLinks by remember { mutableStateOf(false) }
     var showScriptureEntry by remember { mutableStateOf(false) }
@@ -332,6 +335,7 @@ fun NoteEditorScreen(
                                 ))
                             }
                         })
+                        DropdownMenuItem(text = { Text("Copy as…") }, leadingIcon = { Icon(Icons.Filled.ContentCopy, null) }, onClick = { showMenu = false; showCopyAs = true })
                         DropdownMenuItem(text = { Text("Export & share") }, leadingIcon = { Icon(Icons.Filled.IosShare, null) }, onClick = { showMenu = false; showExport = true })
                         DropdownMenuItem(text = { Text("Move to notebook") }, leadingIcon = { Icon(Icons.Filled.Folder, null) }, onClick = { showMenu = false; showNotebooks = true })
                         DropdownMenuItem(text = { Text("Tags") }, leadingIcon = { Icon(Icons.Outlined.Tag, null) }, onClick = { showMenu = false; showTags = true })
@@ -357,6 +361,7 @@ fun NoteEditorScreen(
                         canUndo = canUndo,
                         canRedo = canRedo,
                         onInsert = { showInsert = true },
+                        onAiEdit = { viewModel.startAiEdit() },
                         onInline = viewModel::toggleInline,
                         onLink = { showLink = true },
                         onBlockType = viewModel::toggleBlockType,
@@ -561,6 +566,27 @@ fun NoteEditorScreen(
         onPick = { viewModel.moveToNotebook(it.id); showNotebooks = false },
         onCreate = { name -> viewModel.createNotebookAndMove(name); showNotebooks = false },
         onDismiss = { showNotebooks = false }
+    )
+    aiEdit?.let { edit ->
+        AiEditSheet(
+            edit = edit,
+            onRun = viewModel::runAiEdit,
+            onReplace = { viewModel.applyAiEdit(replace = true) },
+            onInsertBelow = { viewModel.applyAiEdit(replace = false) },
+            onDismiss = viewModel::dismissAiEdit
+        )
+    }
+    if (showCopyAs) CopyAsSheet(
+        onPick = { kind ->
+            val (text, html) = viewModel.copyText(kind)
+            val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+            val clip = if (html != null) android.content.ClipData.newHtmlText(note?.title ?: "Note", text, html)
+                else android.content.ClipData.newPlainText(note?.title ?: "Note", text)
+            clipboard?.setPrimaryClip(clip)
+            showCopyAs = false
+            scope.launch { snackbar.showSnackbar("Copied as ${kind.label}") }
+        },
+        onDismiss = { showCopyAs = false }
     )
     if (showExport) ExportSheet(
         isPrivate = note?.isPrivate == true,
@@ -799,6 +825,9 @@ private fun BlockContent(
             onToggleChecked = { viewModel.toggleChecked(block.id) }
         )
         block.type == NoteBlockType.DIVIDER -> DividerBlock()
+        block.type == NoteBlockType.CODE -> CodeBlock(block) { viewModel.setCaption(block.id, it) }
+        block.type == NoteBlockType.TABLE -> TableBlock(block)
+        block.type == NoteBlockType.EMBED -> EmbedBlock(block)
         block.type == NoteBlockType.IMAGE -> ImageBlock(block, attachment, onOpenAttachment) { viewModel.setCaption(block.id, it) }
         block.type == NoteBlockType.VIDEO -> VideoBlock(block, attachment, onOpenAttachment) { viewModel.setCaption(block.id, it) }
         block.type == NoteBlockType.AUDIO -> AudioBlock(block, attachment) { viewModel.setCaption(block.id, it) }

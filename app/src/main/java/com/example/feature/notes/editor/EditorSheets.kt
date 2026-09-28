@@ -531,3 +531,21 @@ internal fun SermonDetailsDialog(speaker: String, church: String, onSave: (Strin
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+internal fun CopyAsSheet(onPick: (NoteEditorViewModel.CopyKind) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
+            SheetTitle("Copy note as")
+            NoteEditorViewModel.CopyKind.entries.forEach { kind ->
+                Surface(onClick = { onPick(kind) }, shape = RoundedCornerShape(14.dp), color = SurfaceSunk, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text(kind.label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                        Text(kind.hint, fontSize = 12.sp, color = InkMuted)
+                    }
+                }
+            }
+        }
+    }
+}

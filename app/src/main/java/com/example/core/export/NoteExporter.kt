@@ -142,6 +142,14 @@ object NoteExportMapper {
             val title = block.payload["title"] ?: block.content.text.takeIf { it.isNotBlank() } ?: "Linked note"
             ExportBlock.Paragraph(RichText.plain("→ $title"))
         }
+        NoteBlockType.CODE -> ExportBlock.Excerpt(block.payload[NoteBlock.PAYLOAD_LANGUAGE]?.takeIf { it.isNotBlank() }, block.content.text)
+        NoteBlockType.TABLE -> com.example.core.notes.MarkdownImport.Table.fromJson(block.payload[NoteBlock.PAYLOAD_TABLE])?.let { t ->
+            ExportBlock.Excerpt(null, (listOf(t.header) + t.rows).joinToString("\n") { r -> r.joinToString("  |  ") { com.example.core.notes.MarkdownImport.stripInline(it) } })
+        }
+        NoteBlockType.EMBED -> block.payload[NoteBlock.PAYLOAD_URL]?.let { url ->
+            val label = block.payload[NoteBlock.PAYLOAD_ALT]?.takeIf { it.isNotBlank() } ?: url
+            ExportBlock.Paragraph(RichText.plain(label).applyStyle(com.example.core.notes.InlineStyle.LINK, 0, label.length, url))
+        }
     }
 
     /** Leading and trailing empty paragraphs are editor scaffolding, not content. */

@@ -238,6 +238,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         val index = blocks.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
         val block = blocks[index]
         if (newText == block.content.text) return
+        if (pasteAsMarkdown(blocks, index, newText)) return
         val content = block.content.withEditedText(newText, _pendingOn.value, _pendingOff.value)
         var result = BlockEditing.applyTextEdit(blocks, index, content, cursor)
         BlockEditing.applyShortcut(result.blocks, index, cursor)?.let { result = it }
@@ -245,6 +246,19 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         history.record(blocks, typingBlockId = if (structural) null else blockId)
         update(result.blocks, recordUndo = false)
         if (structural || result.focus?.blockId != blockId) result.focus?.let { requestFocus(it) }
+    }
+
+    /** A Markdown paste becomes formatted blocks, as one undo step with a version saved first. */
+    private fun pasteAsMarkdown(blocks: List<NoteBlock>, index: Int, newText: String): Boolean {
+        val inserted = BlockEditing.insertion(blocks[index].content.text, newText)
+        val result = BlockEditing.pasteMarkdown(blocks, index, inserted) ?: return false
+        val structural = result.blocks.size != blocks.size || result.blocks[index].type != blocks[index].type
+        if (structural) snapshotBefore(com.example.core.notes.VersionReason.BEFORE_PASTE)
+        history.record(blocks)
+        update(result.blocks, recordUndo = false)
+        result.focus?.let { requestFocus(it) }
+        if (structural) _message.value = "Pasted with its formatting · Undo to take it back"
+        return true
     }
 
     fun onSelectionChanged(blockId: String, start: Int, end: Int) {
@@ -313,6 +327,109 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     fun currentLink(): String? {
         val sel = _selection.value ?: return null
         return _blocks.value.firstOrNull { it.id == sel.blockId }?.content?.linkAt(sel.start)?.url
+    }
+
+    // ------------------------------------------------------------ AI edit on a selection
+
+    /** Selected text (or the whole block, with nothing selected) being rewritten by AI. */
+    data class AiEdit(
+        val blockId: String,
+        val start: Int,
+        val end: Int,
+        val original: String,
+        val action: String? = null,
+        val busy: Boolean = false,
+        val result: String? = null,
+        val error: String? = null
+    )
+
+    private val _aiEdit = MutableStateFlow<AiEdit?>(null)
+    val aiEdit: StateFlow<AiEdit?> = _aiEdit.asStateFlow()
+    private var aiEditJob: kotlinx.coroutines.Job? = null
+    private val geminiTransport by lazy {
+        com.example.ai.cloud.GeminiHttpTransport(com.example.ai.cloud.GeminiCredentialStore(getApplication()))
+    }
+
+    /** Opens AI edit on the selection; with only a caret, on the whole block. False when there is nothing to edit. */
+    fun startAiEdit(): Boolean {
+        val sel = _selection.value ?: return false
+        val block = _blocks.value.firstOrNull { it.id == sel.blockId } ?: return false
+        val (start, end) = if (sel.end > sel.start) sel.start to sel.end else 0 to block.content.text.length
+        val text = block.content.text.substring(start.coerceAtMost(block.content.text.length), end.coerceAtMost(block.content.text.length))
+        if (text.isBlank()) { _message.value = "Write or select some text first"; return false }
+        _aiEdit.value = AiEdit(block.id, start, end, text)
+        return true
+    }
+
+    fun runAiEdit(action: String, instruction: String) {
+        val edit = _aiEdit.value ?: return
+        aiEditJob?.cancel()
+        _aiEdit.value = edit.copy(action = action, busy = true, result = null, error = null)
+        aiEditJob = viewModelScope.launch {
+            val block = _blocks.value.firstOrNull { it.id == edit.blockId }
+            val title = _note.value?.title.orEmpty()
+            val prompt = buildString {
+                append("Instruction: ").append(instruction).append("\n\n")
+                if (title.isNotBlank()) append("The note is titled: ").append(title).append("\n")
+                if (block != null && block.content.text.length > edit.original.length) {
+                    append("The paragraph it sits in, for context only:\n").append(block.content.text).append("\n\n")
+                }
+                append("Text to edit:\n").append(edit.original)
+            }
+            val result = if (!geminiTransport.refreshConfigured()) {
+                com.example.ai.common.AiResult.Failed("AI editing needs a Gemini API key. Add one in Settings.")
+            } else geminiTransport.execute(
+                com.example.ai.cloud.GeminiRequest(
+                    modelId = com.example.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
+                    systemInstruction = AI_EDIT_SYSTEM,
+                    prompt = prompt,
+                    temperature = 0.4f
+                )
+            )
+            val current = _aiEdit.value ?: return@launch
+            _aiEdit.value = when (result) {
+                is com.example.ai.common.AiResult.Success -> {
+                    val text = result.value.trim().removeSurrounding("```markdown", "```").removeSurrounding("```", "```").trim()
+                    if (text.isBlank()) current.copy(busy = false, error = "The AI returned nothing. Try again.")
+                    else current.copy(busy = false, result = text)
+                }
+                is com.example.ai.common.AiResult.ModelUnavailable -> current.copy(busy = false, error = result.message)
+                is com.example.ai.common.AiResult.Failed -> current.copy(busy = false, error = result.message)
+                else -> current.copy(busy = false, error = "AI editing isn't available right now.")
+            }
+        }
+    }
+
+    /** Puts the AI's text in place of the original ([replace]) or as new blocks under it. One undo step. */
+    fun applyAiEdit(replace: Boolean) {
+        val edit = _aiEdit.value ?: return
+        val text = edit.result ?: return
+        val blocks = _blocks.value
+        val index = blocks.indexOfFirst { it.id == edit.blockId }.takeIf { it >= 0 } ?: run { _aiEdit.value = null; return }
+        val block = blocks[index]
+        snapshotBefore(com.example.core.notes.VersionReason.BEFORE_AI, edit.action)
+        val result: EditResult = if (replace) {
+            val end = edit.end.coerceAtMost(block.content.text.length)
+            val start = edit.start.coerceAtMost(end)
+            BlockEditing.pasteMarkdown(blocks, index, BlockEditing.Insertion(start, end, text)) ?: run {
+                val (before, _) = block.content.splitAt(start)
+                val after = block.content.splitAt(end).second
+                val content = before.append(RichText.plain(text)).append(after)
+                BlockEditing.applyTextEdit(blocks, index, content, before.text.length + text.length)
+            }
+        } else {
+            BlockEditing.insertAfter(blocks, index, com.example.core.notes.MarkdownImport.parse(text, noteId))
+        }
+        history.record(blocks)
+        update(result.blocks, recordUndo = false)
+        result.focus?.let { requestFocus(it) }
+        _aiEdit.value = null
+        _message.value = if (replace) "Replaced · Undo puts the original back" else "Added below · Undo to remove it"
+    }
+
+    fun dismissAiEdit() {
+        aiEditJob?.cancel()
+        _aiEdit.value = null
     }
 
     fun toggleBlockType(type: NoteBlockType) {
@@ -643,6 +760,28 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     // ------------------------------------------------------------ export
 
+    enum class CopyKind(val label: String, val hint: String) {
+        MARKDOWN("Markdown", "For ChatGPT, Claude, Notion, Obsidian"),
+        RICH("Formatted text", "For Google Docs, Gmail, Word"),
+        WHATSAPP("WhatsApp", "Bold and lists as WhatsApp shows them"),
+        PLAIN("Plain text", "Just the words")
+    }
+
+    /** The note as text for the clipboard: the text, and HTML alongside it for [CopyKind.RICH]. Private sections stay out. */
+    fun copyText(kind: CopyKind): Pair<String, String?> {
+        val workflow = _note.value?.workflow ?: com.example.core.model.RecordingType.GENERAL
+        val hidden = com.example.core.model.Workflows.template(workflow).privateKeys
+        val blocks = _blocks.value.filter { it.sectionKey == null || it.sectionKey !in hidden }
+        val title = _note.value?.title
+        val T = com.example.core.notes.NoteText
+        return when (kind) {
+            CopyKind.MARKDOWN -> T.markdown(blocks, title) to null
+            CopyKind.RICH -> T.plain(blocks, title) to T.html(blocks, title)
+            CopyKind.WHATSAPP -> T.whatsApp(blocks, title) to null
+            CopyKind.PLAIN -> T.plain(blocks, title) to null
+        }
+    }
+
     suspend fun exportTo(format: ExportFormat, includePrivate: Boolean, out: OutputStream): Boolean {
         flush()
         return withContext(Dispatchers.IO) {
@@ -796,6 +935,10 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     companion object {
         const val SAVE_DELAY_MS = 600L
+        private const val AI_EDIT_SYSTEM =
+            "You edit a passage from the user's own notes as instructed. Reply with only the edited " +
+                "passage, in Markdown where formatting helps (**bold**, '- ' bullets, '1.' numbers). " +
+                "No preamble, no explanation, no quotation marks around it. Keep the user's language."
         const val SESSION_SNAPSHOT_MS = 10 * 60 * 1000L
         private val closingScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }

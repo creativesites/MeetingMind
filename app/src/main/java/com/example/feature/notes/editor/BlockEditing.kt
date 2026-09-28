@@ -84,6 +84,86 @@ object BlockEditing {
         return EditResult(result, FocusTarget(focusBlock.id, remaining.coerceIn(0, focusBlock.content.text.length)))
     }
 
+    /** What one edit did to a block's text: [text] replaced the characters from [start] to [removedEnd]. */
+    data class Insertion(val start: Int, val removedEnd: Int, val text: String)
+
+    fun insertion(old: String, new: String): Insertion {
+        val max = minOf(old.length, new.length)
+        var p = 0
+        while (p < max && old[p] == new[p]) p++
+        var s = 0
+        while (s < max - p && old[old.length - 1 - s] == new[new.length - 1 - s]) s++
+        return Insertion(p, old.length - s, new.substring(p, new.length - s))
+    }
+
+    /**
+     * A paste that is Markdown (an answer copied from ChatGPT or Claude, a README) becomes real
+     * blocks: headings, lists, tables, code, pictures and videos, split around the caret. A single
+     * pasted line keeps its bold, links and code inline; a lone YouTube link in an empty line
+     * becomes a video. Returns null when the paste is plain text, which the normal rules handle.
+     */
+    fun pasteMarkdown(blocks: List<NoteBlock>, index: Int, inserted: Insertion): EditResult? {
+        val current = blocks.getOrNull(index) ?: return null
+        if (!current.type.isText || inserted.text.length < 2) return null
+        val pasted = inserted.text.replace("\r\n", "\n")
+        val multiLine = '\n' in pasted.trim()
+        val (before, _) = current.content.splitAt(inserted.start)
+        val after = current.content.splitAt(inserted.removedEnd).second
+
+        if (!multiLine) {
+            val line = pasted.trim()
+            val lone = before.text.isBlank() && after.text.isBlank() && line.none { it.isWhitespace() }
+            if (lone && com.example.core.notes.YouTube.idOf(line) != null) {
+                val video = com.example.core.notes.MarkdownImport.parse(line, current.noteId).singleOrNull()
+                    ?.takeIf { it.type == NoteBlockType.EMBED } ?: return null
+                val para = emptyParagraph(current.noteId)
+                val out = blocks.toMutableList().apply { this[index] = video.copy(id = current.id); add(index + 1, para) }
+                return EditResult(out, FocusTarget(para.id, 0))
+            }
+            if (!com.example.core.notes.MarkdownImport.looksLikeMarkdown(pasted)) return null
+            val rich = com.example.core.notes.MarkdownImport.inline(pasted)
+            if (rich.spans.isEmpty()) return null
+            val content = before.append(rich).append(after)
+            return EditResult(blocks.replaceAt(index, current.markEdited().copy(content = content)), FocusTarget(current.id, before.text.length + rich.text.length))
+        }
+
+        if (!com.example.core.notes.MarkdownImport.looksLikeMarkdown(pasted)) return null
+        val parsed = com.example.core.notes.MarkdownImport.parse(pasted, current.noteId).toMutableList()
+        if (parsed.isEmpty()) return null
+
+        val out = mutableListOf<NoteBlock>()
+        if (before.text.isNotBlank()) {
+            val first = parsed.first()
+            if (first.type == NoteBlockType.PARAGRAPH) {
+                out += current.markEdited().copy(content = before.append(first.content))
+                parsed.removeAt(0)
+            } else out += current.markEdited().copy(content = before)
+        } else {
+            // The pasted blocks take the empty line's place (and its id, so focus stays sane).
+            parsed[0] = parsed[0].copy(id = current.id)
+        }
+        out += parsed
+        var focus: FocusTarget
+        if (after.text.isNotBlank()) {
+            val tail = NoteBlock(
+                id = NoteRepository.newId("block"), noteId = current.noteId, position = 0,
+                type = NoteBlockType.PARAGRAPH, content = after, source = BlockSource.USER
+            )
+            out += tail
+            focus = FocusTarget(tail.id, 0)
+        } else {
+            val last = out.last()
+            if (last.type.isText) focus = FocusTarget(last.id, last.content.text.length)
+            else {
+                val para = emptyParagraph(current.noteId)
+                out += para
+                focus = FocusTarget(para.id, 0)
+            }
+        }
+        val result = blocks.toMutableList().apply { removeAt(index); addAll(index, out) }
+        return EditResult(result, focus)
+    }
+
     /**
      * Backspace with the caret at the very start of the block at [index].
      *

@@ -57,7 +57,13 @@ data class Notebook(
 enum class NoteBlockType {
     PARAGRAPH, HEADING_1, HEADING_2, HEADING_3,
     BULLET, NUMBERED, CHECKLIST, QUOTE, DIVIDER,
-    SCRIPTURE, IMAGE, VIDEO, AUDIO, RECORDING, TRANSCRIPT_EXCERPT, NOTE_LINK;
+    SCRIPTURE, IMAGE, VIDEO, AUDIO, RECORDING, TRANSCRIPT_EXCERPT, NOTE_LINK,
+    /** Preformatted code; its text is the code, [NoteBlock.PAYLOAD_LANGUAGE] the language. */
+    CODE,
+    /** A table; its rows are in [NoteBlock.PAYLOAD_TABLE] (JSON), its text the cells for search. */
+    TABLE,
+    /** Something shown from the web: [NoteBlock.PAYLOAD_EMBED_KIND] image, youtube or link. */
+    EMBED;
 
     /** Whether the block holds editable text. The others are carried by their payload. */
     val isText: Boolean
@@ -108,6 +114,14 @@ data class NoteBlock(
         const val PAYLOAD_SPEAKER = "speaker"
         /** Placeholder shown in an empty template block, e.g. "What stood out to you". */
         const val PAYLOAD_HINT = "hint"
+        const val PAYLOAD_LANGUAGE = "language"
+        const val PAYLOAD_TABLE = "table"
+        const val PAYLOAD_EMBED_KIND = "embedKind"
+        const val PAYLOAD_URL = "url"
+        const val PAYLOAD_ALT = "alt"
+        const val EMBED_IMAGE = "image"
+        const val EMBED_YOUTUBE = "youtube"
+        const val EMBED_LINK = "link"
     }
 }
 

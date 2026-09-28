@@ -79,7 +79,7 @@ object VersionCodec {
 
     /** Plain text of a version, for the preview's diff and "Copy text". */
     fun lines(blocks: List<NoteBlock>): List<String> =
-        blocks.filter { it.type.isText || it.type == NoteBlockType.DIVIDER }.map { b ->
+        blocks.filter { it.type.isText || it.type == NoteBlockType.DIVIDER || it.type == NoteBlockType.CODE || it.type == NoteBlockType.TABLE || it.type == NoteBlockType.EMBED }.map { b ->
             when (b.type) {
                 NoteBlockType.HEADING_1 -> "# " + b.content.text
                 NoteBlockType.HEADING_2 -> "## " + b.content.text
@@ -89,6 +89,7 @@ object VersionCodec {
                 NoteBlockType.CHECKLIST -> "  ".repeat(b.indent) + (if (b.checked) "☑ " else "☐ ") + b.content.text
                 NoteBlockType.QUOTE -> "> " + b.content.text
                 NoteBlockType.DIVIDER -> "———"
+                NoteBlockType.EMBED -> b.payload[NoteBlock.PAYLOAD_URL].orEmpty()
                 else -> b.content.text
             }
         }
