@@ -89,8 +89,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val geminiCredentials = com.example.ai.cloud.GeminiCredentialStore(application)
 
     /** Redacted, so a set key can be shown as set without being put back on screen. */
-    val geminiKeyDisplay: StateFlow<String?> = geminiCredentials.apiKeyFlow
-        .map { geminiCredentials.redact(it) }
+    val geminiKeyDisplay: StateFlow<String?> = geminiCredentials.userKeyFlow
+        .map { own -> geminiCredentials.redact(own) ?: com.example.ai.cloud.GeminiCredentialStore.systemKey?.let { "Built-in tester key" } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun setGeminiApiKey(key: String) {

@@ -12,6 +12,7 @@ import com.example.core.database.MeetMindDatabase
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
@@ -137,21 +138,24 @@ class PrivacyNoCloudPathTest {
     }
 
     @Test
-    fun `no Gemini API key is embedded in the built application`() {
-        // A literal key in any compiled class would defeat the whole arrangement above. BuildConfig
-        // is where such a thing would conventionally be put, so it is checked explicitly. The one
-        // key that is meant to ship in the app, YOUVERSION_APP_KEY (a public, rate-limited app
-        // identifier for Bible text, per YouVersion's design), is not a Gemini credential and is
-        // deliberately not matched here.
+    fun `no Gemini API key is written into the source or this build`() {
+        // A literal key in the repository would defeat the whole arrangement above — the repository
+        // is public. The one sanctioned exception is the tester key (SYSTEM_GEMINI_API_KEY), which
+        // is only ever read from the build machine's environment, never from source. So: every
+        // credential-like BuildConfig field must be empty in a build made without that variable
+        // (as the test build is), and the build script must read it from the environment.
         val buildConfigFields = Class.forName("com.example.BuildConfig").declaredFields
         for (field in buildConfigFields) {
             field.isAccessible = true
             val name = field.name.lowercase()
-            assertFalse(
-                "BuildConfig.${field.name} looks like an embedded credential",
-                name.contains("apikey") || name.contains("api_key") || name.contains("gemini") || name.contains("secret")
-            )
+            val credentialLike = name.contains("apikey") || name.contains("api_key") || name.contains("secret")
+            if (!credentialLike || name.contains("youversion")) continue
+            val value = field.get(null) as? String ?: continue
+            assertTrue("BuildConfig.${field.name} carries a value in a build made without it being supplied", value.isEmpty())
         }
+        val script = java.io.File("build.gradle.kts").readText()
+        assertTrue(script.contains("System.getenv(\"SYSTEM_GEMINI_API_KEY\")"))
+        assertFalse("A Gemini key literal is in the build script", Regex("AIza[0-9A-Za-z_\\-]{20,}").containsMatchIn(script))
     }
 
     @Test

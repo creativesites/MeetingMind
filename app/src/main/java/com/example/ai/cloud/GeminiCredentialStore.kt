@@ -28,11 +28,24 @@ import kotlinx.coroutines.flow.map
  */
 class GeminiCredentialStore(private val context: Context) {
 
-    val apiKeyFlow: Flow<String?> = context.geminiDataStore.data.map { preferences ->
+    /** The key the person entered in Settings, if any. */
+    val userKeyFlow: Flow<String?> = context.geminiDataStore.data.map { preferences ->
         preferences[API_KEY]?.takeIf { it.isNotBlank() }
     }
 
+    /**
+     * The key requests use: the person's own when they've entered one, otherwise the tester key
+     * built into this build (`SYSTEM_GEMINI_API_KEY` at build time), so testers can use Internet
+     * mode without setting anything up. Null when there is neither.
+     */
+    val apiKeyFlow: Flow<String?> = userKeyFlow.map { it ?: systemKey }
+
     suspend fun getApiKey(): String? = apiKeyFlow.first()
+
+    suspend fun getUserKey(): String? = userKeyFlow.first()
+
+    /** Whether requests are running on the built-in tester key rather than the person's own. */
+    suspend fun usingSystemKey(): Boolean = getUserKey() == null && systemKey != null
 
     /** Stores a key, trimmed. A blank value clears it rather than storing an empty string. */
     suspend fun setApiKey(key: String) {
@@ -56,9 +69,12 @@ class GeminiCredentialStore(private val context: Context) {
         else "•".repeat(8) + key.takeLast(VISIBLE_SUFFIX)
     }
 
-    private companion object {
-        val API_KEY = stringPreferencesKey("gemini_api_key")
-        const val VISIBLE_SUFFIX = 4
+    companion object {
+        private val API_KEY = stringPreferencesKey("gemini_api_key")
+
+        /** The tester key compiled into this build, or null when none was supplied. */
+        val systemKey: String? = com.example.BuildConfig.SYSTEM_GEMINI_API_KEY.trim().takeIf { it.isNotEmpty() }
+        private const val VISIBLE_SUFFIX = 4
     }
 }
 

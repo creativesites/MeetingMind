@@ -56,7 +56,7 @@ class BackupManager(private val context: Context) {
             }
             parts[BackupFormat.PREFS] = File(staged, "prefs.json").apply { writeText(PrefsCodec.encode(UserPreferencesManager(app).exportAll())) }
             if (options.includeApiKey) {
-                GeminiCredentialStore(app).getApiKey()?.let { key ->
+                GeminiCredentialStore(app).getUserKey()?.let { key ->
                     parts[BackupFormat.CREDENTIALS] = File(staged, "credentials.json").apply { writeText(PrefsCodec.encode(mapOf("gemini_api_key" to key))) }
                 }
             }

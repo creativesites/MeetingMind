@@ -48,7 +48,8 @@ class ExampleRobolectricTest {
     @Test
     fun read_appName_from_context() {
         val appName = context.getString(R.string.app_name)
-        assertEquals("MeetingMind", appName)
+        // Development builds install beside the real app as "MeetingMind Dev".
+        assertEquals(if (com.example.BuildConfig.DEBUG) "MeetingMind Dev" else "MeetingMind", appName)
     }
 
     @Test

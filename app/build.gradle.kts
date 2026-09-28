@@ -14,11 +14,11 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.meetmind.qxynvp"
+    applicationId = "com.craftflowtechnologies.meetingmind"
     minSdk = 24
     targetSdk = 36
-    versionCode = 30
-    versionName = "1.0-v30"
+    versionCode = 31
+    versionName = "1.0-v31"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -33,19 +33,37 @@ android {
       props.getProperty("youversion.appKey") ?: System.getenv("YOUVERSION_APP_KEY") ?: ""
     }
     buildConfigField("String", "YOUVERSION_APP_KEY", "\"${youVersionKey.replace("\"", "")}\"")
+    // System Gemini API key for closed testing (via SYSTEM_GEMINI_API_KEY env var)
+    val systemGeminiKey = System.getenv("SYSTEM_GEMINI_API_KEY") ?: ""
+    buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"${systemGeminiKey.replace("\"", "")}\"")
+    buildConfigField("Boolean", "SYSTEM_GEMINI_MODE", "true")
   }
 
   signingConfigs {
+    // One fixed key for development builds, committed on purpose: it only signs the separate
+    // "MeetingMind Dev" app (.dev), and a fixed key means each new dev APK updates the last one
+    // in place — keeping its notes — instead of every build machine minting its own.
+    getByName("debug") {
+      storeFile = file("dev-debug.keystore")
+      storePassword = "android"
+      keyAlias = "androiddebugkey"
+      keyPassword = "android"
+    }
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
+      // Secrets come from the environment only: this repository is public.
+      storeFile = file(System.getenv("KEYSTORE_PATH") ?: "${rootDir}/meetingmind-upload-key.jks")
+      storePassword = System.getenv("KEYSTORE_PASSWORD")
       keyAlias = "upload"
       keyPassword = System.getenv("KEY_PASSWORD")
     }
   }
 
   buildTypes {
+    debug {
+      // Installs beside the tester/Play app, never over it: its own package, name and data.
+      applicationIdSuffix = ".dev"
+      versionNameSuffix = "-dev"
+    }
     release {
       isCrunchPngs = false
       isMinifyEnabled = false
@@ -65,16 +83,17 @@ android {
     buildConfig = true
   }
   /**
-   * arm64-v8a only.
+   * arm64-v8a and armeabi-v7a split APKs.
    *
    * The sherpa-onnx and MediaPipe native libraries dominate this app's size, and a universal APK
    * ships every architecture's copy to every device — a quarter of a gigabyte, of which any given
-   * phone uses about a third. Building one ABI takes that to ~86MB.
+   * phone uses about a third. Building one ABI takes that to ~86MB for arm64, ~60MB for armv7.
    *
-   * arm64-v8a is the target: it is what the Galaxy S20 family runs (Exynos 990 and Snapdragon 865
-   * are both 64-bit ARM), and what every Android phone shipped in roughly the last decade runs.
-   * 32-bit armeabi-v7a is not built because no device this app targets needs it — the models alone
-   * demand more RAM than a 32-bit address space comfortably gives.
+   * arm64-v8a is the primary target: it is what the Galaxy S20 family runs (Exynos 990 and
+   * Snapdragon 865 are both 64-bit ARM), and what every Android phone shipped in roughly the last
+   * decade runs.
+   * 32-bit armeabi-v7a is also built for legacy devices from 2015–2017 that are still in use.
+   * The models run on 32-bit but with reduced capability; the LLM falls back to smaller models.
    *
    * Consequence worth knowing: there is no x86_64 output, so this will not install on an x86
    * emulator. An arm64 emulator (the default on Apple Silicon) is fine. Add "x86_64" to the
@@ -84,7 +103,7 @@ android {
     abi {
       isEnable = true
       reset()
-      include("arm64-v8a")
+      include("arm64-v8a", "armeabi-v7a")
       isUniversalApk = false
     }
   }
