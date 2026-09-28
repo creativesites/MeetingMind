@@ -80,6 +80,13 @@ import com.example.core.model.ProcessingStage
 import com.example.core.ui.SectionCard
 import com.example.ui.theme.SuccessGreen
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.SharingStarted
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -87,7 +94,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 
 data class ProcessingUiState(
-    val stepTitle: String = "Initializing AI Pipeline...",
+    val stepTitle: String = "Getting ready",
     val recordingTitle: String = "",
     val progressPercent: Int = 0,
     val currentStageIndex: Int = 0,
@@ -120,6 +127,11 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
     private val userPrefs = UserPreferencesManager(application)
     private val workManager = WorkManager.getInstance(application)
     private val meetingRepository = com.example.core.repository.MeetingRepository(application, database)
+
+    /** Where the work runs, for the header. */
+    val processingProfile: StateFlow<com.example.core.model.ProcessingProfile> = userPrefs.preferencesFlow
+        .map { it.processingProfile }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, com.example.core.model.ProcessingProfile.OFFLINE)
 
     private val _uiState = MutableStateFlow(ProcessingUiState())
     val uiState: StateFlow<ProcessingUiState> = _uiState.asStateFlow()
@@ -351,7 +363,6 @@ fun ProcessingScreen(
     var phase by remember(meetingId) { mutableStateOf(ProcessingScreenPhase.Checking) }
     var selectedSpeakerCount by remember { mutableStateOf<Int?>(null) } // null = Auto/"Not sure"
     var recordingType by remember { mutableStateOf(com.example.core.model.RecordingType.GENERAL) }
-    var confirmStop by remember { mutableStateOf(false) }
 
     LaunchedEffect(meetingId) {
         // The rows below are drawn from the recording's type and speaker count on every path.
@@ -426,198 +437,246 @@ fun ProcessingScreen(
         ProcessingScreenPhase.Running -> Unit
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = state.recordingTitle.ifBlank { "Processing Recording" },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                },
-                navigationIcon = {
-                    // Minimise, never cancel: processing carries on in the background and the
-                    // notification (or Home) brings you back here.
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier.testTag("processing_minimise_btn")
-                    ) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Minimise — keeps running in the background")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
+    val profile by viewModel.processingProfile.collectAsState()
+    ProcessingRunning(
+        state = state,
+        profile = profile,
+        rows = com.example.core.model.Workflows.processingStageRows(recordingType, selectedSpeakerCount),
+        onMinimise = onNavigateBack,
+        onStop = { viewModel.cancelPipeline(); onNavigateBack() },
+        onRetry = { viewModel.retry(audioPath, durationMs, selectedSpeakerCount) { finishedId -> onProcessingComplete(finishedId) } },
+        onViewRecording = { onProcessingComplete(meetingId) },
+        onGetModel = onNavigateToModels
+    )
+}
+
+/** The processing screen once work is under way: progress ring, stage timeline, and what to do next. */
+@Composable
+internal fun ProcessingRunning(
+    state: ProcessingUiState,
+    profile: com.example.core.model.ProcessingProfile,
+    rows: List<com.example.core.model.ProcessingStageRow>,
+    onMinimise: () -> Unit,
+    onStop: () -> Unit,
+    onRetry: () -> Unit,
+    onViewRecording: () -> Unit,
+    onGetModel: () -> Unit
+) {
+    var confirmStop by remember { mutableStateOf(false) }
+    val failed = state.error != null || state.modelRequired
+    // Elapsed time on this screen, so a long run visibly moves even between progress steps.
+    var elapsedMs by remember { mutableStateOf(0L) }
+    LaunchedEffect(failed, state.isComplete) {
+        val started = System.currentTimeMillis() - elapsedMs
+        while (!failed && !state.isComplete) {
+            elapsedMs = System.currentTimeMillis() - started
+            kotlinx.coroutines.delay(1_000)
         }
-    ) { innerPadding ->
+    }
+
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 1. Live progress gauge & stage — one quiet container.
-            SectionCard {
-                Column(
-                    modifier = Modifier.padding(22.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
+            // Header: minimise (never cancel), then what this is and who is doing the work.
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onMinimise, modifier = Modifier.testTag("processing_minimise_btn")) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Minimise. Processing keeps running in the background")
+                }
+                Column(Modifier.weight(1f).padding(start = 4.dp)) {
                     Text(
-                        text = "${state.progressPercent}%",
-                        style = MaterialTheme.typography.displayMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.primary
+                        state.recordingTitle.ifBlank { "Your recording" },
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
-
-                    LinearProgressIndicator(
-                        progress = { state.progressPercent / 100f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-
                     Text(
-                        text = state.stepTitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center
+                        if (profile == com.example.core.model.ProcessingProfile.INTERNET) "With Google's AI" else "On this phone",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            // 2. 6-stage pipeline checklist — a grouped list, not stacked bento tiles.
-            SectionCard {
-                Column(modifier = Modifier.padding(top = 18.dp, start = 18.dp, end = 18.dp, bottom = 4.dp)) {
-                    Text(
-                        text = if (state.stage == null && !state.isComplete) "Waiting to start" else "What's happening",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
+            Spacer(Modifier.weight(0.6f))
 
-                // Rows derived from the recording type (design spec §5.1): a row exists only for
-                // work the pipeline will really do, and says it in plain words.
-                val rows = com.example.core.model.Workflows.processingStageRows(recordingType, selectedSpeakerCount)
+            // The one number that matters, in a ring.
+            ProgressRing(
+                percent = if (state.isComplete) 100 else state.progressPercent,
+                failed = failed,
+                modifier = Modifier.size(196.dp)
+            )
+            Spacer(Modifier.height(22.dp))
+            Text(
+                text = when {
+                    state.modelRequired -> "Needs the offline model"
+                    state.error != null -> "Didn't finish"
+                    state.isComplete -> "Done"
+                    state.isQueued -> "Waiting for another recording to finish"
+                    else -> friendlyStep(state.stepTitle)
+                },
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center, maxLines = 2
+            )
+            if (!failed && !state.isComplete) {
+                Text(
+                    formatElapsed(elapsedMs) + " · you can leave this screen",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            Spacer(Modifier.height(28.dp))
+
+            // The stages, as a quiet timeline rather than a boxed checklist. Hidden once it has
+            // failed: the card below says what happened, and a column of unticked steps doesn't.
+            if (!failed) Column(Modifier.fillMaxWidth()) {
                 val current = state.stage
                 rows.forEachIndexed { i, row ->
                     val lastOrdinal = row.stages.maxOf { it.ordinal }
                     val done = state.isComplete || (current != null && current !in row.stages && current.ordinal > lastOrdinal &&
                         current != ProcessingStage.FAILED && current != ProcessingStage.CANCELLED)
-                    PipelineStageRow(
-                        stageNumber = i + 1,
-                        name = row.label,
-                        isActive = !done && current != null && current in row.stages,
-                        isDone = done,
-                        showDivider = i < rows.lastIndex
+                    val active = !done && !failed && current != null && current in row.stages
+                    TimelineRow(
+                        label = row.label,
+                        detail = null,
+                        done = done,
+                        active = active,
+                        isLast = i == rows.lastIndex
                     )
                 }
             }
 
-            // 3. Bottom action(s)
-            if (state.modelRequired) {
-                SectionCard {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            text = "Speech recognition model required",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = state.modelRequiredMessage
-                                ?: "Local speech recognition is not installed yet. The recording has been saved.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                            OutlinedButton(
-                                onClick = { onProcessingComplete(meetingId) },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("View Recording")
-                            }
-                            Button(
-                                onClick = onNavigateToModels,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Manage Models")
-                            }
-                        }
+            Spacer(Modifier.weight(1f))
+
+            when {
+                state.modelRequired -> OutcomeCard(
+                    title = "The recording is saved",
+                    message = state.modelRequiredMessage ?: "Transcribing on this phone needs the offline speech model. Download it, or switch to Internet mode in Settings.",
+                    primary = "Get the model" to onGetModel,
+                    secondary = "View recording" to onViewRecording
+                )
+                state.error != null -> OutcomeCard(
+                    title = "The recording is saved",
+                    message = state.error ?: "Something went wrong.",
+                    primary = "Try again" to onRetry,
+                    secondary = "View recording" to onViewRecording
+                )
+                !state.isComplete -> {
+                    BackgroundHint()
+                    Button(
+                        onClick = onMinimise,
+                        shape = RoundedCornerShape(50),
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag("processing_background_btn")
+                    ) {
+                        Text("Continue in background", style = MaterialTheme.typography.titleSmall, maxLines = 1)
                     }
-                }
-            } else if (state.error != null) {
-                SectionCard {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            text = "Processing failed",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Text(
-                            text = state.error ?: "Unknown error",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                            OutlinedButton(
-                                onClick = onNavigateBack,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Back")
-                            }
-                            Button(
-                                // A deliberate new attempt: only reachable here, once WorkManager
-                                // itself has already reported this job as finished (FAILED), so
-                                // there is no risk of this creating a second concurrent job.
-                                onClick = { viewModel.retry(audioPath, durationMs, selectedSpeakerCount) { finishedId -> onProcessingComplete(finishedId) } },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Retry")
-                            }
-                        }
+                    TextButton(
+                        onClick = { confirmStop = true },
+                        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp).testTag("processing_cancel_btn")
+                    ) {
+                        Text("Stop", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                }
-            } else if (!state.isComplete) {
-                BackgroundHint()
-                Button(
-                    onClick = onNavigateBack,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().height(50.dp).testTag("processing_background_btn")
-                ) {
-                    Text("Keep working — this continues in the background")
-                }
-                TextButton(
-                    onClick = { confirmStop = true },
-                    modifier = Modifier.fillMaxWidth().testTag("processing_cancel_btn")
-                ) {
-                    Text("Stop processing", color = MaterialTheme.colorScheme.error)
                 }
             }
             if (confirmStop) {
                 AlertDialog(
                     onDismissRequest = { confirmStop = false },
                     title = { Text("Stop processing?") },
-                    text = { Text("The recording is kept. You can start processing it again later from the recording.") },
+                    text = { Text("The recording is kept. You can process it again later from the recording.") },
                     confirmButton = {
-                        TextButton(onClick = { confirmStop = false; viewModel.cancelPipeline(); onNavigateBack() }) {
+                        TextButton(onClick = { confirmStop = false; onStop() }) {
                             Text("Stop", color = MaterialTheme.colorScheme.error)
                         }
                     },
                     dismissButton = { TextButton(onClick = { confirmStop = false }) { Text("Keep going") } }
                 )
+            }
+        }
+    }
+}
+
+/** A step's own words, without trailing dots and engine jargon. */
+internal fun friendlyStep(step: String): String {
+    val trimmed = step.trim().trimEnd('.', '…').trim()
+    return when {
+        trimmed.isBlank() || trimmed.startsWith("Initializing", ignoreCase = true) -> "Getting ready"
+        trimmed.contains("(VAD)") -> "Finding where people speak"
+        else -> trimmed
+    }
+}
+
+internal fun formatElapsed(ms: Long): String {
+    val total = ms / 1000
+    return if (total < 60) "${total}s" else "%d:%02d".format(total / 60, total % 60)
+}
+
+@Composable
+private fun ProgressRing(percent: Int, failed: Boolean, modifier: Modifier = Modifier) {
+    val animated by androidx.compose.animation.core.animateFloatAsState(percent.coerceIn(0, 100) / 100f, label = "progress")
+    val track = MaterialTheme.colorScheme.surfaceVariant
+    val tint = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Box(modifier, contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+            val stroke = 10.dp.toPx()
+            val inset = stroke / 2
+            val arcSize = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke)
+            val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+            drawArc(track, 0f, 360f, false, topLeft, arcSize, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+            drawArc(tint, -90f, 360f * animated, false, topLeft, arcSize,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+        }
+        if (failed) {
+            Text("!", style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold, color = tint)
+        } else {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text("$percent", style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.SemiBold)
+                Text("%", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp, start = 2.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineRow(label: String, detail: String?, done: Boolean, active: Boolean, isLast: Boolean) {
+    val primary = MaterialTheme.colorScheme.primary
+    val line = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f)
+    Row(Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+        Column(Modifier.width(24.dp).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.padding(top = 3.dp).size(14.dp), contentAlignment = Alignment.Center) {
+                when {
+                    done -> Surface(shape = CircleShape, color = primary, modifier = Modifier.size(14.dp)) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(2.dp))
+                    }
+                    active -> CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = primary)
+                    else -> Box(Modifier.size(10.dp).border(1.5.dp, line, CircleShape))
+                }
+            }
+            if (!isLast) Box(Modifier.padding(vertical = 4.dp).width(1.5.dp).weight(1f).background(if (done) primary.copy(alpha = 0.6f) else line))
+        }
+        Column(Modifier.padding(start = 12.dp, bottom = if (isLast) 0.dp else 14.dp)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (done || active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            detail?.let {
+                Text(friendlyStep(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OutcomeCard(title: String, message: String, primary: Pair<String, () -> Unit>, secondary: Pair<String, () -> Unit>) {
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = secondary.second, shape = RoundedCornerShape(50), modifier = Modifier.weight(1f)) { Text(secondary.first, maxLines = 1) }
+                Button(onClick = primary.second, shape = RoundedCornerShape(50), modifier = Modifier.weight(1f)) { Text(primary.first, maxLines = 1) }
             }
         }
     }
@@ -721,77 +780,6 @@ private fun SpeakerCountChip(label: String, isSelected: Boolean, onClick: () -> 
  * spinner, or checkmark) plus the stage name — matching [ListRow]'s spacing/divider rhythm even
  * though the leading slot needs a custom composable rather than a static icon.
  */
-@Composable
-private fun PipelineStageRow(
-    stageNumber: Int,
-    name: String,
-    isActive: Boolean,
-    isDone: Boolean,
-    showDivider: Boolean = true
-) {
-    Column {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 12.dp)
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = when {
-                    isDone -> SuccessGreen
-                    isActive -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                    else -> MaterialTheme.colorScheme.surfaceVariant
-                },
-                modifier = Modifier.size(28.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    if (isDone) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    } else if (isActive) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    } else {
-                        Text(
-                            text = "$stageNumber",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-
-            Text(
-                text = name,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (isActive || isDone) FontWeight.SemiBold else FontWeight.Normal,
-                color = when {
-                    isDone -> MaterialTheme.colorScheme.onSurface
-                    isActive -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                }
-            )
-        }
-        if (showDivider) {
-            HorizontalDivider(
-                modifier = Modifier.padding(start = 18.dp, end = 18.dp),
-                thickness = 0.75.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-            )
-        }
-    }
-}
-
 /**
  * Asks, once, to be let off battery optimisation. Samsung and others otherwise pause background
  * work after a while with the screen off, which is exactly when a long offline transcription
@@ -811,24 +799,22 @@ private fun BackgroundHint() {
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
     if (exempt) return
-    SectionCard {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Keep going with the screen off", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text(
-                "Your phone may pause MeetingMind to save battery. Allow it to run in the background so long recordings finish while you do other things.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            TextButton(onClick = {
-                runCatching {
-                    context.startActivity(
-                        android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                            .setData(android.net.Uri.parse("package:${context.packageName}"))
-                    )
-                }.onFailure {
-                    runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
-                }
-            }) { Text("Allow background running") }
-        }
+    // A quiet line, not a card: it matters, but it isn't what this screen is about.
+    Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "Your phone may pause this with the screen off.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(onClick = {
+            runCatching {
+                context.startActivity(
+                    android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        .setData(android.net.Uri.parse("package:${context.packageName}"))
+                )
+            }.onFailure {
+                runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+            }
+        }) { Text("Allow") }
     }
 }
