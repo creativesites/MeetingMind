@@ -1,7 +1,7 @@
 # MeetingMind v3 plan: notes for everything, AI with real power
 
-**Status:** GRILL draft. The decisions listed below are made. The open questions in §9 block
-specific workstreams, not the whole plan.
+**Status:** Approved direction. Round 2 answers are recorded in the decisions table (D13–D18).
+M0 has its own PRD, `docs/PRD_M0.md`. C4, C5 and C8 are still open (§9).
 **Done state:** everything in this document ships. It takes weeks, and that is accepted. There is no
 rush to cut the next build.
 
@@ -31,6 +31,12 @@ Otter) on function, ease of use and AI.
 | D10 | Theme | Minimalist and high-end. **Dark mode is the default.** Theming and the home screen are highly customisable, and a second home layout is on offer. |
 | D11 | Devotionals | Fix the repetition. Past devotionals can be reread on demand. The structure becomes customisable across Christian traditions. |
 | D12 | Notes extras | AI image generation as a block, PDF generation, inline YouTube, remote images, copy. |
+| D13 | Paste default (C1) | **Formatted native blocks** by default, then a chooser: *Keep as one Markdown block* / *Plain text*. |
+| D14 | Assistant approval (C2) | **Deletes and replacements always wait for Apply.** Inserts apply automatically (one-tap undo); a setting makes them wait too. |
+| D15 | Gating edges (C3) | No gating in the assistant, including Faith and Private notes. "Private" means left out of share/export by default and locked by app lock. The devotional's `sharePrivateWithCloud` switch stays: it controls data the app sends on its own initiative. |
+| D16 | Embeddings (C6) | Gemini cloud embeddings when a key is set; an on-device embedding model as the offline fallback. |
+| D17 | Package rename (C7) | In M0, sequenced after backup/restore ships (see `PRD_M0.md` §3). |
+| D18 | Tasks (W10) | Confirmed as wanted. |
 
 ---
 
@@ -70,6 +76,9 @@ Notes.
 | Devotional repetition | (a) The same JSON sections every day. (b) **No memory:** `DevotionalRepository.recent()` exists but nothing calls it, so the prompt never sees past devotionals. (c) Passages come from small topic lists keyed by date. (d) The same tone every day | `ai/devotional/DevotionalContract.kt`, `DevotionalEngine.passageFor` |
 | Devotional archive | `DayList` only switches between devotionals from the same day. No history view | `feature/devotional/DevotionalScreen.kt:262` |
 | Things we can reuse | Gemini image generation (`ImageBackgrounds`), `PdfExporter`/`PdfDocumentRenderer`, DOCX/Markdown export, `note_links` and the `NOTE_LINK` block, `scripture_refs` (note ↔ verse), Bible cross-references and commentary tables, per-segment `wordsJson` (karaoke is possible), `cleanedText`, `seekPlayback`, Coil, device calendar "Up next", `chat_messages` (meeting chat), Gemini Live, fonts (Inter, Lora, Outfit, Playfair) | various |
+| Android backup | `meetmind_database` is excluded from **both** cloud backup and device transfer (`res/xml/*backup*`), so a new phone loses every note | `res/xml/data_extraction_rules.xml` |
+| Delete | `deleteNote` deletes permanently: blocks and attachment files, no undo | `NoteRepository.kt:224` |
+| Devotional timing | **Fixed (3e2b7e6).** 24-hour periodic WorkManager jobs re-synced with `UPDATE` kept no time of day, so the devotional and its notification drifted. Now wall-clock alarms (`core/notify/DailyAlarms.kt`); prayer, reading and evening reminders had the same bug and are fixed too | `core/devotional/DevotionalWork.kt` |
 | Sync | Firestore syncs **meeting metadata only**. No note sync, and there's no backend for collaboration | `core/firebase/FirebaseManagers.kt` |
 | Share target | The manifest has no `ACTION_SEND` intent filter, so other apps can't share into MeetingMind | `AndroidManifest.xml` |
 | Open roadmap items | Package still `com.example`. No CI | `docs/ROADMAP.md` P2 #18, #19 |
