@@ -1,5 +1,10 @@
 package com.example.feature.devotional
 
+import com.example.ui.theme.Line
+import com.example.ui.theme.Danger
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -82,9 +87,9 @@ import com.example.ui.theme.InkSecondary
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-internal val Gold = Color(0xFFB7791F)
-private val Paper = Color(0xFFFCFAF6)
-private val Night = Color(0xFF1B1530)
+internal val Gold: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = com.example.ui.theme.FaithGold
+private val Paper: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFFFCFAF6).forTheme()
+private val Night: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFF1B1530).forTheme()
 
 /** Today's devotional (PLAN_V2 F2). */
 @Composable
@@ -165,8 +170,8 @@ fun DevotionalContent(
                 // Always here: a new one, whenever the person wants, by the writer they choose.
                 Surface(onClick = onRewrite, enabled = !state.writing, shape = RoundedCornerShape(50), color = Night, modifier = Modifier.testTag("devotional_new")) {
                     Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (state.writing) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Color(0xFFF6D365))
-                        else Icon(Icons.Filled.Add, contentDescription = null, tint = Color(0xFFF6D365), modifier = Modifier.size(16.dp))
+                        if (state.writing) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Color(0xFFF6D365).forTheme())
+                        else Icon(Icons.Filled.Add, contentDescription = null, tint = Color(0xFFF6D365).forTheme(), modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(if (state.writing) "Writing…" else "New", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     }
@@ -235,7 +240,7 @@ fun DevotionalContent(
                                 Text("Talk it through", fontSize = 17.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Color.White)
                                 Text("Reflect on this out loud with a thoughtful companion", fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.7f))
                             }
-                            Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = Color(0xFFF6D365))
+                            Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = Color(0xFFF6D365).forTheme())
                         }
                     }
                 }
@@ -269,12 +274,12 @@ private fun DayList(all: List<DailyDevotional>, shown: DailyDevotional, date: Lo
                 val d = all[i]
                 val on = d.note.id == shown.note.id
                 val current = d.note.metadata[DevotionalNotes.META_KEY] == dayKey
-                Surface(onClick = { onSelect(d) }, shape = RoundedCornerShape(16.dp), color = if (on) Night else Color.White,
-                    border = if (on) null else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE7E1D6)), modifier = Modifier.width(168.dp)) {
+                Surface(onClick = { onSelect(d) }, shape = RoundedCornerShape(16.dp), color = if (on) Night else SurfaceBase,
+                    border = if (on) null else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE7E1D6).forTheme()), modifier = Modifier.width(168.dp)) {
                     Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("${writerLabel(d)} · ${time.format(java.util.Date(d.note.createdAt))}", fontSize = 11.5.sp, color = if (on) Color(0xFFF6D365) else Gold, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
-                            if (current) Icon(Icons.Filled.Star, contentDescription = "Today's", tint = if (on) Color(0xFFF6D365) else Gold, modifier = Modifier.size(14.dp))
+                            Text("${writerLabel(d)} · ${time.format(java.util.Date(d.note.createdAt))}", fontSize = 11.5.sp, color = if (on) Color(0xFFF6D365).forTheme() else Gold, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
+                            if (current) Icon(Icons.Filled.Star, contentDescription = "Today's", tint = if (on) Color(0xFFF6D365).forTheme() else Gold, modifier = Modifier.size(14.dp))
                         }
                         Text(d.devotional.title, fontSize = 13.5.sp, fontFamily = FontFamily.Serif, color = if (on) Color.White else Ink, maxLines = 2, lineHeight = 18.sp, modifier = Modifier.padding(top = 3.dp))
                     }
@@ -290,13 +295,13 @@ private fun DayList(all: List<DailyDevotional>, shown: DailyDevotional, date: Lo
 
 @Composable
 private fun ErrorBanner(message: String, onRetry: () -> Unit, onDismiss: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFFFEF2F2)).padding(14.dp).testTag("devotional_error"), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFFFEF2F2).forTheme()).padding(14.dp).testTag("devotional_error"), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("Couldn't write a new one", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF991B1B))
-            Text("$message The one you're reading is unchanged.", fontSize = 12.5.sp, lineHeight = 17.sp, color = Color(0xFF7F1D1D))
-            Text("Try again", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF991B1B), modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onRetry).padding(vertical = 2.dp))
+            Text("Couldn't write a new one", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Danger)
+            Text("$message The one you're reading is unchanged.", fontSize = 12.5.sp, lineHeight = 17.sp, color = Ink)
+            Text("Try again", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Danger, modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onRetry).padding(vertical = 2.dp))
         }
-        IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss", tint = Color(0xFF991B1B)) }
+        IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss", tint = Danger) }
     }
 }
 
@@ -305,7 +310,7 @@ private fun Hero(date: LocalDate, season: LiturgicalDay?, d: Devotional?, writin
     val tint = season?.season?.color?.let { Color(it) } ?: Gold
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(28.dp))
-            .background(Brush.linearGradient(listOf(Night, Color(0xFF2B2140), Color(0xFF3A2A1A))))
+            .background(Brush.linearGradient(listOf(Night, Color(0xFF2B2140).forTheme(), Color(0xFF3A2A1A).forTheme())))
     ) {
         if (cover != null) {
             coil.compose.AsyncImage(model = java.io.File(cover), contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.matchParentSize())
@@ -328,10 +333,10 @@ private fun Hero(date: LocalDate, season: LiturgicalDay?, d: Devotional?, writin
                 modifier = Modifier.padding(top = 14.dp)
             )
             d?.scripture?.firstOrNull()?.let {
-                Text(it.display(), fontSize = 14.sp, color = Color(0xFFF6D365), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                Text(it.display(), fontSize = 14.sp, color = Color(0xFFF6D365).forTheme(), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
             }
             d?.let { dev ->
-                Row(Modifier.padding(top = 16.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.padding(top = 16.dp).clip(RoundedCornerShape(50)).background(SurfaceBase.copy(alpha = 0.12f)).padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(shortLabel(dev), fontSize = 11.5.sp, color = Color.White.copy(alpha = 0.9f), fontWeight = FontWeight.Medium)
                 }
             }
@@ -355,7 +360,7 @@ private fun ListenPill(voice: VoiceUi, onListen: () -> Unit) {
         else -> "Listen"
     }
     Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Surface(onClick = onListen, enabled = !voice.preparing, shape = RoundedCornerShape(50), color = Color(0xFFF6D365), modifier = Modifier.testTag("devotional_listen")) {
+        Surface(onClick = onListen, enabled = !voice.preparing, shape = RoundedCornerShape(50), color = Color(0xFFF6D365).forTheme(), modifier = Modifier.testTag("devotional_listen")) {
             Row(Modifier.padding(start = 12.dp, end = 18.dp, top = 9.dp, bottom = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (voice.preparing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Night)
                 else Icon(if (voice.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = null, tint = Night, modifier = Modifier.size(20.dp))
@@ -400,10 +405,10 @@ private fun Intro(enabled: Boolean, onSettings: () -> Unit, onRewrite: () -> Uni
 @Composable
 internal fun PillButton(label: String, filled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
-        onClick = onClick, shape = RoundedCornerShape(50), color = if (filled) Ink else Color.White,
-        border = if (filled) null else BorderStroke(1.dp, Color(0xFFE2E8F0)), modifier = modifier
+        onClick = onClick, shape = RoundedCornerShape(50), color = if (filled) Ink else SurfaceBase,
+        border = if (filled) null else BorderStroke(1.dp, Line), modifier = modifier
     ) {
-        Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (filled) Color.White else Ink, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
+        Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (filled) OnInk else Ink, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
     }
 }
 
@@ -422,12 +427,12 @@ private fun KeyText(text: String) {
 @Composable
 private fun StaticReference(ref: ScriptureReference) {
     Text(ref.display(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White).padding(14.dp))
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(SurfaceBase).padding(14.dp))
 }
 
 @Composable
 private fun Paragraph(text: String) {
-    Text(text, fontSize = 17.sp, lineHeight = 28.sp, fontFamily = FontFamily.Serif, color = Color(0xFF2A2A2A),
+    Text(text, fontSize = 17.sp, lineHeight = 28.sp, fontFamily = FontFamily.Serif, color = Ink,
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 7.dp))
 }
 
@@ -444,11 +449,11 @@ private fun CheckRow(text: String, checked: Boolean) {
 private fun PrayerCard(text: String, praying: Boolean = false, onPrayWithMe: () -> Unit = {}, onPray: () -> Unit = {}) {
     Column(
         Modifier.padding(horizontal = 16.dp, vertical = 18.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
-            .background(Brush.verticalGradient(listOf(Color(0xFFFFF4DC), Color(0xFFFFFBF2)))).padding(22.dp)
+            .background(Brush.verticalGradient(listOf(Color(0xFFFFF4DC).forTheme(), Color(0xFFFFFBF2).forTheme()))).padding(22.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("PRAYER", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold, modifier = Modifier.weight(1f))
-            Surface(onClick = onPray, shape = RoundedCornerShape(50), color = if (praying) Gold else Color.White, modifier = Modifier.testTag("pray_aloud")) {
+            Surface(onClick = onPray, shape = RoundedCornerShape(50), color = if (praying) Gold else SurfaceBase, modifier = Modifier.testTag("pray_aloud")) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (praying) Icons.Filled.GraphicEq else Icons.Filled.PlayArrow, contentDescription = null, tint = if (praying) Color.White else Gold, modifier = Modifier.size(15.dp))
                     Spacer(Modifier.width(5.dp))
@@ -458,12 +463,12 @@ private fun PrayerCard(text: String, praying: Boolean = false, onPrayWithMe: () 
         }
         Surface(onClick = onPrayWithMe, shape = RoundedCornerShape(50), color = Night, modifier = Modifier.padding(top = 12.dp).testTag("pray_with_me")) {
             Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = Color(0xFFF6D365), modifier = Modifier.size(15.dp))
+                Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = Color(0xFFF6D365).forTheme(), modifier = Modifier.size(15.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Pray with me", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
             }
         }
-        Text(text, fontSize = 17.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, color = Color(0xFF3A2A1A), modifier = Modifier.padding(top = 10.dp))
+        Text(text, fontSize = 17.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, color = Ink, modifier = Modifier.padding(top = 10.dp))
     }
 }
 
@@ -471,7 +476,7 @@ private fun PrayerCard(text: String, praying: Boolean = false, onPrayWithMe: () 
 private fun WordForToday(text: String) {
     Column(
         Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF4F46E5), Color(0xFF7C3AED)))).padding(22.dp)
+            .background(Brush.linearGradient(listOf(Color(0xFF4F46E5).forTheme(), Color(0xFF7C3AED).forTheme()))).padding(22.dp)
     ) {
         Text("A WORD FOR TODAY", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.75f))
         Text(text, fontSize = 19.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold, color = Color.White, modifier = Modifier.padding(top = 8.dp))
@@ -480,7 +485,7 @@ private fun WordForToday(text: String) {
 
 @Composable
 private fun QuoteCard(text: String, by: String) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White).padding(22.dp)) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(SurfaceBase).padding(22.dp)) {
         Icon(Icons.Filled.FormatQuote, contentDescription = null, tint = Gold, modifier = Modifier.size(30.dp))
         Text(text, fontSize = 18.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, color = Ink, modifier = Modifier.padding(top = 4.dp))
         if (by.isNotBlank()) Text("— $by", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 10.dp))
@@ -489,23 +494,23 @@ private fun QuoteCard(text: String, by: String) {
 
 @Composable
 private fun QuestionCard(text: String) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFFEFF6F1)).padding(22.dp)) {
-        Text("A QUESTION TO SIT WITH", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF2F7D5B))
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFFEFF6F1).forTheme()).padding(22.dp)) {
+        Text("A QUESTION TO SIT WITH", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Ink)
         Text(text, fontSize = 18.sp, lineHeight = 26.sp, fontFamily = FontFamily.Serif, color = Ink, modifier = Modifier.padding(top = 8.dp))
     }
 }
 
 @Composable
 private fun CareCard(d: Devotional) {
-    Column(Modifier.padding(16.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFFFFF1F2)).padding(22.dp)) {
-        Text("You're not alone", fontSize = 20.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Color(0xFF9F1239))
+    Column(Modifier.padding(16.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFFFFF1F2).forTheme()).padding(22.dp)) {
+        Text("You're not alone", fontSize = 20.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
         d.reflection.forEach { Text(it, fontSize = 15.sp, lineHeight = 22.sp, color = Ink, modifier = Modifier.padding(top = 10.dp)) }
     }
 }
 
 @Composable
 private fun Callout(title: String, body: String, action: String, onClick: () -> Unit) {
-    Column(Modifier.padding(16.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White).padding(22.dp)) {
+    Column(Modifier.padding(16.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(SurfaceBase).padding(22.dp)) {
         Text(title, fontSize = 19.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
         Text(body, fontSize = 14.sp, lineHeight = 20.sp, color = InkSecondary, modifier = Modifier.padding(top = 6.dp, bottom = 14.dp))
         PillButton(action, filled = true, onClick = onClick)
@@ -528,7 +533,7 @@ private fun Response(today: DailyDevotional, onSave: (DailyDevotional, String) -
     }
     Column(
         Modifier.padding(horizontal = 16.dp, vertical = 18.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
-            .background(Color.White).border(1.dp, Gold.copy(alpha = 0.25f), RoundedCornerShape(24.dp)).padding(22.dp)
+            .background(SurfaceBase).border(1.dp, Gold.copy(alpha = 0.25f), RoundedCornerShape(24.dp)).padding(22.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("MY RESPONSE", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold, modifier = Modifier.weight(1f))
@@ -558,9 +563,9 @@ private fun SectionChips(voice: VoiceUi, onListenFrom: (com.example.ai.voice.Voi
         items(voice.marks.size) { i ->
             val (section, at) = voice.marks[i]
             val on = voice.current == section && voice.playing
-            Surface(onClick = { onListenFrom(section, false) }, shape = RoundedCornerShape(50), color = if (on) Night else Color.White, border = BorderStroke(1.dp, if (on) Night else Color(0xFFE2E8F0))) {
+            Surface(onClick = { onListenFrom(section, false) }, shape = RoundedCornerShape(50), color = if (on) Night else SurfaceBase, border = BorderStroke(1.dp, if (on) Night else Line)) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (on) Icons.Filled.GraphicEq else Icons.Filled.PlayArrow, contentDescription = null, tint = if (on) Color(0xFFF6D365) else Gold, modifier = Modifier.size(14.dp))
+                    Icon(if (on) Icons.Filled.GraphicEq else Icons.Filled.PlayArrow, contentDescription = null, tint = if (on) Color(0xFFF6D365).forTheme() else Gold, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(5.dp))
                     Text(section.label, fontSize = 13.sp, color = if (on) Color.White else Ink, fontWeight = FontWeight.Medium)
                     Text("  ${com.example.core.common.Formatters.formatDurationHms(at)}", fontSize = 11.sp, color = if (on) Color.White.copy(alpha = 0.6f) else InkMuted)
@@ -600,8 +605,8 @@ private fun Feedback(today: DailyDevotional, onFeedback: (DailyDevotional, Strin
 @Composable
 private fun FeedbackChip(icon: androidx.compose.ui.graphics.vector.ImageVector?, label: String?, selected: Boolean, onClick: () -> Unit) {
     Surface(
-        onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Gold else Color.White,
-        border = BorderStroke(1.dp, if (selected) Gold else Color(0xFFE2E8F0))
+        onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Gold else SurfaceBase,
+        border = BorderStroke(1.dp, if (selected) Gold else Line)
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             icon?.let { Icon(it, contentDescription = null, tint = if (selected) Color.White else InkSecondary, modifier = Modifier.size(16.dp)) }
@@ -620,18 +625,18 @@ private fun Footer(today: DailyDevotional, onOpenNote: (String) -> Unit, onRewri
         }
         Surface(onClick = { onShare(today) }, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.padding(top = 14.dp).testTag("devotional_share")) {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(8.dp))
-                Text("Share to WhatsApp, Instagram…", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                Icon(Icons.Filled.Share, contentDescription = null, tint = OnInk, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(8.dp))
+                Text("Share to WhatsApp, Instagram…", fontSize = 14.sp, color = OnInk, fontWeight = FontWeight.SemiBold)
             }
         }
         Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Surface(onClick = { onOpenNote(today.note.id) }, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Color(0xFFE2E8F0))) {
+            Surface(onClick = { onOpenNote(today.note.id) }, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line)) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.EditNote, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                     Text("Open as note", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
                 }
             }
-            Surface(onClick = onRewrite, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Color(0xFFE2E8F0))) {
+            Surface(onClick = onRewrite, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line)) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                     Text("Write me another", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)

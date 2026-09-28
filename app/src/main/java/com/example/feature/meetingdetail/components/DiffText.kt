@@ -31,6 +31,7 @@ fun DiffProposedText(
     baseStyle: TextStyle,
     modifier: Modifier = Modifier
 ) {
+    val Speaker3 = com.example.ui.theme.Speaker3 // captured for drawing lambdas
     FlowRow(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(0.dp)) {
         runs.forEach { run ->
             BasicText(
@@ -54,6 +55,7 @@ fun DiffOriginalText(
     baseStyle: TextStyle,
     modifier: Modifier = Modifier
 ) {
+    val Line = com.example.ui.theme.Line // captured for drawing lambdas
     BasicText(
         text = text,
         style = baseStyle.copy(color = InkMuted),

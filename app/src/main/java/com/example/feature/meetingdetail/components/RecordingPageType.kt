@@ -1,5 +1,7 @@
 package com.example.feature.meetingdetail.components
 
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -18,7 +20,7 @@ object RecordingPageType {
 
     private val mono = FontFamily.Monospace
 
-    val stepHeading = TextStyle(
+    val stepHeading: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 30.sp,
         lineHeight = 34.5.sp,
@@ -26,21 +28,21 @@ object RecordingPageType {
         color = Ink
     )
 
-    val sheetTitle = TextStyle(
+    val sheetTitle: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 20.sp,
         letterSpacing = (-0.4).sp,
         color = Ink
     )
 
-    val askAnswer = TextStyle(
+    val askAnswer: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontWeight = FontWeight.Normal,
         fontSize = 17.5.sp,
         lineHeight = 30.sp,
         color = Ink
     )
 
-    val askQuestion = TextStyle(
+    val askQuestion: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 20.sp,
         lineHeight = 27.sp,
@@ -56,54 +58,54 @@ object RecordingPageType {
 
     val transcriptBodyEditing = transcriptBody.copy(lineHeight = 29.sp)
 
-    val stepBody = TextStyle(
+    val stepBody: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontWeight = FontWeight.Normal,
         fontSize = 17.sp,
         lineHeight = 29.sp,
         color = InkSecondary
     )
 
-    val decisionLine = TextStyle(
+    val decisionLine: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontWeight = FontWeight.Normal,
         fontSize = 17.sp,
         lineHeight = 26.sp,
         color = Ink
     )
 
-    val listRow = TextStyle(
+    val listRow: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontWeight = FontWeight.Normal,
         fontSize = 15.75.sp,
         color = Ink
     )
 
-    val cardTitle = TextStyle(
+    val cardTitle: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 15.sp,
         color = Ink
     )
 
-    val bodySmall = TextStyle(
+    val bodySmall: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontWeight = FontWeight.Normal,
         fontSize = 13.5.sp,
         lineHeight = 22.sp,
         color = InkSecondary
     )
 
-    val caption = TextStyle(
+    val caption: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontWeight = FontWeight.Normal,
         fontSize = 12.25.sp,
         lineHeight = 19.5.sp,
         color = InkMuted
     )
 
-    val sectionLabel = TextStyle(
+    val sectionLabel: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 11.sp,
         letterSpacing = 0.6.sp,
         color = InkMuted
     )
 
-    val monoTimestamp = TextStyle(
+    val monoTimestamp: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontFamily = mono,
         fontWeight = FontWeight.Normal,
         fontSize = 11.sp,
@@ -111,9 +113,9 @@ object RecordingPageType {
         color = InkMuted
     )
 
-    val monoTimestampActive = monoTimestamp.copy(fontWeight = FontWeight.SemiBold)
+    val monoTimestampActive: TextStyle @Composable @ReadOnlyComposable get() = monoTimestamp.copy(fontWeight = FontWeight.SemiBold)
 
-    val monoDialClock = TextStyle(
+    val monoDialClock: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontFamily = mono,
         fontWeight = FontWeight.SemiBold,
         fontSize = 27.sp,
@@ -121,7 +123,7 @@ object RecordingPageType {
         color = Ink
     )
 
-    val stepCounter = TextStyle(
+    val stepCounter: TextStyle @Composable @ReadOnlyComposable get() = TextStyle(
         fontFamily = mono,
         fontWeight = FontWeight.Normal,
         fontSize = 11.sp,

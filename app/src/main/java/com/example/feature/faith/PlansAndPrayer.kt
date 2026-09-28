@@ -1,5 +1,10 @@
 package com.example.feature.faith
 
+import com.example.ui.theme.FaithGoldInk
+import com.example.ui.theme.Line
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import android.app.Application
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -88,8 +93,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
-private val Gold = Color(0xFFB7791F)
-private val Rose = Color(0xFFDB2777)
+private val Gold: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = com.example.ui.theme.FaithGold
+private val Rose: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFFDB2777).forTheme()
 
 /** Reading plans and the prayer list (PLAN_V2 F6). */
 class FaithExtrasViewModel(app: Application) : AndroidViewModel(app) {
@@ -134,10 +139,10 @@ class FaithExtrasViewModel(app: Application) : AndroidViewModel(app) {
 fun ReadingPlanCard(vm: FaithExtrasViewModel, onOpenPlans: () -> Unit, onRead: (ScriptureReference) -> Unit) {
     val plans by vm.plans.collectAsState()
     val p = plans.firstOrNull { !it.finished }
-    Surface(onClick = onOpenPlans, shape = RoundedCornerShape(22.dp), color = Color(0xFFF3F7FF), border = BorderStroke(1.dp, Color(0xFFDCE6FA)),
+    Surface(onClick = onOpenPlans, shape = RoundedCornerShape(22.dp), color = Color(0xFFF3F7FF).forTheme(), border = BorderStroke(1.dp, Color(0xFFDCE6FA).forTheme()),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).testTag("faith_reading_plan")) {
         Column(Modifier.padding(18.dp)) {
-            Text("READING PLAN", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF2563EB))
+            Text("READING PLAN", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Ink)
             if (p == null) {
                 Text("Read through the Bible, a book, or a season", fontSize = 18.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 6.dp))
                 Text("A year, 90 days, the Gospels, Psalms & Proverbs, Advent or Lent.", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 4.dp))
@@ -146,15 +151,15 @@ fun ReadingPlanCard(vm: FaithExtrasViewModel, onOpenPlans: () -> Unit, onRead: (
                 val readings = p.plan.days[day]
                 Text(p.plan.name, fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 6.dp))
                 Text(ReadingPlans.describe(readings), fontSize = 19.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 2.dp))
-                LinearProgressIndicator(progress = { p.percent / 100f }, color = Color(0xFF2563EB), trackColor = Color(0xFFDCE6FA), modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(5.dp).clip(RoundedCornerShape(3.dp)))
+                LinearProgressIndicator(progress = { p.percent / 100f }, color = Ink, trackColor = Color(0xFFDCE6FA).forTheme(), modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(5.dp).clip(RoundedCornerShape(3.dp)))
                 Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Day ${day + 1} of ${p.plan.length} · ${p.percent}%" + p.behind(vm.today).let { if (it > 0) " · $it behind" else "" }, fontSize = 12.sp, color = InkMuted, modifier = Modifier.weight(1f))
-                    Surface(onClick = { onRead(readings.first()) }, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Color(0xFFDCE6FA))) {
+                    Surface(onClick = { onRead(readings.first()) }, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Color(0xFFDCE6FA).forTheme())) {
                         Text("Read", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
                     }
                     Spacer(Modifier.width(8.dp))
-                    Surface(onClick = { vm.setDone(p.plan, day, true) }, shape = RoundedCornerShape(50), color = Color(0xFF2563EB), modifier = Modifier.testTag("plan_mark_read")) {
-                        Text("Mark read", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
+                    Surface(onClick = { vm.setDone(p.plan, day, true) }, shape = RoundedCornerShape(50), color = Color(0xFF2563EB).forTheme(), modifier = Modifier.testTag("plan_mark_read")) {
+                        Text("Mark read", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = OnInk, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
                     }
                 }
             }
@@ -167,7 +172,7 @@ fun PrayingForCard(vm: FaithExtrasViewModel, onOpenList: () -> Unit) {
     val people by vm.people.collectAsState()
     val today = remember(people) { PrayerRotation.today(people, vm.today) }
     val startOfToday = remember { LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() }
-    Surface(onClick = onOpenList, shape = RoundedCornerShape(22.dp), color = Color(0xFFFFF4F7), border = BorderStroke(1.dp, Color(0xFFF9D7E3)),
+    Surface(onClick = onOpenList, shape = RoundedCornerShape(22.dp), color = Color(0xFFFFF4F7).forTheme(), border = BorderStroke(1.dp, Color(0xFFF9D7E3).forTheme()),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).testTag("faith_praying_for")) {
         Column(Modifier.padding(18.dp)) {
             Text("PRAYING FOR", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Rose)
@@ -181,10 +186,10 @@ fun PrayingForCard(vm: FaithExtrasViewModel, onOpenList: () -> Unit) {
                         Text(p.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                         if (p.note.isNotBlank()) Text(p.note, fontSize = 12.5.sp, color = InkSecondary, maxLines = 1)
                     }
-                    Surface(onClick = { if (!done) vm.prayed(p) }, shape = RoundedCornerShape(50), color = if (done) Rose else Color.White, border = BorderStroke(1.dp, if (done) Rose else Color(0xFFF9D7E3))) {
+                    Surface(onClick = { if (!done) vm.prayed(p) }, shape = RoundedCornerShape(50), color = if (done) Rose else SurfaceBase, border = BorderStroke(1.dp, if (done) Rose else Color(0xFFF9D7E3).forTheme())) {
                         Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (done) Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                            Text(if (done) " Prayed" else "Prayed", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = if (done) Color.White else Rose)
+                            if (done) Icon(Icons.Filled.Check, contentDescription = null, tint = OnInk, modifier = Modifier.size(14.dp))
+                            Text(if (done) " Prayed" else "Prayed", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = if (done) OnInk else Rose)
                         }
                     }
                 }
@@ -199,15 +204,15 @@ fun PrayingForCard(vm: FaithExtrasViewModel, onOpenList: () -> Unit) {
 fun ReadingPlansScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit, onRead: (ScriptureReference) -> Unit) {
     val plans by vm.plans.collectAsState()
     var open by remember { mutableStateOf<String?>(plans.firstOrNull()?.plan?.id) }
-    Scaffold(containerColor = Color.White) { padding ->
+    Scaffold(containerColor = SurfaceBase) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 40.dp)) {
             item { Header("Reading plans", onNavigateBack) }
             plans.forEach { p ->
                 item(key = "active-" + p.plan.id) {
-                    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0xFFF3F7FF)).padding(16.dp)) {
+                    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0xFFF3F7FF).forTheme()).padding(16.dp)) {
                         Text(p.plan.name, fontSize = 18.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
                         Text("${p.done.size} of ${p.plan.length} days · ${p.percent}%" + p.behind(vm.today).let { if (it > 0) " · $it behind" else "" }, fontSize = 13.sp, color = InkSecondary)
-                        LinearProgressIndicator(progress = { p.percent / 100f }, color = Color(0xFF2563EB), trackColor = Color(0xFFDCE6FA), modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(5.dp).clip(RoundedCornerShape(3.dp)))
+                        LinearProgressIndicator(progress = { p.percent / 100f }, color = Ink, trackColor = Color(0xFFDCE6FA).forTheme(), modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(5.dp).clip(RoundedCornerShape(3.dp)))
                         Row(Modifier.padding(top = 8.dp)) {
                             TextButton(onClick = { open = if (open == p.plan.id) null else p.plan.id }) { Text(if (open == p.plan.id) "Hide days" else "All days") }
                             if (p.behind(vm.today) > 0) TextButton(onClick = { vm.catchUp(p) }) { Text("I've caught up") }
@@ -220,25 +225,25 @@ fun ReadingPlansScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit, onR
                     val done = d in p.done
                     val isToday = d == p.dayFor(vm.today)
                     Row(Modifier.fillMaxWidth().clickable { onRead(p.plan.days[d].first()) }.padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(26.dp).clip(CircleShape).background(if (done) Color(0xFF2563EB) else Color.White).clickable { vm.setDone(p.plan, d, !done) }
-                            .then(if (!done) Modifier.background(Color(0xFFEFF3FB)) else Modifier), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(26.dp).clip(CircleShape).background(if (done) Color(0xFF2563EB).forTheme() else Color.White).clickable { vm.setDone(p.plan, d, !done) }
+                            .then(if (!done) Modifier.background(Color(0xFFEFF3FB).forTheme()) else Modifier), contentAlignment = Alignment.Center) {
                             if (done) Icon(Icons.Filled.Check, contentDescription = "Read", tint = Color.White, modifier = Modifier.size(16.dp))
                         }
-                        Text("Day ${d + 1}", fontSize = 12.sp, color = if (isToday) Color(0xFF2563EB) else InkMuted, fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(start = 12.dp).width(56.dp))
+                        Text("Day ${d + 1}", fontSize = 12.sp, color = if (isToday) Ink else InkMuted, fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(start = 12.dp).width(56.dp))
                         Text(ReadingPlans.describe(p.plan.days[d]), fontSize = 15.sp, color = if (done) InkMuted else Ink)
                     }
                 }
             }
             item { Text("START A PLAN", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp)) }
             items(ReadingPlans.all.filter { a -> plans.none { it.plan.id == a.id } }, key = { "p-" + it.id }) { plan ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFFF8FAFC)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.MenuBook, contentDescription = null, tint = Color(0xFF2563EB))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFFF8FAFC).forTheme()).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.MenuBook, contentDescription = null, tint = Ink)
                     Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                         Text(plan.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                         Text("${plan.line} · ${plan.length} days", fontSize = 12.5.sp, color = InkSecondary)
                     }
                     Surface(onClick = { vm.start(plan); open = plan.id }, shape = RoundedCornerShape(50), color = Ink) {
-                        Text("Start", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp))
+                        Text("Start", color = OnInk, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp))
                     }
                 }
             }
@@ -253,7 +258,7 @@ fun PrayerListScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit) {
     var adding by remember { mutableStateOf(false) }
     var reminders by remember { mutableStateOf(false) }
     val today = remember(people) { PrayerRotation.today(people, vm.today) }
-    Scaffold(containerColor = Color.White) { padding ->
+    Scaffold(containerColor = SurfaceBase) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 40.dp)) {
             item {
                 Header("Praying for", onNavigateBack) {
@@ -267,7 +272,7 @@ fun PrayerListScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit) {
                 Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
                     Text("${(0..27).count { (start + it) in days }} of the last 28 days", fontSize = 13.sp, color = InkSecondary)
                     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        (0..27).forEach { i -> Box(Modifier.size(9.dp).clip(CircleShape).background(if ((start + i) in days) Rose else Color(0xFFF1E4E9))) }
+                        (0..27).forEach { i -> Box(Modifier.size(9.dp).clip(CircleShape).background(if ((start + i) in days) Rose else Color(0xFFF1E4E9).forTheme())) }
                     }
                 }
             }
@@ -276,8 +281,8 @@ fun PrayerListScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit) {
             if (people.isEmpty()) item { Text("Add family, friends, your church, your city — anyone and anything you want to keep praying for.", fontSize = 14.sp, color = InkSecondary, modifier = Modifier.padding(horizontal = 20.dp)) }
             items(people, key = { it.id }) { p ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(38.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFFFBCFE8), Color(0xFFF9A8D4)))), contentAlignment = Alignment.Center) {
-                        Text(p.name.take(1).uppercase(), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF831843))
+                    Box(Modifier.size(38.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFFFBCFE8).forTheme(), Color(0xFFF9A8D4).forTheme()))), contentAlignment = Alignment.Center) {
+                        Text(p.name.take(1).uppercase(), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
                     }
                     Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                         Text(p.name + if (p in today) "  · today" else "", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
@@ -306,7 +311,7 @@ private fun AddPersonDialog(onAdd: (String, String) -> Unit, onDismiss: () -> Un
     var name by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = onDismiss, containerColor = Color.White,
+        onDismissRequest = onDismiss, containerColor = SurfaceBase,
         title = { Text("Add to your prayer list") },
         text = {
             Column {
@@ -324,7 +329,7 @@ private fun AddPersonDialog(onAdd: (String, String) -> Unit, onDismiss: () -> Un
 fun RemindersSheet(vm: FaithExtrasViewModel, onDismiss: () -> Unit) {
     val current by vm.reminders.collectAsState()
     var s by remember(current) { mutableStateOf(current) }
-    ModalBottomSheet(onDismissRequest = { vm.setReminders(s); onDismiss() }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = { vm.setReminders(s); onDismiss() }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SurfaceBase) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).navigationBarsPadding()) {
             Text("Reminders", fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
             Text("Gentle nudges, only the ones you choose. Your daily devotional has its own setting on its page.", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
@@ -332,8 +337,8 @@ fun RemindersSheet(vm: FaithExtrasViewModel, onDismiss: () -> Unit) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PrayerTime.entries.forEach { t ->
                     val on = t in s.prayerTimes
-                    Surface(onClick = { s = s.copy(prayerTimes = if (on) s.prayerTimes - t else s.prayerTimes + t) }, shape = RoundedCornerShape(50), color = if (on) Gold.copy(alpha = 0.14f) else Color.White, border = BorderStroke(1.dp, if (on) Gold else Color(0xFFE2E8F0))) {
-                        Text("${t.label} · %d:%02d".format(t.defaultMinutes / 60, t.defaultMinutes % 60), fontSize = 13.sp, color = if (on) Color(0xFF7A4E0F) else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                    Surface(onClick = { s = s.copy(prayerTimes = if (on) s.prayerTimes - t else s.prayerTimes + t) }, shape = RoundedCornerShape(50), color = if (on) Gold.copy(alpha = 0.14f) else OnInk, border = BorderStroke(1.dp, if (on) Gold else Line)) {
+                        Text("${t.label} · %d:%02d".format(t.defaultMinutes / 60, t.defaultMinutes % 60), fontSize = 13.sp, color = if (on) FaithGoldInk else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
                     }
                 }
             }
@@ -344,13 +349,13 @@ fun RemindersSheet(vm: FaithExtrasViewModel, onDismiss: () -> Unit) {
             Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(21 * 60 to 7 * 60, 22 * 60 to 7 * 60, 23 * 60 to 6 * 60).forEach { (a, b) ->
                     val on = s.quietStart == a && s.quietEnd == b
-                    Surface(onClick = { s = s.copy(quietStart = a, quietEnd = b) }, shape = RoundedCornerShape(50), color = if (on) Ink else Color.White, border = BorderStroke(1.dp, if (on) Ink else Color(0xFFE2E8F0))) {
-                        Text("${a / 60}:00–${b / 60}:00", fontSize = 13.sp, color = if (on) Color.White else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                    Surface(onClick = { s = s.copy(quietStart = a, quietEnd = b) }, shape = RoundedCornerShape(50), color = if (on) Ink else SurfaceBase, border = BorderStroke(1.dp, if (on) Ink else Line)) {
+                        Text("${a / 60}:00–${b / 60}:00", fontSize = 13.sp, color = if (on) OnInk else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
                     }
                 }
             }
             Surface(onClick = { vm.setReminders(s); onDismiss() }, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.padding(top = 10.dp, bottom = 24.dp)) {
-                Text("Save", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 22.dp, vertical = 11.dp))
+                Text("Save", color = OnInk, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 22.dp, vertical = 11.dp))
             }
         }
     }

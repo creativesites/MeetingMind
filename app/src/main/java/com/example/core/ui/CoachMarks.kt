@@ -1,5 +1,11 @@
 package com.example.core.ui
 
+import com.example.ui.theme.Ink
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.InkMuted
+import com.example.ui.theme.InkSecondary
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -142,19 +148,19 @@ fun CoachMarkOverlay(targets: CoachTargets, steps: List<CoachStep>, onDone: () -
                 .onSizeChanged { cardHeight = it.height.toFloat() }
         ) {
             AnimatedContent(targetState = step, transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(150)) }, label = "card") { s ->
-                Column(Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(22.dp)).padding(18.dp)) {
+                Column(Modifier.fillMaxWidth().background(SurfaceBase, RoundedCornerShape(22.dp)).padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(8.dp).background(Brush.linearGradient(Brand.sweep), CircleShape))
                         Spacer(Modifier.width(8.dp))
-                        Text("${available.indexOf(s) + 1} of ${available.size}", color = Color(0xFF64748B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Text("${available.indexOf(s) + 1} of ${available.size}", color = InkMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
-                    Text(s.title, color = Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-                    Text(s.body, color = Color(0xFF475569), fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(top = 4.dp))
+                    Text(s.title, color = Ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                    Text(s.body, color = InkSecondary, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(top = 4.dp))
                     Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Skip tour", color = Color(0xFF64748B), fontSize = 14.sp, modifier = Modifier.clickable(onClick = onDone).padding(vertical = 8.dp).testTag("coach_skip"))
+                        Text("Skip tour", color = InkMuted, fontSize = 14.sp, modifier = Modifier.clickable(onClick = onDone).padding(vertical = 8.dp).testTag("coach_skip"))
                         Surface(onClick = { next() }, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = Modifier.testTag("coach_next")) {
                             Box(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 20.dp, vertical = 10.dp)) {
-                                Text(if (available.indexOf(s) == available.lastIndex) "Got it" else "Next", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text(if (available.indexOf(s) == available.lastIndex) "Got it" else "Next", color = OnInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }

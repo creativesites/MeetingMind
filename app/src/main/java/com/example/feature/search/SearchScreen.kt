@@ -1,5 +1,6 @@
 package com.example.feature.search
 
+import com.example.ui.theme.SurfaceBase
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -139,7 +140,7 @@ fun SearchScreen(
     )
 
     Scaffold(
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         bottomBar = {
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.SEARCH,

@@ -1,5 +1,8 @@
 package com.example.ui.theme
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
+
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
@@ -108,29 +111,29 @@ val BentoAccentBrush = CleanMacCosmicBrush
 // ─────────────────────────────────────────────────────────────
 
 // Ink / text
-val Ink = LightTextPrimary          // 0xFF0F172A — primary text, primary buttons, active tab
-val InkSecondary = LightTextSecondary // 0xFF475569 — secondary text, inactive controls
-val InkMuted = LightTextMuted       // 0xFF94A3B8 — metadata, captions, inactive tabs
-val InkFaint = Color(0xFFCBD5E1)    // chevrons, gutter timestamps, disabled
+val Ink: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.ink // 0xFF0F172A — primary text, primary buttons, active tab
+val InkSecondary: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.inkSecondary // 0xFF475569 — secondary text, inactive controls
+val InkMuted: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.inkMuted // 0xFF94A3B8 — metadata, captions, inactive tabs
+val InkFaint: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.inkFaint // chevrons, gutter timestamps, disabled
 
 // Lines / surfaces
-val Line = LightBorderColor         // 0xFFE2E8F0 — borders on interactive surfaces
-val LineSoft = LightBorderSubtle    // 0xFFEEF2F6 — section dividers, timeline spine
-val LineFaint = Color(0xFFF5F7FA)   // list-row dividers
-val SurfaceSunk = Color(0xFFFAFBFD) // inline panels (word editor, notes, cleanup)
-val SurfaceCanvas = LightCanvasBackground // 0xFFF4F6FB — only where a non-white canvas is used
-val SurfaceTrack = LightPillSurface // 0xFFEBF1F9 — segmented-control track, meter track
+val Line: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.line // 0xFFE2E8F0 — borders on interactive surfaces
+val LineSoft: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.lineSoft // 0xFFEEF2F6 — section dividers, timeline spine
+val LineFaint: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.lineFaint // list-row dividers
+val SurfaceSunk: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.surfaceSunk // inline panels (word editor, notes, cleanup)
+val SurfaceCanvas: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.canvas // 0xFFF4F6FB — only where a non-white canvas is used
+val SurfaceTrack: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.track // 0xFFEBF1F9 — segmented-control track, meter track
 
 // Accent — player, identity, citations
-val Accent = CleanMacIndigo         // 0xFF6366F1 — progress ring, speaker 1, timestamps, links
-val AccentWash = Color(0x1A6366F1)  // 10% — citation chips, selection highlight
+val Accent: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.accent // 0xFF6366F1 — progress ring, speaker 1, timestamps, links
+val AccentWash: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.accentWash // 10% — citation chips, selection highlight
 
 // Speaker colours — cycle Accent -> Speaker2 -> Speaker3 -> Speaker4 by first appearance,
 // then persist per speaker id (never reshuffle). Speaker3 doubles as the diff "kept/changed"
 // underline; Speaker4 doubles as the low-confidence flag colour.
-val Speaker2 = CleanMacPurple       // 0xFFA855F7
-val Speaker3 = CleanMacEmerald      // 0xFF10B981
-val Speaker4 = CleanMacAmber        // 0xFFF59E0B
+val Speaker2: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.speaker2 // 0xFFA855F7
+val Speaker3: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.speaker3 // 0xFF10B981
+val Speaker4: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.speaker4 // 0xFFF59E0B
 
 /**
  * The brand, taken from the app icon: a cyan-to-violet "M" on deep navy. One gradient for
@@ -149,3 +152,26 @@ object Brand {
     /** A closed loop for rings (ends where it starts, so there's no seam). */
     val ring = listOf(Cyan, Blue, Indigo, Violet, Lilac, Cyan)
 }
+
+// ─────────────────────────────────────────────────────────────
+// Role tokens added with the theme system (docs/PRD_M0.md §5). They follow the active theme.
+// ─────────────────────────────────────────────────────────────
+
+/** Behind everything. */
+val Background: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.background
+/** Cards, sheets and pages — what used to be plain white. */
+val SurfaceBase: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.surface
+/** Menus and floating bars, lifted above a surface. */
+val SurfaceRaised: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.surfaceRaised
+/** Text and icons on an [Ink]-filled button or chip. */
+val OnInk: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.onInk
+val OnAccent: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.onAccent
+val Danger: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.danger
+val DangerWash: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.dangerWash
+val Success: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.success
+val Warning: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.warning
+val FaithGold: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.gold
+val FaithGoldWash: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.goldWash
+val FaithGoldInk: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.goldInk
+val Recording: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.recording
+val IsDarkTheme: Boolean @Composable @ReadOnlyComposable get() = LocalMMColors.current.isDark

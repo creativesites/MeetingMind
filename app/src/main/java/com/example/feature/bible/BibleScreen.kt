@@ -1,5 +1,9 @@
 package com.example.feature.bible
 
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.OnAccent
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -114,7 +118,7 @@ import com.example.ui.theme.Line
 import com.example.ui.theme.SurfaceSunk
 import kotlinx.coroutines.launch
 
-private val Gold = Color(0xFFB7791F)
+private val Gold: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = com.example.ui.theme.FaithGold
 private val SelectedWash = Color(0x33F2C94C)
 
 private enum class Page { READ, BOOKS, SEARCH }
@@ -154,7 +158,7 @@ fun BibleScreen(
 
     BackHandler(enabled = page != Page.READ) { page = Page.READ }
 
-    Column(Modifier.fillMaxSize().background(Color.White).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(SurfaceBase).statusBarsPadding()) {
         // Top bar: back · "John 3 ▾" · translation · search
         Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { if (page != Page.READ) page = Page.READ else onNavigateBack() }) {
@@ -172,7 +176,7 @@ fun BibleScreen(
                 if (page != Page.SEARCH) Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Choose book", tint = InkSecondary, modifier = Modifier.size(20.dp))
             }
             Surface(
-                onClick = { versionSheet = true }, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Line),
+                onClick = { versionSheet = true }, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line),
                 modifier = Modifier.testTag("bible_version")
             ) {
                 Text(current?.abbreviation ?: "…", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
@@ -264,7 +268,7 @@ fun BibleDialog(
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val vm: BibleViewModel = viewModel(key = "bible-dialog")
-        Surface(Modifier.fillMaxSize(), color = Color.White) {
+        Surface(Modifier.fillMaxSize(), color = SurfaceBase) {
             BibleScreen(
                 viewModel = vm, initialReference = initialReference, onNavigateBack = onDismiss,
                 onInsert = onInsert?.let { insert -> { r, v -> insert(r, v); onDismiss() } },
@@ -323,7 +327,7 @@ private fun Reader(viewModel: BibleViewModel, content: ChapterState, selection: 
                         Text(h, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(top = 10.dp, bottom = 8.dp))
                     }
                     Text(
-                        text = paragraphText(verses, selection, extras.highlights, reading) { viewModel.tapVerse(it) },
+                        text = paragraphText(verses, selection, extras.highlights, reading, ink = Ink, gold = Gold) { viewModel.tapVerse(it) },
                         fontSize = 19.sp, lineHeight = 31.sp, fontFamily = FontFamily.Serif, color = Ink,
                         modifier = Modifier.padding(start = if (verses.first().poetry) 14.dp else 0.dp, bottom = 12.dp)
                     )
@@ -371,7 +375,7 @@ val HighlightColors = linkedMapOf(
     "yellow" to Color(0xFFFFF1A6), "green" to Color(0xFFD4F5D9), "blue" to Color(0xFFD6E8FF), "pink" to Color(0xFFFFDDE6), "purple" to Color(0xFFE9DDFF)
 )
 
-private fun paragraphText(verses: List<ChapterVerse>, selection: IntRange?, highlights: Map<Int, String> = emptyMap(), reading: Int? = null, onTap: (Int) -> Unit): AnnotatedString = buildAnnotatedString {
+private fun paragraphText(verses: List<ChapterVerse>, selection: IntRange?, highlights: Map<Int, String> = emptyMap(), reading: Int? = null, ink: Color = Color(0xFF18181B), gold: Color = Color(0xFFB7791F), onTap: (Int) -> Unit): AnnotatedString = buildAnnotatedString {
     verses.forEachIndexed { i, v ->
         val selected = selection != null && v.number in selection
         val bg = when {
@@ -382,11 +386,12 @@ private fun paragraphText(verses: List<ChapterVerse>, selection: IntRange?, high
         withLink(
             LinkAnnotation.Clickable(
                 tag = "v${v.number}",
-                styles = TextLinkStyles(style = SpanStyle(color = Ink, background = bg)),
+                // Highlights are light pastels in both themes, so text on one is always dark.
+                styles = TextLinkStyles(style = SpanStyle(color = if (bg == Color.Transparent || bg == SelectedWash) ink else Color(0xFF18181B), background = bg)),
                 linkInteractionListener = { onTap(v.number) }
             )
         ) {
-            withStyle(SpanStyle(fontSize = 11.sp, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, color = Gold, baselineShift = BaselineShift(0.35f))) {
+            withStyle(SpanStyle(fontSize = 11.sp, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, color = gold, baselineShift = BaselineShift(0.35f))) {
                 append(v.number.toString())
             }
             append(" ")
@@ -409,7 +414,7 @@ private fun SelectionBar(
     onStudy: () -> Unit = {},
     onListenHere: (() -> Unit)? = null
 ) {
-    Surface(color = Color.White, shadowElevation = 10.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(color = SurfaceBase, shadowElevation = 10.dp, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(reference.display(), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
@@ -418,7 +423,7 @@ private fun SelectionBar(
             // Highlight colours, then study and listen.
             Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HighlightColors.forEach { (name, color) ->
-                    Box(Modifier.size(28.dp).clip(CircleShape).background(color).border(1.dp, Color(0x22000000), CircleShape).clickable { onHighlight(name) }.testTag("highlight_$name"))
+                    Box(Modifier.size(28.dp).clip(CircleShape).background(color).border(1.dp, Color(0x22000000).forTheme(), CircleShape).clickable { onHighlight(name) }.testTag("highlight_$name"))
                 }
                 Box(Modifier.size(28.dp).clip(CircleShape).border(1.dp, Line, CircleShape).clickable { onHighlight(null) }, contentAlignment = Alignment.Center) {
                     Icon(Icons.Filled.Close, contentDescription = "Remove highlight", tint = InkMuted, modifier = Modifier.size(14.dp))
@@ -436,9 +441,9 @@ private fun SelectionBar(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Surface(onClick = onPrimary, shape = RoundedCornerShape(12.dp), color = Ink, modifier = Modifier.weight(1.6f).testTag("bible_insert")) {
                     Row(Modifier.padding(vertical = 11.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = null, tint = OnInk, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(insertLabel, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(insertLabel, color = OnInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 SmallAction(Icons.Filled.BookmarkAdd, "Save", onSave, Modifier.weight(1f))
@@ -595,9 +600,9 @@ private fun SearchNeedsDownload(viewModel: BibleViewModel, current: BibleInfo?, 
                     )
                     Surface(onClick = { viewModel.downloadCurrent() }, shape = RoundedCornerShape(12.dp), color = Ink, modifier = Modifier.padding(top = 12.dp).testTag("bible_download")) {
                         Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.CloudDownload, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Filled.CloudDownload, contentDescription = null, tint = OnInk, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Download ${current.abbreviation}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Download ${current.abbreviation}", color = OnInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -637,7 +642,7 @@ private fun VersionSheet(
     onDismiss: () -> Unit
 ) {
     val bibles by viewModel.bibles.collectAsState()
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         LazyColumn(Modifier.padding(bottom = 12.dp).navigationBarsPadding()) {
             item {
                 Text("Translation", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 22.dp))
@@ -691,9 +696,9 @@ private fun ListenRow(audio: List<com.example.core.scripture.ChapterAudio>, narr
     Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
         Surface(onClick = onListen, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.testTag("bible_listen")) {
             Row(Modifier.padding(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = null, tint = OnInk, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(if (playing) "Pause" else "Listen", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                Text(if (playing) "Pause" else "Listen", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = OnInk)
             }
         }
         Spacer(Modifier.width(10.dp))
@@ -701,7 +706,7 @@ private fun ListenRow(audio: List<com.example.core.scripture.ChapterAudio>, narr
             items(audio.size) { i ->
                 val a = audio[i]
                 val on = a.narrator == current.narrator
-                Surface(onClick = { onNarrator(a.narrator) }, shape = RoundedCornerShape(50), color = if (on) Gold.copy(alpha = 0.16f) else Color.White, border = BorderStroke(1.dp, if (on) Gold else Line)) {
+                Surface(onClick = { onNarrator(a.narrator) }, shape = RoundedCornerShape(50), color = if (on) Gold.copy(alpha = 0.16f) else OnInk, border = BorderStroke(1.dp, if (on) Gold else Line)) {
                     Text(a.narrator.replaceFirstChar { it.uppercase() } + if (a.timings.isEmpty()) "" else " ·", fontSize = 12.sp, color = if (on) Ink else InkSecondary, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
                 }
             }
@@ -713,7 +718,7 @@ private fun ListenRow(audio: List<com.example.core.scripture.ChapterAudio>, narr
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StudySheet(state: StudyState, onCommentary: (String) -> Unit, onOpen: (ScriptureReference) -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding().testTag("study_sheet"), contentPadding = PaddingValues(horizontal = 22.dp, vertical = 4.dp)) {
             item {
                 Text(state.reference.display(), fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
@@ -738,8 +743,8 @@ private fun StudySheet(state: StudyState, onCommentary: (String) -> Unit, onOpen
                     items(com.example.core.scripture.HelloAo.commentaries.size) { i ->
                         val c = com.example.core.scripture.HelloAo.commentaries[i]
                         val on = c.id == state.commentaryId
-                        Surface(onClick = { onCommentary(c.id) }, shape = RoundedCornerShape(50), color = if (on) Ink else Color.White, border = BorderStroke(1.dp, if (on) Ink else Line)) {
-                            Text(c.short, fontSize = 12.5.sp, color = if (on) Color.White else InkSecondary, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                        Surface(onClick = { onCommentary(c.id) }, shape = RoundedCornerShape(50), color = if (on) Ink else OnAccent, border = BorderStroke(1.dp, if (on) Ink else Line)) {
+                            Text(c.short, fontSize = 12.5.sp, color = if (on) OnInk else InkSecondary, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
                         }
                     }
                 }

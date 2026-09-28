@@ -1,5 +1,10 @@
 package com.example.feature.today
 
+import com.example.ui.theme.Ink
+import com.example.ui.theme.Line
+import com.example.ui.theme.InkMuted
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -61,7 +66,7 @@ fun QuickCapture(onRecord: () -> Unit, onNote: () -> Unit, onImport: () -> Unit,
         ) {
             Box(Modifier.background(Brush.horizontalGradient(listOf(Brand.Blue, Brand.Indigo, Brand.Violet))).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(40.dp).clip(CircleShape).background(SurfaceBase.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
                     }
                     Spacer(Modifier.width(12.dp))
@@ -80,10 +85,10 @@ fun QuickCapture(onRecord: () -> Unit, onNote: () -> Unit, onImport: () -> Unit,
 
 @Composable
 private fun SmallStart(icon: ImageVector, label: String, tag: String, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = Color.White, border = BorderStroke(1.dp, Color(0xFFE2E8F0)), modifier = Modifier.size(width = 64.dp, height = 68.dp).testTag(tag)) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.size(width = 64.dp, height = 68.dp).testTag(tag)) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Icon(icon, contentDescription = null, tint = Brand.Indigo, modifier = Modifier.size(22.dp))
-            Text(label, color = Color(0xFF0F172A), fontSize = 11.5.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp))
+            Text(label, color = Ink, fontSize = 11.5.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }
@@ -96,7 +101,7 @@ private fun SoundBars() {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         listOf(0.45f, 0.75f, 1f, 0.75f, 0.45f).forEachIndexed { i, h ->
             val wobble = 0.7f + 0.3f * kotlin.math.sin((phase * 2 * Math.PI + i).toFloat())
-            Box(Modifier.width(3.dp).height(22.dp).graphicsLayer { scaleY = h * wobble }.clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.85f)))
+            Box(Modifier.width(3.dp).height(22.dp).graphicsLayer { scaleY = h * wobble }.clip(RoundedCornerShape(2.dp)).background(SurfaceBase.copy(alpha = 0.85f)))
         }
     }
 }
@@ -117,19 +122,19 @@ fun GettingStartedCard(
 ) {
     Column(
         modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(24.dp))
-            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(24.dp)).background(Color.White).padding(18.dp).testTag("getting_started")
+            .border(1.dp, Line, RoundedCornerShape(24.dp)).background(SurfaceBase).padding(18.dp).testTag("getting_started")
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(if (start.isNew) "Welcome — let's make it yours" else "Getting started", color = Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text("${start.done} of ${start.steps} done", color = Color(0xFF64748B), fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+                Text(if (start.isNew) "Welcome — let's make it yours" else "Getting started", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text("${start.done} of ${start.steps} done", color = InkMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
             }
             Box(Modifier.size(30.dp).clip(CircleShape).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Close, contentDescription = "Hide getting started", tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.Close, contentDescription = "Hide getting started", tint = InkMuted, modifier = Modifier.size(18.dp))
             }
         }
         // Progress along the brand gradient.
-        Box(Modifier.padding(top = 12.dp, bottom = 6.dp).fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFFEEF2F6))) {
+        Box(Modifier.padding(top = 12.dp, bottom = 6.dp).fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFFEEF2F6).forTheme())) {
             Box(Modifier.fillMaxWidth(start.done.toFloat() / start.steps).height(6.dp).clip(RoundedCornerShape(3.dp)).background(Brush.horizontalGradient(Brand.sweep)))
         }
         StartStep(Icons.Filled.Mic, "Record your first conversation", "A meeting, a class, a sermon — or just say hello to test it.", start.recorded, onRecord)
@@ -143,7 +148,7 @@ fun GettingStartedCard(
 private fun StartStep(icon: ImageVector, title: String, line: String, done: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(16.dp)).clickable(enabled = !done, onClick = onClick)
-            .background(if (done) Color(0xFFF8FAFC) else Color(0xFFF4F6FB)).padding(12.dp),
+            .background(if (done) Color(0xFFF8FAFC).forTheme() else Color(0xFFF4F6FB).forTheme()).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -152,8 +157,8 @@ private fun StartStep(icon: ImageVector, title: String, line: String, done: Bool
         ) { Icon(if (done) Icons.Filled.Check else icon, contentDescription = null, tint = if (done) Color.White else Brand.Indigo, modifier = Modifier.size(18.dp)) }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = if (done) Color(0xFF94A3B8) else Color(0xFF0F172A), fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
-            if (!done) Text(line, color = Color(0xFF64748B), fontSize = 12.5.sp, lineHeight = 17.sp)
+            Text(title, color = if (done) InkMuted else Ink, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
+            if (!done) Text(line, color = InkMuted, fontSize = 12.5.sp, lineHeight = 17.sp)
         }
     }
 }

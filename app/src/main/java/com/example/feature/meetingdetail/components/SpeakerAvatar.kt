@@ -26,7 +26,7 @@ import com.example.ui.theme.Speaker4
  * object is what the pipeline actually persists into `SpeakerEntity.colorHex`, so this list only
  * matters as a fallback for a speaker id not yet reflected in persisted data.
  */
-val SpeakerPalette = listOf(Accent, Speaker2, Speaker3, Speaker4)
+val SpeakerPalette = com.example.ui.theme.PaperColors.let { listOf(it.accent, it.speaker2, it.speaker3, it.speaker4) }
 
 /**
  * Resolves a speaker's Compose colour: the real persisted [colorHex] when there is one — parsed,

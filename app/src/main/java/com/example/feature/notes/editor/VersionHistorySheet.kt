@@ -1,5 +1,6 @@
 package com.example.feature.notes.editor
 
+import com.example.ui.theme.forTheme
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -147,8 +148,8 @@ private fun VersionPreview(
 
 @Composable
 private fun DiffRow(line: DiffLine) {
-    val added = Color(0x3322C55E)
-    val removed = Color(0x33EF4444)
+    val added = Color(0x3322C55E).forTheme()
+    val removed = Color(0x33EF4444).forTheme()
     Text(
         line.text.ifEmpty { " " },
         style = MaterialTheme.typography.bodyMedium,

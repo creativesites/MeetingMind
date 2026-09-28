@@ -1,5 +1,9 @@
 package com.example.feature.notes.editor
 
+import com.example.ui.theme.Danger
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Image
@@ -287,7 +291,7 @@ fun NoteEditorScreen(
     }
 
     Scaffold(
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             Row(
@@ -310,7 +314,7 @@ fun NoteEditorScreen(
                 }
                 Box {
                     IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = Ink) }
-                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, containerColor = Color.White) {
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, containerColor = SurfaceBase) {
                         DropdownMenuItem(text = { Text("Cover image") }, leadingIcon = { Icon(Icons.Filled.Image, null) }, onClick = {
                             showMenu = false
                             coverPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -339,7 +343,7 @@ fun NoteEditorScreen(
                         DropdownMenuItem(text = { Text("Version history") }, leadingIcon = { Icon(Icons.Filled.History, null) }, onClick = { showMenu = false; showVersions = true })
                         HorizontalDivider(color = Line)
                         DropdownMenuItem(text = { Text("Archive") }, leadingIcon = { Icon(Icons.Filled.Archive, null) }, onClick = { showMenu = false; viewModel.archive(onNavigateBack) })
-                        DropdownMenuItem(text = { Text("Delete", color = Color(0xFFDC2626)) }, leadingIcon = { Icon(Icons.Filled.Delete, null, tint = Color(0xFFDC2626)) }, onClick = { showMenu = false; confirmDelete = true })
+                        DropdownMenuItem(text = { Text("Delete", color = Danger) }, leadingIcon = { Icon(Icons.Filled.Delete, null, tint = Danger) }, onClick = { showMenu = false; confirmDelete = true })
                     }
                 }
             }
@@ -695,7 +699,7 @@ fun NoteEditorScreen(
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            containerColor = Color.White,
+            containerColor = SurfaceBase,
             title = { Text("Delete this note?") },
             text = {
                 Text("It moves to the Trash, where you can restore it for ${com.example.core.repository.NoteRepository.TRASH_DAYS} days. Its recordings always stay in your library.")
@@ -704,7 +708,7 @@ fun NoteEditorScreen(
                 TextButton(onClick = {
                     confirmDelete = false
                     viewModel.delete { onNavigateBack() }
-                }) { Text("Delete", color = Color(0xFFDC2626)) }
+                }) { Text("Delete", color = Danger) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
         )
@@ -871,10 +875,10 @@ private fun PrayerRequestBanner(
     onTestimony: (existingId: String?) -> Unit
 ) {
     val answered = note.status == com.example.core.model.NoteStatus.ANSWERED
-    val gold = Color(0xFFB7791F)
+    val gold = Color(0xFFB7791F).forTheme()
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = if (answered) Color(0x14B7791F) else SurfaceSunk,
+        color = if (answered) Color(0x14B7791F).forTheme() else SurfaceSunk,
         border = BorderStroke(1.dp, if (answered) gold.copy(alpha = 0.35f) else Line),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp).testTag("prayer_banner")
     ) {
@@ -892,18 +896,18 @@ private fun PrayerRequestBanner(
             Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (answered) {
                     Surface(onClick = { onTestimony(testimony?.id) }, shape = RoundedCornerShape(50), color = Ink) {
-                        Text(if (testimony != null) "Open testimony" else "Write testimony", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        Text(if (testimony != null) "Open testimony" else "Write testimony", color = OnInk, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
                     }
-                    Surface(onClick = onReopen, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Line)) {
+                    Surface(onClick = onReopen, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line)) {
                         Text("Still praying", color = Ink, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
                     }
                 } else {
-                    Surface(onClick = onAddUpdate, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Line)) {
+                    Surface(onClick = onAddUpdate, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line)) {
                         Text("Add update", color = Ink, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
                     }
                     Surface(onClick = onMarkAnswered, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.testTag("prayer_mark_answered")) {
-                        Text("Mark answered", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                        Text("Mark answered", color = OnInk, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
                     }
                 }
             }
@@ -916,7 +920,7 @@ private fun PrayerUpdateDialog(onSave: (String) -> Unit, onDismiss: () -> Unit) 
     var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         title = { Text("Prayer update") },
         text = {
             OutlinedTextField(

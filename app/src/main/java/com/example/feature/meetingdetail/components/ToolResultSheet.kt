@@ -1,5 +1,7 @@
 package com.example.feature.meetingdetail.components
 
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -66,7 +68,7 @@ fun ToolResultSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = Color.White
+        containerColor = SurfaceBase
     ) {
         Column(modifier = Modifier.testTag("tool_result_sheet")) {
             Row(
@@ -156,7 +158,7 @@ private fun RevisionBody(
     ) {
         Button(
             onClick = { onApply(outcome) },
-            colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Color.White),
+            colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.weight(1f).testTag("tool_result_apply")
         ) {
@@ -243,7 +245,7 @@ private fun DocumentBody(outcome: ToolOutcome.TextDocument, onCopy: (String) -> 
     Row(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
         Button(
             onClick = { onCopy(outcome.markdown) },
-            colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Color.White),
+            colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth().testTag("tool_result_copy")
         ) {
@@ -267,7 +269,7 @@ private fun TitleBody(outcome: ToolOutcome.TitleSuggestion, onApply: (String) ->
     ) {
         Button(
             onClick = { onApply(outcome.title) },
-            colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Color.White),
+            colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.weight(1f).testTag("tool_result_apply_title")
         ) {
@@ -290,7 +292,7 @@ private fun ContextBody(outcome: ToolOutcome.ContextExpansion, onJumpTo: (String
         Row(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
             Button(
                 onClick = { onJumpTo(first, null) },
-                colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Color.White),
+                colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {

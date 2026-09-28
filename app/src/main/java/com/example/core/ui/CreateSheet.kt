@@ -1,5 +1,6 @@
 package com.example.core.ui
 
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,7 +48,7 @@ enum class CreateAction { RECORD, NOTE, MEDIA, IMPORT }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateSheet(onPick: (CreateAction) -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding()) {
             Text("Create", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, letterSpacing = (-0.3).sp)
             Spacer(Modifier.height(14.dp))

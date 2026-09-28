@@ -1,5 +1,6 @@
 package com.example.feature.meetingdetail.components
 
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -94,7 +95,7 @@ private fun StepperCircle(
             .then(
                 if (filled) Modifier.background(Ink, CircleShape)
                 else Modifier
-                    .background(Color.White, CircleShape)
+                    .background(SurfaceBase, CircleShape)
                     .border(1.dp, Line, CircleShape)
             ),
         contentAlignment = Alignment.Center

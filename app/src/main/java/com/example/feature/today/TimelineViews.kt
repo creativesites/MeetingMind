@@ -1,5 +1,12 @@
 package com.example.feature.today
 
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.Ink
+import com.example.ui.theme.Line
+import com.example.ui.theme.InkMuted
+import com.example.ui.theme.InkSecondary
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -62,10 +69,10 @@ import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
 
-private val InkNavy = Color(0xFF0F172A)
-private val Slate = Color(0xFF64748B)
-private val Hairline = Color(0xFFE2E8F0)
-private val Sunk = Color(0xFFF6F7FB)
+private val InkNavy: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Ink
+private val Slate: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = InkMuted
+private val Hairline: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Line
+private val Sunk: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFFF6F7FB).forTheme()
 
 fun layerColor(layer: TimelineLayer) = Color(layer.color)
 
@@ -130,7 +137,7 @@ private fun ClassicCard(item: TimelineItem, onOpen: (TimelineItem) -> Unit, onLo
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Color.White)
+            .background(SurfaceBase)
             .border(1.dp, Hairline, RoundedCornerShape(18.dp))
             .combinedClickable(onClick = { onOpen(item) }, onLongClick = { onLongPress(item) })
             .padding(start = 12.dp, end = 14.dp, top = 12.dp, bottom = 12.dp)
@@ -154,7 +161,7 @@ private fun ClassicCard(item: TimelineItem, onOpen: (TimelineItem) -> Unit, onLo
                 maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
             val detail = item.summary ?: item.subtitle
             detail?.let {
-                Text(it, color = Color(0xFF475569), fontSize = 13.sp, lineHeight = 18.sp, fontFamily = InterFamily, maxLines = 2,
+                Text(it, color = InkSecondary, fontSize = 13.sp, lineHeight = 18.sp, fontFamily = InterFamily, maxLines = 2,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
             }
             if (item.summary != null && item.subtitle != null) {
@@ -187,14 +194,14 @@ private fun PictureCard(item: TimelineItem, onOpen: (TimelineItem) -> Unit, onLo
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = if (hasCover) 0.25f else 0f), Color.Black.copy(alpha = if (hasCover) 0.72f else 0.2f)))))
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(28.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(28.dp).clip(CircleShape).background(SurfaceBase.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
                     Icon(itemIcon(item), contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                 }
                 Text(metaLine(item, fmt, showDate) + (item.workflow?.takeIf { it != RecordingType.GENERAL && item.kind != ItemKind.EVENT }?.let { " · ${it.displayName}" } ?: ""), color = Color.White.copy(alpha = 0.9f), fontSize = 12.sp, fontFamily = InterFamily, fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(start = 8.dp).weight(1f), maxLines = 1)
                 item.badge?.let {
                     Text(it, color = Color.White, fontSize = 11.sp, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.22f)).padding(horizontal = 9.dp, vertical = 3.dp))
+                        modifier = Modifier.clip(CircleShape).background(SurfaceBase.copy(alpha = 0.22f)).padding(horizontal = 9.dp, vertical = 3.dp))
                 }
             }
             Spacer(Modifier.weight(1f))
@@ -234,8 +241,8 @@ fun WeekStrip(
                     .padding(vertical = 8.dp)
                     .testTag("week_day_$i")
             ) {
-                Text(dayNames[cal.get(Calendar.DAY_OF_WEEK)].take(2), fontSize = 11.sp, color = if (selected) Color.White.copy(alpha = 0.7f) else Slate, fontFamily = InterFamily)
-                Text("${cal.get(Calendar.DAY_OF_MONTH)}", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = if (selected) Color.White else InkNavy, fontFamily = OutfitFamily)
+                Text(dayNames[cal.get(Calendar.DAY_OF_WEEK)].take(2), fontSize = 11.sp, color = if (selected) OnInk.copy(alpha = 0.7f) else Slate, fontFamily = InterFamily)
+                Text("${cal.get(Calendar.DAY_OF_MONTH)}", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = if (selected) OnInk else InkNavy, fontFamily = OutfitFamily)
                 Row(Modifier.height(8.dp).padding(top = 3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     activity[key].orEmpty().take(4).forEach { l -> Box(Modifier.size(5.dp).clip(CircleShape).background(layerColor(l))) }
                 }
@@ -340,9 +347,9 @@ fun DayView(items: List<TimelineItem>, day: Long, onOpen: (TimelineItem) -> Unit
 @Composable
 private fun NowLine(label: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, fontSize = 11.sp, color = Color(0xFFE11D48), fontWeight = FontWeight.SemiBold, modifier = Modifier.width(62.dp), maxLines = 1, softWrap = false)
-        Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFE11D48)))
-        Box(Modifier.weight(1f).height(2.dp).background(Color(0xFFE11D48)))
+        Text(label, fontSize = 11.sp, color = Ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(62.dp), maxLines = 1, softWrap = false)
+        Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFE11D48).forTheme()))
+        Box(Modifier.weight(1f).height(2.dp).background(Color(0xFFE11D48).forTheme()))
     }
 }
 
@@ -399,7 +406,7 @@ fun WeekView(items: List<TimelineItem>, weekStart: Long, onDay: (Long) -> Unit, 
             val list = byDay[TimelineDays.key(day)].orEmpty()
             val today = TimelineDays.key(day) == TimelineDays.key(System.currentTimeMillis())
             Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(if (today) Color(0x0F4F46E5) else Sunk).clickable { onDay(day) }.padding(4.dp),
+                Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(if (today) Color(0x0F4F46E5).forTheme() else Sunk).clickable { onDay(day) }.padding(4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 val cal = Calendar.getInstance().apply { timeInMillis = day }
@@ -448,7 +455,7 @@ fun MonthView(items: List<TimelineItem>, gridStart: Long, month: Long, selectedD
                     Box(
                         Modifier.weight(1f).height(56.dp).clip(RoundedCornerShape(12.dp))
                             .background(if (list.isEmpty()) Sunk else Color(list.first().accent).copy(alpha = 0.10f + 0.25f * heat))
-                            .border(if (selected) 2.dp else if (today) 1.dp else 0.dp, if (selected) InkNavy else if (today) Color(0xFF4F46E5) else Color.Transparent, RoundedCornerShape(12.dp))
+                            .border(if (selected) 2.dp else if (today) 1.dp else 0.dp, if (selected) InkNavy else if (today) Color(0xFF4F46E5).forTheme() else Color.Transparent, RoundedCornerShape(12.dp))
                             .clickable { onDay(day) }
                     ) {
                         if (cover != null) {

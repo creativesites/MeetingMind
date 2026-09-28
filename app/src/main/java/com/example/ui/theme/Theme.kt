@@ -11,73 +11,71 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary = IndigoPrimary,
-    onPrimary = IndigoOnPrimary,
-    primaryContainer = Color(0xFF312E81),
-    onPrimaryContainer = Color(0xFFE0E7FF),
-    secondary = VioletSecondary,
-    onSecondary = VioletOnSecondary,
-    secondaryContainer = Color(0xFF581C87),
-    onSecondaryContainer = Color(0xFFF3E8FF),
-    tertiary = CyanTertiary,
-    onTertiary = CyanOnTertiary,
-    tertiaryContainer = Color(0xFF164E63),
-    onTertiaryContainer = Color(0xFFCFFAFE),
-    background = DarkBackground,
-    onBackground = DarkOnBackground,
-    surface = DarkSurface,
-    onSurface = DarkOnSurface,
-    surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = DarkOnSurfaceVariant,
-    outline = DarkOutline,
-    outlineVariant = DarkOutlineVariant,
-    error = ErrorRed
+/** Material's colour scheme, built from a palette so Material components follow the theme too. */
+fun materialSchemeFor(c: MMColors) = if (c.isDark) darkColorScheme(
+    primary = c.accent, onPrimary = c.onAccent,
+    primaryContainer = c.accentWash, onPrimaryContainer = c.ink,
+    secondary = c.inkSecondary, onSecondary = c.background,
+    secondaryContainer = c.track, onSecondaryContainer = c.ink,
+    tertiary = c.speaker3, onTertiary = c.background,
+    tertiaryContainer = c.surfaceRaised, onTertiaryContainer = c.ink,
+    background = c.background, onBackground = c.ink,
+    surface = c.surface, onSurface = c.ink,
+    surfaceVariant = c.track, onSurfaceVariant = c.inkSecondary,
+    surfaceContainerLowest = c.surfaceSunk, surfaceContainerLow = c.surface, surfaceContainer = c.surface,
+    surfaceContainerHigh = c.surfaceRaised, surfaceContainerHighest = c.surfaceRaised,
+    outline = c.line, outlineVariant = c.lineSoft,
+    error = c.danger, onError = c.background, errorContainer = c.dangerWash, onErrorContainer = c.danger,
+    scrim = c.scrim
+) else lightColorScheme(
+    primary = c.accent, onPrimary = c.onAccent,
+    primaryContainer = c.accentWash, onPrimaryContainer = c.ink,
+    secondary = c.inkSecondary, onSecondary = c.surface,
+    secondaryContainer = c.track, onSecondaryContainer = c.ink,
+    tertiary = c.speaker3, onTertiary = c.surface,
+    tertiaryContainer = c.surfaceSunk, onTertiaryContainer = c.ink,
+    background = c.background, onBackground = c.ink,
+    surface = c.surface, onSurface = c.ink,
+    surfaceVariant = c.track, onSurfaceVariant = c.inkSecondary,
+    surfaceContainerLowest = c.surface, surfaceContainerLow = c.surface, surfaceContainer = c.surfaceSunk,
+    surfaceContainerHigh = c.surfaceSunk, surfaceContainerHighest = c.track,
+    outline = c.line, outlineVariant = c.lineSoft,
+    error = c.danger, onError = c.surface, errorContainer = c.dangerWash, onErrorContainer = c.danger,
+    scrim = c.scrim
 )
 
-// CleanMyMac Ultra-Clean Light Color Scheme
-private val CleanMacLightColorScheme = lightColorScheme(
-    primary = CleanMacIndigo,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFEEF2FF),
-    onPrimaryContainer = Color(0xFF3730A3),
-    secondary = CleanMacPurple,
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFFAF5FF),
-    onSecondaryContainer = Color(0xFF6B21A8),
-    tertiary = CleanMacCyan,
-    onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFECFEFF),
-    onTertiaryContainer = Color(0xFF155E75),
-    background = LightCanvasBackground,
-    onBackground = LightTextPrimary,
-    surface = LightCardSurface,
-    onSurface = LightTextPrimary,
-    surfaceVariant = LightPillSurface,
-    onSurfaceVariant = LightTextSecondary,
-    outline = LightBorderColor,
-    outlineVariant = LightBorderSubtle,
-    error = ErrorRed
-)
-
+/**
+ * The app's theme. Dark (Graphite) unless the person chose otherwise (docs/PRD_M0.md §5).
+ * Screens read colours through the role tokens in Color.kt and Material's scheme, which both
+ * follow [darkTheme].
+ */
 @Composable
 fun MeetMindTheme(
-    darkTheme: Boolean = false, // Clean & modern light CleanMyMac theme by default
-    dynamicColor: Boolean = false, // Keep signature vibrant branding
+    darkTheme: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val palette = if (darkTheme) GraphiteColors else PaperColors
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColorScheme
-        else -> CleanMacLightColorScheme
+        else -> materialSchemeFor(palette)
     }
+    androidx.compose.runtime.CompositionLocalProvider(LocalMMColors provides palette) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            content = content
+        )
+    }
+}
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+/** Resolves a [ThemeMode] to dark or light, following the system when asked. */
+@Composable
+fun ThemeMode.isDark(): Boolean = when (this) {
+    ThemeMode.DARK -> true
+    ThemeMode.LIGHT -> false
+    ThemeMode.SYSTEM -> isSystemInDarkTheme()
 }

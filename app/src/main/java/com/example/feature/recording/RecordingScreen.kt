@@ -1,5 +1,11 @@
 package com.example.feature.recording
 
+import com.example.ui.theme.Ink
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.InkMuted
+import com.example.ui.theme.InkSecondary
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.SurfaceBase
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -373,19 +379,19 @@ private fun RecordingTypePickerScreen(
     setupNotice: @Composable () -> Unit = {}
 ) {
     Scaffold(
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         bottomBar = {
-            Column(Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
+            Column(Modifier.fillMaxWidth().background(SurfaceBase).navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
                 Text(
                     text = if (refuseToStart) "Not enough storage to start a recording ($storageLine)." else storageLine,
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (refuseToStart) MaterialTheme.colorScheme.error else Color(0xFF94A3B8),
+                    color = if (refuseToStart) MaterialTheme.colorScheme.error else InkMuted,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("record_storage_line")
                 )
                 Button(
                     onClick = onStart, enabled = !refuseToStart, shape = RoundedCornerShape(50),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+                    colors = ButtonDefaults.buttonColors(containerColor = Ink),
                     modifier = Modifier.fillMaxWidth().height(54.dp).testTag("record_type_start_btn")
                 ) {
                     Icon(Icons.Default.FiberManualRecord, contentDescription = null, tint = RecordingRed, modifier = Modifier.size(14.dp))
@@ -401,7 +407,7 @@ private fun RecordingTypePickerScreen(
         ) {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 20.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onCancel) { Icon(Icons.Default.Close, contentDescription = "Cancel") }
-                Text("New recording", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
+                Text("New recording", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
             }
             // The fastest path: one tap, no questions.
             Surface(
@@ -424,7 +430,7 @@ private fun RecordingTypePickerScreen(
             Box(Modifier.padding(horizontal = 20.dp)) { setupNotice() }
             Text(
                 "Or tell MeetingMind what it is — it listens for the right things.",
-                fontSize = 14.sp, color = Color(0xFF475569), modifier = Modifier.padding(horizontal = 20.dp)
+                fontSize = 14.sp, color = InkSecondary, modifier = Modifier.padding(horizontal = 20.dp)
             )
             Box(Modifier.padding(horizontal = 20.dp)) { com.example.core.ui.RecordingTypeGrid(selected = selected, onSelect = onSelect) }
             if (selected == RecordingType.CUSTOM) {
@@ -436,8 +442,8 @@ private fun RecordingTypePickerScreen(
                 )
             }
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Who's speaking?", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
-                Text("Optional — it helps tell voices apart.", fontSize = 12.5.sp, color = Color(0xFF94A3B8))
+                Text("Who's speaking?", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                Text("Optional — it helps tell voices apart.", fontSize = 12.5.sp, color = InkMuted)
                 com.example.core.ui.SpeakerCountRow(selected = selectedSpeakerCount, onSelect = onSelectSpeakerCount)
             }
             Spacer(Modifier.height(8.dp))

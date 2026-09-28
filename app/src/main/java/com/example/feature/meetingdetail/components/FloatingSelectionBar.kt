@@ -1,5 +1,6 @@
 package com.example.feature.meetingdetail.components
 
+import com.example.ui.theme.OnInk
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -43,7 +44,7 @@ fun FloatingSelectionBar(
         items.forEachIndexed { index, label ->
             Text(
                 text = label,
-                color = Color.White,
+                color = OnInk,
                 fontSize = 13.sp,
                 modifier = Modifier
                     .clickable { onItemClick(index) }

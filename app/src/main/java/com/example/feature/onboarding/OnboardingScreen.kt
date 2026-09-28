@@ -1,5 +1,6 @@
 package com.example.feature.onboarding
 
+import com.example.ui.theme.SurfaceBase
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -262,7 +263,7 @@ private fun Welcome() {
 
 @Composable
 private fun Pill(icon: ImageVector, label: String) {
-    Row(Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.clip(RoundedCornerShape(50)).background(SurfaceBase.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = Brand.Cyan, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(6.dp))
         Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 12.5.sp)
@@ -286,7 +287,7 @@ private fun WhatItDoes() {
 
 @Composable
 private fun Feature(icon: ImageVector, title: String, line: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Brand.Blue, Brand.Violet))), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
         }
@@ -371,7 +372,7 @@ private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (S
 private fun ChoiceCard(selected: Boolean, onClick: () -> Unit, icon: ImageVector, title: String, badge: String?, line: String, tag: String, extra: @Composable () -> Unit = {}) {
     Column(
         Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(20.dp))
-            .background(Color.White.copy(alpha = if (selected) 0.1f else 0.05f))
+            .background(SurfaceBase.copy(alpha = if (selected) 0.1f else 0.05f))
             .border(if (selected) 1.5.dp else 1.dp, if (selected) Brush.linearGradient(Brand.sweep) else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.1f), Color.White.copy(alpha = 0.1f))), RoundedCornerShape(20.dp))
             .clickable(onClick = onClick).padding(16.dp).testTag(tag)
     ) {
@@ -411,7 +412,7 @@ private fun PermissionsStep() {
 
 @Composable
 private fun PermissionRow(icon: ImageVector, title: String, line: String, granted: Boolean, tag: String, onAllow: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Brand.Blue, Brand.Violet))), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
         }

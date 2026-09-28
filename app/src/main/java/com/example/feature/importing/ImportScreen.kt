@@ -1,5 +1,7 @@
 package com.example.feature.importing
 
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import android.app.Application
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -196,7 +198,7 @@ fun ImportScreen(
         uri?.let { viewModel.handleSelectedUri(it) }
     }
 
-    Scaffold(containerColor = Color.White) { innerPadding ->
+    Scaffold(containerColor = SurfaceBase) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -411,7 +413,7 @@ fun ImportScreen(
                     },
                     enabled = state.meetingId != null && state.extractedAudioFile != null,
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Color.White),
+                    colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 22.dp)
@@ -463,7 +465,7 @@ private fun ImportTypeChip(label: String, selected: Boolean, onClick: () -> Unit
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) Ink else Color.White,
+        color = if (selected) Ink else SurfaceBase,
         border = if (selected) null else BorderStroke(1.dp, Line),
         modifier = Modifier.testTag("import_type_${label.lowercase().replace(' ', '_')}")
     ) {
@@ -471,7 +473,7 @@ private fun ImportTypeChip(label: String, selected: Boolean, onClick: () -> Unit
             text = label,
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-            color = if (selected) Color.White else InkSecondary,
+            color = if (selected) OnInk else InkSecondary,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
         )
     }

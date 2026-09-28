@@ -1,5 +1,8 @@
 package com.example.feature.notes.editor
 
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
@@ -116,6 +119,8 @@ internal fun blockTopPadding(type: NoteBlockType) = when (type) {
 }
 
 /** Text style for a block type; the one place block typography is decided. */
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 internal fun blockTextStyle(type: NoteBlockType, serif: Boolean): TextStyle {
     val body = if (serif) FontFamily.Serif else FontFamily.Default
     return when (type) {
@@ -128,7 +133,12 @@ internal fun blockTextStyle(type: NoteBlockType, serif: Boolean): TextStyle {
 }
 
 /** Draws [RichText]'s ranges over the field's plain text, allowing for the sentinel. */
-private class RichTransformation(private val content: RichText, private val struck: Boolean) : VisualTransformation {
+private class RichTransformation(
+    private val content: RichText,
+    private val struck: Boolean,
+    /** Theme colours, read in composition and handed in: this runs outside it. */
+    private val colors: com.example.ui.theme.MMColors
+) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val builder = AnnotatedString.Builder(text.text)
         val max = text.text.length
@@ -143,13 +153,14 @@ private class RichTransformation(private val content: RichText, private val stru
                 InlineStyle.ITALIC -> SpanStyle(fontStyle = FontStyle.Italic)
                 InlineStyle.UNDERLINE -> SpanStyle(textDecoration = TextDecoration.Underline)
                 InlineStyle.STRIKETHROUGH -> SpanStyle(textDecoration = TextDecoration.LineThrough)
-                InlineStyle.HIGHLIGHT -> SpanStyle(background = HighlightColor)
-                InlineStyle.CODE -> SpanStyle(fontFamily = FontFamily.Monospace, background = SurfaceSunk, fontSize = 14.sp)
-                InlineStyle.LINK -> SpanStyle(color = Accent, textDecoration = TextDecoration.Underline)
+                // The highlight is a light yellow in both themes, so its text is always dark.
+                InlineStyle.HIGHLIGHT -> SpanStyle(background = HighlightColor, color = if (colors.isDark) com.example.ui.theme.PaperColors.ink else Color.Unspecified)
+                InlineStyle.CODE -> SpanStyle(fontFamily = FontFamily.Monospace, background = colors.surfaceSunk, fontSize = 14.sp)
+                InlineStyle.LINK -> SpanStyle(color = colors.accent, textDecoration = TextDecoration.Underline)
             }
             add(style, span.start, span.end)
         }
-        if (struck) add(SpanStyle(textDecoration = TextDecoration.LineThrough, color = InkMuted), 0, content.text.length)
+        if (struck) add(SpanStyle(textDecoration = TextDecoration.LineThrough, color = colors.inkMuted), 0, content.text.length)
         return TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
     }
 }
@@ -220,7 +231,7 @@ internal fun RichBlockField(
             },
             textStyle = style,
             cursorBrush = SolidColor(Accent),
-            visualTransformation = RichTransformation(block.content, block.type == NoteBlockType.CHECKLIST && block.checked),
+            visualTransformation = RichTransformation(block.content, block.type == NoteBlockType.CHECKLIST && block.checked, com.example.ui.theme.LocalMMColors.current),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             modifier = Modifier
                 .fillMaxWidth()
@@ -271,7 +282,7 @@ internal fun TextBlock(
             NoteBlockType.CHECKLIST -> Box(Modifier.width(30.dp).height(25.dp).clickable(onClick = onToggleChecked), contentAlignment = Alignment.CenterStart) {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = if (block.checked) Accent else Color.White,
+                    color = if (block.checked) Accent else SurfaceBase,
                     border = if (block.checked) null else BorderStroke(1.5.dp, InkMuted),
                     modifier = Modifier.size(19.dp)
                 ) {
@@ -389,7 +400,7 @@ internal fun VideoBlock(block: NoteBlock, attachment: Attachment?, onOpen: (Atta
                 ) { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open full screen", tint = Color.White, modifier = Modifier.size(16.dp)) }
             } else {
                 frame?.let { Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().fillMaxHeight()) }
-                Surface(onClick = { playing = true }, shape = CircleShape, color = Color.White.copy(alpha = 0.92f), modifier = Modifier.size(54.dp)) {
+                Surface(onClick = { playing = true }, shape = CircleShape, color = SurfaceBase.copy(alpha = 0.92f), modifier = Modifier.size(54.dp)) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = "Play video", tint = Ink, modifier = Modifier.padding(12.dp))
                 }
                 attachment.durationMs?.let {
@@ -437,7 +448,7 @@ internal fun AudioBlock(block: NoteBlock, attachment: Attachment?, onCaption: (S
                     },
                     shape = CircleShape, color = Ink, modifier = Modifier.size(40.dp)
                 ) {
-                    Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (playing) "Pause" else "Play", tint = Color.White, modifier = Modifier.padding(9.dp))
+                    Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (playing) "Pause" else "Play", tint = OnInk, modifier = Modifier.padding(9.dp))
                 }
                 Spacer(Modifier.width(12.dp))
                 Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = Accent, modifier = Modifier.size(20.dp))
@@ -492,7 +503,7 @@ internal fun RecordingBlock(
     var transcriptOpen by remember { mutableStateOf(false) }
     var shown by remember { mutableIntStateOf(40) }
     Surface(
-        shape = RoundedCornerShape(18.dp), color = Color.White, border = BorderStroke(1.dp, Line),
+        shape = RoundedCornerShape(18.dp), color = SurfaceBase, border = BorderStroke(1.dp, Line),
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
     ) {
         if (card == null) {
@@ -505,7 +516,7 @@ internal fun RecordingBlock(
                     onClick = { onPlay(card) }, enabled = card.audioPath != null,
                     shape = CircleShape, color = Ink, modifier = Modifier.size(42.dp)
                 ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = "Play recording", tint = Color.White, modifier = Modifier.padding(10.dp))
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Play recording", tint = OnInk, modifier = Modifier.padding(10.dp))
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {

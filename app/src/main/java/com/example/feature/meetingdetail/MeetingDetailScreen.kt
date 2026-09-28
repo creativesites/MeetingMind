@@ -1,5 +1,6 @@
 package com.example.feature.meetingdetail
 
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.material.icons.filled.EditNote
 
 import android.app.Application
@@ -909,7 +910,7 @@ fun MeetingDetailScreen(
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
-            Surface(color = Color.White) {
+            Surface(color = SurfaceBase) {
                 // statusBarsPadding on the content (not the Surface itself) lets this bar's white
                 // background bleed under the status bar while the back button/title/mini dial sit
                 // below it — previously this had zero inset handling and rendered under the status
@@ -1309,7 +1310,7 @@ fun MeetingDetailScreen(
                 .background(Color.Black.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center
         ) {
-            Surface(shape = RoundedCornerShape(20.dp), color = Color.White, shadowElevation = 8.dp) {
+            Surface(shape = RoundedCornerShape(20.dp), color = SurfaceBase, shadowElevation = 8.dp) {
                 Row(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1923,6 +1924,7 @@ fun TranscriptTab(
                 val speakerColor = seg.speakerId?.let { speakerColorMap[it] } ?: InkMuted
                 val bringIntoViewRequester = remember { BringIntoViewRequester() }
                 val coroutineScope = rememberCoroutineScope()
+                val playingRule = Accent
 
                 // No cards, no borders, no elevation in reading mode
                 // (docs/recording-page-implementation.md §2.3) — just a 38dp mono-timestamp gutter,
@@ -1939,7 +1941,7 @@ fun TranscriptTab(
                             if (isPlaying) {
                                 val x = 42.dp.toPx()
                                 drawLine(
-                                    color = Accent,
+                                    color = playingRule,
                                     start = Offset(x, 0f),
                                     end = Offset(x, size.height),
                                     strokeWidth = 2.dp.toPx()
@@ -2074,11 +2076,12 @@ fun TranscriptTab(
             }
         }
 
+        val topRule = LineSoft
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .drawBehind {
-                    drawLine(LineSoft, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
+                    drawLine(topRule, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
                 }
                 .padding(horizontal = 18.dp)
         ) {

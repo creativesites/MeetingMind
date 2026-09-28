@@ -1,5 +1,9 @@
 package com.example.feature.settings
 
+import com.example.ui.theme.Danger
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import android.app.Application
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -148,6 +152,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { userPrefs.setCalendarEnabled(enabled) }
     }
 
+    fun setThemeMode(mode: com.example.ui.theme.ThemeMode) {
+        viewModelScope.launch { userPrefs.setThemeMode(mode.name) }
+    }
+
     fun setFaithLock(enabled: Boolean) {
         viewModelScope.launch { userPrefs.setFaithLockEnabled(enabled) }
     }
@@ -238,7 +246,7 @@ fun SettingsScreen(
         androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
     ) { uri -> if (uri != null) viewModel.setAvatar(uri) }
     if (showSpaces) {
-        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showSpaces = false }, containerColor = Color.White) {
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showSpaces = false }, containerColor = SurfaceBase) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
                 Text("What's MeetingMind for you?", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                 Text("Only these spaces show in Home, Notes and Record.", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
@@ -247,7 +255,7 @@ fun SettingsScreen(
         }
     }
     if (showLook) {
-        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showLook = false }, containerColor = Color.White) {
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showLook = false }, containerColor = SurfaceBase) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
                 Text("Look & feel", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(bottom = 14.dp))
                 com.example.core.identity.LookPicker(prefs.identity.look) { viewModel.setLook(it) }
@@ -281,7 +289,7 @@ fun SettingsScreen(
     if (showBibleVersions) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showBibleVersions = false },
-            containerColor = Color.White,
+            containerColor = SurfaceBase,
             title = { Text("Bible translation") },
             text = {
                 Column {
@@ -309,7 +317,7 @@ fun SettingsScreen(
     }
 
     Scaffold(
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         bottomBar = {
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.SETTINGS,
@@ -422,6 +430,25 @@ fun SettingsScreen(
                         onCheckedChange = { viewModel.setFaithLock(it) },
                         testTag = "settings_faith_lock"
                     )
+                }
+            }
+
+            settingsSection(title = "Appearance") {
+                val current = runCatching { com.example.ui.theme.ThemeMode.valueOf(prefs.themeMode) }.getOrDefault(com.example.ui.theme.ThemeMode.DARK)
+                com.example.ui.theme.ThemeMode.entries.forEach { mode ->
+                    settingsRow {
+                        SettingsRadioRow(
+                            title = mode.label,
+                            subtitle = when (mode) {
+                                com.example.ui.theme.ThemeMode.DARK -> "Graphite: easy on the eyes, day and night"
+                                com.example.ui.theme.ThemeMode.LIGHT -> "Paper: warm and bright"
+                                com.example.ui.theme.ThemeMode.SYSTEM -> "Follows your phone's dark mode"
+                            },
+                            selected = current == mode,
+                            onClick = { viewModel.setThemeMode(mode) },
+                            testTag = "settings_theme_${mode.name.lowercase()}"
+                        )
+                    }
                 }
             }
 
@@ -584,7 +611,7 @@ fun SettingsScreen(
                         text = "Clear all local data & audio",
                         fontSize = 15.5.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFFEF4444),
+                        color = Danger,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { showClearDataDialog = true }
@@ -636,7 +663,7 @@ fun SettingsScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Ink),
                     modifier = Modifier.testTag("settings_name_save_btn")
                 ) {
-                    Text("Save", color = Color.White)
+                    Text("Save", color = OnInk)
                 }
             },
             dismissButton = {
@@ -659,7 +686,7 @@ fun SettingsScreen(
                             onNavigateBack()
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
                 ) {
                     Text("Delete All", color = Color.White)
                 }
@@ -746,7 +773,7 @@ private fun SettingsSwitchRow(title: String, subtitle: String, checked: Boolean,
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = Accent, checkedThumbColor = Color.White),
+            colors = SwitchDefaults.colors(checkedTrackColor = Accent, checkedThumbColor = OnInk),
             modifier = Modifier.testTag(testTag)
         )
     }
@@ -787,10 +814,10 @@ private fun GeminiKeyCheck(result: List<Pair<String, String?>>?, checking: Boole
         )
         result?.forEach { (what, problem) ->
             Row(Modifier.padding(top = 6.dp)) {
-                Text(if (problem == null) "✓" else "✗", color = if (problem == null) com.example.ui.theme.SuccessGreen else Color(0xFFDC2626), fontWeight = FontWeight.Bold, modifier = Modifier.width(20.dp))
+                Text(if (problem == null) "✓" else "✗", color = if (problem == null) com.example.ui.theme.SuccessGreen else Danger, fontWeight = FontWeight.Bold, modifier = Modifier.width(20.dp))
                 Column {
                     Text(what, fontSize = 13.5.sp, fontWeight = FontWeight.Medium, color = Ink)
-                    Text(problem ?: "Works", fontSize = 12.5.sp, color = if (problem == null) InkSecondary else Color(0xFFB91C1C))
+                    Text(problem ?: "Works", fontSize = 12.5.sp, color = if (problem == null) InkSecondary else Danger)
                 }
             }
         }

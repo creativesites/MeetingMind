@@ -1,5 +1,7 @@
 package com.example.feature.scripture
 
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -171,7 +173,7 @@ fun VerseSheet(
         service.bible?.bibles()?.takeIf { it.isNotEmpty() }?.let { list -> versions = list.map { com.example.core.scripture.BibleVersion(it.id, it.abbreviation, it.title) } }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 22.dp).padding(bottom = 22.dp).navigationBarsPadding()) {
             Text(reference.display(), fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = Ink, letterSpacing = (-0.4).sp)
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -179,9 +181,9 @@ fun VerseSheet(
                     val selected = v.id == versionId
                     Surface(
                         onClick = { versionId = v.id }, shape = RoundedCornerShape(50),
-                        color = if (selected) Ink else Color.White, border = if (selected) null else BorderStroke(1.dp, Line)
+                        color = if (selected) Ink else SurfaceBase, border = if (selected) null else BorderStroke(1.dp, Line)
                     ) {
-                        Text(v.abbreviation, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (selected) Color.White else InkSecondary,
+                        Text(v.abbreviation, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (selected) OnInk else InkSecondary,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
                     }
                 }
@@ -246,8 +248,8 @@ private fun SheetAction(label: String, icon: androidx.compose.ui.graphics.vector
         border = if (primary) null else BorderStroke(1.dp, Line), modifier = modifier
     ) {
         Column(Modifier.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, contentDescription = null, tint = if (primary) Color.White else Ink, modifier = Modifier.size(19.dp))
-            Text(label, fontSize = 11.sp, color = if (primary) Color.White else InkSecondary, modifier = Modifier.padding(top = 3.dp), maxLines = 1)
+            Icon(icon, contentDescription = null, tint = if (primary) OnInk else Ink, modifier = Modifier.size(19.dp))
+            Text(label, fontSize = 11.sp, color = if (primary) OnInk else InkSecondary, modifier = Modifier.padding(top = 3.dp), maxLines = 1)
         }
     }
 }
@@ -261,7 +263,7 @@ fun CollectionPicker(onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val repo = remember { NoteRepository(context, MeetMindDatabase.getInstance(context)) }
     val collections by repo.observeScriptureCollections().collectAsState(initial = emptyList())
     var name by remember { mutableStateOf("") }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 22.dp).padding(bottom = 22.dp).navigationBarsPadding()) {
             Text("Save to collection", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink)
             collections.forEach { c ->

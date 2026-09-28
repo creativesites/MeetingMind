@@ -1,5 +1,11 @@
 package com.example.feature.today
 
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.Ink
+import com.example.ui.theme.Line
+import com.example.ui.theme.InkMuted
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.SurfaceBase
 import android.provider.Settings
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -104,9 +110,9 @@ val OutfitFamily = FontFamily(
     Font(R.font.outfit_600, FontWeight.SemiBold)
 )
 
-private val InkNavy = Color(0xFF0F172A)
-private val Slate = Color(0xFF64748B)
-private val Hairline = Color(0xFFE2E8F0)
+private val InkNavy: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Ink
+private val Slate: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = InkMuted
+private val Hairline: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Line
 
 /** What the floating tile under the hero shows. */
 data class HeroTile(val label: String, val title: String, val subtitle: String, val icon: ImageVector, val accent: Color, val onClick: () -> Unit)
@@ -180,7 +186,7 @@ private fun TopRow(
         }
         Spacer(Modifier.width(8.dp))
         Surface(
-            shape = CircleShape, color = Color.White.copy(alpha = 0.78f),
+            shape = CircleShape, color = SurfaceBase.copy(alpha = 0.78f),
             border = BorderStroke(1.dp, Brush.verticalGradient(listOf(Color.White, Hairline))), shadowElevation = 10.dp
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(4.dp)) {
@@ -319,7 +325,7 @@ private fun HeroStage(
 
         // Up next, floating over the card's lower edge.
         Surface(
-            onClick = tile.onClick, shape = RoundedCornerShape(26.dp), color = Color.White,
+            onClick = tile.onClick, shape = RoundedCornerShape(26.dp), color = SurfaceBase,
             border = BorderStroke(1.dp, Hairline), shadowElevation = 16.dp,
             modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).fillMaxWidth().height(76.dp)
                 .graphicsLayer {
@@ -342,7 +348,7 @@ private fun HeroStage(
                     Text(tile.subtitle, color = Slate, fontFamily = InterFamily, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.size(34.dp).clip(CircleShape).background(InkNavy)) {
-                    Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = OnInk, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -353,7 +359,7 @@ private fun HeroStage(
 private fun GlassChip(icon: ImageVector, label: String, tint: Color) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.12f))
+        modifier = Modifier.clip(CircleShape).background(SurfaceBase.copy(alpha = 0.12f))
             .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape).padding(horizontal = 12.dp, vertical = 7.dp)
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))

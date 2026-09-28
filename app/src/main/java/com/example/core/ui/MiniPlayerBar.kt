@@ -1,5 +1,8 @@
 package com.example.core.ui
 
+import com.example.ui.theme.Ink
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -99,7 +102,7 @@ fun MiniPlayerBar(
     Surface(
         onClick = { expanded = true },
         shape = RoundedCornerShape(24.dp),
-        color = Color(0xF20F172A),
+        color = Color(0xF20F172A).forTheme(),
         shadowElevation = 12.dp,
         modifier = modifier.navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 10.dp + bottomOffset).fillMaxWidth().testTag("mini_player_bar")
     ) {
@@ -152,20 +155,20 @@ private fun NowPlayingSheet(state: PlaybackState, art: Artwork, onTogglePlayPaus
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
     val duration = state.durationMs.coerceAtLeast(1L)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Color(0xFF0F172A), contentColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Ink, contentColor = Color.White) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).navigationBarsPadding().padding(bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.size(220.dp).clip(RoundedCornerShape(32.dp)).background(Brush.linearGradient(art.colors)), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(260.dp).background(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.18f), Color.Transparent), center = Offset(500f, 120f))))
                 if (state.isPlaying) Box(Modifier.size(60.dp), contentAlignment = Alignment.Center) { Equaliser(Color.White) }
                 else Icon(art.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(56.dp))
             }
-            Text(art.kind.uppercase(), fontSize = 11.sp, letterSpacing = 1.2.sp, color = Color(0xFFF6D365), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 22.dp))
+            Text(art.kind.uppercase(), fontSize = 11.sp, letterSpacing = 1.2.sp, color = Color(0xFFF6D365).forTheme(), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 22.dp))
             Text(state.title.ifBlank { art.kind }, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
             Slider(
                 value = if (dragging) dragValue else state.positionMs.toFloat() / duration,
                 onValueChange = { dragging = true; dragValue = it },
                 onValueChangeFinished = { PlaybackController.seekTo((dragValue * duration).toLong()); dragging = false },
-                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFFF6D365), inactiveTrackColor = Color.White.copy(alpha = 0.2f)),
+                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFFF6D365).forTheme(), inactiveTrackColor = Color.White.copy(alpha = 0.2f)),
                 modifier = Modifier.fillMaxWidth().padding(top = 14.dp)
             )
             Row(Modifier.fillMaxWidth()) {
@@ -176,14 +179,14 @@ private fun NowPlayingSheet(state: PlaybackState, art: Artwork, onTogglePlayPaus
             Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(28.dp)) {
                 IconButton(onClick = { PlaybackController.seekBy(-10_000) }) { Icon(Icons.Filled.Replay10, contentDescription = "Back 10 seconds", tint = Color.White, modifier = Modifier.size(32.dp)) }
                 Box(Modifier.size(76.dp).clip(CircleShape).background(Color.White).clickable(onClick = onTogglePlayPause), contentAlignment = Alignment.Center) {
-                    Icon(if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (state.isPlaying) "Pause" else "Play", tint = Color(0xFF0F172A), modifier = Modifier.size(38.dp))
+                    Icon(if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (state.isPlaying) "Pause" else "Play", tint = Ink, modifier = Modifier.size(38.dp))
                 }
                 IconButton(onClick = { PlaybackController.seekBy(10_000) }) { Icon(Icons.Filled.Forward10, contentDescription = "Forward 10 seconds", tint = Color.White, modifier = Modifier.size(32.dp)) }
             }
             Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(0.8f, 1f, 1.25f, 1.5f).forEach { s ->
                     Surface(onClick = { PlaybackController.setSpeed(s) }, shape = RoundedCornerShape(50), color = if (speed == s) Color.White else Color.White.copy(alpha = 0.1f)) {
-                        Text("${if (s % 1f == 0f) s.toInt() else s}×", fontSize = 13.sp, color = if (speed == s) Color(0xFF0F172A) else Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp))
+                        Text("${if (s % 1f == 0f) s.toInt() else s}×", fontSize = 13.sp, color = if (speed == s) Ink else Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp))
                     }
                 }
             }

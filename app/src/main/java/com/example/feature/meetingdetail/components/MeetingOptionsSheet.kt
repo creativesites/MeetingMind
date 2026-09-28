@@ -1,5 +1,6 @@
 package com.example.feature.meetingdetail.components
 
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -61,7 +62,7 @@ fun MeetingOptionsSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = Color.White
+        containerColor = SurfaceBase
     ) {
         Column(modifier = Modifier.navigationBarsPadding()) {
             Text(

@@ -1,5 +1,6 @@
 package com.example.core.ui
 
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -81,7 +82,7 @@ fun ProcessingPill(active: ActiveProcessing?, onOpen: (String) -> Unit, modifier
         Surface(
             onClick = { onOpen(a.meetingId) },
             shape = RoundedCornerShape(18.dp),
-            color = Color.White,
+            color = SurfaceBase,
             border = BorderStroke(1.dp, Line),
             shadowElevation = 8.dp,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)

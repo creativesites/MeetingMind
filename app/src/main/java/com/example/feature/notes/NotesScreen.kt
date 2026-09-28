@@ -1,5 +1,9 @@
 package com.example.feature.notes
 
+import com.example.ui.theme.Danger
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -148,7 +152,7 @@ fun NotesScreen(
     }
 
     Scaffold(
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
         bottomBar = {
             if (isRoot) AppBottomNavigationBar(current = BottomNavDestination.NOTES, onNavigate = onNavigateBottomNav)
@@ -157,9 +161,9 @@ fun NotesScreen(
             if (!isRoot && !isArchive && !isTrash) {
                 Surface(onClick = { viewModel.createNote(onOpenNote) }, shape = RoundedCornerShape(50), color = Ink, shadowElevation = 6.dp) {
                     Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.EditNote, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Filled.EditNote, contentDescription = null, tint = OnInk, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("New note", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("New note", color = OnInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     }
                 }
             }
@@ -183,7 +187,7 @@ fun NotesScreen(
                         )
                     }
                     if (isTrash && (notes.isNotEmpty() || trashedNotebooks.isNotEmpty())) {
-                        androidx.compose.material3.TextButton(onClick = { confirmEmptyTrash = true }) { Text("Empty", color = Color(0xFFDC2626)) }
+                        androidx.compose.material3.TextButton(onClick = { confirmEmptyTrash = true }) { Text("Empty", color = Danger) }
                         Spacer(Modifier.width(4.dp))
                     }
                     CircleAction(if (searching) Icons.Filled.Close else Icons.Filled.Search, if (searching) "Close search" else "Search notes") {
@@ -193,7 +197,7 @@ fun NotesScreen(
                     Spacer(Modifier.width(8.dp))
                     Box {
                         CircleAction(Icons.AutoMirrored.Filled.Sort, "Sort") { showSort = true }
-                        DropdownMenu(expanded = showSort, onDismissRequest = { showSort = false }, containerColor = Color.White) {
+                        DropdownMenu(expanded = showSort, onDismissRequest = { showSort = false }, containerColor = SurfaceBase) {
                             NoteSort.entries.forEach { s ->
                                 DropdownMenuItem(
                                     text = { Text(s.label, fontWeight = if (s == sort) FontWeight.SemiBold else FontWeight.Normal, color = if (s == sort) Accent else Ink) },
@@ -241,7 +245,7 @@ fun NotesScreen(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 16.dp).testTag("notes_open_faith")
                         ) {
                             Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = Color(0xFFE9C46A), modifier = Modifier.size(22.dp))
+                                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = Color(0xFFE9C46A).forTheme(), modifier = Modifier.size(22.dp))
                                 Column(Modifier.weight(1f).padding(start = 14.dp)) {
                                     Text("Faith", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif)
                                     Text("Bible, verse of the day, prayer and your journey", fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.7f))
@@ -261,7 +265,7 @@ fun NotesScreen(
                             item(key = "new-notebook") {
                                 Surface(
                                     onClick = { notebookDialog = NotebookDialogState(null, "", space ?: NotebookSpace.PERSONAL, NotebookColors.first()) },
-                                    shape = RoundedCornerShape(18.dp), color = Color.White, border = BorderStroke(1.dp, Line),
+                                    shape = RoundedCornerShape(18.dp), color = SurfaceBase, border = BorderStroke(1.dp, Line),
                                     modifier = Modifier.width(120.dp).height(96.dp)
                                 ) {
                                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.Center) {
@@ -406,7 +410,7 @@ fun NotesScreen(
     notebookMenu?.let { nb ->
         AlertDialog(
             onDismissRequest = { notebookMenu = null },
-            containerColor = Color.White,
+            containerColor = SurfaceBase,
             title = { Text(nb.name) },
             text = {
                 if (isTrash) Column {
@@ -426,21 +430,21 @@ fun NotesScreen(
     if (confirmEmptyTrash) {
         AlertDialog(
             onDismissRequest = { confirmEmptyTrash = false },
-            containerColor = Color.White,
+            containerColor = SurfaceBase,
             title = { Text("Empty the Trash?") },
             text = { Text("Everything in the Trash is deleted for good. Recordings are never deleted this way; they stay in your library.") },
-            confirmButton = { TextButton(onClick = { viewModel.emptyTrash(); confirmEmptyTrash = false }) { Text("Empty Trash", color = Color(0xFFDC2626)) } },
+            confirmButton = { TextButton(onClick = { viewModel.emptyTrash(); confirmEmptyTrash = false }) { Text("Empty Trash", color = Danger) } },
             dismissButton = { TextButton(onClick = { confirmEmptyTrash = false }) { Text("Cancel") } }
         )
     }
     confirmDeleteNotebook?.let { nb ->
         AlertDialog(
             onDismissRequest = { confirmDeleteNotebook = null },
-            containerColor = Color.White,
+            containerColor = SurfaceBase,
             title = { Text("Delete “${nb.name}”?") },
             text = { Text("The notebook moves to the Trash. Its notes are kept and stay in All notes; restoring the notebook gathers them back.") },
             confirmButton = {
-                TextButton(onClick = { viewModel.deleteNotebook(nb.id); confirmDeleteNotebook = null; if (!isRoot) onNavigateBack?.invoke() }) { Text("Delete", color = Color(0xFFDC2626)) }
+                TextButton(onClick = { viewModel.deleteNotebook(nb.id); confirmDeleteNotebook = null; if (!isRoot) onNavigateBack?.invoke() }) { Text("Delete", color = Danger) }
             },
             dismissButton = { TextButton(onClick = { confirmDeleteNotebook = null }) { Text("Cancel") } }
         )
@@ -448,7 +452,7 @@ fun NotesScreen(
     noteMenu?.let { n ->
         AlertDialog(
             onDismissRequest = { noteMenu = null },
-            containerColor = Color.White,
+            containerColor = SurfaceBase,
             title = { Text(n.title.ifBlank { "Untitled note" }, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             text = {
                 Column {
@@ -476,7 +480,7 @@ private fun NotebookDialog(state: NotebookDialogState, onSave: (NotebookDialogSt
     var s by remember { mutableStateOf(state) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         title = { Text(if (state.existing == null) "New notebook" else "Edit notebook") },
         text = {
             Column {
@@ -494,7 +498,7 @@ private fun NotebookDialog(state: NotebookDialogState, onSave: (NotebookDialogSt
                                 .combinedClickable { s = s.copy(color = hex) },
                             contentAlignment = Alignment.Center
                         ) {
-                            if (s.color == hex) Box(Modifier.size(10.dp).clip(CircleShape).background(Color.White))
+                            if (s.color == hex) Box(Modifier.size(10.dp).clip(CircleShape).background(SurfaceBase))
                         }
                     }
                 }
@@ -509,14 +513,14 @@ private fun NotebookDialog(state: NotebookDialogState, onSave: (NotebookDialogSt
 @Composable
 private fun MenuText(label: String, destructive: Boolean = false, onClick: () -> Unit) {
     Text(
-        label, fontSize = 15.sp, color = if (destructive) Color(0xFFDC2626) else Ink,
+        label, fontSize = 15.sp, color = if (destructive) Danger else Ink,
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).combinedClickable(onClick = onClick).padding(vertical = 12.dp, horizontal = 4.dp)
     )
 }
 
 @Composable
 private fun CircleAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = CircleShape, color = Color.White, border = BorderStroke(1.dp, Line), modifier = Modifier.size(42.dp)) {
+    Surface(onClick = onClick, shape = CircleShape, color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.size(42.dp)) {
         Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = label, tint = Ink, modifier = Modifier.size(19.dp)) }
     }
 }
@@ -526,12 +530,12 @@ private fun Pill(label: String, selected: Boolean, accent: Boolean = false, onCl
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(50),
-        color = when { selected && accent -> AccentWash; selected -> Ink; else -> Color.White },
+        color = when { selected && accent -> AccentWash; selected -> Ink; else -> SurfaceBase },
         border = if (selected) null else BorderStroke(1.dp, Line)
     ) {
         Text(
             label, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-            color = when { selected && accent -> Accent; selected -> Color.White; else -> InkSecondary },
+            color = when { selected && accent -> Accent; selected -> OnInk; else -> InkSecondary },
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
         )
     }
@@ -614,7 +618,7 @@ private fun EmptyNotes(filtered: Boolean, archive: Boolean, onCreate: () -> Unit
         )
         if (!filtered && !archive && !trash) {
             Surface(onClick = onCreate, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.padding(top = 20.dp)) {
-                Text("Write a note", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp))
+                Text("Write a note", color = OnInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp))
             }
         }
     }

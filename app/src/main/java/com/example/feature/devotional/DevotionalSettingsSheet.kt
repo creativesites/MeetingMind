@@ -1,5 +1,9 @@
 package com.example.feature.devotional
 
+import com.example.ui.theme.FaithGoldInk
+import com.example.ui.theme.Line
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -51,7 +55,7 @@ import com.example.ui.theme.InkSecondary
 @Composable
 fun DevotionalSettingsSheet(profile: DevotionalProfile, onSave: (DevotionalProfile, rewriteToday: Boolean) -> Unit, onDismiss: () -> Unit) {
     var p by remember { mutableStateOf(profile) }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SurfaceBase) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).navigationBarsPadding()) {
             Text("Your daily devotional", fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
             Text("Make it yours. Everything is optional.", fontSize = 14.sp, color = InkSecondary, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp))
@@ -196,9 +200,9 @@ private fun Label(text: String) {
 private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Gold.copy(alpha = 0.14f) else Color.White,
-        border = BorderStroke(1.dp, if (selected) Gold else Color(0xFFE2E8F0))
+        border = BorderStroke(1.dp, if (selected) Gold else Line)
     ) {
-        Text(label, fontSize = 13.sp, color = if (selected) Color(0xFF7A4E0F) else InkSecondary, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        Text(label, fontSize = 13.sp, color = if (selected) FaithGoldInk else InkSecondary, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
     }
 }

@@ -1,5 +1,7 @@
 package com.example.feature.notes.ai
 
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -79,7 +81,7 @@ fun NoteAiMenu(
     onRelated: (() -> Unit)?,
     onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding()) {
             Text(if (forNotebook) "AI for this notebook" else "AI for this note", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink)
             Text(
@@ -120,7 +122,7 @@ fun AskDialog(forNotebook: Boolean, onAsk: (String) -> Unit, onDismiss: () -> Un
     var q by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         title = { Text(if (forNotebook) "Ask this notebook" else "Ask this note") },
         text = {
             OutlinedTextField(
@@ -154,7 +156,7 @@ fun NoteAiResultSheet(
     onDiscard: () -> Unit
 ) {
     val context = LocalContext.current
-    ModalBottomSheet(onDismissRequest = onClose, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onClose, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 16.dp).navigationBarsPadding()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Accent, modifier = Modifier.size(18.dp))
@@ -245,7 +247,7 @@ private fun PointsResult(
         }) { Text("Copy") }
         val selected = if (actions) items.filter { it in chosen } else items
         Surface(onClick = { if (selected.isNotEmpty()) onPrimary(selected) }, shape = RoundedCornerShape(50), color = if (selected.isEmpty()) Line else Ink, modifier = Modifier.testTag("note_ai_apply")) {
-            Text(primaryLabel, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
+            Text(primaryLabel, color = OnInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
         }
     }
 }
@@ -280,7 +282,7 @@ private fun SectionsResult(o: NoteAiOutcome.Sections, sources: Map<String, Sourc
         TextButton(onClick = onDiscard) { Text("Discard", color = InkSecondary) }
         if (onApply != null) {
             Surface(onClick = { onApply(o) }, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.testTag("note_ai_apply")) {
-                Text("Apply to note", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
+                Text("Apply to note", color = OnInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
             }
         }
     }
@@ -317,7 +319,7 @@ private fun SourceRow(p: SourcePassage, onShowSource: (SourcePassage) -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RelatedNotesSheet(related: List<Pair<Note, RelatedNote>>?, onOpen: (String) -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = Accent, modifier = Modifier.size(18.dp))

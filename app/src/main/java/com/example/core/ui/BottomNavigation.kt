@@ -1,5 +1,6 @@
 package com.example.core.ui
 
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -106,7 +107,7 @@ fun AppBottomNavigationBar(
     ) {
         Surface(
             shape = RoundedCornerShape(percent = 50),
-            color = Color.White,
+            color = SurfaceBase,
             border = BorderStroke(1.dp, Line),
             shadowElevation = 8.dp,
             modifier = Modifier.wrapContentWidth()

@@ -1,5 +1,11 @@
 package com.example.feature.today
 
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.Ink
+import com.example.ui.theme.Line
+import com.example.ui.theme.InkMuted
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.SurfaceBase
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -94,9 +100,9 @@ import com.example.core.timeline.TimelineItem
 import com.example.core.timeline.TimelineLayer
 import java.util.Date
 
-private val InkNavy = Color(0xFF0F172A)
-private val Slate = Color(0xFF64748B)
-private val Hairline = Color(0xFFE2E8F0)
+private val InkNavy: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Ink
+private val Slate: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = InkMuted
+private val Hairline: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Line
 
 /**
  * Home as the Today hub (PLAN_V2 F1): the hero, "for you" cards, the week strip and the calendar
@@ -187,7 +193,7 @@ fun TodayScreen(
         UpNextTile.Nothing -> if (identity.faithFirst) HeroTile(
             label = "Today's devotional", title = devotional?.devotional?.title ?: "Start today with God",
             subtitle = devotional?.devotional?.scripture?.firstOrNull()?.display() ?: "Scripture, a reflection and a prayer",
-            icon = Icons.Filled.WbSunny, accent = Color(0xFFB7791F), onClick = onOpenDevotional
+            icon = Icons.Filled.WbSunny, accent = Color(0xFFB7791F).forTheme(), onClick = onOpenDevotional
         ) else HeroTile(
             label = "Nothing scheduled", title = "Capture something",
             subtitle = "Tap to record", icon = HeroTiles.recordIcon(), accent = look.accent, onClick = onRecord
@@ -206,7 +212,7 @@ fun TodayScreen(
     com.example.core.ui.ProvideCoachTargets(coachTargets) {
     Box(Modifier.fillMaxSize()) {
     Scaffold(
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         bottomBar = {
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.HOME,
@@ -273,15 +279,15 @@ fun TodayScreen(
                 if (identity.showsFaith && focus != TodayFocus.WORK) add {
                     val d = devotional?.devotional
                     ForYouCard(
-                        Icons.Filled.WbSunny, Color(0xFFB7791F), "Today's devotional",
+                        Icons.Filled.WbSunny, Color(0xFFB7791F).forTheme(), "Today's devotional",
                         d?.title ?: "A word for your day",
                         d?.let { listOfNotNull(it.scripture.firstOrNull()?.display(), if (devotional?.note?.metadata?.get(com.example.core.devotional.DevotionalNotes.META_OPENED) == null) "New" else "Read").joinToString(" · ") }
                             ?: "Scripture, a reflection and a prayer"
                     ) { onOpenDevotional() }
                 }
                 jobs.forEach { job -> add { ForYouCard(Icons.Filled.Sync, look.accent, "Processing · ${job.progressPercent}%", job.meetingTitle, job.currentStep) { onOpenProcessing(job.meetingId) } } }
-                rhythm?.let { r -> add { ForYouCard(Icons.Filled.Mic, Color(0xFFE11D48), "Your rhythm", "Record ${r.type.displayName.lowercase()}?", Rhythms.describe(r)) { onRecordType(r.type) } } }
-                memories.firstOrNull()?.let { m -> add { ForYouCard(Icons.Filled.History, Color(0xFF8B5CF6), "On this day", m.title, m.subtitle ?: "") { open(m) } } }
+                rhythm?.let { r -> add { ForYouCard(Icons.Filled.Mic, Color(0xFFE11D48).forTheme(), "Your rhythm", "Record ${r.type.displayName.lowercase()}?", Rhythms.describe(r)) { onRecordType(r.type) } } }
+                memories.firstOrNull()?.let { m -> add { ForYouCard(Icons.Filled.History, Color(0xFF8B5CF6).forTheme(), "On this day", m.title, m.subtitle ?: "") { open(m) } } }
                 weekReview?.let { w -> add {
                     ForYouCard(Icons.Filled.Insights, look.accent, "Your week",
                         listOfNotNull(w.recordings.takeIf { it > 0 }?.let { "$it recordings" }, w.notes.takeIf { it > 0 }?.let { "$it notes" }, w.faith.takeIf { it > 0 }?.let { "$it faith moments" }).joinToString(" · "),
@@ -289,7 +295,7 @@ fun TodayScreen(
                     ) { viewModel.setView(CalendarView.WEEK) }
                 } }
                 if (calendarOn == false && !promptDismissed) add {
-                    ForYouCard(Icons.Filled.Event, Color(0xFF4F46E5), "Your calendar", "See what's up next", "Show events from your phone's calendar. Read only.",
+                    ForYouCard(Icons.Filled.Event, Color(0xFF4F46E5).forTheme(), "Your calendar", "See what's up next", "Show events from your phone's calendar. Read only.",
                         onDismiss = { viewModel.dismissCalendarPrompt() }) {
                         calendarPermission.launch(android.Manifest.permission.READ_CALENDAR)
                     }
@@ -320,9 +326,9 @@ fun TodayScreen(
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(CalendarView.entries) { v ->
                             val on = v == view
-                            Surface(onClick = { viewModel.setView(v) }, shape = CircleShape, color = if (on) InkNavy else Color.White, border = if (on) null else BorderStroke(1.dp, Hairline),
+                            Surface(onClick = { viewModel.setView(v) }, shape = CircleShape, color = if (on) InkNavy else SurfaceBase, border = if (on) null else BorderStroke(1.dp, Hairline),
                                 modifier = Modifier.testTag("view_${v.name.lowercase()}")) {
-                                Text(v.label, color = if (on) Color.White else InkNavy, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp))
+                                Text(v.label, color = if (on) OnInk else InkNavy, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp))
                             }
                         }
                     }
@@ -359,7 +365,7 @@ fun TodayScreen(
                     byMonth.forEach { (month, list) ->
                         stickyHeader(key = "h-$month") {
                             Text(month, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = OutfitFamily, color = InkNavy,
-                                modifier = Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.96f)).padding(horizontal = 16.dp, vertical = 8.dp))
+                                modifier = Modifier.fillMaxWidth().background(SurfaceBase.copy(alpha = 0.96f)).padding(horizontal = 16.dp, vertical = 8.dp))
                         }
                         items(list, key = { "r-" + it.id }) { item ->
                             TimelineCard(item, ::open, { quick = it }, Modifier.padding(horizontal = 16.dp, vertical = 5.dp).animateItem(),
@@ -423,7 +429,7 @@ fun TodayScreen(
 
 @Composable
 private fun ForYouCard(icon: ImageVector, tint: Color, label: String, title: String, subtitle: String, onDismiss: (() -> Unit)? = null, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(22.dp), color = Color.White, border = BorderStroke(1.dp, Hairline), shadowElevation = 2.dp,
+    Surface(onClick = onClick, shape = RoundedCornerShape(22.dp), color = SurfaceBase, border = BorderStroke(1.dp, Hairline), shadowElevation = 2.dp,
         modifier = Modifier.width(250.dp).height(118.dp).testTag("for_you_card")) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -446,7 +452,7 @@ private fun ForYouCard(icon: ImageVector, tint: Color, label: String, title: Str
 @Composable
 private fun QuickActions(item: TimelineItem, onOpen: () -> Unit, onRecord: () -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding()) {
             Text(item.title, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = InkNavy, maxLines = 2)
             item.subtitle?.let { Text(it, fontSize = 13.sp, color = Slate) }
@@ -483,7 +489,7 @@ private fun InboxSheet(
     onRecordType: (RecordingType) -> Unit,
     onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding()) {
             Text("For you", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = InkNavy)
             if (jobs.isEmpty() && prep == null && rhythm == null && memories.isEmpty()) {
@@ -520,7 +526,7 @@ private fun LayersSheet(
     onCalendar: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding()) {
             Text("What shows on your calendar", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = InkNavy)
             Text("Spaces you don't use (Settings → Personalize) never appear.", fontSize = 13.sp, color = Slate, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))

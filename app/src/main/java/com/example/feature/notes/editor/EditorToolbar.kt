@@ -1,5 +1,7 @@
 package com.example.feature.notes.editor
 
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -75,7 +77,7 @@ internal fun FormattingToolbar(
     onRedo: () -> Unit,
     onDone: () -> Unit
 ) {
-    Surface(color = Color.White, shadowElevation = 6.dp) {
+    Surface(color = SurfaceBase, shadowElevation = 6.dp) {
         androidx.compose.foundation.layout.Column {
             HorizontalDivider(color = Line, thickness = 0.75.dp)
             Row(
@@ -88,7 +90,7 @@ internal fun FormattingToolbar(
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Surface(onClick = onInsert, shape = CircleShape, color = Ink, modifier = Modifier.size(34.dp)) {
-                        Icon(Icons.Filled.Add, contentDescription = "Insert", tint = Color.White, modifier = Modifier.padding(7.dp))
+                        Icon(Icons.Filled.Add, contentDescription = "Insert", tint = OnInk, modifier = Modifier.padding(7.dp))
                     }
                     Spacer(Modifier.width(4.dp))
                     ToolButton(Icons.Filled.FormatBold, "Bold", isActive(InlineStyle.BOLD)) { onInline(InlineStyle.BOLD) }
@@ -156,7 +158,7 @@ private fun Separator() {
 /** When no text has the caret: a slim bar to insert things, with the word count. */
 @Composable
 internal fun IdleEditorBar(words: Int, onInsert: () -> Unit) {
-    Surface(color = Color.White) {
+    Surface(color = SurfaceBase) {
         androidx.compose.foundation.layout.Column {
             HorizontalDivider(color = Line, thickness = 0.75.dp)
             Row(
@@ -165,9 +167,9 @@ internal fun IdleEditorBar(words: Int, onInsert: () -> Unit) {
             ) {
                 Surface(onClick = onInsert, shape = RoundedCornerShape(50), color = Ink) {
                     Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Filled.Add, contentDescription = null, tint = OnInk, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Insert", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Insert", color = OnInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 Spacer(Modifier.weight(1f))
@@ -177,4 +179,4 @@ internal fun IdleEditorBar(words: Int, onInsert: () -> Unit) {
     }
 }
 
-internal val ToolbarBorder = BorderStroke(1.dp, Line)
+internal val ToolbarBorder: BorderStroke @androidx.compose.runtime.Composable get() = BorderStroke(1.dp, Line)

@@ -1,5 +1,6 @@
 package com.example.feature.meetingdetail.components
 
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -64,7 +65,7 @@ fun AiToolsSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = Color.White
+        containerColor = SurfaceBase
     ) {
         Column {
             Row(
@@ -89,7 +90,7 @@ fun AiToolsSheet(
                 TranscriptAiToolCategory.entries.forEach { category ->
                     val tools = groups[category].orEmpty()
                     val expanded = expandedCategory == category
-                    Column(modifier = Modifier.fillMaxWidth().background(Color.White)) {
+                    Column(modifier = Modifier.fillMaxWidth().background(SurfaceBase)) {
                         HorizontalDivider(thickness = 1.dp, color = LineSoft)
                         Row(
                             modifier = Modifier

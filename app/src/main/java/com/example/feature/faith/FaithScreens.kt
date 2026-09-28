@@ -1,5 +1,8 @@
 package com.example.feature.faith
 
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.offset
@@ -89,8 +92,8 @@ import com.example.ui.theme.SurfaceSunk
 import java.io.File
 
 /** The Faith space's warm accent, used only here and on Faith notes' markers. */
-private val Gold = Color(0xFFB7791F)
-private val GoldWash = Color(0x14B7791F)
+private val Gold: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = com.example.ui.theme.FaithGold
+private val GoldWash: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0x14B7791F).forTheme()
 
 fun faithIcon(type: RecordingType): ImageVector = when (type) {
     RecordingType.SERMON -> Icons.Filled.Church
@@ -138,7 +141,7 @@ fun FaithScreen(
     var verseSheet by remember { mutableStateOf<ScriptureReference?>(null) }
     var themeSheet by remember { mutableStateOf<String?>(null) }
 
-    Scaffold(containerColor = Color.White) { padding ->
+    Scaffold(containerColor = SurfaceBase) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 40.dp)) {
             item {
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 20.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -186,7 +189,7 @@ fun FaithScreen(
                             }
                         }
                     }
-                    Surface(onClick = onSearchBible, shape = RoundedCornerShape(16.dp), color = Color.White, border = BorderStroke(1.dp, Line), modifier = Modifier.weight(1f)) {
+                    Surface(onClick = onSearchBible, shape = RoundedCornerShape(16.dp), color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.weight(1f)) {
                         Row(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.Search, contentDescription = null, tint = Ink, modifier = Modifier.size(20.dp))
                             Column(Modifier.padding(start = 10.dp)) {
@@ -257,7 +260,7 @@ fun FaithScreen(
                     SectionTitle("Themes", top = 28.dp)
                     FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         themes.take(16).forEach { t ->
-                            Surface(onClick = { themeSheet = t.name }, shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Line)) {
+                            Surface(onClick = { themeSheet = t.name }, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line)) {
                                 Text("${t.name} · ${t.count}", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
                             }
                         }
@@ -314,7 +317,7 @@ fun FaithScreen(
     themeSheet?.let { theme ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { themeSheet = null },
-            containerColor = Color.White,
+            containerColor = SurfaceBase,
             title = { Text(theme) },
             text = {
                 Column {
@@ -337,9 +340,9 @@ private fun TodayDevotionalCard(today: com.example.core.devotional.Devotional?, 
         onClick = onClick, shape = RoundedCornerShape(26.dp), color = Color.Transparent,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 16.dp).testTagSafe("faith_today_devotional")
     ) {
-        Box(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFFFFE8C7), Color(0xFFFFF6E9), Color(0xFFF3E8FF))))) {
+        Box(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFFFFE8C7).forTheme(), Color(0xFFFFF6E9).forTheme(), Color(0xFFF3E8FF).forTheme())))) {
             Box(Modifier.align(Alignment.TopEnd).size(150.dp).offset(x = 40.dp, y = (-50).dp)
-                .background(Brush.radialGradient(listOf(Color(0xFFFFC266).copy(alpha = 0.7f), Color.Transparent)), CircleShape))
+                .background(Brush.radialGradient(listOf(Color(0xFFFFC266).forTheme().copy(alpha = 0.7f), Color.Transparent)), CircleShape))
             Column(Modifier.padding(20.dp)) {
                 Text("TODAY'S DEVOTIONAL", fontSize = 11.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = Gold)
                 Text(
@@ -353,8 +356,8 @@ private fun TodayDevotionalCard(today: com.example.core.devotional.Devotional?, 
                     fontSize = 13.sp, lineHeight = 18.sp, color = InkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp)
                 )
                 Row(Modifier.padding(top = 14.dp).clip(RoundedCornerShape(50)).background(Ink).padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.WbSunny, contentDescription = null, tint = Color(0xFFF6D365), modifier = Modifier.size(15.dp))
-                    Text(if (today != null) "  Read today's" else "  Begin", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                    Icon(Icons.Filled.WbSunny, contentDescription = null, tint = Color(0xFFF6D365).forTheme(), modifier = Modifier.size(15.dp))
+                    Text(if (today != null) "  Read today's" else "  Begin", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = OnInk)
                 }
             }
         }
@@ -363,9 +366,9 @@ private fun TodayDevotionalCard(today: com.example.core.devotional.Devotional?, 
 
 @Composable
 private fun VerseOfTheDayCard(votd: VerseOfTheDay?, onRead: () -> Unit, onStartDevotional: () -> Unit, onShare: () -> Unit = {}) {
-    Surface(shape = RoundedCornerShape(24.dp), color = Ink, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 18.dp)) {
+    Surface(shape = RoundedCornerShape(24.dp), color = if (com.example.ui.theme.IsDarkTheme) com.example.ui.theme.SurfaceRaised else com.example.ui.theme.PaperColors.ink, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 18.dp)) {
         Column(Modifier.clickable(enabled = votd != null, onClick = onRead).padding(20.dp)) {
-            Text("VERSE OF THE DAY", fontSize = 11.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE9C46A))
+            Text("VERSE OF THE DAY", fontSize = 11.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE9C46A).forTheme())
             when {
                 votd == null -> Text("Today's verse appears here when you're online.", fontSize = 15.sp, color = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(top = 10.dp))
                 else -> {
@@ -380,13 +383,13 @@ private fun VerseOfTheDayCard(votd: VerseOfTheDay?, onRead: () -> Unit, onStartD
                     )
                     found?.let { Text(it.passage.attribution, fontSize = 9.sp, lineHeight = 12.sp, color = Color.White.copy(alpha = 0.5f), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp)) }
                     Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(onClick = onStartDevotional, shape = RoundedCornerShape(50), color = Color.White) {
+                        Surface(onClick = onStartDevotional, shape = RoundedCornerShape(50), color = SurfaceBase) {
                             Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.WbSunny, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
                                 Text("  Write on it", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                             }
                         }
-                        if (found != null) Surface(onClick = onShare, shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.14f), modifier = Modifier.padding(start = 10.dp)) {
+                        if (found != null) Surface(onClick = onShare, shape = RoundedCornerShape(50), color = SurfaceBase.copy(alpha = 0.14f), modifier = Modifier.padding(start = 10.dp)) {
                             Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 Text("  Share", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
@@ -418,16 +421,16 @@ private fun PrayWithMeCard(onClick: () -> Unit) {
         onClick = onClick, shape = RoundedCornerShape(26.dp), color = Color.Transparent,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(104.dp).testTagSafe("faith_pray_with_me")
     ) {
-        Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF0E1A3A), Color(0xFF3B2F6B), Color(0xFF7C5CA8))))) {
+        Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF0E1A3A).forTheme(), Color(0xFF3B2F6B).forTheme(), Color(0xFF7C5CA8).forTheme())))) {
             Box(Modifier.align(Alignment.CenterEnd).size(150.dp).offset(x = 30.dp)
-                .background(Brush.radialGradient(listOf(Color(0xFFDBEAFE).copy(alpha = 0.45f), Color.Transparent)), CircleShape))
+                .background(Brush.radialGradient(listOf(Color(0xFFDBEAFE).forTheme().copy(alpha = 0.45f), Color.Transparent)), CircleShape))
             Row(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Pray with me", fontSize = 21.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif, color = Color.White)
                     Text("Someone to pray with, out loud — your way", fontSize = 13.sp, color = Color.White.copy(alpha = 0.72f), modifier = Modifier.padding(top = 4.dp))
                 }
-                Box(Modifier.size(52.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFFDBEAFE), Color(0xFF818CF8)))), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.VolunteerActivism, contentDescription = null, tint = Color(0xFF1E1B4B), modifier = Modifier.size(24.dp))
+                Box(Modifier.size(52.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFFDBEAFE).forTheme(), Color(0xFF818CF8).forTheme()))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.VolunteerActivism, contentDescription = null, tint = Ink, modifier = Modifier.size(24.dp))
                 }
             }
         }
@@ -441,7 +444,7 @@ private fun RecordSermonCard(onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(118.dp).testTagSafe("faith_record_sermon")
     ) {
         Box(
-            Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF1B1530), Color(0xFF3A2A1A))))
+            Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF1B1530).forTheme(), Color(0xFF3A2A1A).forTheme())))
         ) {
             // Warm light from the right.
             Box(Modifier.align(Alignment.CenterEnd).size(170.dp).offset(x = 40.dp)
@@ -451,8 +454,8 @@ private fun RecordSermonCard(onClick: () -> Unit) {
                     Text("Record a sermon", fontSize = 21.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif, color = Color.White)
                     Text("Scripture, key points and notes — gathered for you", fontSize = 13.sp, lineHeight = 18.sp, color = Color.White.copy(alpha = 0.72f), modifier = Modifier.padding(top = 4.dp))
                 }
-                Box(Modifier.size(56.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFFF6D365), Gold))), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Mic, contentDescription = null, tint = Color(0xFF1B1530), modifier = Modifier.size(26.dp))
+                Box(Modifier.size(56.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFFF6D365).forTheme(), Gold))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Mic, contentDescription = null, tint = Ink, modifier = Modifier.size(26.dp))
                 }
             }
         }
@@ -462,11 +465,11 @@ private fun RecordSermonCard(onClick: () -> Unit) {
 @Composable
 private fun StartTile(kind: StartKind, modifier: Modifier, onClick: () -> Unit) {
     Surface(
-        onClick = onClick, shape = RoundedCornerShape(22.dp), color = Color.White,
+        onClick = onClick, shape = RoundedCornerShape(22.dp), color = SurfaceBase,
         border = BorderStroke(1.dp, kind.tint.copy(alpha = 0.18f)), shadowElevation = 1.dp,
         modifier = modifier.height(122.dp)
     ) {
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(kind.tint.copy(alpha = 0.10f), Color.White)))) {
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(kind.tint.copy(alpha = 0.10f), SurfaceBase)))) {
             Column(Modifier.padding(14.dp)) {
                 Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(kind.tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
                     Icon(faithIcon(kind.type), contentDescription = null, tint = kind.tint, modifier = Modifier.size(19.dp))
@@ -542,7 +545,7 @@ private fun FaithNoteRow(note: Note, showYear: Boolean = false, onClick: () -> U
 @Composable
 fun FaithJourneyScreen(viewModel: FaithViewModel, onNavigateBack: () -> Unit, onOpenNote: (String) -> Unit) {
     val journey by viewModel.journey.collectAsState()
-    Scaffold(containerColor = Color.White) { padding ->
+    Scaffold(containerColor = SurfaceBase) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 40.dp)) {
             item {
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, top = 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -575,7 +578,7 @@ fun FaithScriptureScreen(viewModel: FaithViewModel, onNavigateBack: () -> Unit, 
             .groupBy { it.first.book }
             .toSortedMap(compareBy { BibleBooks.all.indexOf(it) })
     }
-    Scaffold(containerColor = Color.White) { padding ->
+    Scaffold(containerColor = SurfaceBase) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 40.dp)) {
             item {
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, top = 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -667,8 +670,8 @@ private fun FaithMediaCard(a: com.example.core.model.Attachment, noteTitle: Stri
     val playing = playback.recordingId == "media:${a.id}" && playback.phase == com.example.core.audio.PlaybackPhase.PLAYING
     val generated = a.caption?.contains("AI-generated") == true
     val (kindLabel, tint) = when (a.kind) {
-        AttachmentKind.IMAGE -> (if (generated) "Devotional picture" else "Photo") to Color(0xFF0EA5E9)
-        AttachmentKind.VIDEO -> "Video" to Color(0xFFE11D48)
+        AttachmentKind.IMAGE -> (if (generated) "Devotional picture" else "Photo") to Color(0xFF0EA5E9).forTheme()
+        AttachmentKind.VIDEO -> "Video" to Color(0xFFE11D48).forTheme()
         AttachmentKind.AUDIO -> (if (a.caption?.startsWith("Listen:") == true) "Devotional voice" else "Voice") to Gold
         else -> "File" to InkMuted
     }
@@ -677,7 +680,7 @@ private fun FaithMediaCard(a: com.example.core.model.Attachment, noteTitle: Stri
             if (playing) com.example.core.audio.PlaybackController.pause()
             else com.example.core.audio.PlaybackController.play(context, "media:${a.id}", noteTitle ?: kindLabel, File(a.path))
         } else onOpen()
-    }, shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 2.dp, modifier = Modifier.size(width = 148.dp, height = 196.dp)) {
+    }, shape = RoundedCornerShape(18.dp), color = SurfaceBase, shadowElevation = 2.dp, modifier = Modifier.size(width = 148.dp, height = 196.dp)) {
         Box(Modifier.fillMaxSize()) {
             when (a.kind) {
                 AttachmentKind.IMAGE -> AsyncImage(File(a.path), contentDescription = a.caption, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -688,15 +691,15 @@ private fun FaithMediaCard(a: com.example.core.model.Attachment, noteTitle: Stri
                         }
                     }
                     frame?.let { androidx.compose.foundation.Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
-                        ?: Box(Modifier.fillMaxSize().background(Color(0xFF1F2937)))
+                        ?: Box(Modifier.fillMaxSize().background(Color(0xFF1F2937).forTheme()))
                     Box(Modifier.align(Alignment.Center).size(44.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = "Play video", tint = Color.White, modifier = Modifier.size(26.dp))
                     }
                 }
-                else -> Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF1B1530), Color(0xFF3A2A1A)))), contentAlignment = Alignment.Center) {
+                else -> Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF1B1530).forTheme(), Color(0xFF3A2A1A).forTheme()))), contentAlignment = Alignment.Center) {
                     VoiceBars(playing)
-                    Box(Modifier.align(Alignment.BottomEnd).padding(10.dp).size(34.dp).clip(CircleShape).background(Color(0xFFF6D365)), contentAlignment = Alignment.Center) {
-                        Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (playing) "Pause" else "Play", tint = Color(0xFF1B1530), modifier = Modifier.size(20.dp))
+                    Box(Modifier.align(Alignment.BottomEnd).padding(10.dp).size(34.dp).clip(CircleShape).background(Color(0xFFF6D365).forTheme()), contentAlignment = Alignment.Center) {
+                        Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (playing) "Pause" else "Play", tint = Ink, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -729,7 +732,7 @@ private fun VoiceBars(playing: Boolean) {
     Row(Modifier.padding(bottom = 30.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         repeat(9) { i ->
             val h = 10f + 26f * ((kotlin.math.sin(phase + i * 0.7f) + 1f) / 2f) * (if (playing) 1f else 0.55f)
-            Box(Modifier.size(width = 4.dp, height = h.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFF6D365).copy(alpha = 0.85f)))
+            Box(Modifier.size(width = 4.dp, height = h.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFF6D365).forTheme().copy(alpha = 0.85f)))
         }
     }
 }

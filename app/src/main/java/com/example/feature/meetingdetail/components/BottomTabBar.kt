@@ -1,5 +1,6 @@
 package com.example.feature.meetingdetail.components
 
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.drawBehind
@@ -40,7 +41,8 @@ fun BottomTabBar(
     onSelect: (RecordingDetailTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.fillMaxWidth().background(Color.White)) {
+    val Ink = com.example.ui.theme.Ink // captured for drawing lambdas
+    Column(modifier = modifier.fillMaxWidth().background(SurfaceBase)) {
         HorizontalDivider(thickness = 1.dp, color = LineSoft)
         // navigationBarsPadding on the tab row (not the Column/background above) keeps this bar's
         // white background bleeding under the system nav bar/gesture area while the tappable tabs

@@ -1,5 +1,10 @@
 package com.example.core.identity
 
+import com.example.ui.theme.SurfaceBase
+import com.example.ui.theme.Ink
+import com.example.ui.theme.Line
+import com.example.ui.theme.InkMuted
+import com.example.ui.theme.forTheme
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -58,7 +63,7 @@ fun SpacesPicker(selected: Set<NotebookSpace>, onChange: (Set<NotebookSpace>) ->
                         },
                         shape = RoundedCornerShape(20.dp),
                         color = if (on) t.tint.copy(alpha = 0.08f) else Color.White,
-                        border = BorderStroke(if (on) 2.dp else 1.dp, if (on) t.tint else Color(0xFFE5E7EB)),
+                        border = BorderStroke(if (on) 2.dp else 1.dp, if (on) t.tint else Line),
                         modifier = Modifier.weight(1f).height(132.dp).testTag("space_${t.space.name.lowercase()}")
                     ) {
                         Box {
@@ -67,8 +72,8 @@ fun SpacesPicker(selected: Set<NotebookSpace>, onChange: (Set<NotebookSpace>) ->
                                     Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(listOf(t.tint.copy(alpha = 0.9f), t.tint.copy(alpha = 0.55f)))),
                                     contentAlignment = Alignment.Center
                                 ) { Icon(t.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(21.dp)) }
-                                Text(t.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827), modifier = Modifier.padding(top = 10.dp))
-                                Text(t.line, fontSize = 12.sp, lineHeight = 16.sp, color = Color(0xFF6B7280))
+                                Text(t.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 10.dp))
+                                Text(t.line, fontSize = 12.sp, lineHeight = 16.sp, color = InkMuted)
                             }
                             if (on) Icon(Icons.Filled.CheckCircle, contentDescription = "Selected", tint = t.tint, modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(20.dp))
                         }
@@ -87,8 +92,8 @@ fun LookPicker(selected: LookAndFeel, onChange: (LookAndFeel) -> Unit) {
             val palette = AppLook.of(look)
             val on = look == selected
             Surface(
-                onClick = { onChange(look) }, shape = RoundedCornerShape(18.dp), color = Color.White,
-                border = BorderStroke(if (on) 2.dp else 1.dp, if (on) palette.accent else Color(0xFFE5E7EB)),
+                onClick = { onChange(look) }, shape = RoundedCornerShape(18.dp), color = SurfaceBase,
+                border = BorderStroke(if (on) 2.dp else 1.dp, if (on) palette.accent else Line),
                 modifier = Modifier.fillMaxWidth().testTag("look_${look.name.lowercase()}")
             ) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -96,8 +101,8 @@ fun LookPicker(selected: LookAndFeel, onChange: (LookAndFeel) -> Unit) {
                         Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(12.dp).clip(CircleShape).background(palette.warm))
                     }
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                        Text(look.label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827), fontFamily = palette.headingFont)
-                        Text(look.description, fontSize = 12.sp, color = Color(0xFF6B7280))
+                        Text(look.label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, fontFamily = palette.headingFont)
+                        Text(look.description, fontSize = 12.sp, color = InkMuted)
                     }
                     if (on) Icon(Icons.Filled.CheckCircle, contentDescription = "Selected", tint = palette.accent, modifier = Modifier.size(20.dp))
                 }

@@ -1,5 +1,7 @@
 package com.example.feature.meetingdetail.components
 
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,7 +63,7 @@ fun CleanupReviewScreen(
 ) {
     val changedWordCount = segments.sumOf { WordDiff.changedWordCount(it.original, it.proposed) }
 
-    Column(modifier = modifier.fillMaxSize().background(Color.White)) {
+    Column(modifier = modifier.fillMaxSize().background(SurfaceBase)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 18.dp, top = 6.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -133,7 +135,7 @@ fun CleanupReviewScreen(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .background(Color.White, RoundedCornerShape(16.dp))
+                    .background(SurfaceBase, RoundedCornerShape(16.dp))
                     .border(1.dp, Line, RoundedCornerShape(16.dp))
                     .clickable(onClick = onDiscard)
                     .padding(vertical = 15.dp),
@@ -149,7 +151,7 @@ fun CleanupReviewScreen(
                     .padding(vertical = 15.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "Keep changes", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                Text(text = "Keep changes", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = OnInk)
             }
         }
     }

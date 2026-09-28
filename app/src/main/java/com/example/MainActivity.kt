@@ -73,6 +73,7 @@ import com.example.feature.search.SearchViewModel
 import com.example.feature.settings.SettingsScreen
 import com.example.feature.settings.SettingsViewModel
 import com.example.ui.theme.MeetMindTheme
+import com.example.ui.theme.isDark
 import java.net.URLDecoder
 
 class MainActivity : ComponentActivity() {
@@ -95,7 +96,18 @@ class MainActivity : ComponentActivity() {
         }
         openDatabase()
         setContent {
-            MeetMindTheme {
+            // Dark unless the person chose otherwise (Settings > Appearance).
+            val themePrefs by remember { UserPreferencesManager(applicationContext).preferencesFlow }.collectAsState(initial = null)
+            val themeMode = runCatching { com.example.ui.theme.ThemeMode.valueOf(themePrefs?.themeMode ?: "DARK") }.getOrDefault(com.example.ui.theme.ThemeMode.DARK)
+            val dark = themeMode.isDark()
+            androidx.compose.runtime.LaunchedEffect(dark) {
+                val transparent = android.graphics.Color.TRANSPARENT
+                enableEdgeToEdge(
+                    statusBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(transparent) else androidx.activity.SystemBarStyle.light(transparent, transparent),
+                    navigationBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(transparent) else androidx.activity.SystemBarStyle.light(transparent, transparent)
+                )
+            }
+            MeetMindTheme(darkTheme = dark) {
                 // Who the app is for — spaces, look, name, avatar — available to every screen.
                 val identityContext = androidx.compose.ui.platform.LocalContext.current
                 val identity by remember { UserPreferencesManager(identityContext).preferencesFlow }

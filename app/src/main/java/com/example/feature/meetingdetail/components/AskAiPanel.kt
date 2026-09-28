@@ -1,5 +1,7 @@
 package com.example.feature.meetingdetail.components
 
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -117,7 +119,7 @@ fun AskAiPanel(
                                     fontSize = 13.sp,
                                     color = Ink,
                                     modifier = Modifier
-                                        .background(Color.White, RoundedCornerShape(10.dp))
+                                        .background(SurfaceBase, RoundedCornerShape(10.dp))
                                         .border(1.dp, Line, RoundedCornerShape(10.dp))
                                         .clickable { onSendQuestion(chip) }
                                         .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -187,7 +189,7 @@ fun AskAiPanel(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .background(Color.White, RoundedCornerShape(26.dp))
+                    .background(SurfaceBase, RoundedCornerShape(26.dp))
                     .border(1.dp, Line, RoundedCornerShape(26.dp))
                     .padding(horizontal = 18.dp, vertical = 10.dp)
             ) {
@@ -212,7 +214,7 @@ fun AskAiPanel(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Ask", tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Ask", tint = OnInk, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -244,7 +246,7 @@ private fun CitationDetailPanel(
                 text = "Play from ${Formatters.formatDurationHms(segment.startMs)}",
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color.White,
+                color = OnInk,
                 modifier = Modifier
                     .background(Ink, RoundedCornerShape(11.dp))
                     .clickable(onClick = onPlayFrom)
@@ -255,7 +257,7 @@ private fun CitationDetailPanel(
                 fontSize = 12.5.sp,
                 color = InkSecondary,
                 modifier = Modifier
-                    .background(Color.White, RoundedCornerShape(11.dp))
+                    .background(SurfaceBase, RoundedCornerShape(11.dp))
                     .border(1.dp, Line, RoundedCornerShape(11.dp))
                     .clickable(onClick = onOpenInTranscript)
                     .padding(horizontal = 13.dp, vertical = 8.dp)

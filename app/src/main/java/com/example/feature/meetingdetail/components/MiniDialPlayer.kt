@@ -1,5 +1,7 @@
 package com.example.feature.meetingdetail.components
 
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -27,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.example.ui.theme.Accent
 import kotlin.math.min
 
-private val TrackColor = Color(0xFFE9EDF5)
+private val TrackColor: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFFE9EDF5).forTheme()
 
 /**
  * The 52dp conic-progress mini player: present on every tab of the redesigned recording detail
@@ -46,6 +48,8 @@ fun MiniDialPlayer(
     modifier: Modifier = Modifier,
     size: Dp = 52.dp
 ) {
+    val Accent = com.example.ui.theme.Accent // captured for drawing lambdas
+    val track = TrackColor
     val clamped = progress.coerceIn(0f, 1f)
     val interactionSource = remember { MutableInteractionSource() }
     Box(
@@ -67,7 +71,7 @@ fun MiniDialPlayer(
             // 90deg in Compose's drawArc convention (0 = 3 o'clock, clockwise) is 6 o'clock/bottom,
             // matching the design's "conic-gradient starting at 180deg (bottom)".
             drawArc(
-                color = TrackColor,
+                color = track,
                 startAngle = 90f,
                 sweepAngle = 360f,
                 useCenter = true,
@@ -90,7 +94,7 @@ fun MiniDialPlayer(
                 .padding(4.dp)
                 .fillMaxSize()
                 .clip(CircleShape)
-                .background(Color.White),
+                .background(SurfaceBase),
             contentAlignment = Alignment.Center
         ) {
             PlayPauseGlyph(isPlaying = isPlaying)
@@ -100,6 +104,7 @@ fun MiniDialPlayer(
 
 @Composable
 private fun PlayPauseGlyph(isPlaying: Boolean) {
+    val Accent = com.example.ui.theme.Accent // captured for drawing lambdas
     if (isPlaying) {
         Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             Box(Modifier.size(width = 3.dp, height = 13.dp).clip(RoundedCornerShape(2.dp)).background(Accent))

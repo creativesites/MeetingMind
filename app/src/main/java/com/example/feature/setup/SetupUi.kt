@@ -1,5 +1,7 @@
 package com.example.feature.setup
 
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.SurfaceBase
 import android.app.Application
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
@@ -110,7 +112,7 @@ fun SetupCard(state: SetupState, onSetUp: () -> Unit, onDetails: () -> Unit, onL
         Box(Modifier.size(160.dp).align(Alignment.TopEnd).background(Brush.radialGradient(listOf(Brand.Violet.copy(alpha = 0.28f), Color.Transparent)), CircleShape))
         Column(Modifier.padding(18.dp).animateContentSize()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (state.thinkingOnly) Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(18.dp).padding(end = 2.dp))
+                if (state.thinkingOnly) Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFBBF24).forTheme(), modifier = Modifier.size(18.dp).padding(end = 2.dp))
                 else Image(painterResource(R.drawable.brand_mark), contentDescription = null, modifier = Modifier.size(width = 24.dp, height = 20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(state.headline, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -140,7 +142,7 @@ fun SetupCard(state: SetupState, onSetUp: () -> Unit, onDetails: () -> Unit, onL
 private fun PartChip(p: PartStatus, modifier: Modifier = Modifier) {
     val progress by animateFloatAsState(if (p.installed) 1f else p.progress, label = "part")
     Row(
-        modifier.clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = if (p.installed) 0.12f else 0.06f)).padding(horizontal = 8.dp, vertical = 8.dp),
+        modifier.clip(RoundedCornerShape(14.dp)).background(SurfaceBase.copy(alpha = if (p.installed) 0.12f else 0.06f)).padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
@@ -166,7 +168,7 @@ fun SetupBanner(state: SetupState, onClick: () -> Unit, modifier: Modifier = Mod
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (state.downloading) CircularProgressIndicator(progress = { state.progress }, modifier = Modifier.size(18.dp), color = Brand.Cyan, trackColor = Color.White.copy(alpha = 0.15f), strokeWidth = 2.dp)
-        else Icon(if (state.thinkingOnly) Icons.Filled.Warning else Icons.Filled.GraphicEq, contentDescription = null, tint = if (state.thinkingOnly) Color(0xFFFBBF24) else Brand.Cyan, modifier = Modifier.size(18.dp))
+        else Icon(if (state.thinkingOnly) Icons.Filled.Warning else Icons.Filled.GraphicEq, contentDescription = null, tint = if (state.thinkingOnly) Color(0xFFFBBF24).forTheme() else Brand.Cyan, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -199,8 +201,8 @@ fun SetupScreen(viewModel: SetupViewModel, onBack: () -> Unit, onInternetMode: (
                 )
                 val s = state ?: return@Column
                 if (s.thinkingOnly) {
-                    Row(Modifier.padding(top = 16.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0x33FBBF24)).padding(12.dp)) {
-                        Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(18.dp))
+                    Row(Modifier.padding(top = 16.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0x33FBBF24).forTheme()).padding(12.dp)) {
+                        Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFBBF24).forTheme(), modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("You have a language model, but it can't hear. Recordings need the Hearing model to become transcripts.", color = Color.White, fontSize = 13.5.sp, lineHeight = 19.sp)
                     }
@@ -228,7 +230,7 @@ fun SetupScreen(viewModel: SetupViewModel, onBack: () -> Unit, onInternetMode: (
                 }
 
                 // The other way: no downloads, Gemini does the work.
-                Column(Modifier.padding(top = 26.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.06f)).clickable(onClick = onInternetMode).padding(16.dp)) {
+                Column(Modifier.padding(top = 26.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).clickable(onClick = onInternetMode).padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Cloud, contentDescription = null, tint = Brand.Lilac, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
@@ -248,7 +250,7 @@ fun SetupScreen(viewModel: SetupViewModel, onBack: () -> Unit, onInternetMode: (
 
 @Composable
 private fun PartRow(n: Int, p: PartStatus, onGet: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(42.dp).clip(CircleShape).background(if (p.installed) Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet)) else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.1f), Color.White.copy(alpha = 0.06f)))), contentAlignment = Alignment.Center) {
             if (p.downloading) CircularProgressIndicator(progress = { p.progress.coerceAtLeast(0.03f) }, modifier = Modifier.size(38.dp), color = Brand.Cyan, trackColor = Color.Transparent, strokeWidth = 3.dp)
             Icon(if (p.installed) Icons.Filled.Check else p.part.icon(), contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
@@ -264,7 +266,7 @@ private fun PartRow(n: Int, p: PartStatus, onGet: () -> Unit) {
                     p.failed -> "Download stopped — tap Get to try again"
                     else -> "${p.modelNames} · ${SetupGuide.formatBytes(p.remainingBytes)}"
                 },
-                color = if (p.failed) Color(0xFFFCA5A5) else Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp, modifier = Modifier.padding(top = 3.dp)
+                color = if (p.failed) Color(0xFFFCA5A5).forTheme() else Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp, modifier = Modifier.padding(top = 3.dp)
             )
         }
         if (!p.installed && !p.downloading) {

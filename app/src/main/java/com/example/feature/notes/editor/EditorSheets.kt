@@ -1,5 +1,9 @@
 package com.example.feature.notes.editor
 
+import com.example.ui.theme.Danger
+import com.example.ui.theme.forTheme
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -106,7 +110,7 @@ internal enum class InsertAction(val label: String, val icon: ImageVector) {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun InsertSheet(hasRecordings: Boolean, onPick: (InsertAction) -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
             SheetTitle("Insert")
             SectionLabel("Write")
@@ -154,7 +158,7 @@ internal fun LinkDialog(initial: String?, onSave: (String?) -> Unit, onDismiss: 
     var url by remember { mutableStateOf(initial.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         title = { Text(if (initial == null) "Add link" else "Edit link") },
         text = {
             OutlinedTextField(value = url, onValueChange = { url = it.trim() }, singleLine = true, placeholder = { Text("example.com") }, modifier = Modifier.fillMaxWidth())
@@ -173,7 +177,7 @@ internal fun LinkDialog(initial: String?, onSave: (String?) -> Unit, onDismiss: 
 @Composable
 internal fun TagSheet(tags: List<Tag>, allTags: List<Tag>, onAdd: (String) -> Unit, onRemove: (Tag) -> Unit, onDismiss: () -> Unit) {
     var entry by remember { mutableStateOf("") }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
             SheetTitle("Tags")
             OutlinedTextField(
@@ -206,7 +210,7 @@ internal fun TagChip(name: String, selected: Boolean, trailing: ImageVector? = n
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(50),
-        color = if (selected) AccentWash else Color.White,
+        color = if (selected) AccentWash else SurfaceBase,
         border = if (selected) null else BorderStroke(1.dp, Line)
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -224,7 +228,7 @@ internal fun TagChip(name: String, selected: Boolean, trailing: ImageVector? = n
 internal fun NotebookSheet(notebooks: List<Notebook>, currentId: String?, onPick: (Notebook) -> Unit, onCreate: (String) -> Unit, onDismiss: () -> Unit) {
     var creating by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
             SheetTitle("Move to notebook")
             notebooks.forEach { nb ->
@@ -272,7 +276,7 @@ internal fun ExportSheet(
 ) {
     var format by remember { mutableStateOf(ExportFormat.PDF) }
     var includePrivate by remember { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
             SheetTitle("Export & share")
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -295,15 +299,15 @@ internal fun ExportSheet(
             Row(Modifier.fillMaxWidth().padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Surface(
                     onClick = { onSave(format, includePrivate) }, enabled = !busy,
-                    shape = RoundedCornerShape(50), color = Color.White, border = BorderStroke(1.dp, Line), modifier = Modifier.weight(1f)
+                    shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.weight(1f)
                 ) {
                     Text("Save to device", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(vertical = 14.dp))
                 }
                 Surface(onClick = { onShare(format, includePrivate) }, enabled = !busy, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.weight(1f)) {
                     Row(Modifier.padding(vertical = 14.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
+                        Icon(Icons.Filled.Share, contentDescription = null, tint = OnInk, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(if (busy) "Preparing…" else "Share", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        Text(if (busy) "Preparing…" else "Share", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = OnInk)
                     }
                 }
             }
@@ -315,7 +319,7 @@ internal fun ExportSheet(
 private fun FormatOption(title: String, subtitle: String, icon: ImageVector, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Surface(
         onClick = onClick, modifier = modifier, shape = RoundedCornerShape(16.dp),
-        color = if (selected) AccentWash else Color.White,
+        color = if (selected) AccentWash else SurfaceBase,
         border = BorderStroke(if (selected) 1.5.dp else 1.dp, if (selected) Accent else Line)
     ) {
         Column(Modifier.padding(12.dp)) {
@@ -334,7 +338,7 @@ internal fun ExcerptPickerSheet(load: suspend () -> List<ExcerptCandidate>, onPi
     var all by remember { mutableStateOf<List<ExcerptCandidate>?>(null) }
     var query by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { all = load() }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).navigationBarsPadding()) {
             SheetTitle("Quote the recording")
             OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true, placeholder = { Text("Find words in the transcript") }, modifier = Modifier.fillMaxWidth())
@@ -368,7 +372,7 @@ internal fun NoteLinkPickerSheet(search: suspend (String) -> List<Note>, onPick:
         kotlinx.coroutines.delay(150)
         results = search(query)
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).navigationBarsPadding()) {
             SheetTitle("Link a note")
             OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true, placeholder = { Text("Search notes") }, modifier = Modifier.fillMaxWidth())
@@ -402,7 +406,7 @@ internal fun BlockMenu(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
         text = {
             Column {
@@ -431,7 +435,7 @@ private fun MenuRow(label: String, selected: Boolean = false, destructive: Boole
     Text(
         label,
         fontSize = 15.sp,
-        color = when { destructive -> Color(0xFFDC2626); selected -> Accent; else -> Ink },
+        color = when { destructive -> Danger; selected -> Accent; else -> Ink },
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp)
     )
@@ -456,7 +460,7 @@ internal fun ScriptureEntryDialog(
     val parsed = remember(text) { com.example.core.scripture.ScriptureReferenceParser.parseList(text) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         title = { Text("Add Bible verses") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -515,7 +519,7 @@ internal fun SermonDetailsDialog(speaker: String, church: String, onSave: (Strin
     var c by remember { mutableStateOf(church) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = SurfaceBase,
         title = { Text("Sermon details") },
         text = {
             Column {

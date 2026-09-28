@@ -1,5 +1,7 @@
 package com.example.feature.models
 
+import com.example.ui.theme.OnInk
+import com.example.ui.theme.SurfaceBase
 import kotlinx.coroutines.flow.map
 
 import android.app.Application
@@ -266,8 +268,8 @@ fun ModelManagerScreen(
     }
 
     Scaffold(
-        containerColor = Color.White,
-        snackbarHost = { SnackbarHost(snackbarHostState) { data -> Snackbar(snackbarData = data, containerColor = Ink, contentColor = Color.White) } },
+        containerColor = SurfaceBase,
+        snackbarHost = { SnackbarHost(snackbarHostState) { data -> Snackbar(snackbarData = data, containerColor = Ink, contentColor = OnInk) } },
         bottomBar = {
             com.example.core.ui.AppBottomNavigationBar(
                 current = com.example.core.ui.BottomNavDestination.SETTINGS,
@@ -397,12 +399,20 @@ private val CAPABILITY_GROUPS = listOf(
     )
 )
 
-private enum class CapabilityStatus(val label: String, val color: Color) {
-    READY("Ready", Ink),
-    DOWNLOADING("Downloading", Accent),
-    PAUSED("Paused", InkMuted),
-    NEEDS_DOWNLOAD("Needs download", Speaker4),
-    UNAVAILABLE("Unavailable", InkMuted)
+private enum class CapabilityStatus(val label: String) {
+    READY("Ready"),
+    DOWNLOADING("Downloading"),
+    PAUSED("Paused"),
+    NEEDS_DOWNLOAD("Needs download"),
+    UNAVAILABLE("Unavailable");
+
+    val color: Color
+        @androidx.compose.runtime.Composable get() = when (this) {
+            READY -> Ink
+            DOWNLOADING -> Accent
+            NEEDS_DOWNLOAD -> Speaker4
+            PAUSED, UNAVAILABLE -> InkMuted
+        }
 }
 
 private fun statusFor(models: List<AiModelInfo>, pausedModelIds: Set<String>): CapabilityStatus = when {
