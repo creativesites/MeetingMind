@@ -90,11 +90,16 @@ android {
   }
 
   testOptions { unitTests { isIncludeAndroidResources = true } }
+  // Room's exported schemas, one JSON per database version, so migrations are tested against the
+  // real shape of every version (MigrationTestHelper reads them from test assets).
+  sourceSets.getByName("test").assets.srcDir("$projectDir/schemas")
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
   }
 }
+
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
@@ -168,6 +173,7 @@ dependencies {
   testImplementation(libs.kotlinx.coroutines.test)
   testImplementation(libs.robolectric)
   testImplementation(libs.roborazzi)
+  testImplementation(libs.androidx.room.testing)
   testImplementation(libs.roborazzi.compose)
   testImplementation(libs.roborazzi.junit.rule)
   androidTestImplementation(platform(libs.androidx.compose.bom))

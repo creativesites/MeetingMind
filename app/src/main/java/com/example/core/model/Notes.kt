@@ -25,7 +25,9 @@ data class Note(
     val metadata: Map<String, String>,
     val archivedAt: Long? = null,
     /** Plain text of every text block, kept for search and list previews. */
-    val plainText: String = ""
+    val plainText: String = "",
+    /** When it was moved to the Trash; null for a note that isn't there. */
+    val deletedAt: Long? = null
 )
 
 /** Only prayer requests use anything but [OPEN] today. */
@@ -47,7 +49,9 @@ data class Notebook(
     val createdAt: Long,
     val updatedAt: Long,
     val archivedAt: Long? = null,
-    val sortOrder: Int = 0
+    val sortOrder: Int = 0,
+    /** When it was moved to the Trash; null for a notebook that isn't there. */
+    val deletedAt: Long? = null
 )
 
 enum class NoteBlockType {

@@ -1,5 +1,6 @@
 package com.example.core.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -23,7 +24,9 @@ data class NotebookEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val archivedAt: Long?,
-    val sortOrder: Int
+    val sortOrder: Int,
+    /** In the Trash since then (schema 15). Purged 30 days later. */
+    val deletedAt: Long? = null
 )
 
 @Entity(
@@ -37,7 +40,11 @@ data class NotebookEntity(
             onDelete = ForeignKey.SET_NULL
         )
     ],
-    indices = [Index(value = ["notebookId"]), Index(value = ["updatedAt"])]
+    indices = [
+        Index(value = ["notebookId"]), Index(value = ["updatedAt"]), Index(value = ["workflow"]),
+        // The library's filter and order, so list queries are index scans (schema 15).
+        Index(value = ["deletedAt", "archivedAt", "isDraft", "pinned", "updatedAt"])
+    ]
 )
 data class NoteEntity(
     @PrimaryKey val id: String,
@@ -57,7 +64,14 @@ data class NoteEntity(
     val metadataJson: String,
     val archivedAt: Long?,
     /** Every text block's text, joined — search and list previews read this. */
-    val plainText: String
+    val plainText: String,
+    /**
+     * Mirrors the `draft` metadata key, which stays the source of truth; this copy exists so
+     * queries can filter drafts through an index instead of scanning `metadataJson` (schema 15).
+     */
+    @ColumnInfo(defaultValue = "0") val isDraft: Boolean = false,
+    /** In the Trash since then (schema 15). Purged 30 days later. */
+    val deletedAt: Long? = null
 )
 
 @Entity(
@@ -221,3 +235,29 @@ data class NoteAiJobEntity(
     val createdAt: Long,
     val updatedAt: Long
 )
+
+/**
+ * A saved copy of a note, taken before anything that changes a lot at once (AI, restore, paste,
+ * import) and during editing sessions (docs/PRD_M0.md §4.6). [blocks] is gzipped JSON.
+ */
+@Entity(
+    tableName = "note_versions",
+    foreignKeys = [
+        ForeignKey(entity = NoteEntity::class, parentColumns = ["id"], childColumns = ["noteId"], onDelete = ForeignKey.CASCADE)
+    ],
+    indices = [Index(value = ["noteId", "createdAt"])]
+)
+data class NoteVersionEntity(
+    @PrimaryKey val id: String,
+    val noteId: String,
+    val createdAt: Long,
+    /** [com.example.core.notes.VersionReason] name. */
+    val reason: String,
+    val label: String?,
+    val title: String,
+    @ColumnInfo(typeAffinity = ColumnInfo.BLOB) val blocks: ByteArray,
+    val byteSize: Int
+) {
+    override fun equals(other: Any?) = other is NoteVersionEntity && other.id == id
+    override fun hashCode() = id.hashCode()
+}

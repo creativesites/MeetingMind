@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NotebookDao {
-    @Query("SELECT * FROM notebooks WHERE archivedAt IS NULL ORDER BY sortOrder, name COLLATE NOCASE")
+    @Query("SELECT * FROM notebooks WHERE archivedAt IS NULL AND deletedAt IS NULL ORDER BY sortOrder, name COLLATE NOCASE")
     fun observeActive(): Flow<List<NotebookEntity>>
 
     @Query("SELECT * FROM notebooks ORDER BY sortOrder, name COLLATE NOCASE")
@@ -19,7 +19,7 @@ interface NotebookDao {
     @Query("SELECT * FROM notebooks WHERE id = :id")
     suspend fun getById(id: String): NotebookEntity?
 
-    @Query("SELECT * FROM notebooks WHERE space = :space AND archivedAt IS NULL ORDER BY sortOrder, name COLLATE NOCASE")
+    @Query("SELECT * FROM notebooks WHERE space = :space AND archivedAt IS NULL AND deletedAt IS NULL ORDER BY sortOrder, name COLLATE NOCASE")
     suspend fun getBySpace(space: String): List<NotebookEntity>
 
     @Upsert
@@ -28,8 +28,17 @@ interface NotebookDao {
     @Query("DELETE FROM notebooks WHERE id = :id")
     suspend fun delete(id: String)
 
+    @Query("SELECT * FROM notebooks WHERE deletedAt IS NOT NULL ORDER BY deletedAt DESC")
+    fun observeTrashed(): Flow<List<NotebookEntity>>
+
+    @Query("UPDATE notebooks SET deletedAt = :at WHERE id = :id")
+    suspend fun setDeleted(id: String, at: Long?)
+
+    @Query("SELECT id FROM notebooks WHERE deletedAt IS NOT NULL AND deletedAt < :before")
+    suspend fun trashedBefore(before: Long): List<String>
+
     /** Note counts per notebook, for the library's notebook list. */
-    @Query("SELECT notebookId AS notebookId, COUNT(*) AS count FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND notebookId IS NOT NULL GROUP BY notebookId")
+    @Query("SELECT notebookId AS notebookId, COUNT(*) AS count FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND notebookId IS NOT NULL GROUP BY notebookId")
     fun observeNoteCounts(): Flow<List<NotebookNoteCount>>
 }
 
@@ -42,19 +51,39 @@ data class NoteTagName(val noteId: String, val name: String)
 @Dao
 interface NoteDao {
     /** Notes the person wrote (not drafts, not the daily devotional) — for "getting started". */
-    @Query("SELECT COUNT(*) FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND workflow != 'DEVOTIONAL'")
+    @Query("SELECT COUNT(*) FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND workflow != 'DEVOTIONAL'")
     fun observeWrittenCount(): kotlinx.coroutines.flow.Flow<Int>
 
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' ORDER BY pinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
     fun observeActive(): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND notebookId = :notebookId ORDER BY pinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND notebookId = :notebookId ORDER BY pinned DESC, updatedAt DESC")
     fun observeInNotebook(notebookId: String): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND workflow IN (:workflows) ORDER BY pinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND workflow IN (:workflows) ORDER BY pinned DESC, updatedAt DESC")
     fun observeByWorkflows(workflows: List<String>): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM notes WHERE archivedAt IS NOT NULL ORDER BY archivedAt DESC")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
+    suspend fun getActiveOnce(): List<NoteEntity>
+
+    // ---- trash (PRD_M0 §4.5) ----
+
+    @Query("SELECT * FROM notes WHERE deletedAt IS NOT NULL ORDER BY deletedAt DESC")
+    fun observeTrashed(): Flow<List<NoteEntity>>
+
+    @Query("UPDATE notes SET deletedAt = :at WHERE id = :id")
+    suspend fun setDeleted(id: String, at: Long?)
+
+    @Query("UPDATE notes SET deletedAt = :at WHERE notebookId = :notebookId AND deletedAt IS NULL")
+    suspend fun trashInNotebook(notebookId: String, at: Long)
+
+    @Query("UPDATE notes SET deletedAt = NULL WHERE notebookId = :notebookId AND deletedAt = :at")
+    suspend fun restoreInNotebook(notebookId: String, at: Long)
+
+    @Query("SELECT id FROM notes WHERE deletedAt IS NOT NULL AND deletedAt < :before")
+    suspend fun trashedBefore(before: Long): List<String>
+
+    @Query("SELECT * FROM notes WHERE archivedAt IS NOT NULL AND deletedAt IS NULL ORDER BY archivedAt DESC")
     fun observeArchived(): Flow<List<NoteEntity>>
 
     @Query("SELECT * FROM notes WHERE id = :id")
@@ -67,44 +96,44 @@ interface NoteDao {
     suspend fun getAll(): List<NoteEntity>
 
     /** Notes whose day (event date, else created) falls in [from, to) — the timeline's backbone. */
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND COALESCE(eventDate, createdAt) >= :from AND COALESCE(eventDate, createdAt) < :to ORDER BY COALESCE(eventDate, createdAt)")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND COALESCE(eventDate, createdAt) >= :from AND COALESCE(eventDate, createdAt) < :to ORDER BY COALESCE(eventDate, createdAt)")
     suspend fun getNotesBetween(from: Long, to: Long): List<NoteEntity>
 
     /** Prayer requests answered in [from, to), for the "Answered" milestone. */
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND answeredAt IS NOT NULL AND answeredAt >= :from AND answeredAt < :to")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND deletedAt IS NULL AND answeredAt IS NOT NULL AND answeredAt >= :from AND answeredAt < :to")
     suspend fun getAnsweredBetween(from: Long, to: Long): List<NoteEntity>
 
     /** Notes from the same month and day in earlier years ("MM-dd", local time). */
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND COALESCE(eventDate, createdAt) < :before AND strftime('%m-%d', COALESCE(eventDate, createdAt) / 1000, 'unixepoch', 'localtime') = :monthDay ORDER BY COALESCE(eventDate, createdAt) DESC")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND COALESCE(eventDate, createdAt) < :before AND strftime('%m-%d', COALESCE(eventDate, createdAt) / 1000, 'unixepoch', 'localtime') = :monthDay ORDER BY COALESCE(eventDate, createdAt) DESC")
     suspend fun getOnThisDay(monthDay: String, before: Long): List<NoteEntity>
 
     @Query("SELECT * FROM meetings WHERE noteId IN (:noteIds)")
     suspend fun getMeetingsForNotes(noteIds: List<String>): List<MeetingEntity>
 
-    @Query("SELECT * FROM notes WHERE metadataJson LIKE :pattern ESCAPE '\\' LIMIT 1")
+    @Query("SELECT * FROM notes WHERE deletedAt IS NULL AND metadataJson LIKE :pattern ESCAPE '\\' LIMIT 1")
     suspend fun findByMetadata(pattern: String): NoteEntity?
 
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson LIKE :pattern ESCAPE '\\' ORDER BY createdAt DESC LIMIT :limit")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND deletedAt IS NULL AND metadataJson LIKE :pattern ESCAPE '\\' ORDER BY createdAt DESC LIMIT :limit")
     suspend fun findAllByMetadata(pattern: String, limit: Int): List<NoteEntity>
 
-    @Query("SELECT * FROM notes WHERE metadataJson LIKE :pattern ESCAPE '\\' AND archivedAt IS NULL ORDER BY createdAt ASC")
+    @Query("SELECT * FROM notes WHERE metadataJson LIKE :pattern ESCAPE '\\' AND archivedAt IS NULL AND deletedAt IS NULL ORDER BY createdAt ASC")
     fun observeAllByMetadata(pattern: String): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM notes WHERE metadataJson LIKE :pattern ESCAPE '\\' ORDER BY createdAt DESC LIMIT 1")
+    @Query("SELECT * FROM notes WHERE deletedAt IS NULL AND metadataJson LIKE :pattern ESCAPE '\\' ORDER BY createdAt DESC LIMIT 1")
     fun observeByMetadata(pattern: String): Flow<NoteEntity?>
 
     /** Notes changed since [since], newest first — the devotional's view of "lately". */
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND updatedAt >= :since ORDER BY updatedAt DESC LIMIT :limit")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND updatedAt >= :since ORDER BY updatedAt DESC LIMIT :limit")
     suspend fun getUpdatedSince(since: Long, limit: Int = 80): List<NoteEntity>
 
     @Query(
-        "SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND " +
+        "SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND " +
             "(title LIKE '%' || :query || '%' OR plainText LIKE '%' || :query || '%') " +
             "ORDER BY pinned DESC, updatedAt DESC LIMIT :limit"
     )
     suspend fun searchText(query: String, limit: Int = 50): List<NoteEntity>
 
-    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND metadataJson NOT LIKE '%\"draft\":\"1\"%' AND workflow = :workflow AND status = :status ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND workflow = :workflow AND status = :status ORDER BY updatedAt DESC")
     fun observeByWorkflowAndStatus(workflow: String, status: String): Flow<List<NoteEntity>>
 
     @Upsert
@@ -146,7 +175,7 @@ interface NoteDao {
     /** Notes whose NOTE_LINK blocks point at [noteId] — the backlinks panel. */
     @Query(
         "SELECT DISTINCT n.* FROM notes n JOIN note_blocks b ON b.noteId = n.id " +
-            "WHERE b.type = 'NOTE_LINK' AND b.payloadJson LIKE '%' || :noteId || '%' AND n.id != :noteId AND n.archivedAt IS NULL"
+            "WHERE b.type = 'NOTE_LINK' AND b.payloadJson LIKE '%' || :noteId || '%' AND n.id != :noteId AND n.archivedAt IS NULL AND n.deletedAt IS NULL"
     )
     fun observeBacklinks(noteId: String): Flow<List<NoteEntity>>
 
@@ -195,14 +224,14 @@ interface NoteDao {
 
     @Query(
         "SELECT n.* FROM notes n JOIN note_tags nt ON nt.noteId = n.id " +
-            "WHERE nt.tagId = :tagId AND n.archivedAt IS NULL ORDER BY n.updatedAt DESC"
+            "WHERE nt.tagId = :tagId AND n.archivedAt IS NULL AND n.deletedAt IS NULL ORDER BY n.updatedAt DESC"
     )
     fun observeNotesWithTag(tagId: String): Flow<List<NoteEntity>>
 
     /** How often each tag is used on notes of these workflows — the Faith space's themes. */
     @Query(
         "SELECT t.name AS name, COUNT(*) AS count FROM tags t JOIN note_tags nt ON nt.tagId = t.id " +
-            "JOIN notes n ON n.id = nt.noteId WHERE n.workflow IN (:workflows) AND n.archivedAt IS NULL " +
+            "JOIN notes n ON n.id = nt.noteId WHERE n.workflow IN (:workflows) AND n.archivedAt IS NULL AND n.deletedAt IS NULL " +
             "GROUP BY t.id ORDER BY count DESC LIMIT 30"
     )
     fun observeTagCountsForWorkflows(workflows: List<String>): Flow<List<NameCount>>
@@ -253,7 +282,7 @@ interface AttachmentDao {
     /** Media across Faith notes, newest first — the Faith "Media" view. */
     @Query(
         "SELECT a.* FROM attachments a JOIN notes n ON n.id = a.noteId " +
-            "WHERE n.workflow IN (:workflows) AND n.archivedAt IS NULL ORDER BY a.createdAt DESC"
+            "WHERE n.workflow IN (:workflows) AND n.archivedAt IS NULL AND n.deletedAt IS NULL ORDER BY a.createdAt DESC"
     )
     fun observeForWorkflows(workflows: List<String>): Flow<List<AttachmentEntity>>
 }
@@ -323,3 +352,41 @@ interface NoteAiJobDao {
     @Query("DELETE FROM note_ai_jobs WHERE targetId = :targetId AND status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')")
     suspend fun deleteFinished(targetId: String)
 }
+
+/** Version history (PRD_M0 §4.6). Listing reads everything but the snapshot itself. */
+@Dao
+interface NoteVersionDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(version: NoteVersionEntity)
+
+    @Query("SELECT * FROM note_versions WHERE noteId = :noteId ORDER BY createdAt DESC")
+    suspend fun forNote(noteId: String): List<NoteVersionEntity>
+
+    @Query("SELECT id, noteId, createdAt, reason, label, title, byteSize FROM note_versions WHERE noteId = :noteId ORDER BY createdAt DESC")
+    fun observeSummaries(noteId: String): Flow<List<NoteVersionSummary>>
+
+    @Query("SELECT * FROM note_versions WHERE id = :id")
+    suspend fun getById(id: String): NoteVersionEntity?
+
+    @Query("SELECT * FROM note_versions WHERE noteId = :noteId ORDER BY createdAt DESC LIMIT 1")
+    suspend fun latest(noteId: String): NoteVersionEntity?
+
+    @Query("DELETE FROM note_versions WHERE id IN (:ids)")
+    suspend fun delete(ids: List<String>)
+
+    @Query("SELECT COALESCE(SUM(byteSize), 0) FROM note_versions")
+    suspend fun totalBytes(): Long
+
+    @Query("SELECT id, noteId, createdAt, reason, label, title, byteSize FROM note_versions ORDER BY createdAt ASC")
+    suspend fun allSummariesOldestFirst(): List<NoteVersionSummary>
+}
+
+data class NoteVersionSummary(
+    val id: String,
+    val noteId: String,
+    val createdAt: Long,
+    val reason: String,
+    val label: String?,
+    val title: String,
+    val byteSize: Int
+)

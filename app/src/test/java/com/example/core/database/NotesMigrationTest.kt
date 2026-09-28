@@ -42,11 +42,8 @@ class NotesMigrationTest {
         context = ApplicationProvider.getApplicationContext()
         context.deleteDatabase(dbName)
 
-        // 1. Today's schema, created by Room.
-        Room.databaseBuilder(context, MeetMindDatabase::class.java, dbName).allowMainThreadQueries().build().also {
-            it.openHelper.writableDatabase
-            it.close()
-        }
+        // 1. Version 14, as the app left it (from its exported schema).
+        ExportedSchema.create(context.getDatabasePath(dbName), 14)
 
         // 2. Turn it back into version 12, holding two real recordings.
         val path = context.getDatabasePath(dbName).path
@@ -90,7 +87,7 @@ class NotesMigrationTest {
 
     private fun openMigrated(): MeetMindDatabase =
         Room.databaseBuilder(context, MeetMindDatabase::class.java, dbName)
-            .addMigrations(MeetMindDatabase.MIGRATION_12_13, MeetMindDatabase.MIGRATION_13_14)
+            .addMigrations(MeetMindDatabase.MIGRATION_12_13, MeetMindDatabase.MIGRATION_13_14, MeetMindDatabase.MIGRATION_14_15)
             .allowMainThreadQueries()
             .build()
             .also { migrated = it }

@@ -80,15 +80,20 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         com.example.core.notify.DeepLinks.handle(intent)
-        // Keep the daily devotional's timetable in step with its settings (survives updates).
-        lifecycleScope.launch {
-            runCatching {
-                val profile = UserPreferencesManager(applicationContext).devotionalProfile.first()
-                com.example.core.devotional.DevotionalScheduler.sync(applicationContext, profile)
-                com.example.core.faith.ReminderScheduler.sync(applicationContext, UserPreferencesManager(applicationContext).reminderSettings.first())
-                com.example.core.widget.Widgets.refresh(applicationContext)
+        // The database opens (and migrates) before anything reads it. If it can't, the recovery
+        // screen offers the data back instead of the app crashing or wiping it (PRD_M0 §4.1).
+        val database = androidx.compose.runtime.mutableStateOf<com.example.core.database.DatabaseGuard.OpenResult?>(null)
+        fun openDatabase() {
+            database.value = null
+            lifecycleScope.launch {
+                val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.example.core.database.DatabaseGuard.open(applicationContext)
+                }
+                database.value = result
+                if (result is com.example.core.database.DatabaseGuard.OpenResult.Ok) startBackgroundSync()
             }
         }
+        openDatabase()
         setContent {
             MeetMindTheme {
                 // Who the app is for — spaces, look, name, avatar — available to every screen.
@@ -104,9 +109,26 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background
                     ) {
-                        MeetMindApp()
+                        when (val opened = database.value) {
+                            null -> Unit
+                            is com.example.core.database.DatabaseGuard.OpenResult.Failed ->
+                                com.example.feature.settings.DatabaseRecoveryScreen(opened.message, onRetry = { openDatabase() })
+                            com.example.core.database.DatabaseGuard.OpenResult.Ok -> MeetMindApp()
+                        }
                     }
                 }
+            }
+        }
+    }
+
+    /** Keeps the devotional's and reminders' timetables in step with their settings (survives updates). */
+    private fun startBackgroundSync() {
+        lifecycleScope.launch {
+            runCatching {
+                val profile = UserPreferencesManager(applicationContext).devotionalProfile.first()
+                com.example.core.devotional.DevotionalScheduler.sync(applicationContext, profile)
+                com.example.core.faith.ReminderScheduler.sync(applicationContext, UserPreferencesManager(applicationContext).reminderSettings.first())
+                com.example.core.widget.Widgets.refresh(applicationContext)
             }
         }
     }

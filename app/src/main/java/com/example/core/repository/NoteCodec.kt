@@ -70,7 +70,8 @@ internal object NoteCodec {
         answeredAt = answeredAt,
         metadata = decodeMap(metadataJson),
         archivedAt = archivedAt,
-        plainText = plainText
+        plainText = plainText,
+        deletedAt = deletedAt
     )
 
     fun Note.toEntity() = NoteEntity(
@@ -87,7 +88,9 @@ internal object NoteCodec {
         answeredAt = answeredAt,
         metadataJson = encodeMap(metadata),
         archivedAt = archivedAt,
-        plainText = plainText
+        plainText = plainText,
+        isDraft = NoteContent.isDraft(this),
+        deletedAt = deletedAt
     )
 
     fun NoteBlockEntity.toDomain() = NoteBlock(
@@ -131,7 +134,8 @@ internal object NoteCodec {
         createdAt = createdAt,
         updatedAt = updatedAt,
         archivedAt = archivedAt,
-        sortOrder = sortOrder
+        sortOrder = sortOrder,
+        deletedAt = deletedAt
     )
 
     fun Notebook.toEntity() = NotebookEntity(
@@ -143,7 +147,8 @@ internal object NoteCodec {
         createdAt = createdAt,
         updatedAt = updatedAt,
         archivedAt = archivedAt,
-        sortOrder = sortOrder
+        sortOrder = sortOrder,
+        deletedAt = deletedAt
     )
 
     fun AttachmentEntity.toDomain() = Attachment(

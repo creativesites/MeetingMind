@@ -33,10 +33,11 @@ import androidx.room.migration.Migration
         ScriptureRefEntity::class,
         ScriptureCollectionEntity::class,
         ScriptureCollectionItemEntity::class,
-        NoteAiJobEntity::class
+        NoteAiJobEntity::class,
+        NoteVersionEntity::class
     ],
-    version = 14,
-    exportSchema = false
+    version = MeetMindDatabase.VERSION,
+    exportSchema = true
 )
 abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun meetingDao(): MeetingDao
@@ -58,6 +59,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun attachmentDao(): AttachmentDao
     abstract fun scriptureDao(): ScriptureDao
     abstract fun noteAiJobDao(): NoteAiJobDao
+    abstract fun noteVersionDao(): NoteVersionDao
 
     companion object {
         @Volatile
@@ -384,6 +386,32 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Schema 15 (docs/PRD_M0.md §4.2): the Trash (`deletedAt`), drafts as an indexed column
+         * instead of a `LIKE` over metadata, the library's index, and version history.
+         */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `notes` ADD COLUMN `isDraft` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `notes` ADD COLUMN `deletedAt` INTEGER")
+                db.execSQL("ALTER TABLE `notebooks` ADD COLUMN `deletedAt` INTEGER")
+                // Must match how NoteCodec.encodeMap writes the draft key.
+                db.execSQL("UPDATE `notes` SET `isDraft` = 1 WHERE `metadataJson` LIKE '%\"draft\":\"1\"%'")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_notes_workflow` ON `notes` (`workflow`)")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_notes_deletedAt_archivedAt_isDraft_pinned_updatedAt` " +
+                        "ON `notes` (`deletedAt`, `archivedAt`, `isDraft`, `pinned`, `updatedAt`)"
+                )
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `note_versions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL, `reason` TEXT NOT NULL, `label` TEXT, `title` TEXT NOT NULL,
+                        `blocks` BLOB NOT NULL, `byteSize` INTEGER NOT NULL, PRIMARY KEY(`id`),
+                        FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_note_versions_noteId_createdAt` ON `note_versions` (`noteId`, `createdAt`)")
+            }
+        }
+
         /** CREATE statements for the notes tables, in dependency order. */
         internal val NOTES_SCHEMA_SQL: List<String> = listOf(
             """CREATE TABLE IF NOT EXISTS `notebooks` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `space` TEXT NOT NULL,
@@ -437,15 +465,25 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
+        const val VERSION = 15
+
+        /** Drops the cached instance after a failed open, so a retry really reopens. */
+        internal fun forget() = synchronized(this) {
+            runCatching { INSTANCE?.close() }
+            INSTANCE = null
+        }
+
         fun getInstance(context: Context): MeetMindDatabase {
             return INSTANCE ?: synchronized(this) {
+                INSTANCE?.let { return it }
+                // Keep the database as it was before this version migrates it (PRD_M0 §4.1).
+                runCatching { DatabaseGuard.copyBeforeMigration(context.applicationContext, VERSION) }
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                     .build()
                 INSTANCE = instance
                 instance

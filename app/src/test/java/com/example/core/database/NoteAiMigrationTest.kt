@@ -26,10 +26,7 @@ class NoteAiMigrationTest {
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
         context.deleteDatabase(dbName)
-        Room.databaseBuilder(context, MeetMindDatabase::class.java, dbName).allowMainThreadQueries().build().also {
-            it.openHelper.writableDatabase
-            it.close()
-        }
+        ExportedSchema.create(context.getDatabasePath(dbName), 14)
         SQLiteDatabase.openDatabase(context.getDatabasePath(dbName).path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
             db.execSQL("DROP TABLE note_ai_jobs")
             db.execSQL(
@@ -53,7 +50,7 @@ class NoteAiMigrationTest {
     @Test
     fun `the job table is added and notes are untouched`() = runBlocking {
         val db = Room.databaseBuilder(context, MeetMindDatabase::class.java, dbName)
-            .addMigrations(MeetMindDatabase.MIGRATION_13_14).allowMainThreadQueries().build().also { migrated = it }
+            .addMigrations(MeetMindDatabase.MIGRATION_13_14, MeetMindDatabase.MIGRATION_14_15).allowMainThreadQueries().build().also { migrated = it }
         assertEquals("Kept", db.noteDao().getById("n1")!!.title)
         db.noteAiJobDao().upsert(NoteAiJobEntity("j", "NOTE", "n1", "SUMMARIZE", "QUEUED", "{}", null, null, null, 1, 1))
         assertEquals("SUMMARIZE", db.noteAiJobDao().getById("j")!!.tool)
