@@ -1,6 +1,14 @@
 # PRD: M0, foundations (data safety, theme foundation, CI, new app identity)
 
-Part of `docs/PLAN_V3.md` (workstreams W0 and W5, first half). Status: **approved scope, open items in §9.**
+Part of `docs/PLAN_V3.md` (workstreams W0 and W5, first half). Status: **in progress.**
+
+| Part | Status |
+|---|---|
+| M0.1 data safety | **Done**: schema 15, no destructive fallback, pre-migration copies, recovery screen, Trash, version history, backup and restore, automatic backups, Markdown export. Device-transfer backup rules wait on M0-Q2. |
+| M0.2 theme | **Done**: Graphite/Paper tokens, dark default, Appearance setting, colour guard test, theme screenshots. Screens not yet covered by screenshots (meeting detail, note editor, Bible reader, recording picker) need a check on a device. |
+| M0.3 CI | **Dropped**: GitHub Actions can't run on the owner's account. Tests run locally before every push instead. |
+| M0.4 identity | Waiting on M0-Q1 (the new application id) and the owner's Firebase setup. |
+| Also shipped | Devotional and reminders on wall-clock alarms; Internet-mode transcription fixed (the transcription model's own request format); processing screen redesigned. |
 
 ## 1. Why M0 comes first
 
