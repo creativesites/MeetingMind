@@ -60,10 +60,18 @@ fun DevotionalSettingsSheet(profile: DevotionalProfile, onSave: (DevotionalProfi
             if (p.enabled) {
                 Label("Arrives at")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(5 * 60, 5 * 60 + 30, 6 * 60, 6 * 60 + 30, 7 * 60, 8 * 60, 9 * 60).forEach { m ->
+                    val presets = listOf(5 * 60, 5 * 60 + 30, 6 * 60, 6 * 60 + 30, 7 * 60, 8 * 60, 9 * 60)
+                    presets.forEach { m ->
                         Chip("%d:%02d".format(m / 60, m % 60), p.deliveryMinutes == m) { p = p.copy(deliveryMinutes = m) }
                     }
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val custom = p.deliveryMinutes !in presets
+                    Chip(if (custom) "%d:%02d".format(p.deliveryMinutes / 60, p.deliveryMinutes % 60) else "Other time…", custom) {
+                        android.app.TimePickerDialog(context, { _, h, min -> p = p.copy(deliveryMinutes = h * 60 + min) },
+                            p.deliveryMinutes / 60, p.deliveryMinutes % 60, android.text.format.DateFormat.is24HourFormat(context)).show()
+                    }
                 }
+                DeliveryHealth()
             }
 
             Label("Where it comes from")
@@ -135,6 +143,47 @@ fun DevotionalSettingsSheet(profile: DevotionalProfile, onSave: (DevotionalProfi
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+/**
+ * What could stop the devotional arriving on time — notifications switched off, or Android
+ * holding back exact alarms — with the one tap that fixes it. Shows nothing when all is well.
+ */
+@Composable
+private fun DeliveryHealth() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var tick by remember { mutableStateOf(0) }
+    // Re-checked when the person comes back from the system settings page.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) tick++ }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    val notificationsOn = remember(tick) { androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled() }
+    val exact = remember(tick) { com.example.core.notify.DailyAlarms.exactAllowed(context) }
+    if (!notificationsOn) {
+        HealthRow("Notifications are off for MeetingMind", "Turn on") {
+            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
+        }
+    }
+    if (!exact && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+        HealthRow("Android may deliver it a few minutes late", "Allow exact time") {
+            runCatching {
+                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                    .setData(android.net.Uri.parse("package:" + context.packageName)))
+            }
+        }
+    }
+}
+
+@Composable
+private fun HealthRow(text: String, action: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(text, fontSize = 12.5.sp, lineHeight = 17.sp, color = InkSecondary, modifier = Modifier.weight(1f).padding(end = 8.dp))
+        Chip(action, true, onClick)
     }
 }
 

@@ -8,7 +8,10 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.example.core.datastore.UserPreferencesManager
-import com.example.core.devotional.DevotionalScheduler
+import com.example.core.notify.DailyAlarms
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import com.example.core.notify.AppNotifications
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
@@ -61,32 +64,45 @@ data class ReminderSettings(
     }
 }
 
+/**
+ * Daily reminders on wall-clock alarms ([DailyAlarms]), so each arrives at its set time. The
+ * meeting check is a rolling 15-minute job, where drift doesn't matter.
+ */
 object ReminderScheduler {
     private const val PRAYER = "reminder-prayer-"
     private const val READING = "reminder-reading"
     private const val EVENING = "reminder-evening"
     private const val PREP = "reminder-prep"
 
+    fun handles(key: String) = key.startsWith(PRAYER) || key == READING || key == EVENING
+
     fun sync(context: Context, s: ReminderSettings) {
         val wm = runCatching { WorkManager.getInstance(context) }.getOrNull() ?: return
+        // Up to v30 the daily reminders were periodic jobs under these same names.
+        (PrayerTime.entries.map { PRAYER + it.name } + READING + EVENING).forEach { wm.cancelUniqueWork(it) }
         PrayerTime.entries.forEach { t ->
-            if (t in s.prayerTimes) daily(wm, PRAYER + t.name, t.defaultMinutes, ReminderWorker.PRAYER, t.name) else wm.cancelUniqueWork(PRAYER + t.name)
+            if (t in s.prayerTimes) DailyAlarms.schedule(context, PRAYER + t.name, t.defaultMinutes) else DailyAlarms.cancel(context, PRAYER + t.name)
         }
-        if (s.readingNudge) daily(wm, READING, s.readingMinutes, ReminderWorker.READING) else wm.cancelUniqueWork(READING)
-        if (s.eveningReflection) daily(wm, EVENING, s.eveningMinutes, ReminderWorker.EVENING) else wm.cancelUniqueWork(EVENING)
+        if (s.readingNudge) DailyAlarms.schedule(context, READING, s.readingMinutes) else DailyAlarms.cancel(context, READING)
+        if (s.eveningReflection) DailyAlarms.schedule(context, EVENING, s.eveningMinutes) else DailyAlarms.cancel(context, EVENING)
         if (s.meetingPrep) {
             wm.enqueueUniquePeriodicWork(PREP, ExistingPeriodicWorkPolicy.UPDATE,
                 PeriodicWorkRequestBuilder<ReminderWorker>(15, TimeUnit.MINUTES).setInputData(workDataOf(ReminderWorker.KEY_KIND to ReminderWorker.PREP)).build())
         } else wm.cancelUniqueWork(PREP)
     }
 
-    private fun daily(wm: WorkManager, name: String, minutes: Int, kind: String, extra: String? = null) {
-        val delay = DevotionalScheduler.delayUntil(LocalDateTime.now(), minutes)
-        wm.enqueueUniquePeriodicWork(name, ExistingPeriodicWorkPolicy.UPDATE,
-            PeriodicWorkRequestBuilder<ReminderWorker>(24, TimeUnit.HOURS)
-                .setInitialDelay(delay.toMinutes(), TimeUnit.MINUTES)
-                .setInputData(workDataOf(ReminderWorker.KEY_KIND to kind, ReminderWorker.KEY_EXTRA to extra))
-                .build())
+    fun onAlarm(context: Context, key: String) {
+        val (kind, extra) = when {
+            key.startsWith(PRAYER) -> ReminderWorker.PRAYER to key.removePrefix(PRAYER)
+            key == READING -> ReminderWorker.READING to null
+            key == EVENING -> ReminderWorker.EVENING to null
+            else -> return
+        }
+        val request = OneTimeWorkRequestBuilder<ReminderWorker>()
+            .setInputData(workDataOf(ReminderWorker.KEY_KIND to kind, ReminderWorker.KEY_EXTRA to extra))
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+        runCatching { WorkManager.getInstance(context).enqueueUniqueWork("$key-run", ExistingWorkPolicy.KEEP, request) }
     }
 }
 

@@ -2,12 +2,11 @@ package com.example.core.devotional
 
 import android.content.Context
 import androidx.work.Constraints
+import com.example.core.notify.DailyAlarms
 import androidx.work.CoroutineWorker
-import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -17,32 +16,80 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.util.concurrent.TimeUnit
 
 /**
- * The daily devotional's timetable: written about 90 minutes before it's due (so a slow model or
+ * The daily devotional's timetable: written [LEAD_MINUTES] before it's due (so a slow model or
  * network doesn't make it late), announced at the chosen time.
+ *
+ * Both moments are wall-clock alarms ([DailyAlarms]), not periodic work, so they stay on the set
+ * time. If the phone was off or asleep through the writing time, opening the app catches up.
  */
 object DevotionalScheduler {
-    private const val DAILY = "devotional-daily"
-    private const val NOTIFY = "devotional-notify"
+    // Names of the periodic jobs used up to v30; cancelled so they can't fire at odd hours.
+    private const val LEGACY_DAILY = "devotional-daily"
+    private const val LEGACY_NOTIFY = "devotional-notify"
+    private const val RUN = "devotional-scheduled"
+    private const val NOTIFY_RUN = "devotional-announce"
     private const val NOW = "devotional-now"
     private const val EXTRAS = "devotional-extras"
+    const val ALARM_WRITE = "devotional-write"
+    const val ALARM_NOTIFY = "devotional-notify"
     const val LEAD_MINUTES = 90
 
+    fun handles(key: String) = key == ALARM_WRITE || key == ALARM_NOTIFY
+
     fun sync(context: Context, profile: DevotionalProfile) {
-        val wm = runCatching { WorkManager.getInstance(context) }.getOrNull() ?: return
+        runCatching { WorkManager.getInstance(context) }.getOrNull()?.let { wm ->
+            wm.cancelUniqueWork(LEGACY_DAILY); wm.cancelUniqueWork(LEGACY_NOTIFY)
+        }
         if (!profile.enabled) {
-            wm.cancelUniqueWork(DAILY); wm.cancelUniqueWork(NOTIFY)
+            DailyAlarms.cancel(context, ALARM_WRITE); DailyAlarms.cancel(context, ALARM_NOTIFY)
             return
         }
-        val delay = delayUntil(LocalDateTime.now(), profile.deliveryMinutes - LEAD_MINUTES)
-        val request = PeriodicWorkRequestBuilder<DevotionalWorker>(24, TimeUnit.HOURS)
-            .setInitialDelay(delay.toMinutes(), TimeUnit.MINUTES)
-            .setInputData(workDataOf(DevotionalWorker.KEY_MODE to DevotionalWorker.MODE_WRITE))
-            .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).build())
+        DailyAlarms.schedule(context, ALARM_WRITE, (Math.floorMod(profile.deliveryMinutes, 24 * 60) - LEAD_MINUTES).coerceAtLeast(0))
+        DailyAlarms.schedule(context, ALARM_NOTIFY, profile.deliveryMinutes)
+        // Missed the writing time today (phone off, app killed)? Write it now. A devotional that
+        // already exists is kept, so this costs nothing on a normal day.
+        if (isPastWriteTime(LocalDateTime.now(), profile.deliveryMinutes)) scheduledWrite(context)
+    }
+
+    fun onAlarm(context: Context, key: String) {
+        when (key) {
+            ALARM_WRITE -> scheduledWrite(context)
+            ALARM_NOTIFY -> enqueue(context, NOTIFY_RUN, workDataOf(DevotionalWorker.KEY_MODE to DevotionalWorker.MODE_NOTIFY))
+        }
+    }
+
+    /** Today's devotional as the timetable writes it: announced once it's due and ready. */
+    internal fun scheduledWrite(context: Context) =
+        enqueue(context, RUN, workDataOf(DevotionalWorker.KEY_MODE to DevotionalWorker.MODE_WRITE))
+
+    private fun enqueue(context: Context, name: String, data: androidx.work.Data) {
+        val request = OneTimeWorkRequestBuilder<DevotionalWorker>()
+            .setInputData(data)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
-        wm.enqueueUniquePeriodicWork(DAILY, ExistingPeriodicWorkPolicy.UPDATE, request)
+        runCatching { WorkManager.getInstance(context).enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, request) }
+    }
+
+    fun isPastWriteTime(now: LocalDateTime, deliveryMinutes: Int): Boolean {
+        // A time just after midnight is written from midnight, not the evening before: the day's
+        // devotional can't be written before its day has begun.
+        val writeAt = (Math.floorMod(deliveryMinutes, 24 * 60) - LEAD_MINUTES).coerceAtLeast(0)
+        return now.hour * 60 + now.minute >= writeAt
+    }
+
+    fun isPastDelivery(now: LocalDateTime, deliveryMinutes: Int): Boolean =
+        now.hour * 60 + now.minute >= Math.floorMod(deliveryMinutes, 24 * 60)
+
+    /** Announces [daily] unless it has been opened or was already announced today. */
+    internal fun announceOnce(context: Context, daily: DailyDevotional) {
+        if (daily.note.metadata[DevotionalNotes.META_OPENED] != null) return
+        val prefs = context.getSharedPreferences("devotional_work", Context.MODE_PRIVATE)
+        val today = LocalDate.now().toString()
+        if (prefs.getString("announced", null) == today) return
+        prefs.edit().putString("announced", today).apply()
+        com.example.core.notify.AppNotifications.devotionalReady(context, daily.devotional.title, daily.devotional.label)
     }
 
     /** Writes today's devotional now (opening Today before it was due, say). */
@@ -75,15 +122,6 @@ object DevotionalScheduler {
 
     fun observeWriting(context: Context) = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(NOW)
 
-    internal fun notifyAt(context: Context, deliveryMinutes: Int) {
-        val delay = delayUntil(LocalDateTime.now(), deliveryMinutes, allowNow = true)
-        val request = OneTimeWorkRequestBuilder<DevotionalWorker>()
-            .setInitialDelay(delay.toMinutes(), TimeUnit.MINUTES)
-            .setInputData(workDataOf(DevotionalWorker.KEY_MODE to DevotionalWorker.MODE_NOTIFY))
-            .build()
-        WorkManager.getInstance(context).enqueueUniqueWork(NOTIFY, ExistingWorkPolicy.REPLACE, request)
-    }
-
     /**
      * Time from [now] to the next [minuteOfDay] (wrapping round midnight; negative values are the
      * evening before). With [allowNow], a time already passed today means "now".
@@ -106,10 +144,11 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
         val profile = UserPreferencesManager(applicationContext).devotionalProfile.first()
         return when (inputData.getString(KEY_MODE)) {
             MODE_NOTIFY -> {
+                if (!profile.enabled) return Result.success()
                 val today = repo.find(LocalDay.today())
-                if (today != null && today.note.metadata[DevotionalNotes.META_OPENED] == null && profile.enabled) {
-                    com.example.core.notify.AppNotifications.devotionalReady(applicationContext, today.devotional.title, today.devotional.label)
-                }
+                // Not written yet (offline at writing time, say): write it now; it's announced when done.
+                if (today == null) DevotionalScheduler.scheduledWrite(applicationContext)
+                else DevotionalScheduler.announceOnce(applicationContext, today)
                 Result.success()
             }
             MODE_EXTRAS -> {
@@ -135,7 +174,9 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
                 if (onDemand) DevotionalScheduler.setLastError(applicationContext, null)
                 com.example.core.widget.Widgets.refresh(applicationContext)
                 if (onDemand) DevotionalScheduler.finishLater(applicationContext) else extras(repo, written, profile)
-                if (!onDemand && profile.enabled) DevotionalScheduler.notifyAt(applicationContext, profile.deliveryMinutes)
+                if (!onDemand && profile.enabled && DevotionalScheduler.isPastDelivery(LocalDateTime.now(), profile.deliveryMinutes)) {
+                    DevotionalScheduler.announceOnce(applicationContext, written)
+                }
                 Result.success()
             }
         }
