@@ -150,12 +150,62 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     private var saveJob: Job? = null
 
+    // ------------------------------------------------------------ version history (PRD_M0 §4.6)
+
+    private val versions = com.example.core.notes.NoteVersionRepository(database, notes)
+    val versionList: StateFlow<List<com.example.core.database.NoteVersionSummary>> =
+        versions.observe(noteId).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** The note as it was opened: saved as a version when this session first changes it. */
+    private var opened: com.example.core.notes.NoteSnapshot? = null
+    private var sessionStarted = false
+    private var lastSessionSnapshotAt = 0L
+
+    /** Saves the note as it was when opened (once), and every [SESSION_SNAPSHOT_MS] of editing after. */
+    private suspend fun sessionSnapshot() {
+        val now = System.currentTimeMillis()
+        if (!sessionStarted) {
+            sessionStarted = true
+            lastSessionSnapshotAt = now
+            opened?.let { versions.snapshot(noteId, com.example.core.notes.VersionReason.EDIT_SESSION, blocks = it.blocks, title = it.title) }
+        } else if (now - lastSessionSnapshotAt >= SESSION_SNAPSHOT_MS) {
+            lastSessionSnapshotAt = now
+            versions.snapshot(noteId, com.example.core.notes.VersionReason.EDIT_SESSION, blocks = _blocks.value)
+        }
+    }
+
+    /** Saves the note as it is right now, before something changes a lot of it. */
+    private fun snapshotBefore(reason: com.example.core.notes.VersionReason, label: String? = null) {
+        val current = _blocks.value
+        val title = _note.value?.title
+        viewModelScope.launch { versions.snapshot(noteId, reason, label, blocks = current, title = title) }
+    }
+
+    fun saveVersion() = viewModelScope.launch {
+        flush()
+        val id = versions.snapshot(noteId, com.example.core.notes.VersionReason.MANUAL)
+        _message.value = if (id != null) "Version saved" else "Nothing new to save"
+    }
+
+    suspend fun loadVersion(versionId: String) = versions.load(versionId)
+
+    fun restoreVersion(versionId: String) = viewModelScope.launch {
+        flush()
+        val restored = versions.restore(versionId) ?: return@launch
+        history.record(_blocks.value)
+        _blocks.value = BlockEditing.ensureTrailingParagraph(restored.blocks, noteId)
+        _note.value = _note.value?.copy(title = restored.title)
+        refreshHistory()
+        _message.value = "Restored. The version you replaced is in history too."
+    }
+
     init {
         viewModelScope.launch {
             val doc = notes.getDocument(noteId)
             if (doc == null) { _gone.value = true; return@launch }
             _note.value = doc.note
             _blocks.value = BlockEditing.ensureTrailingParagraph(doc.blocks.sortedBy { it.position }, noteId)
+            opened = com.example.core.notes.NoteSnapshot(doc.note.title, doc.blocks.sortedBy { it.position })
             _loaded.value = true
             // Keep note-level fields (title from a recording, status) current without touching blocks.
             notes.observeNote(noteId).collect { fresh ->
@@ -645,6 +695,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         if (!promoteDraftIfNeeded()) { _saved.value = true; return }
         notes.saveBlocks(noteId, _blocks.value)
         _saved.value = titleJob?.isActive != true
+        runCatching { sessionSnapshot() }
     }
 
     /**
@@ -689,16 +740,19 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     fun dismissAi(jobId: String) = viewModelScope.launch { noteAi.dismiss(jobId) }
 
     fun applySummary(jobId: String, points: List<com.example.ai.notes.CitedItem>) {
+        snapshotBefore(com.example.core.notes.VersionReason.BEFORE_AI, "Summary")
         update(com.example.ai.notes.NoteAiApply.withSummary(_blocks.value, noteId, points))
         dismissAi(jobId); _message.value = "Summary added — Undo to remove it"
     }
 
     fun applyActions(jobId: String, actions: List<com.example.ai.notes.CitedItem>) {
+        snapshotBefore(com.example.core.notes.VersionReason.BEFORE_AI, "Action items")
         update(com.example.ai.notes.NoteAiApply.withActions(_blocks.value, noteId, actions))
         dismissAi(jobId); _message.value = "${actions.size} action ${if (actions.size == 1) "item" else "items"} added"
     }
 
     fun applyOrganized(jobId: String, result: com.example.ai.notes.NoteAiOutcome.Sections) {
+        snapshotBefore(com.example.core.notes.VersionReason.BEFORE_AI, "Organise")
         update(com.example.ai.notes.NoteAiApply.organized(_blocks.value, noteId, result))
         dismissAi(jobId); _message.value = "Organised — Undo puts it back as it was"
     }
@@ -725,6 +779,8 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                 }
                 title?.let { notes.renameNote(noteId, it) }
                 notes.saveBlocks(noteId, blocks)
+                // The session's last state joins the history (skipped if nothing changed).
+                if (sessionStarted) runCatching { versions.snapshot(noteId, com.example.core.notes.VersionReason.EDIT_SESSION, blocks = blocks) }
                 discardIfEmpty()
             }
         }
@@ -740,6 +796,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     companion object {
         const val SAVE_DELAY_MS = 600L
+        const val SESSION_SNAPSHOT_MS = 10 * 60 * 1000L
         private val closingScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 }

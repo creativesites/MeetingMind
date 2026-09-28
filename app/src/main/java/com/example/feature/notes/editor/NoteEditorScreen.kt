@@ -48,6 +48,7 @@ import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Lock
@@ -184,6 +185,7 @@ fun NoteEditorScreen(
     var showDetails by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var showVersions by remember { mutableStateOf(false) }
     var blockMenuFor by remember { mutableStateOf<NoteBlock?>(null) }
     var exporting by remember { mutableStateOf(false) }
     var pendingExport by remember { mutableStateOf<Pair<ExportFormat, Boolean>?>(null) }
@@ -334,6 +336,7 @@ fun NoteEditorScreen(
                             leadingIcon = { Icon(if (note?.isPrivate == true) Icons.Filled.LockOpen else Icons.Filled.Lock, null) },
                             onClick = { showMenu = false; viewModel.setPrivate(note?.isPrivate != true) }
                         )
+                        DropdownMenuItem(text = { Text("Version history") }, leadingIcon = { Icon(Icons.Filled.History, null) }, onClick = { showMenu = false; showVersions = true })
                         HorizontalDivider(color = Line)
                         DropdownMenuItem(text = { Text("Archive") }, leadingIcon = { Icon(Icons.Filled.Archive, null) }, onClick = { showMenu = false; viewModel.archive(onNavigateBack) })
                         DropdownMenuItem(text = { Text("Delete", color = Color(0xFFDC2626)) }, leadingIcon = { Icon(Icons.Filled.Delete, null, tint = Color(0xFFDC2626)) }, onClick = { showMenu = false; confirmDelete = true })
@@ -675,6 +678,18 @@ fun NoteEditorScreen(
             onDuplicate = { viewModel.duplicateBlock(b.id); blockMenuFor = null },
             onDelete = { viewModel.deleteBlock(b.id); blockMenuFor = null },
             onDismiss = { blockMenuFor = null }
+        )
+    }
+    if (showVersions) {
+        val versionList by viewModel.versionList.collectAsState()
+        val currentBlocks by viewModel.blocks.collectAsState()
+        VersionHistorySheet(
+            versions = versionList,
+            current = currentBlocks,
+            load = { viewModel.loadVersion(it) },
+            onRestore = { viewModel.restoreVersion(it) },
+            onSaveNow = { viewModel.saveVersion() },
+            onDismiss = { showVersions = false }
         )
     }
     if (confirmDelete) {
