@@ -150,6 +150,69 @@ class NoteRepositoryTest {
     }
 
     @Test
+    fun `a note in the Trash leaves every list and comes back unchanged`() = runBlocking {
+        val note = notes.createNote(title = "Plan")
+        notes.saveBlocks(note.id, listOf(block(note.id, "Keep this")))
+        notes.addTag(note.id, "work")
+        now = 2_000L
+
+        notes.moveToTrash(note.id)
+
+        assertTrue(database.noteDao().getActiveOnce().none { it.id == note.id })
+        assertTrue(notes.searchNotes("Keep").isEmpty())
+        assertEquals(listOf(note.id), notes.observeTrashedNotes().first().map { it.id })
+        assertEquals(2_000L, notes.getNote(note.id)!!.deletedAt)
+
+        notes.restoreFromTrash(note.id)
+
+        val back = notes.getDocument(note.id)!!
+        assertNull(back.note.deletedAt)
+        assertEquals(listOf("Keep this"), back.blocks.map { it.content.text })
+        assertEquals(listOf("work"), back.tags.map { it.name })
+        assertTrue(notes.observeTrashedNotes().first().isEmpty())
+    }
+
+    @Test
+    fun `the Trash is purged after thirty days, not before`() = runBlocking {
+        val old = notes.createNote(title = "Old")
+        val recent = notes.createNote(title = "Recent")
+        val day = 24L * 60 * 60 * 1000
+        now = 1_000_000L
+        notes.moveToTrash(old.id)
+        now += 10 * day
+        notes.moveToTrash(recent.id)
+        now += 21 * day // old: 31 days in the Trash; recent: 21
+
+        assertEquals(1, notes.purgeTrash())
+
+        assertNull(notes.getNote(old.id))
+        assertEquals(recent.id, notes.getNote(recent.id)!!.id)
+        notes.emptyTrash()
+        assertNull(notes.getNote(recent.id))
+    }
+
+    @Test
+    fun `a notebook in the Trash keeps its notes and gathers them back on restore`() = runBlocking {
+        val work = notes.createNotebook("Client X", NotebookSpace.WORK)
+        val note = notes.createNote(notebookId = work.id, title = "Kickoff")
+        notes.saveBlocks(note.id, listOf(block(note.id, "Agenda")))
+
+        notes.trashNotebook(work.id)
+
+        assertTrue(notes.observeNotebooks().first().none { it.id == work.id })
+        assertEquals(listOf(work.id), notes.observeTrashedNotebooks().first().map { it.id })
+        assertEquals(work.id, notes.getNote(note.id)!!.notebookId)
+        assertTrue(database.noteDao().getActiveOnce().any { it.id == note.id })
+
+        notes.restoreNotebook(work.id)
+        assertTrue(notes.observeNotebooks().first().any { it.id == work.id })
+
+        // My Notes can't go to the Trash.
+        notes.trashNotebook(notes.ensureDefaultNotebook().id)
+        assertTrue(notes.observeTrashedNotebooks().first().isEmpty())
+    }
+
+    @Test
     fun `deleting a notebook keeps its notes`() = runBlocking {
         val faith = notes.createNotebook("Faith", NotebookSpace.FAITH)
         val note = notes.createNote(notebookId = faith.id)

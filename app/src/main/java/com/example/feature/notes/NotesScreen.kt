@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Lock
@@ -57,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.launch
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -95,7 +97,8 @@ fun NotesScreen(
     onNavigateBack: (() -> Unit)?,
     onNavigateBottomNav: (BottomNavDestination) -> Unit,
     /** Opens the Faith space; shown on the library root. */
-    onOpenFaith: (() -> Unit)? = null
+    onOpenFaith: (() -> Unit)? = null,
+    onOpenTrash: () -> Unit = {}
 ) {
     val notes by viewModel.visibleNotes.collectAsState()
     val loaded by viewModel.loaded.collectAsState()
@@ -116,6 +119,19 @@ fun NotesScreen(
 
     val isRoot = viewModel.scope == NotesScope.All
     val isArchive = viewModel.scope == NotesScope.Archived
+    val isTrash = viewModel.scope == NotesScope.Trash
+    val trashCount by viewModel.trashCount.collectAsState()
+    val trashedNotebooks by viewModel.trashedNotebooks.collectAsState()
+    var confirmEmptyTrash by remember { mutableStateOf(false) }
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val snackScope = androidx.compose.runtime.rememberCoroutineScope()
+    fun trashWithUndo(n: Note) {
+        viewModel.delete(n)
+        snackScope.launch {
+            val result = snackbar.showSnackbar("Moved to Trash", actionLabel = "Undo", duration = androidx.compose.material3.SnackbarDuration.Short)
+            if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) viewModel.restore(n)
+        }
+    }
     var searching by remember { mutableStateOf(false) }
     var showSort by remember { mutableStateOf(false) }
     var notebookDialog by remember { mutableStateOf<NotebookDialogState?>(null) }
@@ -127,16 +143,18 @@ fun NotesScreen(
     val title = when (viewModel.scope) {
         NotesScope.All -> "Notes"
         NotesScope.Archived -> "Archived"
+        NotesScope.Trash -> "Trash"
         is NotesScope.InNotebook -> currentNotebook?.name ?: "Notebook"
     }
 
     Scaffold(
         containerColor = Color.White,
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
         bottomBar = {
             if (isRoot) AppBottomNavigationBar(current = BottomNavDestination.NOTES, onNavigate = onNavigateBottomNav)
         },
         floatingActionButton = {
-            if (!isRoot && !isArchive) {
+            if (!isRoot && !isArchive && !isTrash) {
                 Surface(onClick = { viewModel.createNote(onOpenNote) }, shape = RoundedCornerShape(50), color = Ink, shadowElevation = 6.dp) {
                     Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.EditNote, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
@@ -163,6 +181,10 @@ fun NotesScreen(
                             if (notes.size == 1) "1 note" else "${notes.size} notes",
                             fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 3.dp)
                         )
+                    }
+                    if (isTrash && (notes.isNotEmpty() || trashedNotebooks.isNotEmpty())) {
+                        androidx.compose.material3.TextButton(onClick = { confirmEmptyTrash = true }) { Text("Empty", color = Color(0xFFDC2626)) }
+                        Spacer(Modifier.width(4.dp))
                     }
                     CircleAction(if (searching) Icons.Filled.Close else Icons.Filled.Search, if (searching) "Close search" else "Search notes") {
                         searching = !searching
@@ -253,7 +275,29 @@ fun NotesScreen(
                     }
                 }
             }
-            if (tags.isNotEmpty() && !isArchive) {
+            if (isTrash) {
+                item(key = "trash-info") {
+                    Text(
+                        "Notes and notebooks here are deleted for good after ${com.example.core.repository.NoteRepository.TRASH_DAYS} days. Tap one to restore it.",
+                        fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(horizontal = 22.dp).padding(top = 12.dp)
+                    )
+                }
+                if (trashedNotebooks.isNotEmpty()) {
+                    item(key = "trash-nb-h") { SectionHeader("Notebooks", top = 22.dp) }
+                    items(trashedNotebooks, key = { "tnb-" + it.id }) { nb ->
+                        Row(
+                            Modifier.fillMaxWidth().combinedClickable(onClick = { notebookMenu = nb }).padding(horizontal = 22.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            NotebookDot(nb.colorHex, 12)
+                            Spacer(Modifier.width(12.dp))
+                            Text(nb.name, fontSize = 15.sp, color = Ink, modifier = Modifier.weight(1f))
+                            Text(daysLeft(nb.deletedAt), fontSize = 12.sp, color = InkMuted)
+                        }
+                    }
+                }
+            }
+            if (tags.isNotEmpty() && !isArchive && !isTrash) {
                 item(key = "tags") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 22.dp), modifier = Modifier.padding(top = 18.dp)) {
                         items(tags, key = { it.id }) { tag ->
@@ -268,6 +312,7 @@ fun NotesScreen(
                     EmptyNotes(
                         filtered = query.isNotBlank() || tagFilter != null || space != null,
                         archive = isArchive,
+                        trash = isTrash,
                         onCreate = { viewModel.createNote(onOpenNote) }
                     )
                 }
@@ -277,14 +322,27 @@ fun NotesScreen(
                 if (pinned.isNotEmpty()) {
                     item(key = "pinned-h") { SectionHeader("Pinned", top = 26.dp) }
                     items(pinned, key = { "p-" + it.id }) { n ->
-                        NoteRow(n, notebookById[n.notebookId], showNotebook = isRoot, onClick = { onOpenNote(n.id) }, onLongClick = { noteMenu = n })
+                        NoteRow(n, notebookById[n.notebookId], showNotebook = isRoot, onClick = { if (isTrash) noteMenu = n else onOpenNote(n.id) }, onLongClick = { noteMenu = n })
                     }
                 }
-                val groups = if (sort == NoteSort.TITLE) mapOf("All notes" to rest) else rest.groupBy { Formatters.formatDateHeader(if (sort == NoteSort.CREATED) it.eventDate ?: it.createdAt else it.updatedAt) }
+                val groups = if (isTrash) rest.groupBy { daysLeft(it.deletedAt).replaceFirstChar { c -> c.uppercase() } }
+                    else if (sort == NoteSort.TITLE) mapOf("All notes" to rest) else rest.groupBy { Formatters.formatDateHeader(if (sort == NoteSort.CREATED) it.eventDate ?: it.createdAt else it.updatedAt) }
                 groups.forEach { (header, list) ->
                     item(key = "h-$header") { SectionHeader(header, top = 26.dp) }
                     items(list, key = { it.id }) { n ->
-                        NoteRow(n, notebookById[n.notebookId], showNotebook = isRoot, onClick = { onOpenNote(n.id) }, onLongClick = { noteMenu = n })
+                        NoteRow(n, notebookById[n.notebookId], showNotebook = isRoot, onClick = { if (isTrash) noteMenu = n else onOpenNote(n.id) }, onLongClick = { noteMenu = n })
+                    }
+                }
+            }
+            if (isRoot && trashCount > 0) {
+                item(key = "trash-link") {
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = if (archivedCount > 0) 0.dp else 28.dp).combinedClickable(onClick = onOpenTrash).padding(horizontal = 22.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Delete, contentDescription = null, tint = InkMuted, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("Trash · $trashCount", fontSize = 14.sp, color = InkSecondary)
                     }
                 }
             }
@@ -351,7 +409,10 @@ fun NotesScreen(
             containerColor = Color.White,
             title = { Text(nb.name) },
             text = {
-                Column {
+                if (isTrash) Column {
+                    MenuText("Restore notebook") { notebookMenu = null; viewModel.restoreNotebook(nb.id) }
+                    MenuText("Delete for good", destructive = true) { notebookMenu = null; viewModel.deleteNotebookForever(nb.id) }
+                } else Column {
                     MenuText("Edit name, space and colour") { notebookMenu = null; notebookDialog = NotebookDialogState(nb, nb.name, nb.space, nb.colorHex ?: NotebookColors.first()) }
                     MenuText("Archive notebook") { notebookMenu = null; viewModel.archiveNotebook(nb.id); onNavigateBack?.takeIf { !isRoot }?.invoke() }
                     if (nb.id != com.example.core.database.MeetMindDatabase.DEFAULT_NOTEBOOK_ID) {
@@ -362,12 +423,22 @@ fun NotesScreen(
             confirmButton = { TextButton(onClick = { notebookMenu = null }) { Text("Close") } }
         )
     }
+    if (confirmEmptyTrash) {
+        AlertDialog(
+            onDismissRequest = { confirmEmptyTrash = false },
+            containerColor = Color.White,
+            title = { Text("Empty the Trash?") },
+            text = { Text("Everything in the Trash is deleted for good. Recordings are never deleted this way; they stay in your library.") },
+            confirmButton = { TextButton(onClick = { viewModel.emptyTrash(); confirmEmptyTrash = false }) { Text("Empty Trash", color = Color(0xFFDC2626)) } },
+            dismissButton = { TextButton(onClick = { confirmEmptyTrash = false }) { Text("Cancel") } }
+        )
+    }
     confirmDeleteNotebook?.let { nb ->
         AlertDialog(
             onDismissRequest = { confirmDeleteNotebook = null },
             containerColor = Color.White,
             title = { Text("Delete “${nb.name}”?") },
-            text = { Text("The notebook is removed. Its notes are kept and stay in All notes.") },
+            text = { Text("The notebook moves to the Trash. Its notes are kept and stay in All notes; restoring the notebook gathers them back.") },
             confirmButton = {
                 TextButton(onClick = { viewModel.deleteNotebook(nb.id); confirmDeleteNotebook = null; if (!isRoot) onNavigateBack?.invoke() }) { Text("Delete", color = Color(0xFFDC2626)) }
             },
@@ -381,10 +452,15 @@ fun NotesScreen(
             title = { Text(n.title.ifBlank { "Untitled note" }, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             text = {
                 Column {
-                    MenuText(if (n.pinned) "Unpin" else "Pin to top") { viewModel.togglePin(n); noteMenu = null }
-                    if (isArchive) MenuText("Restore") { viewModel.unarchive(n); noteMenu = null }
-                    else MenuText("Archive") { viewModel.archive(n); noteMenu = null }
-                    MenuText("Delete", destructive = true) { viewModel.delete(n); noteMenu = null }
+                    if (isTrash) {
+                        MenuText("Restore") { viewModel.restore(n); noteMenu = null }
+                        MenuText("Delete for good", destructive = true) { viewModel.deleteForever(n); noteMenu = null }
+                    } else {
+                        MenuText(if (n.pinned) "Unpin" else "Pin to top") { viewModel.togglePin(n); noteMenu = null }
+                        if (isArchive) MenuText("Restore") { viewModel.unarchive(n); noteMenu = null }
+                        else MenuText("Archive") { viewModel.archive(n); noteMenu = null }
+                        MenuText("Delete", destructive = true) { trashWithUndo(n); noteMenu = null }
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = { noteMenu = null }) { Text("Close") } }
@@ -518,27 +594,36 @@ private fun NoteRow(note: Note, notebook: Notebook?, showNotebook: Boolean, onCl
 }
 
 @Composable
-private fun EmptyNotes(filtered: Boolean, archive: Boolean, onCreate: () -> Unit) {
+private fun EmptyNotes(filtered: Boolean, archive: Boolean, onCreate: () -> Unit, trash: Boolean = false) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(shape = CircleShape, color = AccentWash, modifier = Modifier.size(64.dp)) {
             Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.EditNote, contentDescription = null, tint = Accent, modifier = Modifier.size(30.dp)) }
         }
         Text(
-            when { archive -> "Nothing archived"; filtered -> "No notes match"; else -> "Your notes live here" },
+            when { trash -> "The Trash is empty"; archive -> "Nothing archived"; filtered -> "No notes match"; else -> "Your notes live here" },
             fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 16.dp)
         )
         Text(
             when {
+                trash -> "Deleted notes wait here for ${com.example.core.repository.NoteRepository.TRASH_DAYS} days, so a delete can always be undone."
                 archive -> "Archived notes wait here, out of the way, until you restore them."
                 filtered -> "Try another word, or clear the filters."
                 else -> "Write something, add photos, or record — every recording gets a note of its own."
             },
             fontSize = 14.sp, color = InkSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 6.dp)
         )
-        if (!filtered && !archive) {
+        if (!filtered && !archive && !trash) {
             Surface(onClick = onCreate, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.padding(top = 20.dp)) {
                 Text("Write a note", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp))
             }
         }
     }
+}
+
+/** "12 days left" for something deleted at [deletedAt]. */
+internal fun daysLeft(deletedAt: Long?, now: Long = System.currentTimeMillis()): String {
+    if (deletedAt == null) return ""
+    val purgeAt = deletedAt + com.example.core.repository.NoteRepository.TRASH_DAYS * 24L * 60 * 60 * 1000
+    val days = ((purgeAt - now) / (24L * 60 * 60 * 1000)).coerceAtLeast(0)
+    return when (days) { 0L -> "deleted for good today"; 1L -> "1 day left"; else -> "$days days left" }
 }

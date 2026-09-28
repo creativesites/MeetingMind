@@ -27,6 +27,8 @@ sealed interface NotesScope {
     data object All : NotesScope
     data class InNotebook(val notebookId: String) : NotesScope
     data object Archived : NotesScope
+    /** Deleted notes and notebooks, kept for [NoteRepository.TRASH_DAYS] days. */
+    data object Trash : NotesScope
 }
 
 /**
@@ -54,7 +56,15 @@ class NotesViewModel(application: Application, val scope: NotesScope = NotesScop
         NotesScope.All -> notes.observeNotes()
         is NotesScope.InNotebook -> notes.observeNotesInNotebook(scope.notebookId)
         NotesScope.Archived -> notes.observeArchivedNotes()
+        NotesScope.Trash -> notes.observeTrashedNotes()
     }
+
+    val trashCount: StateFlow<Int> = notes.observeTrashedNotes().map { it.size }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+    val trashedNotebooks: StateFlow<List<Notebook>> =
+        (if (scope == NotesScope.Trash) notes.observeTrashedNotebooks() else kotlinx.coroutines.flow.flowOf(emptyList()))
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val tagged = tagFilter.flatMapLatest { tag -> if (tag == null) source else notes.observeNotesWithTag(tag.id) }
 
@@ -134,11 +144,16 @@ class NotesViewModel(application: Application, val scope: NotesScope = NotesScop
     }
 
     fun updateNotebook(notebook: Notebook) = viewModelScope.launch { notes.updateNotebook(notebook) }
-    fun deleteNotebook(id: String) = viewModelScope.launch { notes.deleteNotebook(id) }
+    fun deleteNotebook(id: String) = viewModelScope.launch { notes.trashNotebook(id) }
+    fun restoreNotebook(id: String) = viewModelScope.launch { notes.restoreNotebook(id) }
+    fun deleteNotebookForever(id: String) = viewModelScope.launch { notes.deleteNotebook(id) }
     fun archiveNotebook(id: String) = viewModelScope.launch { notes.archiveNotebook(id) }
 
     fun togglePin(note: Note) = viewModelScope.launch { notes.setPinned(note.id, !note.pinned) }
     fun archive(note: Note) = viewModelScope.launch { notes.archiveNote(note.id) }
     fun unarchive(note: Note) = viewModelScope.launch { notes.unarchiveNote(note.id) }
-    fun delete(note: Note) = viewModelScope.launch { notes.deleteNote(note.id) }
+    fun delete(note: Note) = viewModelScope.launch { notes.moveToTrash(note.id) }
+    fun restore(note: Note) = viewModelScope.launch { notes.restoreFromTrash(note.id) }
+    fun deleteForever(note: Note) = viewModelScope.launch { notes.deleteNote(note.id) }
+    fun emptyTrash() = viewModelScope.launch { notes.emptyTrash() }
 }

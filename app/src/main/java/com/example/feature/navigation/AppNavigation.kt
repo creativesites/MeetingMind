@@ -9,6 +9,7 @@ object Routes {
     const val NOTES = "notes"
     const val NOTEBOOK = "notebook/{notebookId}"
     const val NOTES_ARCHIVE = "notes_archive"
+    const val NOTES_TRASH = "notes_trash"
     const val NOTE = "note/{noteId}?media={media}"
     const val IMPORT = "import"
     const val PROCESSING = "processing/{meetingId}/{audioPath}/{durationMs}"

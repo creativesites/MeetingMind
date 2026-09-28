@@ -214,8 +214,47 @@ class NoteRepository(
         it.copy(status = status, answeredAt = if (status == NoteStatus.ANSWERED) clock() else null)
     }
 
+    // ------------------------------------------------------------ trash (PRD_M0 §4.5)
+
+    /** Moves a note to the Trash. Nothing about it changes, so restoring gives back exactly what was there. */
+    suspend fun moveToTrash(noteId: String) = withContext(Dispatchers.IO) { noteDao.setDeleted(noteId, clock()) }
+
+    suspend fun restoreFromTrash(noteId: String) = withContext(Dispatchers.IO) { noteDao.setDeleted(noteId, null) }
+
+    fun observeTrashedNotes(): Flow<List<Note>> = noteDao.observeTrashed().map { list -> list.map { it.toDomain() } }.flowOn(Dispatchers.IO)
+
+    fun observeTrashedNotebooks(): Flow<List<Notebook>> =
+        notebookDao.observeTrashed().map { list -> list.map { it.toDomain() } }.flowOn(Dispatchers.IO)
+
     /**
-     * Deletes a note and its blocks, tags, links, references and attachment files.
+     * Moves a notebook to the Trash. Its notes stay where they are and keep showing in All notes,
+     * as they always have when a notebook goes; restoring the notebook gathers them back.
+     */
+    suspend fun trashNotebook(id: String) = withContext(Dispatchers.IO) {
+        if (id != MeetMindDatabase.DEFAULT_NOTEBOOK_ID) notebookDao.setDeleted(id, clock())
+    }
+
+    suspend fun restoreNotebook(id: String) = withContext(Dispatchers.IO) { notebookDao.setDeleted(id, null) }
+
+    /** Deletes for good everything in the Trash. */
+    suspend fun emptyTrash() = purgeTrash(olderThanMs = 0L)
+
+    /**
+     * Deletes for good whatever has been in the Trash longer than [olderThanMs] (30 days by
+     * default). Returns how many notes went.
+     */
+    suspend fun purgeTrash(olderThanMs: Long = TRASH_DAYS * 24 * 60 * 60 * 1000L): Int = withContext(Dispatchers.IO) {
+        val before = if (olderThanMs <= 0L) Long.MAX_VALUE else clock() - olderThanMs
+        val noteIds = noteDao.trashedBefore(before)
+        noteIds.forEach { deleteNote(it) }
+        notebookDao.trashedBefore(before).forEach { deleteNotebook(it) }
+        noteIds.size
+    }
+
+    /**
+     * Deletes a note for good: its blocks, tags, links, references, versions and attachment files.
+     * People delete to the Trash ([moveToTrash]); this runs when the Trash is emptied or purged,
+     * and for an empty draft that never held anything.
      *
      * Recordings are not deleted with it: audio is the one thing a user cannot recreate, so they
      * are detached and kept. Returns the ids of the detached recordings so the caller can offer
@@ -667,6 +706,8 @@ class NoteRepository(
     )
 
     companion object {
+        const val TRASH_DAYS = 30
+
         const val CALENDAR_EVENT_KEY = "calendarEvent"
         /** Metadata: the attachment id of the note's chosen cover picture. */
         const val COVER_KEY = "cover"

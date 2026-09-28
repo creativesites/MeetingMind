@@ -683,10 +683,7 @@ fun NoteEditorScreen(
             containerColor = Color.White,
             title = { Text("Delete this note?") },
             text = {
-                Text(
-                    if (recordings.isNotEmpty()) "The note's text, photos and tags are deleted. Its recordings are kept and stay in your library."
-                    else "The note's text, photos and tags are deleted. This can't be undone."
-                )
+                Text("It moves to the Trash, where you can restore it for ${com.example.core.repository.NoteRepository.TRASH_DAYS} days. Its recordings always stay in your library.")
             },
             confirmButton = {
                 TextButton(onClick = {

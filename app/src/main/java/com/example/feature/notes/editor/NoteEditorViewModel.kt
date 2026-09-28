@@ -587,8 +587,8 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         saveJob?.cancel()
         titleJob?.cancel()
         deleted = true
-        val detached = notes.deleteNote(noteId)
-        onDone(detached.size)
+        notes.moveToTrash(noteId)
+        onDone(0)
     }
 
     // ------------------------------------------------------------ export

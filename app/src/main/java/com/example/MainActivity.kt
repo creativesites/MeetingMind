@@ -130,6 +130,10 @@ class MainActivity : ComponentActivity() {
                 com.example.core.faith.ReminderScheduler.sync(applicationContext, UserPreferencesManager(applicationContext).reminderSettings.first())
                 com.example.core.widget.Widgets.refresh(applicationContext)
             }
+            // Anything in the Trash longer than 30 days is deleted for good.
+            runCatching {
+                com.example.core.repository.NoteRepository(applicationContext, com.example.core.database.MeetMindDatabase.getInstance(applicationContext)).purgeTrash()
+            }
         }
     }
 
@@ -487,7 +491,20 @@ fun MeetMindApp() {
                 onOpenArchive = { navController.navigate(Routes.NOTES_ARCHIVE) },
                 onNavigateBack = null,
                 onNavigateBottomNav = navigateToPrimary,
-                onOpenFaith = { navController.navigate(Routes.FAITH) }
+                onOpenFaith = { navController.navigate(Routes.FAITH) },
+                onOpenTrash = { navController.navigate(Routes.NOTES_TRASH) }
+            )
+        }
+        composable(Routes.NOTES_TRASH) {
+            val app = context.applicationContext as android.app.Application
+            val vm = remember { com.example.feature.notes.NotesViewModel(app, com.example.feature.notes.NotesScope.Trash) }
+            com.example.feature.notes.NotesScreen(
+                viewModel = vm,
+                onOpenNote = {},
+                onOpenNotebook = {},
+                onOpenArchive = {},
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateBottomNav = navigateToPrimary
             )
         }
         composable(Routes.NOTEBOOK, arguments = listOf(navArgument("notebookId") { type = NavType.StringType })) { backStackEntry ->
