@@ -69,6 +69,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 /**
@@ -102,21 +103,34 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _checking = kotlinx.coroutines.flow.MutableStateFlow(false)
     val checking: StateFlow<Boolean> = _checking
 
-    /** Tries the key for real: a one-word text answer, then a live voice session (no microphone). */
+    /**
+     * Tries the key for real, every service at once with its own time limit: that the
+     * transcription and writing models are reachable with this key, a one-word written answer,
+     * and a live voice session (no microphone). The slowest check sets the wait, not their sum.
+     */
     fun checkGeminiKey() = viewModelScope.launch {
         val key = geminiCredentials.getApiKey() ?: run { _keyCheck.value = listOf("Key" to "No key saved yet."); return@launch }
         _checking.value = true
         _keyCheck.value = null
-        val text = runCatching {
-            val transport = com.example.ai.cloud.GeminiHttpTransport(geminiCredentials)
-            when (val r = transport.execute(com.example.ai.cloud.GeminiRequest(com.example.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL, "", "Reply with the single word OK."))) {
-                is com.example.ai.common.AiResult.Success -> null
-                is com.example.ai.common.AiResult.Failed -> r.message
-                else -> "No answer."
-            }
-        }.getOrElse { it.message ?: "Failed." }
-        val live = runCatching { com.example.ai.live.GeminiLiveVoice.probe(key) }.getOrElse { it.message ?: "Failed." }
-        _keyCheck.value = listOf("Writing (devotionals, summaries)" to text, "Live voice (Pray with me)" to live)
+        val router = com.example.ai.routing.DefaultAiModelRouter
+        suspend fun <T> limited(ms: Long, block: suspend () -> T): T? = kotlinx.coroutines.withTimeoutOrNull(ms) { block() }
+        val transcription = async { limited(15_000) { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { GeminiKeyProbe.model(key, router.GEMINI_TRANSCRIBE_MODEL) } } ?: "No answer within 15 seconds." }
+        val text = async {
+            limited(20_000) {
+                val transport = com.example.ai.cloud.GeminiHttpTransport(geminiCredentials)
+                when (val r = transport.execute(com.example.ai.cloud.GeminiRequest(router.GEMINI_INTELLIGENCE_MODEL, "", "Reply with the single word OK."))) {
+                    is com.example.ai.common.AiResult.Success -> null
+                    is com.example.ai.common.AiResult.Failed -> r.message
+                    else -> "No answer."
+                }
+            } ?: "No answer within 20 seconds."
+        }
+        val live = async { runCatching { com.example.ai.live.GeminiLiveVoice.probe(key, timeoutMs = 15_000L) }.getOrElse { it.message ?: "Failed." } }
+        _keyCheck.value = listOf(
+            "Transcription (recordings)" to transcription.await(),
+            "Writing (summaries, devotionals, notes AI)" to text.await(),
+            "Live voice (Pray with me)" to live.await()
+        )
         _checking.value = false
     }
 
@@ -768,7 +782,7 @@ private fun GeminiKeyCheck(result: List<Pair<String, String?>>?, checking: Boole
             else TextButton(onClick = onCheck, modifier = Modifier.testTag("settings_gemini_check_btn")) { Text(if (result == null) "Check" else "Check again") }
         }
         Text(
-            if (checking) "Trying writing, then live voice… (up to 30 seconds)" else "Tries writing and live voice with your key, so you know what works.",
+            if (checking) "Checking transcription, writing and live voice together… (up to 20 seconds)" else "Tries transcription, writing and live voice with your key, so you know what works.",
             fontSize = 12.5.sp, color = InkMuted
         )
         result?.forEach { (what, problem) ->
@@ -862,5 +876,30 @@ private fun GeminiApiKeyRow(
                 }
             }
         }
+    }
+}
+
+/** Quick reachability checks against Gemini, for the key check in Settings. */
+internal object GeminiKeyProbe {
+    private val client = okhttp3.OkHttpClient.Builder()
+        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+
+    /** Null when [model] exists and this key may use it; otherwise why not, in words. */
+    fun model(key: String, model: String): String? {
+        val request = okhttp3.Request.Builder()
+            .url("${com.example.ai.cloud.GeminiHttpTransport.DEFAULT_BASE_URL}/v1beta/models/$model?key=$key").get().build()
+        return runCatching {
+            client.newCall(request).execute().use { r ->
+                when {
+                    r.isSuccessful -> null
+                    r.code == 404 -> "The model $model isn't available to this key."
+                    r.code == 400 || r.code == 401 || r.code == 403 -> "Your key was rejected (HTTP ${r.code})."
+                    r.code == 429 -> "Quota exceeded for now."
+                    else -> "Gemini answered HTTP ${r.code}."
+                }
+            }
+        }.getOrElse { "Couldn't reach Gemini: ${it.message ?: "no connection"}" }
     }
 }

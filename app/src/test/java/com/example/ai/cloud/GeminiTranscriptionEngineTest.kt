@@ -36,7 +36,7 @@ class GeminiTranscriptionEngineTest {
         val requests = mutableListOf<GeminiRequest>()
         override suspend fun execute(request: GeminiRequest): AiResult<String> {
             requests += request
-            return if (request.systemInstruction.startsWith("You are a verbatim")) verbatim(request) else smart(request)
+            return if (request.transcription != null) verbatim(request) else smart(request)
         }
         override fun isConfigured() = configured
     }
@@ -68,7 +68,7 @@ class GeminiTranscriptionEngineTest {
             smart = { AiResult.Success("We ship Friday.") }
         )
 
-        val result = GeminiTranscriptionEngine(transport).transcribe(audio, 60_000L)
+        val result = GeminiTranscriptionEngine(transport, smartPass = true).transcribe(audio, 60_000L)
 
         val value = (result as AiResult.Success).value
         assertTrue(value.smartPassApplied)
@@ -82,7 +82,7 @@ class GeminiTranscriptionEngineTest {
             smart = { AiResult.Failed("quota exceeded") }
         )
 
-        val result = GeminiTranscriptionEngine(transport).transcribe(audio, 60_000L)
+        val result = GeminiTranscriptionEngine(transport, smartPass = true).transcribe(audio, 60_000L)
 
         val value = (result as AiResult.Success).value
         assertFalse(value.smartPassApplied)
@@ -97,7 +97,7 @@ class GeminiTranscriptionEngineTest {
             smart = { AiResult.Success("Entirely unrelated prose about something else.") }
         )
 
-        val result = GeminiTranscriptionEngine(transport).transcribe(audio, 60_000L)
+        val result = GeminiTranscriptionEngine(transport, smartPass = true).transcribe(audio, 60_000L)
 
         val value = (result as AiResult.Success).value
         assertFalse(value.smartPassApplied)
@@ -137,20 +137,32 @@ class GeminiTranscriptionEngineTest {
         assertEquals(expectedChunks, (result as AiResult.Success).value.chunkCount)
         assertEquals(
             expectedChunks,
-            transport.requests.count { it.systemInstruction.startsWith("You are a verbatim") }
+            transport.requests.count { it.transcription != null }
         )
     }
 
     @Test
-    fun `the verbatim pass asks for structured output and passes vocabulary through`() = runBlocking {
+    fun `the verbatim pass uses the transcription model's own config and sends a short recording whole`() = runBlocking {
         val transport = ScriptedTransport(verbatim = { AiResult.Success(threeWords) })
 
         GeminiTranscriptionEngine(transport).transcribe(audio, 60_000L, vocabularyHints = listOf("Parakeet"))
 
-        val request = transport.requests.first()
-        assertEquals(GeminiTranscriptParser.VERBATIM_SCHEMA, request.responseSchema)
-        assertEquals(listOf("Parakeet"), request.vocabularyHints)
+        val request = transport.requests.single()
+        assertEquals(AudioTranscriptionConfig(mode = "VERBATIM", wordTimestamp = true, diarization = true), request.transcription)
+        assertEquals(null, request.responseSchema)
+        assertTrue(request.uploadWholeFile)
         assertEquals(DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL, request.modelId)
+    }
+
+    @Test
+    fun `by default there is no second pass and the verbatim transcript is the result`() = runBlocking {
+        val transport = ScriptedTransport(verbatim = { AiResult.Success(threeWords) }, smart = { error("no smart pass expected") })
+
+        val value = (GeminiTranscriptionEngine(transport).transcribe(audio, 60_000L) as AiResult.Success).value
+
+        assertEquals(listOf("we", "ship", "friday"), value.words.map { it.text })
+        assertEquals(null, value.degradedReason)
+        assertEquals(1, transport.requests.size)
     }
 
     @Test

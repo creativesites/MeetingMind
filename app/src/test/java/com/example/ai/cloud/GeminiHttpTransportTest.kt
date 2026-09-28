@@ -231,4 +231,77 @@ class GeminiHttpTransportTest {
             target.delete()
         }
     }
+
+    @Test
+    fun `a whole recording is uploaded as it is and transcribed with the transcription config`() = runBlocking {
+        credentials.setApiKey("k")
+        val audio = java.io.File.createTempFile("voice", ".m4a").apply { writeBytes(ByteArray(64) { it.toByte() }); deleteOnExit() }
+        server.enqueue(MockResponse().setResponseCode(200).addHeader("X-Goog-Upload-URL", server.url("/upload-here").toString()))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"file":{"uri":"https://files/abc","name":"files/abc","state":"ACTIVE"}}"""))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"state":"ACTIVE"}"""))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(
+            """{"candidates":[{"content":{"parts":[
+              {"audioTranscription":{"speakerLabel":"spk_1","words":[{"word":"We","startOffset":"0.100s","endOffset":"0.300s"},{"word":"ship","startOffset":"0.300s","endOffset":"0.650s"}]}},
+              {"audioTranscription":{"speakerLabel":"spk_2","words":[{"word":"Friday?","startOffset":"1.2s","endOffset":"1.9s"}]}}
+            ]},"finishReason":"STOP"}]}"""
+        ))
+
+        val result = transport.execute(
+            GeminiRequest(
+                modelId = "gemini-3.5-transcribe", systemInstruction = "ignored", prompt = "ignored",
+                audioFile = audio, transcription = AudioTranscriptionConfig(), uploadWholeFile = true
+            )
+        )
+
+        val start = server.takeRequest()
+        assertEquals("audio/m4a", start.getHeader("X-Goog-Upload-Header-Content-Type"))
+        val upload = server.takeRequest()
+        assertEquals(64L, upload.bodySize)
+        server.takeRequest() // file state
+        val generate = server.takeRequest()
+        assertTrue(generate.path!!.contains("gemini-3.5-transcribe:generateContent"))
+        val body = org.json.JSONObject(generate.body.readUtf8())
+        val config = body.getJSONObject("generationConfig").getJSONObject("audioTranscriptionConfig")
+        assertEquals("VERBATIM", config.getString("mode"))
+        assertTrue(config.getBoolean("wordTimestamp"))
+        assertTrue(config.getBoolean("diarization"))
+        assertFalse("custom vocabulary can't go with timestamps", config.has("customVocabulary"))
+        assertFalse(body.has("system_instruction"))
+        assertFalse(body.getJSONObject("generationConfig").has("response_schema"))
+        val parts = body.getJSONArray("contents").getJSONObject(0).getJSONArray("parts")
+        assertEquals(1, parts.length())
+        assertEquals("audio/m4a", parts.getJSONObject(0).getJSONObject("fileData").getString("mimeType"))
+
+        val words = GeminiTranscriptParser.parseVerbatim((result as AiResult.Success).value, chunkStartMs = 60_000L)!!
+        assertEquals(listOf("We", "ship", "Friday?"), words.map { it.text })
+        assertEquals(listOf(60_100L, 60_300L, 61_200L), words.map { it.startMs })
+        assertEquals(listOf("spk_1", "spk_1", "spk_2"), words.map { it.speakerId })
+    }
+
+    @Test
+    fun `a transcription answer with nothing in it is a failure`() = runBlocking {
+        credentials.setApiKey("k")
+        val audio = java.io.File.createTempFile("voice", ".wav").apply { writeBytes(ByteArray(8)); deleteOnExit() }
+        server.enqueue(MockResponse().setResponseCode(200).addHeader("X-Goog-Upload-URL", server.url("/u").toString()))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"file":{"uri":"u","name":""}}"""))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"candidates":[{"content":{"parts":[]}}]}"""))
+
+        val result = transport.execute(GeminiRequest("gemini-3.5-transcribe", "", "", audioFile = audio, transcription = AudioTranscriptionConfig(), uploadWholeFile = true))
+
+        assertTrue(result is AiResult.Failed)
+    }
+
+    @Test
+    fun `offsets read as seconds, with or without the s`() {
+        assertEquals(1250L, GeminiTranscriptParser.offsetMs("1.250s"))
+        assertEquals(500L, GeminiTranscriptParser.offsetMs(0.5))
+        assertEquals(null, GeminiTranscriptParser.offsetMs("soon"))
+    }
+
+    @Test
+    fun `only formats the model reads directly skip decoding`() {
+        assertEquals("audio/ogg", GeminiHttpTransport.directMimeType(java.io.File("AUD-20260916-WA0001.ogg")))
+        assertEquals("audio/opus", GeminiHttpTransport.directMimeType(java.io.File("a.OPUS")))
+        assertEquals(null, GeminiHttpTransport.directMimeType(java.io.File("video.mp4")))
+    }
 }

@@ -66,16 +66,20 @@ class GeminiHttpTransport(
         lastKnownConfigured = true
 
         try {
+            val directMime = request.audioFile?.takeIf { request.uploadWholeFile }?.let { directMimeType(it) }
             val uploadedFileUri = request.audioFile?.let { file ->
                 coroutineContext.ensureActive()
-                when (val upload = uploadAudioSlice(apiKey, file, request.audioStartMs, request.audioEndMs)) {
+                val upload = if (directMime != null) uploadFile(apiKey, file, directMime)
+                    else uploadAudioSlice(apiKey, file, request.audioStartMs, request.audioEndMs)
+                when (upload) {
                     is AiResult.Success -> upload.value
                     else -> return@withContext upload as AiResult<String>
                 }
             }
 
             coroutineContext.ensureActive()
-            generateContent(apiKey, request, uploadedFileUri)
+            if (request.transcription != null) transcribeContent(apiKey, request, uploadedFileUri, directMime ?: AUDIO_MIME)
+            else generateContent(apiKey, request, uploadedFileUri)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -120,13 +124,13 @@ class GeminiHttpTransport(
         }
     }
 
-    private suspend fun uploadFile(apiKey: String, file: File): AiResult<String> {
+    private suspend fun uploadFile(apiKey: String, file: File, mime: String = AUDIO_MIME): AiResult<String> {
         val start = Request.Builder()
             .url("$baseUrl/upload/v1beta/files?key=$apiKey")
             .addHeader("X-Goog-Upload-Protocol", "resumable")
             .addHeader("X-Goog-Upload-Command", "start")
             .addHeader("X-Goog-Upload-Header-Content-Length", file.length().toString())
-            .addHeader("X-Goog-Upload-Header-Content-Type", AUDIO_MIME)
+            .addHeader("X-Goog-Upload-Header-Content-Type", mime)
             .post(
                 JSONObject().put("file", JSONObject().put("display_name", "meetmind_audio"))
                     .toString().toRequestBody(JSON_MIME)
@@ -144,7 +148,7 @@ class GeminiHttpTransport(
             .url(uploadUrl)
             .addHeader("X-Goog-Upload-Offset", "0")
             .addHeader("X-Goog-Upload-Command", "upload, finalize")
-            .post(file.asRequestBody(AUDIO_MIME.toMediaType()))
+            .post(file.asRequestBody(mime.toMediaType()))
             .build()
 
         val fileJson = client.newCall(upload).execute().use { response ->
@@ -226,6 +230,41 @@ class GeminiHttpTransport(
             extractText(responseBody)
                 ?.let { AiResult.Success(it) }
                 ?: AiResult.Failed("Gemini returned no usable content.")
+        }
+    }
+
+    /**
+     * The dedicated transcription model's request: the audio and `audioTranscriptionConfig`,
+     * nothing else (https://ai.google.dev/gemini-api/docs/generate-content/transcribe). Its answer
+     * comes back as `audioTranscription` parts — one per speaker turn, each with timed words —
+     * which are handed on as JSON for [GeminiTranscriptParser].
+     */
+    private fun transcribeContent(apiKey: String, request: GeminiRequest, fileUri: String?, mime: String): AiResult<String> {
+        if (fileUri == null) return AiResult.Failed("There was no audio to transcribe.")
+        val config = request.transcription!!
+        val transcription = JSONObject()
+            .put("mode", config.mode)
+            .put("languageCodes", JSONArray(config.languageCodes))
+        if (config.wordTimestamp) transcription.put("wordTimestamp", true)
+        if (config.diarization) transcription.put("diarization", true)
+        if (config.customVocabulary.isNotEmpty() && !config.wordTimestamp && !config.diarization) {
+            transcription.put("customVocabulary", JSONArray(config.customVocabulary.take(1000)))
+        }
+        val body = JSONObject()
+            .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(
+                JSONObject().put("fileData", JSONObject().put("fileUri", fileUri).put("mimeType", mime))
+            ))))
+            .put("generationConfig", JSONObject().put("audioTranscriptionConfig", transcription))
+
+        val httpRequest = Request.Builder()
+            .url("$baseUrl/v1beta/models/${request.modelId}:generateContent?key=$apiKey")
+            .post(body.toString().toRequestBody(JSON_MIME))
+            .build()
+        return client.newCall(httpRequest).execute().use { response ->
+            val responseBody = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@use describeHttpFailure("Transcribing", response.code, responseBody)
+            collectTranscription(responseBody)?.let { AiResult.Success(it) }
+                ?: AiResult.Failed("Gemini returned no transcript for this audio.")
         }
     }
 
@@ -315,6 +354,40 @@ class GeminiHttpTransport(
     }
 
     companion object {
+        /**
+         * Pulls every `audioTranscription` part out of a transcription response, plus any plain
+         * text, as `{"turns":[…],"text":"…"}`. Null when there is neither.
+         */
+        internal fun collectTranscription(responseBody: String): String? = try {
+            val parts = JSONObject(responseBody).optJSONArray("candidates")?.optJSONObject(0)
+                ?.optJSONObject("content")?.optJSONArray("parts")
+            val turns = JSONArray()
+            val text = StringBuilder()
+            for (i in 0 until (parts?.length() ?: 0)) {
+                val part = parts!!.optJSONObject(i) ?: continue
+                (part.optJSONObject("audioTranscription") ?: part.optJSONObject("audio_transcription"))?.let { turns.put(it) }
+                if (!part.optBoolean("thought")) part.optString("text").takeIf { it.isNotBlank() }?.let { text.append(it) }
+            }
+            if (turns.length() == 0 && text.isBlank()) null
+            else JSONObject().put("turns", turns).put("text", text.toString()).toString()
+        } catch (e: org.json.JSONException) {
+            null
+        }
+
+        /** Formats the transcription model reads directly, by file extension. */
+        internal fun directMimeType(file: File): String? = when (file.extension.lowercase()) {
+            "wav" -> "audio/wav"
+            "mp3" -> "audio/mp3"
+            "m4a" -> "audio/m4a"
+            "aac" -> "audio/aac"
+            "ogg", "oga" -> "audio/ogg"
+            "opus" -> "audio/opus"
+            "flac" -> "audio/flac"
+            "webm" -> "audio/webm"
+            "aif", "aiff" -> "audio/aiff"
+            else -> null
+        }
+
         const val DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com"
         private const val TAG = "MeetMindGemini"
         private const val AUDIO_MIME = "audio/wav"

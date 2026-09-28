@@ -22,7 +22,7 @@ class GeminiChunkPlannerTest {
     fun `consecutive chunks always overlap - concatenation is never an option`() {
         val chunks = GeminiChunkPlanner.plan(45 * 60 * 1_000L, config)
 
-        assertTrue(chunks.size > 4)
+        assertTrue(chunks.size >= 2)
         for (i in 0 until chunks.size - 1) {
             val overlap = GeminiChunkPlanner.overlapBetween(chunks[i], chunks[i + 1])
             assertTrue("chunks $i and ${i + 1} must share audio", overlap != null)

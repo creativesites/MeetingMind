@@ -330,8 +330,13 @@ class MeetingProcessingPipeline(
                 else -> {
                     // No local ASR model installed (or the device/memory can't run it): stop here.
                     // The audio recording itself is untouched and remains fully accessible.
-                    val message = asrResult.describeFailure() ?: "Local speech recognition is unavailable."
-                    val isCrash = asrResult is AiResult.Failed
+                    // In Internet mode the cloud is what failed; the missing offline model is only
+                    // why there was nothing to fall back on. Say what actually went wrong.
+                    val cloudFailed = processingProfile == ProcessingProfile.INTERNET && cloudWords == null
+                    val message = if (cloudFailed) {
+                        "Google's AI couldn't transcribe this recording. ${cloudDegradedReason ?: "No reason was given."}"
+                    } else asrResult.describeFailure() ?: "Local speech recognition is unavailable."
+                    val isCrash = asrResult is AiResult.Failed || cloudFailed
                     updateJob(
                         step = if (isCrash) "Failed" else "Speech recognition model required",
                         percent = 100,

@@ -53,7 +53,13 @@ class GeminiTranscriptionEngine(
     private val transport: GeminiTransport,
     private val parser: GeminiTranscriptParser = GeminiTranscriptParser,
     private val router: AiModelRouter = DefaultAiModelRouter,
-    private val chunkConfig: ChunkPlanConfig = ChunkPlanConfig()
+    private val chunkConfig: ChunkPlanConfig = ChunkPlanConfig(),
+    /**
+     * The readability pass. Off: it doubled the time to a transcript, and the transcription model
+     * gives it no timestamps or speakers to fuse onto. Readability now comes from the transcript
+     * cleanup stage after the verbatim words are in (docs/PLAN_V3.md W12, phase 1).
+     */
+    private val smartPass: Boolean = false
 ) {
 
     suspend fun transcribe(
@@ -83,6 +89,8 @@ class GeminiTranscriptionEngine(
                 chunk.index.toFloat() / (chunks.size * 2),
                 "Transcribing part ${chunk.index + 1} of ${chunks.size}..."
             )
+            // The transcription model's own request: audio plus audioTranscriptionConfig. Custom
+            // vocabulary is left out because the API rejects it alongside timestamps and speakers.
             val response = transport.execute(
                 GeminiRequest(
                     modelId = verbatimModel,
@@ -91,8 +99,9 @@ class GeminiTranscriptionEngine(
                     audioFile = audioFile,
                     audioStartMs = chunk.startMs,
                     audioEndMs = chunk.endMs,
-                    responseSchema = GeminiTranscriptParser.VERBATIM_SCHEMA,
-                    vocabularyHints = vocabularyHints
+                    transcription = AudioTranscriptionConfig(mode = "VERBATIM", wordTimestamp = true, diarization = true),
+                    // One chunk is the whole recording: send the file as it is, no decoding.
+                    uploadWholeFile = chunks.size == 1
                 )
             )
             if (response !is AiResult.Success) {
@@ -115,6 +124,11 @@ class GeminiTranscriptionEngine(
 
         if (verbatimWords.isEmpty()) {
             return AiResult.Success(CloudTranscriptionResult(emptyList(), chunks.size, false, null))
+        }
+
+        if (!smartPass) {
+            onProgress(1f, "Transcript ready")
+            return AiResult.Success(CloudTranscriptionResult(verbatimWords, chunks.size, smartPassApplied = false, alignmentCoverage = null))
         }
 
         // --- Pass B: smart. Optional by design — a failure here costs polish, not the transcript. ---
@@ -287,7 +301,51 @@ object GeminiTranscriptParser {
      * @return Words, or null when the response is not readable — never a partial guess.
      */
     fun parseVerbatim(json: String, chunkStartMs: Long): List<CanonicalWord>? = try {
-        val array = org.json.JSONObject(json).getJSONArray("words")
+        val root = org.json.JSONObject(json)
+        if (root.has("turns")) parseTurns(root.getJSONArray("turns"), chunkStartMs)
+        else parseWords(root.getJSONArray("words"), chunkStartMs)
+    } catch (e: org.json.JSONException) {
+        null
+    }
+
+    /**
+     * The transcription model's answer: speaker turns, each with words timed as offsets like
+     * `"1.250s"` from the start of the audio it was given.
+     */
+    private fun parseTurns(turns: org.json.JSONArray, chunkStartMs: Long): List<CanonicalWord> {
+        val words = mutableListOf<CanonicalWord>()
+        for (t in 0 until turns.length()) {
+            val turn = turns.getJSONObject(t)
+            val speaker = turn.optString("speakerLabel").ifBlank { turn.optString("speaker_label") }.ifBlank { null }
+            val items = turn.optJSONArray("words") ?: continue
+            for (i in 0 until items.length()) {
+                val item = items.getJSONObject(i)
+                val text = item.optString("word").ifBlank { item.optString("text") }.trim()
+                if (text.isEmpty()) continue
+                val start = offsetMs(item.opt("startOffset") ?: item.opt("start_offset")) ?: continue
+                val end = offsetMs(item.opt("endOffset") ?: item.opt("end_offset")) ?: start
+                words += CanonicalWord(
+                    id = "c${chunkStartMs}_${words.size}",
+                    text = text,
+                    startMs = chunkStartMs + start,
+                    endMs = chunkStartMs + maxOf(end, start),
+                    speakerId = speaker,
+                    attribution = if (speaker != null) AttributionConfidence.HIGH else AttributionConfidence.NONE,
+                    source = TranscriptSource.GEMINI_VERBATIM
+                )
+            }
+        }
+        return words.sortedBy { it.startMs }.mapIndexed { i, w -> w.copy(id = "c${chunkStartMs}_$i") }
+    }
+
+    /** A protobuf Duration as JSON — `"1.250s"` — or a plain number of seconds. */
+    internal fun offsetMs(value: Any?): Long? = when (value) {
+        is Number -> (value.toDouble() * 1000).toLong()
+        is String -> value.trim().removeSuffix("s").toDoubleOrNull()?.let { (it * 1000).toLong() }
+        else -> null
+    }
+
+    private fun parseWords(array: org.json.JSONArray, chunkStartMs: Long): List<CanonicalWord> = run {
         (0 until array.length()).mapNotNull { index ->
             val item = array.getJSONObject(index)
             val text = item.optString("text").trim()
@@ -308,7 +366,5 @@ object GeminiTranscriptParser {
                 source = TranscriptSource.GEMINI_VERBATIM
             )
         }
-    } catch (e: org.json.JSONException) {
-        null
     }
 }

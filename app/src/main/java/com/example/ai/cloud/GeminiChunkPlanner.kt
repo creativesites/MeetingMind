@@ -18,9 +18,11 @@ data class ChunkPlanConfig(
      * diarization and word-level timestamps are enabled, which is exactly the configuration the
      * verbatim pass uses, so this is sized for that stricter case rather than for the permissive
      * one — a chunk plan that works for verbatim works for smart, and one plan for both keeps the
-     * two passes describing the same audio.
+     * two passes describing the same audio. The documented limit with timestamps and diarization
+     * is 30 minutes; 25 leaves room for the overlap. Most recordings are then a single request
+     * that uploads the file as it is.
      */
-    val maxChunkMs: Long = 8 * 60 * 1_000L,
+    val maxChunkMs: Long = 25 * 60 * 1_000L,
 
     /**
      * Audio each chunk re-reads from the one before it.

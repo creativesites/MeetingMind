@@ -23,7 +23,30 @@ data class GeminiRequest(
     val responseSchema: String? = null,
     /** Terms the model should prefer when it is unsure — names, products, jargon. */
     val vocabularyHints: List<String> = emptyList(),
-    val temperature: Float = 0.0f
+    val temperature: Float = 0.0f,
+    /**
+     * Set for the dedicated transcription model. It takes the audio alone plus this config: no
+     * prompt, schema, temperature or system instruction. The response is returned as
+     * `{"turns":[{"speakerLabel":…,"words":[{"word","startOffset","endOffset"}]}], "text":…}`.
+     */
+    val transcription: AudioTranscriptionConfig? = null,
+    /**
+     * Upload [audioFile] exactly as it is instead of a decoded WAV slice. Only for a request that
+     * covers the whole recording, in a format Gemini reads directly — no decoding, much faster.
+     */
+    val uploadWholeFile: Boolean = false
+)
+
+/** `generationConfig.audioTranscriptionConfig` for the Gemini transcription model. */
+data class AudioTranscriptionConfig(
+    /** "VERBATIM" or "SMART". SMART can't be combined with timestamps or diarization. */
+    val mode: String = "VERBATIM",
+    val wordTimestamp: Boolean = true,
+    val diarization: Boolean = true,
+    /** Empty means auto-detect. */
+    val languageCodes: List<String> = emptyList(),
+    /** Rejected by the API alongside timestamps or diarization, so only sent without them. */
+    val customVocabulary: List<String> = emptyList()
 )
 
 /**

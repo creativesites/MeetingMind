@@ -560,6 +560,12 @@ class MeetingDetailViewModel(
             .map { it.processingProfile }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.example.core.model.ProcessingProfile.OFFLINE)
 
+    /** Why processing last failed, in the pipeline's own words, for the error card. */
+    val processingError: StateFlow<String?> =
+        com.example.core.database.MeetMindDatabase.getInstance(application).processingJobDao().getJobForMeeting(meetingId)
+            .map { job -> job?.takeIf { it.isFailed }?.errorMessage }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val latestToolFailure: StateFlow<String?> =
         aiJobRepository.getJobsForMeeting(meetingId)
             .map { jobs ->
@@ -746,6 +752,7 @@ fun MeetingDetailScreen(
     viewModel: MeetingDetailViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToModels: () -> Unit = {},
+    onOpenSettings: () -> Unit = onNavigateToModels,
     onTranscribe: (meetingId: String, audioPath: String, durationMs: Long) -> Unit = { _, _, _ -> },
     /** Set when arriving from a search result: jumps straight to the Transcript tab, seeks/plays
      * audio to this position, and highlights the matching segment — a search result must land the
@@ -1038,6 +1045,35 @@ fun MeetingDetailScreen(
                         },
                         onSeek = { viewModel.seekPlayback(it) }
                     )
+                }
+            }
+
+            // Processing failed: say why, in the pipeline's words, with the way forward.
+            if (meeting?.status == MeetingStatus.ERROR) {
+                val processingError by viewModel.processingError.collectAsState()
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Column(Modifier.padding(14.dp).fillMaxWidth()) {
+                        Text("This recording wasn't transcribed", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Text(
+                            processingError ?: "Processing stopped before a transcript was made.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        Row(Modifier.padding(top = 6.dp)) {
+                            val currentMeeting = meeting
+                            TextButton(onClick = {
+                                val audioPath = currentMeeting?.audioFilePath
+                                if (currentMeeting != null && audioPath != null) onTranscribe(currentMeeting.id, audioPath, currentMeeting.durationMs)
+                            }) { Text("Try again") }
+                            if (processingError?.contains("API key", ignoreCase = true) == true) {
+                                TextButton(onClick = onOpenSettings) { Text("Check key in Settings") }
+                            }
+                        }
+                    }
                 }
             }
 
