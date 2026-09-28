@@ -130,6 +130,7 @@ class MainActivity : ComponentActivity() {
                 com.example.core.faith.ReminderScheduler.sync(applicationContext, UserPreferencesManager(applicationContext).reminderSettings.first())
                 com.example.core.widget.Widgets.refresh(applicationContext)
             }
+            runCatching { com.example.core.backup.BackupScheduler.sync(applicationContext) }
             // Anything in the Trash longer than 30 days is deleted for good.
             runCatching {
                 com.example.core.repository.NoteRepository(applicationContext, com.example.core.database.MeetMindDatabase.getInstance(applicationContext)).purgeTrash()
@@ -495,6 +496,12 @@ fun MeetMindApp() {
                 onOpenTrash = { navController.navigate(Routes.NOTES_TRASH) }
             )
         }
+        composable(Routes.DATA_BACKUP) {
+            com.example.feature.settings.DataBackupScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onOpenTrash = { navController.navigate(Routes.NOTES_TRASH) }
+            )
+        }
         composable(Routes.NOTES_TRASH) {
             val app = context.applicationContext as android.app.Application
             val vm = remember { com.example.feature.notes.NotesViewModel(app, com.example.feature.notes.NotesScope.Trash) }
@@ -669,6 +676,7 @@ fun MeetMindApp() {
                 onNavigateBottomNav = navigateToPrimary,
                 onOpenBible = { navController.navigate(Routes.bibleRoute()) },
                 onOpenSetup = { navController.navigate(Routes.SETUP) },
+                onOpenDataBackup = { navController.navigate(Routes.DATA_BACKUP) },
                 onReplayTour = {
                     recoveryScope.launch {
                         com.example.core.datastore.UserPreferencesManager(context).setTourCompleted(false)

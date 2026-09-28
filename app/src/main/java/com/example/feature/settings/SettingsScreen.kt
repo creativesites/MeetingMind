@@ -210,6 +210,7 @@ fun SettingsScreen(
     onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit = {},
     onOpenBible: () -> Unit = {},
     onOpenSetup: () -> Unit = {},
+    onOpenDataBackup: () -> Unit = {},
     onReplayTour: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -406,6 +407,16 @@ fun SettingsScreen(
                         checked = prefs.faithLockEnabled,
                         onCheckedChange = { viewModel.setFaithLock(it) },
                         testTag = "settings_faith_lock"
+                    )
+                }
+            }
+
+            settingsSection(title = "Your data") {
+                settingsRow {
+                    SettingsNavRow(
+                        title = "Data & backup",
+                        subtitle = "Back up, restore, export everything as Markdown, and the Trash",
+                        onClick = onOpenDataBackup
                     )
                 }
             }

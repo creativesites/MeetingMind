@@ -13,6 +13,7 @@ import com.example.ai.modelmanagement.ModelCatalog
 import com.example.core.model.DiarizationStrategy
 import com.example.core.model.TranscriptCleanupMode
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
@@ -83,6 +84,28 @@ data class AppPreferencesState(
 )
 
 class UserPreferencesManager(private val context: Context) {
+    /** Every setting, for a backup (docs/PRD_M0.md §4.3). */
+    suspend fun exportAll(): Map<String, Any?> = context.dataStore.data.first().asMap().mapKeys { it.key.name }
+
+    /** Replaces every setting with [values] from a backup. Unknown value types are skipped. */
+    suspend fun importAll(values: Map<String, Any>) {
+        context.dataStore.edit { prefs ->
+            prefs.clear()
+            values.forEach { (name, value) ->
+                @Suppress("UNCHECKED_CAST")
+                when (value) {
+                    is Boolean -> prefs[androidx.datastore.preferences.core.booleanPreferencesKey(name)] = value
+                    is Int -> prefs[androidx.datastore.preferences.core.intPreferencesKey(name)] = value
+                    is Long -> prefs[androidx.datastore.preferences.core.longPreferencesKey(name)] = value
+                    is Float -> prefs[androidx.datastore.preferences.core.floatPreferencesKey(name)] = value
+                    is Double -> prefs[androidx.datastore.preferences.core.doublePreferencesKey(name)] = value
+                    is String -> prefs[androidx.datastore.preferences.core.stringPreferencesKey(name)] = value
+                    is Set<*> -> prefs[androidx.datastore.preferences.core.stringSetPreferencesKey(name)] = value as Set<String>
+                }
+            }
+        }
+    }
+
     private val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
     private val SELECTED_ASR_MODEL = stringPreferencesKey("selected_asr_model")
     private val SELECTED_LLM_MODEL = stringPreferencesKey("selected_llm_model")

@@ -184,6 +184,33 @@ class BibleStore(context: Context, name: String? = FILE_NAME) :
         } finally { db.endTransaction() }
     }
 
+    /** Every highlight as JSON rows, for a backup (docs/PRD_M0.md §4.3). */
+    fun exportHighlights(): String = readableDatabase.rawQuery("SELECT book, chapter, verse, color, created_at FROM highlights", null).use { c ->
+        val rows = org.json.JSONArray()
+        while (c.moveToNext()) rows.put(org.json.JSONObject().apply {
+            put("book", c.getString(0)); put("chapter", c.getInt(1)); put("verse", c.getInt(2)); put("color", c.getString(3)); put("at", c.getLong(4))
+        })
+        rows.toString()
+    }
+
+    /** Replaces every highlight with those in [json] (from [exportHighlights]). */
+    fun importHighlights(json: String) {
+        val rows = org.json.JSONArray(json)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL("DELETE FROM highlights")
+            for (i in 0 until rows.length()) {
+                val r = rows.getJSONObject(i)
+                db.insertWithOnConflict("highlights", null, ContentValues().apply {
+                    put("book", r.getString("book")); put("chapter", r.getInt("chapter")); put("verse", r.getInt("verse"))
+                    put("color", r.getString("color")); put("created_at", r.optLong("at"))
+                }, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
     /** Every highlight, newest first — for the Scripture page. */
     fun allHighlights(limit: Int = 500): List<Triple<ScriptureReference, String, Long>> = readableDatabase.rawQuery(
         "SELECT book, chapter, verse, color, created_at FROM highlights ORDER BY created_at DESC LIMIT ?", arrayOf(limit.toString())
