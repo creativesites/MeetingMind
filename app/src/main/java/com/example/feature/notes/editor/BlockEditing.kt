@@ -131,14 +131,21 @@ object BlockEditing {
             return EditResult(blocks.replaceAt(index, current.markEdited().copy(content = content)), FocusTarget(current.id, before.text.length + rich.text.length))
         }
 
+        // Chat-app buttons, lost code fences and flattened tables are fixed on the way in; the
+        // paste as it arrived is kept for "Show original".
+        val tidy = com.example.core.notes.AiPasteCleanup.clean(pasted)
         val markdown = markdownSource(pasted, clipboardMarkdown)
+        val payload = buildMap {
+            if (markdown.trim() != pasted.trim()) put(NoteBlock.PAYLOAD_RAW, pasted.trim())
+            tidy.source?.let { put(NoteBlock.PAYLOAD_PASTE_SOURCE, it) }
+        }
         val out = mutableListOf<NoteBlock>()
         val keepBefore = before.text.isNotBlank()
         if (keepBefore) out += current.markEdited().copy(content = before)
         out += NoteBlock(
             id = if (keepBefore) NoteRepository.newId("block") else current.id,
             noteId = current.noteId, position = 0, type = NoteBlockType.MARKDOWN,
-            content = RichText.plain(markdown), source = BlockSource.USER, sectionKey = current.sectionKey
+            content = RichText.plain(markdown), payload = payload, source = BlockSource.USER, sectionKey = current.sectionKey
         )
         val tail = NoteBlock(
             id = NoteRepository.newId("block"), noteId = current.noteId, position = 0,
@@ -160,9 +167,30 @@ object BlockEditing {
      */
     internal fun markdownSource(pasted: String, clipboardMarkdown: String?): String {
         val text = pasted.trim('\n', ' ')
-        clipboardMarkdown?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        if (com.example.core.notes.MarkdownImport.looksLikeMarkdown(text)) return text
-        return text.lines().map { it.trimEnd() }.filter { it.isNotBlank() }.joinToString("\n\n")
+        clipboardMarkdown?.trim()?.takeIf { it.isNotEmpty() }?.let { return com.example.core.notes.AiPasteCleanup.clean(it).markdown }
+        val tidied = com.example.core.notes.AiPasteCleanup.clean(text).markdown
+        if (com.example.core.notes.MarkdownImport.looksLikeMarkdown(text) && !com.example.core.notes.AiPasteCleanup.looksLikeAiAnswer(text)) return tidied
+        return keepLines(tidied)
+    }
+
+    /**
+     * Text copied from a rendered page has one line per paragraph or item; Markdown would run
+     * those together. A blank line goes between plain lines — never inside code, tables, lists or quotes.
+     */
+    internal fun keepLines(markdown: String): String {
+        val out = StringBuilder()
+        var fenced = false
+        var previousPlain = false
+        for (line in markdown.lines()) {
+            val t = line.trim()
+            if (t.startsWith("```")) fenced = !fenced
+            val plain = !fenced && t.isNotEmpty() && !t.startsWith("```") && !t.startsWith("|") && !t.startsWith(">") &&
+                !t.startsWith("#") && !Regex("^([-*+]|\\d+[.)])\\s").containsMatchIn(t)
+            if (plain && previousPlain) out.append('\n')
+            out.append(line).append('\n')
+            previousPlain = plain
+        }
+        return out.toString().replace(Regex("\n{3,}"), "\n\n").trim()
     }
 
     /** Text blocks from [from] to [to] (inclusive) as Markdown blocks; media, recordings and AI text stay as they are. */

@@ -116,6 +116,12 @@ internal fun MarkdownBlock(
     }
 }
 
+/** Markdown shown formatted, read-only — for previews. */
+@Composable
+internal fun MarkdownPreview(items: List<NoteBlock>, serif: Boolean = false) {
+    Column { items.forEachIndexed { i, item -> MarkdownItem(item, items, i, serif, onTap = {}) } }
+}
+
 /** One heading, paragraph, list item, table or picture inside a Markdown block, read-only. */
 @Composable
 private fun MarkdownItem(item: NoteBlock, all: List<NoteBlock>, index: Int, serif: Boolean, onTap: () -> Unit) {

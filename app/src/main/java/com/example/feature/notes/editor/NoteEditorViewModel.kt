@@ -525,6 +525,120 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         insert(listOf(block))
     }
 
+    // ------------------------------------------------------------ paste tools
+
+    /** The tools sheet for one Markdown block: what ran, and its result waiting to be accepted. */
+    data class PasteToolState(
+        val blockId: String,
+        val tool: com.example.core.notes.PasteTool? = null,
+        val busy: Boolean = false,
+        val progress: String? = null,
+        val result: String? = null,
+        val error: String? = null,
+        val provider: String? = null
+    )
+
+    private val _pasteTools = MutableStateFlow<PasteToolState?>(null)
+    val pasteTools: StateFlow<PasteToolState?> = _pasteTools.asStateFlow()
+    private var pasteToolJob: kotlinx.coroutines.Job? = null
+
+    fun openPasteTools(blockId: String) { _pasteTools.value = PasteToolState(blockId) }
+    fun closePasteTools() { pasteToolJob?.cancel(); _pasteTools.value = null }
+
+    fun runPasteTool(tool: com.example.core.notes.PasteTool) {
+        val state = _pasteTools.value ?: return
+        val block = _blocks.value.firstOrNull { it.id == state.blockId } ?: return
+        val text = block.content.text
+        pasteToolJob?.cancel()
+        _pasteTools.value = state.copy(tool = tool, busy = true, result = null, error = null, progress = "${tool.label}…")
+        pasteToolJob = viewModelScope.launch {
+            val T = com.example.core.notes.PasteTool
+            val pieces = if (T.rewritesWhole(tool)) T.chunks(text) else listOf(text.take(120_000))
+            val done = StringBuilder()
+            for ((i, piece) in pieces.withIndex()) {
+                if (pieces.size > 1) _pasteTools.value = _pasteTools.value?.copy(progress = "${tool.label} · part ${i + 1} of ${pieces.size}…")
+                val r = geminiTransport.execute(
+                    com.example.ai.cloud.GeminiRequest(
+                        modelId = com.example.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
+                        systemInstruction = T.SYSTEM,
+                        prompt = T.prompt(tool, piece),
+                        temperature = 0.3f
+                    )
+                )
+                if (r !is com.example.ai.common.AiResult.Success) {
+                    val why = (r as? com.example.ai.common.AiResult.Failed)?.message ?: (r as? com.example.ai.common.AiResult.ModelUnavailable)?.message ?: "The AI couldn't do that just now."
+                    _pasteTools.value = _pasteTools.value?.copy(busy = false, error = why, progress = null)
+                    return@launch
+                }
+                if (done.isNotEmpty()) done.append("\n\n")
+                done.append(T.clean(r.value))
+            }
+            _pasteTools.value = _pasteTools.value?.copy(busy = false, result = done.toString().trim(), progress = null, provider = com.example.ai.cloud.DeepSeek.lastProvider)
+        }
+    }
+
+    /** The free tidy: chat buttons out, code boxed, tables rebuilt. No AI, instant. */
+    fun tidyWithoutAi(blockId: String) {
+        val i = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
+        val block = _blocks.value[i]
+        val tidy = com.example.core.notes.AiPasteCleanup.clean(block.content.text)
+        if (tidy.markdown == block.content.text.trim()) { _message.value = "Already tidy"; return }
+        replaceMarkdown(i, tidy.markdown, "Tidy")
+        _message.value = tidy.changes.joinToString(" · ").ifBlank { "Tidied" }
+    }
+
+    fun acceptPasteTool(replace: Boolean) {
+        val state = _pasteTools.value ?: return
+        val result = state.result ?: return
+        val i = _blocks.value.indexOfFirst { it.id == state.blockId }.takeIf { it >= 0 } ?: return
+        val tool = state.tool
+        if (replace && tool?.output != com.example.core.notes.PasteTool.Output.BELOW) {
+            replaceMarkdown(i, result, tool?.label ?: "AI")
+            _message.value = "${tool?.label ?: "Done"} · Step back from the block's tools"
+        } else {
+            val added = NoteBlock(id = NoteRepository.newId("block"), noteId = noteId, position = 0, type = NoteBlockType.MARKDOWN,
+                content = RichText.plain(result), sectionKey = _blocks.value[i].sectionKey)
+            update(BlockEditing.insertAfter(_blocks.value, i, listOf(added)).blocks)
+            _message.value = "${tool?.label ?: "Result"} added below"
+        }
+        _pasteTools.value = null
+    }
+
+    /** Replaces a Markdown block's text, keeping the old text in its history for Step back. */
+    private fun replaceMarkdown(index: Int, text: String, label: String) {
+        val block = _blocks.value[index]
+        val history = historyOf(block) + (label to block.content.text)
+        val payload = block.payload + (NoteBlock.PAYLOAD_HISTORY to encodeHistory(history.takeLast(8)))
+        snapshotBefore(com.example.core.notes.VersionReason.BEFORE_AI, label)
+        update(_blocks.value.replace(index, block.copy(content = RichText.plain(text), payload = payload)))
+    }
+
+    fun stepBack(blockId: String) {
+        val i = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
+        val block = _blocks.value[i]
+        val history = historyOf(block)
+        val (label, text) = history.lastOrNull() ?: return
+        update(_blocks.value.replace(i, block.copy(content = RichText.plain(text), payload = block.payload + (NoteBlock.PAYLOAD_HISTORY to encodeHistory(history.dropLast(1))))))
+        _message.value = "Back to before \"$label\""
+        _pasteTools.value = _pasteTools.value?.copy(result = null, tool = null, error = null)
+    }
+
+    fun restoreOriginal(blockId: String) {
+        val i = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
+        val raw = _blocks.value[i].payload[NoteBlock.PAYLOAD_RAW] ?: return
+        replaceMarkdown(i, raw, "Original")
+        _message.value = "Showing the paste as it arrived · Step back to undo"
+        _pasteTools.value = null
+    }
+
+    internal fun historyOf(block: NoteBlock): List<Pair<String, String>> = runCatching {
+        val a = org.json.JSONArray(block.payload[NoteBlock.PAYLOAD_HISTORY] ?: return emptyList())
+        (0 until a.length()).map { a.getJSONObject(it).let { o -> o.getString("tool") to o.getString("text") } }
+    }.getOrDefault(emptyList())
+
+    private fun encodeHistory(h: List<Pair<String, String>>) =
+        org.json.JSONArray(h.map { (tool, text) -> org.json.JSONObject().put("tool", tool).put("text", text) }).toString()
+
     /** A new, empty Markdown block, opened for writing. */
     fun insertMarkdown() {
         val block = NoteBlock(id = NoteRepository.newId("block"), noteId = noteId, position = 0, type = NoteBlockType.MARKDOWN)

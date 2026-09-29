@@ -604,6 +604,21 @@ fun NoteEditorScreen(
         onCreate = { name -> viewModel.createNotebookAndMove(name); showNotebooks = false },
         onDismiss = { showNotebooks = false }
     )
+    val pasteTools by viewModel.pasteTools.collectAsState()
+    pasteTools?.let { state ->
+        val target = blocks.firstOrNull { it.id == state.blockId }
+        PasteToolsSheet(
+            state = state,
+            block = target,
+            history = target?.let { viewModel.historyOf(it) }.orEmpty(),
+            onRun = viewModel::runPasteTool,
+            onTidy = { viewModel.tidyWithoutAi(state.blockId) },
+            onAccept = viewModel::acceptPasteTool,
+            onStepBack = { viewModel.stepBack(state.blockId) },
+            onOriginal = { viewModel.restoreOriginal(state.blockId) },
+            onDismiss = viewModel::closePasteTools
+        )
+    }
     aiEdit?.let { edit ->
         AiEditSheet(
             edit = edit,
@@ -746,6 +761,7 @@ fun NoteEditorScreen(
             onDelete = { viewModel.deleteBlock(b.id); blockMenuFor = null },
             onDismiss = { blockMenuFor = null },
             onEditMarkdown = if (b.type == NoteBlockType.MARKDOWN) ({ viewModel.editMarkdown(b.id); blockMenuFor = null }) else null,
+            onAiTools = if (b.type == NoteBlockType.MARKDOWN) ({ viewModel.openPasteTools(b.id); blockMenuFor = null }) else null,
             onSplitMarkdown = if (b.type == NoteBlockType.MARKDOWN) ({ viewModel.convertToBlocks(b.id); blockMenuFor = null }) else null
         )
     }
@@ -881,14 +897,24 @@ private fun BlockContent(
         }
         block.type == NoteBlockType.MARKDOWN -> {
             val editingId by viewModel.editingMarkdown.collectAsState()
-            MarkdownBlock(
-                block = block,
-                serif = serif,
-                editing = editingId == block.id,
-                onEdit = { open -> viewModel.editMarkdown(if (open) block.id else null) },
-                onText = { viewModel.setCaption(block.id, it) },
-                onToggleExpanded = { viewModel.toggleFold(block.id, PAYLOAD_EXPANDED) }
-            )
+            Column {
+                MarkdownBlock(
+                    block = block,
+                    serif = serif,
+                    editing = editingId == block.id,
+                    onEdit = { open -> viewModel.editMarkdown(if (open) block.id else null) },
+                    onText = { viewModel.setCaption(block.id, it) },
+                    onToggleExpanded = { viewModel.toggleFold(block.id, PAYLOAD_EXPANDED) }
+                )
+                if (editingId != block.id && block.content.text.isNotBlank()) {
+                    MarkdownFooter(
+                        block = block,
+                        canStepBack = block.payload[NoteBlock.PAYLOAD_HISTORY]?.let { it.length > 2 } == true,
+                        onTools = { viewModel.openPasteTools(block.id) },
+                        onStepBack = { viewModel.stepBack(block.id) }
+                    )
+                }
+            }
         }
         block.type.isText -> TextBlock(
             block = block,

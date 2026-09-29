@@ -129,6 +129,12 @@ data class NoteBlock(
         const val EMBED_LINK = "link"
         /** "1" on a heading whose section is folded away, or on a long block shown short. */
         const val PAYLOAD_FOLDED = "folded"
+        /** A pasted answer exactly as it arrived, before any tidying — "Show original". */
+        const val PAYLOAD_RAW = "raw"
+        /** Where a paste came from when it can be told: ChatGPT, Claude, Gemini, DeepSeek. */
+        const val PAYLOAD_PASTE_SOURCE = "pasteSource"
+        /** Earlier versions of a Markdown block, newest last, as JSON [{"tool":…,"text":…}] — "Step back". */
+        const val PAYLOAD_HISTORY = "history"
     }
 }
 
