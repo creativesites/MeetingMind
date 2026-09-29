@@ -31,6 +31,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -204,7 +206,6 @@ fun NoteEditorScreen(
     var showAssistant by remember { mutableStateOf(false) }
     var taskDraft by remember { mutableStateOf<com.example.core.tasks.Task?>(null) }
     var exporting by remember { mutableStateOf(false) }
-    var pendingExport by remember { mutableStateOf<Pair<ExportFormat, Boolean>?>(null) }
     var pendingCapture by remember { mutableStateOf<Pair<File, Boolean>?>(null) }
 
     LaunchedEffect(gone) { if (gone) onNavigateBack() }
@@ -227,19 +228,17 @@ fun NoteEditorScreen(
         pendingCapture?.let { (file, video) -> if (ok) viewModel.adoptCapture(file, video) else file.delete() }
         pendingCapture = null
     }
-    val createDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri: Uri? ->
-        val request = pendingExport
-        pendingExport = null
-        if (uri == null || request == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            exporting = true
-            val ok = runCatching {
-                context.contentResolver.openOutputStream(uri)?.use { viewModel.exportTo(request.first, request.second, it) } ?: false
-            }.getOrDefault(false)
-            exporting = false
-            showExport = false
-            snackbar.showSnackbar(if (ok) "Saved ${request.first.displayName}" else "Export failed")
-        }
+    // The file picker is asked for this format's own type, so the name keeps its extension.
+    val createDocument = rememberLauncherForActivityResult(object : androidx.activity.result.contract.ActivityResultContract<Pair<String, String>, Uri?>() {
+        override fun createIntent(context: android.content.Context, input: Pair<String, String>) =
+            android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                .setType(input.second).putExtra(android.content.Intent.EXTRA_TITLE, input.first)
+        override fun parseResult(resultCode: Int, intent: android.content.Intent?): Uri? = intent?.data.takeIf { resultCode == android.app.Activity.RESULT_OK }
+    }) { uri: Uri? ->
+        val request = viewModel.pendingExport
+        viewModel.pendingExport = null
+        showExport = false
+        if (uri != null && request != null) viewModel.saveExportTo(uri, request.first, request.second)
     }
 
     LaunchedEffect(loaded) {
@@ -365,7 +364,9 @@ fun NoteEditorScreen(
             }
         },
         bottomBar = {
-            Box(Modifier.imePadding().then(if (!textFocused) Modifier.navigationBarsPadding() else Modifier)) {
+            // The gesture bar's space is kept whenever the keyboard isn't up — including when a field still has focus but the keyboard was dismissed.
+            val keyboardUp = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+            Box(Modifier.imePadding().then(if (!keyboardUp) Modifier.navigationBarsPadding() else Modifier)) {
                 if (textFocused) {
                     FormattingToolbar(
                         isActive = { style -> style in activeStyles },
@@ -653,8 +654,8 @@ fun NoteEditorScreen(
         isPrivate = note?.isPrivate == true,
         busy = exporting,
         onSave = { format, includePrivate ->
-            pendingExport = format to includePrivate
-            createDocument.launch("${viewModel.fileSafeTitle()}.${format.extension}")
+            viewModel.pendingExport = format to includePrivate
+            createDocument.launch("${viewModel.fileSafeTitle()}.${format.extension}" to format.mimeType)
         },
         onShare = { format, includePrivate ->
             scope.launch {

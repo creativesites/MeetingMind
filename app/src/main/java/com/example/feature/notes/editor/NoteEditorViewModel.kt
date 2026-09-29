@@ -1058,6 +1058,26 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         }
     }
 
+    /** What the person chose in the export sheet before the system file picker opened; lives here so it survives the picker. */
+    var pendingExport: Pair<ExportFormat, Boolean>? = null
+    private var lastExportError: String? = null
+
+    /**
+     * Writes an export to the place the person picked. Runs in this view-model's scope, not the
+     * screen's: the file picker takes the app away, and whatever happens to the screen meanwhile
+     * (a lock, a rotation) must not cancel the save. Says what happened either way.
+     */
+    fun saveExportTo(uri: android.net.Uri, format: ExportFormat, includePrivate: Boolean) {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            lastExportError = null
+            val ok = runCatching {
+                withContext(Dispatchers.IO) { app.contentResolver.openOutputStream(uri, "wt") }?.use { out -> exportTo(format, includePrivate, out) } ?: false
+            }.onFailure { lastExportError = it.message ?: it::class.simpleName }.getOrDefault(false)
+            _message.value = if (ok) "Saved ${format.displayName}" else "Couldn't save: ${lastExportError ?: "the file couldn't be written"}"
+        }
+    }
+
     suspend fun exportTo(format: ExportFormat, includePrivate: Boolean, out: OutputStream): Boolean {
         flush()
         return withContext(Dispatchers.IO) {
@@ -1067,7 +1087,8 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                 privateSectionKeys = com.example.core.model.Workflows.template(workflow).privateKeys,
                 serifBody = com.example.core.model.Workflows.usesSerif(workflow)
             )
-            runCatching { NoteExportService(getApplication(), database).export(noteId, format, out, options) }
+            runCatching { NoteExportService(getApplication(), database).export(noteId, format, out, options).also { out.flush() } }
+                .onFailure { lastExportError = it.message ?: it::class.simpleName }
                 .getOrDefault(false)
         }
     }

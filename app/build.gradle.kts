@@ -17,8 +17,8 @@ android {
     applicationId = "com.craftflowtechnologies.meetingmind"
     minSdk = 24
     targetSdk = 36
-    versionCode = 32
-    versionName = "1.0-v32"
+    versionCode = 33
+    versionName = "1.0-v33"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -113,7 +113,8 @@ android {
     }
   }
 
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  // Robolectric sandboxes and screenshot bitmaps outgrow Gradle's default 512 MB test heap, which shows up as UI tests waiting forever.
+  testOptions { unitTests { isIncludeAndroidResources = true; all { it.maxHeapSize = "3g"; it.jvmArgs("-Dfile.encoding=UTF-8") } } }
   // Room's exported schemas, one JSON per database version, so migrations are tested against the
   // real shape of every version (MigrationTestHelper reads them from test assets).
   sourceSets.getByName("test").assets.srcDir("$projectDir/schemas")

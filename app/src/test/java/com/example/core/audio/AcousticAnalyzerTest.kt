@@ -43,7 +43,7 @@ class AcousticAnalyzerTest {
         assertTrue(share(perSecond(silence(10)), AcousticActivity.SILENCE) >= 0.9)
     }
 
-    @Test fun `a service becomes speech, then worship, then speech — with boundaries near the truth`() {
+    @Test fun `a service becomes speech then worship then speech with boundaries near the truth`() {
         val service = speech(40) + music(60) + speech(40)
         val segs = AcousticAnalyzer.segments(perSecond(service))
         assertEquals(listOf(AcousticActivity.SPEECH, AcousticActivity.MUSIC, AcousticActivity.SPEECH), segs.map { it.activity })
