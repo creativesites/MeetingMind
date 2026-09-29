@@ -294,7 +294,13 @@ fun MeetMindApp() {
                 onSetUp = { setupVm.setUp() },
                 onOpenSetup = { navController.navigate(Routes.SETUP) },
                 onSnoozeSetup = { setupVm.snooze() },
-                tourEnabled = true
+                tourEnabled = true,
+                work = viewModel<com.example.feature.work.WorkViewModel>(viewModelStoreOwner = context as ComponentActivity),
+                onOpenWrapUp = { navController.navigate(Routes.wrapUpRoute(it)) },
+                onFollowUp = { navController.navigate(Routes.wrapUpRoute(it, compose = true)) },
+                onOpenWork = { navController.navigate(Routes.WORK) { launchSingleTop = true } },
+                onOpenPerson = { navController.navigate(Routes.personRoute(it)) },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
             )
         }
 
@@ -634,7 +640,10 @@ fun MeetMindApp() {
                 onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
             )
         }
-        composable(Routes.WRAP_UP, arguments = listOf(navArgument("meetingId") { type = NavType.StringType })) { entry ->
+        composable(Routes.WRAP_UP, arguments = listOf(
+            navArgument("meetingId") { type = NavType.StringType },
+            navArgument("compose") { type = NavType.BoolType; defaultValue = false }
+        )) { entry ->
             val meetingId = entry.arguments?.getString("meetingId").orEmpty()
             val app = context.applicationContext as android.app.Application
             val vm = remember(meetingId) { com.example.feature.work.WrapUpViewModel(app, meetingId) }
@@ -647,7 +656,8 @@ fun MeetMindApp() {
                     }
                 },
                 onPlay = { at -> navController.navigate(Routes.meetingDetailRoute(meetingId, at)) },
-                onOpenPerson = { navController.navigate(Routes.personRoute(it)) }
+                onOpenPerson = { navController.navigate(Routes.personRoute(it)) },
+                startComposing = entry.arguments?.getBoolean("compose") == true
             )
         }
         composable(Routes.WORK_SETTINGS) {
@@ -689,6 +699,7 @@ fun MeetMindApp() {
                 onNavigateBottomNav = navigateToPrimary,
                 onOpenBible = { navController.navigate(Routes.bibleRoute()) },
                 onOpenSetup = { navController.navigate(Routes.SETUP) },
+                onOpenWork = { navController.navigate(Routes.WORK_SETTINGS) },
                 onReplayTour = {
                     recoveryScope.launch {
                         com.example.core.datastore.UserPreferencesManager(context).setTourCompleted(false)

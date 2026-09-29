@@ -80,7 +80,8 @@ fun WrapUpScreen(
     onNavigateBack: () -> Unit,
     onDone: (noteId: String?) -> Unit,
     onPlay: (Long?) -> Unit,
-    onOpenPerson: (String) -> Unit
+    onOpenPerson: (String) -> Unit,
+    startComposing: Boolean = false
 ) {
     val meeting by viewModel.meeting.collectAsState()
     val items by viewModel.items.collectAsState()
@@ -94,7 +95,7 @@ fun WrapUpScreen(
     var editing by remember { mutableStateOf<WorkItem?>(null) }
     var naming by remember { mutableStateOf(false) }
     var projectPicker by remember { mutableStateOf(false) }
-    var composing by remember { mutableStateOf(false) }
+    var composing by remember { mutableStateOf(startComposing) }
     var contactFor by remember { mutableStateOf<com.example.core.work.Person?>(null) }
     var showAll by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf("") }
@@ -152,6 +153,12 @@ fun WrapUpScreen(
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 with.forEach { p -> Chip(p.name) { onOpenPerson(p.id) } }
                                 if (with.isEmpty()) Text("Name the speakers to add people", fontSize = 13.sp, color = InkMuted)
+                            }
+                        }
+                        val keyMoments = note?.metadata?.let { m -> com.example.core.work.Marks.keyMoments(org.json.JSONObject(m).toString()) }.orEmpty()
+                        if (keyMoments.isNotEmpty()) MetaRow("Key moments") {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                keyMoments.forEach { at -> Chip("⭐ " + formatTime(at)) { onPlay(at) } }
                             }
                         }
                         if (speakers.size > 1 || unnamed.isNotEmpty()) MetaRow("Speakers") {

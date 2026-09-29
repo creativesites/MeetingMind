@@ -175,6 +175,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    val workSettings: kotlinx.coroutines.flow.StateFlow<com.example.core.work.WorkSettings> = userPrefs.workSettings
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, com.example.core.work.WorkSettings())
     fun setSpaces(spaces: Set<com.example.core.model.NotebookSpace>) = viewModelScope.launch { userPrefs.setSpaces(spaces) }
     fun setLook(look: com.example.core.identity.LookAndFeel) = viewModelScope.launch { userPrefs.setLook(look) }
     fun setCardStyle(style: com.example.core.identity.CardStyle) = viewModelScope.launch { userPrefs.setCardStyle(style) }
@@ -210,7 +212,8 @@ fun SettingsScreen(
     onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit = {},
     onOpenBible: () -> Unit = {},
     onOpenSetup: () -> Unit = {},
-    onReplayTour: () -> Unit = {}
+    onReplayTour: () -> Unit = {},
+    onOpenWork: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs by viewModel.preferencesState.collectAsState()
@@ -353,6 +356,14 @@ fun SettingsScreen(
                 }
                 settingsRow {
                     SettingsNavRow(title = "Look & feel", subtitle = prefs.identity.look.label + " — " + prefs.identity.look.description, onClick = { showLook = true })
+                }
+                if (com.example.core.model.NotebookSpace.WORK in prefs.identity.spaces) settingsRow {
+                    val work by viewModel.workSettings.collectAsState()
+                    SettingsNavRow(
+                        title = "Work",
+                        subtitle = work.profile.label + " · " + work.terms.organisation + " & " + work.terms.project + if (work.keepOnDevice) " · on this phone" else "",
+                        onClick = onOpenWork
+                    )
                 }
                 settingsRow {
                     SettingsValueRow(

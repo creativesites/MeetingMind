@@ -122,6 +122,13 @@ object Greetings {
         return pool[Math.floorMod(seed, pool.size)].format(name)
     }
 
+    /** "Good morning, Ana": for people who'd rather Home didn't joke (PLAN_PROFESSIONAL.md §8.2). */
+    fun plain(identity: AppIdentity, now: Calendar = Calendar.getInstance()): String {
+        val hour = now.get(Calendar.HOUR_OF_DAY)
+        val part = when { hour < 12 -> "Good morning"; hour < 18 -> "Good afternoon"; else -> "Good evening" }
+        return identity.firstName?.let { "$part, $it" } ?: part
+    }
+
     /** "3 meetings today · 1 recording processing" — only the parts that are true. */
     fun contextLine(eventsToday: Int, processing: Int, answeredThisWeek: Int): String? = listOfNotNull(
         eventsToday.takeIf { it > 0 }?.let { "$it ${if (it == 1) "event" else "events"} today" },

@@ -31,10 +31,11 @@ object Routes {
     // Work (docs/PLAN_PROFESSIONAL.md §7).
     const val WORK = "work"
     const val PERSON = "person/{personId}"
-    const val WRAP_UP = "wrapup/{meetingId}"
+    const val WRAP_UP = "wrapup/{meetingId}?compose={compose}"
     const val WORK_SETTINGS = "work_settings"
     fun personRoute(personId: String) = "person/$personId"
-    fun wrapUpRoute(meetingId: String) = "wrapup/$meetingId"
+    /** [compose] opens the follow-up composer straight away (Home → Follow-ups to send). */
+    fun wrapUpRoute(meetingId: String, compose: Boolean = false) = "wrapup/$meetingId" + if (compose) "?compose=true" else ""
     fun prayRoute(mode: String? = null) = "pray" + (mode?.let { "?mode=$it" } ?: "")
 
     fun storiesRoute(start: String? = null) = "stories" + (start?.let { "?start=$it" } ?: "")

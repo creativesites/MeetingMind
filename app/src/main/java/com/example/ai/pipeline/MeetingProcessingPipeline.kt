@@ -591,6 +591,12 @@ class MeetingProcessingPipeline(
                 val starts = diarizedSegments.associate { it.id to it.startMs }
                 persistIntelligence(meetingId, summary, itemDao, topicDao, noteId, projectId, existingMeeting.createdAt, starts)
             }
+            // Marks tapped while recording meet what extraction found (docs/PLAN_PROFESSIONAL.md §4.2).
+            runCatching {
+                com.example.core.work.Marks.reconcile(database, meetingId, diarizedSegments.map {
+                    com.example.core.work.Marks.Segment(it.id, it.startMs, it.endMs, it.speakerId, it.cleanedText ?: it.text)
+                })
+            }.onFailure { Log.w(PERF_TAG, "Marks not reconciled: ${it.message}") }
 
             embeddingDao.insertEmbeddings(embeddingEntities)
 

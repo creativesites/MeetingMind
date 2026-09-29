@@ -1,5 +1,7 @@
 package com.example.feature.today
 
+import com.example.feature.work.workHomeItems
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -124,7 +126,14 @@ fun TodayScreen(
     onOpenSetup: () -> Unit = {},
     onSnoozeSetup: () -> Unit = {},
     /** Runs the first-run tour when it hasn't been seen. */
-    tourEnabled: Boolean = false
+    tourEnabled: Boolean = false,
+    /** The Work Home's data (docs/PLAN_PROFESSIONAL.md §7); null shows no work sections. */
+    work: com.example.feature.work.WorkViewModel? = null,
+    onOpenWrapUp: (String) -> Unit = {},
+    onFollowUp: (String) -> Unit = {},
+    onOpenWork: () -> Unit = {},
+    onOpenPerson: (String) -> Unit = {},
+    onOpenMeeting: (String, Long?) -> Unit = { _, _ -> }
 ) {
     val coachTargets = remember { com.example.core.ui.CoachTargets() }
     val tourDone by viewModel.tourCompleted.collectAsState()
@@ -149,6 +158,11 @@ fun TodayScreen(
     val calendarOn by viewModel.calendarOn.collectAsState()
     val promptDismissed by viewModel.calendarPromptDismissed.collectAsState()
     val now by viewModel.now.collectAsState()
+    // Work shows when the person uses the Work space and isn't looking at Faith only.
+    val workHome = work?.let { com.example.feature.work.rememberWorkHome(it) }
+    val showWork = workHome != null && com.example.core.model.NotebookSpace.WORK in identity.spaces && focus != TodayFocus.FAITH
+    var editingItem by remember { mutableStateOf<com.example.core.work.WorkItem?>(null) }
+    var nudgingItem by remember { mutableStateOf<com.example.core.work.WorkItem?>(null) }
 
     val listState = rememberLazyListState()
     var quick by remember { mutableStateOf<TimelineItem?>(null) }
@@ -218,8 +232,14 @@ fun TodayScreen(
             item(key = "hero") {
                 HomeHeroHeader(
                     identity = identity,
-                    greeting = remember(identity, now / 3_600_000) { Greetings.pick(identity) },
-                    contextLine = contextLine,
+                    greeting = remember(identity, now / 3_600_000, workHome?.settings?.greeting) {
+                        when (workHome?.settings?.greeting?.takeIf { !identity.faithFirst }) {
+                            com.example.core.work.GreetingStyle.PLAIN -> Greetings.plain(identity)
+                            com.example.core.work.GreetingStyle.OFF -> identity.firstName ?: ""
+                            else -> Greetings.pick(identity)
+                        }
+                    },
+                    contextLine = listOfNotNull(contextLine, workHome?.line?.takeIf { showWork }).joinToString(" · ").ifEmpty { null },
                     streakLabel = stats.streakLabel,
                     weekLabel = stats.weekLabel,
                     inboxCount = inboxCount,
@@ -262,6 +282,14 @@ fun TodayScreen(
                         modifier = Modifier.padding(top = 14.dp)
                     )
                 }
+            }
+
+            if (showWork && workHome != null) {
+                workHomeItems(
+                    workHome, work!!, onOpenWrapUp = onOpenWrapUp, onFollowUp = onFollowUp, onOpenWork = onOpenWork,
+                    onOpenPerson = onOpenPerson, onOpenMeeting = onOpenMeeting,
+                    onEdit = { editingItem = it }, onNudge = { nudgingItem = it }
+                )
             }
 
             if (storyKinds.isNotEmpty()) item(key = "stories") {
@@ -382,6 +410,9 @@ fun TodayScreen(
     }
     }
 
+    work?.let { wvm ->
+        com.example.feature.work.WorkHomeSheets(wvm, editingItem, nudgingItem, { editingItem = null }, { nudgingItem = null }, onOpenMeeting)
+    }
     quick?.let { item ->
         QuickActions(
             item = item,

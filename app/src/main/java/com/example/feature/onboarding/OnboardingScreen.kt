@@ -131,6 +131,11 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setLook(look: com.example.core.identity.LookAndFeel) { lookTouched = true; _look.value = look }
 
+    /** What kind of work, when Work is picked (docs/PLAN_PROFESSIONAL.md §8.8). Skipping means General. */
+    private val _workProfile = MutableStateFlow<com.example.core.work.WorkProfile?>(null)
+    val workProfile: StateFlow<com.example.core.work.WorkProfile?> = _workProfile.asStateFlow()
+    fun setWorkProfile(profile: com.example.core.work.WorkProfile) { _workProfile.value = profile }
+
     /** The offline pack by default: most people want it to just work, privately. */
     private val _setup = MutableStateFlow(SetupChoice.OFFLINE_PACK)
     val setup: StateFlow<SetupChoice> = _setup.asStateFlow()
@@ -150,6 +155,15 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
             prefs.setUserName(_userName.value)
             prefs.setSpaces(_spaces.value)
             prefs.setLook(_look.value)
+            if (com.example.core.model.NotebookSpace.WORK in _spaces.value) {
+                val profile = _workProfile.value ?: com.example.core.work.WorkProfile.GENERAL
+                // Someone here only for work gets the Work tab; everyone else keeps Search.
+                val workFirst = com.example.core.model.NotebookSpace.FAITH !in _spaces.value
+                prefs.setWorkSettings(
+                    com.example.core.work.WorkSettings.forProfile(profile)
+                        .copy(tabSlot = if (workFirst) com.example.core.work.TabSlot.WORK else com.example.core.work.TabSlot.SEARCH)
+                )
+            }
             prefs.setWifiOnlyDownload(_wifiOnly.value)
             when (_setup.value) {
                 SetupChoice.OFFLINE_PACK -> runCatching {
@@ -181,6 +195,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
     val look by viewModel.look.collectAsState()
     val setup by viewModel.setup.collectAsState()
     val wifiOnly by viewModel.wifiOnly.collectAsState()
+    val workProfile by viewModel.workProfile.collectAsState()
 
     fun next() { forward = true; if (step < STEPS - 1) step++ else viewModel.completeOnboarding(onFinishOnboarding) }
     fun back() { forward = false; if (step > 0) step-- }
@@ -214,7 +229,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                         0 -> Welcome()
                         1 -> WhatItDoes()
                         2 -> NameStep(userName, viewModel::setUserName)
-                        3 -> SpacesStep(spaces, viewModel::setSpaces, look, viewModel::setLook)
+                        3 -> SpacesStep(spaces, viewModel::setSpaces, look, viewModel::setLook, workProfile, viewModel::setWorkProfile)
                         4 -> SetupStep(viewModel, setup, viewModel::setSetup, wifiOnly, viewModel::setWifiOnly)
                         else -> PermissionsStep()
                     }
@@ -316,10 +331,29 @@ private fun NameStep(name: String, onName: (String) -> Unit) {
 @Composable
 private fun SpacesStep(
     spaces: Set<com.example.core.model.NotebookSpace>, onSpaces: (Set<com.example.core.model.NotebookSpace>) -> Unit,
-    look: com.example.core.identity.LookAndFeel, onLook: (com.example.core.identity.LookAndFeel) -> Unit
+    look: com.example.core.identity.LookAndFeel, onLook: (com.example.core.identity.LookAndFeel) -> Unit,
+    workProfile: com.example.core.work.WorkProfile?, onWorkProfile: (com.example.core.work.WorkProfile) -> Unit
 ) {
     StepTitle("What's it for?", "Pick what you'll use it for — the app shows only those. Change it any time in Settings.")
     com.example.core.identity.SpacesPicker(spaces, onSpaces)
+    if (com.example.core.model.NotebookSpace.WORK in spaces) {
+        Text("What kind of work?", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 4.dp))
+        Text("Sets the words, meeting types and follow-ups to suit. Clinical and legal work stays on this phone.", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp))
+        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.example.core.work.WorkProfile.entries.forEach { p ->
+                val on = p == workProfile
+                Surface(
+                    onClick = { onWorkProfile(p) }, shape = RoundedCornerShape(50),
+                    color = if (on) Color.White else Color.White.copy(alpha = 0.08f),
+                    modifier = Modifier.testTag("work_profile_${p.name.lowercase()}")
+                ) {
+                    Text(p.label, color = if (on) Brand.Navy else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                }
+            }
+        }
+    }
     Text("How should it feel?", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
     com.example.core.identity.LookPicker(look, onLook)
     Spacer(Modifier.height(12.dp))

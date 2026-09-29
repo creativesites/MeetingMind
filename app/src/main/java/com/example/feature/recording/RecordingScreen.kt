@@ -145,6 +145,17 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         .flatMapLatest { it?.capacityWarning ?: flowOf(null) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    /** Taps during recording: key moments, actions, questions (docs/PLAN_PROFESSIONAL.md §4.2). */
+    private val _marks = MutableStateFlow<List<com.example.core.work.Mark>>(emptyList())
+    val marks: StateFlow<List<com.example.core.work.Mark>> = _marks
+
+    fun mark(kind: com.example.core.work.MarkKind) {
+        _marks.value = _marks.value + com.example.core.work.Mark(kind, durationMs.value)
+    }
+
+    val workSettings: StateFlow<com.example.core.work.WorkSettings> = com.example.core.datastore.UserPreferencesManager(application).workSettings
+        .stateIn(viewModelScope, SharingStarted.Eagerly, com.example.core.work.WorkSettings())
+
     private var currentMeetingId: String = UUID.randomUUID().toString()
     private var meetingTitle: String = "In-Person Discussion"
     private var recordingContext: com.example.core.model.RecordingContext = com.example.core.model.RecordingContext()
@@ -163,6 +174,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         meetingTitle = title
         this.recordingContext = context
         currentMeetingId = UUID.randomUUID().toString()
+        _marks.value = emptyList()
         ensureBound()
         viewModelScope.launch {
             val service = _boundService.filterNotNull().first()
@@ -190,7 +202,13 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     fun finishRecording(onComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit) {
         val service = _boundService.value ?: return
         service.stopRecording { meetingId, file, duration ->
-            if (file != null) onComplete(meetingId, file.absolutePath, duration)
+            val marks = _marks.value
+            _marks.value = emptyList()
+            viewModelScope.launch {
+                // The recording exists now, so its marks can be kept against it.
+                if (file != null) runCatching { com.example.core.work.Marks.save(com.example.core.database.MeetMindDatabase.getInstance(getApplication()), meetingId, marks) }
+                if (file != null) onComplete(meetingId, file.absolutePath, duration)
+            }
         }
     }
 
@@ -306,6 +324,9 @@ fun RecordingScreen(
     }
 
     val capacityWarning by viewModel.capacityWarning.collectAsState()
+    val marks by viewModel.marks.collectAsState()
+    val workSettings by viewModel.workSettings.collectAsState()
+    val isWork = com.example.core.model.Workflows.space(selectedType) == com.example.core.model.NotebookSpace.WORK
     LiveRecordingSurface(
         type = selectedType,
         title = meetingTitle,
@@ -320,7 +341,11 @@ fun RecordingScreen(
             if (state == RecordingState.RECORDING) viewModel.pauseRecording()
             else if (state == RecordingState.PAUSED) viewModel.resumeRecording()
         },
-        onFinish = { viewModel.finishRecording { meetingId, path, dur -> onRecordingComplete(meetingId, path, dur) } }
+        onFinish = { viewModel.finishRecording { meetingId, path, dur -> onRecordingComplete(meetingId, path, dur) } },
+        // Marks for anything with other people in it; a solo memo doesn't need them.
+        marks = marks.takeIf { selectedSpeakerCount != 1 },
+        onMark = viewModel::mark,
+        consentReminder = isWork && workSettings.consentReminder && selectedSpeakerCount != 1
     )
 
     if (showDiscardDialog) {
@@ -468,7 +493,10 @@ private fun LiveRecordingSurface(
     onRequestPermission: () -> Unit,
     onDiscard: () -> Unit,
     onToggle: () -> Unit,
-    onFinish: () -> Unit
+    onFinish: () -> Unit,
+    marks: List<com.example.core.work.Mark>? = null,
+    onMark: (com.example.core.work.MarkKind) -> Unit = {},
+    consentReminder: Boolean = false
 ) {
     val recording = state == RecordingState.RECORDING
     val accent = if (type in com.example.core.model.Workflows.faith) Color(0xFFF6D365) else Color(0xFFFB7185)
@@ -533,6 +561,7 @@ private fun LiveRecordingSurface(
             capacityWarning?.let {
                 Text(it, fontSize = 12.sp, color = Color(0xFFFCA5A5), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp, start = 24.dp, end = 24.dp).testTag("record_capacity_warning"))
             }
+            if (consentReminder) ConsentLine()
             Spacer(Modifier.weight(0.4f))
 
             // The last seconds of sound, flowing right to left.
@@ -550,6 +579,7 @@ private fun LiveRecordingSurface(
                 }
             }
             Spacer(Modifier.weight(0.6f))
+            if (marks != null) MarkBar(marks, enabled = recording, onMark = onMark)
 
             Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 28.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 LiveControl("Discard", Icons.Default.Close, Color.White.copy(alpha = 0.12f), Color.White, Modifier.testTag("record_discard_btn"), onDiscard)
@@ -567,6 +597,55 @@ private fun LiveRecordingSurface(
                 LiveControl("Finish", Icons.Default.Done, SuccessGreen, Color.White, Modifier.testTag("record_finish_btn"), onFinish)
             }
         }
+    }
+}
+
+/**
+ * Three taps while people talk (docs/PLAN_PROFESSIONAL.md §4.2). A light buzz confirms each; the
+ * count shows what's been flagged so far.
+ */
+@Composable
+private fun MarkBar(marks: List<com.example.core.work.Mark>, enabled: Boolean, onMark: (com.example.core.work.MarkKind) -> Unit) {
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        listOf(
+            com.example.core.work.MarkKind.KEY to "⭐",
+            com.example.core.work.MarkKind.ACTION to "✓",
+            com.example.core.work.MarkKind.QUESTION to "?"
+        ).forEach { (kind, symbol) ->
+            val count = marks.count { it.kind == kind }
+            Surface(
+                onClick = { haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onMark(kind) },
+                enabled = enabled, shape = RoundedCornerShape(16.dp), color = Color.White.copy(alpha = if (enabled) 0.12f else 0.05f),
+                modifier = Modifier.weight(1f).height(64.dp).testTag("mark_${kind.name.lowercase()}")
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Text(symbol + if (count > 0) "  $count" else "", fontSize = 20.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text(kind.label, fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
+                }
+            }
+        }
+    }
+}
+
+/** A gentle reminder, with a message to share, for recordings with other people (§6.4). */
+@Composable
+private fun ConsentLine() {
+    val context = LocalContext.current
+    var hidden by remember { mutableStateOf(false) }
+    if (hidden) return
+    Row(Modifier.padding(top = 12.dp, start = 24.dp, end = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Let people know you're recording.", fontSize = 12.sp, color = Color.White.copy(alpha = 0.75f))
+        Text(
+            "  Share a note", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.clickable {
+                val text = "I'm taking notes of this conversation with MeetingMind. The recording stays on my phone."
+                context.startActivity(android.content.Intent.createChooser(
+                    android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text), "Share"
+                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        )
+        Text("  ✕", fontSize = 12.sp, color = Color.White.copy(alpha = 0.5f), modifier = Modifier.clickable { hidden = true })
     }
 }
 
