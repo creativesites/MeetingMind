@@ -277,8 +277,8 @@ group, a sermon series. That keeps `PLAN_V1` §9 rule 1 intact.
 
 | User-facing | Stored as | Notes |
 | --- | --- | --- |
-| **Person** | `entities` row, `kind = PERSON` | Name, aliases, emails, phones, organisation, role, preferred channel, private notes. `isSelf` marks the user. |
-| **Organisation** | `entities` row, `kind = ORG` | Name, aliases, email domains, website. Membership is `entities.orgId`. One table, not two systems. |
+| **Person** | `people` row, `kind = PERSON` | Name, aliases, emails, phones, organisation, role, preferred channel, private notes. `isSelf` marks the user. |
+| **Organisation** | `people` row, `kind = ORG` | Name, aliases, email domains, website. Membership is `people.orgId`. One table, not two systems. |
 | **Project** | `notebooks` row with `kind = PROJECT` plus properties | A notebook already groups notes. A project adds status, organisation, people, dates, and optionally a colour and cover. |
 
 **Resolving who's who is make-or-break.** If "Sarah", "Sarah C", "SPEAKER_2" and
@@ -975,15 +975,15 @@ from `PLAN_V1`.
 | Change | Kind | Milestone |
 | --- | --- | --- |
 | `items` table; migrate `action_items`, `decisions`, `questions`, `follow_ups` into it | new core table | W1 |
-| `entities` table (person/org, aliases JSON, emails JSON, phones JSON, orgId, role, preferred channel, isSelf, notes, confidential) | new core table | W2 |
-| `note_entities` cross-ref (noteId, entityId, role: ATTENDEE, SPEAKER, MENTIONED) | new core table | W2 |
-| `speakers.entityId` | column | W2 |
+| `people` table (person/org, aliases JSON, emails JSON, phones JSON, orgId, role, preferred channel, isSelf, notes, confidential) | new core table | W2 |
+| `note_people` cross-ref (noteId, personId, role: ATTENDEE, SPEAKER, MENTIONED) | new core table | W2 |
+| `speakers.personId` | column | W2 |
 | `notebooks.kind` (NOTEBOOK · PROJECT) plus `propertiesJson` (status, orgId, confidential, retention) | columns | W6 |
 | `segment_signals` | new core table | W8 |
-| `entities.voiceEmbedding` | column | P3 |
+| `people.voiceEmbedding` | column | P3 |
 | Preferences: work profile, home layouts, words, work rhythm, output defaults, privacy defaults, accent, tab slot | DataStore | W5–W6 |
 
-Every table here is **core**. Faith uses entities (preachers, members, groups), items (prayer
+Every table here is **core**. Faith uses people (preachers, members, groups), items (prayer
 follow-ups, study questions), project notebooks (sermon series) and signals (scripture, prayer
 points). No table exists only for Professional.
 
@@ -1034,3 +1034,48 @@ The same approach as `PLAN_V1` §11: by real use, not the test suite.
 2. **WhatsApp or email.** Adaptive, per person (§6.5).
 3. **Paid and free.** Decided later. P1 builds no paywall.
 4. **Contacts permission.** Not worth it. People comes from MeetingMind's own history (§5.1).
+
+---
+
+## 14. Status
+
+v31 builds W1–W6 in one release. Schema 15 is in the migration `WorkSchema.MIGRATION_14_15`.
+
+| # | Milestone | Status |
+| --- | --- | --- |
+| W0 | Validate on real meetings | **Needs you.** Five real work meetings recorded on the phone, then compare what was caught with what was said. Nothing in this repository can stand in for it. |
+| W1 | Items and migration | Done. One `items` table; old findings migrated and marked reviewed; `DueDates` reads deadlines into days. |
+| W2 | People and organisations | Done, **without contacts**. People are built from named speakers, calendar attendees and typed owners; a one-time backfill runs after upgrade. Organisations come from work email domains. Merge, "Same person?", aliases. |
+| — | Dynamic names | Done (§5.5). `SpeakerNames` and the owner join in `ItemDao`. |
+| W3 | Marks and the Wrap-up | Done. Marks are in the recording screen; notification and lock-screen marks are still to do. |
+| W4 | Composer and follow-up | Done. Written from confirmed items with no model; the channel is adaptive; "Did it go?" marks it sent. |
+| W5 | Work Home | Done, as sections inside Today in the person's order. Widgets and the Work notification channel are still to do. |
+| W6 | Personalisation and projects | Mostly done: profiles (including Clinical and Legal), words, Home sections, greeting, tab slot, tone, sign-off, signature, footer, keep-on-phone, consent reminder, new workflows, onboarding step, confidential enforcement. |
+
+**Still to do in P1**, in the order I'd take them:
+
+1. Work rhythm (§8.4):
+   - prep notification before events with people
+   - "Starting now — record?"
+   - the morning due-today digest
+   - the weekly review card
+2. Workflow and project rules learned from Wrap-up corrections (§8.4).
+3. Next-meeting widget (§7.5).
+4. Marks from the notification and lock screen.
+5. The accent colour choice and dark mode for the new screens (§8.7).
+
+**Decisions made while building**
+
+- **The table is `people`, not `entities`.** It reads better in queries, and one table holds both
+  people and organisations (`kind`).
+- **`projectId` is the note's notebook.** Any notebook can be a work context. A notebook marked as a
+  project (`kind = PROJECT`) is what the Wrap-up offers and creates.
+- **An unassigned task counts as the person's own.** It shows under My tasks until someone else is
+  given it, because nothing that came out of a meeting should fall between the lists.
+- **Findings below 50% confidence wait behind "N more found"** in the Wrap-up (Principle 5). A
+  marked item is raised to 95%, because the person flagged it.
+- **The follow-up is a template, not a model.** It can only say what was confirmed. An AI "polish"
+  can come later as an option, with the fidelity contract.
+- **Clinical and Legal profiles** add the Consultation workflow, whose extraction focus forbids
+  adding any diagnosis, dose or legal opinion that wasn't said. They keep work on the phone, turn
+  the footer off, and default to a formal tone.

@@ -1,8 +1,55 @@
 # Installable builds
 
-`MeetingMind-v30-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v31-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing. Installs over v30
+and keeps everything: the database upgrades in place (schema 15).
 
-## What's new in v30
+## What's new in v31: MeetingMind for work
+
+- **The Wrap-up.** When a work recording finishes, its decisions, your tasks, what others owe you
+  and open questions arrive already checked.
+  - Swipe away what's wrong and tap to fix.
+  - File it under a client or project, then tap Done.
+  - Less certain findings wait behind "N more found".
+- **Names are dynamic.** Rename "Speaker 1" anywhere — the transcript, the Wrap-up or a person's
+  page — and the summary, tasks, the note, AI results and chat answers all follow. Your own writing
+  and the transcript's words are never changed.
+- **Follow-ups in a minute.**
+  - "Draft follow-up" writes from what you confirmed, and adds nothing.
+  - WhatsApp or email is offered first, based on what worked with each person before, what you
+    have for them, and what's usual where you are. The others are one tap away.
+  - Tone can be Formal, Friendly or Brief.
+  - When you come back from sending, "Did it go?" marks it sent.
+- **Marks while recording.** ⭐ Key moment, ✓ Action and ? Question, with a light buzz.
+  - Marked actions and questions can't be missed: after processing, they join what was found, or
+    take the words said at that moment.
+  - Key moments sit in the Wrap-up so you can jump back to them.
+- **People, built from your own history.** Named speakers and calendar guests become People, with
+  no contacts permission needed. Work email domains give organisations. Each person's page shows:
+  - what you owe each other
+  - decisions and open questions
+  - every conversation
+
+  You can rename, merge ("Same person?"), add an email or number, and mark someone confidential.
+- **The Work tab** can replace Search in the bottom bar (Search stays at the top of Home). It has:
+  - Tasks: My tasks, Waiting on (with Nudge) and Open questions, grouped by when they're due
+  - People
+  - a decision log
+- **Work on Home.** It adds To review, Follow-ups to send, My tasks, Waiting on, Open questions and
+  People, in your order. Empty sections hide. The greeting can be playful, plain or off.
+- **Your kind of work.** In onboarding and in Settings → Work you can choose Client work, Founder,
+  Sales, Management, **Clinical**, **Legal**, Research, Recruiting, Product or General. This sets:
+  - the words used (Client/Matter, Patient/Case, Account/Deal…)
+  - the meeting types offered
+  - the follow-up tone
+- **New meeting types.** Client call, 1:1, Standup and Consultation, each with its own template.
+  Calendar titles pick them automatically.
+- **Confidential stays on the phone.** Confidential projects and people, and all clinical and legal
+  work, are transcribed and summarised on the phone even in Internet mode.
+- **A consent reminder** when you record other people, with a note to share.
+- **Tasks have real dates.** "By Friday" is read as a day, including in everything you've already
+  recorded.
+
+## Earlier: v30
 
 - **Pray with me hears you now.**
   - **The cause:** the companion's voice was played like music, so the phone's echo canceller
