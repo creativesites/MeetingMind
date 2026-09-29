@@ -33,5 +33,8 @@ data class VocabularyEntry(
  */
 data class AskPersonalizationContext(
     val userName: String? = null,
-    val relevantVocabulary: List<VocabularyEntry> = emptyList()
+    val relevantVocabulary: List<VocabularyEntry> = emptyList(),
+    /** What kind of recording is being asked about — not about the person; it picks the answer's
+     * rules (a sermon gets the Faith contract and timestamp-per-claim, see AskSermon). */
+    val recordingType: RecordingType? = null
 )

@@ -182,7 +182,8 @@ class AskMeetingUseCase(
         question: String,
         /** The user's own name, if they've set one (Phase 15 §8) — passed in per-call, not read
          * from DataStore here, so this use case stays free of a DataStore dependency. */
-        userName: String? = null
+        userName: String? = null,
+        recordingType: com.example.core.model.RecordingType? = null
     ): ChatMessage {
         val transcript = transcriptRepository.getTranscriptDirect(meetingId)
         // Record user message
@@ -206,7 +207,7 @@ class AskMeetingUseCase(
         // Only vocabulary this specific question is relevant to — never the whole learned table
         // (see AskPersonalizationContext's own doc).
         val relevantVocabulary = vocabularyRepository?.findRelevantTerms(question) ?: emptyList()
-        val personalization = com.example.core.model.AskPersonalizationContext(userName, relevantVocabulary)
+        val personalization = com.example.core.model.AskPersonalizationContext(userName, relevantVocabulary, recordingType)
 
         // Process with local intelligence — never fabricate an answer. If no local LLM is
         // installed, or nothing has been transcribed yet, say so explicitly instead of

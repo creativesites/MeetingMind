@@ -697,7 +697,7 @@ class MeetingDetailViewModel(
             _isAnswering.value = true
             try {
                 val userName = userPrefs.preferencesFlow.first().userName
-                buildAskUseCase()(meetingId, questionText, userName)
+                buildAskUseCase()(meetingId, questionText, userName, meeting.value?.recordingType)
             } finally {
                 _isAnswering.value = false
             }

@@ -104,10 +104,13 @@ class GeminiIntelligenceEngine(
             return AiResult.Failed("There is no transcript to answer from yet.")
         }
 
+        val faith = com.example.ai.faith.AskSermon.isFaith(personalization.recordingType)
         val response = transport.execute(
             GeminiRequest(
                 modelId = model,
-                systemInstruction = ASK_SYSTEM_INSTRUCTION,
+                systemInstruction = if (faith) {
+                    com.example.ai.faith.Prompts.faithContract + "\n\n" + com.example.ai.faith.Prompts.get("ask_sermon").system()
+                } else ASK_SYSTEM_INSTRUCTION,
                 prompt = buildAskPrompt(question, passages, personalization)
             )
         )
@@ -115,13 +118,21 @@ class GeminiIntelligenceEngine(
             return AiResult.Failed(response.describeFailure() ?: "Cloud analysis failed.")
         }
 
+        // Every [mm:ss] must be a real passage; the rest are removed, not shown as chips to nowhere.
+        val grounded = com.example.ai.faith.AskSermon.ground(response.value, passages)
+        val content = if (grounded.unverified && faith) {
+            grounded.text + "\n\n_No timestamp backs this answer — check it against the transcript._"
+        } else grounded.text
         return AiResult.Success(
             ChatMessage(
                 id = UUID.randomUUID().toString(),
                 meetingId = transcript.meetingId,
                 isUser = false,
-                content = response.value.trim(),
-                timestamp = System.currentTimeMillis()
+                content = content,
+                timestamp = System.currentTimeMillis(),
+                sourceTimestamps = grounded.cited.map { it.startMs },
+                sourceQuotes = grounded.cited.map { it.cleanedText ?: it.text }.take(3),
+                readSegmentCount = passages.size
             )
         )
     }
@@ -170,11 +181,8 @@ class GeminiIntelligenceEngine(
         if (personalization.relevantVocabulary.isNotEmpty()) {
             appendLine("Terms this person uses: ${personalization.relevantVocabulary.joinToString(", ")}")
         }
-        appendLine("Transcript passages, with their ids and start times in milliseconds:")
-        for (passage in passages) {
-            val speaker = passage.speakerName ?: "Unknown speaker"
-            appendLine("[${passage.id} @${passage.startMs}] $speaker: ${passage.cleanedText ?: passage.text}")
-        }
+        appendLine("Transcript passages, each with its start time. Cite a passage by copying its [mm:ss] marker:")
+        appendLine(com.example.ai.faith.AskSermon.render(passages))
         appendLine()
         appendLine("Question: $question")
     }
@@ -191,8 +199,8 @@ class GeminiIntelligenceEngine(
         const val ASK_SYSTEM_INSTRUCTION =
             "You answer questions about a meeting using only the transcript passages supplied. If " +
                 "the passages do not contain the answer, say so plainly rather than guessing. " +
-                "Refer to what was said and when, so the answer can be checked against the " +
-                "recording. If you mention anything that did not come from this meeting, label it " +
+                "End each sentence about the meeting with the [mm:ss] marker of the passage it comes " +
+                "from, copied exactly, so the answer can be checked against the recording. If you mention anything that did not come from this meeting, label it " +
                 "explicitly as outside information and keep it separate from what the meeting " +
                 "actually said — never present the two as one."
 
