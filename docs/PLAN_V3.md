@@ -81,7 +81,7 @@ Notes.
 | Devotional timing | **Fixed (3e2b7e6).** 24-hour periodic WorkManager jobs re-synced with `UPDATE` kept no time of day, so the devotional and its notification drifted. Now wall-clock alarms (`core/notify/DailyAlarms.kt`); prayer, reading and evening reminders had the same bug and are fixed too | `core/devotional/DevotionalWork.kt` |
 | Sync | Firestore syncs **meeting metadata only**. No note sync, and there's no backend for collaboration | `core/firebase/FirebaseManagers.kt` |
 | Share target | The manifest has no `ACTION_SEND` intent filter, so other apps can't share into MeetingMind | `AndroidManifest.xml` |
-| Open roadmap items | Package still `com.example`. No CI | `docs/ROADMAP.md` P2 #18, #19 |
+| Open roadmap items | Package still `com.craftflowtechnologies.meetingmind`. No CI | `docs/ROADMAP.md` P2 #18, #19 |
 
 ---
 
@@ -112,7 +112,7 @@ Each workstream lists **Why**, **What** and **Done when**. IDs are stable so PRD
 - Move Bible highlights into Room, or back them up and link them (see W9).
 - CI: GitHub Actions running `assembleDebug`, unit tests, lint and Roborazzi on every push.
 - Baseline profile and startup trace. R8 enabled for release.
-- **The package/applicationId rename** from `com.example` / `com.aistudio.meetmind.qxynvp` must
+- **The package/applicationId rename** from `com.craftflowtechnologies.meetingmind` / `com.aistudio.meetmind.qxynvp` must
   happen before any Play release. **Changing the applicationId makes it a new app with no data.**
   It ships together with backup/restore (question C7).
 

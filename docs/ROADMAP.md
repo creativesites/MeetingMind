@@ -42,7 +42,7 @@ Recording, persistence, and the meeting-detail UI already work today. Everything
 15. **Firestore metadata sync** — wire the already-correctly-scoped (metadata-only) `FirestoreSyncManager` into the meeting-save flow, gated behind the user being signed in and (ideally) an explicit sync-enabled preference (`cloudSyncEnabled` already exists in `UserPreferencesManager` and is unused).
 16. **Room migrations + `exportSchema = true`** — replace `fallbackToDestructiveMigration()` before any real release; check schema JSON into version control.
 17. **Theme consistency** — audit screens using hardcoded `Dark*` color constants instead of `MaterialTheme.colorScheme`, so light/dynamic theming behaves correctly everywhere.
-18. **Rename package/applicationId** from the AI-Studio template defaults (`com.example` / `com.aistudio.meetmind.qxynvp`) to a real owned identity before any release build.
+18. **Rename package/applicationId** from the AI-Studio template defaults (`com.craftflowtechnologies.meetingmind` / `com.aistudio.meetmind.qxynvp`) to a real owned identity before any release build.
 19. **CI/CD** — add a basic GitHub Actions workflow running `assembleDebug`, `test`, and `lint` on every push/PR, now that the build is reproducible.
 20. **Accessibility pass** — content descriptions, TalkBack behavior; requires a real device/emulator to verify (not verifiable in this audit's environment).
 21. **`THIRD_PARTY_NOTICES.md` correction** — update to reflect whatever models are actually integrated (item 4, 6, 8, 9), rather than the current pre-declared, not-yet-true list.

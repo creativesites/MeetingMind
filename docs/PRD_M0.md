@@ -24,7 +24,7 @@ Today:
 | AI, paste and restore will soon make large edits | The editor's undo only lasts while the note is open (`UndoHistory`, in memory) |
 | Draft filtering scans every row | `metadataJson NOT LIKE '%"draft":"1"%'` in every list query |
 | Light-only, hardcoded colours | `MeetMindTheme(darkTheme = false)`; about 400 `Color(0x…)` / `Ink*` uses in 27 files |
-| The package is still a template id | `applicationId = "com.aistudio.meetmind.qxynvp"`, `namespace = "com.example"` |
+| The package is still a template id | `applicationId = "com.aistudio.meetmind.qxynvp"`, `namespace = "com.craftflowtechnologies.meetingmind"` |
 
 ## 2. Goals and non-goals
 
@@ -191,7 +191,7 @@ stays as it is.
 
 ## 7. M0.4: new app identity
 
-- `applicationId` changes to the chosen id (question M0-Q1). The Kotlin `namespace` changes from `com.example` to match,
+- `applicationId` changes to the chosen id (question M0-Q1). The Kotlin `namespace` changes from `com.craftflowtechnologies.meetingmind` to match,
   as a separate, purely mechanical commit (it touches every file; there is no behaviour change).
 - **Owner actions, outside the repo:** register the new package in Firebase and download a new
   `google-services.json`; add the release and debug SHA-1 fingerprints for Google Sign-In; update the CI secret the

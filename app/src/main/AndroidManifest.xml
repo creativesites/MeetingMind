@@ -51,12 +51,12 @@
         </activity>
 
         <service
-            android:name="com.example.core.audio.MeetingRecordingService"
+            android:name="com.craftflowtechnologies.meetingmind.core.audio.MeetingRecordingService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
         <service
-            android:name="com.example.core.audio.PlaybackService"
+            android:name="com.craftflowtechnologies.meetingmind.core.audio.PlaybackService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
@@ -80,9 +80,9 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-        <receiver android:name="com.example.core.notify.DailyAlarmReceiver" android:exported="false" />
-        <receiver android:name="com.example.core.tasks.TaskReminderReceiver" android:exported="false" />
-        <receiver android:name="com.example.core.notify.DailyAlarmResync" android:exported="true">
+        <receiver android:name="com.craftflowtechnologies.meetingmind.core.notify.DailyAlarmReceiver" android:exported="false" />
+        <receiver android:name="com.craftflowtechnologies.meetingmind.core.tasks.TaskReminderReceiver" android:exported="false" />
+        <receiver android:name="com.craftflowtechnologies.meetingmind.core.notify.DailyAlarmResync" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
@@ -91,11 +91,11 @@
                 <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
-        <receiver android:name="com.example.core.widget.VerseWidget" android:exported="true" android:label="@string/widget_verse_label">
+        <receiver android:name="com.craftflowtechnologies.meetingmind.core.widget.VerseWidget" android:exported="true" android:label="@string/widget_verse_label">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_verse_info" />
         </receiver>
-        <receiver android:name="com.example.core.widget.TodayWidget" android:exported="true" android:label="@string/widget_today_label">
+        <receiver android:name="com.craftflowtechnologies.meetingmind.core.widget.TodayWidget" android:exported="true" android:label="@string/widget_today_label">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_today_info" />
         </receiver>

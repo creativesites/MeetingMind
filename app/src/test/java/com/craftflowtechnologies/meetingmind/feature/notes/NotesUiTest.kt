@@ -1,0 +1,197 @@
+package com.craftflowtechnologies.meetingmind.feature.notes
+
+import android.app.Application
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
+import com.craftflowtechnologies.meetingmind.core.model.NoteBlock
+import com.craftflowtechnologies.meetingmind.core.model.NoteBlockType
+import com.craftflowtechnologies.meetingmind.core.notes.InlineStyle
+import com.craftflowtechnologies.meetingmind.core.notes.RichText
+import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
+import com.craftflowtechnologies.meetingmind.core.ui.CreateSheet
+import com.craftflowtechnologies.meetingmind.feature.notes.editor.NoteEditorScreen
+import com.craftflowtechnologies.meetingmind.feature.notes.editor.NoteEditorViewModel
+import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
+import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
+import com.github.takahirom.roborazzi.captureRoboImage
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [34])
+class NotesUiTest {
+
+    @get:Rule val compose = createComposeRule()
+
+    private lateinit var app: Application
+    private lateinit var database: MeetMindDatabase
+    private lateinit var notes: NoteRepository
+
+    @Before
+    fun setup() {
+        app = ApplicationProvider.getApplicationContext()
+        // Its own query threads: other tests in the run can leave Room's shared pool busy, and this one waits on the database.
+        database = Room.inMemoryDatabaseBuilder(app, MeetMindDatabase::class.java).allowMainThreadQueries()
+            .setQueryExecutor(java.util.concurrent.Executors.newFixedThreadPool(4)).setTransactionExecutor(java.util.concurrent.Executors.newFixedThreadPool(2)).build()
+        MeetMindDatabase.setInstanceForTest(database)
+        notes = NoteRepository(app, database)
+    }
+
+    @After
+    fun tearDown() {
+        MeetMindDatabase.setInstanceForTest(null)
+        database.close()
+    }
+
+    private fun block(noteId: String, type: NoteBlockType, text: RichText, checked: Boolean = false, indent: Int = 0) =
+        NoteBlock(NoteRepository.newId("block"), noteId, 0, type, text, checked = checked, indent = indent)
+
+    private fun sampleNote(): String = runBlocking {
+        val note = notes.createNote(title = "Faith that holds")
+        val id = note.id
+        notes.saveBlocks(
+            id,
+            listOf(
+                block(id, NoteBlockType.HEADING_1, RichText.plain("Key points")),
+                block(id, NoteBlockType.PARAGRAPH, RichText.plain("Faith is trust in what we cannot yet see.").applyStyle(InlineStyle.BOLD, 0, 5).applyStyle(InlineStyle.HIGHLIGHT, 18, 23)),
+                block(id, NoteBlockType.NUMBERED, RichText.plain("Hear the word")),
+                block(id, NoteBlockType.NUMBERED, RichText.plain("Hold on to it")),
+                block(id, NoteBlockType.BULLET, RichText.plain("Even when it's hard"), indent = 1),
+                block(id, NoteBlockType.CHECKLIST, RichText.plain("Read Hebrews 11"), checked = true),
+                block(id, NoteBlockType.CHECKLIST, RichText.plain("Call Mum")),
+                block(id, NoteBlockType.QUOTE, RichText.plain("Now faith is confidence in what we hope for.")),
+                block(id, NoteBlockType.DIVIDER, RichText.EMPTY),
+                block(id, NoteBlockType.PARAGRAPH, RichText.plain("Last line"))
+            )
+        )
+        notes.addTag(id, "grace")
+        id
+    }
+
+    @Test
+    fun editor_renders_a_rich_note_and_saves_typing() {
+        val id = sampleNote()
+        val vm = NoteEditorViewModel(app, id)
+        compose.setContent {
+            MeetMindTheme {
+                NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
+            }
+        }
+        compose.waitUntil(60_000) { vm.loaded.value }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("src/test/screenshots/note_editor.png")
+
+        // Type at the end of the last paragraph, then press Enter: a new paragraph appears.
+        val last = compose.onNode(hasSetTextAction() and hasText("Last line", substring = true))
+        last.performClick()
+        last.performTextInput(" and more")
+        compose.waitForIdle()
+        assertTrue(vm.blocks.value.any { it.content.text.startsWith("Last line") && it.content.text.contains("and more") })
+        compose.onRoot().captureRoboImage("src/test/screenshots/note_editor_typing.png")
+
+        runBlocking { vm.flush() }
+        val saved = runBlocking { notes.getDocument(id)!! }
+        assertTrue(saved.note.plainText.contains("and more"))
+        assertEquals(1, saved.tags.size)
+    }
+
+    @Test
+    fun pasting_two_hundred_lines_into_the_editor_adds_one_block_not_two_hundred() {
+        val id = sampleNote()
+        val vm = NoteEditorViewModel(app, id)
+        compose.setContent {
+            MeetMindTheme {
+                NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
+            }
+        }
+        compose.waitUntil(60_000) { vm.loaded.value }
+        compose.waitForIdle()
+        val before = vm.blocks.value.size
+        val answer = "## An answer from ChatGPT\n\n" + (1..200).joinToString("\n") { "- Point number $it" }
+        val last = compose.onNode(hasSetTextAction() and hasText("Last line", substring = true))
+        last.performClick()
+        last.performTextInput("\n" + answer)
+        compose.waitForIdle()
+        val after = vm.blocks.value
+        assertEquals("one Markdown block (plus a line to keep typing on)", 1, after.count { it.type == com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.MARKDOWN })
+        assertTrue("was $before blocks, now ${after.size}", after.size <= before + 2)
+        compose.onRoot().captureRoboImage("src/test/screenshots/note_editor_paste.png")
+    }
+
+    @Test
+    fun a_space_typed_in_the_title_after_a_pause_stays() {
+        val id = runBlocking { notes.createNote(title = "", draft = true).id }
+        val vm = NoteEditorViewModel(app, id)
+        compose.setContent {
+            MeetMindTheme {
+                NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
+            }
+        }
+        compose.waitUntil(60_000) { vm.loaded.value }
+        fun pause() {
+            // Longer than the autosave delay, so each save lands between keystrokes.
+            repeat(8) {
+                org.robolectric.shadows.ShadowLooper.idleMainLooper(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                Thread.sleep(60)
+                compose.waitForIdle()
+            }
+        }
+        val title = compose.onNode(hasSetTextAction() and hasText("Title", substring = true).not(), useUnmergedTree = true).let {
+            compose.onAllNodes(hasSetTextAction())[0]
+        }
+        title.performClick()
+        title.performTextInput("Hello")
+        pause()
+        title.performTextInput(" ")
+        pause()
+        title.performTextInput("world")
+        pause()
+        assertEquals("Hello world", vm.note.value?.title)
+        runBlocking { vm.flush() }
+        assertEquals("Hello world", runBlocking { notes.getNote(id)?.title })
+    }
+
+    @Test
+    fun library_lists_notes_and_notebooks() {
+        sampleNote()
+        runBlocking {
+            notes.createNotebook("Sermons", com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH, "#10B981")
+            notes.createNote(title = "Team sync").let { notes.setPinned(it.id, true) }
+            notes.createNote(title = "Prayer for the week", isPrivate = true)
+        }
+        val vm = NotesViewModel(app)
+        compose.setContent {
+            MeetMindTheme {
+                NotesScreen(viewModel = vm, onOpenNote = {}, onOpenNotebook = {}, onOpenArchive = {}, onNavigateBack = null, onNavigateBottomNav = {})
+            }
+        }
+        compose.waitUntil(60_000) { vm.visibleNotes.value.size == 3 }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("src/test/screenshots/notes_library.png")
+        assertEquals("Team sync", vm.visibleNotes.value.first().title)
+    }
+
+    @Test
+    fun create_sheet_offers_record_first() {
+        compose.setContent { MeetMindTheme { CreateSheet(onPick = {}, onDismiss = {}) } }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("src/test/screenshots/create_sheet.png")
+    }
+}

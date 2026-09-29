@@ -688,7 +688,7 @@ after the event. Re-gluing can restore formatting; it cannot restore context the
 
 ### What replaced it
 
-A word/time layer in `com.example.ai.transcript` — pure Kotlin, no Android and no native
+A word/time layer in `com.craftflowtechnologies.meetingmind.ai.transcript` — pure Kotlin, no Android and no native
 dependency, so all of it is unit-tested on the JVM:
 
 ```
