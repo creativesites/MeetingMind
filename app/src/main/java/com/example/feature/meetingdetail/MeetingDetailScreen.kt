@@ -30,6 +30,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1192,7 +1195,8 @@ fun MeetingDetailScreen(
                     highlightedSegmentId = highlightedSegmentId,
                     activePlaybackSegmentId = activeSegment?.id,
                     isAudioPlaying = isThisRecordingActive && playbackState.isPlaying,
-                    cleanFillerWords = cleanFillerWords
+                    cleanFillerWords = cleanFillerWords,
+                    scenes = remember(meeting?.audioFilePath, meeting?.status) { meeting?.audioFilePath?.let { com.example.ai.scene.SceneMap.load(java.io.File(it)) } }
                 )
                 RecordingDetailTab.ASK_AI -> com.example.feature.meetingdetail.components.AskAiPanel(
                     chatMessages = chatMessages,
@@ -1677,10 +1681,13 @@ fun TranscriptTab(
     /** Display-only hesitation-word cleanup. Never applied in edit mode: the user edits and saves
      * the real stored text, so showing them a cleaned version to type over would quietly turn a
      * display preference into a permanent rewrite of their transcript. */
-    cleanFillerWords: Boolean = true
+    cleanFillerWords: Boolean = true,
+    /** Where the preaching, prayer, readings and worship are; worship collapses so lyrics don't flood the page. */
+    scenes: com.example.ai.scene.SceneMap? = null
 ) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
+    var openScenes by remember { mutableStateOf(setOf<Long>()) }
     // The toolbar is text until you need it (docs/recording-page-implementation.md §2.3) — there
     // is no persistent search field or edit button above the transcript any more; both are
     // entered from the three-word row at the bottom.
@@ -1915,6 +1922,12 @@ fun TranscriptTab(
             }
         }
 
+        val sceneList = scenes?.scenes.orEmpty().takeIf { it.size > 1 && !isEditMode && !showSearch }.orEmpty()
+        if (sceneList.isNotEmpty()) SceneStrip(sceneList, segments.maxOfOrNull { it.endMs } ?: 0L, onJumpToTimestamp)
+        // Which scene each segment opens, and which segments sit inside a closed worship scene.
+        val sceneOf = remember(segments, sceneList) {
+            segments.associate { seg -> seg.id to sceneList.firstOrNull { it.contains((seg.startMs + seg.endMs) / 2) } }
+        }
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -1923,12 +1936,26 @@ fun TranscriptTab(
             contentPadding = PaddingValues(
                 start = 22.dp,
                 end = 22.dp,
-                top = if (isEditMode || showSearch) 6.dp else 28.dp,
+                top = if (isEditMode || showSearch) 6.dp else if (sceneList.isNotEmpty()) 12.dp else 28.dp,
                 bottom = 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(26.dp)
         ) {
-            items(segments, key = { it.id }) { seg ->
+            val visible = segments.filterIndexed { i, seg ->
+                val scene = sceneOf[seg.id]
+                val first = i == 0 || sceneOf[segments[i - 1].id] != scene
+                val collapsed = scene?.activity == com.example.ai.scene.SemanticActivity.SONG && scene.startMs !in openScenes
+                first || !collapsed
+            }
+            items(visible, key = { it.id }) { seg ->
+                val scene = sceneOf[seg.id]
+                val opensScene = scene != null && visible.indexOf(seg).let { i -> i == 0 || sceneOf[visible[i - 1].id] != scene }
+                if (opensScene && scene != null) {
+                    val collapsed = scene.activity == com.example.ai.scene.SemanticActivity.SONG && scene.startMs !in openScenes
+                    SceneHeader(scene, collapsed = collapsed, onJump = { onJumpToTimestamp(scene.startMs) },
+                        onToggle = { openScenes = if (scene.startMs in openScenes) openScenes - scene.startMs else openScenes + scene.startMs })
+                    if (collapsed) return@items
+                }
                 val isPlaying = seg.id == activePlaybackSegmentId
                 val isDeepLinkHighlighted = seg.id == highlightedSegmentId
                 val isSearchMatch = showSearch && seg.id in searchMatches
@@ -2277,4 +2304,61 @@ private fun SpeakerReassignDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+/** The recording at a glance: coloured bands for sermon, prayer, worship, readings; tap to go there. */
+@Composable
+private fun SceneStrip(scenes: List<com.example.ai.scene.Scene>, totalMs: Long, onJump: (Long) -> Unit) {
+    val total = maxOf(totalMs, scenes.maxOf { it.endMs }).coerceAtLeast(1)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp).testTag("scene_strip")) {
+        Row(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp))) {
+            scenes.forEach { sc ->
+                Box(Modifier.weight((sc.durationMs.toFloat() / total).coerceAtLeast(0.004f)).fillMaxHeight().background(sceneColor(sc.activity)).clickable { onJump(sc.startMs) })
+            }
+        }
+        Row(Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            scenes.map { it.activity }.distinct().forEach { a ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(sceneColor(a)))
+                    Spacer(Modifier.width(4.dp))
+                    Text(a.label, fontSize = 11.sp, color = InkSecondary)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun sceneColor(a: com.example.ai.scene.SemanticActivity): Color = when (a) {
+    com.example.ai.scene.SemanticActivity.SERMON -> Accent
+    com.example.ai.scene.SemanticActivity.SONG -> com.example.ui.theme.FaithGold
+    com.example.ai.scene.SemanticActivity.PRAYER -> com.example.ui.theme.FaithGold.copy(alpha = 0.55f)
+    com.example.ai.scene.SemanticActivity.SCRIPTURE -> com.example.ui.theme.SuccessGreen
+    com.example.ai.scene.SemanticActivity.ANNOUNCEMENT, com.example.ai.scene.SemanticActivity.OTHER -> InkFaint
+    else -> Accent.copy(alpha = 0.5f)
+}
+
+/**
+ * Where a part of the recording starts. Worship shows as one line with its time and — only when
+ * grounded in what was sung or said — its title; the lyrics stay folded away unless asked for.
+ */
+@Composable
+private fun SceneHeader(scene: com.example.ai.scene.Scene, collapsed: Boolean, onJump: () -> Unit, onToggle: () -> Unit) {
+    val song = scene.activity == com.example.ai.scene.SemanticActivity.SONG
+    Column(Modifier.fillMaxWidth().padding(bottom = if (collapsed) 0.dp else 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(onClick = onJump)) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(sceneColor(scene.activity)))
+            Spacer(Modifier.width(8.dp))
+            Text(scene.activity.label.uppercase(), fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkSecondary)
+            Spacer(Modifier.width(8.dp))
+            Text("${Formatters.formatDurationHms(scene.startMs)}–${Formatters.formatDurationHms(scene.endMs)}", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = InkMuted)
+            if (scene.labelledBy == "device") Text("  · detected on device", fontSize = 10.5.sp, color = InkFaint)
+        }
+        val detail = scene.songTitle?.let { "Song: $it" } ?: scene.label
+        detail?.let { Text(it, fontSize = 14.sp, color = Ink, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 16.dp, top = 2.dp)) }
+        if (song) Text(
+            if (collapsed) "Lyrics folded away · show transcript" else "Fold lyrics away",
+            fontSize = 12.5.sp, color = Accent, modifier = Modifier.padding(start = 16.dp, top = 4.dp).clickable(onClick = onToggle).testTag("scene_toggle")
+        )
+    }
 }

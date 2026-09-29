@@ -894,16 +894,31 @@ class MeetingProcessingPipeline(
         processingProfile: ProcessingProfile,
         progress: suspend (String, Int) -> Unit
     ) {
-        val noteId = database.meetingDao().getMeetingById(meetingId)?.noteId ?: return
+        val meeting = database.meetingDao().getMeetingById(meetingId) ?: return
+        val noteId = meeting.noteId ?: return
+        // Scenes first: where the preaching, prayer, readings and worship are. Worship is kept
+        // out of the notes and the Scripture search, so sung lyrics never become "points".
+        val audio = meeting.audioFilePath?.let { java.io.File(it) }?.takeIf { it.exists() }
+        val scenes = audio?.let { file ->
+            progress("Mapping the service…", 93)
+            runCatching {
+                val transport = if (processingProfile == ProcessingProfile.INTERNET) geminiTransport else null
+                com.example.ai.scene.SceneEngine(transport).build(file, segments, meeting.durationMs, recordingType.displayName)
+                    .also { com.example.ai.scene.SceneMap.save(file, it) }
+            }.onFailure { Log.w(PERF_TAG, "Scenes failed: ${it.message}") }.getOrNull()
+        }
+        val spoken = scenes?.let { map ->
+            segments.filter { s -> map.at((s.startMs + s.endMs) / 2)?.activity != com.example.ai.scene.SemanticActivity.SONG }
+        }?.ifEmpty { null } ?: segments
         progress("Finding scripture references...", 94)
-        val detections = com.example.core.scripture.ScriptureDetector.detect(segments)
+        val detections = com.example.core.scripture.ScriptureDetector.detect(spoken)
         val extraction = if (recordingType == com.example.core.model.RecordingType.SERMON) {
             val resolved = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS)
             resolved?.let { model ->
                 progress(if (model.isCloud) "Writing sermon notes with Google's AI..." else "Writing sermon notes...", 96)
                 try {
                     (com.example.ai.faith.SermonExtractionEngine(model.languageModel, model.contextLengthTokens)
-                        .extract(segments) { part, parts -> if (parts > 1) Log.d(PERF_TAG, "Sermon notes part $part of $parts") }
+                        .extract(spoken) { part, parts -> if (parts > 1) Log.d(PERF_TAG, "Sermon notes part $part of $parts") }
                         as? AiResult.Success)?.value
                 } finally {
                     if (!model.isCloud) LlmEngineManager.release()
