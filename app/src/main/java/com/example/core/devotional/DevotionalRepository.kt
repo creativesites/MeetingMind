@@ -28,6 +28,27 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 /** The devotional of a day, as its note and what was read back from it. */
+/** One saved devotional, as the archive lists it. */
+data class ArchiveItem(
+    val noteId: String,
+    val day: String,
+    val title: String,
+    val passage: String?,
+    val format: DevotionalFormat?,
+    val series: String?,
+    val favourite: Boolean,
+    val evening: Boolean,
+    val origin: DevotionalOrigin?,
+    val text: String
+) {
+    /** Title, passage, series, format or words — what the archive's search box matches. */
+    fun matches(query: String): Boolean {
+        val q = query.trim().lowercase()
+        if (q.isEmpty()) return true
+        return listOfNotNull(title, passage, series, format?.label, text).any { it.lowercase().contains(q) }
+    }
+}
+
 data class DailyDevotional(val note: Note, val devotional: Devotional, val document: NoteDocument) {
     val response: String get() = DevotionalNotes.response(document)
     val feedback: String? get() = note.metadata[DevotionalNotes.META_FEEDBACK]
@@ -71,7 +92,7 @@ class DevotionalRepository(
     fun observeDay(day: LocalDay): Flow<List<DailyDevotional>> =
         noteDao.observeAllByMetadata("%\"${DevotionalNotes.META_KEY}\":\"${day.iso}%")
             .map { list ->
-                list.filter { e -> keyOf(e.metadataJson).let { it == day.iso || it?.startsWith("${day.iso}$EARLIER") == true } }
+                list.filter { e -> keyOf(e.metadataJson).let { it == day.iso || it == DevotionalNotes.key(day, true) || it?.startsWith("${day.iso}$EARLIER") == true } }
                     .mapNotNull { load(it.id) }
             }
             .flowOn(Dispatchers.IO)
@@ -92,6 +113,31 @@ class DevotionalRepository(
 
     suspend fun find(day: LocalDay, evening: Boolean = false): DailyDevotional? = withContext(Dispatchers.IO) {
         noteDao.findByMetadata(pattern(DevotionalNotes.key(day, evening)))?.takeIf { it.archivedAt == null }?.let { load(it.id) }
+    }
+
+    /** A devotional by its note — for opening one from the archive. Never writes anything. */
+    suspend fun byId(noteId: String): DailyDevotional? = withContext(Dispatchers.IO) { load(noteId) }
+
+    suspend fun setFavourite(noteId: String, favourite: Boolean) =
+        editMeta(noteId) { m -> if (favourite) m + (DevotionalNotes.META_FAVOURITE to "1") else m - DevotionalNotes.META_FAVOURITE }
+
+    /** Every devotional ever saved, newest first, as light rows for the archive. */
+    suspend fun archive(limit: Int = 2000): List<ArchiveItem> = withContext(Dispatchers.IO) {
+        recent(limit).filter { it.archivedAt == null }.map { n ->
+            val m = n.metadata
+            ArchiveItem(
+                noteId = n.id,
+                day = m[DevotionalNotes.META_DAY].orEmpty(),
+                title = n.title,
+                passage = m[DevotionalNotes.META_PASSAGE],
+                format = m[DevotionalNotes.META_FORMAT]?.let { runCatching { DevotionalFormat.valueOf(it) }.getOrNull() },
+                series = m[DevotionalNotes.META_SERIES],
+                favourite = m[DevotionalNotes.META_FAVOURITE] == "1",
+                evening = m[DevotionalNotes.META_EVENING] == "1",
+                origin = runCatching { DevotionalOrigin.valueOf(m[DevotionalNotes.META_ORIGIN].orEmpty()) }.getOrNull(),
+                text = n.plainText
+            )
+        }.sortedWith(compareByDescending<ArchiveItem> { it.day }.thenByDescending { it.evening })
     }
 
     private suspend fun load(noteId: String): DailyDevotional? {

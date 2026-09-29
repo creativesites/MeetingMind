@@ -449,11 +449,25 @@ fun MeetMindApp() {
             if (request == null) LaunchedEffect(Unit) { navController.popBackStack() }
             else com.example.feature.share.ShareStudioScreen(request = request, onNavigateBack = { navController.popBackStack() })
         }
-        composable(Routes.DEVOTIONAL, arguments = listOf(navArgument("play") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
+        composable(Routes.DEVOTIONAL_ARCHIVE) {
+            com.example.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
+                com.example.feature.devotional.DevotionalArchiveScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpen = { navController.navigate(Routes.pastDevotionalRoute(it)) }
+                )
+            }
+        }
+        composable(Routes.DEVOTIONAL, arguments = listOf(
+            navArgument("play") { type = NavType.StringType; nullable = true; defaultValue = null },
+            navArgument("note") { type = NavType.StringType; nullable = true; defaultValue = null }
+        )) { entry ->
             val vm: com.example.feature.devotional.DevotionalViewModel = viewModel()
+            val past = entry.arguments?.getString("note")
             com.example.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
                 com.example.feature.devotional.DevotionalScreen(
                     viewModel = vm,
+                    pastNoteId = past,
+                    onArchive = { navController.navigate(Routes.DEVOTIONAL_ARCHIVE) },
                     onNavigateBack = { navController.popBackStack() },
                     onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                     onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },

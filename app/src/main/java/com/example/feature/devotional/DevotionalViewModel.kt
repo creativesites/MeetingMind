@@ -35,7 +35,9 @@ data class DevotionalUiState(
     val writers: Set<com.example.ai.devotional.DevotionalWriter> = setOf(com.example.ai.devotional.DevotionalWriter.AUTO, com.example.ai.devotional.DevotionalWriter.CLASSIC),
     val season: LiturgicalDay? = null,
     val date: LocalDate = LocalDate.now(),
-    val voice: VoiceUi = VoiceUi()
+    val voice: VoiceUi = VoiceUi(),
+    /** Opened from the archive: read-only for writing — no "new", no rewrite. */
+    val past: Boolean = false
 )
 
 /** The Listen button's state. */
@@ -80,9 +82,36 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
     private val errorDismissed = MutableStateFlow<String?>(null)
     private val writers = MutableStateFlow(setOf(com.example.ai.devotional.DevotionalWriter.AUTO, com.example.ai.devotional.DevotionalWriter.CLASSIC))
 
-    private val shown = combine(repo.observeDay(day), selected) { all, pick ->
+    /** A past devotional opened from the archive: shown as it was saved, never written again. */
+    private val pinned = MutableStateFlow<DailyDevotional?>(null)
+    private val localError = MutableStateFlow<String?>(null)
+    private val examenBusy = MutableStateFlow(false)
+
+    private val shown = combine(repo.observeDay(day), selected, pinned) { all, pick, old ->
+        if (old != null) return@combine listOf(old) to old
         val current = all.lastOrNull { it.note.metadata[com.example.core.devotional.DevotionalNotes.META_KEY] == com.example.core.devotional.DevotionalNotes.key(day) }
-        all to (all.firstOrNull { it.note.id == pick } ?: current ?: all.lastOrNull())
+        all to (all.firstOrNull { it.note.id == pick } ?: current ?: all.lastOrNull { !it.note.metadata.containsKey(com.example.core.devotional.DevotionalNotes.META_EVENING) } ?: all.lastOrNull())
+    }
+
+    /** Opens a saved devotional by its note. Nothing is written or rewritten. */
+    fun openNote(noteId: String) = viewModelScope.launch { pinned.value = repo.byId(noteId) }
+
+    val isPast: Boolean get() = pinned.value != null
+
+    fun toggleFavourite(daily: DailyDevotional) = viewModelScope.launch {
+        val on = daily.note.metadata[com.example.core.devotional.DevotionalNotes.META_FAVOURITE] == "1"
+        repo.setFavourite(daily.note.id, !on)
+        if (pinned.value?.note?.id == daily.note.id) pinned.value = repo.byId(daily.note.id)
+    }
+
+    /** Tonight's Examen, looking back on this morning's devotional. */
+    fun writeExamen() = viewModelScope.launch {
+        examenBusy.value = true
+        localError.value = null
+        runCatching { repo.ensure(LocalDate.now(), evening = true) }
+            .onSuccess { d -> d?.let { selected.value = it.note.id } }
+            .onFailure { localError.value = it.message ?: "Couldn't write tonight's Examen." }
+        examenBusy.value = false
     }
 
     private val base = combine(shown, repo.profile, writingFlow, requested, combine(errorDismissed, writers) { d, w -> d to w }) { (all, today), profile, (writing, error), asked, (dismissed, available) ->
@@ -99,7 +128,8 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    val state: StateFlow<DevotionalUiState> = combine(base, voiceWork, com.example.core.audio.PlaybackController.state) { s, (preparing, progress, failed), playback ->
+    val state: StateFlow<DevotionalUiState> = combine(base, voiceWork, com.example.core.audio.PlaybackController.state, combine(localError, examenBusy) { e, b -> e to b }) { base0, (preparing, progress, failed), playback, (local, examen) ->
+        val s = base0.copy(writing = base0.writing || examen, writeError = local ?: base0.writeError, past = pinned.value != null)
         val id = s.today?.note?.id?.let { com.example.core.devotional.DevotionalVoice.playbackId(it) }
         val mine = id != null && playback.recordingId == id
         s.copy(voice = VoiceUi(
@@ -119,6 +149,7 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
     /** Opening the page is asking for today's devotional: write it if it isn't there yet. */
     fun ensureToday() {
         viewModelScope.launch {
+            if (pinned.value != null) return@launch
             if (repo.find(day) == null) { requested.value = true; DevotionalScheduler.writeNow(getApplication()) }
         }
     }
@@ -192,7 +223,7 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
     /** Makes the one being read the day's devotional (for stories, widgets and Home). */
     fun makeCurrent(daily: DailyDevotional) = viewModelScope.launch { runCatching { repo.makeCurrent(daily) }; selected.value = null }
 
-    fun dismissError() { errorDismissed.value = state.value.writeError }
+    fun dismissError() { errorDismissed.value = state.value.writeError; localError.value = null }
 
     fun refreshWriters() = viewModelScope.launch { writers.value = runCatching { repo.writersAvailable() }.getOrDefault(writers.value) }
 

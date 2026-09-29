@@ -22,8 +22,11 @@ object Routes {
     const val FAITH_JOURNEY = "faith_journey"
     const val FAITH_SCRIPTURE = "faith_scripture"
     const val BIBLE = "bible?ref={ref}&search={search}"
-    const val DEVOTIONAL = "devotional?play={play}"
+    const val DEVOTIONAL = "devotional?play={play}&note={note}"
     fun devotionalRoute(play: String? = null) = "devotional" + (play?.let { "?play=$it" } ?: "")
+    /** A saved devotional, opened as it was — never rewritten. */
+    fun pastDevotionalRoute(noteId: String) = "devotional?note=$noteId"
+    const val DEVOTIONAL_ARCHIVE = "devotional_archive"
     const val STORIES = "stories?start={start}"
     const val SHARE = "share"
     const val PLANS = "reading_plans"
