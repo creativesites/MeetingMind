@@ -111,6 +111,29 @@ class NotesUiTest {
     }
 
     @Test
+    fun pasting_two_hundred_lines_into_the_editor_adds_one_block_not_two_hundred() {
+        val id = sampleNote()
+        val vm = NoteEditorViewModel(app, id)
+        compose.setContent {
+            MeetMindTheme {
+                NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
+            }
+        }
+        compose.waitUntil(5_000) { vm.loaded.value }
+        compose.waitForIdle()
+        val before = vm.blocks.value.size
+        val answer = "## An answer from ChatGPT\n\n" + (1..200).joinToString("\n") { "- Point number $it" }
+        val last = compose.onNode(hasSetTextAction() and hasText("Last line", substring = true))
+        last.performClick()
+        last.performTextInput("\n" + answer)
+        compose.waitForIdle()
+        val after = vm.blocks.value
+        assertEquals("one Markdown block (plus a line to keep typing on)", 1, after.count { it.type == com.example.core.model.NoteBlockType.MARKDOWN })
+        assertTrue("was $before blocks, now ${after.size}", after.size <= before + 2)
+        compose.onRoot().captureRoboImage("src/test/screenshots/note_editor_paste.png")
+    }
+
+    @Test
     fun library_lists_notes_and_notebooks() {
         sampleNote()
         runBlocking {

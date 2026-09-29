@@ -259,6 +259,12 @@ class MeetingProcessingPipeline(
                 // The length the importer guessed can be wrong (it falls back to a minute); the
                 // container's own figure decides how the recording is split for Gemini.
                 val measuredMs = com.example.core.audio.CloudAudio.durationMs(audioFile)
+                com.example.ai.cloud.GeminiLog.attach(context)
+                com.example.ai.cloud.GeminiLog.add(
+                    "Processing \"${existingMeeting.title.take(60)}\": ${audioFile.name}, ${audioFile.length() / 1024} KB, " +
+                        "format ${com.example.core.audio.CloudAudio.sniffMime(audioFile) ?: "unknown"}, length ${(measuredMs ?: totalDurationMs) / 1000}s" +
+                        (if (measuredMs == null) " (from import; file length unreadable)" else "")
+                )
                 val cloudResult = cloudTranscriptionEngine.transcribe(
                     audioFile = audioFile,
                     totalDurationMs = measuredMs ?: totalDurationMs,

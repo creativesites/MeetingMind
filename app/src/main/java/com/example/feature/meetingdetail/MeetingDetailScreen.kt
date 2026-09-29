@@ -1070,6 +1070,20 @@ fun MeetingDetailScreen(
                                 val audioPath = currentMeeting?.audioFilePath
                                 if (currentMeeting != null && audioPath != null) onTranscribe(currentMeeting.id, audioPath, currentMeeting.durationMs)
                             }) { Text("Try again") }
+                            val ctx = androidx.compose.ui.platform.LocalContext.current
+                            TextButton(onClick = {
+                                com.example.ai.cloud.GeminiLog.attach(ctx)
+                                val details = buildString {
+                                    appendLine("Recording: ${currentMeeting?.title} (${(currentMeeting?.durationMs ?: 0) / 1000}s)")
+                                    appendLine("Error: ${processingError ?: "none recorded"}")
+                                    appendLine()
+                                    appendLine("Recent Gemini log:")
+                                    com.example.ai.cloud.GeminiLog.entries().take(25).reversed().forEach { appendLine(it) }
+                                }
+                                ctx.getSystemService(android.content.ClipboardManager::class.java)
+                                    ?.setPrimaryClip(android.content.ClipData.newPlainText("MeetingMind error", details))
+                                android.widget.Toast.makeText(ctx, "Error details copied — paste them to the developer", android.widget.Toast.LENGTH_LONG).show()
+                            }) { Text("Copy details") }
                             if (processingError?.contains("API key", ignoreCase = true) == true) {
                                 TextButton(onClick = onOpenSettings) { Text("Check key in Settings") }
                             }

@@ -56,6 +56,13 @@ class GeminiHttpTransport(
     }
 
     override suspend fun execute(request: GeminiRequest): AiResult<String> = withContext(Dispatchers.IO) {
+        GeminiLog.attach(credentials.appContext)
+        val result = executeLogged(request)
+        if (result !is AiResult.Success) GeminiLog.add("✗ ${request.modelId}: ${(result as? AiResult.Failed)?.message ?: (result as? AiResult.ModelUnavailable)?.message ?: result.javaClass.simpleName}")
+        result
+    }
+
+    private suspend fun executeLogged(request: GeminiRequest): AiResult<String> = withContext(Dispatchers.IO) {
         val apiKey = credentials.getApiKey()
         if (apiKey == null) {
             lastKnownConfigured = false
@@ -123,7 +130,30 @@ class GeminiHttpTransport(
         val ok: Boolean get() = code in 200..299
     }
 
-    private suspend fun send(request: Request, timeoutMs: Long): Reply = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+    private suspend fun send(request: Request, timeoutMs: Long, label: String): Reply {
+        val started = System.currentTimeMillis()
+        fun secs() = "%.1fs".format((System.currentTimeMillis() - started) / 1000.0)
+        return try {
+            val reply = sendRaw(request, timeoutMs)
+            GeminiLog.add(
+                if (reply.ok) "$label → OK ${reply.code} in ${secs()}"
+                else "$label → HTTP ${reply.code} in ${secs()}: ${serverMessage(reply.body) ?: reply.body.take(300)}"
+            )
+            reply
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            GeminiLog.add("$label → cancelled after ${secs()}")
+            throw e
+        } catch (e: java.io.IOException) {
+            GeminiLog.add("$label → ${e.javaClass.simpleName} after ${secs()} (limit ${timeoutMs / 1000}s): ${e.message ?: "no detail"}")
+            throw e
+        }
+    }
+
+    private fun serverMessage(body: String): String? = runCatching {
+        JSONObject(body).optJSONObject("error")?.let { e -> listOfNotNull(e.optString("status").takeIf { it.isNotBlank() }, e.optString("message").takeIf { it.isNotBlank() }).joinToString(": ") }
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    private suspend fun sendRaw(request: Request, timeoutMs: Long): Reply = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
         val call = client.newBuilder().callTimeout(timeoutMs, TimeUnit.MILLISECONDS).build().newCall(request)
         cont.invokeOnCancellation { call.cancel() }
         call.enqueue(object : okhttp3.Callback {
@@ -187,7 +217,7 @@ class GeminiHttpTransport(
             )
             .build()
 
-        val started = send(start, SHORT_TIMEOUT_MS)
+        val started = send(start, SHORT_TIMEOUT_MS, "Upload start ($mime, ${file.length() / 1024} KB)")
         if (!started.ok) return describeHttpFailure("Uploading audio", started.code, started.body)
         val uploadUrl = started.headers["X-Goog-Upload-URL"] ?: return AiResult.Failed("Gemini did not return an upload URL.")
 
@@ -199,7 +229,7 @@ class GeminiHttpTransport(
             .build()
 
         // Allow for a slow mobile connection: at least 20 KB/s, plus a minute and a half.
-        val uploaded = send(upload, (90_000L + file.length() / 20).coerceAtMost(30 * 60_000L))
+        val uploaded = send(upload, (90_000L + file.length() / 20).coerceAtMost(30 * 60_000L), "Upload audio (${file.length() / 1024} KB)")
         if (!uploaded.ok) return describeHttpFailure("Uploading audio", uploaded.code, uploaded.body)
         val fileJson = runCatching { JSONObject(uploaded.body).optJSONObject("file") }.getOrNull()
             ?: return AiResult.Failed("Gemini's upload response was unreadable.")
@@ -220,7 +250,7 @@ class GeminiHttpTransport(
         repeat(FILE_READY_ATTEMPTS) { attempt ->
             coroutineContext.ensureActive()
             val request = Request.Builder().url("$baseUrl/v1beta/$name?key=$apiKey").get().build()
-            val state = send(request, SHORT_TIMEOUT_MS).let { r -> if (r.ok) runCatching { JSONObject(r.body).optString("state") }.getOrNull() else null }
+            val state = send(request, SHORT_TIMEOUT_MS, "File state check").let { r -> if (r.ok) runCatching { JSONObject(r.body).optString("state") }.getOrNull() else null }
             when (state) {
                 "ACTIVE" -> return AiResult.Success(Unit)
                 "FAILED" -> return AiResult.Failed("Gemini could not process the uploaded audio.")
@@ -266,7 +296,7 @@ class GeminiHttpTransport(
             .post(body.toString().toRequestBody(JSON_MIME))
             .build()
 
-        val reply = sendWithRetry(httpRequest, request.timeoutMs ?: if (fileUri != null) LONG_TIMEOUT_MS else TEXT_TIMEOUT_MS)
+        val reply = sendWithRetry(httpRequest, request.timeoutMs ?: if (fileUri != null) LONG_TIMEOUT_MS else TEXT_TIMEOUT_MS, "${if (fileUri != null) "Analyse audio" else "Write"} with ${request.modelId}")
         if (!reply.ok) return describeHttpFailure(if (fileUri != null) "Analysing the recording" else "Writing", reply.code, reply.body)
         return extractText(reply.body)?.let { AiResult.Success(it) } ?: AiResult.Failed("Gemini returned no usable content.")
     }
@@ -300,18 +330,21 @@ class GeminiHttpTransport(
             .build()
         // Transcription runs at several times real speed; allow a third of the audio's length on top of five minutes.
         val audioMs = (request.audioEndMs - request.audioStartMs).coerceAtLeast(0)
-        val reply = sendWithRetry(httpRequest, request.timeoutMs ?: (5 * 60_000L + audioMs / 3))
+        val reply = sendWithRetry(httpRequest, request.timeoutMs ?: (5 * 60_000L + audioMs / 3), "Transcribe ${audioMs / 1000}s of $mime with ${request.modelId}")
         if (!reply.ok) return describeHttpFailure("Transcribing", reply.code, reply.body)
         return collectTranscription(reply.body)?.let { AiResult.Success(it) }
-            ?: AiResult.Failed("Gemini returned no transcript for this audio.")
+            ?: run {
+                GeminiLog.add("Transcribe → answer had no transcript: ${reply.body.replace(Regex("\\s+"), " ").take(300)}")
+                AiResult.Failed("Gemini returned no transcript for this audio.")
+            }
     }
 
     /** A 500 or 503 is Gemini being busy: one more try after a pause, then the error stands. */
-    private suspend fun sendWithRetry(request: Request, timeoutMs: Long): Reply {
-        val first = send(request, timeoutMs)
+    private suspend fun sendWithRetry(request: Request, timeoutMs: Long, label: String): Reply {
+        val first = send(request, timeoutMs, label)
         if (first.code != 500 && first.code != 503) return first
         kotlinx.coroutines.delay(RETRY_DELAY_MS)
-        return send(request, timeoutMs)
+        return send(request, timeoutMs, "$label (retry)")
     }
 
     private fun buildPrompt(request: GeminiRequest): String = buildString {

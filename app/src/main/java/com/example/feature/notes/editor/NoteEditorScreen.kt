@@ -88,6 +88,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -484,6 +485,20 @@ fun NoteEditorScreen(
                     )
                 }
             }
+            // A note that arrived as dozens of one-line blocks (older pastes) is offered one tap to fix.
+            val looseText = blocks.count { it.source == com.example.core.model.BlockSource.USER && it.type.isText && it.content.text.isNotBlank() }
+            if (looseText >= TIDY_SUGGEST_AT) {
+                item(key = "tidy") {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 22.dp, end = 16.dp, top = 10.dp, bottom = 6.dp)
+                            .clip(RoundedCornerShape(14.dp)).background(com.example.ui.theme.AccentWash).padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("This note is split into $looseText separate lines.", fontSize = 13.5.sp, color = Ink, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { viewModel.combineTextIntoMarkdown() }) { Text("Make it one block", color = Accent, fontWeight = FontWeight.SemiBold) }
+                    }
+                }
+            }
             itemsIndexed(visible, key = { _, b -> b.id }) { _, block ->
                 val index = indexOf[block.id] ?: 0
                 val dragging = drag.draggingId == block.id
@@ -499,8 +514,11 @@ fun NoteEditorScreen(
                         .then(if (dragging) Modifier else Modifier.animateItem()),
                     verticalAlignment = Alignment.Top
                 ) {
+                    // A note reads as a page: only the line you're in (and pictures, cards) shows its handle.
+                    val showHandle = dragging || selection?.blockId == block.id || !(block.type.isText || block.type == NoteBlockType.MARKDOWN)
                     BlockHandle(
                         Modifier
+                            .alpha(if (showHandle) 1f else 0f)
                             .padding(top = if (block.type.isText) blockTopPadding(block.type) + if (block.type.name.startsWith("HEADING")) 4.dp else 1.dp else 10.dp)
                             .clickable { blockMenuFor = block }
                             .pointerInput(block.id) {
@@ -1010,3 +1028,6 @@ private fun PrayerUpdateDialog(onSave: (String) -> Unit, onDismiss: () -> Unit) 
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
+
+/** How many separate lines of your own text before the editor offers to make them one block. */
+private const val TIDY_SUGGEST_AT = 25

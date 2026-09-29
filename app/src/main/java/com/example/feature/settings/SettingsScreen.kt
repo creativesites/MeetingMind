@@ -131,11 +131,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         val live = async { limited(20_000) { runCatching { com.example.ai.live.GeminiLiveVoice.probe(key, timeoutMs = 15_000L) }.getOrElse { it.message ?: "Failed." } } ?: "No answer within 20 seconds." }
         try {
+            com.example.ai.cloud.GeminiLog.attach(getApplication())
             _keyCheck.value = listOf(
                 "Transcription (recordings)" to transcription.await(),
                 "Writing (summaries, devotionals, notes AI)" to text.await(),
                 "Live voice (Pray with me)" to live.await()
             )
+            _keyCheck.value?.forEach { (what, problem) -> com.example.ai.cloud.GeminiLog.add("Key check · $what: ${problem ?: "OK"}") }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             _keyCheck.value = listOf("Key" to (e.message ?: "The check failed."))
@@ -609,6 +611,7 @@ fun SettingsScreen(
                     val checking by viewModel.checking.collectAsState()
                     GeminiKeyCheck(check, checking, onCheck = { viewModel.checkGeminiKey() })
                 }
+                item { GeminiLogRow() }
             }
 
             settingsSection(title = "Storage") {
@@ -801,6 +804,59 @@ private fun SettingsRadioRow(title: String, subtitle: String, selected: Boolean,
             onClick = onClick,
             colors = RadioButtonDefaults.colors(selectedColor = Accent, unselectedColor = InkFaint),
             modifier = Modifier.testTag(testTag)
+        )
+    }
+}
+
+/**
+ * Every Gemini call and what came of it — for testers to copy and send, so a failure arrives
+ * with its real reason instead of "it didn't work".
+ */
+@Composable
+private fun GeminiLogRow() {
+    val context = LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().clickable { com.example.ai.cloud.GeminiLog.attach(context); open = true }.padding(horizontal = 16.dp, vertical = 14.dp).testTag("settings_gemini_log"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Gemini log", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text("What happened on each request, with Gemini's own errors. Copy it and send it to the developer.", fontSize = 12.5.sp, color = InkMuted)
+        }
+    }
+    if (open) {
+        var entries by remember { mutableStateOf(com.example.ai.cloud.GeminiLog.entries()) }
+        val report = { com.example.ai.cloud.GeminiLog.report("${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})") }
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text("Gemini log") },
+            text = {
+                if (entries.isEmpty()) Text("Nothing yet. Process a recording or check your key, then look again.", color = InkMuted)
+                else LazyColumn(Modifier.fillMaxWidth().height(420.dp)) {
+                    items(entries.size) { i ->
+                        val line = entries[i]
+                        val bad = line.contains("✗") || line.contains("HTTP 4") || line.contains("HTTP 5") || line.contains("Exception") || line.contains("no transcript")
+                        Text(line, fontSize = 12.sp, lineHeight = 16.sp, color = if (bad) Danger else InkSecondary,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, modifier = Modifier.padding(vertical = 4.dp))
+                    }
+                }
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = {
+                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(android.content.Intent.EXTRA_TEXT, report())
+                        runCatching { context.startActivity(android.content.Intent.createChooser(send, "Send Gemini log")) }
+                    }) { Text("Share") }
+                    TextButton(onClick = {
+                        context.getSystemService(android.content.ClipboardManager::class.java)
+                            ?.setPrimaryClip(android.content.ClipData.newPlainText("Gemini log", report()))
+                        Toast.makeText(context, "Log copied", Toast.LENGTH_SHORT).show()
+                    }) { Text("Copy") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { com.example.ai.cloud.GeminiLog.clear(); entries = emptyList() }) { Text("Clear", color = Danger) } }
         )
     }
 }

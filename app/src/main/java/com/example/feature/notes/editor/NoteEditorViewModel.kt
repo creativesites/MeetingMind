@@ -212,7 +212,8 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
                 if (fresh == null) _gone.value = true
                 else _note.value = _note.value?.let { mine ->
                     // The title the user is typing wins over one arriving from the database.
-                    fresh.copy(title = if (titleDirty) mine.title else fresh.title)
+                    // The saved title is trimmed; the one on screen keeps the space just typed.
+                    fresh.copy(title = if (titleDirty || mine.title.trim() == fresh.title.trim()) mine.title else fresh.title)
                 } ?: fresh
             }
         }

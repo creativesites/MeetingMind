@@ -76,6 +76,7 @@ class GeminiTranscriptionEngine(
         }
 
         val chunks = GeminiChunkPlanner.plan(totalDurationMs, chunkConfig)
+        GeminiLog.add("Transcription plan: ${chunks.size} part(s) for ${totalDurationMs / 1000}s of audio")
         if (chunks.isEmpty()) return AiResult.Success(CloudTranscriptionResult(emptyList(), 0, false, null))
 
         // --- Pass A: verbatim. This one is required; without it there is no transcript at all. ---
@@ -113,7 +114,8 @@ class GeminiTranscriptionEngine(
                 )
             }
             val words = parser.parseVerbatim(response.value, chunkStartMs = chunk.startMs)
-                ?: return AiResult.Failed("Cloud transcription returned an unreadable result for part ${chunk.index + 1}.")
+            GeminiLog.add("Part ${chunk.index + 1}: ${words?.size ?: "unreadable"} words")
+            words ?: return AiResult.Failed("Cloud transcription returned an unreadable result for part ${chunk.index + 1}.")
             transcribedChunks += ChunkTranscription(chunk, words)
         }
 
@@ -122,8 +124,9 @@ class GeminiTranscriptionEngine(
         val globalised = GlobalSpeakerResolver.applyMapping(transcribedChunks, mapping)
         val verbatimWords = AsrWindowReconciler.reconcile(globalised.map { it.words })
 
+        // An empty transcript is reported, not saved as a finished recording with nothing in it.
         if (verbatimWords.isEmpty()) {
-            return AiResult.Success(CloudTranscriptionResult(emptyList(), chunks.size, false, null))
+            return AiResult.Failed("Gemini returned no words for this recording. If there is speech in it, open Settings → Gemini log and send the lines to the developer.")
         }
 
         if (!smartPass) {

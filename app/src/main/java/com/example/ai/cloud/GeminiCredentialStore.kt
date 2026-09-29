@@ -28,6 +28,9 @@ import kotlinx.coroutines.flow.map
  */
 class GeminiCredentialStore(private val context: Context) {
 
+    internal val appContext: Context get() = context.applicationContext
+
+
     /** The key the person entered in Settings, if any. */
     val userKeyFlow: Flow<String?> = context.geminiDataStore.data.map { preferences ->
         preferences[API_KEY]?.takeIf { it.isNotBlank() }
