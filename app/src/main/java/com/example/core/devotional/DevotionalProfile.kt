@@ -82,7 +82,23 @@ data class DevotionalProfile(
     val voice: com.example.ai.voice.VoiceSettings = com.example.ai.voice.VoiceSettings(),
     /** Paint a picture for each day's devotional with Gemini (Internet mode only) (PLAN_V2 F4). */
     val autoImage: Boolean = true,
-    val imageStyle: String = "LANDSCAPE"
+    val imageStyle: String = "LANDSCAPE",
+    /** Formats that take turns; with [rotateFormats] off, [fixedFormat] (or the first) every day. */
+    val formats: Set<DevotionalFormat> = DevotionalFormat.DEFAULT_ROTATION,
+    val rotateFormats: Boolean = true,
+    val fixedFormat: DevotionalFormat? = null,
+    val audience: DevotionalAudience = DevotionalAudience.ADULT,
+    val readingLevel: ReadingLevel = ReadingLevel.STANDARD,
+    /** A passage isn't used again within this many days (unless a series calls for it). */
+    val passageExclusionDays: Int = 30,
+    /** An evening Examen that looks back on the morning's devotional. */
+    val eveningExamen: Boolean = true,
+    /** The series being followed, if any. */
+    val series: SeriesProgress? = null,
+    /** The preset last applied, for display; everything it set stays editable. */
+    val preset: TraditionPreset? = null,
+    /** Written in this language (empty = the app's language). */
+    val language: String = ""
 ) {
     val words: Int get() = when { minutes <= 3 -> 280; minutes <= 7 -> 650; else -> 1100 }
 
@@ -95,6 +111,10 @@ data class DevotionalProfile(
         put("voiceStyle", voice.style.name); put("voiceGender", voice.gender.name); put("speakPrayer", voice.speakPrayer)
         put("autoVoice", voice.autoVoice); put("rate", voice.rate.toDouble())
         put("autoImage", autoImage); put("imageStyle", imageStyle)
+        put("formats", JSONArray(formats.map { it.name })); put("rotate", rotateFormats); fixedFormat?.let { put("fixedFormat", it.name) }
+        put("audience", audience.name); put("readingLevel", readingLevel.name); put("exclusionDays", passageExclusionDays)
+        put("examen", eveningExamen); preset?.let { put("preset", it.name) }; put("language", language)
+        series?.let { sp -> put("series", JSONObject().put("id", sp.seriesId).put("title", sp.title).put("passages", JSONArray(sp.passages)).put("start", sp.startedEpochDay)) }
     }.toString()
 
     companion object {
@@ -129,7 +149,20 @@ data class DevotionalProfile(
                     rate = o.optDouble("rate", d.voice.rate.toDouble()).toFloat().coerceIn(0.7f, 1.3f)
                 ),
                 autoImage = o.optBoolean("autoImage", d.autoImage),
-                imageStyle = o.optString("imageStyle", d.imageStyle).ifBlank { d.imageStyle }
+                imageStyle = o.optString("imageStyle", d.imageStyle).ifBlank { d.imageStyle },
+                formats = set("formats")?.mapNotNull { runCatching { DevotionalFormat.valueOf(it) }.getOrNull() }?.toSet()?.ifEmpty { null } ?: d.formats,
+                rotateFormats = o.optBoolean("rotate", d.rotateFormats),
+                fixedFormat = runCatching { DevotionalFormat.valueOf(o.getString("fixedFormat")) }.getOrNull(),
+                audience = runCatching { DevotionalAudience.valueOf(o.getString("audience")) }.getOrDefault(d.audience),
+                readingLevel = runCatching { ReadingLevel.valueOf(o.getString("readingLevel")) }.getOrDefault(d.readingLevel),
+                passageExclusionDays = o.optInt("exclusionDays", d.passageExclusionDays).coerceIn(0, 365),
+                eveningExamen = o.optBoolean("examen", d.eveningExamen),
+                series = o.optJSONObject("series")?.let { so ->
+                    val ps = so.optJSONArray("passages")
+                    SeriesProgress(so.optString("id"), so.optString("title"), (0 until (ps?.length() ?: 0)).map { ps!!.getString(it) }, so.optLong("start"))
+                }?.takeIf { it.passages.isNotEmpty() },
+                preset = runCatching { TraditionPreset.valueOf(o.getString("preset")) }.getOrNull(),
+                language = o.optString("language", d.language)
             )
         }
     }

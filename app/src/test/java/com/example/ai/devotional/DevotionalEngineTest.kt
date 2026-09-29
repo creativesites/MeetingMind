@@ -124,7 +124,8 @@ class DevotionalEngineTest {
         assertEquals(DevotionalOrigin.MINE, mine.origin)
         assertEquals(1, mine.scripture.size)
         assertTrue(mine.reflection.isEmpty())
-        val evening = e.write(thursday, profile, evening = true)
+        // With the evening Examen off, the evening reading is a classic; on (the default) it's written.
+        val evening = e.write(thursday, profile.copy(eveningExamen = false), evening = true)
         assertEquals(DevotionalOrigin.CLASSIC, evening.origin)
         assertTrue(evening.engine!!.contains("evening"))
     }

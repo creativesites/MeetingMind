@@ -113,7 +113,11 @@ class DevotionalEngine(
         evening: Boolean = false,
         ask: DevotionalAsk? = null,
         /** Recent devotionals ("title — first lines"), newest first, for the model not to repeat. */
-        recent: List<String> = emptyList()
+        recent: List<String> = emptyList(),
+        /** The last fortnight, for the passage window, format rotation and the novelty check. */
+        memory: com.example.core.devotional.DevotionalMemory = com.example.core.devotional.DevotionalMemory(),
+        /** This morning's devotional, for the evening Examen. */
+        morning: Devotional? = null
     ): Devotional {
         lastFallbackReason = null
         val profile = if (ask == null) profile else profile.copy(
@@ -129,14 +133,30 @@ class DevotionalEngine(
         val writer = ask?.writer ?: DevotionalWriter.AUTO
         if (writer == DevotionalWriter.CLASSIC) return anyClassic(date, evening, profile, variant) ?: throw DevotionalUnavailable("No classic reading is available for today.")
         if (writer == DevotionalWriter.AUTO) {
-            if (source == DevotionalSource.CLASSIC || evening) return anyClassic(date, evening, profile, variant) ?: mine(date, profile)
+            // An evening Examen is written when asked for; otherwise the evening reading is a classic.
+            if (source == DevotionalSource.CLASSIC || evening && !profile.eveningExamen) return anyClassic(date, evening, profile, variant) ?: mine(date, profile)
             if (source == DevotionalSource.MINE) return mine(date, profile)
         }
 
         // The care check comes before any AI writing, and never leaves the phone.
         if (DevotionalContract.crisisIn(signals.recentWords)) return care(date)
 
-        val passage = ask?.passage?.let { ScriptureReferenceParser.parse(it) } ?: passageFor(date, profile, variant)
+        // A series sets the passage; otherwise a passage not used within the exclusion window.
+        val series = profile.series?.takeIf { ask?.passage == null && !evening && !it.finished(date.toEpochDay()) }
+        val seriesPassage = series?.passageFor(date.toEpochDay())?.let { ScriptureReferenceParser.parse(it) }
+        val passage = ask?.passage?.let { ScriptureReferenceParser.parse(it) }
+            ?: seriesPassage
+            ?: (if (evening) morning?.scripture?.firstOrNull() else null)
+            ?: freshPassage(date, profile, variant, memory)
+        val format = when {
+            evening -> com.example.core.devotional.DevotionalFormat.DAILY_EXAMEN
+            !profile.rotateFormats -> profile.fixedFormat ?: profile.formats.firstOrNull() ?: com.example.core.devotional.DevotionalFormat.REFLECTION
+            else -> com.example.core.devotional.DevotionalFormat.pick(profile.formats, date.toEpochDay() + variant, memory.lastFormat, memory.recentFormats)
+        }
+        val seriesLine = series?.let { "${it.title}, day ${it.dayIndex(date.toEpochDay()) + 1} of ${it.passages.size}" }
+        val seriesSoFar = series?.let { sp -> memory.seriesSoFar(sp.title).map { e -> "${e.title} (${e.passage}) — ${e.point ?: e.opening.orEmpty()}" } }.orEmpty()
+        val morningLine = morning?.takeIf { evening }?.let { m -> "\"${m.title}\" on ${m.scripture.firstOrNull()?.display().orEmpty()}; it asked: ${m.application.joinToString("; ").ifBlank { m.question.orEmpty() }}" }
+        val recentLines = recent.ifEmpty { memory.promptLines() }
         val text = runCatching { verseText(passage) }.getOrNull()
         val weekday = date.dayOfWeek.getDisplayName(TextStyle.FULL, locale)
         // A chosen writer is kept to: only its models are tried, and failing is said, not papered over.
@@ -150,19 +170,26 @@ class DevotionalEngine(
             // On demand, it's read now — say so; the scheduled one comes out in the morning but stays time-neutral.
             val brief = DevotionalBrief(
                 passage, text, profile, day, weekday, shared, name, ask?.about, hour = ask?.hour,
-                recent = recent, dayIndex = date.toEpochDay() + variant * 5L
+                recent = recentLines, dayIndex = date.toEpochDay() + variant * 5L,
+                format = format, series = seriesLine, seriesSoFar = seriesSoFar, morning = morningLine
             )
-            // Each model gets a fair turn, not forever: a hung download or network moves on to the next.
-            val result = runCatching {
-                kotlinx.coroutines.withTimeoutOrNull(if (candidate.isCloud) CLOUD_TIMEOUT_MS else DEVICE_TIMEOUT_MS) {
-                    candidate.model.generate(DevotionalContract.prompt(brief), maxOutputTokens = profile.words * 2 + 600)
-                } ?: AiResult.Failed(if (candidate.isCloud) "Gemini took too long to answer." else "The on-device model took too long.")
-            }.getOrElse { AiResult.Failed(it.message ?: "failed", it) }
-            val raw = (result as? AiResult.Success)?.value
-            if (raw == null) { lastFallbackReason = (result as? AiResult.Failed)?.message ?: "The AI model wasn't available."; continue }
-            val answer = DevotionalContract.parse(raw)
-            if (answer == null) { lastFallbackReason = "The AI answer couldn't be read."; continue }
-            val checked = check(answer, passage, profile, date) ?: run { lastFallbackReason = "The AI answer didn't pass the devotional checks."; null } ?: continue
+            suspend fun attempt(b: DevotionalBrief): Devotional? {
+                // Each model gets a fair turn, not forever: a hung download or network moves on to the next.
+                val result = runCatching {
+                    kotlinx.coroutines.withTimeoutOrNull(if (candidate.isCloud) CLOUD_TIMEOUT_MS else DEVICE_TIMEOUT_MS) {
+                        candidate.model.generate(DevotionalContract.prompt(b), maxOutputTokens = profile.words * 2 + 600)
+                    } ?: AiResult.Failed(if (candidate.isCloud) "Gemini took too long to answer." else "The on-device model took too long.")
+                }.getOrElse { AiResult.Failed(it.message ?: "failed", it) }
+                val raw = (result as? AiResult.Success)?.value
+                if (raw == null) { lastFallbackReason = (result as? AiResult.Failed)?.message ?: "The AI model wasn't available."; return null }
+                val answer = DevotionalContract.parse(raw)
+                if (answer == null) { lastFallbackReason = "The AI answer couldn't be read."; return null }
+                return check(answer, passage, profile, date) ?: run { lastFallbackReason = "The AI answer didn't pass the devotional checks."; null }
+            }
+            var checked = attempt(brief) ?: continue
+            // The novelty check: one rewrite if it repeats a recent devotional; a second repeat is kept.
+            memory.repeatOf(checked)?.let { why -> attempt(brief.copy(retryNote = why))?.let { checked = it } }
+            checked = checked.copy(format = format, seriesTitle = series?.title, seriesDay = series?.let { it.dayIndex(date.toEpochDay()) + 1 })
             return checked.copy(
                 origin = if (candidate.isCloud) DevotionalOrigin.CLOUD_AI else DevotionalOrigin.DEVICE_AI,
                 label = if (candidate.isCloud) DevotionalLabels.CLOUD else DevotionalLabels.DEVICE,
@@ -175,6 +202,17 @@ class DevotionalEngine(
         }
         if (lastFallbackReason == null) lastFallbackReason = "No AI model is set up, so today's reading is a classic."
         return anyClassic(date, false, profile, variant) ?: mine(date, profile)
+    }
+
+    /** A passage outside the exclusion window, stepping through the candidates until one is fresh. */
+    suspend fun freshPassage(date: LocalDate, profile: DevotionalProfile, variant: Int, memory: com.example.core.devotional.DevotionalMemory): ScriptureReference {
+        var first: ScriptureReference? = null
+        for (step in 0 until 24) {
+            val candidate = passageFor(date, profile, variant + step)
+            if (first == null) first = candidate
+            if (!memory.usedRecently(candidate, date, profile.passageExclusionDays)) return candidate
+        }
+        return first ?: passageFor(date, profile, variant)
     }
 
     /** Today's passage: the season's or the person's topics, then the Verse of the Day, then the classic's. */
@@ -270,4 +308,12 @@ class DevotionalEngine(
         scripture = listOfNotNull(ScriptureReferenceParser.parse("Psalm 34:18")),
         reflection = DevotionalContract.CARE_TEXT, label = DevotionalLabels.CARE
     )
+}
+
+/** The devotionals of the last 14 days (not counting [today]'s own), as memory. */
+fun memoryOf(notes: List<com.example.core.model.Note>, today: LocalDate): com.example.core.devotional.DevotionalMemory {
+    val from = today.minusDays(14)
+    return com.example.core.devotional.DevotionalMemory.fromMetadata(notes.map { it.title to it.metadata }).let { m ->
+        m.copy(entries = m.entries.filter { e -> runCatching { LocalDate.parse(e.day) }.getOrNull()?.let { !it.isBefore(from) } == true })
+    }
 }

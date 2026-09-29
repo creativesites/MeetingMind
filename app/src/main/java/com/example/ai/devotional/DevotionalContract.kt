@@ -25,7 +25,15 @@ data class DevotionalBrief(
     /** Recent devotionals' titles and first lines, newest first, so today's is not a rerun. */
     val recent: List<String> = emptyList(),
     /** Picks today's angle and opening; the day number plus "another one" steps. */
-    val dayIndex: Long = 0
+    val dayIndex: Long = 0,
+    val format: com.example.core.devotional.DevotionalFormat? = null,
+    /** "7 Days in Philippians, day 3 of 7" and a line for each earlier day. */
+    val series: String? = null,
+    val seriesSoFar: List<String> = emptyList(),
+    /** For the evening Examen: this morning's devotional (title, passage, what it asked). */
+    val morning: String? = null,
+    /** Set on a second attempt: what the first repeated. */
+    val retryNote: String? = null
 )
 
 /** The model's answer, before checking. */
@@ -45,20 +53,11 @@ data class DevotionalAnswer(
  */
 object DevotionalContract {
 
-    /** Sent with every request. Tested so it can't quietly lose a clause. */
-    val CONTRACT = """
-        You are writing a short Christian devotional for one person. It will be shown to them labelled "AI-written devotional".
-        Rules you must follow:
-        1. Write about the passage given. Do not quote Bible verses word for word — the app shows the real verse text itself. Refer to verses by reference (e.g. "John 15:5") and paraphrase briefly.
-        2. Never claim to speak for God. Do not write "God is telling you", "the Lord says to you", "I prophesy", "thus says the Lord", or promise specific outcomes (healing, money, a job, a spouse, a date).
-        3. Give no medical, legal, financial or crisis advice. If life is hard, be gentle and encourage talking to a trusted person or pastor.
-        4. Stay within historic, mainstream Christian teaching, in the tradition named. Where Christians differ, do not take sides.
-        5. Be warm, honest and specific. No clichés, no guilt, no hype. Address the reader as "you".
-        6. Output only JSON, no other text.
-        7. Personal details they've shared (where they live, their work, their family, their circumstances) are background that shapes your choices, not material to repeat. Never open with them, never mention their city or country, and bring one in at most once, lightly, only when today's passage truly calls for it — most days, not at all.
-        8. Don't assume they are struggling. Most days are ordinary or good; unless they've said otherwise, write for a normal day with curiosity, delight, gratitude and hope as readily as comfort.
-        9. Every day should feel new. Don't reuse the titles, openings, images, illustrations or turns of phrase of their recent devotionals. Avoid stock openings such as "In the quiet of…", "As you…", "Picture this…", "Have you ever…", "Today, …" and "From your…".
-    """.trimIndent()
+    /**
+     * Sent with every request: the shared Faith theology contract and the devotional prompt, both
+     * versioned files in assets/prompts. Tested so neither can quietly lose a clause.
+     */
+    val CONTRACT: String get() = com.example.ai.faith.Prompts.faithContract + "\n\n" + com.example.ai.faith.Prompts.get("devotional").system()
 
     /** Ways into a passage, one per day, so the devotional's shape changes as well as its words. */
     val ANGLES = listOf(
@@ -106,6 +105,9 @@ object DevotionalContract {
             appendLine()
             appendLine("Tradition: ${p.tradition.label}${if (p.tradition == Tradition.CATHOLIC || p.tradition == Tradition.ORTHODOX || p.tradition == Tradition.ANGLICAN) " (use its usual vocabulary respectfully)" else ""}.")
             appendLine("Voice: ${p.tone.guidance}.")
+            appendLine("Written for ${p.audience.guidance}, in ${p.readingLevel.guidance}.")
+            if (p.language.isNotBlank()) appendLine("Write in ${p.language}.")
+            brief.format?.let { f -> appendLine("Format — ${f.label}: ${f.guidance}${f.tradition?.let { t -> " (rooted in the $t tradition; present it as such)" } ?: ""}") }
             appendLine("Day: ${brief.weekday}${brief.season?.let { ", ${it.describe()}" } ?: ""}.")
             appendLine(timeLine(brief.hour))
             appendLine("Passage: ${brief.passage.display()}")
@@ -119,8 +121,14 @@ object DevotionalContract {
             appendLine("Opening: ${openingFor(brief.dayIndex)}")
             if (brief.recent.isNotEmpty()) {
                 appendLine("Their recent devotionals (don't repeat their titles, openings, images or ideas):")
-                brief.recent.take(10).forEach { appendLine("- ${it.take(180)}") }
+                brief.recent.take(14).forEach { appendLine("- ${it.take(220)}") }
             }
+            brief.series?.let { sr ->
+                appendLine("This is part of a series: $sr. Continue it — build on the earlier days, don't restart or repeat them.")
+                brief.seriesSoFar.forEach { appendLine("- earlier: ${it.take(200)}") }
+            }
+            brief.morning?.let { appendLine("This evening Examen follows this morning's devotional: $it. Invite them to look back on it gently — the passage, what it asked, what the day held — without judging.") }
+            brief.retryNote?.let { appendLine("Your previous draft was rejected because $it. Write something clearly different.") }
             brief.name?.takeIf { it.isNotBlank() }?.let { appendLine("Their first name: $it (use it at most once).") }
             brief.request?.trim()?.takeIf { it.isNotEmpty() }?.let {
                 appendLine("They asked for a devotional about this, in their words — let it shape everything, gently: ${it.take(600)}")
@@ -175,6 +183,8 @@ object DevotionalContract {
         Regex("""\b(god|the lord|jesus|the spirit|the holy spirit) (says|said|is saying|wants to say|told me|tells you) (to you|that you|this)\b"""),
         Regex("""\b(thus|so) says the lord\b"""),
         Regex("""\bi (prophesy|declare|decree)\b"""),
+        Regex("""\bgod (told|has told|showed|has shown) me\b"""),
+        Regex("""\bgod (has revealed|reveals|is revealing) (to you )?that you (should|must|will)\b"""),
         Regex("""\b(this|here) is (a|your|the) (word|prophecy|message) from (god|the lord)\b"""),
         Regex("""\bgod (will|is going to) (heal|cure|give you|bless you with|provide you with|bring you) (a |an |the |your )?(job|husband|wife|spouse|money|promotion|baby|child|house|healing|cure|breakthrough)"""),
         Regex("""\byou will (receive|get|find) (a |an |the |your )?(new )?(job|husband|wife|spouse|money|promotion|baby|healing|breakthrough|miracle)"""),

@@ -117,6 +117,9 @@ android {
   // Room's exported schemas, one JSON per database version, so migrations are tested against the
   // real shape of every version (MigrationTestHelper reads them from test assets).
   sourceSets.getByName("test").assets.srcDir("$projectDir/schemas")
+  // Prompts are versioned assets (assets/prompts); also on the classpath so the pure engines
+  // and their unit tests read the very same files.
+  sourceSets.getByName("main").resources.srcDir("src/main/assets/prompts")
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true

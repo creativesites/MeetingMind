@@ -26,7 +26,12 @@ data class Devotional(
     val label: String,
     /** What wrote it, for the honest "written by" line ("gemini-…", "qwen…"). */
     val engine: String? = null,
-    val season: LiturgicalDay? = null
+    val season: LiturgicalDay? = null,
+    /** The shape it was written in; null for classics and your own page. */
+    val format: DevotionalFormat? = null,
+    /** "7 Days in Philippians · Day 3", when it belongs to a series. */
+    val seriesTitle: String? = null,
+    val seriesDay: Int? = null
 )
 
 /** A calendar date as "yyyy-MM-dd", the key a day's devotional is filed under. */

@@ -26,6 +26,14 @@ object DevotionalNotes {
     const val META_EVENING = "devotionalEvening"
     /** One per day and slot: "2026-09-24" or "2026-09-24-pm". What a day's devotional is found by. */
     const val META_KEY = "devotionalKey"
+    // What the variety checks remember about each one.
+    const val META_FORMAT = "devotionalFormat"
+    const val META_PASSAGE = "devotionalPassage"
+    const val META_OPENING = "devotionalOpening"
+    const val META_POINT = "devotionalPoint"
+    const val META_SERIES = "devotionalSeries"
+    const val META_SERIES_DAY = "devotionalSeriesDay"
+    const val META_FAVOURITE = "devotionalFavourite"
 
     fun key(day: LocalDay, evening: Boolean = false) = if (evening) "${day.iso}-pm" else day.iso
 
@@ -63,7 +71,15 @@ object DevotionalNotes {
         d.engine?.let { put(META_ENGINE, it) }
         d.season?.let { put(META_SEASON, it.describe()) }
         if (evening) put(META_EVENING, "1")
+        d.format?.let { put(META_FORMAT, it.name) }
+        d.scripture.firstOrNull()?.let { put(META_PASSAGE, it.display()) }
+        d.reflection.firstOrNull()?.let { put(META_OPENING, firstSentence(it).take(200)) }
+        (d.application.firstOrNull() ?: d.motivation)?.let { put(META_POINT, it.take(200)) }
+        d.seriesTitle?.let { put(META_SERIES, it) }
+        d.seriesDay?.let { put(META_SERIES_DAY, it.toString()) }
     }
+
+    fun firstSentence(text: String): String = text.trim().split(Regex("(?<=[.!?])\\s+")).firstOrNull().orEmpty()
 
     /** Blocks and references for [d] in note [noteId]. */
     fun build(noteId: String, d: Devotional, now: Long = System.currentTimeMillis()): Pair<List<NoteBlock>, List<ScriptureRef>> {
@@ -126,7 +142,10 @@ object DevotionalNotes {
             insight = insight,
             question = texts(S_QUESTION).firstOrNull(),
             label = meta[META_LABEL] ?: DevotionalLabels.CLOUD,
-            engine = meta[META_ENGINE]
+            engine = meta[META_ENGINE],
+            format = meta[META_FORMAT]?.let { runCatching { DevotionalFormat.valueOf(it) }.getOrNull() },
+            seriesTitle = meta[META_SERIES],
+            seriesDay = meta[META_SERIES_DAY]?.toIntOrNull()
         )
     }
 
