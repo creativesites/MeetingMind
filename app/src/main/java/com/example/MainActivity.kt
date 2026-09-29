@@ -449,6 +449,34 @@ fun MeetMindApp() {
             if (request == null) LaunchedEffect(Unit) { navController.popBackStack() }
             else com.example.feature.share.ShareStudioScreen(request = request, onNavigateBack = { navController.popBackStack() })
         }
+        composable(
+            Routes.STUDY,
+            arguments = listOf(
+                navArgument("noteId") { type = NavType.StringType },
+                navArgument("meeting") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("ref") { type = NavType.StringType; nullable = true; defaultValue = null }
+            )
+        ) { entry ->
+            val noteId = entry.arguments?.getString("noteId").orEmpty()
+            val app = context.applicationContext as android.app.Application
+            val editor: com.example.feature.notes.editor.NoteEditorViewModel = viewModel(
+                key = "study-note-$noteId",
+                factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                    @Suppress("UNCHECKED_CAST")
+                    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
+                        com.example.feature.notes.editor.NoteEditorViewModel(app, noteId) as T
+                }
+            )
+            val study: com.example.feature.study.StudyWorkspaceViewModel = viewModel()
+            com.example.feature.study.StudyWorkspaceScreen(
+                editor = editor, vm = study, noteId = noteId,
+                meetingId = entry.arguments?.getString("meeting"),
+                initialRef = entry.arguments?.getString("ref")?.let { com.example.core.scripture.YouVersionScriptureProvider.parsePassageId(it) },
+                onNavigateBack = { navController.popBackStack() },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenRecording = { m, ms -> navController.navigate(Routes.meetingDetailRoute(m, ms)) }
+            )
+        }
         composable(Routes.DEVOTIONAL_ARCHIVE) {
             com.example.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
                 com.example.feature.devotional.DevotionalArchiveScreen(
@@ -486,11 +514,23 @@ fun MeetMindApp() {
         ) { backStackEntry ->
             val vm: com.example.feature.bible.BibleViewModel = viewModel()
             val ref = backStackEntry.arguments?.getString("ref")?.let { com.example.core.scripture.YouVersionScriptureProvider.parsePassageId(it) }
+            // "Study this": pick a method, get a study note with the passage open beside it.
+            var studyFor by remember { mutableStateOf<com.example.core.scripture.ScriptureReference?>(null) }
+            val studyScope = rememberCoroutineScope()
+            studyFor?.let { passage ->
+                com.example.feature.study.StudyTemplateSheet(passage, onPick = { t ->
+                    studyFor = null
+                    studyScope.launch {
+                        val note = com.example.core.repository.NoteRepository(context, com.example.core.database.MeetMindDatabase.getInstance(context)).startStudy(t, passage)
+                        navController.navigate(Routes.studyRoute(note.id, passageId = passage.passageId()))
+                    }
+                }, onDismiss = { studyFor = null })
+            }
             com.example.feature.bible.BibleScreen(
                 viewModel = vm,
                 initialReference = ref,
                 onNavigateBack = { navController.popBackStack() },
-                onStartNote = { r -> vm.startDevotional(r) { navController.navigate(Routes.noteRoute(it)) } },
+                onStartNote = { r -> studyFor = r },
                 startInSearch = backStackEntry.arguments?.getBoolean("search") == true
             )
         }
@@ -665,7 +705,8 @@ fun MeetMindApp() {
                     // Came here from that note: go back to it rather than stacking a second copy.
                     if (navController.previousBackStackEntry?.arguments?.getString("noteId") == noteId) navController.popBackStack()
                     else navController.navigate(Routes.noteRoute(noteId))
-                }
+                },
+                onStudy = { noteId, mId -> navController.navigate(Routes.studyRoute(noteId, meetingId = mId)) }
             )
         }
 

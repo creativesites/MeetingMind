@@ -8,6 +8,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -125,6 +126,8 @@ fun FaithScreen(
     onOpenPlans: () -> Unit = {},
     onOpenPrayerList: () -> Unit = {}
 ) {
+    var studyPicker by remember { mutableStateOf(false) }
+    if (studyPicker) com.example.feature.study.StudyTemplateSheet(null, onPick = { t -> studyPicker = false; viewModel.startStudy(t, onOpenNote) }, onDismiss = { studyPicker = false })
     val extras: FaithExtrasViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     androidx.compose.runtime.LaunchedEffect(Unit) { extras.refresh() }
     val votd by viewModel.verseOfTheDay.collectAsState()
@@ -175,6 +178,8 @@ fun FaithScreen(
                     },
                     onStartDevotional = { votd?.let { v -> viewModel.startDevotional(v.reference, onOpenNote) } }
                 )
+                val memory by viewModel.memoryVerse.collectAsState()
+                MemoryVerseCard(memory, onRead = { memory?.first?.reference?.let(onReadPassage) }, onMemorise = { votd?.reference?.let { viewModel.memorise(it) } }, hasVotd = votd != null)
             }
 
             // The Bible itself: read, and search.
@@ -211,7 +216,10 @@ fun FaithScreen(
                     Column(Modifier.padding(horizontal = 20.dp).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         StartKinds.chunked(2).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                row.forEach { kind -> StartTile(kind, Modifier.weight(1f)) { viewModel.create(kind.type, onOpenNote) } }
+                                row.forEach { kind -> StartTile(kind, Modifier.weight(1f)) {
+                                    // A Bible study starts from a method (SOAP, Inductive…), not a blank page.
+                                    if (kind.type == RecordingType.BIBLE_STUDY) studyPicker = true else viewModel.create(kind.type, onOpenNote)
+                                } }
                             }
                         }
                     }
@@ -733,6 +741,35 @@ private fun VoiceBars(playing: Boolean) {
         repeat(9) { i ->
             val h = 10f + 26f * ((kotlin.math.sin(phase + i * 0.7f) + 1f) / 2f) * (if (playing) 1f else 0.55f)
             Box(Modifier.size(width = 4.dp, height = h.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFF6D365).forTheme().copy(alpha = 0.85f)))
+        }
+    }
+}
+
+
+/**
+ * A verse being learned by heart: shown whole, then with more words hidden each tap, until only
+ * first letters remain. Empty, it says how to add one.
+ */
+@Composable
+private fun MemoryVerseCard(memory: Pair<VerseOfTheDay, Int>?, onRead: () -> Unit, onMemorise: () -> Unit, hasVotd: Boolean) {
+    var level by remember(memory?.first?.reference) { mutableStateOf(0) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(20.dp))
+        .border(0.5.dp, com.example.ui.theme.LineSoft, RoundedCornerShape(20.dp)).padding(18.dp).testTag("faith_memory_verse")) {
+        Text("MEMORY VERSE", fontSize = 11.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = com.example.ui.theme.FaithGold)
+        if (memory == null) {
+            Text("Learn a verse by heart. Save one to “Memory verses” from the Bible, or start with today's verse.", fontSize = 14.sp, lineHeight = 20.sp, color = InkSecondary, modifier = Modifier.padding(top = 6.dp))
+            if (hasVotd) Text("Memorise today's verse", fontSize = 13.5.sp, color = com.example.ui.theme.Accent, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 10.dp).clickable(onClick = onMemorise))
+            return@Column
+        }
+        val (v, count) = memory
+        val text = (v.passage as? com.example.core.scripture.PassageResult.Found)?.passage?.text
+        Text(v.reference.display() + if (count > 1) "  ·  $count saved" else "", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 6.dp).clickable(onClick = onRead))
+        Text(text?.let { com.example.core.faith.MemoryVerses.mask(it, level) } ?: "…", fontSize = 18.sp, lineHeight = 28.sp, fontFamily = FontFamily.Serif, color = Ink, modifier = Modifier.padding(top = 8.dp))
+        Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(if (level < 3) "Hide more" else "Start again", fontSize = 13.5.sp, color = com.example.ui.theme.Accent, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable { level = if (level < 3) level + 1 else 0 })
+            if (level > 0) Text("Show all", fontSize = 13.5.sp, color = InkSecondary, modifier = Modifier.clickable { level = 0 })
         }
     }
 }

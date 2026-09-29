@@ -506,6 +506,49 @@ class NoteRepository(
         getNote(note.id)!!
     }
 
+    /**
+     * The notes, sermons and devotionals that refer to [ref] — overlapping verses in the same
+     * chapter; a whole-chapter reference touches every verse. Trashed notes are left out.
+     */
+    suspend fun notesOnPassage(ref: com.example.core.scripture.ScriptureReference, excludeNoteId: String? = null): com.example.core.faith.PassageLinks = withContext(Dispatchers.IO) {
+        val hits = scriptureDao.getForChapter(ref.usfm, ref.chapter).filter { e ->
+            val a = ref.verseStart; val b = ref.verseEnd ?: ref.verseStart
+            val c = e.verseStart; val d = e.verseEnd ?: e.verseStart
+            a == null || c == null || (a <= (d ?: c) && c <= (b ?: a))
+        }.filter { it.noteId != excludeNoteId }
+        val linked = hits.groupBy { it.noteId }.mapNotNull { (noteId, refs) ->
+            val note = getNote(noteId)?.takeIf { it.deletedAt == null } ?: return@mapNotNull null
+            val first = refs.minByOrNull { it.startMs ?: Long.MAX_VALUE } ?: refs.first()
+            val display = com.example.core.scripture.BibleBooks.byUsfm(first.bookUsfm)?.let { b ->
+                com.example.core.scripture.ScriptureReference(b, first.chapter, first.verseStart, first.verseEnd).display()
+            } ?: ref.display()
+            note to com.example.core.faith.LinkedNote(noteId, note.title.ifBlank { "Untitled" }, display, first.meetingId, first.startMs, note.updatedAt)
+        }
+        com.example.core.faith.PassageLinks(
+            myNotes = linked.filter { (n, _) -> n.workflow != RecordingType.SERMON && n.metadata["devotionalDay"] == null }.map { it.second }.sortedByDescending { it.updatedAt },
+            sermons = linked.filter { (n, _) -> n.workflow == RecordingType.SERMON }.map { it.second }.sortedByDescending { it.updatedAt },
+            devotionals = linked.filter { (n, _) -> n.metadata["devotionalDay"] != null }.map { it.second }.sortedByDescending { it.updatedAt }
+        )
+    }
+
+    /** A new Bible-study note using [template], with [reference] at the top when given. */
+    suspend fun startStudy(template: com.example.core.faith.StudyTemplate, reference: com.example.core.scripture.ScriptureReference?): Note = withContext(Dispatchers.IO) {
+        val note = createNote(workflow = RecordingType.BIBLE_STUDY, title = listOfNotNull(reference?.display(), template.label).joinToString(" · "),
+            metadata = mapOf("studyTemplate" to template.name), useTemplate = false)
+        val blocks = mutableListOf<NoteBlock>()
+        val refs = mutableListOf<ScriptureRef>()
+        reference?.let { r ->
+            val blockId = newId("block"); val refId = newId("scripture")
+            blocks += NoteBlock(blockId, note.id, 0, NoteBlockType.SCRIPTURE, com.example.core.notes.RichText.plain(r.display()),
+                mapOf(NoteBlock.PAYLOAD_SCRIPTURE_REF_ID to refId, "reference" to r.display()), BlockSource.SCRIPTURE, sectionKey = "passage")
+            refs += ScriptureRef(refId, note.id, blockId, r.usfm, r.chapter, r.verseStart, r.verseEnd, null, com.example.core.model.ScriptureOrigin.USER, createdAt = clock())
+        }
+        blocks += template.blocks(note.id)
+        saveBlocks(note.id, blocks)
+        addScriptureRefs(refs)
+        getNote(note.id)!!
+    }
+
     fun observeThemes(workflows: Collection<RecordingType>): Flow<List<com.example.core.database.NameCount>> = combine(
         noteDao.observeTagCountsForWorkflows(workflows.map { it.name }),
         noteDao.observeTopicCountsForWorkflows(workflows.map { it.name })

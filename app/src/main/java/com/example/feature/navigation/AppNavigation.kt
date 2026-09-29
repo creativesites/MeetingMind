@@ -27,6 +27,10 @@ object Routes {
     /** A saved devotional, opened as it was — never rewritten. */
     fun pastDevotionalRoute(noteId: String) = "devotional?note=$noteId"
     const val DEVOTIONAL_ARCHIVE = "devotional_archive"
+    /** Study beside a note: a sermon's timeline and transcript, or a Bible passage. */
+    const val STUDY = "study/{noteId}?meeting={meeting}&ref={ref}"
+    fun studyRoute(noteId: String, meetingId: String? = null, passageId: String? = null) =
+        "study/$noteId" + listOfNotNull(meetingId?.let { "meeting=$it" }, passageId?.let { "ref=$it" }).joinToString("&", prefix = "?").takeIf { meetingId != null || passageId != null }.orEmpty()
     const val STORIES = "stories?start={start}"
     const val SHARE = "share"
     const val PLANS = "reading_plans"

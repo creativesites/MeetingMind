@@ -313,6 +313,10 @@ interface ScriptureDao {
     @Query("SELECT * FROM scripture_refs")
     suspend fun getAll(): List<ScriptureRefEntity>
 
+    /** Every reference into one chapter — "notes on this passage". Uses the (book, chapter) index. */
+    @Query("SELECT * FROM scripture_refs WHERE bookUsfm = :book AND chapter = :chapter ORDER BY createdAt DESC")
+    suspend fun getForChapter(book: String, chapter: Int): List<ScriptureRefEntity>
+
     @Query("SELECT * FROM scripture_collections ORDER BY name COLLATE NOCASE")
     fun observeCollections(): Flow<List<ScriptureCollectionEntity>>
 

@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import java.util.Calendar
 
 /** One month of the journey: how many of each kind, and the notes themselves. */
@@ -87,7 +88,33 @@ class FaithViewModel(application: Application) : AndroidViewModel(application) {
     private val _votd = MutableStateFlow<VerseOfTheDay?>(null)
     val verseOfTheDay: StateFlow<VerseOfTheDay?> = _votd.asStateFlow()
 
-    init { loadVerseOfTheDay() }
+    /** Today's memory verse and how many are saved; null until one is saved. */
+    private val _memory = MutableStateFlow<Pair<VerseOfTheDay, Int>?>(null)
+    val memoryVerse: StateFlow<Pair<VerseOfTheDay, Int>?> = _memory.asStateFlow()
+
+    init {
+        loadVerseOfTheDay()
+        viewModelScope.launch {
+            notes.observeScriptureCollections().collect { cols ->
+                val col = cols.firstOrNull { it.name.equals(com.example.core.faith.MemoryVerses.COLLECTION, ignoreCase = true) }
+                if (col == null) { _memory.value = null; return@collect }
+                val items = notes.observeCollectionItems(col.id).first()
+                val i = com.example.core.faith.MemoryVerses.indexFor(java.time.LocalDate.now().toEpochDay(), items.size)
+                val item = items.getOrNull(i) ?: run { _memory.value = null; return@collect }
+                val ref = com.example.core.scripture.BibleBooks.byUsfm(item.bookUsfm)?.let { ScriptureReference(it, item.chapter, item.verseStart, item.verseEnd) } ?: return@collect
+                _memory.value = VerseOfTheDay(ref, null) to items.size
+                _memory.value = VerseOfTheDay(ref, scripture.passage(ref)) to items.size
+            }
+        }
+    }
+
+    /** Adds a verse to the memory verses collection, making the collection if needed. */
+    fun memorise(ref: ScriptureReference) = viewModelScope.launch {
+        val cols = notes.observeScriptureCollections().first()
+        val col = cols.firstOrNull { it.name.equals(com.example.core.faith.MemoryVerses.COLLECTION, ignoreCase = true) }
+            ?: notes.createScriptureCollection(com.example.core.faith.MemoryVerses.COLLECTION)
+        notes.addToCollection(col.id, ref.usfm, ref.chapter, ref.verseStart, ref.verseEnd, null)
+    }
 
     fun loadVerseOfTheDay() = viewModelScope.launch {
         val day = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
@@ -99,6 +126,10 @@ class FaithViewModel(application: Application) : AndroidViewModel(application) {
     /** Starts a Faith note of [type] from its template, and hands back its id. */
     fun create(type: RecordingType, onCreated: (String) -> Unit) = viewModelScope.launch {
         onCreated(notes.createNote(workflow = type, draft = true).id)
+    }
+
+    fun startStudy(template: com.example.core.faith.StudyTemplate, onCreated: (String) -> Unit) = viewModelScope.launch {
+        onCreated(notes.startStudy(template, null).id)
     }
 
     fun startDevotional(reference: ScriptureReference, onCreated: (String) -> Unit) = viewModelScope.launch {

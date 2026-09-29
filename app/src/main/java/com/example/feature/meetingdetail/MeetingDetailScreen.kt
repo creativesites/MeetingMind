@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.height
@@ -761,7 +762,9 @@ fun MeetingDetailScreen(
      * user in context, not just at the recording's Overview. */
     initialJumpToMs: Long? = null,
     /** Opens the note this recording belongs to. */
-    onOpenNote: (noteId: String) -> Unit = {}
+    onOpenNote: (noteId: String) -> Unit = {},
+    /** "Study this sermon": the sermon's timeline, Scripture and transcript beside its note. */
+    onStudy: (noteId: String, meetingId: String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val meeting by viewModel.meeting.collectAsState()
@@ -977,6 +980,16 @@ fun MeetingDetailScreen(
                                 Icon(Icons.Filled.EditNote, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Note", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                            }
+                        }
+                        if (meeting?.recordingType in setOf(RecordingType.SERMON, RecordingType.BIBLE_STUDY, RecordingType.DEVOTIONAL, RecordingType.TESTIMONY) && meeting?.status == MeetingStatus.READY) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(onClick = { meeting?.id?.let { onStudy(noteId, it) } }, shape = RoundedCornerShape(50), color = AccentWash, modifier = Modifier.testTag("meeting_study_btn")) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Study", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                                }
                             }
                         }
                     }

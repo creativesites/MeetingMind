@@ -203,7 +203,7 @@ fun BibleScreen(
             val ready = content as? ChapterState.Ready
             SelectionBar(
                 reference = ref,
-                insertLabel = if (onInsert != null) "Insert into note" else "New note",
+                insertLabel = if (onInsert != null) "Insert into note" else "Study this",
                 onPrimary = {
                     val id = current?.id ?: return@SelectionBar
                     if (onInsert != null) onInsert(ref, id) else onStartNote?.invoke(ref)
