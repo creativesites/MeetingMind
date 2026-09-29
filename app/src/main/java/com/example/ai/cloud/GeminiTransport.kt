@@ -34,7 +34,9 @@ data class GeminiRequest(
      * Upload [audioFile] exactly as it is instead of a decoded WAV slice. Only for a request that
      * covers the whole recording, in a format Gemini reads directly — no decoding, much faster.
      */
-    val uploadWholeFile: Boolean = false
+    val uploadWholeFile: Boolean = false,
+    /** A hard limit for the whole request, overriding the transport's own; null to use those. */
+    val timeoutMs: Long? = null
 )
 
 /** `generationConfig.audioTranscriptionConfig` for the Gemini transcription model. */

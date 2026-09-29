@@ -55,8 +55,7 @@ object NoteExportMapper {
     ): ExportDocument {
         val attachments = doc.attachments.associateBy { it.id }
         val refs = doc.scriptureRefs.associateBy { it.id }
-        val blocks = doc.blocks
-            .sortedBy { it.position }
+        val blocks = com.example.core.notes.MarkdownImport.expand(doc.blocks.sortedBy { it.position })
             .filter { options.includePrivateSections || it.sectionKey == null || it.sectionKey !in options.privateSectionKeys }
             .mapNotNull { block -> mapBlock(block, attachments, refs, recordings, passages, crops) }
         // The cover the person chose leads the document, unless it's already the first picture.
@@ -150,6 +149,8 @@ object NoteExportMapper {
             val label = block.payload[NoteBlock.PAYLOAD_ALT]?.takeIf { it.isNotBlank() } ?: url
             ExportBlock.Paragraph(RichText.plain(label).applyStyle(com.example.core.notes.InlineStyle.LINK, 0, label.length, url))
         }
+        // Opened out into its own blocks before this point (MarkdownImport.expand).
+        NoteBlockType.MARKDOWN -> null
     }
 
     /** Leading and trailing empty paragraphs are editor scaffolding, not content. */

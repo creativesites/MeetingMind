@@ -75,7 +75,7 @@ import com.example.ui.theme.SurfaceSunk
 
 /** Code, shown as written: monospace, scrolls sideways, one tap to copy, tap the code to edit. */
 @Composable
-internal fun CodeBlock(block: NoteBlock, onEdit: (String) -> Unit) {
+internal fun CodeBlock(block: NoteBlock, onTap: (() -> Unit)? = null, onEdit: (String) -> Unit) {
     val clipboard = LocalClipboardManager.current
     var editing by remember { mutableStateOf(false) }
     val language = block.payload[NoteBlock.PAYLOAD_LANGUAGE].orEmpty()
@@ -91,7 +91,7 @@ internal fun CodeBlock(block: NoteBlock, onEdit: (String) -> Unit) {
         Text(
             block.content.text.ifEmpty { " " },
             fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 20.sp, color = Ink, softWrap = false,
-            modifier = Modifier.fillMaxWidth().clickable { editing = true }.horizontalScroll(rememberScrollState()).padding(start = 14.dp, end = 14.dp, bottom = 14.dp)
+            modifier = Modifier.fillMaxWidth().clickable { if (onTap != null) onTap() else editing = true }.horizontalScroll(rememberScrollState()).padding(start = 14.dp, end = 14.dp, bottom = 14.dp)
         )
     }
     if (editing) {
@@ -137,7 +137,7 @@ internal fun TableBlock(block: NoteBlock) {
     }
 }
 
-private fun styled(content: RichText, colors: com.example.ui.theme.MMColors): AnnotatedString = buildAnnotatedString {
+internal fun styled(content: RichText, colors: com.example.ui.theme.MMColors): AnnotatedString = buildAnnotatedString {
     append(content.text)
     for (span in content.spans) {
         val style = when (span.style) {

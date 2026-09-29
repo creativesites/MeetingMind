@@ -122,20 +122,26 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val text = async {
             limited(20_000) {
                 val transport = com.example.ai.cloud.GeminiHttpTransport(geminiCredentials)
-                when (val r = transport.execute(com.example.ai.cloud.GeminiRequest(router.GEMINI_INTELLIGENCE_MODEL, "", "Reply with the single word OK."))) {
+                when (val r = transport.execute(com.example.ai.cloud.GeminiRequest(router.GEMINI_INTELLIGENCE_MODEL, "", "Reply with the single word OK.", timeoutMs = 18_000L))) {
                     is com.example.ai.common.AiResult.Success -> null
                     is com.example.ai.common.AiResult.Failed -> r.message
                     else -> "No answer."
                 }
             } ?: "No answer within 20 seconds."
         }
-        val live = async { runCatching { com.example.ai.live.GeminiLiveVoice.probe(key, timeoutMs = 15_000L) }.getOrElse { it.message ?: "Failed." } }
-        _keyCheck.value = listOf(
-            "Transcription (recordings)" to transcription.await(),
-            "Writing (summaries, devotionals, notes AI)" to text.await(),
-            "Live voice (Pray with me)" to live.await()
-        )
-        _checking.value = false
+        val live = async { limited(20_000) { runCatching { com.example.ai.live.GeminiLiveVoice.probe(key, timeoutMs = 15_000L) }.getOrElse { it.message ?: "Failed." } } ?: "No answer within 20 seconds." }
+        try {
+            _keyCheck.value = listOf(
+                "Transcription (recordings)" to transcription.await(),
+                "Writing (summaries, devotionals, notes AI)" to text.await(),
+                "Live voice (Pray with me)" to live.await()
+            )
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            _keyCheck.value = listOf("Key" to (e.message ?: "The check failed."))
+        } finally {
+            _checking.value = false
+        }
     }
 
     val preferencesState: StateFlow<AppPreferencesState> = userPrefs.preferencesFlow.stateIn(
@@ -918,7 +924,7 @@ internal object GeminiKeyProbe {
         val request = okhttp3.Request.Builder()
             .url("${com.example.ai.cloud.GeminiHttpTransport.DEFAULT_BASE_URL}/v1beta/models/$model?key=$key").get().build()
         return runCatching {
-            client.newCall(request).execute().use { r ->
+            client.newBuilder().callTimeout(12, java.util.concurrent.TimeUnit.SECONDS).build().newCall(request).execute().use { r ->
                 when {
                     r.isSuccessful -> null
                     r.code == 404 -> "The model $model isn't available to this key."

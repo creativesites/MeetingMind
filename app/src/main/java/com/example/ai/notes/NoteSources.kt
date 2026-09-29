@@ -18,7 +18,7 @@ object NoteSources {
     fun passagesOf(note: Note, blocks: List<NoteBlock>): List<SourcePassage> {
         var section: String? = null
         return buildList {
-            for (b in blocks) {
+            for (b in com.example.core.notes.MarkdownImport.expand(blocks)) {
                 if (b.type in HEADINGS) { section = b.content.text.trim().ifEmpty { null }; continue }
                 if (!b.type.isText && b.type != NoteBlockType.SCRIPTURE) continue
                 val text = b.content.text.trim()

@@ -251,17 +251,35 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     /** A Markdown paste becomes formatted blocks, as one undo step with a version saved first. */
     private fun pasteAsMarkdown(blocks: List<NoteBlock>, index: Int, newText: String): Boolean {
         val inserted = BlockEditing.insertion(blocks[index].content.text, newText)
-        val result = BlockEditing.pasteMarkdown(blocks, index, inserted) ?: return false
+        if (inserted.text.length < 2) return false
+        val result = BlockEditing.pasteMarkdown(blocks, index, inserted, clipboardMarkdown(inserted.text)) ?: return false
         val structural = result.blocks.size != blocks.size || result.blocks[index].type != blocks[index].type
         if (structural) snapshotBefore(com.example.core.notes.VersionReason.BEFORE_PASTE)
         history.record(blocks)
         update(result.blocks, recordUndo = false)
         result.focus?.let { requestFocus(it) }
-        if (structural) _message.value = "Pasted with its formatting · Undo to take it back"
+        if (structural) _message.value = "Pasted as one block · tap it to edit · Undo to take it back"
         return true
     }
 
+    /**
+     * The clipboard's formatted copy of [pasted] as Markdown, when the clipboard holds HTML for
+     * the very text that arrived (a selection copied from ChatGPT, a web page, Docs). Null
+     * otherwise, and whenever the clipboard can't be read.
+     */
+    private fun clipboardMarkdown(pasted: String): String? = runCatching {
+        if ('\n' !in pasted.trim()) return null
+        val clipboard = getApplication<android.app.Application>().getSystemService(android.content.ClipboardManager::class.java) ?: return null
+        val item = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0) ?: return null
+        val html = item.htmlText?.takeIf { it.isNotBlank() } ?: return null
+        fun norm(s: CharSequence) = s.toString().replace(Regex("\\s+"), " ").trim()
+        val plain = item.text ?: android.text.Html.fromHtml(html, android.text.Html.FROM_HTML_MODE_COMPACT)
+        if (norm(plain) != norm(pasted)) return null
+        com.example.core.notes.HtmlToMarkdown.convert(html).takeIf { it.isNotBlank() }
+    }.getOrNull()
+
     fun onSelectionChanged(blockId: String, start: Int, end: Int) {
+        if (_editingMarkdown.value != null) editMarkdown(null)
         val previous = _selection.value
         _selection.value = Selection(blockId, minOf(start, end), maxOf(start, end))
         // Moving the caret somewhere else ends any "bold is on for what I type next".
@@ -504,6 +522,59 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     fun insertText(type: NoteBlockType) {
         val block = NoteBlock(id = NoteRepository.newId("block"), noteId = noteId, position = 0, type = type)
         insert(listOf(block))
+    }
+
+    /** A new, empty Markdown block, opened for writing. */
+    fun insertMarkdown() {
+        val block = NoteBlock(id = NoteRepository.newId("block"), noteId = noteId, position = 0, type = NoteBlockType.MARKDOWN)
+        insert(listOf(block))
+        _editingMarkdown.value = block.id
+    }
+
+    /** The Markdown block open as source, if any. */
+    private val _editingMarkdown = MutableStateFlow<String?>(null)
+    val editingMarkdown: StateFlow<String?> = _editingMarkdown.asStateFlow()
+    fun editMarkdown(blockId: String?) {
+        val closing = _editingMarkdown.value
+        _editingMarkdown.value = blockId
+        // A Markdown block closed with nothing in it goes away.
+        if (closing != null && closing != blockId) {
+            val i = _blocks.value.indexOfFirst { it.id == closing }
+            if (i >= 0 && _blocks.value[i].type == NoteBlockType.MARKDOWN && _blocks.value[i].content.text.isBlank()) {
+                update(BlockEditing.ensureTrailingParagraph(BlockEditing.delete(_blocks.value, i), noteId))
+            }
+        }
+    }
+
+    /** Opens a Markdown block out into ordinary blocks, one per heading, paragraph and list item. */
+    fun convertToBlocks(blockId: String) {
+        val i = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
+        val block = _blocks.value[i]
+        if (block.type != NoteBlockType.MARKDOWN) return
+        val parsed = com.example.core.notes.MarkdownImport.parse(block.content.text, noteId).map { it.copy(sectionKey = block.sectionKey) }
+        snapshotBefore(com.example.core.notes.VersionReason.BEFORE_PASTE, "Before splitting into blocks")
+        update(BlockEditing.ensureTrailingParagraph(_blocks.value.subList(0, i) + parsed + _blocks.value.subList(i + 1, _blocks.value.size), noteId))
+        _message.value = "Split into ${parsed.size} blocks · Undo puts it back"
+    }
+
+    /** Every run of your own text in the note becomes one Markdown block (media and recordings stay). */
+    fun combineTextIntoMarkdown() {
+        val blocks = _blocks.value
+        if (blocks.isEmpty()) return
+        val combined = BlockEditing.ensureTrailingParagraph(BlockEditing.combineIntoMarkdown(blocks, 0, blocks.lastIndex), noteId)
+        if (combined.size >= blocks.size) { _message.value = "Nothing to combine"; return }
+        snapshotBefore(com.example.core.notes.VersionReason.MANUAL, "Before combining")
+        update(combined)
+        _message.value = "${blocks.size} blocks → ${combined.size} · Undo puts them back"
+    }
+
+    /** Folds a heading's section away, or a long block down to its first lines; again to unfold. */
+    fun toggleFold(blockId: String, key: String = NoteBlock.PAYLOAD_FOLDED) {
+        val i = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
+        val block = _blocks.value[i]
+        val on = block.payload[key] == "1"
+        val payload = if (on) block.payload - key else block.payload + (key to "1")
+        update(_blocks.value.replace(i, block.copy(payload = payload)), recordUndo = false)
     }
 
     fun insertDivider() = insert(listOf(NoteBlock(id = NoteRepository.newId("block"), noteId = noteId, position = 0, type = NoteBlockType.DIVIDER)))

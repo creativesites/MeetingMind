@@ -91,6 +91,7 @@ import com.example.ui.theme.SurfaceSunk
 /** What the insert sheet can add. */
 internal enum class InsertAction(val label: String, val icon: ImageVector) {
     TEXT("Text", Icons.Filled.Notes),
+    MARKDOWN("Markdown", Icons.Filled.Description),
     HEADING("Heading", Icons.Filled.Title),
     BULLETS("Bulleted list", Icons.AutoMirrored.Filled.FormatListBulleted),
     NUMBERS("Numbered list", Icons.Filled.FormatListNumbered),
@@ -115,7 +116,7 @@ internal fun InsertSheet(hasRecordings: Boolean, onPick: (InsertAction) -> Unit,
             SheetTitle("Insert")
             SectionLabel("Write")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(InsertAction.TEXT, InsertAction.HEADING, InsertAction.BULLETS, InsertAction.NUMBERS, InsertAction.CHECKLIST, InsertAction.QUOTE, InsertAction.DIVIDER)
+                listOf(InsertAction.TEXT, InsertAction.MARKDOWN, InsertAction.HEADING, InsertAction.BULLETS, InsertAction.NUMBERS, InsertAction.CHECKLIST, InsertAction.QUOTE, InsertAction.DIVIDER)
                     .forEach { InsertTile(it) { onPick(it) } }
             }
             SectionLabel("Add")
@@ -402,7 +403,9 @@ internal fun BlockMenu(
     onMoveDown: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onEditMarkdown: (() -> Unit)? = null,
+    onSplitMarkdown: (() -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -410,6 +413,8 @@ internal fun BlockMenu(
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
         text = {
             Column {
+                onEditMarkdown?.let { MenuRow("Edit Markdown") { it() } }
+                onSplitMarkdown?.let { MenuRow("Split into separate blocks") { it() } }
                 if (type.isText) {
                     Text("Turn into", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(bottom = 6.dp))
                     listOf(

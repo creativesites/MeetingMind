@@ -28,6 +28,28 @@ class PastedBlocksScreenshotTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
+    fun `a long paste is one block that shows formatted and folds`() {
+        val md = buildString {
+            append("## Launch plan\n\nHere's a plan that keeps **scope tight** and ships by *Friday*.\n\n")
+            append("- [ ] Winston: update the API\n- [x] John: review deployment\n\n")
+            append("1. Draft the API\n2. Review with `John`\n\n> Ship small, ship often.\n\n")
+            (1..30).forEach { append("Paragraph $it of a long answer.\n\n") }
+        }
+        val block = com.example.core.model.NoteBlock("m", "n", 0, NoteBlockType.MARKDOWN, com.example.core.notes.RichText.plain(md))
+        compose.setContent {
+            MeetMindTheme {
+                Column(Modifier.background(com.example.ui.theme.LocalMMColors.current.background).padding(16.dp)) {
+                    MarkdownBlock(block, serif = false, editing = false, onEdit = {}, onText = {}, onToggleExpanded = {})
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/markdown_block.png")
+        compose.onNodeWithText("Launch plan").assertIsDisplayed()
+        compose.onNodeWithText("Show all", substring = true).assertIsDisplayed()
+    }
+
+    @Test
     fun `pasted code and tables render as their own blocks`() {
         val blocks = MarkdownImport.parse(
             """

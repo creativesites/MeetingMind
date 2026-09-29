@@ -63,7 +63,12 @@ enum class NoteBlockType {
     /** A table; its rows are in [NoteBlock.PAYLOAD_TABLE] (JSON), its text the cells for search. */
     TABLE,
     /** Something shown from the web: [NoteBlock.PAYLOAD_EMBED_KIND] image, youtube or link. */
-    EMBED;
+    EMBED,
+    /**
+     * A whole Markdown document in one block — what a paste becomes. Its text is the Markdown
+     * source; it shows formatted, folds when long, and opens as source to edit.
+     */
+    MARKDOWN;
 
     /** Whether the block holds editable text. The others are carried by their payload. */
     val isText: Boolean
@@ -122,6 +127,8 @@ data class NoteBlock(
         const val EMBED_IMAGE = "image"
         const val EMBED_YOUTUBE = "youtube"
         const val EMBED_LINK = "link"
+        /** "1" on a heading whose section is folded away, or on a long block shown short. */
+        const val PAYLOAD_FOLDED = "folded"
     }
 }
 

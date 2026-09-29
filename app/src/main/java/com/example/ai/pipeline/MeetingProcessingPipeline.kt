@@ -256,9 +256,12 @@ class MeetingProcessingPipeline(
             if (processingProfile == ProcessingProfile.INTERNET) {
                 updateJob("Transcribing with Google's AI...", 30, ProcessingStage.TRANSCRIBING)
                 val cloudStart = System.currentTimeMillis()
+                // The length the importer guessed can be wrong (it falls back to a minute); the
+                // container's own figure decides how the recording is split for Gemini.
+                val measuredMs = com.example.core.audio.CloudAudio.durationMs(audioFile)
                 val cloudResult = cloudTranscriptionEngine.transcribe(
                     audioFile = audioFile,
-                    totalDurationMs = totalDurationMs,
+                    totalDurationMs = measuredMs ?: totalDurationMs,
                     vocabularyHints = vocabularyHints,
                     onProgress = { progress, status ->
                         onProgress(status, (25 + progress * 30).toInt(), ProcessingStage.TRANSCRIBING)

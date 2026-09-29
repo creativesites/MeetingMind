@@ -151,11 +151,42 @@ class GeminiHttpTransportTest {
     @Test
     fun `a server error is reported as temporary rather than as a bad request`() = runBlocking {
         credentials.setApiKey("k")
+        GeminiHttpTransport.RETRY_DELAY_MS = 1
+        server.enqueue(MockResponse().setResponseCode(503).setBody(""))
         server.enqueue(MockResponse().setResponseCode(503).setBody(""))
 
         val result = transport.execute(textRequest())
 
         assertTrue((result as AiResult.Failed).message.contains("unavailable right now"))
+        assertEquals("a busy server gets one more try", 2, server.requestCount)
+    }
+
+    @Test
+    fun `a busy server that recovers on the second try gives the answer`() = runBlocking {
+        credentials.setApiKey("k")
+        GeminiHttpTransport.RETRY_DELAY_MS = 1
+        server.enqueue(MockResponse().setResponseCode(503).setBody(""))
+        server.enqueue(MockResponse().setBody("""{"candidates":[{"content":{"parts":[{"text":"OK"}]}}]}"""))
+
+        assertEquals(AiResult.Success("OK"), transport.execute(textRequest()))
+    }
+
+    @Test
+    fun `a request that outlives its time limit fails with a plain reason instead of hanging`() = runBlocking {
+        credentials.setApiKey("k")
+        server.enqueue(MockResponse().setBody("{}").setBodyDelay(5, java.util.concurrent.TimeUnit.SECONDS))
+
+        val result = transport.execute(GeminiRequest("m", "", "hi", timeoutMs = 500))
+
+        assertTrue((result as AiResult.Failed).message.contains("took too long"))
+    }
+
+    @Test
+    fun `audio is recognised by its content, not its name`() {
+        fun file(ext: String, vararg head: Int) = java.io.File.createTempFile("snd", ".$ext").apply { writeBytes(head.map { it.toByte() }.toByteArray() + ByteArray(16)); deleteOnExit() }
+        assertEquals("audio/ogg", GeminiHttpTransport.directMimeType(file("m4a", 'O'.code, 'g'.code, 'g'.code, 'S'.code)))
+        assertEquals("audio/m4a", GeminiHttpTransport.directMimeType(file("bin", 0, 0, 0, 0x20, 'f'.code, 't'.code, 'y'.code, 'p'.code)))
+        assertEquals("audio/mp3", GeminiHttpTransport.directMimeType(file("dat", 'I'.code, 'D'.code, '3'.code)))
     }
 
     @Test

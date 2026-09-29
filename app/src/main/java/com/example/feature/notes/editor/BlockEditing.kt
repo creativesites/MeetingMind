@@ -97,15 +97,19 @@ object BlockEditing {
     }
 
     /**
-     * A paste that is Markdown (an answer copied from ChatGPT or Claude, a README) becomes real
-     * blocks: headings, lists, tables, code, pictures and videos, split around the caret. A single
-     * pasted line keeps its bold, links and code inline; a lone YouTube link in an empty line
-     * becomes a video. Returns null when the paste is plain text, which the normal rules handle.
+     * What a paste becomes.
+     *
+     * Anything longer than a line — an answer from ChatGPT or Claude, an email, a README — goes
+     * into **one** Markdown block, split around the caret: the note gains one block, not one per
+     * line. [clipboardMarkdown] is the same text with its formatting, read from the clipboard's
+     * HTML, for when the plain text lost it. A single pasted line keeps its bold, links and code
+     * inline; a lone YouTube link in an empty line becomes a video. Returns null for ordinary
+     * typing, which the normal rules handle.
      */
-    fun pasteMarkdown(blocks: List<NoteBlock>, index: Int, inserted: Insertion): EditResult? {
+    fun pasteMarkdown(blocks: List<NoteBlock>, index: Int, inserted: Insertion, clipboardMarkdown: String? = null): EditResult? {
         val current = blocks.getOrNull(index) ?: return null
         if (!current.type.isText || inserted.text.length < 2) return null
-        val pasted = inserted.text.replace("\r\n", "\n")
+        val pasted = inserted.text.replace("\r\n", "\n").replace('\r', '\n')
         val multiLine = '\n' in pasted.trim()
         val (before, _) = current.content.splitAt(inserted.start)
         val after = current.content.splitAt(inserted.removedEnd).second
@@ -127,41 +131,81 @@ object BlockEditing {
             return EditResult(blocks.replaceAt(index, current.markEdited().copy(content = content)), FocusTarget(current.id, before.text.length + rich.text.length))
         }
 
-        if (!com.example.core.notes.MarkdownImport.looksLikeMarkdown(pasted)) return null
-        val parsed = com.example.core.notes.MarkdownImport.parse(pasted, current.noteId).toMutableList()
-        if (parsed.isEmpty()) return null
-
+        val markdown = markdownSource(pasted, clipboardMarkdown)
         val out = mutableListOf<NoteBlock>()
-        if (before.text.isNotBlank()) {
-            val first = parsed.first()
-            if (first.type == NoteBlockType.PARAGRAPH) {
-                out += current.markEdited().copy(content = before.append(first.content))
-                parsed.removeAt(0)
-            } else out += current.markEdited().copy(content = before)
-        } else {
-            // The pasted blocks take the empty line's place (and its id, so focus stays sane).
-            parsed[0] = parsed[0].copy(id = current.id)
-        }
-        out += parsed
-        var focus: FocusTarget
-        if (after.text.isNotBlank()) {
-            val tail = NoteBlock(
-                id = NoteRepository.newId("block"), noteId = current.noteId, position = 0,
-                type = NoteBlockType.PARAGRAPH, content = after, source = BlockSource.USER
-            )
-            out += tail
-            focus = FocusTarget(tail.id, 0)
-        } else {
-            val last = out.last()
-            if (last.type.isText) focus = FocusTarget(last.id, last.content.text.length)
-            else {
-                val para = emptyParagraph(current.noteId)
-                out += para
-                focus = FocusTarget(para.id, 0)
-            }
-        }
+        val keepBefore = before.text.isNotBlank()
+        if (keepBefore) out += current.markEdited().copy(content = before)
+        out += NoteBlock(
+            id = if (keepBefore) NoteRepository.newId("block") else current.id,
+            noteId = current.noteId, position = 0, type = NoteBlockType.MARKDOWN,
+            content = RichText.plain(markdown), source = BlockSource.USER, sectionKey = current.sectionKey
+        )
+        val tail = NoteBlock(
+            id = NoteRepository.newId("block"), noteId = current.noteId, position = 0,
+            type = NoteBlockType.PARAGRAPH, content = after, source = BlockSource.USER, sectionKey = current.sectionKey
+        )
+        val next = blocks.getOrNull(index + 1)
+        // Somewhere to keep typing after the paste, unless there already is an empty line there.
+        val needTail = after.text.isNotBlank() || next == null || !(next.type.isText && next.content.isEmpty)
+        if (needTail) out += tail
         val result = blocks.toMutableList().apply { removeAt(index); addAll(index, out) }
+        val focus = if (needTail) FocusTarget(tail.id, 0) else FocusTarget(next!!.id, 0)
         return EditResult(result, focus)
+    }
+
+    /**
+     * The Markdown to keep for a paste: the clipboard's formatted version when there is one, the
+     * text itself when it is already Markdown, and otherwise plain lines kept as the lines they
+     * were (Markdown would run single line breaks together into one paragraph).
+     */
+    internal fun markdownSource(pasted: String, clipboardMarkdown: String?): String {
+        val text = pasted.trim('\n', ' ')
+        clipboardMarkdown?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        if (com.example.core.notes.MarkdownImport.looksLikeMarkdown(text)) return text
+        return text.lines().map { it.trimEnd() }.filter { it.isNotBlank() }.joinToString("\n\n")
+    }
+
+    /** Text blocks from [from] to [to] (inclusive) as Markdown blocks; media, recordings and AI text stay as they are. */
+    fun combineIntoMarkdown(blocks: List<NoteBlock>, from: Int, to: Int): List<NoteBlock> {
+        val out = mutableListOf<NoteBlock>()
+        val run = mutableListOf<NoteBlock>()
+        fun flush() {
+            val text = run.filter { it.type != NoteBlockType.PARAGRAPH || it.content.text.isNotBlank() }
+            if (text.isNotEmpty()) {
+                val md = com.example.core.notes.NoteText.markdown(text).trim()
+                out += text.first().copy(type = NoteBlockType.MARKDOWN, content = RichText.plain(md), indent = 0, checked = false, payload = emptyMap())
+            }
+            run.clear()
+        }
+        for (b in blocks.subList(from, to + 1)) {
+            val joinable = b.type.isText || b.type in COMBINABLE
+            if (joinable && b.source == BlockSource.USER) run += b else { flush(); out += b }
+        }
+        flush()
+        return blocks.subList(0, from) + out + blocks.subList(to + 1, blocks.size)
+    }
+
+    private val COMBINABLE = setOf(NoteBlockType.DIVIDER, NoteBlockType.CODE, NoteBlockType.TABLE, NoteBlockType.MARKDOWN)
+
+    /** A folded heading hides what follows it up to the next heading of the same or a higher level. */
+    fun visibleBlocks(blocks: List<NoteBlock>): List<NoteBlock> {
+        val out = mutableListOf<NoteBlock>()
+        var hideBelow = Int.MAX_VALUE
+        for (b in blocks) {
+            val level = headingLevel(b.type)
+            if (level != null && level <= hideBelow) hideBelow = Int.MAX_VALUE
+            if (hideBelow != Int.MAX_VALUE) continue
+            out += b
+            if (level != null && b.payload[NoteBlock.PAYLOAD_FOLDED] == "1") hideBelow = level
+        }
+        return out
+    }
+
+    fun headingLevel(type: NoteBlockType): Int? = when (type) {
+        NoteBlockType.HEADING_1 -> 1
+        NoteBlockType.HEADING_2 -> 2
+        NoteBlockType.HEADING_3 -> 3
+        else -> null
     }
 
     /**

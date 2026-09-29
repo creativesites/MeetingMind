@@ -43,20 +43,24 @@ class AudioExtractor(private val context: Context) {
         val isVideo = mimeType.startsWith("video/")
 
         val meetingDir = File(context.filesDir, "meetings/$meetingId").apply { mkdirs() }
-        val extension = when {
-            fileName.endsWith(".wav", ignoreCase = true) -> "wav"
-            fileName.endsWith(".mp3", ignoreCase = true) -> "mp3"
-            fileName.endsWith(".aac", ignoreCase = true) -> "aac"
-            else -> "m4a"
-        }
-        val targetAudioFile = File(meetingDir, "audio.$extension")
-
-        // Copy source stream safely to app-private storage
+        // Copy first, then name the file for what it really is (a WhatsApp voice note is Ogg
+        // Opus whatever it was called); a wrong extension sends the wrong format to Gemini.
+        val incoming = File(meetingDir, "audio.import")
         contentResolver.openInputStream(uri)?.use { input ->
-            FileOutputStream(targetAudioFile).use { output ->
+            FileOutputStream(incoming).use { output ->
                 input.copyTo(output)
             }
         } ?: throw IllegalStateException("Could not open input stream from selected URI")
+        val sniffed = CloudAudio.sniffMime(incoming)
+        val extension = CloudAudio.extensionFor(sniffed)?.takeIf { !(sniffed == "audio/m4a" && isVideo) }
+            ?: fileName.substringAfterLast('.', "").lowercase().takeIf { it in setOf("wav", "mp3", "aac", "ogg", "opus", "flac", "m4a", "mp4", "webm", "amr", "3gp") }
+            ?: if (isVideo) "mp4" else "m4a"
+        val targetAudioFile = File(meetingDir, "audio.$extension")
+        targetAudioFile.delete()
+        if (!incoming.renameTo(targetAudioFile)) {
+            incoming.copyTo(targetAudioFile, overwrite = true)
+            incoming.delete()
+        }
 
         // Retrieve duration metadata
         var durationMs = 0L
@@ -73,6 +77,8 @@ class AudioExtractor(private val context: Context) {
                 durationMs = (targetAudioFile.length() * 8 / 128)
             }
         }
+
+        if (durationMs <= 0L) durationMs = CloudAudio.durationMs(targetAudioFile) ?: 0L
 
         ImportedMediaInfo(
             fileName = fileName,

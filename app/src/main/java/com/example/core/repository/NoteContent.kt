@@ -38,7 +38,7 @@ object NoteContent {
         return blocks.any { b ->
             when {
                 b.type in HEADINGS -> b.content.text.isNotBlank() && b.content.text.trim() !in templateTitles
-                b.type.isText -> b.content.text.isNotBlank()
+                b.type.isText || b.type == NoteBlockType.MARKDOWN -> b.content.text.isNotBlank()
                 b.type == NoteBlockType.DIVIDER -> false
                 else -> true // scripture, media, recordings, excerpts, links
             }

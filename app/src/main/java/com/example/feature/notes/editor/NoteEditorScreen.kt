@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
@@ -255,6 +256,7 @@ fun NoteEditorScreen(
             InsertAction.CHECKLIST -> viewModel.insertText(NoteBlockType.CHECKLIST)
             InsertAction.QUOTE -> viewModel.insertText(NoteBlockType.QUOTE)
             InsertAction.DIVIDER -> viewModel.insertDivider()
+            InsertAction.MARKDOWN -> viewModel.insertMarkdown()
             InsertAction.PHOTO -> pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
             InsertAction.CAMERA -> viewModel.captureTarget(video = false).let { (file, uri) -> pendingCapture = file to false; takePicture.launch(uri) }
             InsertAction.VIDEO -> viewModel.captureTarget(video = true).let { (file, uri) -> pendingCapture = file to true; captureVideo.launch(uri) }
@@ -335,6 +337,7 @@ fun NoteEditorScreen(
                                 ))
                             }
                         })
+                        DropdownMenuItem(text = { Text("Tidy into fewer blocks") }, leadingIcon = { Icon(Icons.Filled.ViewAgenda, null) }, onClick = { showMenu = false; viewModel.combineTextIntoMarkdown() })
                         DropdownMenuItem(text = { Text("Copy as…") }, leadingIcon = { Icon(Icons.Filled.ContentCopy, null) }, onClick = { showMenu = false; showCopyAs = true })
                         DropdownMenuItem(text = { Text("Export & share") }, leadingIcon = { Icon(Icons.Filled.IosShare, null) }, onClick = { showMenu = false; showExport = true })
                         DropdownMenuItem(text = { Text("Move to notebook") }, leadingIcon = { Icon(Icons.Filled.Folder, null) }, onClick = { showMenu = false; showNotebooks = true })
@@ -381,6 +384,9 @@ fun NoteEditorScreen(
             return@Scaffold
         }
         val currentNote = note ?: return@Scaffold
+        // Folded headings hide their sections; positions still refer to the whole note.
+        val visible = remember(blocks) { BlockEditing.visibleBlocks(blocks) }
+        val indexOf = remember(blocks) { blocks.withIndex().associate { (i, b) -> b.id to i } }
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -478,7 +484,8 @@ fun NoteEditorScreen(
                     )
                 }
             }
-            itemsIndexed(blocks, key = { _, b -> b.id }) { index, block ->
+            itemsIndexed(visible, key = { _, b -> b.id }) { _, block ->
+                val index = indexOf[block.id] ?: 0
                 val dragging = drag.draggingId == block.id
                 Row(
                     Modifier
@@ -488,7 +495,7 @@ fun NoteEditorScreen(
                             translationY = if (dragging) drag.offset else 0f
                             shadowElevation = if (dragging) 12f else 0f
                         }
-                        .background(if (dragging) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                        .background(if (dragging) com.example.ui.theme.SurfaceRaised else Color.Transparent, RoundedCornerShape(8.dp))
                         .then(if (dragging) Modifier else Modifier.animateItem()),
                     verticalAlignment = Alignment.Top
                 ) {
@@ -707,7 +714,9 @@ fun NoteEditorScreen(
             onMoveDown = { viewModel.moveBy(b.id, 1); blockMenuFor = null },
             onDuplicate = { viewModel.duplicateBlock(b.id); blockMenuFor = null },
             onDelete = { viewModel.deleteBlock(b.id); blockMenuFor = null },
-            onDismiss = { blockMenuFor = null }
+            onDismiss = { blockMenuFor = null },
+            onEditMarkdown = if (b.type == NoteBlockType.MARKDOWN) ({ viewModel.editMarkdown(b.id); blockMenuFor = null }) else null,
+            onSplitMarkdown = if (b.type == NoteBlockType.MARKDOWN) ({ viewModel.convertToBlocks(b.id); blockMenuFor = null }) else null
         )
     }
     if (showVersions) {
@@ -811,7 +820,46 @@ private fun BlockContent(
     onOpenScripture: (NoteBlock) -> Unit
 ) {
     val attachment = block.payload[NoteBlock.PAYLOAD_ATTACHMENT_ID]?.let { attachments[it] }
+    val headingLevel = BlockEditing.headingLevel(block.type)
+    // A heading with something under it can fold that section away.
+    val section = if (headingLevel == null) 0 else remember(blocks, index) {
+        var n = 0
+        for (i in index + 1 until blocks.size) {
+            val level = BlockEditing.headingLevel(blocks[i].type)
+            if (level != null && level <= headingLevel) break
+            n++
+        }
+        n
+    }
     when {
+        headingLevel != null && section > 0 -> Row(verticalAlignment = Alignment.Top) {
+            Box(Modifier.weight(1f)) {
+                TextBlock(
+                    block = block, number = 0, serif = serif,
+                    placeholder = block.payload[NoteBlock.PAYLOAD_HINT] ?: blockPlaceholderTypes[block.type],
+                    focusRequest = focusRequest,
+                    onText = { text, cursor -> viewModel.onTextChanged(block.id, text, cursor) },
+                    onSelection = { s, e -> viewModel.onSelectionChanged(block.id, s, e) },
+                    onBackspaceAtStart = { viewModel.onBackspaceAtStart(block.id) },
+                    onFocusLost = { viewModel.onBlockFocusLost(block.id) },
+                    onToggleChecked = {}
+                )
+            }
+            Box(Modifier.padding(top = blockTopPadding(block.type) + 2.dp)) {
+                FoldChevron(block.payload[NoteBlock.PAYLOAD_FOLDED] == "1", section) { viewModel.toggleFold(block.id) }
+            }
+        }
+        block.type == NoteBlockType.MARKDOWN -> {
+            val editingId by viewModel.editingMarkdown.collectAsState()
+            MarkdownBlock(
+                block = block,
+                serif = serif,
+                editing = editingId == block.id,
+                onEdit = { open -> viewModel.editMarkdown(if (open) block.id else null) },
+                onText = { viewModel.setCaption(block.id, it) },
+                onToggleExpanded = { viewModel.toggleFold(block.id, PAYLOAD_EXPANDED) }
+            )
+        }
         block.type.isText -> TextBlock(
             block = block,
             number = if (block.type == NoteBlockType.NUMBERED) BlockEditing.numberFor(blocks, index) else 0,

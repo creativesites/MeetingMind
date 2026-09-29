@@ -28,6 +28,12 @@ object MarkdownImport {
         } || INLINE_HINT.containsMatchIn(text) || lines.any { YouTube.idOf(it.trim()) != null || IMAGE_LINE.matches(it.trim()) }
     }
 
+    /** A note's blocks with every Markdown block opened out into the blocks it shows. */
+    fun expand(blocks: List<NoteBlock>): List<NoteBlock> = blocks.flatMap { b ->
+        if (b.type != NoteBlockType.MARKDOWN) listOf(b)
+        else parse(b.content.text, b.noteId, b.source).map { it.copy(sectionKey = b.sectionKey) }
+    }
+
     fun parse(markdown: String, noteId: String, source: BlockSource = BlockSource.USER): List<NoteBlock> {
         val lines = markdown.replace("\r\n", "\n").replace('\r', '\n').replace("\t", "    ").split('\n')
         val out = mutableListOf<NoteBlock>()

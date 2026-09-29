@@ -238,5 +238,5 @@ internal object NoteCodec {
 
     /** The searchable text of a note: every text block, one per line. */
     fun plainTextOf(blocks: List<NoteBlock>): String =
-        blocks.filter { (it.type.isText || it.type == NoteBlockType.CODE || it.type == NoteBlockType.TABLE) && it.content.text.isNotBlank() }.joinToString("\n") { it.content.text }
+        com.example.core.notes.MarkdownImport.expand(blocks).filter { (it.type.isText || it.type == NoteBlockType.CODE || it.type == NoteBlockType.TABLE) && it.content.text.isNotBlank() }.joinToString("\n") { it.content.text }
 }

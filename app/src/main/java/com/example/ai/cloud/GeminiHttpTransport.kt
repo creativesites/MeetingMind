@@ -3,6 +3,7 @@ package com.example.ai.cloud
 import android.util.Log
 import com.example.ai.common.AiResult
 import com.example.core.audio.AudioFormatConverter
+import com.example.core.audio.CloudAudio
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -66,25 +67,74 @@ class GeminiHttpTransport(
         lastKnownConfigured = true
 
         try {
-            val directMime = request.audioFile?.takeIf { request.uploadWholeFile }?.let { directMimeType(it) }
-            val uploadedFileUri = request.audioFile?.let { file ->
+            val uploaded = request.audioFile?.let { file ->
                 coroutineContext.ensureActive()
-                val upload = if (directMime != null) uploadFile(apiKey, file, directMime)
-                    else uploadAudioSlice(apiKey, file, request.audioStartMs, request.audioEndMs)
-                when (upload) {
+                when (val upload = uploadAudio(apiKey, file, request)) {
                     is AiResult.Success -> upload.value
                     else -> return@withContext upload as AiResult<String>
                 }
             }
 
             coroutineContext.ensureActive()
-            if (request.transcription != null) transcribeContent(apiKey, request, uploadedFileUri, directMime ?: AUDIO_MIME)
-            else generateContent(apiKey, request, uploadedFileUri)
+            if (request.transcription != null) transcribeContent(apiKey, request, uploaded?.first, uploaded?.second ?: AUDIO_MIME)
+            else generateContent(apiKey, request, uploaded?.first)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
+        } catch (e: java.io.InterruptedIOException) {
+            AiResult.Failed("Gemini took too long to answer. Check your connection and try again.", e)
+        } catch (e: java.net.UnknownHostException) {
+            AiResult.Failed("No internet connection — couldn't reach Gemini.", e)
+        } catch (e: java.io.IOException) {
+            AiResult.Failed("Couldn't reach Gemini: ${e.message ?: "network error"}", e)
         } catch (e: Exception) {
             AiResult.Failed(e.message ?: "Gemini request failed.", e)
         }
+    }
+
+    /**
+     * Uploads the audio a request needs and returns its URI and MIME type.
+     *
+     * For transcription the file goes as it is when it is the whole recording in a format Gemini
+     * reads; a part of a long recording, or the sound of a video, is cut out without decoding
+     * ([CloudAudio.cut]). Only when neither works is the audio decoded to a WAV slice.
+     */
+    private suspend fun uploadAudio(apiKey: String, file: File, request: GeminiRequest): AiResult<Pair<String, String>> {
+        if (request.transcription != null) {
+            val mime = directMimeType(file)
+            val video = CloudAudio.hasVideo(file)
+            if (request.uploadWholeFile && mime != null && !video) {
+                return uploadFile(apiKey, file, mime).withMime(mime)
+            }
+            val dir = File(file.parentFile ?: File(System.getProperty("java.io.tmpdir") ?: "."), "gemini_parts")
+            val part = CloudAudio.cut(file, if (request.uploadWholeFile) 0 else request.audioStartMs, if (request.uploadWholeFile) -1 else request.audioEndMs, dir)
+            if (part != null) {
+                return try { uploadFile(apiKey, part.first, part.second).withMime(part.second) } finally { part.first.delete() }
+            }
+        }
+        return uploadAudioSlice(apiKey, file, request.audioStartMs, request.audioEndMs).withMime(AUDIO_MIME)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun AiResult<String>.withMime(mime: String): AiResult<Pair<String, String>> =
+        if (this is AiResult.Success) AiResult.Success(value to mime) else this as AiResult<Pair<String, String>>
+
+    /** One HTTP exchange that can be cancelled and never outlives [timeoutMs]. */
+    private class Reply(val code: Int, val body: String, val headers: okhttp3.Headers) {
+        val ok: Boolean get() = code in 200..299
+    }
+
+    private suspend fun send(request: Request, timeoutMs: Long): Reply = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+        val call = client.newBuilder().callTimeout(timeoutMs, TimeUnit.MILLISECONDS).build().newCall(request)
+        cont.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                if (cont.isActive) cont.resumeWith(Result.failure(e))
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                val reply = runCatching { response.use { Reply(it.code, it.body?.string().orEmpty(), it.headers) } }
+                if (cont.isActive) cont.resumeWith(reply)
+            }
+        })
     }
 
     // ── Files API ────────────────────────────────────────────────────────────────────────────
@@ -137,12 +187,9 @@ class GeminiHttpTransport(
             )
             .build()
 
-        val uploadUrl = client.newCall(start).execute().use { response ->
-            if (!response.isSuccessful) {
-                return describeHttpFailure("Uploading audio", response.code, response.body?.string())
-            }
-            response.header("X-Goog-Upload-URL")
-        } ?: return AiResult.Failed("Gemini did not return an upload URL.")
+        val started = send(start, SHORT_TIMEOUT_MS)
+        if (!started.ok) return describeHttpFailure("Uploading audio", started.code, started.body)
+        val uploadUrl = started.headers["X-Goog-Upload-URL"] ?: return AiResult.Failed("Gemini did not return an upload URL.")
 
         val upload = Request.Builder()
             .url(uploadUrl)
@@ -151,11 +198,11 @@ class GeminiHttpTransport(
             .post(file.asRequestBody(mime.toMediaType()))
             .build()
 
-        val fileJson = client.newCall(upload).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return describeHttpFailure("Uploading audio", response.code, body)
-            JSONObject(body).optJSONObject("file")
-        } ?: return AiResult.Failed("Gemini's upload response was unreadable.")
+        // Allow for a slow mobile connection: at least 20 KB/s, plus a minute and a half.
+        val uploaded = send(upload, (90_000L + file.length() / 20).coerceAtMost(30 * 60_000L))
+        if (!uploaded.ok) return describeHttpFailure("Uploading audio", uploaded.code, uploaded.body)
+        val fileJson = runCatching { JSONObject(uploaded.body).optJSONObject("file") }.getOrNull()
+            ?: return AiResult.Failed("Gemini's upload response was unreadable.")
 
         val uri = fileJson.optString("uri").takeIf { it.isNotBlank() }
             ?: return AiResult.Failed("Gemini's upload response contained no file URI.")
@@ -173,10 +220,7 @@ class GeminiHttpTransport(
         repeat(FILE_READY_ATTEMPTS) { attempt ->
             coroutineContext.ensureActive()
             val request = Request.Builder().url("$baseUrl/v1beta/$name?key=$apiKey").get().build()
-            val state = client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@use null
-                JSONObject(response.body?.string().orEmpty()).optString("state")
-            }
+            val state = send(request, SHORT_TIMEOUT_MS).let { r -> if (r.ok) runCatching { JSONObject(r.body).optString("state") }.getOrNull() else null }
             when (state) {
                 "ACTIVE" -> return AiResult.Success(Unit)
                 "FAILED" -> return AiResult.Failed("Gemini could not process the uploaded audio.")
@@ -188,7 +232,7 @@ class GeminiHttpTransport(
 
     // ── generateContent ──────────────────────────────────────────────────────────────────────
 
-    private fun generateContent(apiKey: String, request: GeminiRequest, fileUri: String?): AiResult<String> {
+    private suspend fun generateContent(apiKey: String, request: GeminiRequest, fileUri: String?): AiResult<String> {
         val parts = JSONArray().put(JSONObject().put("text", buildPrompt(request)))
         if (fileUri != null) {
             parts.put(
@@ -222,15 +266,9 @@ class GeminiHttpTransport(
             .post(body.toString().toRequestBody(JSON_MIME))
             .build()
 
-        return client.newCall(httpRequest).execute().use { response ->
-            val responseBody = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                return@use describeHttpFailure("Analysing the recording", response.code, responseBody)
-            }
-            extractText(responseBody)
-                ?.let { AiResult.Success(it) }
-                ?: AiResult.Failed("Gemini returned no usable content.")
-        }
+        val reply = sendWithRetry(httpRequest, request.timeoutMs ?: if (fileUri != null) LONG_TIMEOUT_MS else TEXT_TIMEOUT_MS)
+        if (!reply.ok) return describeHttpFailure(if (fileUri != null) "Analysing the recording" else "Writing", reply.code, reply.body)
+        return extractText(reply.body)?.let { AiResult.Success(it) } ?: AiResult.Failed("Gemini returned no usable content.")
     }
 
     /**
@@ -239,7 +277,7 @@ class GeminiHttpTransport(
      * comes back as `audioTranscription` parts — one per speaker turn, each with timed words —
      * which are handed on as JSON for [GeminiTranscriptParser].
      */
-    private fun transcribeContent(apiKey: String, request: GeminiRequest, fileUri: String?, mime: String): AiResult<String> {
+    private suspend fun transcribeContent(apiKey: String, request: GeminiRequest, fileUri: String?, mime: String): AiResult<String> {
         if (fileUri == null) return AiResult.Failed("There was no audio to transcribe.")
         val config = request.transcription!!
         val transcription = JSONObject()
@@ -260,12 +298,20 @@ class GeminiHttpTransport(
             .url("$baseUrl/v1beta/models/${request.modelId}:generateContent?key=$apiKey")
             .post(body.toString().toRequestBody(JSON_MIME))
             .build()
-        return client.newCall(httpRequest).execute().use { response ->
-            val responseBody = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@use describeHttpFailure("Transcribing", response.code, responseBody)
-            collectTranscription(responseBody)?.let { AiResult.Success(it) }
-                ?: AiResult.Failed("Gemini returned no transcript for this audio.")
-        }
+        // Transcription runs at several times real speed; allow a third of the audio's length on top of five minutes.
+        val audioMs = (request.audioEndMs - request.audioStartMs).coerceAtLeast(0)
+        val reply = sendWithRetry(httpRequest, request.timeoutMs ?: (5 * 60_000L + audioMs / 3))
+        if (!reply.ok) return describeHttpFailure("Transcribing", reply.code, reply.body)
+        return collectTranscription(reply.body)?.let { AiResult.Success(it) }
+            ?: AiResult.Failed("Gemini returned no transcript for this audio.")
+    }
+
+    /** A 500 or 503 is Gemini being busy: one more try after a pause, then the error stands. */
+    private suspend fun sendWithRetry(request: Request, timeoutMs: Long): Reply {
+        val first = send(request, timeoutMs)
+        if (first.code != 500 && first.code != 503) return first
+        kotlinx.coroutines.delay(RETRY_DELAY_MS)
+        return send(request, timeoutMs)
     }
 
     private fun buildPrompt(request: GeminiRequest): String = buildString {
@@ -375,7 +421,7 @@ class GeminiHttpTransport(
         }
 
         /** Formats the transcription model reads directly, by file extension. */
-        internal fun directMimeType(file: File): String? = when (file.extension.lowercase()) {
+        internal fun directMimeType(file: File): String? = CloudAudio.sniffMime(file) ?: when (file.extension.lowercase()) {
             "wav" -> "audio/wav"
             "mp3" -> "audio/mp3"
             "m4a" -> "audio/m4a"
@@ -394,6 +440,10 @@ class GeminiHttpTransport(
         private val JSON_MIME = "application/json".toMediaType()
         private const val FILE_READY_ATTEMPTS = 12
         private const val FILE_READY_POLL_MS = 500L
+        private const val SHORT_TIMEOUT_MS = 30_000L
+        private const val TEXT_TIMEOUT_MS = 3 * 60_000L
+        private const val LONG_TIMEOUT_MS = 10 * 60_000L
+        internal var RETRY_DELAY_MS = 2_000L
 
         /** Generous timeouts: a meeting chunk is a large upload and transcription is not fast. */
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
