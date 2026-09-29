@@ -20,6 +20,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.res.stringResource
+import com.example.R
+import com.example.feature.applock.findFragmentActivity
+import com.example.feature.applock.openSecuritySettings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -516,6 +520,7 @@ fun SettingsScreen(
             }
 
             settingsSection(title = "Privacy") {
+                settingsRow { AppLockSettingRow(enabled = prefs.appLockEnabled) }
                 // #6d expresses this as one switch with a line of consequence, not a pair of
                 // radio buttons: "on-device only, yes or no" is the decision the user is actually
                 // making, and the hint says what turning it off means before they do it.
@@ -723,6 +728,72 @@ private fun SettingsSwitchRow(title: String, subtitle: String, checked: Boolean,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(checkedTrackColor = Accent, checkedThumbColor = Color.White),
             modifier = Modifier.testTag(testTag)
+        )
+    }
+}
+
+/**
+ * The App Lock switch. Both directions run through [com.example.core.applock.AppLockSettings], which
+ * asks Android to verify the owner first — the switch only moves once the saved preference does,
+ * so a cancelled prompt leaves it where it was.
+ */
+@Composable
+private fun AppLockSettingRow(enabled: Boolean) {
+    val context = LocalContext.current
+    val activity = remember(context) { context.findFragmentActivity() } ?: return
+    val appLock: com.example.core.applock.AppLockViewModel = androidx.lifecycle.viewmodel.compose.viewModel(viewModelStoreOwner = activity)
+    val authenticator = remember(activity) { com.example.core.applock.BiometricPromptAuthenticator(activity) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var problem by remember { mutableStateOf<com.example.core.applock.AppLockChange?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    SettingsSwitchRow(
+            title = stringResource(R.string.app_lock_setting_title),
+            subtitle = stringResource(R.string.app_lock_setting_subtitle) + if (enabled) " " + stringResource(R.string.app_lock_setting_on_hint) else "",
+            checked = enabled,
+            onCheckedChange = { wanted ->
+                if (busy) return@SettingsSwitchRow
+                busy = true
+                scope.launch {
+                    try {
+                        val change = appLock.settings(authenticator).setEnabled(wanted)
+                        // A cancelled prompt is a decision, not a problem: no message, the switch stays put.
+                        val cancelled = change is com.example.core.applock.AppLockChange.NotVerified &&
+                            change.result is com.example.core.applock.AuthResult.Cancelled
+                        if (change !is com.example.core.applock.AppLockChange.Changed && !cancelled) problem = change
+                    } finally {
+                        busy = false
+                    }
+                }
+            },
+            testTag = "settings_app_lock"
+        )
+
+    val shown = problem
+    val message = when (shown) {
+        is com.example.core.applock.AppLockChange.Unavailable -> when (shown.reason) {
+            com.example.core.applock.AppLockAvailability.NoneEnrolled -> R.string.app_lock_setup_none_enrolled
+            com.example.core.applock.AppLockAvailability.NoHardware -> R.string.app_lock_setup_no_hardware
+            com.example.core.applock.AppLockAvailability.HardwareUnavailable -> R.string.app_lock_setup_hardware_unavailable
+            com.example.core.applock.AppLockAvailability.SecurityUpdateRequired -> R.string.app_lock_setup_update_required
+            else -> R.string.app_lock_setup_unsupported
+        }
+        is com.example.core.applock.AppLockChange.NotVerified ->
+            if (shown.result is com.example.core.applock.AuthResult.LockedOut) R.string.app_lock_change_locked_out else R.string.app_lock_change_error
+        else -> null
+    }
+    if (shown != null && message != null) {
+        val canOpenSettings = shown is com.example.core.applock.AppLockChange.Unavailable &&
+            shown.reason in setOf(com.example.core.applock.AppLockAvailability.NoneEnrolled, com.example.core.applock.AppLockAvailability.NoHardware)
+        AlertDialog(
+            onDismissRequest = { problem = null },
+            title = { Text(stringResource(if (shown is com.example.core.applock.AppLockChange.Unavailable) R.string.app_lock_setup_title else R.string.app_lock_setting_title)) },
+            text = { Text(stringResource(message)) },
+            confirmButton = {
+                if (canOpenSettings) TextButton(onClick = { problem = null; context.openSecuritySettings() }) { Text(stringResource(R.string.app_lock_setup_open_settings)) }
+                else TextButton(onClick = { problem = null }) { Text(stringResource(android.R.string.ok)) }
+            },
+            dismissButton = { if (canOpenSettings) TextButton(onClick = { problem = null }) { Text(stringResource(R.string.app_lock_setup_dismiss)) } }
         )
     }
 }

@@ -117,6 +117,9 @@ dependencies {
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.datastore.preferences)
+  // Optional App Lock (docs/APP_LOCK.md): the platform BiometricPrompt, so MeetingMind only ever
+  // asks Android "is this the owner?" and never handles biometric data itself.
+  implementation(libs.androidx.biometric)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
