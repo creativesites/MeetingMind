@@ -151,7 +151,7 @@ Gemini keys are never part of the build. Each person enters their own in
 - **Tests:** Robolectric and Roborazzi for screenshot tests, with 870+ unit and UI tests.
 
 ```
-app/src/main/java/com/example/
+app/src/main/java/com/craftflowtechnologies/meetingmind/
 ├── ai/        speech, diarization, LLM routing, Gemini (cloud, live, voice), pipeline, tools
 ├── core/      data (Room, DataStore), notes, timeline, scripture, devotional, setup, share, ui
 └── feature/   screens: today, recording, notes, meetingdetail, faith, bible, devotional,

@@ -80,7 +80,7 @@ The good news: the parts that are real (recording, storage, database, navigation
 This is the most important section of the audit. Ranked roughly by product impact.
 
 ### 1. Voice Activity Detection — **100% fabricated, never reads the audio file**
-`app/src/main/java/com/example/ai/vad/VoiceActivityDetector.kt`, class `EnergyAndSpectralVad`.
+`app/src/main/java/com/craftflowtechnologies/meetingmind/ai/vad/VoiceActivityDetector.kt`, class `EnergyAndSpectralVad`.
 ```kotlin
 val energyScore = (0.35f + 0.45f * kotlin.math.sin(progressRatio * 6.28f).toFloat() + (i % 3) * 0.1f)
 ```
@@ -92,7 +92,7 @@ This computes a sine wave as a function of *elapsed time*, not the audio samples
 `core/audio/AudioPreprocessor.kt`. `analyzeAndSegment()` computes `rmsEnergy` as `sin(ratio * π)` — again, a function of chunk position in time, not of any audio sample. Never reads file bytes beyond checking `file.length()`.
 
 ### 3. Local Speech Recognition — no local model exists at all
-`app/src/main/java/com/example/ai/asr/SpeechRecognizer.kt`, class `RealSpeechRecognizer` (the name is misleading — nothing about the local path is a real recognizer).
+`app/src/main/java/com/craftflowtechnologies/meetingmind/ai/asr/SpeechRecognizer.kt`, class `RealSpeechRecognizer` (the name is misleading — nothing about the local path is a real recognizer).
 - **Primary path**: uploads the entire recorded audio file, base64-encoded, to `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` via raw `OkHttp` (see `GeminiApiClient.kt`). This is real transcription, but it is a **cloud API call**, not local inference, and the audio leaves the device.
 - **Fallback path** (no API key, or Gemini call fails): produces segments with text like `"Voice audio segment (12s)"` — literally a placeholder string, not a transcription of anything that was said.
 - There is no bundled or downloadable ASR model anywhere in the repository: no `.tflite`, `.onnx`, `.gguf`, or `.bin` model file, no `whisper.cpp`/ONNX Runtime/MediaPipe dependency in `build.gradle.kts`, no native (`.so`)/NDK code. The `modelId = "whisper_tiny"` string flows through the pipeline but is **never used to load or run anything** — it's inert metadata.
@@ -191,7 +191,7 @@ The project **did not build as delivered**. Findings, in the order they were hit
 **What will cause problems later:**
 - `MeetMindDatabase` has `version = 1` with `fallbackToDestructiveMigration()` and `exportSchema = false`. Fine pre-release; must be replaced with real migrations and `exportSchema = true` (with schemas checked into version control) before the first real release, or every future schema change will silently wipe user data.
 - Processing runs in a `viewModelScope` coroutine tied to the Compose screen's lifecycle, not a `WorkManager` job. A long transcription/summarization job is lost if the user backgrounds the app long enough for the process to be killed, despite `ProcessingJobEntity` existing specifically to make jobs resumable. This is a real reliability gap once real (slower) local ASR/LLM inference replaces the current fast fallback paths.
-- Hardcoded package identity from the AI-Studio template (`namespace = "com.example"`, `applicationId = "com.aistudio.meetmind.qxynvp"`) should be renamed to a real, owned namespace before any release build or Play Store listing — cosmetic today, but easy to forget later.
+- Hardcoded package identity from the AI-Studio template (`namespace = "com.craftflowtechnologies.meetingmind"`, `applicationId = "com.aistudio.meetmind.qxynvp"`) should be renamed to a real, owned namespace before any release build or Play Store listing — cosmetic today, but easy to forget later.
 
 ---
 

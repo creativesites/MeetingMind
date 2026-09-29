@@ -1,0 +1,29 @@
+# Excerpts of STEPBible data (Tyndale House, CC BY 4.0) used only to test the parser. github.com/STEPBible/STEPBible-Data
+Mat.1.1#01=NKO	Βίβλος (Biblos)	[The] book	G0976=N-NSF	βίβλος=book	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			Libro	book	#01	G0976					
+Mat.1.1#02=NKO	γενέσεως (geneseōs)	of [the] genealogy	G1078=N-GSF	γένεσις=origin	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			de origen	origin	#02	G1078					
+Mat.1.1#03=NKO	Ἰησοῦ (Iēsou)	of Jesus	G2424G=N-GSM-P	Ἰησοῦς=Jesus/Joshua	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			de Jesús	Jesus»Jesus|Jesus@Mat.1.1	#03	G2424					
+Jhn.15.5#01=NKO	ἐγώ (egō)	I myself	G1473=P-1NS	ἐγώ=I/we	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			Yo	I	#01»02:G1510	G1473_A					
+Jhn.15.5#02=NKO	εἰμι (eimi)	am	G1510=V-PAI-1S	εἰμί=to be	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			estoy siendo	to be	#02	G1510					
+Jhn.15.5#03=NKO	ἡ (hē)	the	G3588=T-NSF	ὁ=the/this/who	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			la	the	#03»04:G0288	G3588_A					
+Jhn.15.5#04=NKO	ἄμπελος, (ampelos)	vine,	G0288=N-NSF	ἄμπελος=vine	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			vid	vine	#04	G0288					
+Jhn.15.5#05=NKO	ὑμεῖς (humeis)	you [are]	G4771=P-2NP	σύ=you	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			ustedes	you [are]	#05	G4771	G5210				
+Jhn.15.5#06=NKO	τὰ (ta)	the	G3588=T-NPN	ὁ=the/this/who	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			las	the	#06»07:G2814	G3588_B					
+Jhn.15.5#07=NKO	κλήματα. (klēmata)	branches.	G2814=N-NPN	κλῆμα=branch 	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			ramas	branch	#07	G2814					
+Jhn.15.5#08=NKO	ὁ (ho)	The [one]	G3588=T-NSM	ὁ=the/this/who	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			el	[that] which	#08»09:G3306	G3588_C					
+Jhn.15.5#09=NKO	μένων (menōn)	abiding	G3306=V-PAP-NSM	μένω=to stay	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			estando permaneciendo	to stay	#09	G3306					
+Jhn.15.5#10=NKO	ἐν (en)	in	G1722=PREP	ἐν=in/on/among	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			en	in	#10	G1722_A					
+Jhn.15.5#11=NKO	ἐμοὶ (emoi)	Me myself	G1473=P-1DS	ἐγώ=I/we	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			mí	to me	#11«10:G1722	G1473_B	G1698				
+Jhn.15.5#12=NKO	κἀγὼ (kagō)	and I myself	G1473=P-1NS + G2532=CONJ	κἀγώ=and I	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			y yo	and I	#12»13:G1722	G2532, G1473_C	G2504				
+Jhn.15.5#13=NKO	ἐν (en)	in	G1722=PREP	ἐν=in/on/among	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			en	in	#13	G1722_B					
+Jhn.15.5#14=NKO	αὐτῷ, (autō)	him,	G0846=P-DSM	αὐτός=he/she/it/self	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			él	to him	#14«13:G1722	G0846	G3778				
+Jhn.15.5#15=NKO	οὗτος (houtos)	he	G3778=D-NSM	οὗτος=this/he/she/it	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			este	this	#15»16:G5342	G3778					
+Jhn.15.5#16=NKO	φέρει (pherei)	bears	G5342=V-PAI-3S	φέρω=to bear/lead	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			está llevando	bears	#16	G5342					
+Jhn.15.5#17=NKO	καρπὸν (karpon)	fruit	G2590=N-ASM	καρπός=fruit	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			fruto	fruit	#17	G2590					
+Jhn.15.5#18=NKO	πολύν· (polun)	much;	G4183=A-ASM	πολύς=much	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			mucho	much	#18	G4183					
+Jhn.15.5#19=NKO	ὅτι (hoti)	For	G3754H=CONJ	ὅτι=that/since	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			porque	: since»that/since|2_since	#19	G3754					
+Jhn.15.5#20=NKO	χωρὶς (chōris)	apart from	G5565=PREP	χωρίς=without	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			sin	without	#20	G5565					
+Jhn.15.5#21=NKO	ἐμοῦ (emou)	Me	G1473=S-1SGSN	ἐγώ=I/we	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			mí	of me	#21«20:G5565	G1473_D	G1700				
+Jhn.15.5#22=NKO	οὐ (ou)	not	G3756=PRT-N	οὐ=no	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			no	no	#22»23:G1410	G3756					
+Jhn.15.5#23=NKO	δύνασθε (dunasthe)	you are able	G1410=V-PNI-2P	δύναμαι=be able	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			están siendo capaces	be able	#23	G1410					
+Jhn.15.5#24=NKO	ποιεῖν (poiein)	to do	G4160G=V-PAN	ποιέω=to do/make	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			estar haciendo	: do»to do/make|1_do/work	#24	G4160					
+Jhn.15.5#25=NKO	οὐδέν. (ouden)	no [thing].	G3762=A-ASN	οὐδείς=none	NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz			nada	no one	#25	G3762					

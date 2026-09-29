@@ -1,0 +1,18 @@
+{
+  "id": "sunday_expository", "title": "Abide in the vine", "type": "SERMON",
+  "segments": [
+    {"id": "s1", "startMs": 0, "endMs": 20000, "speaker": "Pastor", "text": "Good morning church. Turn with me to John 15, verses 1 to 8. Let's read it together."},
+    {"id": "s2", "startMs": 20000, "endMs": 60000, "speaker": "Pastor", "text": "Jesus says, I am the vine, you are the branches. Apart from me you can do nothing. That is John 15:5, and it is the heart of this passage."},
+    {"id": "s3", "startMs": 60000, "endMs": 140000, "speaker": "Congregation", "text": "Amazing grace how sweet the sound, amazing grace how sweet the sound, that saved a wretch like me"},
+    {"id": "s4", "startMs": 140000, "endMs": 200000, "speaker": "Pastor", "text": "Fruit is not something we manufacture. Compare Galatians 5:22, the fruit of the Spirit. It grows because we remain."},
+    {"id": "s5", "startMs": 200000, "endMs": 240000, "speaker": "Pastor", "text": "So this week, stay close. Read Psalm 1 each morning and ask what remaining looks like. Let's pray."}
+  ],
+  "expected": {
+    "scriptures": ["JHN 15:1-8", "JHN 15:5", "GAL 5:22", "PSA 1"],
+    "songSegments": ["s3"],
+    "asks": [
+      {"question": "What is the main point?", "answer": "Jesus is the vine and we are the branches; apart from him we can do nothing [00:20]. Fruit grows because we remain [02:20].", "cites": ["s2", "s4"]},
+      {"question": "What should I do this week?", "answer": "Stay close and read Psalm 1 each morning [03:20].", "cites": ["s5"]}
+    ]
+  }
+}

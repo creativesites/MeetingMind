@@ -15,7 +15,7 @@ This describes the actual architecture of the codebase as of the audit/reconcili
 ## 2. Package Layout
 
 ```
-com.example
+com.craftflowtechnologies.meetingmind
 ├── ai/                     — AI subsystem, interface-first
 │   ├── asr/                — SpeechRecognizer interface + real SherpaParakeetSpeechRecognizer
 │   ├── diarization/        — SpeakerDiarizer interface + real SherpaSpeakerDiarizer

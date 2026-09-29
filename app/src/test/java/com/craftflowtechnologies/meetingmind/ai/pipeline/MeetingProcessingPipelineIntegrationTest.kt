@@ -1,0 +1,703 @@
+package com.craftflowtechnologies.meetingmind.ai.pipeline
+
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.craftflowtechnologies.meetingmind.ai.asr.SpeechRecognizer
+import com.craftflowtechnologies.meetingmind.ai.asr.TranscriptionOptions
+import com.craftflowtechnologies.meetingmind.ai.common.AiResult
+import com.craftflowtechnologies.meetingmind.ai.diarization.SpeakerDiarizer
+import com.craftflowtechnologies.meetingmind.ai.embeddings.LocalEmbeddingEngine
+import com.craftflowtechnologies.meetingmind.ai.llm.MeetingIntelligenceEngine
+import com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage
+import com.craftflowtechnologies.meetingmind.ai.transcript.CanonicalWord
+import com.craftflowtechnologies.meetingmind.ai.transcript.DiarizationTurn
+import com.craftflowtechnologies.meetingmind.ai.transcript.SpeechRegion
+import com.craftflowtechnologies.meetingmind.ai.vad.SpeechInterval
+import com.craftflowtechnologies.meetingmind.ai.vad.VoiceActivityDetector
+import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
+import com.craftflowtechnologies.meetingmind.core.database.MeetingEntity
+import com.craftflowtechnologies.meetingmind.core.model.ActionItem
+import com.craftflowtechnologies.meetingmind.core.model.ChatMessage
+import com.craftflowtechnologies.meetingmind.core.model.Decision
+import com.craftflowtechnologies.meetingmind.core.model.DecisionType
+import com.craftflowtechnologies.meetingmind.core.model.MeetingStatus
+import com.craftflowtechnologies.meetingmind.core.model.MeetingSummary
+import com.craftflowtechnologies.meetingmind.core.model.ProcessingStage
+import com.craftflowtechnologies.meetingmind.core.model.Question
+import com.craftflowtechnologies.meetingmind.core.model.Speaker
+import com.craftflowtechnologies.meetingmind.core.model.Transcript
+import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.io.File
+import java.util.UUID
+
+/**
+ * Exercises the full [MeetingProcessingPipeline] orchestration logic — stage sequencing, Room
+ * persistence, cancellation handling — using fake VAD/ASR/diarizer/intelligence implementations
+ * instead of real sherpa-onnx/MediaPipe ones. Every stage of this pipeline is defined behind an
+ * interface specifically so this is possible: none of what's tested here touches a native
+ * library, so it genuinely runs on the JVM. Real model *accuracy* is a separate, device-only
+ * concern — see docs/AI_ARCHITECTURE.md "Known Limitations".
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class MeetingProcessingPipelineIntegrationTest {
+
+    private lateinit var context: Context
+    private lateinit var database: MeetMindDatabase
+    private lateinit var audioFile: File
+
+    @Before
+    fun setup() {
+        context = ApplicationProvider.getApplicationContext()
+        database = Room.inMemoryDatabaseBuilder(context, MeetMindDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        audioFile = File(context.cacheDir, "fake_recording.m4a").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+    }
+
+    @After
+    fun tearDown() {
+        database.close()
+        audioFile.delete()
+    }
+
+    private suspend fun insertRecordingMeeting(meetingId: String) {
+        database.meetingDao().insertMeeting(
+            MeetingEntity(
+                id = meetingId,
+                title = "Untitled Meeting",
+                createdAt = System.currentTimeMillis(),
+                durationMs = 0L,
+                source = "LOCAL_RECORDING",
+                audioFilePath = audioFile.absolutePath,
+                status = MeetingStatus.RECORDING.name,
+                participantCount = 1,
+                language = "en",
+                summaryText = null
+            )
+        )
+    }
+
+    private val fakeVad = object : VoiceActivityDetector {
+        override suspend fun detectSpeechIntervals(audioFile: File, totalDurationMs: Long) =
+            AiResult.Success(listOf(SpeechInterval(startMs = 0L, endMs = totalDurationMs)))
+    }
+
+    /**
+     * Two speakers, one sentence each, as a word stream — the shape a real recognizer now returns.
+     * Timings line up with [fakeDiarizer]'s turns so the attribution layer has real evidence to
+     * work from rather than being handed pre-labelled segments.
+     */
+    private val fakeAsr = object : SpeechRecognizer {
+        override suspend fun transcribe(
+            audioFile: File,
+            totalDurationMs: Long,
+            meetingId: String,
+            speechRegions: List<SpeechRegion>,
+            options: TranscriptionOptions,
+            onProgress: (progress: Float, statusText: String) -> Unit
+        ): AiResult<List<CanonicalWord>> {
+            onProgress(1f, "done")
+            return AiResult.Success(
+                words("We will ship on Friday.", startMs = 0L, endMs = 2000L) +
+                    words("Sounds good to me.", startMs = 2000L, endMs = 4000L)
+            )
+        }
+    }
+
+    private val fakeDiarizer = object : SpeakerDiarizer {
+        override suspend fun diarize(
+            audioFile: File,
+            totalDurationMs: Long,
+            meetingId: String,
+            knownSpeakers: List<Speaker>,
+            expectedSpeakerCount: Int?
+        ): AiResult<List<DiarizationTurn>> = AiResult.Success(
+            listOf(
+                DiarizationTurn(speakerId = "spk_${meetingId}_0", startMs = 0L, endMs = 2000L),
+                DiarizationTurn(speakerId = "spk_${meetingId}_1", startMs = 2000L, endMs = 4000L)
+            )
+        )
+    }
+
+    /** Spreads a sentence evenly across a span as timed words. */
+    private fun words(sentence: String, startMs: Long, endMs: Long): List<CanonicalWord> {
+        val tokens = sentence.split(" ")
+        val step = (endMs - startMs) / tokens.size
+        return tokens.mapIndexed { index, token ->
+            CanonicalWord(
+                id = "w_${startMs}_$index",
+                text = token,
+                startMs = startMs + index * step,
+                endMs = startMs + (index + 1) * step
+            )
+        }
+    }
+
+    private val fakeIntelligenceEngine = object : MeetingIntelligenceEngine {
+        override suspend fun processMeeting(
+            transcript: Transcript,
+            meetingTitle: String,
+            recordingType: com.craftflowtechnologies.meetingmind.core.model.RecordingType,
+            customContext: String?
+        ) = AiResult.Success(
+            // Title generation is folded into this one structured-JSON call — this fake mirrors
+            // that by returning a real, specific title in the same MeetingSummary rather than
+            // via a separate generateTitle() call.
+            MeetingSummary(
+                title = "Friday Ship Decision",
+                summary = "The team confirmed the Friday ship date.",
+                topics = listOf("Ship date"),
+                decisions = listOf(
+                    Decision(id = UUID.randomUUID().toString(), meetingId = transcript.meetingId, text = "Ship on Friday", type = DecisionType.DECISION, sourceSegmentIds = listOf("seg1"))
+                ),
+                actionItems = listOf(
+                    ActionItem(id = UUID.randomUUID().toString(), meetingId = transcript.meetingId, task = "Notify customers", assigneeName = "Speaker 1", sourceSegmentIds = listOf("seg1"))
+                ),
+                questions = emptyList(),
+                followUps = emptyList()
+            )
+        )
+
+        override suspend fun askMeeting(question: String, transcript: Transcript, relevantSegments: List<TranscriptSegment>, personalization: com.craftflowtechnologies.meetingmind.core.model.AskPersonalizationContext) =
+            AiResult.Success(ChatMessage(id = UUID.randomUUID().toString(), meetingId = transcript.meetingId, isUser = false, content = "n/a"))
+    }
+
+    private fun buildPipeline(
+        vad: VoiceActivityDetector = fakeVad,
+        asr: SpeechRecognizer = fakeAsr
+    ) = MeetingProcessingPipeline(
+        context = context,
+        database = database,
+        modelStorage = LocalModelStorage(context),
+        vad = vad,
+        speechRecognizer = asr,
+        diarizer = fakeDiarizer,
+        intelligenceEngine = fakeIntelligenceEngine,
+        embeddingEngine = LocalEmbeddingEngine()
+    )
+
+    @Test
+    fun `full pipeline with fakes progresses through every real stage in order`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val pipeline = buildPipeline()
+        val observedStages = mutableListOf<ProcessingStage>()
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, stage -> observedStages.add(stage) }
+
+        val expectedOrder = listOf(
+            ProcessingStage.PREPARING_AUDIO,
+            ProcessingStage.DETECTING_SPEECH,
+            ProcessingStage.TRANSCRIBING,
+            ProcessingStage.DIARIZING,
+            ProcessingStage.CLEANING_TRANSCRIPT,
+            ProcessingStage.ANALYZING,
+            ProcessingStage.SAVING_RESULTS,
+            ProcessingStage.COMPLETED
+        )
+        assertEquals(expectedOrder, observedStages.distinct())
+    }
+
+    @Test
+    fun `full pipeline with fakes persists real transcript, speakers, decisions, and action items`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val pipeline = buildPipeline()
+
+        val result = pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+
+        assertEquals(MeetingStatus.READY.name, result.status)
+        assertEquals("Friday Ship Decision", result.title)
+
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        assertEquals(2, segments.size)
+        assertEquals("spk_${meetingId}_0", segments[0].speakerId)
+
+        val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId)
+        assertEquals(2, speakers.size)
+
+        val decisions = database.decisionDao().getDecisionsForMeetingDirect(meetingId)
+        assertEquals(1, decisions.size)
+        assertEquals("DECISION", decisions[0].type)
+        assertEquals("[\"seg1\"]", decisions[0].sourceSegmentIdsJson)
+
+        val actionItems = database.actionItemDao().getActionItemsForMeetingDirect(meetingId)
+        assertEquals(1, actionItems.size)
+        assertEquals("Speaker 1", actionItems[0].assigneeName)
+    }
+
+    @Test
+    fun `full pipeline runs the cleanup stage and persists a validated cleanedText per segment`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val pipeline = buildPipeline()
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        // Neither fake utterance contains filler words, so the rule-based cleanup engine's
+        // candidate is identical to the raw text — it must still be validated and persisted as
+        // cleanedText, not left null, proving the stage actually ran rather than being skipped.
+        // Keyed on text rather than on a segment id: segment ids are now derived from the
+        // canonical transcript's utterances, so no caller may assume a particular id string.
+        assertEquals(
+            listOf("Sounds good to me.", "We will ship on Friday."),
+            segments.mapNotNull { it.cleanedText }.sorted()
+        )
+    }
+
+    @Test
+    fun `re-running the pipeline for the same meeting replaces prior results instead of duplicating them`() = runBlocking {
+        // Simulates WorkManager restarting MeetingProcessingWorker from scratch after the app
+        // process was killed mid-run: every entity this pipeline writes uses a freshly-generated
+        // id, so without an idempotency guard a second full run would double the transcript,
+        // decisions, and action items instead of replacing the first (killed) run's data.
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val pipeline = buildPipeline()
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+        pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        assertEquals(2, segments.size)
+
+        val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId)
+        assertEquals(2, speakers.size)
+
+        val decisions = database.decisionDao().getDecisionsForMeetingDirect(meetingId)
+        assertEquals(1, decisions.size)
+
+        val actionItems = database.actionItemDao().getActionItemsForMeetingDirect(meetingId)
+        assertEquals(1, actionItems.size)
+
+        val embeddings = database.embeddingDao().getEmbeddingsForMeeting(meetingId)
+        // 2 transcript-segment embeddings + 1 summary embedding, not 6.
+        assertEquals(3, embeddings.size)
+    }
+
+    @Test
+    fun `cancellation stops the pipeline honestly and marks the meeting as errored, not fabricated`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val reachedVadStage = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val slowVad = object : VoiceActivityDetector {
+            override suspend fun detectSpeechIntervals(audioFile: File, totalDurationMs: Long): AiResult<List<SpeechInterval>> {
+                reachedVadStage.complete(Unit)
+                delay(30_000)
+                return AiResult.Success(emptyList())
+            }
+        }
+        val pipeline = buildPipeline(vad = slowVad)
+
+        var caughtCancellation = false
+        val job: Job = launch(Dispatchers.Default) {
+            try {
+                pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+            } catch (e: CancellationException) {
+                caughtCancellation = true
+                throw e
+            }
+        }
+        // Wait until the pipeline has genuinely entered the (fake) VAD stage — not just been
+        // scheduled — before cancelling, so this test exercises real mid-flight cancellation
+        // rather than racing the coroutine's own startup.
+        kotlinx.coroutines.withTimeout(5000) { reachedVadStage.await() }
+        job.cancelAndJoin()
+
+        assertTrue("Expected the pipeline to propagate CancellationException", caughtCancellation)
+        val stored = database.meetingDao().getMeetingById(meetingId)
+        assertEquals(MeetingStatus.ERROR.name, stored?.status)
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        assertTrue("A cancelled run must never persist a transcript", segments.isEmpty())
+    }
+
+    @Test
+    fun `falls back to a deterministic, non-fabricated title when meeting intelligence is unavailable`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val unavailableIntelligence = object : MeetingIntelligenceEngine {
+            override suspend fun processMeeting(
+                transcript: Transcript,
+                meetingTitle: String,
+                recordingType: com.craftflowtechnologies.meetingmind.core.model.RecordingType,
+                customContext: String?
+            ) = AiResult.ModelUnavailable(modelId = "local-llm", message = "No local meeting intelligence model is installed.")
+
+            override suspend fun askMeeting(question: String, transcript: Transcript, relevantSegments: List<TranscriptSegment>, personalization: com.craftflowtechnologies.meetingmind.core.model.AskPersonalizationContext) =
+                AiResult.ModelUnavailable(modelId = "local-llm", message = "No local meeting intelligence model is installed.")
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = fakeDiarizer,
+            intelligenceEngine = unavailableIntelligence,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        val result = pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+
+        // "General" is insertRecordingMeeting's default recordingType — never a guessed name.
+        val expectedFallback = com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator.deterministicFallbackTitle(
+            com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
+            result.createdAt
+        )
+        assertEquals(expectedFallback, result.title)
+        assertEquals(MeetingStatus.READY.name, result.status)
+    }
+
+    @Test
+    fun `falls back to a deterministic title when the model's own title candidate is generic and unhelpful`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val genericTitleIntelligence = object : MeetingIntelligenceEngine {
+            override suspend fun processMeeting(
+                transcript: Transcript,
+                meetingTitle: String,
+                recordingType: com.craftflowtechnologies.meetingmind.core.model.RecordingType,
+                customContext: String?
+            ) = AiResult.Success(
+                MeetingSummary(
+                    title = "Meeting Summary",
+                    summary = "",
+                    topics = emptyList(),
+                    decisions = emptyList(),
+                    actionItems = emptyList(),
+                    questions = emptyList()
+                )
+            )
+
+            override suspend fun askMeeting(question: String, transcript: Transcript, relevantSegments: List<TranscriptSegment>, personalization: com.craftflowtechnologies.meetingmind.core.model.AskPersonalizationContext) =
+                AiResult.Success(ChatMessage(id = UUID.randomUUID().toString(), meetingId = transcript.meetingId, isUser = false, content = "n/a"))
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = fakeDiarizer,
+            intelligenceEngine = genericTitleIntelligence,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        val result = pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+
+        val expectedFallback = com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator.deterministicFallbackTitle(
+            com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
+            result.createdAt
+        )
+        assertEquals(expectedFallback, result.title)
+    }
+
+    // --- Single-speaker fast path: a confirmed solo recording must never run diarization ---
+
+    @Test
+    fun `a confirmed single speaker skips diarization entirely - the model is never even invoked`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        var diarizerWasInvoked = false
+        val explodingDiarizer = object : SpeakerDiarizer {
+            override suspend fun diarize(
+            audioFile: File,
+            totalDurationMs: Long,
+            meetingId: String,
+            knownSpeakers: List<Speaker>,
+            expectedSpeakerCount: Int?
+        ): AiResult<List<DiarizationTurn>> {
+                diarizerWasInvoked = true
+                error("Diarization must never run for a confirmed single speaker")
+            }
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = explodingDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        val result = pipeline.processMeeting(meetingId, audioFile, 4000L, expectedSpeakerCount = 1) { _, _, _ -> }
+
+        assertTrue("Pipeline must complete without ever invoking the diarizer", !diarizerWasInvoked)
+        assertEquals(MeetingStatus.READY.name, result.status)
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        // The two ASR fragments share the same (now real, assigned) speakerId and sit
+        // back-to-back, so TranscriptStructureEngine correctly merges them into one paragraph.
+        assertEquals(1, segments.size)
+        // Phase 15 §2: a confirmed single speaker still gets a real, persisted speaker identity —
+        // leaving speakerId null (the old behavior) meant the SpeakerEntity insertion step
+        // silently dropped the segment, so the UI fell back to "Unlabeled speaker". "You" because
+        // this meeting's source is LOCAL_RECORDING (the user's own recording).
+        assertEquals("speaker_0", segments[0].speakerId)
+        assertEquals("You", segments[0].speakerName)
+        assertTrue(segments[0].text.contains("ship on Friday"))
+        assertTrue(segments[0].text.contains("Sounds good"))
+
+        val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId)
+        assertEquals(1, speakers.size)
+        assertEquals("You", speakers[0].customName)
+        assertEquals("#6366F1", speakers[0].colorHex)
+    }
+
+    @Test
+    fun `a confirmed single speaker on an imported recording is named Speaker 1, not You`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        database.meetingDao().insertMeeting(
+            MeetingEntity(
+                id = meetingId,
+                title = "Untitled Meeting",
+                createdAt = System.currentTimeMillis(),
+                durationMs = 0L,
+                source = "IMPORTED_AUDIO",
+                audioFilePath = audioFile.absolutePath,
+                status = MeetingStatus.RECORDING.name,
+                participantCount = 1,
+                language = "en",
+                summaryText = null
+            )
+        )
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = object : SpeakerDiarizer {
+                override suspend fun diarize(
+            audioFile: File,
+            totalDurationMs: Long,
+            meetingId: String,
+            knownSpeakers: List<Speaker>,
+            expectedSpeakerCount: Int?
+        ): AiResult<List<DiarizationTurn>> = error("must not run")
+            },
+            intelligenceEngine = fakeIntelligenceEngine,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L, expectedSpeakerCount = 1) { _, _, _ -> }
+
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        // An imported file isn't necessarily the user's own voice, so the identity must not
+        // assume "You" the way a LOCAL_RECORDING does.
+        assertEquals("Speaker 1", segments[0].speakerName)
+        val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId)
+        assertEquals("Speaker 1", speakers[0].customName)
+    }
+
+    @Test
+    fun `an unspecified speaker count still runs diarization normally`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        var diarizerWasInvoked = false
+        val trackingDiarizer = object : SpeakerDiarizer {
+            override suspend fun diarize(
+            audioFile: File,
+            totalDurationMs: Long,
+            meetingId: String,
+            knownSpeakers: List<Speaker>,
+            expectedSpeakerCount: Int?
+        ): AiResult<List<DiarizationTurn>> {
+                diarizerWasInvoked = true
+                return AiResult.Success(emptyList())
+            }
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = trackingDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L, expectedSpeakerCount = null) { _, _, _ -> }
+
+        assertTrue("Diarization must still run when the speaker count is unspecified", diarizerWasInvoked)
+    }
+
+    @Test
+    fun `a confirmed multi-person count still runs diarization normally`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        var receivedExpectedCount: Int? = -999
+        val trackingDiarizer = object : SpeakerDiarizer {
+            override suspend fun diarize(
+            audioFile: File,
+            totalDurationMs: Long,
+            meetingId: String,
+            knownSpeakers: List<Speaker>,
+            expectedSpeakerCount: Int?
+        ): AiResult<List<DiarizationTurn>> {
+                receivedExpectedCount = expectedSpeakerCount
+                return AiResult.Success(emptyList())
+            }
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = trackingDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine,
+            embeddingEngine = LocalEmbeddingEngine()
+        )
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L, expectedSpeakerCount = 3) { _, _, _ -> }
+
+        assertEquals(3, receivedExpectedCount)
+    }
+
+    // --- Internet mode: profile selection, metadata, and the one-directional fallback ---
+
+    /** Answers a verbatim request with a fixed two-speaker transcript; no network involved. */
+    private fun scriptedCloudTransport(
+        verbatim: (com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest) -> AiResult<String>
+    ) = object : com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport {
+        override suspend fun execute(request: com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest): AiResult<String> =
+            if (request.systemInstruction.startsWith("You are a verbatim")) verbatim(request)
+            else AiResult.Failed("smart pass not scripted in this test")
+        override fun isConfigured() = true
+    }
+
+    private val cloudVerbatimJson = """
+        {"words":[
+          {"text":"We","startMs":0,"endMs":300,"speaker":"SPEAKER_0"},
+          {"text":"ship","startMs":300,"endMs":700,"speaker":"SPEAKER_0"},
+          {"text":"Friday.","startMs":700,"endMs":1200,"speaker":"SPEAKER_0"},
+          {"text":"Sounds","startMs":2000,"endMs":2400,"speaker":"SPEAKER_1"},
+          {"text":"good.","startMs":2400,"endMs":2900,"speaker":"SPEAKER_1"}
+        ]}
+    """.trimIndent()
+
+    @Test
+    fun `internet mode transcribes in the cloud and records how the meeting was processed`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val transport = scriptedCloudTransport { AiResult.Success(cloudVerbatimJson) }
+        val pipeline = MeetingProcessingPipeline(
+            context = context,
+            database = database,
+            modelStorage = LocalModelStorage(context),
+            // Local engines deliberately left as the fakes: if the cloud path were not taken,
+            // the transcript would come out as the fake ASR's words and this test would fail.
+            vad = fakeVad,
+            speechRecognizer = fakeAsr,
+            diarizer = fakeDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine,
+            embeddingEngine = LocalEmbeddingEngine(),
+            geminiTransport = transport,
+            cloudIntelligenceEngine = fakeIntelligenceEngine
+        )
+
+        val meeting = pipeline.processMeeting(
+            meetingId, audioFile, 4000L,
+            processingProfile = com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET
+        ) { _, _, _ -> }
+
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        assertTrue(segments.joinToString(" ") { it.text }.contains("We ship Friday."))
+        assertEquals("INTERNET", meeting.processingProfile)
+        assertEquals("gemini-3.5-transcribe", meeting.transcriptionEngine)
+        assertTrue("the pipeline version must be recorded", meeting.processingVersion > 0)
+        assertTrue("quality metrics must be recorded", meeting.qualityMetricsJson != null)
+    }
+
+    @Test
+    fun `cloud speakers survive into persisted speaker rows`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val pipeline = MeetingProcessingPipeline(
+            context = context, database = database, modelStorage = LocalModelStorage(context),
+            vad = fakeVad, speechRecognizer = fakeAsr, diarizer = fakeDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine, embeddingEngine = LocalEmbeddingEngine(),
+            geminiTransport = scriptedCloudTransport { AiResult.Success(cloudVerbatimJson) },
+            cloudIntelligenceEngine = fakeIntelligenceEngine
+        )
+
+        pipeline.processMeeting(
+            meetingId, audioFile, 4000L,
+            processingProfile = com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET
+        ) { _, _, _ -> }
+
+        val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId)
+        assertEquals(2, speakers.size)
+    }
+
+    @Test
+    fun `a cloud failure falls back to on-device processing rather than losing the recording`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val pipeline = MeetingProcessingPipeline(
+            context = context, database = database, modelStorage = LocalModelStorage(context),
+            vad = fakeVad, speechRecognizer = fakeAsr, diarizer = fakeDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine, embeddingEngine = LocalEmbeddingEngine(),
+            geminiTransport = scriptedCloudTransport { AiResult.Failed("quota exceeded") },
+            cloudIntelligenceEngine = fakeIntelligenceEngine
+        )
+
+        val meeting = pipeline.processMeeting(
+            meetingId, audioFile, 4000L,
+            processingProfile = com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET
+        ) { _, _, _ -> }
+
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+        assertTrue("the local fakes' transcript must be what was persisted",
+            segments.joinToString(" ") { it.text }.contains("We will ship on Friday."))
+        assertEquals(
+            "a meeting that fell back was in fact processed on device, and must say so",
+            "OFFLINE", meeting.processingProfile
+        )
+    }
+
+    @Test
+    fun `an offline run never touches the cloud transport, even when one is configured`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val exploding = object : com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport {
+            override suspend fun execute(request: com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest): AiResult<String> =
+                error("Offline mode must never make a network call")
+            override fun isConfigured() = true
+        }
+        val pipeline = MeetingProcessingPipeline(
+            context = context, database = database, modelStorage = LocalModelStorage(context),
+            vad = fakeVad, speechRecognizer = fakeAsr, diarizer = fakeDiarizer,
+            intelligenceEngine = fakeIntelligenceEngine, embeddingEngine = LocalEmbeddingEngine(),
+            geminiTransport = exploding
+        )
+
+        val meeting = pipeline.processMeeting(
+            meetingId, audioFile, 4000L,
+            processingProfile = com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.OFFLINE
+        ) { _, _, _ -> }
+
+        assertEquals("OFFLINE", meeting.processingProfile)
+    }
+}

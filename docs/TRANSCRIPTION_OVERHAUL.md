@@ -135,7 +135,7 @@ The last line is the compatibility strategy: `CanonicalTranscript` **projects to
 working against the type it already knows, and gains better content. Nothing in `feature/` has to
 change to get the fix.
 
-### 3.1 New components (package `com.example.ai.transcript`)
+### 3.1 New components (package `com.craftflowtechnologies.meetingmind.ai.transcript`)
 
 | Component | Answers | Determinism |
 | --- | --- | --- |
@@ -151,7 +151,7 @@ Every one of them is a pure function over data classes with no Android and no na
 so all of it is unit-testable on the JVM — which is the only way any of this can be verified
 without a device.
 
-### 3.2 Gemini / Internet mode (package `com.example.ai.cloud`)
+### 3.2 Gemini / Internet mode (package `com.craftflowtechnologies.meetingmind.ai.cloud`)
 
 Added as a *processing profile*, behind `ProcessingProfile.INTERNET`, never as a fallback from
 offline mode. `ai/cloud/GeminiTransport` is the one seam that touches the network; the model IDs

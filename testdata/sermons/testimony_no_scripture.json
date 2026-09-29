@@ -1,0 +1,15 @@
+{
+  "id": "testimony_no_scripture", "title": "A testimony", "type": "TESTIMONY",
+  "segments": [
+    {"id": "s1", "startMs": 0, "endMs": 40000, "speaker": "Grace", "text": "Two years ago I lost my job and I did not know how we would pay rent. I prayed a lot but honestly mostly I was afraid."},
+    {"id": "s2", "startMs": 40000, "endMs": 90000, "speaker": "Grace", "text": "Our neighbours brought food every week without being asked. I still get emotional thinking about it. That was how I learned I was not alone."},
+    {"id": "s3", "startMs": 90000, "endMs": 120000, "speaker": "Grace", "text": "In March I started at the clinic. It is not the job I would have picked but I am grateful."}
+  ],
+  "expected": {
+    "scriptures": [],
+    "songSegments": [],
+    "asks": [
+      {"question": "What did the speaker say about Genesis?", "answer": "The recording doesn't seem to cover that.", "cites": []}
+    ]
+  }
+}
