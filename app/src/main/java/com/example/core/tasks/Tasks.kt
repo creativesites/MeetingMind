@@ -106,6 +106,7 @@ class TaskRepository(
     fun observeNotesFor(personId: String): Flow<List<PersonNote>> = people.observeNotesFor(personId).map { l ->
         l.map { PersonNote(it.id, it.title, it.workflow, it.status == "ANSWERED", it.updatedAt) }
     }
+    suspend fun notesFor(personId: String): List<PersonNote> = io { people.notesForOnce(personId).map { PersonNote(it.id, it.title, it.workflow, it.status == "ANSWERED", it.updatedAt) } }
     /** Makes sure everyone on the prayer list is also a person, once and quietly. */
     suspend fun ensurePeople(names: List<String>) = io { names.map { it.trim() }.filter { it.isNotEmpty() }.forEach { if (people.findByName(it) == null) savePerson(it) } }
     fun observePeopleForNote(noteId: String): Flow<List<Person>> = people.observeForNote(noteId).map { l -> l.map { it.toDomain() } }

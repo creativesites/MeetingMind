@@ -61,6 +61,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.example.core.datastore.AppPreferencesState
 import com.example.core.datastore.UserPreferencesManager
+import com.example.core.originals.OriginalsPack
 import com.example.core.repository.MeetingRepository
 import com.example.ui.theme.Accent
 import com.example.ui.theme.Ink
@@ -432,6 +433,11 @@ fun SettingsScreen(
                         onClick = onOpenBible
                     )
                 }
+                OriginalsPack.entries.forEach { pack ->
+                    settingsRow {
+                        com.example.feature.bible.OriginalsPackRow(pack) { title, subtitle, onClick -> SettingsNavRow(title = title, subtitle = subtitle, onClick = onClick) }
+                    }
+                }
                 settingsRow {
                     SettingsSwitchRow(
                         title = "Lock Faith notes",
@@ -622,6 +628,7 @@ fun SettingsScreen(
                 }
                 item { DeepSeekRow() }
                 item { GeminiLogRow() }
+                if (BuildConfig.DEBUG) item { AudioBenchmarkRow() }
             }
 
             settingsSection(title = "Storage") {
@@ -874,6 +881,40 @@ private fun DeepSeekRow() {
         confirmButton = { TextButton(onClick = { scope.launch { ds.setKey(draft); editing = false } }, enabled = draft.startsWith("sk-")) { Text("Save") } },
         dismissButton = { TextButton(onClick = { editing = false }) { Text("Cancel") } }
     )
+}
+
+/** Developer only (debug builds): scores the sound detector against recordings and labels the team put on the phone. */
+@Composable
+private fun AudioBenchmarkRow() {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var running by remember { mutableStateOf(false) }
+    var report by remember { mutableStateOf<String?>(null) }
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = !running) {
+            running = true
+            scope.launch {
+                report = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val dir = context.getExternalFilesDir("benchmark") ?: context.filesDir
+                    dir.mkdirs()
+                    runCatching { com.example.core.audio.AudioBenchmark.runFolder(dir) + "\n\nFolder: ${dir.path}" }.getOrElse { "The benchmark stopped: ${it.message}" }
+                }
+                running = false
+            }
+        }.padding(horizontal = 16.dp, vertical = 14.dp).testTag("settings_audio_benchmark"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Run audio benchmark (developer)", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(if (running) "Scoring…" else "Scores the sound detector on recordings and labels in this app's benchmark folder.", fontSize = 12.5.sp, color = InkMuted)
+        }
+    }
+    report?.let { r ->
+        AlertDialog(onDismissRequest = { report = null }, title = { Text("Audio benchmark") },
+            text = { androidx.compose.foundation.layout.Box(Modifier.height(420.dp)) { androidx.compose.foundation.lazy.LazyColumn { item { Text(r, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, color = InkSecondary) } } } },
+            confirmButton = { TextButton(onClick = { context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("Benchmark", r)); Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show() }) { Text("Copy") } },
+            dismissButton = { TextButton(onClick = { report = null }) { Text("Close") } })
+    }
 }
 
 /**

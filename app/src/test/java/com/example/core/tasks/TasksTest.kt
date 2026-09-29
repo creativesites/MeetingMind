@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.core.database.MeetMindDatabase
+import com.example.core.model.RecordingType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -86,5 +87,36 @@ class TasksTest {
         assertTrue(repo.observeTasks().first().isEmpty())
         repo.restore(t.id)
         assertEquals(1, repo.observeTasks().first().size)
+    }
+
+    private val notes by lazy { com.example.core.repository.NoteRepository(ApplicationProvider.getApplicationContext<Context>(), db) }
+
+    @Test fun requestsAnsweredPrayersAndTestimoniesGatherOnThePerson() = runBlocking {
+        val mary = repo.savePerson("Mary", "Friend")
+        val open = notes.createNote(RecordingType.PRAYER_REQUEST, "Mary's surgery")
+        val other = notes.createNote(RecordingType.PRAYER_REQUEST, "Mary's job")
+        repo.linkNote(open.id, mary.id); repo.linkNote(other.id, mary.id)
+        notes.markAnswered(other.id)
+        val testimony = notes.startTestimony(other.id)
+
+        val onMary = repo.notesFor(mary.id)
+        assertEquals(3, onMary.size)
+        assertEquals(listOf("Mary's surgery"), onMary.filter { it.workflow == "PRAYER_REQUEST" && !it.answered }.map { it.title })
+        assertEquals(listOf("Mary's job"), onMary.filter { it.workflow == "PRAYER_REQUEST" && it.answered }.map { it.title })
+        // The testimony inherited who the request was for.
+        assertTrue(onMary.any { it.id == testimony.id && it.workflow == "TESTIMONY" })
+    }
+
+    @Test fun trashedNotesLeaveThePersonsPage() = runBlocking {
+        val p = repo.savePerson("John")
+        val n = notes.createNote(RecordingType.PRAYER_REQUEST, "For John")
+        repo.linkNote(n.id, p.id)
+        notes.moveToTrash(n.id)
+        assertTrue(repo.notesFor(p.id).isEmpty())
+    }
+
+    @Test fun ensurePeopleAddsPrayerListNamesOnceWithoutDuplicates() = runBlocking {
+        repo.ensurePeople(listOf("Ann", " Ben ", "ann", ""))
+        assertEquals(listOf("Ann", "Ben"), repo.allPeople().map { it.name })
     }
 }

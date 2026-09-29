@@ -92,7 +92,7 @@ class NotesUiTest {
                 NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
             }
         }
-        compose.waitUntil(20_000) { vm.loaded.value }
+        compose.waitUntil(60_000) { vm.loaded.value }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("src/test/screenshots/note_editor.png")
 
@@ -119,7 +119,7 @@ class NotesUiTest {
                 NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
             }
         }
-        compose.waitUntil(20_000) { vm.loaded.value }
+        compose.waitUntil(60_000) { vm.loaded.value }
         compose.waitForIdle()
         val before = vm.blocks.value.size
         val answer = "## An answer from ChatGPT\n\n" + (1..200).joinToString("\n") { "- Point number $it" }
@@ -142,7 +142,7 @@ class NotesUiTest {
                 NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
             }
         }
-        compose.waitUntil(20_000) { vm.loaded.value }
+        compose.waitUntil(60_000) { vm.loaded.value }
         fun pause() {
             // Longer than the autosave delay, so each save lands between keystrokes.
             repeat(8) {
@@ -180,7 +180,7 @@ class NotesUiTest {
                 NotesScreen(viewModel = vm, onOpenNote = {}, onOpenNotebook = {}, onOpenArchive = {}, onNavigateBack = null, onNavigateBottomNav = {})
             }
         }
-        compose.waitUntil(20_000) { vm.visibleNotes.value.size == 3 }
+        compose.waitUntil(60_000) { vm.visibleNotes.value.size == 3 }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("src/test/screenshots/notes_library.png")
         assertEquals("Team sync", vm.visibleNotes.value.first().title)

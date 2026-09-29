@@ -738,6 +738,7 @@ private fun StudySheet(state: StudyState, onCommentary: (String) -> Unit, onOpen
             }
             item {
                 Text("Cross-references: Open Bible (openbible.info), CC BY 4.0.", fontSize = 10.5.sp, color = InkMuted, modifier = Modifier.padding(top = 4.dp))
+                OriginalLanguageSection(state.reference)
                 Text("WHAT COMMENTATORS SAY", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp))
                 androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(com.example.core.scripture.HelloAo.commentaries.size) { i ->

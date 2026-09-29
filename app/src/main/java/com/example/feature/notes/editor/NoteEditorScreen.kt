@@ -197,8 +197,10 @@ fun NoteEditorScreen(
     var showVersions by remember { mutableStateOf(false) }
     var blockMenuFor by remember { mutableStateOf<NoteBlock?>(null) }
     var showPeople by remember { mutableStateOf(false) }
-    val notePeople by viewModel.notePeople.collectAsState()
-    val allPeople by viewModel.people.collectAsState()
+    // Observed only where they matter: on notes about people, and while the people sheet is open.
+    val wantsPeople = note?.workflow in PEOPLE_WORKFLOWS
+    val notePeople by remember(wantsPeople || showPeople) { if (wantsPeople || showPeople) viewModel.notePeople else kotlinx.coroutines.flow.flowOf(emptyList()) }.collectAsState(initial = emptyList())
+    val allPeople by remember(showPeople) { if (showPeople) viewModel.people else kotlinx.coroutines.flow.flowOf(emptyList()) }.collectAsState(initial = emptyList())
     var showAssistant by remember { mutableStateOf(false) }
     var taskDraft by remember { mutableStateOf<com.example.core.tasks.Task?>(null) }
     var exporting by remember { mutableStateOf(false) }

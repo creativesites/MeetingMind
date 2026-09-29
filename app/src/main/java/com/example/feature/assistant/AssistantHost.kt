@@ -79,6 +79,7 @@ class AppAssistantHost(
         AssistantTool.CROSS_REFERENCES -> crossRefs(call.str("reference"))
         AssistantTool.COMMENTARY -> commentary(call.str("reference"), call.str("source"))
         AssistantTool.COMPARE_TRANSLATIONS -> compare(call.str("reference"))
+        AssistantTool.ORIGINAL -> original(call.str("reference"))
         else -> ToolResult("Skipped", "not a read tool", ok = false)
     }
 
@@ -229,6 +230,24 @@ class AppAssistantHost(
         val relevant = entries.filterIndexed { i, e -> e.verse <= end && (entries.getOrNull(i + 1)?.verse ?: 999) > start }
         val text = relevant.joinToString("\n\n") { "v${it.verse}: ${it.text}" }.take(5000)
         return ToolResult("Read ${src.name} on ${ref.display()}", "${src.name} on ${ref.display()}:\n${text.ifBlank { "no entry for these verses" }}")
+    }
+
+    private suspend fun original(reference: String?): ToolResult {
+        val ref = reference?.let(ScriptureReferenceParser::parse) ?: return ToolResult("Couldn't read a reference", "couldn't parse '$reference'", ok = false)
+        val store = com.example.core.originals.OriginalsStore.get(context)
+        val hebrew = com.example.core.scripture.BibleBooks.all.indexOf(ref.book) < 39
+        val pack = if (hebrew) com.example.core.originals.OriginalsPack.HEBREW_OT else com.example.core.originals.OriginalsPack.GREEK_NT
+        val (words, installed) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            store.verses(ref.usfm, ref.chapter, ref.verseStart ?: 1, ref.verseEnd ?: ref.verseStart ?: 200) to (pack in store.installed())
+        }
+        if (!installed) return ToolResult("${pack.language} not downloaded", "the person hasn't downloaded the ${pack.label} pack; say so and don't answer from memory", ok = false)
+        if (words.isEmpty()) return ToolResult("Not in the ${pack.language} text", "no ${pack.language} words for ${ref.display()}", ok = false)
+        val lines = words.take(120).joinToString("\n") { w ->
+            val e = w.strongsAll.firstNotNullOfOrNull { store.entry(it) }
+            val grammar = if (hebrew) com.example.core.originals.MorphDecoder.hebrew(w.morph) else com.example.core.originals.MorphDecoder.greek(w.morph)
+            "v${w.verse} ${w.surface} (${w.translit}) = ${w.gloss} | lemma ${w.lemma} ${w.strongs} | $grammar" + (e?.let { " | dictionary: ${it.gloss}" } ?: "")
+        }
+        return ToolResult("Read ${ref.display()} in ${pack.language}", lines)
     }
 
     private suspend fun compare(reference: String?): ToolResult {

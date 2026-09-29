@@ -140,6 +140,9 @@ interface PeopleDao {
     @Query("SELECT n.* FROM notes n JOIN note_people np ON np.noteId = n.id WHERE np.personId = :personId AND n.deletedAt IS NULL ORDER BY n.updatedAt DESC")
     fun observeNotesFor(personId: String): Flow<List<NoteEntity>>
 
+    @Query("SELECT n.* FROM notes n JOIN note_people np ON np.noteId = n.id WHERE np.personId = :personId AND n.deletedAt IS NULL ORDER BY n.updatedAt DESC")
+    suspend fun notesForOnce(personId: String): List<NoteEntity>
+
     @Query("SELECT * FROM people")
     suspend fun exportAll(): List<PersonEntity>
 
