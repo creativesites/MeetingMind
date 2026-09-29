@@ -730,7 +730,9 @@ fun MeetMindApp() {
                     navController.navigate(Routes.meetingDetailRoute(meetingId, startAtMs))
                 },
                 onNavigateToNote = { navController.navigate(Routes.noteRoute(it)) },
-                onNavigateBottomNav = navigateToPrimary
+                onNavigateBottomNav = navigateToPrimary,
+                onOpenPassage = { navController.navigate(Routes.bibleRoute(it)) },
+                onOpenTasks = { navController.navigate(Routes.TASKS) }
             )
         }
 

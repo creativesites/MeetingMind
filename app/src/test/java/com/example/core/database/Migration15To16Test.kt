@@ -61,7 +61,7 @@ class Migration15To16Test {
         val hit = db.searchDao().segments("remain", 10).single()
         assertEquals(65000L, hit.startMs)
         assertEquals("Sunday service", hit.meetingTitle)
-        assertTrue(hit.snippet.contains("[Remain]") || hit.snippet.contains("[remain]"))
+        assertTrue(hit.snippet.contains("Remain"))
     }
 
     @Test

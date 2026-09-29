@@ -666,9 +666,28 @@ class SearchRepository(
 
         val results = mutableListOf<SearchResultItem>()
 
-        // 1. Keyword search over transcripts
-        val matchedSegments = transcriptDao.searchTranscriptSegments(qTrim)
-        for (seg in matchedSegments) {
+        // 1. Keyword search over transcripts: the full-text index (word prefixes, any order), and
+        // plain substring matching as the fallback for text the index can't express.
+        val fts = com.example.core.scripture.BibleStore.ftsQuery(qTrim)
+        val ftsSegments = fts?.let { q -> runCatching { database.searchDao().segments(q, 80) }.getOrNull() }
+        if (ftsSegments != null && ftsSegments.isNotEmpty()) {
+            for (seg in ftsSegments) {
+                val meeting = meetingDao.getMeetingById(seg.meetingId) ?: continue
+                results.add(
+                    SearchResultItem(
+                        meetingId = meeting.id,
+                        meetingTitle = meeting.title,
+                        meetingDate = meeting.createdAt,
+                        matchSnippet = seg.snippet,
+                        timestampMs = seg.startMs,
+                        matchType = SearchMatchType.KEYWORD_TRANSCRIPT,
+                        relevanceScore = 0.95f,
+                        speakerName = seg.speakerName,
+                        recordingType = meeting.recordingTypeOrGeneral()
+                    )
+                )
+            }
+        } else for (seg in transcriptDao.searchTranscriptSegments(qTrim)) {
             val meeting = meetingDao.getMeetingById(seg.meetingId) ?: continue
             results.add(
                 SearchResultItem(
@@ -718,7 +737,9 @@ class SearchRepository(
         // 3. Notes: title and text. A recording's own note is skipped when the recording
         // already matched, so one piece of work doesn't appear twice.
         val matchedMeetings = results.map { it.meetingId }.toSet()
-        for (note in database.noteDao().searchText(qTrim)) {
+        val ftsNotes = fts?.let { q -> runCatching { database.searchDao().notes(q, 60).mapNotNull { database.noteDao().getById(it.id) } }.getOrNull() }
+        val noteHits = (ftsNotes.orEmpty() + database.noteDao().searchText(qTrim)).distinctBy { it.id }
+        for (note in noteHits) {
             val recordingIds = database.noteDao().getMeetingsForNote(note.id).map { it.id }
             if (recordingIds.any { it in matchedMeetings } && !note.title.contains(qTrim, ignoreCase = true)) continue
             val titleHit = note.title.contains(qTrim, ignoreCase = true)
@@ -727,13 +748,30 @@ class SearchRepository(
                     meetingId = recordingIds.firstOrNull() ?: "",
                     meetingTitle = note.title.ifBlank { "Untitled note" },
                     meetingDate = note.eventDate ?: note.createdAt,
-                    matchSnippet = snippetAround(note.plainText, qTrim) ?: note.plainText.take(SNIPPET_LENGTH),
+                    matchSnippet = snippetAround(note.plainText, qTrim)
+                        ?: com.example.ai.assistant.AskEverything.terms(qTrim).firstNotNullOfOrNull { snippetAround(note.plainText, it) }
+                        ?: note.plainText.take(SNIPPET_LENGTH),
                     timestampMs = 0L,
                     matchType = SearchMatchType.NOTE,
                     relevanceScore = if (titleHit) 0.97f else 0.9f,
                     recordingType = runCatching { com.example.core.model.RecordingType.valueOf(note.workflow) }
                         .getOrDefault(com.example.core.model.RecordingType.GENERAL),
                     noteId = note.id
+                )
+            )
+        }
+
+        // 4. Tasks, by their words.
+        val words = com.example.ai.assistant.AskEverything.terms(qTrim).ifEmpty { listOf(qTrim.lowercase()) }
+        for (t in database.taskDao().exportAll()) {
+            if (t.deletedAt != null) continue
+            val hay = (t.title + " " + t.notes).lowercase()
+            if (!hay.contains(qTrim.lowercase()) && words.none { hay.contains(it) }) continue
+            results.add(
+                SearchResultItem(
+                    meetingId = t.meetingId.orEmpty(), meetingTitle = t.title, meetingDate = t.dueAt ?: t.createdAt,
+                    matchSnippet = listOfNotNull(if (t.doneAt != null) "Done" else "Open", t.notes.takeIf { it.isNotBlank() }).joinToString(" · "),
+                    timestampMs = t.startMs ?: 0L, matchType = SearchMatchType.TASK, relevanceScore = 0.93f, taskId = t.id
                 )
             )
         }
@@ -750,13 +788,13 @@ class SearchRepository(
          * cut at word boundaries and marked with ellipses where it was cut. Null when [query]
          * doesn't occur.
          */
-        fun snippetAround(text: String, query: String): String? {
+        fun snippetAround(text: String, query: String, length: Int = SNIPPET_LENGTH): String? {
             val at = text.indexOf(query, ignoreCase = true)
             if (at < 0) return null
             val flat = text.replace('\n', ' ')
-            var start = (at - SNIPPET_LENGTH / 2).coerceAtLeast(0)
-            var end = (start + SNIPPET_LENGTH).coerceAtMost(flat.length)
-            start = (end - SNIPPET_LENGTH).coerceAtLeast(0).coerceAtMost(start)
+            var start = (at - length / 2).coerceAtLeast(0)
+            var end = (start + length).coerceAtMost(flat.length)
+            start = (end - length).coerceAtLeast(0).coerceAtMost(start)
             if (start > 0) flat.indexOf(' ', start).takeIf { it in start until at }?.let { start = it + 1 }
             if (end < flat.length) flat.lastIndexOf(' ', end).takeIf { it > at + query.length }?.let { end = it }
             val prefix = if (start > 0) "…" else ""
@@ -779,7 +817,11 @@ enum class SearchMatchType {
     KEYWORD_TRANSCRIPT,
     SEMANTIC_VECTOR,
     /** A note's title or text. [SearchResultItem.noteId] is set. */
-    NOTE
+    NOTE,
+    /** A Bible passage the query names or contains. [SearchResultItem.reference] is set. */
+    SCRIPTURE,
+    /** A task. [SearchResultItem.taskId] is set. */
+    TASK
 }
 
 data class SearchResultItem(
@@ -794,7 +836,10 @@ data class SearchResultItem(
     val speakerName: String? = null,
     val recordingType: com.example.core.model.RecordingType = com.example.core.model.RecordingType.GENERAL,
     /** Set for [SearchMatchType.NOTE]. [meetingId] is then the note's first recording, or empty. */
-    val noteId: String? = null
+    val noteId: String? = null,
+    /** Set for [SearchMatchType.SCRIPTURE]: a passage id the Bible screen opens. */
+    val reference: String? = null,
+    val taskId: String? = null
 )
 
 /**

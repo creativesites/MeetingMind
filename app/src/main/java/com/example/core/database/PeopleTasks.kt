@@ -188,7 +188,7 @@ data class SegmentHit(val id: String, val meetingId: String, val startMs: Long, 
 @Dao
 interface SearchDao {
     @Query(
-        """SELECT n.id, n.title, n.workflow, n.updatedAt, snippet(notes_fts, '[', ']', '…', -1, 12) AS snippet
+        """SELECT n.id, n.title, n.workflow, n.updatedAt, snippet(notes_fts, '', '', '…', -1, 14) AS snippet
            FROM notes_fts JOIN notes n ON n.rowid = notes_fts.rowid
            WHERE notes_fts MATCH :query AND n.deletedAt IS NULL AND n.isDraft = 0
            ORDER BY n.updatedAt DESC LIMIT :limit"""
@@ -196,7 +196,7 @@ interface SearchDao {
     suspend fun notes(query: String, limit: Int): List<NoteHit>
 
     @Query(
-        """SELECT s.id, s.meetingId, s.startMs, s.speakerName, snippet(transcript_fts, '[', ']', '…', -1, 12) AS snippet,
+        """SELECT s.id, s.meetingId, s.startMs, s.speakerName, snippet(transcript_fts, '', '', '…', -1, 14) AS snippet,
                   m.title AS meetingTitle, m.recordingType
            FROM transcript_fts JOIN transcript_segments s ON s.rowid = transcript_fts.rowid
            JOIN meetings m ON m.id = s.meetingId
