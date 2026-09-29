@@ -475,6 +475,13 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     // ------------------------------------------------------------ tasks
 
     private val tasks by lazy { com.example.core.tasks.TaskReminders.repository(getApplication()) }
+    /** The people this note is about (a prayer request's "praying for", a testimony's "who it touched"). */
+    val notePeople: StateFlow<List<com.example.core.tasks.Person>> by lazy {
+        tasks.observePeopleForNote(noteId).stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+    fun addPersonToNote(name: String) = viewModelScope.launch { tasks.savePerson(name).let { tasks.linkNote(noteId, it.id) } }
+    fun linkPerson(p: com.example.core.tasks.Person) = viewModelScope.launch { tasks.linkNote(noteId, p.id) }
+    fun unlinkPerson(p: com.example.core.tasks.Person) = viewModelScope.launch { tasks.unlinkNote(noteId, p.id) }
     val people: StateFlow<List<com.example.core.tasks.Person>> by lazy {
         tasks.observePeople().stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
     }

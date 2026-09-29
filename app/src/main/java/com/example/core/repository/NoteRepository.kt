@@ -426,6 +426,8 @@ class NoteRepository(
             })
         }
         link(testimony.id, requestId, NoteLinkKind.TESTIMONY_OF)
+        // The people the request was for are the people this testimony is about.
+        database.peopleDao().let { d -> d.exportLinks().filter { it.noteId == requestId }.forEach { d.link(com.example.core.database.NotePersonCrossRef(testimony.id, it.personId)) } }
         testimony
     }
 

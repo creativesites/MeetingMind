@@ -125,7 +125,7 @@ class FaithExtrasViewModel(app: Application) : AndroidViewModel(app) {
     fun setDone(plan: ReadingPlan, day: Int, done: Boolean) = io { store.setDone(plan.id, day, done) }
     /** Catch up: mark every missed day before today as read (for someone who read elsewhere). */
     fun catchUp(p: PlanProgress) = io { (0 until p.dayFor(today)).filter { it !in p.done }.forEach { store.setDone(p.plan.id, it, true) } }
-    fun addPerson(name: String, note: String) = io { if (name.isNotBlank()) store.addPerson(name, note) }
+    fun addPerson(name: String, note: String) = io { if (name.isNotBlank()) { store.addPerson(name, note); runCatching { kotlinx.coroutines.runBlocking { com.example.core.tasks.TaskReminders.repository(getApplication()).ensurePeople(listOf(name)) } } } }
     fun removePerson(p: PrayerPerson) = io { store.removePerson(p.id) }
     fun prayed(p: PrayerPerson) = io { store.markPrayed(p.id) }
     fun setReminders(s: ReminderSettings) = viewModelScope.launch { prefs.setReminderSettings(s) }

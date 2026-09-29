@@ -122,6 +122,7 @@ class TasksViewModel(app: Application) : AndroidViewModel(app) {
     fun savePerson(name: String, relationship: String?, id: String?) = viewModelScope.launch { repo.savePerson(name, relationship, id = id) }
     fun deletePerson(p: Person) = viewModelScope.launch { repo.deletePerson(p.id) }
     fun tasksFor(personId: String) = repo.observeForPerson(personId)
+    fun notesFor(personId: String) = repo.observeNotesFor(personId)
 }
 
 private enum class TasksTab(val label: String) { TASKS("Tasks"), PEOPLE("People") }
@@ -226,7 +227,7 @@ fun TasksScreen(vm: TasksViewModel, onNavigateBack: () -> Unit, onOpenNote: (Str
         )
     }
     person?.let { p ->
-        PersonSheet(p, vm, onDismiss = { person = null }, onOpenTask = { editing = it; person = null })
+        PersonSheet(p, vm, onDismiss = { person = null }, onOpenTask = { editing = it; person = null }, onOpenNote = { person = null; onOpenNote(it) })
     }
     if (addingPerson) PersonDialog(null, onSave = { n, r -> vm.savePerson(n, r, null); addingPerson = false }, onDismiss = { addingPerson = false })
 }
@@ -330,7 +331,8 @@ private fun Avatar(name: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PersonSheet(p: Person, vm: TasksViewModel, onDismiss: () -> Unit, onOpenTask: (Task) -> Unit) {
+private fun PersonSheet(p: Person, vm: TasksViewModel, onDismiss: () -> Unit, onOpenTask: (Task) -> Unit, onOpenNote: (String) -> Unit) {
+    val notes by remember(p.id) { vm.notesFor(p.id) }.collectAsState(initial = emptyList())
     val tasks by remember(p.id) { vm.tasksFor(p.id) }.collectAsState(initial = emptyList())
     var editing by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SurfaceBase) {
@@ -352,6 +354,20 @@ private fun PersonSheet(p: Person, vm: TasksViewModel, onDismiss: () -> Unit, on
                     Box(Modifier.size(18.dp).clip(CircleShape).border(1.5.dp, if (t.done) Success else kindColor(t.kind), CircleShape).clickable { vm.toggle(t) })
                     Text(t.title, fontSize = 15.sp, color = if (t.done) InkMuted else Ink, textDecoration = if (t.done) TextDecoration.LineThrough else null, modifier = Modifier.padding(start = 12.dp).weight(1f))
                     t.dueAt?.let { Text(describeDue(it), fontSize = 12.sp, color = InkSecondary) }
+                }
+            }
+            // Their prayers and stories, in the order they matter: what's still being prayed, what was answered, what was told.
+            val groups = listOf(
+                "PRAYING FOR" to notes.filter { it.workflow == "PRAYER_REQUEST" && !it.answered },
+                "ANSWERED" to notes.filter { it.workflow == "PRAYER_REQUEST" && it.answered },
+                "TESTIMONIES" to notes.filter { it.workflow == "TESTIMONY" },
+                "NOTES" to notes.filter { it.workflow != "PRAYER_REQUEST" && it.workflow != "TESTIMONY" }
+            )
+            groups.filter { it.second.isNotEmpty() }.forEach { (label, list) ->
+                Text(label, fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(top = 16.dp))
+                list.forEach { n ->
+                    Text(n.title.ifBlank { "Untitled" }, fontSize = 15.sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth().clickable { onOpenNote(n.id) }.padding(vertical = 9.dp))
                 }
             }
         }

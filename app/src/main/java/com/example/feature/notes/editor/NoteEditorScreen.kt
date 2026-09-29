@@ -196,6 +196,9 @@ fun NoteEditorScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     var showVersions by remember { mutableStateOf(false) }
     var blockMenuFor by remember { mutableStateOf<NoteBlock?>(null) }
+    var showPeople by remember { mutableStateOf(false) }
+    val notePeople by viewModel.notePeople.collectAsState()
+    val allPeople by viewModel.people.collectAsState()
     var showAssistant by remember { mutableStateOf(false) }
     var taskDraft by remember { mutableStateOf<com.example.core.tasks.Task?>(null) }
     var exporting by remember { mutableStateOf(false) }
@@ -599,6 +602,7 @@ fun NoteEditorScreen(
     // ---- sheets and dialogs
     if (showInsert) InsertSheet(hasRecordings = recordings.isNotEmpty(), onPick = ::onInsert, onDismiss = { showInsert = false })
     if (showLink) LinkDialog(initial = viewModel.currentLink(), onSave = { viewModel.setLink(it); showLink = false }, onDismiss = { showLink = false })
+    if (showPeople) PeopleSheet(notePeople, allPeople, onAdd = { viewModel.addPersonToNote(it) }, onLink = { viewModel.linkPerson(it) }, onUnlink = { viewModel.unlinkPerson(it) }, onDismiss = { showPeople = false })
     if (showTags) TagSheet(tags, allTags, onAdd = { viewModel.addTag(it) }, onRemove = { viewModel.removeTag(it.id) }, onDismiss = { showTags = false })
     if (showNotebooks) NotebookSheet(
         notebooks = notebooks,
@@ -815,6 +819,12 @@ fun NoteEditorScreen(
     }
 }
 
+/** Where naming the people a note is about makes sense — the rest can still show them if they're linked. */
+private val PEOPLE_WORKFLOWS = setOf(
+    com.example.core.model.RecordingType.PRAYER_REQUEST, com.example.core.model.RecordingType.PRAYER, com.example.core.model.RecordingType.TESTIMONY,
+    com.example.core.model.RecordingType.GRATITUDE, com.example.core.model.RecordingType.REFLECTION, com.example.core.model.RecordingType.JOURNAL
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun NoteMeta(
@@ -825,6 +835,9 @@ private fun NoteMeta(
     tags: List<String>,
     onNotebook: () -> Unit,
     onTags: () -> Unit,
+    people: List<String> = emptyList(),
+    offerPeople: Boolean = false,
+    onPeople: () -> Unit = {},
     details: List<String> = emptyList(),
     onDetails: () -> Unit = {}
 ) {
@@ -840,6 +853,8 @@ private fun NoteMeta(
         workflowLabel?.let { MetaText(it) }
         details.forEach { MetaChip(it, Icons.Outlined.PersonOutline, onDetails) }
         if (isPrivate) MetaChip("Private", Icons.Filled.Lock, null)
+        people.forEach { MetaChip(it, Icons.Outlined.PersonOutline, onPeople, accent = true) }
+        if (offerPeople && people.isEmpty()) MetaChip(if (workflowLabel == "Prayer request") "Praying for…" else "Add person", Icons.Outlined.PersonOutline, onPeople)
         tags.forEach { MetaChip("#$it", null, onTags, accent = true) }
         MetaChip(if (tags.isEmpty()) "Add tag" else "+", Icons.Outlined.Tag.takeIf { tags.isEmpty() }, onTags)
     }

@@ -67,6 +67,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -172,6 +173,43 @@ internal fun LinkDialog(initial: String?, onSave: (String?) -> Unit, onDismiss: 
             }
         }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+/** Who this note is about: the people already linked, then anyone else you've saved, then a new name. */
+@Composable
+internal fun PeopleSheet(
+    linked: List<com.example.core.tasks.Person>, all: List<com.example.core.tasks.Person>,
+    onAdd: (String) -> Unit, onLink: (com.example.core.tasks.Person) -> Unit, onUnlink: (com.example.core.tasks.Person) -> Unit, onDismiss: () -> Unit
+) {
+    var entry by remember { mutableStateOf("") }
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
+            SheetTitle("Who is this about?")
+            OutlinedTextField(
+                value = entry, onValueChange = { entry = it.replace("\n", "") }, singleLine = true,
+                placeholder = { Text("A name") },
+                trailingIcon = { if (entry.isNotBlank()) TextButton(onClick = { onAdd(entry.trim()); entry = "" }) { Text("Add") } },
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { if (entry.isNotBlank()) { onAdd(entry.trim()); entry = "" } }),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                modifier = Modifier.fillMaxWidth().testTag("people_entry")
+            )
+            if (linked.isNotEmpty()) {
+                SectionLabel("On this note")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    linked.forEach { p -> TagChip(p.name, selected = true, trailing = Icons.Filled.Close) { onUnlink(p) } }
+                }
+            }
+            val others = all.filter { p -> linked.none { it.id == p.id } && (entry.isBlank() || p.name.contains(entry, ignoreCase = true)) }
+            if (others.isNotEmpty()) {
+                SectionLabel("Your people")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    others.take(40).forEach { p -> TagChip(p.name, selected = false) { onLink(p) } }
+                }
+            }
+            Text("They appear on the person's page with their tasks, prayers and testimonies.", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 14.dp))
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

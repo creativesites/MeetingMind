@@ -45,6 +45,9 @@ data class Task(
     val done get() = doneAt != null
 }
 
+/** A note that is about a person, for their page: prayer requests, answered prayers, testimonies and the rest. */
+data class PersonNote(val id: String, val title: String, val workflow: String, val answered: Boolean, val updatedAt: Long)
+
 data class Person(val id: String, val name: String, val relationship: String? = null, val notes: String = "", val openTasks: Int = 0, val noteCount: Int = 0)
 
 /** Where a task sits in the list. */
@@ -100,6 +103,11 @@ class TaskRepository(
     fun observeForNote(noteId: String): Flow<List<Task>> = tasks.observeForNote(noteId).map { l -> l.map { it.toDomain() } }
     fun observeForPerson(personId: String): Flow<List<Task>> = tasks.observeForPerson(personId).map { l -> l.map { it.toDomain() } }
     fun observePeople(): Flow<List<Person>> = people.observeWithCounts().map { l -> l.map { Person(it.id, it.name, it.relationship, it.notes, it.openTasks, it.noteCount) } }
+    fun observeNotesFor(personId: String): Flow<List<PersonNote>> = people.observeNotesFor(personId).map { l ->
+        l.map { PersonNote(it.id, it.title, it.workflow, it.status == "ANSWERED", it.updatedAt) }
+    }
+    /** Makes sure everyone on the prayer list is also a person, once and quietly. */
+    suspend fun ensurePeople(names: List<String>) = io { names.map { it.trim() }.filter { it.isNotEmpty() }.forEach { if (people.findByName(it) == null) savePerson(it) } }
     fun observePeopleForNote(noteId: String): Flow<List<Person>> = people.observeForNote(noteId).map { l -> l.map { it.toDomain() } }
 
     suspend fun get(id: String): Task? = io { tasks.getById(id)?.toDomain() }
