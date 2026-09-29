@@ -90,7 +90,7 @@ class NotesMigrationTest {
 
     private fun openMigrated(): MeetMindDatabase =
         Room.databaseBuilder(context, MeetMindDatabase::class.java, dbName)
-            .addMigrations(MeetMindDatabase.MIGRATION_12_13, MeetMindDatabase.MIGRATION_13_14)
+            .addMigrations(MeetMindDatabase.MIGRATION_12_13, MeetMindDatabase.MIGRATION_13_14, MeetMindDatabase.MIGRATION_14_15)
             .allowMainThreadQueries()
             .build()
             .also { migrated = it }

@@ -229,18 +229,20 @@ class AiToolWorker(
     ): Result {
         val meetingId = job.meetingId
         val findings: List<ToolFinding> = when (toolType) {
-            TranscriptAiToolType.FIND_DECISIONS -> database.decisionDao().getDecisionsForMeetingDirect(meetingId)
-                .map { ToolFinding(text = it.text, sourceSegmentIds = it.sourceSegmentIdsJson.toIdList(), detail = it.type) }
+            TranscriptAiToolType.FIND_DECISIONS -> database.itemDao().getForMeeting(meetingId, com.example.core.work.ItemKind.DECISION.name)
+                .map { ToolFinding(text = it.item.text, sourceSegmentIds = it.item.sourceSegmentIdsJson.toIdList(), detail = it.item.subtype) }
 
-            TranscriptAiToolType.FIND_QUESTIONS -> database.questionDao().getQuestionsForMeetingDirect(meetingId)
-                .map { ToolFinding(text = it.text, sourceSegmentIds = it.sourceSegmentIdsJson.toIdList()) }
+            TranscriptAiToolType.FIND_QUESTIONS -> database.itemDao().getForMeeting(meetingId, com.example.core.work.ItemKind.QUESTION.name)
+                .map { ToolFinding(text = it.item.text, sourceSegmentIds = it.item.sourceSegmentIdsJson.toIdList()) }
 
-            TranscriptAiToolType.FIND_ACTION_ITEMS -> database.actionItemDao().getActionItemsForMeetingDirect(meetingId)
+            TranscriptAiToolType.FIND_ACTION_ITEMS -> database.itemDao().getForMeeting(meetingId, com.example.core.work.ItemKind.TASK.name)
+                .filter { it.item.subtype != com.example.core.work.SUBTYPE_FOLLOW_UP }
                 .map {
                     ToolFinding(
-                        text = it.task,
-                        sourceSegmentIds = it.sourceSegmentIdsJson.toIdList(),
-                        detail = it.assigneeName
+                        text = it.item.text,
+                        sourceSegmentIds = it.item.sourceSegmentIdsJson.toIdList(),
+                        // The owner's current name, so a renamed speaker shows correctly.
+                        detail = it.ownerDisplay
                     )
                 }
 

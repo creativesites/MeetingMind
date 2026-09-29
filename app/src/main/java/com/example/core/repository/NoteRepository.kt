@@ -399,7 +399,9 @@ class NoteRepository(
         val escaped = key.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         noteDao.findByMetadata("%\"$CALENDAR_EVENT_KEY\":\"$escaped\"%")?.toDomain()?.let { return@withContext it }
         val people = event.otherPeople
-        createNote(
+        val emails = event.attendees.filter { !it.isSelf && !it.email.isNullOrBlank() }
+            .associate { it.name.ifBlank { it.email.orEmpty() } to it.email!! }
+        val note = createNote(
             workflow = workflow,
             title = event.title,
             eventDate = event.begin,
@@ -411,8 +413,17 @@ class NoteRepository(
                 if (people.isNotEmpty()) put("participants", people.joinToString(", "))
                 event.location?.let { put("location", it) }
                 event.calendarName?.let { put("calendar", it) }
+                if (emails.isNotEmpty()) put(com.example.core.work.PeopleRepository.ATTENDEE_EMAILS, org.json.JSONObject(emails).toString())
             }
         )
+        // Attendees become People, with the address they were invited at (PLAN_PROFESSIONAL.md §5.1).
+        runCatching {
+            val peopleRepo = com.example.core.work.PeopleRepository(database)
+            event.attendees.filter { !it.isSelf }.forEach { a ->
+                peopleRepo.resolve(a.name.ifBlank { null }, a.email)?.let { peopleRepo.addToNote(note.id, it.id, "ATTENDEE") }
+            }
+        }
+        note
     }
 
     /**

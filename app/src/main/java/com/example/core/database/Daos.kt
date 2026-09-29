@@ -16,6 +16,9 @@ interface MeetingDao {
     @Query("SELECT * FROM meetings WHERE id = :id")
     fun getMeetingByIdFlow(id: String): Flow<MeetingEntity?>
 
+    @Query("SELECT * FROM meetings ORDER BY createdAt DESC")
+    suspend fun getAllMeetingsDirect(): List<MeetingEntity>
+
     @Query("SELECT * FROM meetings WHERE id = :id")
     suspend fun getMeetingById(id: String): MeetingEntity?
 
@@ -105,70 +108,6 @@ interface SpeakerDao {
 }
 
 @Dao
-interface ActionItemDao {
-    @Query("SELECT * FROM action_items WHERE meetingId = :meetingId")
-    fun getActionItemsForMeeting(meetingId: String): Flow<List<ActionItemEntity>>
-
-    @Query("SELECT * FROM action_items WHERE meetingId = :meetingId")
-    suspend fun getActionItemsForMeetingDirect(meetingId: String): List<ActionItemEntity>
-
-    @Query("SELECT * FROM action_items ORDER BY id DESC")
-    fun getAllActionItems(): Flow<List<ActionItemEntity>>
-
-    /** Open tasks from these recordings, for timeline badges and meeting prep. */
-    @Query("SELECT * FROM action_items WHERE isCompleted = 0 AND meetingId IN (:meetingIds)")
-    suspend fun getOpenForMeetings(meetingIds: List<String>): List<ActionItemEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertActionItems(items: List<ActionItemEntity>)
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertActionItem(item: ActionItemEntity)
-
-    @Update
-    suspend fun updateActionItem(item: ActionItemEntity)
-
-    @Query("DELETE FROM action_items WHERE id = :id")
-    suspend fun deleteActionItemById(id: String)
-
-    @Query("DELETE FROM action_items WHERE meetingId = :meetingId")
-    suspend fun deleteActionItemsForMeeting(meetingId: String)
-}
-
-@Dao
-interface DecisionDao {
-    @Query("SELECT * FROM decisions WHERE meetingId = :meetingId")
-    fun getDecisionsForMeeting(meetingId: String): Flow<List<DecisionEntity>>
-
-    @Query("SELECT * FROM decisions WHERE meetingId = :meetingId")
-    suspend fun getDecisionsForMeetingDirect(meetingId: String): List<DecisionEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertDecisions(decisions: List<DecisionEntity>)
-
-    @Query("DELETE FROM decisions WHERE meetingId = :meetingId")
-    suspend fun deleteDecisionsForMeeting(meetingId: String)
-}
-
-@Dao
-interface QuestionDao {
-    @Query("SELECT * FROM questions WHERE meetingId = :meetingId")
-    fun getQuestionsForMeeting(meetingId: String): Flow<List<QuestionEntity>>
-
-    @Query("SELECT * FROM questions WHERE meetingId = :meetingId")
-    suspend fun getQuestionsForMeetingDirect(meetingId: String): List<QuestionEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertQuestions(questions: List<QuestionEntity>)
-
-    @Update
-    suspend fun updateQuestion(question: QuestionEntity)
-
-    @Query("DELETE FROM questions WHERE meetingId = :meetingId")
-    suspend fun deleteQuestionsForMeeting(meetingId: String)
-}
-
-@Dao
 interface TopicDao {
     @Query("SELECT * FROM topics WHERE meetingId = :meetingId")
     fun getTopicsForMeeting(meetingId: String): Flow<List<TopicEntity>>
@@ -181,18 +120,6 @@ interface TopicDao {
 
     @Query("DELETE FROM topics WHERE meetingId = :meetingId")
     suspend fun deleteTopicsForMeeting(meetingId: String)
-}
-
-@Dao
-interface FollowUpDao {
-    @Query("SELECT * FROM follow_ups WHERE meetingId = :meetingId")
-    fun getFollowUpsForMeeting(meetingId: String): Flow<List<FollowUpEntity>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertFollowUps(followUps: List<FollowUpEntity>)
-
-    @Query("DELETE FROM follow_ups WHERE meetingId = :meetingId")
-    suspend fun deleteFollowUpsForMeeting(meetingId: String)
 }
 
 @Dao
@@ -248,6 +175,12 @@ interface ChatMessageDao {
     @Query("SELECT * FROM chat_messages WHERE meetingId = :meetingId ORDER BY timestamp ASC")
     fun getChatMessagesForMeeting(meetingId: String): Flow<List<ChatMessageEntity>>
 
+    @Query("SELECT * FROM chat_messages WHERE meetingId = :meetingId ORDER BY timestamp ASC")
+    suspend fun getForMeetingDirect(meetingId: String): List<ChatMessageEntity>
+
+    @Query("UPDATE chat_messages SET content = :content WHERE id = :id")
+    suspend fun updateContent(id: String, content: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: ChatMessageEntity)
 
@@ -262,6 +195,9 @@ interface AiJobDao {
 
     @Query("SELECT * FROM ai_jobs WHERE meetingId = :meetingId ORDER BY createdAt DESC")
     fun getForMeeting(meetingId: String): Flow<List<AiJobEntity>>
+
+    @Query("SELECT * FROM ai_jobs WHERE meetingId = :meetingId")
+    suspend fun getForMeetingDirect(meetingId: String): List<AiJobEntity>
 
     @Query("SELECT * FROM ai_jobs WHERE meetingId = :meetingId AND status IN ('QUEUED', 'RUNNING')")
     suspend fun getActiveForMeetingDirect(meetingId: String): List<AiJobEntity>

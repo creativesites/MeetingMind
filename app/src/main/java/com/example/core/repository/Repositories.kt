@@ -13,7 +13,10 @@ import com.example.ai.modelmanagement.ModelVerifier
 import com.example.ai.modelmanagement.OkHttpModelDownloader
 import com.example.ai.modelmanagement.Sha256ModelVerifier
 import com.example.core.common.DeviceCapabilityDetector
-import com.example.core.database.ActionItemEntity
+import com.example.core.work.toActionItem
+import com.example.core.work.toDecision
+import com.example.core.work.toFollowUp
+import com.example.core.work.toQuestion
 import com.example.core.database.AiModelEntity
 import com.example.core.database.ChatMessageEntity
 import com.example.core.database.MeetMindDatabase
@@ -53,8 +56,6 @@ class MeetingRepository(
     private val database: MeetMindDatabase
 ) {
     private val meetingDao = database.meetingDao()
-    private val actionItemDao = database.actionItemDao()
-    private val decisionDao = database.decisionDao()
 
     val allMeetings: Flow<List<Meeting>> = meetingDao.getAllMeetings().map { entities ->
         entities.map { it.toDomain() }
@@ -176,8 +177,7 @@ class MeetingRepository(
 class TranscriptRepository(private val database: MeetMindDatabase) {
     private val transcriptDao = database.transcriptDao()
     private val speakerDao = database.speakerDao()
-    private val decisionDao = database.decisionDao()
-    private val questionDao = database.questionDao()
+    private val itemDao = database.itemDao()
     private val topicDao = database.topicDao()
     private val chatMessageDao = database.chatMessageDao()
 
@@ -259,7 +259,6 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
         transcriptDao.updateCleanedText(segmentId, cleanedText)
     }
 
-    private val followUpDao = database.followUpDao()
 
     fun getSpeakers(meetingId: String): Flow<List<Speaker>> = speakerDao.getSpeakersForMeeting(meetingId).map { list ->
         list.map { Speaker(it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence) }
@@ -284,6 +283,23 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
         val existing = speakerDao.getSpeakersForMeetingDirect(meetingId).find { it.id == speakerId }
         if (existing != null) {
             speakerDao.updateSpeaker(existing.copy(customName = newName))
+            // Names are dynamic: the summary, items, note and AI results follow the transcript
+            // (docs/PLAN_PROFESSIONAL.md §5.5).
+            propagateName(meetingId, existing, newName)
+            // A real name is a person: linked, so renaming them later renames them everywhere.
+            com.example.core.work.PeopleRepository(database).linkSpeaker(meetingId, speakerId, newName)
+        }
+    }
+
+    /**
+     * Carries a speaker's new name into everything derived from the recording. The diarization
+     * label ("Speaker 1") is replaced too, since text written before any rename still uses it.
+     */
+    private suspend fun propagateName(meetingId: String, speaker: com.example.core.database.SpeakerEntity, newName: String) {
+        val previous = speaker.customName.ifBlank { speaker.originalLabel }
+        com.example.core.work.SpeakerNames.propagate(database, meetingId, previous, newName)
+        if (speaker.originalLabel != previous && com.example.core.work.SpeakerNames.isGenericLabel(speaker.originalLabel)) {
+            com.example.core.work.SpeakerNames.propagate(database, meetingId, speaker.originalLabel, newName)
         }
     }
 
@@ -453,48 +469,28 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
             .filter { it.speakerId == sourceSpeakerId }
             .map { it.id }
         movedSegmentIds.forEach { segId -> transcriptDao.reassignSegmentSpeaker(segId, target.id, target.customName) }
+        val source = existingSpeakers.first { it.id == sourceSpeakerId }
+        // What the removed speaker said or owns is now the kept speaker's.
+        database.itemDao().getRawForMeeting(meetingId).filter { it.ownerSpeakerId == sourceSpeakerId }.forEach {
+            database.itemDao().update(it.copy(ownerSpeakerId = target.id, updatedAt = System.currentTimeMillis()))
+        }
         speakerDao.deleteSpeakerById(sourceSpeakerId)
+        propagateName(meetingId, source, target.customName.ifBlank { target.originalLabel })
     }
 
-    fun getDecisions(meetingId: String): Flow<List<Decision>> = decisionDao.getDecisionsForMeeting(meetingId).map { list ->
-        list.map {
-            Decision(
-                id = it.id,
-                meetingId = it.meetingId,
-                text = it.text,
-                type = try { com.example.core.model.DecisionType.valueOf(it.type) } catch (e: Exception) { com.example.core.model.DecisionType.DISCUSSION },
-                confidence = it.confidence,
-                sourceSegmentIds = it.sourceSegmentIdsJson.toIdList()
-            )
-        }
-    }.flowOn(Dispatchers.IO)
+    fun getDecisions(meetingId: String): Flow<List<Decision>> =
+        itemDao.observeForMeeting(meetingId, com.example.core.work.ItemKind.DECISION.name)
+            .map { list -> list.map { it.toDecision() } }.flowOn(Dispatchers.IO)
 
-    fun getQuestions(meetingId: String): Flow<List<Question>> = questionDao.getQuestionsForMeeting(meetingId).map { list ->
-        list.map {
-            Question(
-                id = it.id,
-                meetingId = it.meetingId,
-                text = it.text,
-                askedBySpeakerId = it.askedBySpeakerId,
-                resolved = it.resolved,
-                answer = it.answer,
-                sourceSegmentIds = it.sourceSegmentIdsJson.toIdList()
-            )
-        }
-    }.flowOn(Dispatchers.IO)
+    fun getQuestions(meetingId: String): Flow<List<Question>> =
+        itemDao.observeForMeeting(meetingId, com.example.core.work.ItemKind.QUESTION.name)
+            .map { list -> list.map { it.toQuestion() } }.flowOn(Dispatchers.IO)
 
-    fun getFollowUps(meetingId: String): Flow<List<com.example.core.model.FollowUp>> = followUpDao.getFollowUpsForMeeting(meetingId).map { list ->
-        list.map {
-            com.example.core.model.FollowUp(
-                id = it.id,
-                meetingId = it.meetingId,
-                description = it.description,
-                ownerSpeakerId = it.ownerSpeakerId,
-                deadline = it.deadline,
-                sourceSegmentIds = it.sourceSegmentIdsJson.toIdList()
-            )
-        }
-    }.flowOn(Dispatchers.IO)
+    /** Follow-ups are tasks marked as such (docs/PLAN_PROFESSIONAL.md §5.2). */
+    fun getFollowUps(meetingId: String): Flow<List<com.example.core.model.FollowUp>> =
+        itemDao.observeForMeeting(meetingId, com.example.core.work.ItemKind.TASK.name)
+            .map { list -> list.filter { it.item.subtype == com.example.core.work.SUBTYPE_FOLLOW_UP }.map { it.toFollowUp() } }
+            .flowOn(Dispatchers.IO)
 
     fun getTopics(meetingId: String): Flow<List<Topic>> = topicDao.getTopicsForMeeting(meetingId).map { list ->
         list.mapNotNull { t -> com.example.core.common.Labels.clean(t.name)?.let { Topic(t.id, t.meetingId, it, t.relevance) } }
@@ -533,56 +529,65 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
     }
 }
 
+/**
+ * A recording's tasks, as Meeting Detail and exports see them: one row per task in `items`,
+ * follow-ups excluded (they have their own list). The owner's name is the current one.
+ */
 class ActionItemRepository(private val database: MeetMindDatabase) {
-    private val dao = database.actionItemDao()
+    private val dao = database.itemDao()
 
-    fun getActionItemsForMeeting(meetingId: String): Flow<List<ActionItem>> = dao.getActionItemsForMeeting(meetingId).map { list ->
-        list.map { it.toDomain() }
+    private fun isAction(i: com.example.core.database.ItemWithOwner) =
+        i.item.kind == com.example.core.work.ItemKind.TASK.name && i.item.subtype != com.example.core.work.SUBTYPE_FOLLOW_UP
+
+    fun getActionItemsForMeeting(meetingId: String): Flow<List<ActionItem>> = dao.observeForMeeting(meetingId).map { list ->
+        list.filter(::isAction).map { it.toActionItem() }
     }.flowOn(Dispatchers.IO)
 
-    fun getAllActionItems(): Flow<List<ActionItem>> = dao.getAllActionItems().map { list ->
-        list.map { it.toDomain() }
+    fun getAllActionItems(): Flow<List<ActionItem>> = dao.observeByKind(com.example.core.work.ItemKind.TASK.name).map { list ->
+        list.filter { it.item.meetingId != null && isAction(it) }.map { it.toActionItem() }
     }.flowOn(Dispatchers.IO)
 
-    suspend fun toggleCompleted(item: ActionItem) = withContext(Dispatchers.IO) {
-        dao.updateActionItem(item.copy(isCompleted = !item.isCompleted).toEntity())
-    }
+    suspend fun toggleCompleted(item: ActionItem) = updateActionItem(item.copy(isCompleted = !item.isCompleted))
 
     suspend fun updateActionItem(item: ActionItem) = withContext(Dispatchers.IO) {
-        dao.updateActionItem(item.toEntity())
+        val existing = dao.getById(item.id) ?: return@withContext
+        val now = System.currentTimeMillis()
+        val done = item.isCompleted
+        val ownerChanged = item.assigneeSpeakerId != existing.ownerSpeakerId || (item.assigneeSpeakerId == null && item.assigneeName != existing.ownerName)
+        dao.update(
+            existing.copy(
+                text = item.task,
+                ownerSpeakerId = item.assigneeSpeakerId,
+                ownerName = item.assigneeName,
+                ownerPersonId = if (ownerChanged) null else existing.ownerPersonId,
+                dueText = item.deadline,
+                dueAt = if (item.deadline == existing.dueText) existing.dueAt else com.example.core.work.DueDates.parse(item.deadline, now),
+                status = when {
+                    done -> com.example.core.work.ItemStatus.DONE.name
+                    existing.status == com.example.core.work.ItemStatus.DONE.name -> com.example.core.work.ItemStatus.OPEN.name
+                    else -> existing.status
+                },
+                completedAt = if (done) existing.completedAt ?: now else null,
+                reviewed = true,
+                updatedAt = now
+            )
+        )
     }
 
     suspend fun addActionItem(item: ActionItem) = withContext(Dispatchers.IO) {
-        dao.insertActionItem(item.toEntity())
+        val meeting = database.meetingDao().getMeetingById(item.meetingId)
+        val projectId = meeting?.noteId?.let { database.noteDao().getById(it)?.notebookId }
+        dao.upsert(
+            com.example.core.work.ItemsFrom.action(
+                item, noteId = meeting?.noteId, projectId = projectId, reference = System.currentTimeMillis(),
+                startMs = null, source = com.example.core.work.ItemSource.USER, reviewed = true
+            )
+        )
     }
 
     suspend fun deleteActionItem(id: String) = withContext(Dispatchers.IO) {
-        dao.deleteActionItemById(id)
+        dao.deleteById(id)
     }
-
-    private fun ActionItemEntity.toDomain() = ActionItem(
-        id = id,
-        meetingId = meetingId,
-        task = task,
-        assigneeSpeakerId = assigneeSpeakerId,
-        assigneeName = assigneeName,
-        deadline = deadline,
-        confidence = confidence,
-        isCompleted = isCompleted,
-        sourceSegmentIds = sourceSegmentIdsJson.toIdList()
-    )
-
-    private fun ActionItem.toEntity() = ActionItemEntity(
-        id = id,
-        meetingId = meetingId,
-        task = task,
-        assigneeSpeakerId = assigneeSpeakerId,
-        assigneeName = assigneeName,
-        deadline = deadline,
-        confidence = confidence,
-        isCompleted = isCompleted,
-        sourceSegmentIdsJson = sourceSegmentIds.toIdsJson()
-    )
 }
 
 internal fun String.toIdList(): List<String> {

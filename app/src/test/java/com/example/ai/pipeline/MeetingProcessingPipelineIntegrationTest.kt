@@ -233,14 +233,16 @@ class MeetingProcessingPipelineIntegrationTest {
         val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId)
         assertEquals(2, speakers.size)
 
-        val decisions = database.decisionDao().getDecisionsForMeetingDirect(meetingId)
+        val decisions = database.itemDao().getForMeeting(meetingId, "DECISION").map { it.item }
         assertEquals(1, decisions.size)
-        assertEquals("DECISION", decisions[0].type)
+        assertEquals("DECISION", decisions[0].subtype)
         assertEquals("[\"seg1\"]", decisions[0].sourceSegmentIdsJson)
+        // New findings wait for the Wrap-up.
+        assertEquals(false, decisions[0].reviewed)
 
-        val actionItems = database.actionItemDao().getActionItemsForMeetingDirect(meetingId)
+        val actionItems = database.itemDao().getForMeeting(meetingId, "TASK")
         assertEquals(1, actionItems.size)
-        assertEquals("Speaker 1", actionItems[0].assigneeName)
+        assertEquals("Speaker 1", actionItems[0].ownerDisplay)
     }
 
     @Test
@@ -282,10 +284,10 @@ class MeetingProcessingPipelineIntegrationTest {
         val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId)
         assertEquals(2, speakers.size)
 
-        val decisions = database.decisionDao().getDecisionsForMeetingDirect(meetingId)
+        val decisions = database.itemDao().getForMeeting(meetingId, "DECISION")
         assertEquals(1, decisions.size)
 
-        val actionItems = database.actionItemDao().getActionItemsForMeetingDirect(meetingId)
+        val actionItems = database.itemDao().getForMeeting(meetingId, "TASK")
         assertEquals(1, actionItems.size)
 
         val embeddings = database.embeddingDao().getEmbeddingsForMeeting(meetingId)

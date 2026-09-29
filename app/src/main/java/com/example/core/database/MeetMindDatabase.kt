@@ -12,10 +12,6 @@ import androidx.room.migration.Migration
         MeetingEntity::class,
         TranscriptSegmentEntity::class,
         SpeakerEntity::class,
-        ActionItemEntity::class,
-        DecisionEntity::class,
-        QuestionEntity::class,
-        FollowUpEntity::class,
         TopicEntity::class,
         EmbeddingEntity::class,
         AiModelEntity::class,
@@ -33,19 +29,20 @@ import androidx.room.migration.Migration
         ScriptureRefEntity::class,
         ScriptureCollectionEntity::class,
         ScriptureCollectionItemEntity::class,
-        NoteAiJobEntity::class
+        NoteAiJobEntity::class,
+        ItemEntity::class,
+        PersonEntity::class,
+        NotePersonCrossRef::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun meetingDao(): MeetingDao
     abstract fun transcriptDao(): TranscriptDao
     abstract fun speakerDao(): SpeakerDao
-    abstract fun actionItemDao(): ActionItemDao
-    abstract fun decisionDao(): DecisionDao
-    abstract fun questionDao(): QuestionDao
-    abstract fun followUpDao(): FollowUpDao
+    abstract fun itemDao(): ItemDao
+    abstract fun peopleDao(): PeopleDao
     abstract fun topicDao(): TopicDao
     abstract fun embeddingDao(): EmbeddingDao
     abstract fun aiModelDao(): AiModelDao
@@ -384,6 +381,9 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /** The work schema: items, people (docs/PLAN_PROFESSIONAL.md §10). */
+        val MIGRATION_14_15 = WorkSchema.MIGRATION_14_15
+
         /** CREATE statements for the notes tables, in dependency order. */
         internal val NOTES_SCHEMA_SQL: List<String> = listOf(
             """CREATE TABLE IF NOT EXISTS `notebooks` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `space` TEXT NOT NULL,
@@ -444,7 +444,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

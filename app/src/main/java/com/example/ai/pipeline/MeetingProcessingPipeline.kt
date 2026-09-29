@@ -39,14 +39,10 @@ import com.example.ai.transcript.toJson
 import com.example.ai.transcript.WordSpeakerAttributor
 import com.example.ai.vad.SileroVadDetector
 import com.example.ai.vad.VoiceActivityDetector
-import com.example.core.database.ActionItemEntity
-import com.example.core.database.DecisionEntity
 import com.example.core.database.EmbeddingEntity
-import com.example.core.database.FollowUpEntity
 import com.example.core.database.MeetMindDatabase
 import com.example.core.database.MeetingEntity
 import com.example.core.database.ProcessingJobEntity
-import com.example.core.database.QuestionEntity
 import com.example.core.database.SpeakerEntity
 import com.example.core.database.TopicEntity
 import com.example.core.database.TranscriptSegmentEntity
@@ -183,10 +179,7 @@ class MeetingProcessingPipeline(
         val meetingDao = database.meetingDao()
         val transcriptDao = database.transcriptDao()
         val speakerDao = database.speakerDao()
-        val actionItemDao = database.actionItemDao()
-        val decisionDao = database.decisionDao()
-        val questionDao = database.questionDao()
-        val followUpDao = database.followUpDao()
+        val itemDao = database.itemDao()
         val topicDao = database.topicDao()
         val embeddingDao = database.embeddingDao()
         val jobDao = database.processingJobDao()
@@ -202,10 +195,8 @@ class MeetingProcessingPipeline(
         // meeting's data. Clearing derived data up front makes every run — first attempt or retry
         // after a kill — write into a clean slate. The audio file itself is never touched here.
         transcriptDao.deleteSegmentsForMeeting(meetingId)
-        actionItemDao.deleteActionItemsForMeeting(meetingId)
-        decisionDao.deleteDecisionsForMeeting(meetingId)
-        questionDao.deleteQuestionsForMeeting(meetingId)
-        followUpDao.deleteFollowUpsForMeeting(meetingId)
+        // Only what processing wrote: tasks the person typed or marked are theirs and survive.
+        itemDao.deleteExtractedForMeeting(meetingId)
         topicDao.deleteTopicsForMeeting(meetingId)
         embeddingDao.deleteEmbeddingsForMeeting(meetingId)
 
@@ -595,7 +586,10 @@ class MeetingProcessingPipeline(
 
             // Only persist intelligence output when it's real (summary != null)
             if (summary != null) {
-                persistIntelligence(meetingId, summary, actionItemDao, decisionDao, questionDao, followUpDao, topicDao)
+                val noteId = existingMeeting.noteId
+                val projectId = noteId?.let { database.noteDao().getById(it)?.notebookId }
+                val starts = diarizedSegments.associate { it.id to it.startMs }
+                persistIntelligence(meetingId, summary, itemDao, topicDao, noteId, projectId, existingMeeting.createdAt, starts)
             }
 
             embeddingDao.insertEmbeddings(embeddingEntities)
@@ -757,64 +751,20 @@ class MeetingProcessingPipeline(
     private suspend fun persistIntelligence(
         meetingId: String,
         summary: MeetingSummary,
-        actionItemDao: com.example.core.database.ActionItemDao,
-        decisionDao: com.example.core.database.DecisionDao,
-        questionDao: com.example.core.database.QuestionDao,
-        followUpDao: com.example.core.database.FollowUpDao,
-        topicDao: com.example.core.database.TopicDao
+        itemDao: com.example.core.database.ItemDao,
+        topicDao: com.example.core.database.TopicDao,
+        noteId: String?,
+        projectId: String?,
+        reference: Long,
+        segmentStarts: Map<String, Long>
     ) {
-        actionItemDao.insertActionItems(
-            summary.actionItems.map {
-                ActionItemEntity(
-                    id = it.id,
-                    meetingId = meetingId,
-                    task = it.task,
-                    assigneeSpeakerId = it.assigneeSpeakerId,
-                    assigneeName = it.assigneeName,
-                    deadline = it.deadline,
-                    confidence = it.confidence,
-                    isCompleted = it.isCompleted,
-                    sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString()
-                )
-            }
-        )
-        decisionDao.insertDecisions(
-            summary.decisions.map {
-                DecisionEntity(
-                    id = it.id,
-                    meetingId = meetingId,
-                    text = it.text,
-                    type = it.type.name,
-                    confidence = it.confidence,
-                    sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString()
-                )
-            }
-        )
-        questionDao.insertQuestions(
-            summary.questions.map {
-                QuestionEntity(
-                    id = it.id,
-                    meetingId = meetingId,
-                    text = it.text,
-                    askedBySpeakerId = it.askedBySpeakerId,
-                    resolved = it.resolved,
-                    answer = it.answer,
-                    sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString()
-                )
-            }
-        )
-        followUpDao.insertFollowUps(
-            summary.followUps.map {
-                FollowUpEntity(
-                    id = it.id,
-                    meetingId = meetingId,
-                    description = it.description,
-                    ownerSpeakerId = it.ownerSpeakerId,
-                    deadline = it.deadline,
-                    sourceSegmentIdsJson = it.sourceSegmentIds.toJsonArrayString()
-                )
-            }
-        )
+        // Everything found lands unreviewed, for the Wrap-up (docs/PLAN_PROFESSIONAL.md §4.3).
+        fun start(ids: List<String>) = ids.firstNotNullOfOrNull { segmentStarts[it] }
+        val items = summary.actionItems.map { com.example.core.work.ItemsFrom.action(it.copy(meetingId = meetingId), noteId, projectId, reference, start(it.sourceSegmentIds)) } +
+            summary.decisions.map { com.example.core.work.ItemsFrom.decision(it.copy(meetingId = meetingId), noteId, projectId, reference, start(it.sourceSegmentIds)) } +
+            summary.questions.map { com.example.core.work.ItemsFrom.question(it.copy(meetingId = meetingId), noteId, projectId, reference, start(it.sourceSegmentIds)) } +
+            summary.followUps.map { com.example.core.work.ItemsFrom.followUp(it.copy(meetingId = meetingId), noteId, projectId, reference, start(it.sourceSegmentIds)) }
+        itemDao.upsert(items)
         topicDao.insertTopics(
             summary.topics.mapNotNull { com.example.core.common.Labels.clean(it) }.distinctBy { it.lowercase() }.map {
                 TopicEntity(

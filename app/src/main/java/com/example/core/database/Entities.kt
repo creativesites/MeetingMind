@@ -107,95 +107,9 @@ data class SpeakerEntity(
     val originalLabel: String,
     val customName: String,
     val colorHex: String,
-    val confidence: Float? = null
-)
-
-@Entity(
-    tableName = "action_items",
-    foreignKeys = [
-        ForeignKey(
-            entity = MeetingEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["meetingId"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
-    indices = [Index(value = ["meetingId"])]
-)
-data class ActionItemEntity(
-    @PrimaryKey val id: String,
-    val meetingId: String,
-    val task: String,
-    val assigneeSpeakerId: String? = null,
-    val assigneeName: String? = null,
-    val deadline: String? = null,
     val confidence: Float? = null,
-    val isCompleted: Boolean,
-    val sourceSegmentIdsJson: String = "[]"
-)
-
-@Entity(
-    tableName = "decisions",
-    foreignKeys = [
-        ForeignKey(
-            entity = MeetingEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["meetingId"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
-    indices = [Index(value = ["meetingId"])]
-)
-data class DecisionEntity(
-    @PrimaryKey val id: String,
-    val meetingId: String,
-    val text: String,
-    val type: String = "DISCUSSION",
-    val confidence: Float? = null,
-    val sourceSegmentIdsJson: String = "[]"
-)
-
-@Entity(
-    tableName = "questions",
-    foreignKeys = [
-        ForeignKey(
-            entity = MeetingEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["meetingId"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
-    indices = [Index(value = ["meetingId"])]
-)
-data class QuestionEntity(
-    @PrimaryKey val id: String,
-    val meetingId: String,
-    val text: String,
-    val askedBySpeakerId: String? = null,
-    val resolved: Boolean,
-    val answer: String? = null,
-    val sourceSegmentIdsJson: String = "[]"
-)
-
-@Entity(
-    tableName = "follow_ups",
-    foreignKeys = [
-        ForeignKey(
-            entity = MeetingEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["meetingId"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
-    indices = [Index(value = ["meetingId"])]
-)
-data class FollowUpEntity(
-    @PrimaryKey val id: String,
-    val meetingId: String,
-    val description: String,
-    val ownerSpeakerId: String? = null,
-    val deadline: String? = null,
-    val sourceSegmentIdsJson: String = "[]"
+    /** The person this speaker is (PLAN_PROFESSIONAL.md §5.1). Their name wins over [customName]. */
+    val personId: String? = null
 )
 
 @Entity(

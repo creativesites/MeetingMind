@@ -23,7 +23,11 @@ data class NotebookEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val archivedAt: Long?,
-    val sortOrder: Int
+    val sortOrder: Int,
+    /** NOTEBOOK, or PROJECT for a work context (PLAN_PROFESSIONAL.md §5.1). */
+    @androidx.room.ColumnInfo(defaultValue = "NOTEBOOK") val kind: String = "NOTEBOOK",
+    /** A project's status, organisation, dates and privacy, as JSON. */
+    @androidx.room.ColumnInfo(defaultValue = "{}") val propertiesJson: String = "{}"
 )
 
 @Entity(

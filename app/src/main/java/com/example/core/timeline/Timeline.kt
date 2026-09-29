@@ -224,7 +224,7 @@ class TimelineRepository(
         val ids = (notes + answered).map { it.id }.distinct()
         val meetings = if (ids.isEmpty()) emptyList() else ids.chunked(500).flatMap { noteDao.getMeetingsForNotes(it) }
         val openTasks = if (meetings.isEmpty()) emptyMap() else meetings.map { it.id }.chunked(500)
-            .flatMap { database.actionItemDao().getOpenForMeetings(it) }.groupingBy { it.meetingId }.eachCount()
+            .flatMap { database.itemDao().getOpenTasksForMeetings(it) }.groupingBy { it.meetingId.orEmpty() }.eachCount()
         val covers = coversFor(notes + answered)
         val events = if (includeCalendar && TimelineLayer.EVENTS in layers && calendar.hasPermission()) calendar.between(from, to) else emptyList()
         TimelineAssembler.assemble(
