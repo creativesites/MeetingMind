@@ -9,6 +9,7 @@ import com.example.ai.transcript.AsrWindowReconciler
 import com.example.ai.transcript.AttributionConfidence
 import com.example.ai.transcript.CanonicalWord
 import com.example.ai.transcript.TranscriptSource
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ensureActive
 import java.io.File
 import kotlin.coroutines.coroutineContext
@@ -66,7 +67,9 @@ class GeminiTranscriptionEngine(
         audioFile: File,
         totalDurationMs: Long,
         vocabularyHints: List<String> = emptyList(),
-        onProgress: (progress: Float, statusText: String) -> Unit = { _, _ -> }
+        onProgress: (progress: Float, statusText: String) -> Unit = { _, _ -> },
+        /** The words of the parts finished so far, in order — to show before the rest is done. */
+        onPartial: suspend (words: List<CanonicalWord>, done: Int, total: Int) -> Unit = { _, _, _ -> }
     ): AiResult<CloudTranscriptionResult> {
         if (!transport.refreshConfigured()) {
             return AiResult.ModelUnavailable(
@@ -83,41 +86,62 @@ class GeminiTranscriptionEngine(
         val verbatimModel = router.route(AiRoute.GEMINI_TRANSCRIPTION_VERBATIM).modelId
             ?: return AiResult.Failed("No Gemini transcription model is configured.")
 
+        // Parts go out a few at a time and come back in order: each finished prefix of the
+        // recording is handed on at once (a progressive transcript), without waiting for the rest.
         val transcribedChunks = mutableListOf<ChunkTranscription>()
-        for (chunk in chunks) {
-            coroutineContext.ensureActive()
-            onProgress(
-                chunk.index.toFloat() / (chunks.size * 2),
-                "Transcribing part ${chunk.index + 1} of ${chunks.size}..."
-            )
-            // The transcription model's own request: audio plus audioTranscriptionConfig. Custom
-            // vocabulary is left out because the API rejects it alongside timestamps and speakers.
-            val response = transport.execute(
-                GeminiRequest(
-                    modelId = verbatimModel,
-                    systemInstruction = VERBATIM_SYSTEM_INSTRUCTION,
-                    prompt = VERBATIM_PROMPT,
-                    audioFile = audioFile,
-                    audioStartMs = chunk.startMs,
-                    audioEndMs = chunk.endMs,
-                    transcription = AudioTranscriptionConfig(mode = "VERBATIM", wordTimestamp = true, diarization = true),
-                    // One chunk is the whole recording: send the file as it is, no decoding.
-                    uploadWholeFile = chunks.size == 1
-                )
-            )
-            if (response !is AiResult.Success) {
-                // Nothing usable has been produced yet for this chunk, and a transcript with a
-                // silent hole in the middle is worse than an honest failure.
-                return AiResult.Failed(
-                    "Cloud transcription failed on part ${chunk.index + 1} of ${chunks.size}: " +
-                        (response.describeFailure() ?: "unknown error")
-                )
+        val started = System.currentTimeMillis()
+        val failure: AiResult<CloudTranscriptionResult>? = kotlinx.coroutines.coroutineScope {
+            val gate = kotlinx.coroutines.sync.Semaphore(if (chunks.size > 1) CONCURRENCY else 1)
+            val jobs = chunks.map { chunk ->
+                async {
+                    gate.acquire()
+                    try {
+                        transport.execute(
+                            GeminiRequest(
+                                modelId = verbatimModel,
+                                systemInstruction = VERBATIM_SYSTEM_INSTRUCTION,
+                                prompt = VERBATIM_PROMPT,
+                                audioFile = audioFile,
+                                audioStartMs = chunk.startMs,
+                                audioEndMs = chunk.endMs,
+                                // The transcription model's own request. Custom vocabulary is left out:
+                                // the API rejects it alongside timestamps and speakers.
+                                transcription = AudioTranscriptionConfig(mode = "VERBATIM", wordTimestamp = true, diarization = true),
+                                // One chunk is the whole recording: send the file as it is, no decoding.
+                                uploadWholeFile = chunks.size == 1
+                            )
+                        )
+                    } finally { gate.release() }
+                }
             }
-            val words = parser.parseVerbatim(response.value, chunkStartMs = chunk.startMs)
-            GeminiLog.add("Part ${chunk.index + 1}: ${words?.size ?: "unreadable"} words")
-            words ?: return AiResult.Failed("Cloud transcription returned an unreadable result for part ${chunk.index + 1}.")
-            transcribedChunks += ChunkTranscription(chunk, words)
+            onProgress(0f, if (chunks.size > 1) "Transcribing ${chunks.size} parts…" else "Transcribing…")
+            for ((i, job) in jobs.withIndex()) {
+                val chunk = chunks[i]
+                val response = job.await()
+                if (response !is AiResult.Success) {
+                    // A transcript with a silent hole in the middle is worse than an honest failure.
+                    jobs.forEach { it.cancel() }
+                    return@coroutineScope AiResult.Failed(
+                        "Cloud transcription failed on part ${chunk.index + 1} of ${chunks.size}: " + (response.describeFailure() ?: "unknown error")
+                    )
+                }
+                val words = parser.parseVerbatim(response.value, chunkStartMs = chunk.startMs)
+                GeminiLog.add("Part ${chunk.index + 1}: ${words?.size ?: "unreadable"} words")
+                if (words == null) {
+                    jobs.forEach { it.cancel() }
+                    return@coroutineScope AiResult.Failed("Cloud transcription returned an unreadable result for part ${chunk.index + 1}.")
+                }
+                transcribedChunks += ChunkTranscription(chunk, words)
+                if (i == 0) GeminiLog.add("Time to first transcript: ${(System.currentTimeMillis() - started) / 1000}s")
+                onProgress((i + 1).toFloat() / (chunks.size * 2), "Transcribed ${i + 1} of ${chunks.size} parts")
+                if (chunks.size > 1 && i < chunks.lastIndex) {
+                    val so = GlobalSpeakerResolver.applyMapping(transcribedChunks, GlobalSpeakerResolver.resolve(transcribedChunks))
+                    runCatching { onPartial(AsrWindowReconciler.reconcile(so.map { it.words }), i + 1, chunks.size) }
+                }
+            }
+            null
         }
+        if (failure != null) return failure
 
         // --- Cross-chunk resolution: speakers first, then duplicated words. ---
         val mapping = GlobalSpeakerResolver.resolve(transcribedChunks)
@@ -248,6 +272,8 @@ class GeminiTranscriptionEngine(
     }
 
     private companion object {
+        /** Parts in flight at once: fast without tripping Gemini's per-minute limits on a free key. */
+        const val CONCURRENCY = 2
         const val VERBATIM_SYSTEM_INSTRUCTION =
             "You are a verbatim transcription engine. Transcribe exactly what is said, including " +
                 "false starts, repetitions and filler words. Do not summarise, correct, reorder or " +

@@ -264,7 +264,9 @@ internal fun TextBlock(
     onSelection: (Int, Int) -> Unit,
     onBackspaceAtStart: () -> Unit,
     onFocusLost: () -> Unit,
-    onToggleChecked: () -> Unit
+    onToggleChecked: () -> Unit,
+    /** Opens the recording at the moment this line came from — its evidence. */
+    onCite: ((meetingId: String, startMs: Long) -> Unit)? = null
 ) {
     val topPad = blockTopPadding(block.type)
     Row(
@@ -303,14 +305,14 @@ internal fun TextBlock(
                 onBackspaceAtStart = onBackspaceAtStart,
                 onFocusLost = onFocusLost
             )
-            if (block.source != BlockSource.USER) SourceTag(block)
+            if (block.source != BlockSource.USER) SourceTag(block, onCite)
         }
     }
 }
 
 /** A quiet line under words the user didn't write, so it's always clear whose they are. */
 @Composable
-private fun SourceTag(block: NoteBlock) {
+private fun SourceTag(block: NoteBlock, onCite: ((String, Long) -> Unit)? = null) {
     val label = when (block.source) {
         BlockSource.AI -> if (block.isUserEdited) "AI · edited by you" else "Written by AI from the recording"
         BlockSource.TRANSCRIPT -> "From the transcript"
@@ -318,7 +320,19 @@ private fun SourceTag(block: NoteBlock) {
         BlockSource.SCRIPTURE -> "Scripture"
         BlockSource.USER -> return
     }
-    Text(label, fontSize = 11.sp, color = InkMuted, modifier = Modifier.padding(top = 1.dp, bottom = 2.dp))
+    val meeting = block.payload[NoteBlock.PAYLOAD_MEETING_ID]
+    val at = block.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()
+    Row(Modifier.padding(top = 1.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = 11.sp, color = InkMuted)
+        // The evidence: where in the recording this came from, one tap to hear it.
+        if (meeting != null && at != null && onCite != null) {
+            Text(
+                "  [${com.example.core.common.Formatters.formatDurationHms(at)}]",
+                fontSize = 11.sp, color = Accent, fontWeight = FontWeight.SemiBold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                modifier = Modifier.clickable { onCite(meeting, at) }.padding(horizontal = 2.dp)
+            )
+        }
+    }
 }
 
 @Composable

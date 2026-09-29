@@ -271,6 +271,28 @@ class MeetingProcessingPipeline(
                     vocabularyHints = vocabularyHints,
                     onProgress = { progress, status ->
                         onProgress(status, (25 + progress * 30).toInt(), ProcessingStage.TRANSCRIBING)
+                    },
+                    // Finished parts are readable at once: saved as provisional segments, replaced
+                    // by the full transcript when it's done.
+                    onPartial = { words, done, total ->
+                        val type = runCatching { com.example.core.model.RecordingType.valueOf(existingMeeting.recordingType) }.getOrDefault(com.example.core.model.RecordingType.GENERAL)
+                        val partial = CanonicalTranscriptAssembler.projectToSegments(
+                            CanonicalTranscriptAssembler.assemble(
+                                meetingId = meetingId, words = words, recordingType = type, singleSpeakerMode = expectedSpeakerCount == 1,
+                                metadata = TranscriptMetadata(meetingId = meetingId, language = existingMeeting.language, processingMode = processingProfile.name,
+                                    transcriptionEngine = com.example.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL),
+                                speakerNameFor = { id -> defaultSpeakerNameFor(speakerIndexOf(id)) },
+                                structureEngine = structureEngine
+                            )
+                        )
+                        transcriptDao.deletePartialSegments(meetingId)
+                        transcriptDao.insertSegments(partial.mapIndexed { i, seg ->
+                            TranscriptSegmentEntity(
+                                id = "partial_${i}_${seg.id}", meetingId = meetingId, speakerId = seg.speakerId, speakerName = seg.speakerName,
+                                startMs = seg.startMs, endMs = seg.endMs, text = seg.text, confidence = seg.confidence
+                            )
+                        })
+                        updateJob("Transcribed $done of $total parts — you can start reading", (25 + done * 30 / total), ProcessingStage.TRANSCRIBING)
                     }
                 )
                 when (cloudResult) {
@@ -572,6 +594,7 @@ class MeetingProcessingPipeline(
                     wordsJson = it.words.toWordsJson()
                 )
             }
+            transcriptDao.deletePartialSegments(meetingId)
             transcriptDao.insertSegments(segmentEntities)
 
             // Only real, non-null speaker IDs become Speaker rows. The single-speaker path above

@@ -139,6 +139,10 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
     private var workId: UUID? = null
     private var lastMeetingId: String? = null
 
+    /** The parts of a long recording already transcribed, while the rest is still in progress. */
+    fun partialTranscript(meetingId: String) = database.transcriptDao().getSegmentsForMeeting(meetingId)
+        .map { list -> list.filter { it.id.startsWith("partial_") }.map { it.text } }
+
     /** What MeetingMind already knows about this recording — type and any speaker-count
      * preference already captured at recording/import time (or a previous attempt at this
      * screen). Used to decide whether the second-chance speaker-count prompt is needed at all. */
@@ -438,7 +442,9 @@ fun ProcessingScreen(
     }
 
     val profile by viewModel.processingProfile.collectAsState()
+    val firstWords by remember(meetingId) { viewModel.partialTranscript(meetingId) }.collectAsState(initial = emptyList())
     ProcessingRunning(
+        firstWords = firstWords,
         state = state,
         profile = profile,
         rows = com.example.core.model.Workflows.processingStageRows(recordingType, selectedSpeakerCount),
@@ -460,7 +466,9 @@ internal fun ProcessingRunning(
     onStop: () -> Unit,
     onRetry: () -> Unit,
     onViewRecording: () -> Unit,
-    onGetModel: () -> Unit
+    onGetModel: () -> Unit,
+    /** Transcript of the parts already done — readable before the whole recording is finished. */
+    firstWords: List<String> = emptyList()
 ) {
     var confirmStop by remember { mutableStateOf(false) }
     val failed = state.error != null || state.modelRequired
@@ -526,6 +534,19 @@ internal fun ProcessingRunning(
             }
 
             Spacer(Modifier.height(28.dp))
+
+            if (!failed && !state.isComplete && firstWords.isNotEmpty()) {
+                androidx.compose.material3.Surface(
+                    onClick = onViewRecording, shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().padding(bottom = 18.dp).testTag("processing_first_words")
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text("The first parts are ready — read while the rest is transcribed", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        Text(firstWords.takeLast(2).joinToString(" ").takeLast(220), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+            }
 
             // The stages, as a quiet timeline rather than a boxed checklist. Hidden once it has
             // failed: the card below says what happened, and a column of unticked steps doesn't.

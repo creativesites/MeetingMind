@@ -926,7 +926,8 @@ private fun BlockContent(
             onSelection = { s, e -> viewModel.onSelectionChanged(block.id, s, e) },
             onBackspaceAtStart = { viewModel.onBackspaceAtStart(block.id) },
             onFocusLost = { viewModel.onBlockFocusLost(block.id) },
-            onToggleChecked = { viewModel.toggleChecked(block.id) }
+            onToggleChecked = { viewModel.toggleChecked(block.id) },
+            onCite = { meetingId, ms -> onOpenRecording(meetingId, ms) }
         )
         block.type == NoteBlockType.DIVIDER -> DividerBlock()
         block.type == NoteBlockType.CODE -> CodeBlock(block) { viewModel.setCaption(block.id, it) }

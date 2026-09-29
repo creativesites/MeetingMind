@@ -76,6 +76,10 @@ interface TranscriptDao {
     @Query("DELETE FROM transcript_segments WHERE meetingId = :meetingId")
     suspend fun deleteSegmentsForMeeting(meetingId: String)
 
+    /** The provisional parts shown while a long recording is still being transcribed. */
+    @Query("DELETE FROM transcript_segments WHERE meetingId = :meetingId AND id LIKE 'partial_%'")
+    suspend fun deletePartialSegments(meetingId: String)
+
     @Query("DELETE FROM transcript_segments WHERE id = :segmentId")
     suspend fun deleteSegmentById(segmentId: String)
 
