@@ -18,7 +18,7 @@ F0–F1.
 | What is it not? | Not a CRM, not a project manager, not an email client. No pipelines, forecasting, Gantt charts, invoicing or HR. |
 | The north star | *Within five minutes of a meeting ending, the person has sent their follow-up and trusts that nothing was dropped, having typed almost nothing.* |
 | The most important screen | **The Wrap-up** (§4.3): a 60-second review after processing that files the meeting, confirms what was extracted and sends the follow-up. |
-| Connectors in the first release | Device calendar (exists), **device contacts** (new) and the **Android share sheet** for Gmail, Outlook, Slack and WhatsApp. No OAuth yet. |
+| Connectors in the first release | Device calendar (exists) and the **Android share sheet**, with WhatsApp and email chosen adaptively (§6.5). No OAuth and **no contacts permission**: MeetingMind keeps its own People list, built from its own history (§5.1). |
 | Home | A **Work Home**. It is the same Today hub arranged for work, not a separate app (§7). |
 
 ### Why the launch is focused on client work
@@ -35,13 +35,27 @@ its own words, templates, Home order and recipes. A profile never changes the co
 
 ---
 
+### Decisions made after this plan was written
+
+These take precedence over anything below that disagrees.
+
+| Question | Decision |
+| --- | --- |
+| Audience | Client work is the beachhead, **and doctors and lawyers must be able to use it too**. They get their own work profiles (§8.1): clinical and legal wording, templates, and confidential-by-default. |
+| Follow-up channel | **Adaptive** (§6.5). WhatsApp or email is chosen per person from what worked before, then from the region and whether an email address is known. |
+| Paid and free | Not decided. Gating comes later, so nothing in P1 is built around a paywall. |
+| Contacts permission | **Not asked.** MeetingMind builds its own People list from history: speakers, calendar attendees, and names the person types or confirms (§5.1). |
+| Speaker names | **Dynamic everywhere** (§5.5). Renaming "Speaker 1" in the transcript updates the summary, items, note, AI outputs and exports. |
+
+---
+
 ## 1. Principles
 
 These decide the arguments. Each one can be checked in review.
 
 1. **Moments, not modules.** Design for the five moments of a professional conversation (§3).
    The pillars are a checklist, not a navigation structure.
-2. **No required fields, ever.** Every property is inferred from the calendar, contacts,
+2. **No required fields, ever.** Every property is inferred from the calendar, People history,
    attendees or transcript, and appears as a suggestion the person confirms with one tap. Typing
    is always allowed and never required.
 3. **Four nouns.** People see **My tasks, Waiting on, Decisions and Open questions**. Actions,
@@ -53,7 +67,7 @@ These decide the arguments. Each one can be checked in review.
    top three to five per kind, and the rest can be reached through Ask and filters. Review
    fatigue kills trust faster than a missed item.
 6. **Value on the first day.** Every feature that only pays off after ten meetings (relationship
-   memory, decision history) is seeded from the calendar and contacts. It is never the first
+   memory, decision history) is seeded from the calendar and past recordings. It is never the first
    thing a new user sees.
 7. **Correct once, fixed everywhere.** Renaming a speaker, merging a person, editing a decision or
    reassigning a task updates every place that shows it, plus search and future vocabulary.
@@ -133,8 +147,8 @@ SUGGESTED TOPICS  Credentials · API timeline · October launch
   to invent an agenda.
 - **Without any AI** the card still works. Open items, decisions and the last meeting are all
   database queries. AI only adds the one-line "last time" summary.
-- **On a first meeting** with someone there's no history. The card shows the attendees' contact
-  cards and their organisation, plus "First meeting with Acme", and the empty state stays useful.
+- **On a first meeting** with someone there's no history. The card shows the attendees' names and
+  email domains, and the organisation when it's known, plus "First meeting with Acme", and the empty state stays useful.
 - This builds on the existing `MeetingPrep.find`. Matching moves from comparing attendee name
   strings to **resolved people** (§5.1).
 
@@ -211,8 +225,10 @@ The same card appears in the Today "To review" section until it's done.
 
 - It is prefilled from the confirmed items.
 - Its tone comes from the output defaults (§8.5).
-- It's addressed to the attendees' emails from their contacts.
-- **Send via** uses the share sheet: Gmail, Outlook, WhatsApp, Slack, or Copy.
+- It's addressed to the attendees, using the email addresses and phone numbers MeetingMind has
+  learned for them (calendar invites, or typed once and remembered).
+- **Send via** is adaptive (§6.5): WhatsApp or email is offered first, with the share sheet and
+  Copy always available.
 - **Marking it sent** closes the follow-up task automatically. MeetingMind asks "Did you send
   it?" when the person returns from the share sheet.
 
@@ -261,18 +277,21 @@ group, a sermon series. That keeps `PLAN_V1` §9 rule 1 intact.
 
 | User-facing | Stored as | Notes |
 | --- | --- | --- |
-| **Person** | `entities` row, `kind = PERSON` | Name, aliases, emails, phones, contact URI, organisation, role, avatar, private notes. |
+| **Person** | `entities` row, `kind = PERSON` | Name, aliases, emails, phones, organisation, role, preferred channel, private notes. `isSelf` marks the user. |
 | **Organisation** | `entities` row, `kind = ORG` | Name, aliases, email domains, website. Membership is `entities.orgId`. One table, not two systems. |
 | **Project** | `notebooks` row with `kind = PROJECT` plus properties | A notebook already groups notes. A project adds status, organisation, people, dates, and optionally a colour and cover. |
 
 **Resolving who's who is make-or-break.** If "Sarah", "Sarah C", "SPEAKER_2" and
 `sarah@acme.com` don't become one person, relationship memory quietly fails. These are the rules:
 
-1. **Seed from device contacts.** This needs `READ_CONTACTS`, asked for at the moment it helps (the
-   first Wrap-up, or the People page), never during onboarding.
-   - People are created on demand, when an attendee or speaker matches a contact, so the People
-     list isn't flooded with the whole address book.
-   - Emails and phone numbers are matched exactly. Names are matched loosely.
+1. **People come from MeetingMind's own history, never the address book.** There's no contacts
+   permission. A person is created when:
+   - a speaker is named
+   - a calendar attendee appears (with their email)
+   - the person types a name as an owner or attendee
+
+   Existing recordings are scanned once on upgrade, so People isn't empty on day one. Emails and
+   phone numbers are matched exactly; names are matched loosely.
 2. **Calendar attendees resolve by email first**, then by name.
 3. **Speakers link to people, not to text labels.** Speaker naming offers the attendees first.
 4. **The email domain gives the organisation.** `@acme.com` suggests Acme. Common free-mail
@@ -346,7 +365,7 @@ A professional note is a normal note:
 | Property | Where it comes from |
 | --- | --- |
 | Project | Calendar title or attendees matched to a project, or picked in the Wrap-up |
-| People, organisation | Attendees, speakers, contacts |
+| People, organisation | Attendees, speakers, People history |
 | Meeting date | The calendar event or recording time |
 | Follow-up date | The earliest due date among open tasks |
 | Confidentiality | Inherited from the project or organisation (§6.4) |
@@ -393,6 +412,42 @@ kind ∈ DECISION · ACTION · QUESTION · COMMITMENT · RISK · DEADLINE · MET
 **Transcript views** stay as **Verbatim / Clean**, which exist today. "Structured" is not a third
 transcript mode. It is the **Note** tab, where every line has a citation chip. The Transcript and
 Note toggle is the whole model.
+
+### 5.5 Dynamic names
+
+When "Speaker 1" becomes "Sarah Chen" in the transcript, **every place that shows that person
+updates at once**: the summary, the Wrap-up, items, the meeting note, AI tool results, chat
+answers, exports and share text. It's the most visible form of Principle 7.
+
+There are two mechanisms, because there are two kinds of data:
+
+- **Structured references resolve by id at display time.**
+  - An item's owner is a speaker id or a person id, never only a string.
+  - The name shown is looked up when it's drawn. Renaming the person or speaker changes it
+    everywhere with no rewriting.
+  - `ownerName` is kept only as a fallback, for when the id no longer resolves.
+- **Free text is rewritten when a name changes.** A summary sentence like "Speaker 1 will send
+  the docs" is prose, so the old name is replaced with the new one in everything derived from
+  that recording:
+  - the summary
+  - item text
+  - AI-written note blocks
+  - AI tool outputs
+  - chat answers
+
+  The rules for the rewrite:
+  - **Real names** are matched as whole words, case-sensitively, so "Mark" doesn't change
+    "mark the date".
+  - **Generic labels** ("Speaker 1", "SPEAKER_1", "speaker one") are matched case-insensitively,
+    and never inside a longer label ("Speaker 1" doesn't touch "Speaker 10").
+  - **The person's own writing is never rewritten**, because it's theirs.
+  - **Transcript text is evidence and is never rewritten.** Only its speaker label changes.
+- **Linking a speaker to a person** does the same rename, then keeps them linked. Renaming the
+  person later (from the person page) updates every speaker linked to them, in every recording.
+- **Merging two speakers** is a rename of the removed speaker to the kept one's name.
+
+`SpeakerNames` (core) is the single place that does this, so no screen formats a speaker name on
+its own.
 
 ---
 
@@ -453,7 +508,8 @@ NOTES          3 notes mention Sarah
 
 - An **organisation page** adds a People row. A **project page** adds Status, Timeline and
   Documents.
-- Every section hides when it's empty, and the whole page starts from contact data on day one.
+- Every section hides when it's empty. A new person's page starts from the recordings and events
+  they appear in.
 - **Pin** any page to the Work Home (§7).
 - Release: person and project pages in P1; organisation pages and decision history in P2.
 
@@ -496,6 +552,17 @@ and can be edited before sending.
 - Skills are shown **by work profile** (§8.1). A salesperson sees Discovery summary first; a
   manager sees 1:1 summary first. All skills are always reachable through "More".
 - Every skill carries `TranscriptToolPrompts.FIDELITY_CONTRACT` unchanged.
+- **Adaptive channel.** Send via offers one primary button, chosen in this order:
+  1. The channel last used successfully with this person, or their preferred channel if set.
+  2. If the person has only a phone number, WhatsApp. If they have only an email, email.
+  3. Otherwise the region default: WhatsApp first where it's the normal business channel (for
+     example most of Africa, Latin America, South and Southeast Asia and the Middle East),
+     email first elsewhere.
+  4. Group meetings with external attendees and known emails default to email.
+
+  The other channels stay one tap away. WhatsApp text uses WhatsApp formatting (`*bold*`, short
+  lines), and email gets a subject line and paragraphs. The **same content** is rendered for
+  each channel, so nothing is written twice.
 - **Export formats:** PDF, DOCX and Markdown exist (`NoteExporter`). Outputs reuse them. Read-only
   share links come in P3, because they need a backend.
 - **Growth:** shared minutes and follow-ups end with an optional, tasteful line: "Notes by
@@ -507,7 +574,7 @@ The question isn't "which apps", but **where work enters and leaves**.
 
 ```kotlin
 interface CalendarProvider  // events, attendees          — DeviceCalendar (exists) · Google · Microsoft
-interface ContactsProvider  // people, orgs, emails       — DeviceContacts (P1) · Google · Microsoft
+interface ContactsProvider  // people, orgs, emails       — none in P1 (People is built from history) · Google · Microsoft (P3, opt-in)
 interface OutputChannel     // send a composed output     — ShareSheet (P1) · Gmail · Slack · WhatsApp direct
 interface StorageProvider   // import/export documents    — SAF picker (P2) · Drive · OneDrive · Dropbox
 interface MeetingProvider   // recordings from platforms  — Zoom · Meet · Teams (P3)
@@ -520,8 +587,6 @@ interface TaskProvider      // mirror tasks out           — Todoist · Google 
 ```
 PHONE CALENDAR                                    ✓ On
   ✓ Meeting prep   ✓ One-tap record   ✓ Attendees   ✓ Workflow rules
-PHONE CONTACTS                                    Turn on
-  People and companies from your contacts · Follow-up recipients
 SHARE TO APPS                                     ✓ Always on
   Gmail · Outlook · WhatsApp · Slack · anything on your phone
 ─────────────────────────────────────────
@@ -731,7 +796,8 @@ tap, and can be skipped. It is configuration, not code.
 
 ```kotlin
 enum class WorkProfile {
-    CLIENT_WORK, FOUNDER, SALES, MANAGEMENT, RESEARCH_JOURNALISM, RECRUITING, PRODUCT_ENGINEERING, GENERAL
+    CLIENT_WORK, FOUNDER, SALES, MANAGEMENT, CLINICAL, LEGAL, RESEARCH_JOURNALISM, RECRUITING,
+    PRODUCT_ENGINEERING, GENERAL
 }
 
 data class WorkProfileConfig(
@@ -750,10 +816,34 @@ data class WorkProfileConfig(
 | Founder | Company · Project | Meeting, 1:1, Pitch/Interview | Follow-up, Investor update, Weekly review | To review, Projects |
 | Sales | Account · Deal | Client call (Discovery) | Discovery summary, Follow-up, Objections | Follow-ups, Waiting on |
 | Management | Team · Project | 1:1, Standup, Meeting | 1:1 summary, Team update | My tasks, Waiting on |
+| Clinical (doctors, therapists, other health professionals) | Patient · Case | Consultation, Case discussion, Meeting | Clinical note (history, examination, plan, as said), Referral letter, Patient summary | To review, Up next |
+| Legal (lawyers, paralegals) | Client · Matter | Client consultation, Meeting, Interview | Attendance note (with duration), Advice summary, Client letter | To review, Follow-ups, Waiting on |
 | Research / journalism | Source · Story | Interview, Research | Interview synthesis, Quotes | To review, Projects |
 | Recruiting | Candidate · Role | Interview | Scorecard, Candidate summary | To review, Up next |
 | Product / engineering | Team · Project | Standup, Meeting, Brainstorm | Minutes, Requirements, Risks | My tasks, Decisions |
 | General | Organisation · Project | Meeting, Conversation | Minutes, Follow-up | Default |
+
+**Clinical and Legal differ from the rest by default:**
+
+- **Everything is confidential.** Processing is on the phone only unless the person turns cloud
+  processing on per case or matter. The consent reminder is on and can't be skipped silently.
+- **Audio is deleted after 30 days** by default. The note and transcript are kept.
+- **The AI boundary is stricter.**
+  - A clinical note records what was said. It never adds a diagnosis, dose or recommendation that
+    wasn't spoken.
+  - A legal note never offers legal advice of its own.
+
+  Both are enforced by one extra clause beside `FIDELITY_CONTRACT`, with tests, the same way the
+  Faith rule is enforced.
+- **The footer is off** for shared output, and **exports are marked "Confidential"**.
+- **Legal attendance notes** carry the start, end and duration from the recording, because
+  lawyers bill from them. MeetingMind records time; it doesn't do billing.
+- Both also add **`CONSULTATION`**, a workflow with its own template:
+  - Reason for visit or instruction
+  - What was discussed
+  - Plan or advice given (as said)
+  - Next steps
+  - Private notes
 
 Changing profile changes defaults only. Anything the person has set explicitly is never
 overwritten.
@@ -850,8 +940,7 @@ Custom words can be typed. Plurals follow simple English rules, with an override
   **"What kind of work?"**, showing the profile tiles from §8.1, with "Skip" leading to General.
 - The **calendar** permission keeps its current explanation, rewritten around prep: "See who
   you're meeting and what's still open."
-- **Contacts** is **not** asked in onboarding. It's asked at the first Wrap-up that has an
-  unresolved attendee.
+- **Contacts** are never asked for. People builds itself from recordings and the calendar.
 - The **Getting started** card gains work steps:
   1. Record or import a meeting
   2. Finish your first Wrap-up
@@ -869,7 +958,7 @@ from `PLAN_V1`.
 | --- | --- | --- | --- |
 | **W0** | Validate on real meetings | Record 5 real work meetings (2-person, 4-person with crosstalk, a client call on speaker, a 1:1, a standup). Measure action and decision recall against hand-labelled truth. Fix what fails. | Action recall ≥ 80%, decision recall ≥ 70%, no invented owners. |
 | **W1** | Items and migration | `items` table and migration 14 → 15, deadline parser, TASKS timeline layer, the four nouns in the note's items view. | Every existing recording's actions, decisions and questions appear as items; tasks with dates sit on the calendar. |
-| **W2** | People and organisations | `entities`, contacts provider, attendee and speaker resolution, merge flow, person page, vocabulary seeding. | Two recordings with the same attendee resolve to one person without a prompt. |
+| **W2** | People and organisations | `entities` built from history (no contacts), attendee and speaker resolution, dynamic names (§5.5), merge flow, person page, vocabulary seeding. | Two recordings with the same attendee resolve to one person without a prompt. |
 | **W3** | Marks and the Wrap-up | Mark bar, notification and lock-screen marks, quick notes, the Wrap-up stack, unreviewed state, consent line. | A 45-minute meeting is reviewed in under 60 s, by stopwatch, on the S20. |
 | **W4** | Composer and follow-up | Composer, Follow-up / Minutes / Nudge skills, Send via share sheet, Mark sent, output defaults (§8.5). | Meeting end → follow-up in Gmail in under 5 minutes, typing nothing but corrections. |
 | **W5** | Work Home | `HomeSection` / `HomeLayout`, new sections, adaptive order, professional hero, prep card upgrade, next-meeting widget, Work notification channel. | A work identity's Home shows only work; Faith disappears; the layout editor round-trips. |
@@ -886,7 +975,7 @@ from `PLAN_V1`.
 | Change | Kind | Milestone |
 | --- | --- | --- |
 | `items` table; migrate `action_items`, `decisions`, `questions`, `follow_ups` into it | new core table | W1 |
-| `entities` table (person/org, aliases JSON, emails JSON, phones JSON, contactUri, orgId, notes, confidential) | new core table | W2 |
+| `entities` table (person/org, aliases JSON, emails JSON, phones JSON, orgId, role, preferred channel, isSelf, notes, confidential) | new core table | W2 |
 | `note_entities` cross-ref (noteId, entityId, role: ATTENDEE, SPEAKER, MENTIONED) | new core table | W2 |
 | `speakers.entityId` | column | W2 |
 | `notebooks.kind` (NOTEBOOK · PROJECT) plus `propertiesJson` (status, orgId, confidential, retention) | columns | W6 |
@@ -938,14 +1027,10 @@ The same approach as `PLAN_V1` §11: by real use, not the test suite.
 
 ---
 
-## 13. Open questions for the product owner
+## 13. Questions answered
 
-1. **Beachhead:** is client work (consultants, agencies, founders) the right first audience, or is
-   there a specific network (for example a Zimbabwe/Zambia business community) to launch into?
-   That changes the language defaults and WhatsApp-first sending.
-2. **WhatsApp as the main follow-up channel.** In many markets a follow-up goes on WhatsApp, not
-   email. Should the default for Send via be WhatsApp in those locales?
-3. **Pricing boundary.** Which of these is paid: cloud processing, P2 memory features, or
-   profiles? This affects what the free Work Home shows.
-4. **Contacts permission.** Is asking for it an acceptable trust cost for the first release, or
-   should People start purely from calendar attendees and speakers?
+1. **Audience.** Client work is right, and doctors and lawyers must be served too (the Clinical
+   and Legal profiles in §8.1).
+2. **WhatsApp or email.** Adaptive, per person (§6.5).
+3. **Paid and free.** Decided later. P1 builds no paywall.
+4. **Contacts permission.** Not worth it. People comes from MeetingMind's own history (§5.1).
