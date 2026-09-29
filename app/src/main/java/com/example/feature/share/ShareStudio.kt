@@ -166,7 +166,7 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
         }
         message?.let { Text(it, fontSize = 13.sp, color = Color(0xFFF6D365), modifier = Modifier.padding(horizontal = 24.dp)) }
 
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)).background(Color.White).navigationBarsPadding()) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)).background(com.example.ui.theme.SurfaceBase).navigationBarsPadding()) {
             Column(Modifier.fillMaxWidth().height(300.dp).verticalScroll(rememberScrollState()).padding(top = 14.dp)) {
                 Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ShareFormat.entries.forEach { f -> Chip(f.label, style.format == f) { style = style.copy(format = f) } }
@@ -225,7 +225,7 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
 
 @Composable
 private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Ink else Color.White, border = if (selected) null else BorderStroke(1.dp, Color(0xFFE2E8F0))) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Ink else com.example.ui.theme.SurfaceRaised, border = if (selected) null else BorderStroke(1.dp, com.example.ui.theme.Line)) {
         Text(label, fontSize = 12.5.sp, color = if (selected) Color.White else InkSecondary, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
     }
 }

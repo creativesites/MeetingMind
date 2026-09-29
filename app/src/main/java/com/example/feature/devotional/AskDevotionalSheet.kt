@@ -1,6 +1,10 @@
 package com.example.feature.devotional
 
+import com.example.ui.theme.Accent
+import com.example.ui.theme.AccentWash
 import com.example.ui.theme.FaithGoldInk
+import com.example.ui.theme.FaithGoldWash
+import com.example.ui.theme.SurfaceRaised
 import com.example.ui.theme.Line
 import com.example.ui.theme.OnInk
 import com.example.ui.theme.forTheme
@@ -133,19 +137,19 @@ fun AskDevotionalSheet(
 private fun WriterChoice(w: DevotionalWriter, selected: Boolean, available: Boolean, modifier: Modifier, onClick: () -> Unit) {
     androidx.compose.material3.Surface(
         onClick = onClick, enabled = available, shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-        color = if (selected) Color(0xFF1B1530).forTheme() else SurfaceBase,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) Color(0xFF1B1530).forTheme() else Line),
+        color = if (selected) AccentWash else SurfaceRaised,
+        border = androidx.compose.foundation.BorderStroke(if (selected) 1.5.dp else 1.dp, if (selected) Accent else Line),
         modifier = modifier.testTag("writer_${w.name.lowercase()}")
     ) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
-            Text(w.label, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = when { selected -> OnInk; available -> Ink; else -> InkMuted })
+            Text(w.label, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = when { selected -> Ink; available -> Ink; else -> InkMuted })
             Text(
                 when (w) {
                     DevotionalWriter.GEMINI -> if (available) "Online" else "Add a key in Settings"
                     DevotionalWriter.DEVICE -> if (available) "Private" else "No model yet"
                     else -> "No AI"
                 },
-                fontSize = 11.sp, color = if (selected) Color.White.copy(alpha = 0.7f) else InkMuted, maxLines = 1
+                fontSize = 11.sp, color = if (selected) InkSecondary else InkMuted, maxLines = 1
             )
         }
     }
@@ -159,10 +163,10 @@ private fun Label(text: String) {
 @Composable
 private fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
     androidx.compose.material3.Surface(
-        onClick = onClick, shape = androidx.compose.foundation.shape.RoundedCornerShape(50), color = if (selected) Gold.copy(alpha = 0.14f) else Color.White,
+        onClick = onClick, shape = androidx.compose.foundation.shape.RoundedCornerShape(50), color = if (selected) FaithGoldWash else SurfaceRaised,
         border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) Gold else Line)
     ) {
-        Text(label, fontSize = 13.sp, color = if (selected) FaithGoldInk else InkSecondary, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        Text(label, fontSize = 13.sp, color = if (selected) FaithGoldInk else Ink, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
     }
 }

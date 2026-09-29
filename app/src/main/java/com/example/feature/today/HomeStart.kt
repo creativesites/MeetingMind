@@ -66,10 +66,16 @@ fun QuickCapture(onRecord: () -> Unit, onNote: () -> Unit, onImport: () -> Unit,
         ) {
             Box(Modifier.background(Brush.horizontalGradient(listOf(Brand.Blue, Brand.Indigo, Brand.Violet))).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(40.dp).clip(CircleShape).background(SurfaceBase.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    val pulse = rememberInfiniteTransition(label = "pulse")
+                    val k by pulse.animateFloat(0f, 1f, infiniteRepeatable(tween(2200)), label = "k")
+                    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        // A ripple leaves the mic every couple of seconds.
+                        Box(Modifier.size((40 + 8 * k).dp).graphicsLayer { alpha = (1f - k) * 0.5f }.clip(CircleShape).background(Color.White.copy(alpha = 0.35f)))
+                        Box(Modifier.size(40.dp).clip(CircleShape).background(SurfaceBase.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
                     }
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Record", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                         Text(subtitle, color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp, maxLines = 1)

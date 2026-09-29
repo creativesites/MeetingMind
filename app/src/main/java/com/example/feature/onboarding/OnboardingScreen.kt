@@ -145,6 +145,21 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     val wifiOnly: StateFlow<Boolean> = _wifiOnly.asStateFlow()
     fun setWifiOnly(value: Boolean) { _wifiOnly.value = value }
 
+    /** The Bible to keep on the phone, picked from the free catalogue (which needs a connection the first time). */
+    private val _bible = MutableStateFlow<com.example.core.scripture.HelloAoTranslation?>(null)
+    val bible: StateFlow<com.example.core.scripture.HelloAoTranslation?> = _bible.asStateFlow()
+    private val _catalog = MutableStateFlow<List<com.example.core.scripture.HelloAoTranslation>?>(null)
+    /** Null while loading; empty when it couldn't be loaded. */
+    val catalog: StateFlow<List<com.example.core.scripture.HelloAoTranslation>?> = _catalog.asStateFlow()
+    fun setBible(t: com.example.core.scripture.HelloAoTranslation?) { _bible.value = t }
+    fun loadCatalog() {
+        if (_catalog.value?.isNotEmpty() == true) return
+        _catalog.value = null
+        viewModelScope.launch {
+            _catalog.value = runCatching { com.example.core.scripture.ScriptureService.library(getApplication()).helloAoCatalog() }.getOrDefault(emptyList())
+        }
+    }
+
     /** What the offline pack is on this phone: each job's model and size. */
     val pack = SetupPart.entries.map { it to SetupGuide.modelsFor(it, deviceCapabilities.totalRamGb) }
     val packBytes: Long = pack.sumOf { (_, models) -> models.sumOf { it.sizeBytes } }
@@ -156,6 +171,11 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
             prefs.setSpaces(_spaces.value)
             prefs.setLook(_look.value)
             prefs.setWifiOnlyDownload(_wifiOnly.value)
+            _bible.value?.let { t ->
+                // Becomes the reading Bible now, and downloads in the background for offline use.
+                prefs.setBibleVersionId(t.intId)
+                com.example.core.scripture.BibleDownloadWorker.enqueue(getApplication(), t.intId, _wifiOnly.value)
+            }
             when (_setup.value) {
                 SetupChoice.OFFLINE_PACK -> runCatching {
                     val app = getApplication<Application>()
@@ -175,7 +195,7 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     }
 }
 
-private const val STEPS = 6
+private const val STEPS = 7
 
 /**
  * First run: a warm welcome in the brand's navy, then five short steps — what it does, your name,
@@ -191,6 +211,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
     val look by viewModel.look.collectAsState()
     val setup by viewModel.setup.collectAsState()
     val wifiOnly by viewModel.wifiOnly.collectAsState()
+    val bible by viewModel.bible.collectAsState()
 
     fun next() { forward = true; if (step < STEPS - 1) step++ else viewModel.completeOnboarding(onFinishOnboarding) }
     fun back() { forward = false; if (step > 0) step-- }
@@ -226,6 +247,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                         2 -> NameStep(userName, viewModel::setUserName)
                         3 -> SpacesStep(spaces, viewModel::setSpaces, look, viewModel::setLook)
                         4 -> SetupStep(viewModel, setup, viewModel::setSetup, wifiOnly, viewModel::setWifiOnly)
+                        5 -> BibleStep(viewModel)
                         else -> PermissionsStep()
                     }
                 }
@@ -236,7 +258,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                 Surface(onClick = { next() }, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = Modifier.testTag("onboarding_next_btn")) {
                     Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            when (step) { 0 -> "Get started"; STEPS - 1 -> "Start using MeetingMind"; 2 -> if (userName.isBlank()) "Skip" else "Continue"; else -> "Continue" },
+                            when (step) { 0 -> "Get started"; STEPS - 1 -> "Start using MeetingMind"; 2 -> if (userName.isBlank()) "Skip" else "Continue"; 5 -> if (bible == null) "Skip for now" else "Download and continue"; else -> "Continue" },
                             color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp
                         )
                         Spacer(Modifier.width(8.dp))
@@ -414,6 +436,68 @@ private fun ChoiceCard(selected: Boolean, onClick: () -> Unit, icon: ImageVector
         Text(line, color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 6.dp))
         if (selected) extra()
     }
+}
+
+/** Text on the onboarding's navy: always white, whatever the app theme. */
+private val OnNavy = Color.White.copy(alpha = 1f)
+
+/** Pick a Bible to keep offline: a few well-known ones first, then a search across the whole catalogue. */
+@Composable
+private fun BibleStep(vm: OnboardingViewModel) {
+    val catalog by vm.catalog.collectAsState()
+    val chosen by vm.bible.collectAsState()
+    var query by rememberSaveable { mutableStateOf("") }
+    androidx.compose.runtime.LaunchedEffect(Unit) { vm.loadCatalog() }
+    StepTitle("Keep a Bible on your phone", "Read, search and study Scripture with no signal. Pick one now — it downloads in the background, and you can add more later in the Bible.")
+    val list = catalog
+    when {
+        list == null -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 12.dp)) {
+            androidx.compose.material3.CircularProgressIndicator(color = Brand.Cyan, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+            Text("  Loading the list…", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
+        }
+        list.isEmpty() -> {
+            Text("The list needs a connection the first time. You can skip this and pick a Bible later in Faith → Bible.", color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp, lineHeight = 21.sp)
+            Text("Try again", color = Brand.Cyan, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { vm.loadCatalog() }.padding(vertical = 12.dp))
+        }
+        else -> {
+            val q = query.trim().lowercase()
+            val popular = listOf("BSB", "WEB", "KJV", "ASV", "ENGWEBP", "ENGKJV", "eng_kjv")
+            val shown = if (q.isEmpty()) {
+                list.filter { t -> t.language == "eng" && t.books >= 66 }.sortedWith(compareBy({ popular.indexOf(it.shortName).let { i -> if (i < 0) 99 else i } }, { it.shortName })).take(8)
+            } else {
+                list.filter { t -> listOf(t.name, t.englishName, t.shortName, t.languageName, t.language).any { it.lowercase().contains(q) } }
+                    .sortedWith(compareBy({ it.language != "eng" }, { it.languageName }, { it.shortName })).take(30)
+            }
+            OutlinedTextField(
+                value = query, onValueChange = { query = it }, singleLine = true,
+                placeholder = { Text("Search a language or version — Spanish, Swahili, KJV…", color = Color.White.copy(alpha = 0.35f)) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Brand.Cyan, unfocusedBorderColor = Color.White.copy(alpha = 0.2f), cursorColor = Brand.Cyan,
+                    focusedTextColor = OnNavy, unfocusedTextColor = OnNavy
+                ),
+                shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().testTag("onboarding_bible_search")
+            )
+            Spacer(Modifier.height(10.dp))
+            shown.forEach { t ->
+                val on = chosen?.id == t.id
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp))
+                        .background(SurfaceBase.copy(alpha = if (on) 0.1f else 0.05f))
+                        .border(if (on) 1.5.dp else 1.dp, if (on) Brand.Cyan else Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+                        .clickable { vm.setBible(if (on) null else t) }.padding(14.dp).testTag("bible_${t.shortName}"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${t.shortName} · ${t.languageName}", color = OnNavy, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text(t.name + if (t.books < 66) " · ${t.books} books" else "", color = Color.White.copy(alpha = 0.6f), fontSize = 12.5.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                    if (on) Icon(Icons.Filled.Check, contentDescription = "Chosen", tint = Brand.Cyan)
+                }
+            }
+            if (q.isEmpty()) Text("Search above for another language or version — over a thousand are free.", color = Color.White.copy(alpha = 0.5f), fontSize = 12.5.sp, modifier = Modifier.padding(top = 8.dp))
+        }
+    }
+    Spacer(Modifier.height(12.dp))
 }
 
 @Composable

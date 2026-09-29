@@ -177,9 +177,10 @@ fun DevotionalContent(
         item {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink) }
-                Text(
+                // While a new one is being written the bar keeps its buttons and drops its title, which had no room.
+                if (state.writing) Spacer(Modifier.weight(1f)) else Text(
                     if (state.past) today?.devotional?.day?.date?.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM yyyy")) ?: "Devotional" else "Today's devotional",
-                    fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f)
+                    fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
                 )
                 today?.let { t ->
                     val fav = t.note.metadata[com.example.core.devotional.DevotionalNotes.META_FAVOURITE] == "1"

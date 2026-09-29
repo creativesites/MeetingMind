@@ -53,10 +53,23 @@ object NoteAiApply {
         val summary = blocks.filter { it.sectionKey == SUMMARY_KEY }
         val actions = blocks.filter { it.sectionKey == ACTIONS_KEY }
         val pinned = (summary + actions).toSet()
-        val fixed = blocks.filter { !it.type.isText && it !in pinned }
+        val fixed = blocks.filter { !it.type.isText && it !in pinned && it.type != NoteBlockType.MARKDOWN }
         // Kept: every text block the sections don't cite — including any the model never saw.
         val used = result.sections.flatMap { s -> s.items.flatMap { it.sourceIds } }.toSet()
-        val kept = blocks.filter { it !in pinned && it.type.isText && it.type !in headings && it.id !in used && !it.content.isEmpty }
+        // A pasted Markdown block is read as its parts (ids "block#3"). When the sections took at
+        // least half of its text parts it is opened up: what they took now lives in the sections and
+        // what they didn't is kept, part by part, under "Other notes". A block they barely touched
+        // stays whole. Either way nothing the person pasted is lost.
+        val leftovers = mutableListOf<NoteBlock>()
+        val keptWhole = mutableSetOf<String>()
+        val consumed = mutableSetOf<String>()
+        blocks.filter { it.type == NoteBlockType.MARKDOWN }.forEach { b ->
+            val parts = com.example.core.notes.MarkdownImport.expand(listOf(b)).filter { !it.content.isEmpty && it.type.isText && it.type !in headings }
+            val taken = parts.count { it.id in used }
+            if (parts.isNotEmpty() && taken * 2 >= parts.size) { consumed += b.id; leftovers += parts.filter { it.id !in used } } else keptWhole += b.id
+        }
+        val kept = blocks.filter { it !in pinned && it.id !in consumed && it.id !in used && !it.content.isEmpty && it.type !in headings && (it.type.isText || it.id in keptWhole) } +
+            leftovers.map { it.copy(id = NoteRepository.newId("block"), sectionKey = null, source = BlockSource.USER) }
         val sections = result.sections.flatMap { s ->
             listOf(heading(noteId, s.title, s.key).copy(source = BlockSource.USER)) + s.items.map { item ->
                 NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.PARAGRAPH, RichText.plain(item.text), source = BlockSource.USER, sectionKey = s.key)

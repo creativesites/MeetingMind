@@ -225,7 +225,7 @@ fun ReadingPlansScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit, onR
                     val done = d in p.done
                     val isToday = d == p.dayFor(vm.today)
                     Row(Modifier.fillMaxWidth().clickable { onRead(p.plan.days[d].first()) }.padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(26.dp).clip(CircleShape).background(if (done) Color(0xFF2563EB).forTheme() else Color.White).clickable { vm.setDone(p.plan, d, !done) }
+                        Box(Modifier.size(26.dp).clip(CircleShape).background(if (done) Color(0xFF2563EB).forTheme() else com.example.ui.theme.SurfaceSunk).clickable { vm.setDone(p.plan, d, !done) }
                             .then(if (!done) Modifier.background(Color(0xFFEFF3FB).forTheme()) else Modifier), contentAlignment = Alignment.Center) {
                             if (done) Icon(Icons.Filled.Check, contentDescription = "Read", tint = Color.White, modifier = Modifier.size(16.dp))
                         }

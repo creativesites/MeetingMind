@@ -33,7 +33,7 @@ class OnboardingTest {
         val vm = OnboardingViewModel(app)
         var finished = false
         compose.setContent { MeetMindTheme { OnboardingScreen(vm) { finished = true } } }
-        val shots = listOf("welcome", "what", "name", "spaces", "setup", "permissions")
+        val shots = listOf("welcome", "what", "name", "spaces", "setup", "bible", "permissions")
         shots.forEachIndexed { i, name ->
             compose.waitForIdle()
             compose.mainClock.advanceTimeBy(600)

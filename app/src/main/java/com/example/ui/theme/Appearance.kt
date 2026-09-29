@@ -26,7 +26,8 @@ enum class TextSize(val label: String, val scale: Float) {
 /** Which home to open: everything on one page, or one calm page with what matters now. */
 enum class HomeStyle(val label: String, val description: String) {
     TODAY("Today", "The day, your calendar and timeline, and everything you've captured"),
-    FOCUS("Focus", "One calm page: what's next, what's due, and a big Record button")
+    CALM("Calm", "Quiet and simple, with your stories and your recent recordings and notes"),
+    FOCUS("Focus", "One page only: what's next, what's due, and Record")
 }
 
 /** Parts of the Today home a person can hide. */

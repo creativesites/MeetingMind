@@ -552,7 +552,7 @@ private fun LayersSheet(
 
 /** Today's stories as rings, like the apps people already know. Watched ones dim. */
 @Composable
-private fun StoryRings(kinds: List<com.example.feature.stories.StoryKind>, onOpen: (com.example.feature.stories.StoryKind?) -> Unit) {
+internal fun StoryRings(kinds: List<com.example.feature.stories.StoryKind>, onOpen: (com.example.feature.stories.StoryKind?) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val seen = remember(kinds) { com.example.feature.stories.StoriesSeen.seen(context) }
     androidx.compose.foundation.lazy.LazyRow(

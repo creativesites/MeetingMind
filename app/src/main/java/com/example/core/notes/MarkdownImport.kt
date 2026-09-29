@@ -31,8 +31,14 @@ object MarkdownImport {
     /** A note's blocks with every Markdown block opened out into the blocks it shows. */
     fun expand(blocks: List<NoteBlock>): List<NoteBlock> = blocks.flatMap { b ->
         if (b.type != NoteBlockType.MARKDOWN) listOf(b)
-        else parse(b.content.text, b.noteId, b.source).map { it.copy(sectionKey = b.sectionKey) }
+        // Ids come from the pasted block's own, so a citation can be traced back to it (and stays the same between reads).
+        else parse(b.content.text, b.noteId, b.source).mapIndexed { i, it -> it.copy(id = "${b.id}$EXPANDED_SEP$i", sectionKey = b.sectionKey) }
     }
+
+    const val EXPANDED_SEP = "#"
+
+    /** The id of the pasted block an expanded item came from (an ordinary block's id is its own). */
+    fun sourceBlockId(id: String): String = id.substringBefore(EXPANDED_SEP)
 
     fun parse(markdown: String, noteId: String, source: BlockSource = BlockSource.USER): List<NoteBlock> {
         val lines = markdown.replace("\r\n", "\n").replace('\r', '\n').replace("\t", "    ").split('\n')

@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.model.NoteBlock
 import com.example.core.model.NoteBlockType
+import com.example.core.notes.MarkdownChunks
 import com.example.core.notes.MarkdownImport
 import com.example.ui.theme.Accent
 import com.example.ui.theme.AccentWash
@@ -81,20 +82,46 @@ internal fun MarkdownBlock(
         MarkdownSource(block.content.text, onText) { onEdit(false) }
         return
     }
-    val items = remember(block.content.text) { MarkdownImport.parse(block.content.text, block.noteId) }
-    if (items.isEmpty()) {
+    // The pasted document as pieces (a paragraph, a list, a table, a code fence). Tapping a piece
+    // edits just that piece, in place, while the rest stays formatted; the whole-block source editor
+    // stays in the block's menu. While a piece is edited the list is held still, so typing a blank
+    // line in it can't shuffle what is being edited.
+    var editingPiece by remember { mutableStateOf<Int?>(null) }
+    var frozen by remember { mutableStateOf<List<String>?>(null) }
+    val current = remember(block.content.text) { MarkdownChunks.split(block.content.text) }
+    val pieces = frozen ?: current
+    if (pieces.isEmpty()) {
         Text("Empty Markdown — tap to write", color = InkMuted, fontSize = 15.sp,
             modifier = Modifier.fillMaxWidth().clickable { onEdit(true) }.padding(vertical = 10.dp))
         return
     }
-    val long = isLongMarkdown(items.size, block.content.text.length)
-    val expanded = !long || block.payload[PAYLOAD_EXPANDED] == "1"
-    val shown = if (expanded) items else items.take(MARKDOWN_FOLDED_ITEMS)
+    val parsed = remember(pieces) { pieces.map { MarkdownImport.parse(it, block.noteId) } }
+    val totalItems = parsed.sumOf { it.size }
+    val long = isLongMarkdown(totalItems, block.content.text.length)
+    val expanded = !long || block.payload[PAYLOAD_EXPANDED] == "1" || editingPiece != null
+    // Folded: the first pieces, until about eight items are showing.
+    var shownPieces = pieces.size
+    if (!expanded) {
+        var n = 0; shownPieces = 0
+        while (shownPieces < pieces.size && n < MARKDOWN_FOLDED_ITEMS) { n += parsed[shownPieces].size; shownPieces++ }
+    }
     val colors = LocalMMColors.current
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Box {
-            Column(Modifier.fillMaxWidth().clickable { onEdit(true) }) {
-                shown.forEachIndexed { i, item -> MarkdownItem(item, shown, i, serif, onTap = { onEdit(true) }) }
+            Column(Modifier.fillMaxWidth()) {
+                for (i in 0 until shownPieces) {
+                    if (editingPiece == i) {
+                        MarkdownSource(pieces[i], label = "Editing this part", onText = { t ->
+                            val next = MarkdownChunks.replace(pieces, i, t)
+                            frozen = next
+                            onText(MarkdownChunks.join(next))
+                        }) { editingPiece = null; frozen = null }
+                    } else {
+                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { frozen = pieces; editingPiece = i }) {
+                            parsed[i].forEachIndexed { k, item -> MarkdownItem(item, parsed[i], k, serif, onTap = { frozen = pieces; editingPiece = i }) }
+                        }
+                    }
+                }
             }
             if (!expanded) {
                 // A soft fade into the page says there's more below.
@@ -102,7 +129,8 @@ internal fun MarkdownBlock(
                     .background(Brush.verticalGradient(listOf(colors.background.copy(alpha = 0f), colors.background))))
             }
         }
-        if (long) {
+        if (long && editingPiece == null) {
+            val hidden = if (expanded) 0 else parsed.drop(shownPieces).sumOf { it.size }
             Row(
                 Modifier.padding(top = 6.dp).clip(RoundedCornerShape(50)).background(SurfaceSunk).clickable(onClick = onToggleExpanded)
                     .padding(horizontal = 14.dp, vertical = 7.dp),
@@ -110,7 +138,7 @@ internal fun MarkdownBlock(
             ) {
                 Icon(if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = InkSecondary, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
-                Text(if (expanded) "Show less" else "Show all · ${items.size - shown.size} more", fontSize = 13.sp, color = InkSecondary, fontWeight = FontWeight.Medium)
+                Text(if (expanded) "Show less" else "Show all · $hidden more", fontSize = 13.sp, color = InkSecondary, fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -157,13 +185,13 @@ private fun MarkdownItem(item: NoteBlock, all: List<NoteBlock>, index: Int, seri
 
 /** The Markdown source, to edit as text. */
 @Composable
-private fun MarkdownSource(text: String, onText: (String) -> Unit, onDone: () -> Unit) {
+private fun MarkdownSource(text: String, onText: (String) -> Unit, label: String = "Markdown", onDone: () -> Unit) {
     var value by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(14.dp)).background(SurfaceSunk)) {
         Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Markdown", fontSize = 12.sp, color = InkMuted, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text(label, fontSize = 12.sp, color = InkMuted, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             Text("**bold**  # heading  - list", fontSize = 11.sp, color = InkMuted, modifier = Modifier.padding(end = 8.dp))
             Surface(onClick = onDone, shape = RoundedCornerShape(50), color = AccentWash) {
                 Text("Done", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
@@ -174,7 +202,7 @@ private fun MarkdownSource(text: String, onText: (String) -> Unit, onDone: () ->
             onValueChange = { v -> value = v; if (v.text != text) onText(v.text) },
             textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp, lineHeight = 21.sp, color = Ink),
             cursorBrush = SolidColor(Accent),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp).padding(14.dp).focusRequester(focus)
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(14.dp).focusRequester(focus)
         )
     }
 }

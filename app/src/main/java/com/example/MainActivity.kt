@@ -307,7 +307,9 @@ fun MeetMindApp() {
             val setupState by setupVm.state.collectAsState()
             val setupSnoozedUntil by setupVm.snoozedUntil.collectAsState()
             val homeStyle = com.example.ui.theme.LocalAppearance.current.homeStyle
-            if (homeStyle == com.example.ui.theme.HomeStyle.FOCUS) com.example.feature.today.FocusHome(
+            if (homeStyle != com.example.ui.theme.HomeStyle.TODAY) com.example.feature.today.FocusHome(
+                rich = homeStyle == com.example.ui.theme.HomeStyle.CALM,
+                onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 viewModel = vm,
                 onRecord = { navController.navigate(Routes.RECORDING) },
                 onNewNote = { openNewNote(false) },

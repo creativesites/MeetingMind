@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.timeline.DeepTarget
 import com.example.core.timeline.Greetings
+import com.example.core.timeline.ItemKind
 import com.example.core.tasks.Task
 import com.example.feature.tasks.TasksViewModel
 import com.example.feature.tasks.describeDue
@@ -78,6 +80,9 @@ fun FocusHome(
     onOpenDevotional: () -> Unit,
     onOpenTasks: () -> Unit,
     onCustomize: () -> Unit,
+    /** Calm: the same page, with stories and your recent recordings and notes under it. */
+    rich: Boolean = false,
+    onOpenStories: (com.example.feature.stories.StoryKind?) -> Unit = {},
     onNavigateBottomNav: (com.example.core.ui.BottomNavDestination) -> Unit
 ) {
     val identity by viewModel.identity.collectAsState()
@@ -85,6 +90,8 @@ fun FocusHome(
     val devotional by viewModel.devotional.collectAsState()
     val now by viewModel.now.collectAsState()
     val jobs by viewModel.activeJobs.collectAsState()
+    val storyKinds by viewModel.stories.collectAsState()
+    val items by viewModel.items.collectAsState()
     val tasksVm: TasksViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val tasks by tasksVm.tasks.collectAsState()
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); viewModel.tick() } }
@@ -189,15 +196,46 @@ fun FocusHome(
             }
 
             item {
-                Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        Modifier.size(84.dp).clip(CircleShape).background(Accent).clickable(onClick = onRecord).testTag("focus_record"),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Filled.Mic, "Record", tint = OnAccent, modifier = Modifier.size(36.dp)) }
-                    Text("Record", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 10.dp))
-                    Row(Modifier.padding(top = 18.dp).clip(RoundedCornerShape(50)).clickable(onClick = onNewNote).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.fillMaxWidth().padding(top = if (rich) 20.dp else 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    RecordOrb(onClick = onRecord, tag = "focus_record")
+                    Text("Tap to record", fontSize = 13.sp, color = InkSecondary)
+                    Row(Modifier.padding(top = 10.dp).clip(RoundedCornerShape(50)).clickable(onClick = onNewNote).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.AutoMirrored.Filled.NoteAdd, null, tint = InkSecondary, modifier = Modifier.size(18.dp))
                         Text("New note", fontSize = 14.sp, color = InkSecondary, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+            }
+
+            if (rich) {
+                if (storyKinds.isNotEmpty()) item(key = "stories") { StoryRings(storyKinds, onOpenStories) }
+                val recent = items.filter { it.start <= now && (it.kind == ItemKind.RECORDING || it.kind == ItemKind.NOTE) }.sortedByDescending { it.start }.take(8)
+                if (recent.isNotEmpty()) {
+                    item(key = "recent-h") {
+                        Text("RECENT", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(top = 28.dp, bottom = 4.dp))
+                    }
+                    items(recent.size, key = { "recent-" + recent[it].id }) { i ->
+                        val it = recent[i]
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable {
+                                when (val t = it.target) {
+                                    is DeepTarget.Note -> onOpenNote(t.noteId)
+                                    is DeepTarget.Recording -> onOpenProcessing(t.meetingId)
+                                    is DeepTarget.Event -> viewModel.noteForEvent(t.event) { id, _ -> onOpenNote(id) }
+                                }
+                            }.padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(Modifier.size(40.dp).clip(CircleShape).background(AccentWash), contentAlignment = Alignment.Center) {
+                                Icon(itemIcon(it), null, tint = Accent, modifier = Modifier.size(20.dp))
+                            }
+                            Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                                Text(it.title.ifBlank { "Untitled" }, fontSize = 15.5.sp, fontWeight = FontWeight.Medium, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    listOfNotNull(it.workflow?.displayName?.takeIf { w -> w != "General" }, com.example.core.common.Formatters.formatDateRelative(it.start), it.badge).joinToString(" · "),
+                                    fontSize = 12.5.sp, color = InkMuted, maxLines = 1
+                                )
+                            }
+                        }
                     }
                 }
             }
