@@ -612,6 +612,7 @@ fun SettingsScreen(
                     val checking by viewModel.checking.collectAsState()
                     GeminiKeyCheck(check, checking, onCheck = { viewModel.checkGeminiKey() })
                 }
+                item { DeepSeekRow() }
                 item { GeminiLogRow() }
             }
 
@@ -807,6 +808,64 @@ private fun SettingsRadioRow(title: String, subtitle: String, selected: Boolean,
             modifier = Modifier.testTag(testTag)
         )
     }
+}
+
+/**
+ * DeepSeek, the backup writer: when Gemini can't answer, AI text features use it. Shows this
+ * month's usage against the allowance, takes a key for testing, and checks it works.
+ */
+@Composable
+private fun DeepSeekRow() {
+    val context = LocalContext.current
+    val ds = remember { com.example.ai.cloud.DeepSeek(context) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val key by ds.userKeyFlow.collectAsState(initial = null)
+    var used by remember { mutableStateOf(0L) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var editing by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf("") }
+    val builtIn = com.example.ai.cloud.DeepSeek.proxyUrl != null || com.example.ai.cloud.DeepSeek.systemKey != null
+    androidx.compose.runtime.LaunchedEffect(key, status) { used = ds.usedThisMonth() }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("settings_deepseek")) {
+        Text("Backup AI (DeepSeek)", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+        Text(
+            when {
+                builtIn -> "Built in. Takes over writing — summaries, notes AI, devotionals — whenever Gemini can't answer."
+                key != null -> "Key saved on this device. Takes over writing whenever Gemini can't answer."
+                else -> "Add a DeepSeek key and writing features keep working when Gemini can't answer."
+            },
+            fontSize = 12.5.sp, color = InkMuted
+        )
+        val limit = com.example.ai.cloud.DeepSeek.MONTHLY_TOKENS
+        androidx.compose.material3.LinearProgressIndicator(
+            progress = { (used.toFloat() / limit).coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(6.dp),
+            color = Accent, trackColor = LineSoft
+        )
+        Text("%.2fM of %dM tokens used this month".format(used / 1_000_000.0, limit / 1_000_000), fontSize = 12.sp, color = InkSecondary, modifier = Modifier.padding(top = 4.dp))
+        Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { editing = true; draft = "" }) { Text(if (key == null) "Add key" else "Replace key") }
+            if (key != null) TextButton(onClick = { scope.launch { ds.setKey("") } }) { Text("Remove", color = InkSecondary) }
+            if (builtIn || key != null) TextButton(onClick = {
+                status = "Checking…"
+                scope.launch {
+                    val r = ds.complete("", "Reply with the single word OK.", json = false, timeoutMs = 30_000L, maxTokens = 5)
+                    status = if (r is com.example.ai.common.AiResult.Success) "✓ DeepSeek works" else "✗ ${(r as? com.example.ai.common.AiResult.Failed)?.message ?: (r as? com.example.ai.common.AiResult.ModelUnavailable)?.message}"
+                }
+            }) { Text("Check") }
+        }
+        status?.let { Text(it, fontSize = 12.5.sp, color = if (it.startsWith("✓")) com.example.ui.theme.SuccessGreen else if (it.startsWith("✗")) Danger else InkSecondary) }
+    }
+    if (editing) AlertDialog(
+        onDismissRequest = { editing = false },
+        title = { Text("DeepSeek key") },
+        text = {
+            OutlinedTextField(draft, { draft = it.trim() }, singleLine = true, placeholder = { Text("sk-…") },
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        },
+        confirmButton = { TextButton(onClick = { scope.launch { ds.setKey(draft); editing = false } }, enabled = draft.startsWith("sk-")) { Text("Save") } },
+        dismissButton = { TextButton(onClick = { editing = false }) { Text("Cancel") } }
+    )
 }
 
 /**

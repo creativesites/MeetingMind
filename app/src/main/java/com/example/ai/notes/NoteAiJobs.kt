@@ -125,7 +125,7 @@ class NoteAiWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             val factory = com.example.ai.routing.LanguageModelFactory(
                 context = applicationContext,
                 modelStorage = com.example.ai.modelmanagement.LocalModelStorage(applicationContext),
-                geminiTransport = com.example.ai.cloud.GeminiHttpTransport(com.example.ai.cloud.GeminiCredentialStore(applicationContext))
+                geminiTransport = com.example.ai.cloud.CloudAi.transport(applicationContext)
             )
             val model = factory.resolve(prefs.processingProfile, ModelCapability.SUMMARIZATION)
                 ?: return fail(job, "No AI model is available. Install one in Settings → AI Engine, or turn on Internet mode.")

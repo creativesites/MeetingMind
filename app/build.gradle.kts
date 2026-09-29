@@ -36,6 +36,11 @@ android {
     // System Gemini API key for closed testing (via SYSTEM_GEMINI_API_KEY env var)
     val systemGeminiKey = System.getenv("SYSTEM_GEMINI_API_KEY") ?: ""
     buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"${systemGeminiKey.replace("\"", "")}\"")
+    // DeepSeek, the fallback for AI text. The key stays out of public builds: production goes
+    // through the proxy in server/deepseek-proxy (DEEPSEEK_PROXY_URL), which holds the key and
+    // enforces each install's monthly allowance. SYSTEM_DEEPSEEK_API_KEY is for private builds only.
+    buildConfigField("String", "DEEPSEEK_PROXY_URL", "\"${(System.getenv("DEEPSEEK_PROXY_URL") ?: "").replace("\"", "")}\"")
+    buildConfigField("String", "SYSTEM_DEEPSEEK_API_KEY", "\"${(System.getenv("SYSTEM_DEEPSEEK_API_KEY") ?: "").replace("\"", "")}\"")
     buildConfigField("Boolean", "SYSTEM_GEMINI_MODE", "true")
   }
 

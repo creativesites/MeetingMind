@@ -208,9 +208,7 @@ class AiToolWorker(
         val factory = com.example.ai.routing.LanguageModelFactory(
             context = applicationContext,
             modelStorage = com.example.ai.modelmanagement.LocalModelStorage(applicationContext),
-            geminiTransport = com.example.ai.cloud.GeminiHttpTransport(
-                com.example.ai.cloud.GeminiCredentialStore(applicationContext)
-            )
+            geminiTransport = com.example.ai.cloud.CloudAi.transport(applicationContext)
         )
         val resolved = factory.resolve(
             profile = preferences.processingProfile,

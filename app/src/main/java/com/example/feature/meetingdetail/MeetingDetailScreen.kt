@@ -178,9 +178,7 @@ class MeetingDetailViewModel(
             if (prefsNow.processingProfile == com.example.core.model.ProcessingProfile.INTERNET) {
                 com.example.ai.llm.FallbackMeetingIntelligenceEngine(
                     primary = com.example.ai.cloud.GeminiIntelligenceEngine(
-                        com.example.ai.cloud.GeminiHttpTransport(
-                            com.example.ai.cloud.GeminiCredentialStore(getApplication())
-                        )
+                        com.example.ai.cloud.CloudAi.transport(getApplication())
                     ),
                     fallback = localEngine
                 )

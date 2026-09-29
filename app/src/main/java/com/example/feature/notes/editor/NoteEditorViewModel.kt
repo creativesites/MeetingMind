@@ -366,7 +366,7 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     val aiEdit: StateFlow<AiEdit?> = _aiEdit.asStateFlow()
     private var aiEditJob: kotlinx.coroutines.Job? = null
     private val geminiTransport by lazy {
-        com.example.ai.cloud.GeminiHttpTransport(com.example.ai.cloud.GeminiCredentialStore(getApplication()))
+        com.example.ai.cloud.CloudAi.transport(getApplication())
     }
 
     /** Opens AI edit on the selection; with only a caret, on the whole block. False when there is nothing to edit. */

@@ -123,7 +123,7 @@ class MeetingProcessingPipeline(
      * key entered, [GeminiHttpTransport] reports Internet mode unavailable and the pipeline falls
      * back to on-device processing, exactly as it does for a quota error.
      */
-    private val geminiTransport: GeminiTransport = GeminiHttpTransport(GeminiCredentialStore(context)),
+    private val geminiTransport: GeminiTransport = com.example.ai.cloud.CloudAi.transport(context),
     private val cloudTranscriptionEngine: GeminiTranscriptionEngine = GeminiTranscriptionEngine(geminiTransport),
     private val cloudIntelligenceEngine: MeetingIntelligenceEngine = GeminiIntelligenceEngine(geminiTransport),
     /** The single decision point for which language model does secondary AI work (cleanup,

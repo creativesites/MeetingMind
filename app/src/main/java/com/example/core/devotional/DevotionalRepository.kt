@@ -160,7 +160,7 @@ class DevotionalRepository(
         val factory = com.example.ai.routing.LanguageModelFactory(
             context = context,
             modelStorage = com.example.ai.modelmanagement.LocalModelStorage(context),
-            geminiTransport = com.example.ai.cloud.GeminiHttpTransport(com.example.ai.cloud.GeminiCredentialStore(context))
+            geminiTransport = com.example.ai.cloud.CloudAi.transport(context)
         )
         fun local() = runCatching { factory.resolveLocal(ModelCapability.SUMMARIZATION, com.example.core.model.ModelTier.RECOMMENDED) }.getOrNull()
         // Asking for Gemini by name uses it even when recordings stay offline: it's this one request.
