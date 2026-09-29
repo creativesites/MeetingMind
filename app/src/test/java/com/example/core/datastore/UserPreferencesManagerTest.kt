@@ -86,4 +86,14 @@ class UserPreferencesManagerTest {
             com.example.core.model.ProcessingProfile.fromNameOrDefault(null)
         )
     }
+
+    @Test
+    fun `app lock defaults off and is persisted once set`() = runBlocking {
+        assertEquals(false, AppPreferencesState().appLockEnabled)
+        val manager = UserPreferencesManager(ApplicationProvider.getApplicationContext())
+        manager.setAppLockEnabled(true)
+        assertEquals(true, manager.preferencesFlow.first().appLockEnabled)
+        manager.setAppLockEnabled(false)
+        assertEquals(false, manager.preferencesFlow.first().appLockEnabled)
+    }
 }

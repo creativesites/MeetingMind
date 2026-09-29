@@ -13,4 +13,36 @@
     <string name="widget_today_description">Your next event and today\'s devotional</string>
     <string name="widget_verse_label">Verse of the day</string>
     <string name="widget_today_label">Today</string>
+
+    <!-- App Lock (docs/APP_LOCK.md) -->
+    <string name="app_lock_title">MeetingMind is locked</string>
+    <string name="app_lock_body">Your notes and recordings are protected. Unlock with your fingerprint, face or screen lock.</string>
+    <string name="app_lock_unlock">Unlock MeetingMind</string>
+    <string name="app_lock_open_security_settings">Set up a screen lock</string>
+    <string name="app_lock_turn_off">Turn off App Lock</string>
+    <string name="app_lock_prompt_unlock_title">Unlock MeetingMind</string>
+    <string name="app_lock_prompt_unlock_subtitle">Use your fingerprint, face or screen lock to open your notes.</string>
+    <string name="app_lock_prompt_enable_title">Confirm your identity</string>
+    <string name="app_lock_prompt_enable_subtitle">Use your fingerprint or device authentication to enable App Lock.</string>
+    <string name="app_lock_prompt_disable_title">Confirm your identity</string>
+    <string name="app_lock_prompt_disable_subtitle">Use your fingerprint or device authentication to turn App Lock off.</string>
+    <string name="app_lock_notice_no_credential">This phone has no screen lock or biometric set up, so MeetingMind can\'t verify it\'s you. Set one up in Android settings, or turn App Lock off.</string>
+    <string name="app_lock_notice_hardware_unavailable">Fingerprint or face unlock isn\'t available right now. Try again in a moment.</string>
+    <string name="app_lock_notice_update_required">Android needs a security update before it can verify you. Update your phone, then try again.</string>
+    <string name="app_lock_notice_unsupported">This phone can\'t verify you the way App Lock needs.</string>
+    <string name="app_lock_notice_locked_out">Too many attempts. Wait a moment, or use your PIN, pattern or password instead.</string>
+    <string name="app_lock_notice_error">We couldn\'t verify it\'s you. Try again.</string>
+    <string name="app_lock_setting_title">App Lock</string>
+    <string name="app_lock_setting_subtitle">Require biometric authentication when opening MeetingMind.</string>
+    <string name="app_lock_setting_on_hint">MeetingMind locks when you leave it for a short while, and asks for your fingerprint, face or screen lock. Turning it off asks too.</string>
+    <string name="app_lock_setup_title">App Lock can\'t be turned on yet</string>
+    <string name="app_lock_setup_none_enrolled">Set up a fingerprint, face or a screen lock (PIN, pattern or password) in your phone\'s settings first. Then come back and turn App Lock on.</string>
+    <string name="app_lock_setup_no_hardware">This phone has no fingerprint or face unlock and no screen lock, so App Lock has nothing to check. Set a screen lock in Android settings to use it.</string>
+    <string name="app_lock_setup_hardware_unavailable">Fingerprint or face unlock isn\'t available right now. Try again in a moment.</string>
+    <string name="app_lock_setup_update_required">Android needs a security update before it can verify you. Update your phone, then try again.</string>
+    <string name="app_lock_setup_unsupported">This phone can\'t verify you the way App Lock needs.</string>
+    <string name="app_lock_setup_open_settings">Open settings</string>
+    <string name="app_lock_setup_dismiss">Not now</string>
+    <string name="app_lock_change_locked_out">Too many attempts. Wait a moment and try again. App Lock was not changed.</string>
+    <string name="app_lock_change_error">We couldn\'t verify it\'s you, so App Lock was not changed.</string>
 </resources>

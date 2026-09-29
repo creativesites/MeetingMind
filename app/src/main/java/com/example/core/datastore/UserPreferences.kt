@@ -66,6 +66,8 @@ data class AppPreferencesState(
     val bibleVersionId: Int = com.example.core.scripture.BibleVersions.DEFAULT_ID,
     /** Faith notes need unlocking with fingerprint, face or screen lock (PLAN_V1 §6, privacy). */
     val faithLockEnabled: Boolean = false,
+    /** Optional whole-app lock (docs/APP_LOCK.md). Off until the owner has authenticated once. */
+    val appLockEnabled: Boolean = false,
     /** Show upcoming events from the phone's calendars on Home (PLAN_V1 M8). Off until turned on. */
     val calendarEnabled: Boolean = false,
     /** The person closed the "see your upcoming meetings" invitation on Home. */
@@ -125,6 +127,7 @@ class UserPreferencesManager(private val context: Context) {
     private val LAST_RECORDING_TYPE = stringPreferencesKey("last_recording_type")
     private val BIBLE_VERSION_ID = intPreferencesKey("bible_version_id")
     private val FAITH_LOCK = booleanPreferencesKey("faith_lock")
+    private val APP_LOCK = booleanPreferencesKey("app_lock")
     private val CALENDAR_ENABLED = booleanPreferencesKey("calendar_enabled")
     private val CALENDAR_PROMPT_DISMISSED = booleanPreferencesKey("calendar_prompt_dismissed")
     private val SPACES = stringSetPreferencesKey("identity_spaces")
@@ -189,6 +192,7 @@ class UserPreferencesManager(private val context: Context) {
             } ?: com.example.core.model.RecordingType.MEETING,
             bibleVersionId = prefs[BIBLE_VERSION_ID] ?: com.example.core.scripture.BibleVersions.DEFAULT_ID,
             faithLockEnabled = prefs[FAITH_LOCK] ?: false,
+            appLockEnabled = prefs[APP_LOCK] ?: false,
             calendarEnabled = prefs[CALENDAR_ENABLED] ?: false,
             calendarPromptDismissed = prefs[CALENDAR_PROMPT_DISMISSED] ?: false,
             identity = com.example.core.identity.AppIdentity(
@@ -242,6 +246,11 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setCalendarPromptDismissed(dismissed: Boolean) {
         context.dataStore.edit { it[CALENDAR_PROMPT_DISMISSED] = dismissed }
+    }
+
+    /** Only [com.example.core.applock.AppLockSettings] should call this — it verifies the owner first. */
+    suspend fun setAppLockEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[APP_LOCK] = enabled }
     }
 
     suspend fun setFaithLockEnabled(enabled: Boolean) {

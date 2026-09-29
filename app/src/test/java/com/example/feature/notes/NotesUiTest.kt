@@ -47,7 +47,9 @@ class NotesUiTest {
     @Before
     fun setup() {
         app = ApplicationProvider.getApplicationContext()
-        database = Room.inMemoryDatabaseBuilder(app, MeetMindDatabase::class.java).allowMainThreadQueries().build()
+        // Its own query threads: other tests in the run can leave Room's shared pool busy, and this one waits on the database.
+        database = Room.inMemoryDatabaseBuilder(app, MeetMindDatabase::class.java).allowMainThreadQueries()
+            .setQueryExecutor(java.util.concurrent.Executors.newFixedThreadPool(4)).setTransactionExecutor(java.util.concurrent.Executors.newFixedThreadPool(2)).build()
         MeetMindDatabase.setInstanceForTest(database)
         notes = NoteRepository(app, database)
     }

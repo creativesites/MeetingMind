@@ -11,6 +11,11 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.viewModels
+import androidx.fragment.app.FragmentActivity
+import androidx.navigation.NavHostController
+import com.example.core.applock.AppLockViewModel
+import com.example.feature.applock.AppLockGate
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -76,7 +81,10 @@ import com.example.ui.theme.MeetMindTheme
 import com.example.ui.theme.isDark
 import java.net.URLDecoder
 
-class MainActivity : ComponentActivity() {
+// FragmentActivity (a ComponentActivity) because BiometricPrompt needs one — see docs/APP_LOCK.md.
+class MainActivity : FragmentActivity() {
+    private val appLock: AppLockViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -95,6 +103,12 @@ class MainActivity : ComponentActivity() {
             }
         }
         openDatabase()
+        // Recents preview and screenshots are hidden while App Lock is on (or not yet known).
+        lifecycleScope.launch {
+            kotlinx.coroutines.flow.combine(appLock.ready, appLock.state) { ready, state ->
+                !ready || state != com.example.core.applock.AppLockState.Disabled
+            }.collect { applyScreenPrivacy(it) }
+        }
         setContent {
             // Dark unless the person chose otherwise (Settings > Appearance).
             val themePrefs by remember { UserPreferencesManager(applicationContext).preferencesFlow }.collectAsState(initial = null)
@@ -121,11 +135,15 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background
                     ) {
-                        when (val opened = database.value) {
-                            null -> Unit
-                            is com.example.core.database.DatabaseGuard.OpenResult.Failed ->
-                                com.example.feature.settings.DatabaseRecoveryScreen(opened.message, onRetry = { openDatabase() })
-                            com.example.core.database.DatabaseGuard.OpenResult.Ok -> MeetMindApp()
+                        // Held above the lock gate so locking never loses the back stack.
+                        val navController = rememberNavController()
+                        AppLockGate(appLock) {
+                            when (val opened = database.value) {
+                                null -> Unit
+                                is com.example.core.database.DatabaseGuard.OpenResult.Failed ->
+                                    com.example.feature.settings.DatabaseRecoveryScreen(opened.message, onRetry = { openDatabase() })
+                                com.example.core.database.DatabaseGuard.OpenResult.Ok -> MeetMindApp(navController)
+                            }
                         }
                     }
                 }
@@ -150,6 +168,32 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        appLock.controller.onAppForegrounded()
+    }
+
+    override fun onStop() {
+        // Rotation stops and restarts the activity too; that is not "leaving the app".
+        appLock.controller.onAppBackgrounded(isChangingConfigurations)
+        super.onStop()
+    }
+
+    /**
+     * Keeps private content out of the recents thumbnail. Android 13+ has a switch for exactly that
+     * (screenshots stay allowed); earlier versions only have FLAG_SECURE, which also blocks
+     * screenshots and screen recording — applied only while App Lock is on.
+     */
+    private fun applyScreenPrivacy(protect: Boolean) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            setRecentsScreenshotEnabled(!protect)
+        } else if (protect) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         // A notification tapped while the app is already open.
@@ -157,9 +201,14 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** The unfinished-recording check happens once per process, however often the UI is re-composed (rotation, unlocking). */
+private object RecordingRecovery {
+    val entry = kotlinx.coroutines.flow.MutableStateFlow<RecordingJournalEntry?>(null)
+    @Volatile var checked = false
+}
+
 @Composable
-fun MeetMindApp() {
-    val navController = rememberNavController()
+fun MeetMindApp(navController: NavHostController = rememberNavController()) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefsManager = remember { UserPreferencesManager(context) }
     val prefsState by prefsManager.preferencesFlow.collectAsState(initial = null)
@@ -193,11 +242,13 @@ fun MeetMindApp() {
     val journalStore = remember { RecordingJournalStore(context) }
     val recoveryMeetingRepository = remember { MeetingRepository(context, MeetMindDatabase.getInstance(context)) }
     val recoveryScope = rememberCoroutineScope()
-    var recoveryEntry by remember { mutableStateOf<RecordingJournalEntry?>(null) }
+    val recoveryEntry by RecordingRecovery.entry.collectAsState()
     LaunchedEffect(Unit) {
+        if (RecordingRecovery.checked) return@LaunchedEffect
+        RecordingRecovery.checked = true
         val entry = journalStore.read()
         if (entry != null && (entry.state == RecordingState.RECORDING.name || entry.state == RecordingState.PAUSED.name)) {
-            recoveryEntry = entry
+            RecordingRecovery.entry.value = entry
         }
     }
 
@@ -837,7 +888,7 @@ fun MeetMindApp() {
         AlertDialog(
             onDismissRequest = { /* Never auto-dismiss into a silent discard — spec §3.7. Back
                 gesture just closes this composition's state; the same journal is read again and
-                re-prompted on the next app launch since nothing here has cleared it. */ recoveryEntry = null },
+                re-prompted on the next app launch since nothing here has cleared it. */ RecordingRecovery.entry.value = null },
             title = { Text("We found an unfinished recording.") },
             text = {
                 Text(
@@ -863,7 +914,7 @@ fun MeetMindApp() {
                             recordingType = recordingType
                         )
                         journalStore.clear()
-                        recoveryEntry = null
+                        RecordingRecovery.entry.value = null
                         navController.navigate(
                             Routes.processingRoute(entry.meetingId, entry.audioFilePath, entry.lastKnownDurationMs)
                         )
@@ -874,7 +925,7 @@ fun MeetMindApp() {
                 TextButton(onClick = {
                     java.io.File(entry.audioFilePath).delete()
                     journalStore.clear()
-                    recoveryEntry = null
+                    RecordingRecovery.entry.value = null
                 }) { Text("Delete") }
             }
         )
