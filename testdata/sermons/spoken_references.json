@@ -1,0 +1,16 @@
+{
+  "id": "spoken_references", "title": "A conversational Bible study", "type": "BIBLE_STUDY",
+  "segments": [
+    {"id": "s1", "startMs": 0, "endMs": 30000, "speaker": "Leader", "text": "Okay everyone, open to Romans chapter 8 and look at verse 28. We know that in all things God works for the good of those who love him."},
+    {"id": "s2", "startMs": 30000, "endMs": 70000, "speaker": "Sarah", "text": "I always thought that meant everything is good, but Paul says works together, and later in verse 38 to 39 nothing can separate us."},
+    {"id": "s3", "startMs": 70000, "endMs": 110000, "speaker": "Leader", "text": "Right. Second Corinthians 12:9 says my grace is sufficient for you. Think about how those two fit together."},
+    {"id": "s4", "startMs": 110000, "endMs": 150000, "speaker": "Tom", "text": "I read 1 John 4:18 last night about perfect love casting out fear and it changed how I saw my week."}
+  ],
+  "expected": {
+    "scriptures": ["ROM 8", "ROM 8:28", "ROM 8:38-39", "2CO 12:9", "1JN 4:18"],
+    "songSegments": [],
+    "asks": [
+      {"question": "What did Sarah say about Romans 8?", "answer": "She used to think it meant everything is good, but noticed Paul says works together [00:30].", "cites": ["s2"]}
+    ]
+  }
+}

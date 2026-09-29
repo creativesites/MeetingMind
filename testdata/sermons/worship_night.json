@@ -1,0 +1,16 @@
+{
+  "id": "worship_night", "title": "Worship night with a short word", "type": "SERMON",
+  "segments": [
+    {"id": "s1", "startMs": 0, "endMs": 120000, "speaker": "Choir", "text": "How great thou art how great thou art then sings my soul my saviour God to thee how great thou art"},
+    {"id": "s2", "startMs": 120000, "endMs": 180000, "speaker": "Leader", "text": "Thank you all. A short word from Psalm 46 verse 10. Be still and know that I am God."},
+    {"id": "s3", "startMs": 180000, "endMs": 300000, "speaker": "Choir", "text": "Holy holy holy Lord God almighty early in the morning our song shall rise to thee"},
+    {"id": "s4", "startMs": 300000, "endMs": 330000, "speaker": "Leader", "text": "Please give generously to the food drive this week. God bless you."}
+  ],
+  "expected": {
+    "scriptures": ["PSA 46:10"],
+    "songSegments": ["s1", "s3"],
+    "asks": [
+      {"question": "What was the short word about?", "answer": "Stillness, from Psalm 46 [02:00].", "cites": ["s2"]}
+    ]
+  }
+}

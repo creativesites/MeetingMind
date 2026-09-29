@@ -1,40 +1,40 @@
 # Faith vertical — inventory and closing plan
 
 Source of truth: PLAN_V3 + "Close the Faith Vertical" spec. Status against the repository as of
-commit 2cebc6a. DONE = works end to end; PARTIAL = exists but short of the spec; MISSING = not
+the Faith-vertical build (schema 16). DONE = works end to end; PARTIAL = exists but short of the spec; MISSING = not
 there; BROKEN = there but wrong.
 
 ## Inventory
 
 | # | Area | Status | What exists / what's short |
 |---|------|--------|----------------------------|
-| 2 | Faith workflows & notebooks | DONE | `RecordingType` has SERMON, BIBLE_STUDY, DEVOTIONAL, PRAYER, PRAYER_REQUEST, TESTIMONY, GRATITUDE, REFLECTION with templates (`Workflows`); `NotebookSpace.FAITH`. Scripture as a workflow: PARTIAL (Scripture notes via collections). |
-| 3 | Canonical transcript is evidence | DONE | `CanonicalTranscript` words/timings/speakers/`TranscriptSource`; Notes AI works on note blocks, never on transcript rows; excerpts copy into notes. |
-| 4 | Transcription Engine 2.0 | PARTIAL | Gemini default in Internet mode, verbatim + diarization + word timestamps, compressed-audio cutting (no decode), per-part logging, Smart pass off the critical path. MISSING: PreparedAudio cache, persisted chunks, bounded concurrency, progressive transcript, TranscriptionSession/checkpoints, Local↔Gemini switching mid-run. |
-| 5 | Scene intelligence | MISSING | No AcousticActivity/SemanticActivity. |
-| 6 | Worship/song handling | MISSING | |
-| 7 | Sermon intelligence | PARTIAL | `SermonExtraction`: outline/points/scripture/applications cited by transcript segment ids (→ timestamps); `ScriptureDetector` finds references in transcripts. MISSING: scene timeline, tappable [mm:ss] citations across the sermon view. |
-| 8 | Scripture intelligence | PARTIAL | Offline Bible library (download), reader, search, verse sheet, Scripture blocks with real text, cross-refs + commentary (HelloAo, cached), collections, highlights, fixQuotedScripture guard for devotionals. MISSING: memory verses, parallel translations view, guard applied to every AI surface. |
-| 9 | Bible study workspace | MISSING | Reader and notes are separate screens; no "Notes on this passage". |
-| 10 | Study methods templates | PARTIAL | BIBLE_STUDY template only. MISSING: SOAP, Inductive, Book overview, Character, Word, Topical, Sermon prep, Small group. |
-| 11 | Original languages | MISSING | Licence candidates: STEPBible TAHOT/TAGNT (CC BY 4.0), OSHB morphology (CC BY 4.0), SBLGNT (CC BY 4.0). Must be an optional download. |
-| 12 | Faith AI assistant with tools | MISSING | Notes AI tools (summary, actions, organise, ask) exist; no tool-using assistant. |
-| 13 | Theology contract | PARTIAL | Devotional contract + guard (no divine claims, no promised outcomes, verse checking, care check). Not yet applied to every Faith AI prompt; prompts are code strings, not versioned assets. |
-| 14 | Devotionals 2.0 | PARTIAL | Written/classic/mine sources, several per day, angles + opening rotation, 10-day memory, feedback, voice, share cards. MISSING: archive screen (calendar/search/favourites/filters), formats, tradition presets, 14-day memory with passage/title/opening/main-point checks, format rotation, passage exclusion window. |
-| 15 | Series | MISSING | |
-| 16 | Morning/evening continuity | MISSING | Evening falls back to a classic. |
-| 17 | Prayer | PARTIAL | Prayer requests with answered state, updates, testimony link; prayer people list (FaithStore) with daily rotation; reminders; Pray with me (live voice). MISSING: people attached to requests, recurring per-request reminders, Scripture attached to prayer. |
-| 18–20 | Sermon workflow / Study this sermon / Ask Sermon | PARTIAL | Recording → transcript → sermon note with points/scripture. Ask AI on a recording exists (retrieval). MISSING: Study workspace, timestamped answers everywhere. |
-| 21 | Knowledge layer | PARTIAL | scripture_refs, note_links, backlinks, related notes. |
-| 22 | Search | PARTIAL | LIKE search over titles/text. MISSING: FTS, transcript + Scripture in one search, semantic search over notes. |
-| 23 | Tasks | MISSING | Action items exist only on recordings. |
-| 24 | People | PARTIAL | Prayer list names only (FaithStore). No general People entity. |
-| 25 | Export | DONE | PDF/Word/Markdown, private sections excluded by default. Page numbers/headers: check. |
-| 26 | AI images | PARTIAL | Devotional artwork (Gemini). Label: check. |
-| 27–28 | Corpus + scorecard | MISSING | |
-| 29 | Data safety | DONE | No destructive fallback, schemas 14–15 exported, migration tests, backup/restore incl. faith DB + highlights. |
-| 31 | Model routing | PARTIAL | `DefaultAiModelRouter` holds Gemini IDs; DeepSeek ID lives in `DeepSeek`. |
-| 32 | Offline states | PARTIAL | |
+| 2 | Faith workflows & notebooks | DONE | Faith `RecordingType`s with templates; `NotebookSpace.FAITH`. |
+| 3 | Canonical transcript is evidence | DONE | Words/timings/speakers/source; AI output cites segments or `[mm:ss]`. |
+| 4 | Transcription Engine 2.0 | PARTIAL | Gemini default in Internet mode, verbatim + diarization + word timestamps; audio cut by remuxing (no decode); two parts at a time, finished parts readable at once (provisional `partial_` segments); IPv4-first networking; copyable error log; DeepSeek fallback for text. **Not built:** switching Local↔Gemini mid-run, persisted chunk checkpoints. |
+| 5 | Scene intelligence | DONE | On-device acoustic analysis → candidate windows → AI labels for those windows only; `scenes.json` beside the audio; scene strip and headers in the transcript. Tested on synthetic audio only. |
+| 6 | Worship/song handling | DONE | Song scenes folded in the transcript; excluded from Scripture detection and sermon extraction; titles only when said or sung verbatim (≥2 words); lyrics never written. |
+| 7 | Sermon intelligence | DONE | Outline/points/applications with tappable `[mm:ss]` evidence; Scripture list; scene timeline. |
+| 8 | Scripture intelligence | DONE | Offline library, reader, search, verse sheet, cross references, commentary, collections, highlights, memory verses (masked recall), notes on a passage. Spoken references ("chapter 8 … verse 28", "verse 38 to 39" a paragraph later) are found. |
+| 9 | Bible study workspace | DONE | Split passage/notes view (tabs on phones); tap a verse to add it; sermon timeline, Scripture and transcript beside the note. |
+| 10 | Study method templates | DONE | SOAP, Inductive, Book overview, Character, Word, Topical, Sermon prep, Small group. |
+| 11 | Original languages | MISSING | Licence candidates (STEPBible CC BY 4.0, OSHB CC BY 4.0, SBLGNT CC BY 4.0); must be an optional download. Not built. |
+| 12 | Faith AI assistant with tools | DONE | Chat sheet in every note and on Faith home. Tools: read note, search notes, read transcript, get verses, cross references, commentary, compare translations, insert blocks/Scripture, replace/delete (confirmed first), create task, create note. Inserts have Undo. Needs a live model to exercise end to end. |
+| 13 | Theology contract | DONE | One contract in `assets/prompts/faith_contract.md` prefixed to every Faith prompt; guards remove voice-of-God sentences (Ask Sermon, assistant, devotionals). |
+| 14 | Devotionals 2.0 | DONE | 17 formats (least-recently-used rotation), tradition presets, 30-day passage exclusion, memory of passage/opening/point with novelty retry, archive (calendar, search, favourites, filters), audience, reading level, language. |
+| 15 | Series | DONE | Catalog + book series with day counter and "so far". |
+| 16 | Morning/evening continuity | DONE | Evening Examen written from the morning's devotional. |
+| 17 | Prayer | PARTIAL | Requests, answered state, updates, testimony link, prayer list with rotation, reminders, Pray with me. Tasks of kind "Prayer" carry a person, a Scripture reference and repeating reminders. Requests themselves are not yet linked to People rows. |
+| 18–20 | Sermon workflow / Study this sermon / Ask Sermon | DONE | Recording → transcript → sermon note → Study; Ask on a faith recording uses `ask_sermon` with `[mm:ss]` markers checked against the passages it was given (invented ones removed, unverified answers flagged). |
+| 21 | Knowledge layer | PARTIAL | scripture_refs, note_links, backlinks, related notes, note↔person links. |
+| 22 | Search | DONE | FTS4 over notes and transcripts (schema 16), Bible passages by reference, tasks; filters; Ask across everything with numbered sources checked against what search found. Semantic search stays the existing on-device hashed embedding for recordings. |
+| 23 | Tasks | DONE | Tasks with due, reminder (alarm + notification with Done), repeat, kind, person, source note/recording; "Make it a task" from any note line, checklist and task stay in step; Tasks screen and To-live-out card. |
+| 24 | People | DONE | People table, tasks and notes per person. |
+| 25 | Export | DONE | PDF/Word/Markdown, private sections excluded by default. |
+| 26 | AI images | PARTIAL | Devotional artwork (Gemini). |
+| 27–28 | Corpus + scorecard | PARTIAL | Four hand-marked transcripts in `testdata/sermons`, scorer test, `docs/FAITH_SCORECARD.md`. **No audio corpus.** |
+| 29 | Data safety | DONE | No destructive fallback; schemas 14–16 exported; migration tests 14→15, 15→16; backup/restore covers preferences (incl. look and home). |
+| 31 | Model routing | DONE | `DefaultAiModelRouter` for Gemini; DeepSeek fallback for all text features with a 6M-token monthly meter. |
+| 32 | Offline states | PARTIAL | Assistant and Ask say plainly when they need Internet mode; everything else works offline. |
 
 ## Limitations known up front
 
