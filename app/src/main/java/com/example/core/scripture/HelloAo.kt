@@ -244,7 +244,7 @@ object HelloAo {
 
 /** Talks to bible.helloao.org. Plain GETs, no key. */
 class HelloAoClient(
-    private val client: OkHttpClient = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build(),
+    private val client: OkHttpClient = com.example.core.net.Net.base.newBuilder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build(),
     private val base: String = HelloAo.BASE
 ) {
     private suspend fun get(path: String): String? = withContext(Dispatchers.IO) {

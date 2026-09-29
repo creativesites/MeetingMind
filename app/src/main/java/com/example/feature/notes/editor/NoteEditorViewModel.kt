@@ -919,7 +919,8 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         val hasContent = com.example.core.repository.NoteContent.hasUserContent(note, _blocks.value) || notes.hasUserContent(noteId)
         if (!hasContent) return false
         notes.keepDraft(noteId)
-        _note.value = note.copy(metadata = note.metadata - com.example.core.repository.NoteContent.DRAFT - com.example.core.repository.NoteContent.DRAFT_TITLE)
+        // The current note, not the one read before the database calls: its title may have moved on.
+        _note.value = _note.value?.let { it.copy(metadata = it.metadata - com.example.core.repository.NoteContent.DRAFT - com.example.core.repository.NoteContent.DRAFT_TITLE) }
         return true
     }
 

@@ -415,11 +415,23 @@ fun NoteEditorScreen(
             }
             item(key = "title") {
                 Column(Modifier.padding(start = 22.dp, top = 6.dp)) {
+                    // The field owns what's being typed. The keyboard's word-in-progress is never
+                    // reset by the saved (trimmed) title coming back from the database; an outside
+                    // change (a restored version, a recording's name) shows when not typing.
+                    var titleValue by remember(currentNote.id) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(currentNote.title, androidx.compose.ui.text.TextRange(currentNote.title.length))) }
+                    if (!titleFocused && titleValue.text.trim() != currentNote.title.trim()) {
+                        titleValue = androidx.compose.ui.text.input.TextFieldValue(currentNote.title, androidx.compose.ui.text.TextRange(currentNote.title.length))
+                    }
                     Box {
-                        if (currentNote.title.isEmpty()) Text("Title", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = InkFaint, letterSpacing = (-0.6).sp)
+                        if (titleValue.text.isEmpty()) Text("Title", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = InkFaint, letterSpacing = (-0.6).sp)
                         BasicTextField(
-                            value = currentNote.title,
-                            onValueChange = { viewModel.setTitle(it.replace("\n", "")) },
+                            value = titleValue,
+                            onValueChange = { next ->
+                                val clean = if ('\n' in next.text) next.copy(text = next.text.replace("\n", "")) else next
+                                val changed = clean.text != titleValue.text
+                                titleValue = clean
+                                if (changed) viewModel.setTitle(clean.text)
+                            },
                             textStyle = TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold, color = Ink, letterSpacing = (-0.6).sp),
                             cursorBrush = SolidColor(Accent),
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),

@@ -56,7 +56,7 @@ class UnconfiguredModelDownloader : ModelDownloader {
  * anything "installed").
  */
 class OkHttpModelDownloader(
-    private val client: OkHttpClient = OkHttpClient.Builder()
+    private val client: OkHttpClient = com.example.core.net.Net.base.newBuilder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .build(),

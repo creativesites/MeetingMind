@@ -118,18 +118,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _keyCheck.value = null
         val router = com.example.ai.routing.DefaultAiModelRouter
         suspend fun <T> limited(ms: Long, block: suspend () -> T): T? = kotlinx.coroutines.withTimeoutOrNull(ms) { block() }
-        val transcription = async { limited(15_000) { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { GeminiKeyProbe.model(key, router.GEMINI_TRANSCRIBE_MODEL) } } ?: "No answer within 15 seconds." }
+        launch(kotlinx.coroutines.Dispatchers.IO) { com.example.ai.cloud.GeminiLog.attach(getApplication()); com.example.ai.cloud.GeminiLog.add(GeminiKeyProbe.network()) }
+        val transcription = async { limited(25_000) { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { GeminiKeyProbe.model(key, router.GEMINI_TRANSCRIBE_MODEL) } } ?: "No answer within 25 seconds." }
         val text = async {
-            limited(20_000) {
+            limited(30_000) {
                 val transport = com.example.ai.cloud.GeminiHttpTransport(geminiCredentials)
-                when (val r = transport.execute(com.example.ai.cloud.GeminiRequest(router.GEMINI_INTELLIGENCE_MODEL, "", "Reply with the single word OK.", timeoutMs = 18_000L))) {
+                when (val r = transport.execute(com.example.ai.cloud.GeminiRequest(router.GEMINI_INTELLIGENCE_MODEL, "", "Reply with the single word OK.", timeoutMs = 25_000L))) {
                     is com.example.ai.common.AiResult.Success -> null
                     is com.example.ai.common.AiResult.Failed -> r.message
                     else -> "No answer."
                 }
-            } ?: "No answer within 20 seconds."
+            } ?: "No answer within 30 seconds."
         }
-        val live = async { limited(20_000) { runCatching { com.example.ai.live.GeminiLiveVoice.probe(key, timeoutMs = 15_000L) }.getOrElse { it.message ?: "Failed." } } ?: "No answer within 20 seconds." }
+        val live = async { limited(28_000) { runCatching { com.example.ai.live.GeminiLiveVoice.probe(key, timeoutMs = 22_000L) }.getOrElse { it.message ?: "Failed." } } ?: "No answer within 28 seconds." }
         try {
             com.example.ai.cloud.GeminiLog.attach(getApplication())
             _keyCheck.value = listOf(
@@ -871,7 +872,7 @@ private fun GeminiKeyCheck(result: List<Pair<String, String?>>?, checking: Boole
             else TextButton(onClick = onCheck, modifier = Modifier.testTag("settings_gemini_check_btn")) { Text(if (result == null) "Check" else "Check again") }
         }
         Text(
-            if (checking) "Checking transcription, writing and live voice together… (up to 20 seconds)" else "Tries transcription, writing and live voice with your key, so you know what works.",
+            if (checking) "Checking transcription, writing and live voice together… (up to 30 seconds)" else "Tries transcription, writing and live voice with your key, so you know what works.",
             fontSize = 12.5.sp, color = InkMuted
         )
         result?.forEach { (what, problem) ->
@@ -970,17 +971,37 @@ private fun GeminiApiKeyRow(
 
 /** Quick reachability checks against Gemini, for the key check in Settings. */
 internal object GeminiKeyProbe {
-    private val client = okhttp3.OkHttpClient.Builder()
+    private val client = com.example.core.net.Net.base.newBuilder()
         .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
         .build()
+
+    /**
+     * Which routes to Gemini work from this phone, for the log: how many IPv4 and IPv6 addresses
+     * the name resolves to, and whether a connection to each kind opens within a few seconds.
+     */
+    fun network(): String {
+        val host = "generativelanguage.googleapis.com"
+        val addresses = runCatching { java.net.InetAddress.getAllByName(host).toList() }.getOrElse { return "DNS failed for $host: ${it.message}" }
+        fun tryOne(a: java.net.InetAddress?): String {
+            if (a == null) return "none"
+            val start = System.currentTimeMillis()
+            return runCatching {
+                java.net.Socket().use { it.connect(java.net.InetSocketAddress(a, 443), 4_000) }
+                "connects in ${System.currentTimeMillis() - start}ms"
+            }.getOrElse { "fails (${it.javaClass.simpleName} after ${System.currentTimeMillis() - start}ms)" }
+        }
+        val v4 = addresses.filterIsInstance<java.net.Inet4Address>()
+        val v6 = addresses.filterIsInstance<java.net.Inet6Address>()
+        return "Network: ${v4.size} IPv4 → ${tryOne(v4.firstOrNull())}; ${v6.size} IPv6 → ${tryOne(v6.firstOrNull())}"
+    }
 
     /** Null when [model] exists and this key may use it; otherwise why not, in words. */
     fun model(key: String, model: String): String? {
         val request = okhttp3.Request.Builder()
             .url("${com.example.ai.cloud.GeminiHttpTransport.DEFAULT_BASE_URL}/v1beta/models/$model?key=$key").get().build()
         return runCatching {
-            client.newBuilder().callTimeout(12, java.util.concurrent.TimeUnit.SECONDS).build().newCall(request).execute().use { r ->
+            client.newBuilder().callTimeout(20, java.util.concurrent.TimeUnit.SECONDS).build().newCall(request).execute().use { r ->
                 when {
                     r.isSuccessful -> null
                     r.code == 404 -> "The model $model isn't available to this key."
@@ -989,6 +1010,6 @@ internal object GeminiKeyProbe {
                     else -> "Gemini answered HTTP ${r.code}."
                 }
             }
-        }.getOrElse { "Couldn't reach Gemini: ${it.message ?: "no connection"}" }
+        }.getOrElse { "Couldn't reach Gemini (${it.javaClass.simpleName}): ${it.message ?: "no connection"}" }
     }
 }

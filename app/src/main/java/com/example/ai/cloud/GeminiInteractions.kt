@@ -53,7 +53,7 @@ class GeminiInteractions(
     }
 
     companion object {
-        fun mediaClient(): OkHttpClient = OkHttpClient.Builder()
+        fun mediaClient(): OkHttpClient = com.example.core.net.Net.base.newBuilder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(180, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)

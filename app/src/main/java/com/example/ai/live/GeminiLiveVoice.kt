@@ -62,7 +62,7 @@ class GeminiLiveVoice(
     private val context: android.content.Context? = null,
     // No WebSocket pings: the Live endpoint doesn't answer them, and OkHttp would drop the
     // conversation after one missed pong. A setup timeout guards the start instead.
-    private val client: OkHttpClient = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).connectTimeout(15, TimeUnit.SECONDS).build()
+    private val client: OkHttpClient = com.example.core.net.Net.base.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).connectTimeout(15, TimeUnit.SECONDS).build()
 ) {
     companion object {
         const val MODEL = "gemini-3.8-live"
@@ -79,7 +79,7 @@ class GeminiLiveVoice(
          */
         suspend fun probe(apiKey: String, model: String = MODEL, timeoutMs: Long = 20_000L): String? {
             val result = kotlinx.coroutines.CompletableDeferred<String?>()
-            val client = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).connectTimeout(15, TimeUnit.SECONDS).build()
+            val client = com.example.core.net.Net.base.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).connectTimeout(15, TimeUnit.SECONDS).build()
             var opened = false
             val ws = client.newWebSocket(Request.Builder().url("$URL?key=${apiKey.trim()}").build(), object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {

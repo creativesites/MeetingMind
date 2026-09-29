@@ -134,6 +134,39 @@ class NotesUiTest {
     }
 
     @Test
+    fun a_space_typed_in_the_title_after_a_pause_stays() {
+        val id = runBlocking { notes.createNote(title = "", draft = true).id }
+        val vm = NoteEditorViewModel(app, id)
+        compose.setContent {
+            MeetMindTheme {
+                NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
+            }
+        }
+        compose.waitUntil(5_000) { vm.loaded.value }
+        fun pause() {
+            // Longer than the autosave delay, so each save lands between keystrokes.
+            repeat(8) {
+                org.robolectric.shadows.ShadowLooper.idleMainLooper(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                Thread.sleep(60)
+                compose.waitForIdle()
+            }
+        }
+        val title = compose.onNode(hasSetTextAction() and hasText("Title", substring = true).not(), useUnmergedTree = true).let {
+            compose.onAllNodes(hasSetTextAction())[0]
+        }
+        title.performClick()
+        title.performTextInput("Hello")
+        pause()
+        title.performTextInput(" ")
+        pause()
+        title.performTextInput("world")
+        pause()
+        assertEquals("Hello world", vm.note.value?.title)
+        runBlocking { vm.flush() }
+        assertEquals("Hello world", runBlocking { notes.getNote(id)?.title })
+    }
+
+    @Test
     fun library_lists_notes_and_notebooks() {
         sampleNote()
         runBlocking {

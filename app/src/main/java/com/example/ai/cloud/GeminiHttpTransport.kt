@@ -479,7 +479,7 @@ class GeminiHttpTransport(
         internal var RETRY_DELAY_MS = 2_000L
 
         /** Generous timeouts: a meeting chunk is a large upload and transcription is not fast. */
-        fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
+        fun defaultClient(): OkHttpClient = com.example.core.net.Net.base.newBuilder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(5, TimeUnit.MINUTES)
             .readTimeout(5, TimeUnit.MINUTES)

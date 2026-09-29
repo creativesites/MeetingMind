@@ -233,7 +233,7 @@ class YouVersionScriptureProvider(
 
 /** The real HTTP client. */
 class OkHttpYouVersion(private val appKey: String) : YouVersionHttp {
-    private val client = OkHttpClient.Builder()
+    private val client = com.example.core.net.Net.base.newBuilder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
