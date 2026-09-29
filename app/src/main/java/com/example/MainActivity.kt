@@ -640,6 +640,7 @@ fun MeetMindApp() {
                 onOpenRecording = { meetingId, startAtMs -> navController.navigate(Routes.meetingDetailRoute(meetingId, startAtMs)) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onRecordHere = { navController.navigate(Routes.recordIntoNoteRoute(it)) },
+                onOpenTasks = { navController.navigate(Routes.TASKS) },
                 startWithMediaPicker = media
             )
         }

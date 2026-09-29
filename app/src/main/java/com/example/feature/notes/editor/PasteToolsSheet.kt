@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.CircularProgressIndicator
@@ -61,7 +60,7 @@ internal fun MarkdownFooter(block: NoteBlock, canStepBack: Boolean, onTools: () 
     Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         block.payload[NoteBlock.PAYLOAD_PASTE_SOURCE]?.let { Text("From $it", fontSize = 12.sp, color = InkMuted) }
         Row(Modifier.clip(RoundedCornerShape(50)).background(AccentWash).clickable(onClick = onTools).padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Accent, modifier = Modifier.size(14.dp))
+            Icon(com.example.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(5.dp))
             Text("AI tools", fontSize = 12.5.sp, color = Accent, fontWeight = FontWeight.SemiBold)
         }
@@ -89,7 +88,7 @@ internal fun PasteToolsSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding().verticalScroll(rememberScrollState())) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Accent, modifier = Modifier.size(20.dp))
+                Icon(com.example.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(state.tool?.label ?: "AI tools", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
             }

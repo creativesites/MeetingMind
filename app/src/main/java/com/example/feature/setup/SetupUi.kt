@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Groups
@@ -92,7 +91,7 @@ class SetupViewModel(app: Application) : AndroidViewModel(app) {
 fun SetupPart.icon(): ImageVector = when (this) {
     SetupPart.HEAR -> Icons.Filled.GraphicEq
     SetupPart.SPEAKERS -> Icons.Filled.Groups
-    SetupPart.THINK -> Icons.Filled.AutoAwesome
+    SetupPart.THINK -> com.example.ui.icons.AiMark
 }
 
 /**

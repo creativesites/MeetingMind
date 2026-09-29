@@ -48,17 +48,22 @@ object NoteAiApply {
     fun organized(blocks: List<NoteBlock>, noteId: String, result: NoteAiOutcome.Sections): List<NoteBlock> {
         if (result.sections.isEmpty()) return blocks
         val headings = setOf(NoteBlockType.HEADING_1, NoteBlockType.HEADING_2, NoteBlockType.HEADING_3)
-        val fixed = blocks.filter { !it.type.isText }
+        // A summary or action list already generated is the person's to keep: it stays whole, in
+        // place — heading and items — and is never handed to be reorganised.
+        val summary = blocks.filter { it.sectionKey == SUMMARY_KEY }
+        val actions = blocks.filter { it.sectionKey == ACTIONS_KEY }
+        val pinned = (summary + actions).toSet()
+        val fixed = blocks.filter { !it.type.isText && it !in pinned }
         // Kept: every text block the sections don't cite — including any the model never saw.
         val used = result.sections.flatMap { s -> s.items.flatMap { it.sourceIds } }.toSet()
-        val kept = blocks.filter { it.type.isText && it.type !in headings && it.id !in used && !it.content.isEmpty }
+        val kept = blocks.filter { it !in pinned && it.type.isText && it.type !in headings && it.id !in used && !it.content.isEmpty }
         val sections = result.sections.flatMap { s ->
             listOf(heading(noteId, s.title, s.key).copy(source = BlockSource.USER)) + s.items.map { item ->
                 NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.PARAGRAPH, RichText.plain(item.text), source = BlockSource.USER, sectionKey = s.key)
             }
         }
         val other = if (kept.isEmpty()) emptyList() else listOf(heading(noteId, "Other notes", "other").copy(source = BlockSource.USER)) + kept
-        return fixed + sections + other + NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.PARAGRAPH)
+        return summary + fixed + sections + other + actions + NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.PARAGRAPH)
     }
 
     private fun itemText(a: CitedItem) = a.detail?.let { "${a.text} — $it" } ?: a.text

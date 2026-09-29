@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -208,7 +207,7 @@ fun NotesScreen(
                     }
                     currentNotebook?.let { nb ->
                         Spacer(Modifier.width(8.dp))
-                        CircleAction(Icons.Filled.AutoAwesome, "AI for this notebook") { showAiMenu = true }
+                        CircleAction(com.example.ui.icons.AiMark, "AI for this notebook") { showAiMenu = true }
                         Spacer(Modifier.width(8.dp))
                         CircleAction(Icons.Filled.MoreVert, "Notebook options") { notebookMenu = nb }
                     }

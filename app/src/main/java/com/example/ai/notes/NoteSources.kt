@@ -19,6 +19,7 @@ object NoteSources {
         var section: String? = null
         return buildList {
             for (b in com.example.core.notes.MarkdownImport.expand(blocks)) {
+                if (b.sectionKey == NoteAiApply.SUMMARY_KEY || b.sectionKey == NoteAiApply.ACTIONS_KEY) continue
                 if (b.type in HEADINGS) { section = b.content.text.trim().ifEmpty { null }; continue }
                 if (!b.type.isText && b.type != NoteBlockType.SCRIPTURE) continue
                 val text = b.content.text.trim()

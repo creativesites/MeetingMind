@@ -25,8 +25,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.QuestionAnswer
@@ -159,7 +160,7 @@ fun NoteAiResultSheet(
     ModalBottomSheet(onDismissRequest = onClose, containerColor = SurfaceBase) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 16.dp).navigationBarsPadding()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Accent, modifier = Modifier.size(18.dp))
+                Icon(com.example.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(18.dp))
                 Text(
                     if (job.tool == NoteAiTool.ASK) job.question ?: "Ask" else job.tool.label,
                     fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -288,21 +289,23 @@ private fun SectionsResult(o: NoteAiOutcome.Sections, sources: Map<String, Sourc
     }
 }
 
-/** "From: Sunday service · Key points" chips under an item; tap to see or open the passage. */
+/** One quiet line under an item — "Sunday service · Key points +2" — that opens the passages it came from. */
 @Composable
 private fun Citations(ids: List<String>, sources: Map<String, SourcePassage>, onShowSource: (SourcePassage) -> Unit) {
-    var open by remember { mutableStateOf<String?>(null) }
-    val cited = ids.mapNotNull { sources[it] }
+    var open by remember { mutableStateOf(false) }
+    val cited = ids.mapNotNull { sources[it] }.distinctBy { it.id }
     if (cited.isEmpty()) return
-    Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        cited.take(3).forEachIndexed { i, p ->
-            Surface(onClick = { open = if (open == p.id) null else p.id }, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line)) {
-                Text(if (cited.size == 1) p.label.substringAfter(" · ", p.label) else "${i + 1}", fontSize = 11.sp, color = InkSecondary, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
-            }
-        }
+    Row(
+        Modifier.padding(top = 4.dp).clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(if (open) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null, tint = InkMuted, modifier = Modifier.size(15.dp))
+        Text(
+            cited.first().label.ifBlank { "Source" } + if (cited.size > 1) "  +${cited.size - 1}" else "",
+            fontSize = 12.sp, color = InkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 2.dp)
+        )
     }
-    open?.let { id -> sources[id]?.let { SourceRow(it, onShowSource) } }
+    if (open) cited.forEach { SourceRow(it, onShowSource) }
 }
 
 @Composable

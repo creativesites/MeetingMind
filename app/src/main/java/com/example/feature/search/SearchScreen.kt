@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.ui.graphics.Brush
 import com.example.ui.theme.AccentWash
@@ -386,9 +385,9 @@ private fun AskChip(busy: Boolean, onClick: () -> Unit) {
             .clickable(enabled = !busy, onClick = onClick).padding(horizontal = 14.dp, vertical = 7.dp).testTag("search_ask"),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Filled.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(15.dp))
+        Icon(com.example.ui.icons.AiMark, null, tint = com.example.ui.theme.OnAccent, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(6.dp))
-        Text("Ask", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text("Ask", color = com.example.ui.theme.OnAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -398,7 +397,7 @@ private fun AskThinking() {
     val a by t.animateFloat(0.35f, 1f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "pulse")
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).clip(RoundedCornerShape(18.dp)).background(AccentWash).padding(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.AutoAwesome, null, tint = Accent.copy(alpha = a), modifier = Modifier.size(18.dp))
+            Icon(com.example.ui.icons.AiMark, null, tint = Accent.copy(alpha = a), modifier = Modifier.size(18.dp))
             Text("Looking through your notes and recordings…", fontSize = 14.sp, color = InkSecondary, modifier = Modifier.padding(start = 10.dp))
         }
         listOf(0.9f, 0.75f, 0.55f).forEach { w ->
@@ -427,7 +426,7 @@ private fun AnswerCard(a: AskState.Answered, onClose: () -> Unit, onOpen: (com.e
             .border(1.dp, LineSoft, RoundedCornerShape(18.dp)).padding(18.dp).testTag("search_answer")
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.AutoAwesome, null, tint = Accent, modifier = Modifier.size(16.dp))
+            Icon(com.example.ui.icons.AiMark, null, tint = Accent, modifier = Modifier.size(16.dp))
             Text("Answer", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp, color = Accent, modifier = Modifier.padding(start = 8.dp).weight(1f))
             IconButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(a.answer.text)) }, modifier = Modifier.size(30.dp)) {
                 Icon(Icons.Filled.ContentCopy, "Copy", tint = InkMuted, modifier = Modifier.size(16.dp))

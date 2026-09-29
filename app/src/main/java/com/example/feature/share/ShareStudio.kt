@@ -32,9 +32,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FormatAlignCenter
 import androidx.compose.material.icons.filled.FormatAlignLeft
@@ -172,7 +172,7 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
                     ShareFormat.entries.forEach { f -> Chip(f.label, style.format == f) { style = style.copy(format = f) } }
                 }
                 LazyRow(Modifier.padding(top = 12.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    item { ActionTile(Icons.Filled.AutoAwesome, if (generating) "Making…" else "New picture", Gold, busy = generating) { showStyles = !showStyles } }
+                    item { ActionTile(Icons.Filled.Star, if (generating) "Making…" else "New picture", Gold, busy = generating) { showStyles = !showStyles } }
                     item { ActionTile(Icons.Filled.AddPhotoAlternate, "Add photo", Color(0xFF475569)) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } }
                     item { ActionTile(Icons.Filled.GridView, "All", Color(0xFF475569)) { showLibrary = true } }
                     items(generated) { path -> PhotoTile(path, (style.background as? BackgroundSpec.Photo)?.path == path) { style = style.copy(background = BackgroundSpec.Photo(path)) } }

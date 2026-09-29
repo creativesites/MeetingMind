@@ -796,29 +796,72 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         versionId: Int? = null
     ) {
         if (references.isEmpty()) return
-        val now = System.currentTimeMillis()
         val made = references.map { reference ->
-            val blockId = NoteRepository.newId("block")
-            val refId = NoteRepository.newId("scripture")
-            val payload = buildMap {
-                put(NoteBlock.PAYLOAD_SCRIPTURE_REF_ID, refId)
-                put("reference", reference.display())
-                if (userText != null && references.size == 1) {
-                    put(NoteBlock.PAYLOAD_USER_TEXT, userText)
-                    userLabel?.let { put(NoteBlock.PAYLOAD_USER_LABEL, it) }
-                }
-            }
-            val block = NoteBlock(
-                id = blockId, noteId = noteId, position = 0, type = NoteBlockType.SCRIPTURE,
-                content = RichText.plain(reference.display()), payload = payload, source = BlockSource.SCRIPTURE
-            )
-            block to com.example.core.model.ScriptureRef(
-                refId, noteId, blockId, reference.usfm, reference.chapter, reference.verseStart, reference.verseEnd,
-                versionId, com.example.core.model.ScriptureOrigin.USER, createdAt = now
-            )
+            scriptureBlock(reference, userText.takeIf { references.size == 1 }, userLabel, versionId)
         }
         insert(made.map { it.first })
         viewModelScope.launch { notes.addScriptureRefs(made.map { it.second }) }
+    }
+
+    // ------------------------------------------------------------ assistant
+
+    val assistant by lazy { com.example.feature.assistant.AssistantSession(getApplication(), viewModelScope, noteId, assistantBridge) }
+
+    /** The assistant's hands in this note: every change goes through [update], so it undoes like typing. */
+    val assistantBridge = object : com.example.feature.assistant.EditorBridge {
+        override val noteId: String get() = this@NoteEditorViewModel.noteId
+        override fun blocks(): List<NoteBlock> = _blocks.value
+
+        override fun insert(afterId: String?, blocks: List<NoteBlock>): List<String> {
+            val list = _blocks.value.toMutableList()
+            val after = afterId?.let { id -> list.indexOfFirst { it.id == id }.takeIf { it >= 0 } }
+            // At the end, but before a trailing empty line the person left for typing.
+            val at = if (afterId == com.example.feature.assistant.AppAssistantHost.FIRST) 0 else after?.plus(1) ?: list.indexOfLast { !(it.type == NoteBlockType.PARAGRAPH && it.content.isEmpty) }.plus(1)
+            list.addAll(at.coerceIn(0, list.size), blocks.map { it.copy(noteId = noteId) })
+            update(list)
+            return blocks.map { it.id }
+        }
+
+        override fun remove(ids: Set<String>): List<Pair<Int, NoteBlock>> {
+            val removed = _blocks.value.withIndex().filter { it.value.id in ids }.map { it.index to it.value }
+            if (removed.isNotEmpty()) update(_blocks.value.filterNot { it.id in ids })
+            return removed
+        }
+
+        override fun restore(removed: List<Pair<Int, NoteBlock>>, dropIds: Set<String>) {
+            val list = _blocks.value.filterNot { it.id in dropIds }.toMutableList()
+            removed.sortedBy { it.first }.forEach { (i, b) -> list.add(i.coerceIn(0, list.size), b) }
+            update(list)
+        }
+
+        override fun scripture(reference: com.example.core.scripture.ScriptureReference): NoteBlock {
+            val (block, ref) = scriptureBlock(reference, null, null, null)
+            viewModelScope.launch { notes.addScriptureRefs(listOf(ref)) }
+            return block
+        }
+    }
+
+    private fun scriptureBlock(
+        reference: com.example.core.scripture.ScriptureReference, userText: String?, userLabel: String?, versionId: Int?
+    ): Pair<NoteBlock, com.example.core.model.ScriptureRef> {
+        val blockId = NoteRepository.newId("block")
+        val refId = NoteRepository.newId("scripture")
+        val payload = buildMap {
+            put(NoteBlock.PAYLOAD_SCRIPTURE_REF_ID, refId)
+            put("reference", reference.display())
+            if (userText != null) {
+                put(NoteBlock.PAYLOAD_USER_TEXT, userText)
+                userLabel?.let { put(NoteBlock.PAYLOAD_USER_LABEL, it) }
+            }
+        }
+        val block = NoteBlock(
+            id = blockId, noteId = noteId, position = 0, type = NoteBlockType.SCRIPTURE,
+            content = RichText.plain(reference.display()), payload = payload, source = BlockSource.SCRIPTURE
+        )
+        return block to com.example.core.model.ScriptureRef(
+            refId, noteId, blockId, reference.usfm, reference.chapter, reference.verseStart, reference.verseEnd,
+            versionId, com.example.core.model.ScriptureOrigin.USER, createdAt = System.currentTimeMillis()
+        )
     }
 
     fun insertNoteLink(target: Note) {

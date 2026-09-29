@@ -23,7 +23,6 @@ import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.FormatBold
@@ -97,7 +96,7 @@ internal fun FormattingToolbar(
                     Spacer(Modifier.width(4.dp))
                     Surface(onClick = onAiEdit, shape = RoundedCornerShape(10.dp), color = AccentWash, modifier = Modifier.size(38.dp)) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Filled.AutoAwesome, contentDescription = "Edit with AI", tint = Accent, modifier = Modifier.size(20.dp))
+                            Icon(com.example.ui.icons.AiMark, contentDescription = "Edit with AI", tint = Accent, modifier = Modifier.size(20.dp))
                         }
                     }
                     ToolButton(Icons.Filled.FormatBold, "Bold", isActive(InlineStyle.BOLD)) { onInline(InlineStyle.BOLD) }

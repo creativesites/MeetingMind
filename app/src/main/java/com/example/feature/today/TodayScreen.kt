@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ChevronRight
@@ -49,7 +50,6 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FormatQuote
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.WbSunny
@@ -586,7 +586,7 @@ private fun storyIcon(kind: com.example.feature.stories.StoryKind): ImageVector 
     com.example.feature.stories.StoryKind.VERSE -> Icons.Filled.MenuBook
     com.example.feature.stories.StoryKind.DEVOTIONAL -> Icons.Filled.WbSunny
     com.example.feature.stories.StoryKind.PRAYER -> Icons.Filled.VolunteerActivism
-    com.example.feature.stories.StoryKind.WORD -> Icons.Filled.AutoAwesome
+    com.example.feature.stories.StoryKind.WORD -> Icons.Filled.Star
     com.example.feature.stories.StoryKind.QUOTE -> Icons.Filled.FormatQuote
     com.example.feature.stories.StoryKind.DAY -> Icons.Filled.Event
     com.example.feature.stories.StoryKind.READING -> Icons.Filled.MenuBook

@@ -31,9 +31,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Church
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Favorite
@@ -102,7 +102,7 @@ fun faithIcon(type: RecordingType): ImageVector = when (type) {
     RecordingType.DEVOTIONAL -> Icons.Filled.WbSunny
     RecordingType.PRAYER -> Icons.Filled.VolunteerActivism
     RecordingType.PRAYER_REQUEST -> Icons.Filled.Favorite
-    RecordingType.TESTIMONY -> Icons.Filled.AutoAwesome
+    RecordingType.TESTIMONY -> Icons.Filled.Star
     RecordingType.GRATITUDE -> Icons.Filled.EmojiEmotions
     RecordingType.REFLECTION -> Icons.Filled.SelfImprovement
     else -> Icons.Filled.MenuBook
@@ -128,6 +128,11 @@ fun FaithScreen(
     onOpenTasks: () -> Unit = {}
 ) {
     var studyPicker by remember { mutableStateOf(false) }
+    var assistantOpen by remember { mutableStateOf(false) }
+    if (assistantOpen) {
+        val lib: com.example.feature.assistant.LibraryAssistantViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+        com.example.feature.assistant.AssistantSheet(lib.faith, onOpenNote = { assistantOpen = false; onOpenNote(it) }, onOpenTasks = { assistantOpen = false; onOpenTasks() }, onDismiss = { assistantOpen = false })
+    }
     if (studyPicker) com.example.feature.study.StudyTemplateSheet(null, onPick = { t -> studyPicker = false; viewModel.startStudy(t, onOpenNote) }, onDismiss = { studyPicker = false })
     val extras: FaithExtrasViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     androidx.compose.runtime.LaunchedEffect(Unit) { extras.refresh() }
@@ -150,9 +155,12 @@ fun FaithScreen(
             item {
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 20.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink) }
-                    Column {
+                    Column(Modifier.weight(1f)) {
                         Text("Faith", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif, color = Ink)
                         Text("Sermons, prayer and your walk, in one place", fontSize = 13.sp, color = InkMuted)
+                    }
+                    IconButton(onClick = { assistantOpen = true }, modifier = Modifier.testTag("faith_assistant")) {
+                        Icon(com.example.ui.icons.AiMark, contentDescription = "Ask the assistant", tint = Ink)
                     }
                 }
             }

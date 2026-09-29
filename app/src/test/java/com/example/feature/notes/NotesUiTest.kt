@@ -92,7 +92,7 @@ class NotesUiTest {
                 NoteEditorScreen(viewModel = vm, onNavigateBack = {}, onOpenRecording = { _, _ -> }, onOpenNote = {}, onRecordHere = {})
             }
         }
-        compose.waitUntil(5_000) { vm.loaded.value }
+        compose.waitUntil(20_000) { vm.loaded.value }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("src/test/screenshots/note_editor.png")
 

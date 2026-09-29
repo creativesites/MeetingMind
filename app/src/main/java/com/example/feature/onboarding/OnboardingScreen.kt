@@ -42,7 +42,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Cloud
@@ -266,7 +265,7 @@ private fun Welcome() {
         Row(Modifier.padding(top = 36.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Pill(Icons.Filled.Lock, "Private")
             Pill(Icons.Filled.PhoneAndroid, "Works offline")
-            Pill(Icons.Filled.AutoAwesome, "AI notes")
+            Pill(com.example.ui.icons.AiMark, "AI notes")
         }
     }
 }
@@ -290,7 +289,7 @@ private fun StepTitle(title: String, line: String) {
 private fun WhatItDoes() {
     StepTitle("Here's what it does", "Press record. MeetingMind listens, writes it all down, and hands you what matters.")
     Feature(Icons.Filled.Mic, "Record anything", "Meetings, lectures, sermons, calls, voice notes — even with the screen off.")
-    Feature(Icons.Filled.AutoAwesome, "Transcripts and summaries", "Who said what, the decisions, the action items. Ask questions about any recording.")
+    Feature(com.example.ui.icons.AiMark, "Transcripts and summaries", "Who said what, the decisions, the action items. Ask questions about any recording.")
     Feature(Icons.Filled.EditNote, "Notes that connect", "Write, add photos and scripture. Recordings become notes you can share or export.")
     Feature(Icons.Filled.CalendarMonth, "Your day at a glance", "Today shows what's next, preps you for meetings and keeps everything on a timeline.")
 }

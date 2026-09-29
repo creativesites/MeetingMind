@@ -92,6 +92,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -101,8 +102,8 @@ import java.time.format.DateTimeFormatter
 
 class TasksViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = TaskReminders.repository(app)
-    val tasks: StateFlow<List<Task>> = repo.observeTasks().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    val people: StateFlow<List<Person>> = repo.observePeople().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val tasks: StateFlow<List<Task>> = repo.observeTasks().catch { emit(emptyList()) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val people: StateFlow<List<Person>> = repo.observePeople().catch { emit(emptyList()) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     /** The last deleted task, for Undo. */
     val lastDeleted = MutableStateFlow<Task?>(null)
 
@@ -271,7 +272,7 @@ fun describeDue(ms: Long, today: LocalDate = LocalDate.now()): String {
 private fun kindColor(kind: TaskKind): Color = when (kind) {
     TaskKind.TASK -> Accent
     TaskKind.APPLY -> FaithGold
-    TaskKind.PRAYER -> Color(0xFFDB2777)
+    TaskKind.PRAYER -> Danger
     TaskKind.FOLLOW_UP -> Success
 }
 

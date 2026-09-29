@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
@@ -76,7 +75,7 @@ fun MeetingOptionsSheet(
 
             OptionRow(icon = Icons.Default.Edit, label = "Edit Title", onClick = { onDismiss(); onEditTitle() })
             OptionRow(
-                icon = Icons.Default.AutoAwesome,
+                icon = com.example.ui.icons.AiMark,
                 label = "Re-clean Transcript",
                 enabled = reCleanEnabled,
                 onClick = { onDismiss(); onReCleanTranscript() }

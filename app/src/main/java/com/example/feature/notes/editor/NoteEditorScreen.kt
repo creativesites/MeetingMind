@@ -5,7 +5,6 @@ import com.example.ui.theme.forTheme
 import com.example.ui.theme.OnInk
 import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.platform.testTag
@@ -133,7 +132,8 @@ fun NoteEditorScreen(
     onRecordHere: (noteId: String) -> Unit,
     /** Opens straight into the photo picker, for "New → Photo or video". */
     startWithMediaPicker: Boolean = false,
-    onShareCard: (com.example.feature.share.ShareRequest) -> Unit = {}
+    onShareCard: (com.example.feature.share.ShareRequest) -> Unit = {},
+    onOpenTasks: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -196,6 +196,7 @@ fun NoteEditorScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     var showVersions by remember { mutableStateOf(false) }
     var blockMenuFor by remember { mutableStateOf<NoteBlock?>(null) }
+    var showAssistant by remember { mutableStateOf(false) }
     var taskDraft by remember { mutableStateOf<com.example.core.tasks.Task?>(null) }
     var exporting by remember { mutableStateOf(false) }
     var pendingExport by remember { mutableStateOf<Pair<ExportFormat, Boolean>?>(null) }
@@ -326,7 +327,8 @@ fun NoteEditorScreen(
                             showMenu = false
                             coverPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
                         })
-                        DropdownMenuItem(text = { Text("AI tools") }, leadingIcon = { Icon(Icons.Filled.AutoAwesome, null, tint = Accent) }, onClick = { showMenu = false; showAiMenu = true })
+                        DropdownMenuItem(text = { Text("Assistant") }, leadingIcon = { Icon(com.example.ui.icons.AiMark, null, tint = Accent) }, onClick = { showMenu = false; showAssistant = true })
+                        DropdownMenuItem(text = { Text("AI tools") }, leadingIcon = { Icon(com.example.ui.icons.AiMark, null, tint = Accent) }, onClick = { showMenu = false; showAiMenu = true })
                         DropdownMenuItem(text = { Text("Share as a picture") }, leadingIcon = { Icon(Icons.Filled.Image, null) }, onClick = {
                             showMenu = false
                             note?.let { n ->
@@ -472,7 +474,7 @@ fun NoteEditorScreen(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 10.dp).testTag("note_ai_banner")
                     ) {
                         Row(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Accent, modifier = Modifier.size(17.dp))
+                            Icon(com.example.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(17.dp))
                             Text(
                                 when {
                                     working -> "${job.tool.label}: working…"
@@ -770,6 +772,9 @@ fun NoteEditorScreen(
             }) else null
         )
     }
+    if (showAssistant) com.example.feature.assistant.AssistantSheet(
+        viewModel.assistant, onOpenNote = { showAssistant = false; onOpenNote(it) }, onOpenTasks = { showAssistant = false; onOpenTasks() }, onDismiss = { showAssistant = false }
+    )
     taskDraft?.let { t ->
         val people by viewModel.people.collectAsState()
         com.example.feature.tasks.TaskEditorSheet(
