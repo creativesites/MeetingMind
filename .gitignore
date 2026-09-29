@@ -25,3 +25,6 @@ local.properties
 
 # The committed development signing key (only signs the .dev app) is allowed.
 !app/dev-debug.keystore
+
+# Release signing material and API keys — never committed
+release-secrets/
