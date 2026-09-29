@@ -165,6 +165,13 @@ fun MeetMindApp() {
     LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
     // People is built from history, once, after the work schema arrives (PLAN_PROFESSIONAL.md §5.1).
     LaunchedEffect(Unit) { com.example.core.work.WorkStartup.run(context) }
+    // The fourth tab is Search or Work, as the person chose (PLAN_PROFESSIONAL.md §7.4).
+    LaunchedEffect(Unit) {
+        prefsManager.workSettings.collect { ws ->
+            com.example.core.ui.FourthTab.state.value =
+                if (ws.tabSlot == com.example.core.work.TabSlot.WORK) com.example.core.ui.BottomNavDestination.WORK else com.example.core.ui.BottomNavDestination.SEARCH
+        }
+    }
     val playbackState by PlaybackController.state.collectAsState()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
@@ -191,6 +198,7 @@ fun MeetMindApp() {
                 com.example.core.ui.BottomNavDestination.NOTES -> Routes.NOTES
                 com.example.core.ui.BottomNavDestination.SEARCH -> Routes.SEARCH
                 com.example.core.ui.BottomNavDestination.SETTINGS -> Routes.SETTINGS
+                com.example.core.ui.BottomNavDestination.WORK -> Routes.WORK
                 com.example.core.ui.BottomNavDestination.NEW -> Routes.HOME
             }
             navController.navigate(route) {
@@ -240,7 +248,7 @@ fun MeetMindApp() {
     }
 
     val activeProcessing = com.example.core.ui.rememberActiveProcessing()
-    val routesWithNav = setOf(Routes.HOME, Routes.NOTES, Routes.SEARCH, Routes.SETTINGS)
+    val routesWithNav = setOf(Routes.HOME, Routes.NOTES, Routes.SEARCH, Routes.SETTINGS, Routes.WORK)
     val onProcessingScreen = currentRoute == Routes.PROCESSING
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -561,8 +569,13 @@ fun MeetMindApp() {
                 durationMs = durationMs,
                 onNavigateBack = { navController.popBackStack() },
                 onProcessingComplete = { finishedMeetingId ->
-                    navController.navigate(Routes.meetingDetailRoute(finishedMeetingId)) {
-                        popUpTo(Routes.PROCESSING) { inclusive = true }
+                    // A work recording with findings opens its Wrap-up (PLAN_PROFESSIONAL.md §4.3);
+                    // anything else opens as before.
+                    recoveryScope.launch {
+                        val wrapUp = com.example.core.work.WrapUps.wanted(MeetMindDatabase.getInstance(context), finishedMeetingId)
+                        navController.navigate(if (wrapUp) Routes.wrapUpRoute(finishedMeetingId) else Routes.meetingDetailRoute(finishedMeetingId)) {
+                            popUpTo(Routes.PROCESSING) { inclusive = true }
+                        }
                     }
                 },
                 onNavigateToModels = { navController.navigate(Routes.MODELS) }
@@ -596,6 +609,50 @@ fun MeetMindApp() {
                     else navController.navigate(Routes.noteRoute(noteId))
                 }
             )
+        }
+
+        // WORK (docs/PLAN_PROFESSIONAL.md §7)
+        composable(Routes.WORK) {
+            val vm: com.example.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.example.feature.work.WorkScreen(
+                viewModel = vm,
+                onOpenPerson = { navController.navigate(Routes.personRoute(it)) },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenSettings = { navController.navigate(Routes.WORK_SETTINGS) },
+                bottomBar = { com.example.core.ui.AppBottomNavigationBar(current = com.example.core.ui.BottomNavDestination.WORK, onNavigate = navigateToPrimary) }
+            )
+        }
+        composable(Routes.PERSON, arguments = listOf(navArgument("personId") { type = NavType.StringType })) { entry ->
+            val vm: com.example.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.example.feature.work.PersonScreen(
+                viewModel = vm,
+                personId = entry.arguments?.getString("personId").orEmpty(),
+                onNavigateBack = { navController.popBackStack() },
+                onOpenPerson = { navController.navigate(Routes.personRoute(it)) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
+            )
+        }
+        composable(Routes.WRAP_UP, arguments = listOf(navArgument("meetingId") { type = NavType.StringType })) { entry ->
+            val meetingId = entry.arguments?.getString("meetingId").orEmpty()
+            val app = context.applicationContext as android.app.Application
+            val vm = remember(meetingId) { com.example.feature.work.WrapUpViewModel(app, meetingId) }
+            com.example.feature.work.WrapUpScreen(
+                viewModel = vm,
+                onNavigateBack = { navController.popBackStack() },
+                onDone = { noteId ->
+                    navController.navigate(noteId?.let { Routes.noteRoute(it) } ?: Routes.meetingDetailRoute(meetingId)) {
+                        popUpTo(Routes.WRAP_UP) { inclusive = true }
+                    }
+                },
+                onPlay = { at -> navController.navigate(Routes.meetingDetailRoute(meetingId, at)) },
+                onOpenPerson = { navController.navigate(Routes.personRoute(it)) }
+            )
+        }
+        composable(Routes.WORK_SETTINGS) {
+            val vm: com.example.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.example.feature.work.WorkSettingsScreen(vm, onNavigateBack = { navController.popBackStack() })
         }
 
         // SEARCH

@@ -174,7 +174,7 @@ class MeetingDetailViewModel(
         // with the local model behind it so a cloud failure still gets an answer. Offline never
         // reaches the cloud engine at all.
         val engine: com.example.ai.llm.MeetingIntelligenceEngine =
-            if (prefsNow.processingProfile == com.example.core.model.ProcessingProfile.INTERNET) {
+            if (com.example.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile) == com.example.core.model.ProcessingProfile.INTERNET) {
                 com.example.ai.llm.FallbackMeetingIntelligenceEngine(
                     primary = com.example.ai.cloud.GeminiIntelligenceEngine(
                         com.example.ai.cloud.GeminiHttpTransport(
@@ -215,7 +215,7 @@ class MeetingDetailViewModel(
             try {
                 val prefsNow = userPrefs.preferencesFlow.first()
                 val mode = prefsNow.transcriptCleanupMode
-                reprocessCleanupUseCase(meetingId, mode, processingProfile = prefsNow.processingProfile)
+                reprocessCleanupUseCase(meetingId, mode, processingProfile = com.example.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile))
                 onDone("Transcript re-cleaned (${mode.name.lowercase()} mode)")
             } catch (e: Exception) {
                 onDone("Re-clean failed: ${e.message ?: "unknown error"}")
@@ -261,7 +261,7 @@ class MeetingDetailViewModel(
                     cleanupMode = mode,
                     singleSpeakerMode = meetingNow.speakerCountPreference == 1,
                     onEngineUsed = { engineLabel = it },
-                    processingProfile = prefsNow.processingProfile
+                    processingProfile = com.example.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile)
                 )
                 val elapsed = System.currentTimeMillis() - start
                 // Only segments the tool actually proposes a real change for — a review screen

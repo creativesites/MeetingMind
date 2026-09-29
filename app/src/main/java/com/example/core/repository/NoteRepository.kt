@@ -506,10 +506,15 @@ class NoteRepository(
         name: String,
         space: NotebookSpace,
         colorHex: String? = null,
-        icon: String? = null
+        icon: String? = null,
+        isProject: Boolean = false,
+        confidential: Boolean = false
     ): Notebook = withContext(Dispatchers.IO) {
         val now = clock()
-        val notebook = Notebook(newId("notebook"), name.trim(), space, colorHex, icon, now, now)
+        val notebook = Notebook(
+            newId("notebook"), name.trim(), space, colorHex, icon, now, now, isProject = isProject,
+            propertiesJson = if (confidential) "{\"confidential\":true}" else "{}"
+        )
         notebookDao.upsert(notebook.toEntity())
         notebook
     }

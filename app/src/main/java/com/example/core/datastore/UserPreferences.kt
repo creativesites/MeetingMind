@@ -113,6 +113,20 @@ class UserPreferencesManager(private val context: Context) {
     private val GETTING_STARTED_DISMISSED = booleanPreferencesKey("getting_started_dismissed")
     private val DEVOTIONAL_PROFILE = stringPreferencesKey("devotional_profile")
 
+    private val WORK_SETTINGS = stringPreferencesKey("work_settings")
+
+    /** Work profile, words, rhythm, outputs and privacy (docs/PLAN_PROFESSIONAL.md §8). */
+    val workSettings: Flow<com.example.core.work.WorkSettings> =
+        context.dataStore.data.map { com.example.core.work.WorkSettings.fromJson(it[WORK_SETTINGS]) }
+
+    suspend fun setWorkSettings(settings: com.example.core.work.WorkSettings) {
+        context.dataStore.edit { it[WORK_SETTINGS] = settings.toJson() }
+    }
+
+    suspend fun updateWorkSettings(change: (com.example.core.work.WorkSettings) -> com.example.core.work.WorkSettings) {
+        context.dataStore.edit { it[WORK_SETTINGS] = change(com.example.core.work.WorkSettings.fromJson(it[WORK_SETTINGS])).toJson() }
+    }
+
     /** How the person wants their daily devotional (PLAN_V2 F2). */
     val devotionalProfile: Flow<com.example.core.devotional.DevotionalProfile> =
         context.dataStore.data.map { com.example.core.devotional.DevotionalProfile.fromJson(it[DEVOTIONAL_PROFILE]) }

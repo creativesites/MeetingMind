@@ -47,8 +47,15 @@ data class Notebook(
     val createdAt: Long,
     val updatedAt: Long,
     val archivedAt: Long? = null,
-    val sortOrder: Int = 0
-)
+    val sortOrder: Int = 0,
+    /** A work context: a client engagement, a matter, a case (docs/PLAN_PROFESSIONAL.md §5.1). */
+    val isProject: Boolean = false,
+    /** A project's status, organisation and privacy, as JSON. */
+    val propertiesJson: String = "{}"
+) {
+    /** Work in a confidential project never goes to cloud AI (PLAN_PROFESSIONAL.md §6.4). */
+    val confidential: Boolean get() = runCatching { org.json.JSONObject(propertiesJson).optBoolean("confidential") }.getOrDefault(false)
+}
 
 enum class NoteBlockType {
     PARAGRAPH, HEADING_1, HEADING_2, HEADING_3,

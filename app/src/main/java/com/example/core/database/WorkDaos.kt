@@ -49,7 +49,8 @@ interface ItemDao {
     @Query("$ITEM_WITH_OWNER WHERE items.status = 'OPEN' ORDER BY items.dueAt IS NULL, items.dueAt, items.createdAt DESC")
     suspend fun getOpen(): List<ItemWithOwner>
 
-    @Query("$ITEM_WITH_OWNER WHERE items.ownerPersonId = :personId OR s.personId = :personId ORDER BY items.createdAt DESC")
+    /** A person's items, or an organisation's: its own and its people's. */
+    @Query("$ITEM_WITH_OWNER WHERE items.ownerPersonId = :personId OR s.personId = :personId OR p.orgId = :personId OR sp.orgId = :personId ORDER BY items.createdAt DESC")
     fun observeForPerson(personId: String): Flow<List<ItemWithOwner>>
 
     @Query("$ITEM_WITH_OWNER WHERE items.projectId = :projectId ORDER BY items.createdAt DESC")
@@ -148,7 +149,8 @@ interface PeopleDao {
     @Query("SELECT * FROM note_people WHERE noteId = :noteId")
     suspend fun getNoteLinks(noteId: String): List<NotePersonCrossRef>
 
-    @Query("SELECT DISTINCT noteId FROM note_people WHERE personId = :personId")
+    /** Notes a person is in; for an organisation, notes any of its people are in. */
+    @Query("SELECT DISTINCT noteId FROM note_people WHERE personId = :personId OR personId IN (SELECT id FROM people WHERE orgId = :personId)")
     fun observeNoteIdsFor(personId: String): Flow<List<String>>
 
     @Query("SELECT DISTINCT noteId FROM note_people WHERE personId IN (:personIds)")

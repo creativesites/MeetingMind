@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.outlined.Work
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
@@ -32,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,7 +59,15 @@ import com.example.ui.theme.Line
  * where Record comes first, then a written note, photos and import (docs/PLAN_V1.md §2). The AI
  * Engine lives under Settings; it is something set up once, not somewhere people go daily.
  */
-enum class BottomNavDestination { HOME, NOTES, NEW, SEARCH, SETTINGS }
+enum class BottomNavDestination { HOME, NOTES, NEW, SEARCH, SETTINGS, WORK }
+
+/**
+ * What sits in the fourth slot: Search, or Work for people who chose it
+ * (docs/PLAN_PROFESSIONAL.md §7.4). Search stays in Home's header either way.
+ */
+object FourthTab {
+    val state = kotlinx.coroutines.flow.MutableStateFlow(BottomNavDestination.SEARCH)
+}
 
 private data class NavItem(
     val destination: BottomNavDestination,
@@ -67,11 +78,13 @@ private data class NavItem(
     val isAction: Boolean = false
 )
 
-private val navItems = listOf(
+private fun navItems(fourth: BottomNavDestination) = listOf(
     NavItem(BottomNavDestination.HOME, "Home", Icons.Filled.Home, Icons.Outlined.Home),
     NavItem(BottomNavDestination.NOTES, "Notes", Icons.AutoMirrored.Filled.Notes, Icons.AutoMirrored.Outlined.Notes),
     NavItem(BottomNavDestination.NEW, "New", Icons.Filled.Add, Icons.Filled.Add, isAction = true),
-    NavItem(BottomNavDestination.SEARCH, "Search", Icons.Filled.Search, Icons.Outlined.Search),
+    if (fourth == BottomNavDestination.WORK)
+        NavItem(BottomNavDestination.WORK, "Work", Icons.Filled.Work, Icons.Outlined.Work)
+    else NavItem(BottomNavDestination.SEARCH, "Search", Icons.Filled.Search, Icons.Outlined.Search),
     NavItem(BottomNavDestination.SETTINGS, "Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
 )
 
@@ -116,7 +129,8 @@ fun AppBottomNavigationBar(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
-                navItems.forEach { item ->
+                val fourth by FourthTab.state.collectAsState()
+                navItems(fourth).forEach { item ->
                     when {
                         item.isAction -> if (showNewAction) NewAction { onNavigate(BottomNavDestination.NEW) }
                         item.destination == current -> ActiveNavChip(item)

@@ -142,6 +142,10 @@ class CalendarEventsTest {
         assertEquals(RecordingType.LECTURE, UpNext.suggestedType("Stats class"))
         assertEquals(RecordingType.CONVERSATION, UpNext.suggestedType("Coffee with Ana"))
         assertEquals(RecordingType.MEETING, UpNext.suggestedType("Q3 planning"))
+        assertEquals(RecordingType.ONE_ON_ONE, UpNext.suggestedType("Ana / Tino 1:1"))
+        assertEquals(RecordingType.STANDUP, UpNext.suggestedType("Daily standup"))
+        assertEquals(RecordingType.CLIENT_CALL, UpNext.suggestedType("Acme kickoff"))
+        assertEquals(RecordingType.CONSULTATION, UpNext.suggestedType("Patient consultation — Mr Moyo"))
         assertEquals(RecordingType.MEETING, UpNext.suggestedType("Glassware order")) // "class" only as a word
 
         assertNull(UpNext.speakerCount(event(1, 0, 1)))

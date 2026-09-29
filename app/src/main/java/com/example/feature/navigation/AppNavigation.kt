@@ -28,6 +28,13 @@ object Routes {
     const val PRAYER_LIST = "prayer_list"
     const val PRAY = "pray?mode={mode}"
     const val SETUP = "setup"
+    // Work (docs/PLAN_PROFESSIONAL.md §7).
+    const val WORK = "work"
+    const val PERSON = "person/{personId}"
+    const val WRAP_UP = "wrapup/{meetingId}"
+    const val WORK_SETTINGS = "work_settings"
+    fun personRoute(personId: String) = "person/$personId"
+    fun wrapUpRoute(meetingId: String) = "wrapup/$meetingId"
     fun prayRoute(mode: String? = null) = "pray" + (mode?.let { "?mode=$it" } ?: "")
 
     fun storiesRoute(start: String? = null) = "stories" + (start?.let { "?start=$it" } ?: "")

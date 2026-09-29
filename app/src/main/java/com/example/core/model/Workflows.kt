@@ -49,7 +49,8 @@ object Workflows {
     )
 
     fun space(type: RecordingType): NotebookSpace = when (type) {
-        RecordingType.MEETING, RecordingType.INTERVIEW, RecordingType.BRAINSTORM, RecordingType.CONVERSATION -> NotebookSpace.WORK
+        RecordingType.MEETING, RecordingType.INTERVIEW, RecordingType.BRAINSTORM, RecordingType.CONVERSATION,
+        RecordingType.CLIENT_CALL, RecordingType.ONE_ON_ONE, RecordingType.STANDUP, RecordingType.CONSULTATION -> NotebookSpace.WORK
         RecordingType.LECTURE, RecordingType.RESEARCH -> NotebookSpace.LEARNING
         in faith -> NotebookSpace.FAITH
         else -> NotebookSpace.PERSONAL
@@ -129,6 +130,30 @@ object Workflows {
             RecordingType.INTERVIEW -> listOf(
                 TemplateSection("questions", "Questions", SectionSource.USER, NoteBlockType.NUMBERED),
                 TemplateSection("my_notes", "Notes", SectionSource.USER)
+            )
+            // Professional workflows (docs/PLAN_PROFESSIONAL.md §5.3).
+            RecordingType.CLIENT_CALL -> listOf(
+                TemplateSection("context", "Context", SectionSource.USER, hint = "Who, and why this call"),
+                TemplateSection("my_notes", "What they need", SectionSource.USER),
+                TemplateSection("next_steps", "Next steps", SectionSource.USER, NoteBlockType.CHECKLIST)
+            )
+            RecordingType.ONE_ON_ONE -> listOf(
+                TemplateSection("check_in", "Check-in", SectionSource.USER),
+                TemplateSection("updates", "Their updates", SectionSource.USER, NoteBlockType.BULLET),
+                TemplateSection("blockers", "Blockers", SectionSource.USER, NoteBlockType.BULLET),
+                TemplateSection("feedback", "Feedback", SectionSource.USER, hint = "Kept private", isPrivate = true),
+                TemplateSection("next_steps", "Agreed actions", SectionSource.USER, NoteBlockType.CHECKLIST)
+            )
+            RecordingType.STANDUP -> listOf(
+                TemplateSection("updates", "Updates", SectionSource.USER, NoteBlockType.BULLET, "Yesterday, today, blockers — person by person"),
+                TemplateSection("blockers", "Blockers", SectionSource.USER, NoteBlockType.BULLET)
+            )
+            RecordingType.CONSULTATION -> listOf(
+                TemplateSection("reason", "Reason for the consultation", SectionSource.USER),
+                TemplateSection("discussed", "What was discussed", SectionSource.USER),
+                TemplateSection("plan", "Plan or advice given", SectionSource.USER, hint = "As it was said"),
+                TemplateSection("next_steps", "Next steps", SectionSource.USER, NoteBlockType.CHECKLIST),
+                TemplateSection("private", "Private notes", SectionSource.USER, isPrivate = true)
             )
             else -> emptyList()
         }
