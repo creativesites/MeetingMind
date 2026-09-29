@@ -242,6 +242,7 @@ fun SettingsScreen(
     onOpenBible: () -> Unit = {},
     onOpenSetup: () -> Unit = {},
     onOpenDataBackup: () -> Unit = {},
+    onOpenAppearance: () -> Unit = {},
     onReplayTour: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -443,6 +444,13 @@ fun SettingsScreen(
             }
 
             settingsSection(title = "Appearance") {
+                settingsRow {
+                    SettingsNavRow(
+                        title = "Look and home",
+                        subtitle = "Colour, text size, and Today or Focus as your home",
+                        onClick = onOpenAppearance
+                    )
+                }
                 val current = runCatching { com.example.ui.theme.ThemeMode.valueOf(prefs.themeMode) }.getOrDefault(com.example.ui.theme.ThemeMode.DARK)
                 com.example.ui.theme.ThemeMode.entries.forEach { mode ->
                     settingsRow {

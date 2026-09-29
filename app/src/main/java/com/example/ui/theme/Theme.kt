@@ -53,9 +53,10 @@ fun materialSchemeFor(c: MMColors) = if (c.isDark) darkColorScheme(
 fun MeetMindTheme(
     darkTheme: Boolean = true,
     dynamicColor: Boolean = false,
+    appearance: Appearance = Appearance(),
     content: @Composable () -> Unit
 ) {
-    val palette = if (darkTheme) GraphiteColors else PaperColors
+    val palette = appearance.accent.on(if (darkTheme) GraphiteColors else PaperColors)
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
@@ -63,7 +64,12 @@ fun MeetMindTheme(
         }
         else -> materialSchemeFor(palette)
     }
-    androidx.compose.runtime.CompositionLocalProvider(LocalMMColors provides palette) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalMMColors provides palette,
+        LocalAppearance provides appearance,
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, density.fontScale * appearance.textSize.scale)
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

@@ -139,6 +139,7 @@ fun TodayScreen(
     val devotional by viewModel.devotional.collectAsState()
     val identity by viewModel.identity.collectAsState()
     val look = LocalAppLook.current
+    val appearance = com.example.ui.theme.LocalAppearance.current
     val view by viewModel.view.collectAsState()
     val items by viewModel.items.collectAsState()
     val selectedDay by viewModel.selectedDay.collectAsState()
@@ -245,7 +246,7 @@ fun TodayScreen(
                 }
             }
 
-            item(key = "capture") {
+            if (appearance.shows(com.example.ui.theme.HomeSection.CAPTURE)) item(key = "capture") {
                 QuickCapture(
                     onRecord = onRecord, onNote = onNewNote, onImport = onImport,
                     subtitle = if (identity.showsFaith) "Meeting, sermon, a thought" else "Meeting, class, a thought",
@@ -270,7 +271,7 @@ fun TodayScreen(
                 }
             }
 
-            if (storyKinds.isNotEmpty()) item(key = "stories") {
+            if (storyKinds.isNotEmpty() && appearance.shows(com.example.ui.theme.HomeSection.STORIES)) item(key = "stories") {
                 StoryRings(storyKinds, onOpenStories)
             }
 
@@ -301,14 +302,14 @@ fun TodayScreen(
                     }
                 }
             }
-            if (forYou.isNotEmpty()) item(key = "foryou") {
+            if (forYou.isNotEmpty() && appearance.shows(com.example.ui.theme.HomeSection.FOR_YOU)) item(key = "foryou") {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 10.dp)) {
                     items(forYou.size) { i -> forYou[i]() }
                 }
             }
 
             // Calendar controls.
-            item(key = "controls") {
+            if (appearance.shows(com.example.ui.theme.HomeSection.TIMELINE)) item(key = "controls") {
                 Column(Modifier.padding(top = 18.dp)) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { viewModel.shift(-1) }) { Icon(Icons.Filled.ChevronLeft, contentDescription = "Earlier", tint = InkNavy) }
@@ -338,7 +339,7 @@ fun TodayScreen(
                 }
             }
 
-            when (view) {
+            if (appearance.shows(com.example.ui.theme.HomeSection.TIMELINE)) when (view) {
                 CalendarView.AGENDA -> item(key = "agenda") {
                     AgendaView(items, selectedDay, ::open, { quick = it }, onPlan = { day -> viewModel.planNote(day, onOpenNote) })
                 }

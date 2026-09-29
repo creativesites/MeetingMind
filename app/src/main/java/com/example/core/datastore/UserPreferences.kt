@@ -42,6 +42,7 @@ data class AppPreferencesState(
     val autoStopSilenceMinutes: Int = 15,
     val cloudSyncEnabled: Boolean = false,
     val themeMode: String = "DARK",
+    val appearance: com.example.ui.theme.Appearance = com.example.ui.theme.Appearance(),
     /** Display-only: hides "uh"/"um"-style hesitation noise in the transcript. The verbatim ASR
      * text is always what's stored, so toggling this back off restores it exactly, with no
      * reprocessing. See [com.example.core.common.FillerWordCleaner]. */
@@ -115,6 +116,7 @@ class UserPreferencesManager(private val context: Context) {
     private val AUTO_STOP_MINUTES = intPreferencesKey("auto_stop_minutes")
     private val CLOUD_SYNC_ENABLED = booleanPreferencesKey("cloud_sync_enabled")
     private val THEME_MODE = stringPreferencesKey("theme_mode")
+    private val APPEARANCE = stringPreferencesKey("appearance")
     private val CLEAN_FILLER_WORDS = booleanPreferencesKey("clean_filler_words")
     private val TRANSCRIPT_CLEANUP_MODE = stringPreferencesKey("transcript_cleanup_mode")
     private val DIARIZATION_STRATEGY = stringPreferencesKey("diarization_strategy")
@@ -166,6 +168,7 @@ class UserPreferencesManager(private val context: Context) {
             autoStopSilenceMinutes = prefs[AUTO_STOP_MINUTES] ?: 15,
             cloudSyncEnabled = prefs[CLOUD_SYNC_ENABLED] ?: false,
             themeMode = prefs[THEME_MODE] ?: "DARK",
+            appearance = com.example.ui.theme.Appearance.decode(prefs[APPEARANCE]),
             cleanFillerWords = prefs[CLEAN_FILLER_WORDS] ?: true,
             // A stored value from a future/renamed enum constant falls back to the current default
             // rather than crashing — the same defensive parse pattern already used throughout this
@@ -279,6 +282,10 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setCloudSyncEnabled(enabled: Boolean) {
         context.dataStore.edit { it[CLOUD_SYNC_ENABLED] = enabled }
+    }
+
+    suspend fun setAppearance(a: com.example.ui.theme.Appearance) {
+        context.dataStore.edit { it[APPEARANCE] = a.encode() }
     }
 
     suspend fun setThemeMode(mode: String) {

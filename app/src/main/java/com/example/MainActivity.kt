@@ -107,7 +107,7 @@ class MainActivity : ComponentActivity() {
                     navigationBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(transparent) else androidx.activity.SystemBarStyle.light(transparent, transparent)
                 )
             }
-            MeetMindTheme(darkTheme = dark) {
+            MeetMindTheme(darkTheme = dark, appearance = themePrefs?.appearance ?: com.example.ui.theme.Appearance()) {
                 // Who the app is for — spaces, look, name, avatar — available to every screen.
                 val identityContext = androidx.compose.ui.platform.LocalContext.current
                 val identity by remember { UserPreferencesManager(identityContext).preferencesFlow }
@@ -306,7 +306,19 @@ fun MeetMindApp() {
             val setupVm: com.example.feature.setup.SetupViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
             val setupState by setupVm.state.collectAsState()
             val setupSnoozedUntil by setupVm.snoozedUntil.collectAsState()
-            com.example.feature.today.TodayScreen(
+            val homeStyle = com.example.ui.theme.LocalAppearance.current.homeStyle
+            if (homeStyle == com.example.ui.theme.HomeStyle.FOCUS) com.example.feature.today.FocusHome(
+                viewModel = vm,
+                onRecord = { navController.navigate(Routes.RECORDING) },
+                onNewNote = { openNewNote(false) },
+                onSearch = { navigateToPrimary(com.example.core.ui.BottomNavDestination.SEARCH) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenProcessing = openProcessing,
+                onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
+                onOpenTasks = { navController.navigate(Routes.TASKS) },
+                onCustomize = { navController.navigate(Routes.APPEARANCE) },
+                onNavigateBottomNav = navigateToPrimary
+            ) else com.example.feature.today.TodayScreen(
                 viewModel = vm,
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenProcessing = openProcessing,
@@ -439,6 +451,10 @@ fun MeetMindApp() {
         composable(Routes.PLANS) {
             val vm: com.example.feature.faith.FaithExtrasViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
             com.example.feature.faith.ReadingPlansScreen(vm, onNavigateBack = { navController.popBackStack() }, onRead = { navController.navigate(Routes.bibleRoute(it.passageId())) })
+        }
+        composable(Routes.APPEARANCE) {
+            val vm: com.example.feature.settings.AppearanceViewModel = viewModel()
+            com.example.feature.settings.AppearanceScreen(vm, onNavigateBack = { navController.popBackStack() })
         }
         composable(Routes.TASKS) {
             val vm: com.example.feature.tasks.TasksViewModel = viewModel()
@@ -758,6 +774,7 @@ fun MeetMindApp() {
                 onOpenBible = { navController.navigate(Routes.bibleRoute()) },
                 onOpenSetup = { navController.navigate(Routes.SETUP) },
                 onOpenDataBackup = { navController.navigate(Routes.DATA_BACKUP) },
+                onOpenAppearance = { navController.navigate(Routes.APPEARANCE) },
                 onReplayTour = {
                     recoveryScope.launch {
                         com.example.core.datastore.UserPreferencesManager(context).setTourCompleted(false)
