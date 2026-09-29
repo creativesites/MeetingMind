@@ -149,6 +149,13 @@ class NotesViewModel(application: Application, val scope: NotesScope = NotesScop
     fun deleteNotebookForever(id: String) = viewModelScope.launch { notes.deleteNotebook(id) }
     fun archiveNotebook(id: String) = viewModelScope.launch { notes.archiveNotebook(id) }
 
+    /** Acts on every selected note at once; each is a single, undoable-by-Trash step. */
+    fun archiveAll(ids: Collection<String>) = viewModelScope.launch { ids.forEach { notes.archiveNote(it) } }
+    fun deleteAll(ids: Collection<String>) = viewModelScope.launch { ids.forEach { notes.moveToTrash(it) } }
+    fun restoreAll(ids: Collection<String>) = viewModelScope.launch { ids.forEach { notes.restoreFromTrash(it) } }
+    fun pinAll(ids: Collection<String>, pinned: Boolean) = viewModelScope.launch { ids.forEach { notes.setPinned(it, pinned) } }
+    fun moveAll(ids: Collection<String>, notebookId: String?) = viewModelScope.launch { ids.forEach { notes.moveToNotebook(it, notebookId) } }
+
     fun togglePin(note: Note) = viewModelScope.launch { notes.setPinned(note.id, !note.pinned) }
     fun archive(note: Note) = viewModelScope.launch { notes.archiveNote(note.id) }
     fun unarchive(note: Note) = viewModelScope.launch { notes.unarchiveNote(note.id) }

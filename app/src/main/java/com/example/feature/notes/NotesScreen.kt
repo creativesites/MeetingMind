@@ -7,6 +7,7 @@ import com.example.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +38,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
@@ -150,6 +153,13 @@ fun NotesScreen(
         is NotesScope.InNotebook -> currentNotebook?.name ?: "Notebook"
     }
 
+    // Select mode: long-press a note, then tap others; actions apply to all of them.
+    var selectedIds by remember { mutableStateOf(setOf<String>()) }
+    var moveOpen by remember { mutableStateOf(false) }
+    fun toggleSelect(id: String) { selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id }
+    androidx.activity.compose.BackHandler(enabled = selectedIds.isNotEmpty()) { selectedIds = emptySet() }
+    val selectedNotes = notes.filter { it.id in selectedIds }
+
     Scaffold(
         containerColor = SurfaceBase,
         snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
@@ -169,7 +179,25 @@ fun NotesScreen(
         }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 28.dp)) {
-            item(key = "header") {
+            if (selectedIds.isNotEmpty()) item(key = "selection") {
+                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 8.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { selectedIds = emptySet() }) { Icon(Icons.Filled.Close, contentDescription = "Cancel selection", tint = Ink) }
+                    Text("${selectedIds.size} selected", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.TextButton(onClick = { selectedIds = notes.map { it.id }.toSet() }) { Text("All", color = Accent) }
+                }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (isTrash) {
+                        androidx.compose.material3.TextButton(onClick = { viewModel.restoreAll(selectedIds); selectedIds = emptySet() }) { Text("Restore", color = Accent) }
+                    } else {
+                        val allPinned = selectedNotes.isNotEmpty() && selectedNotes.all { it.pinned }
+                        androidx.compose.material3.TextButton(onClick = { viewModel.pinAll(selectedIds, !allPinned); selectedIds = emptySet() }) { Text(if (allPinned) "Unpin" else "Pin", color = Accent) }
+                        androidx.compose.material3.TextButton(onClick = { moveOpen = true }) { Text("Move", color = Accent) }
+                        if (!isArchive) androidx.compose.material3.TextButton(onClick = { viewModel.archiveAll(selectedIds); selectedIds = emptySet() }) { Text("Archive", color = Accent) }
+                        androidx.compose.material3.TextButton(onClick = { viewModel.deleteAll(selectedIds); selectedIds = emptySet() }) { Text("Trash", color = Danger) }
+                    }
+                }
+            }
+            if (selectedIds.isEmpty()) item(key = "header") {
                 Row(
                     Modifier.fillMaxWidth().statusBarsPadding().padding(start = if (onNavigateBack != null) 6.dp else 22.dp, end = 16.dp, top = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -326,7 +354,9 @@ fun NotesScreen(
                 if (pinned.isNotEmpty()) {
                     item(key = "pinned-h") { SectionHeader("Pinned", top = 26.dp) }
                     items(pinned, key = { "p-" + it.id }) { n ->
-                        NoteRow(n, notebookById[n.notebookId], showNotebook = isRoot, onClick = { if (isTrash) noteMenu = n else onOpenNote(n.id) }, onLongClick = { noteMenu = n })
+                        NoteRow(n, notebookById[n.notebookId], showNotebook = isRoot, selecting = selectedIds.isNotEmpty(), selected = n.id in selectedIds,
+                            onClick = { if (selectedIds.isNotEmpty()) toggleSelect(n.id) else if (isTrash) noteMenu = n else onOpenNote(n.id) },
+                            onLongClick = { if (isTrash) noteMenu = n else toggleSelect(n.id) })
                     }
                 }
                 val groups = if (isTrash) rest.groupBy { daysLeft(it.deletedAt).replaceFirstChar { c -> c.uppercase() } }
@@ -334,7 +364,9 @@ fun NotesScreen(
                 groups.forEach { (header, list) ->
                     item(key = "h-$header") { SectionHeader(header, top = 26.dp) }
                     items(list, key = { it.id }) { n ->
-                        NoteRow(n, notebookById[n.notebookId], showNotebook = isRoot, onClick = { if (isTrash) noteMenu = n else onOpenNote(n.id) }, onLongClick = { noteMenu = n })
+                        NoteRow(n, notebookById[n.notebookId], showNotebook = isRoot, selecting = selectedIds.isNotEmpty(), selected = n.id in selectedIds,
+                            onClick = { if (selectedIds.isNotEmpty()) toggleSelect(n.id) else if (isTrash) noteMenu = n else onOpenNote(n.id) },
+                            onLongClick = { if (isTrash) noteMenu = n else toggleSelect(n.id) })
                     }
                 }
             }
@@ -449,6 +481,21 @@ fun NotesScreen(
             dismissButton = { TextButton(onClick = { confirmDeleteNotebook = null }) { Text("Cancel") } }
         )
     }
+    if (moveOpen) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { moveOpen = false }, containerColor = SurfaceBase,
+        title = { Text("Move ${selectedIds.size} to…") },
+        text = {
+            Column {
+                notebooks.forEach { nb ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { viewModel.moveAll(selectedIds, nb.id); selectedIds = emptySet(); moveOpen = false }.padding(vertical = 12.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) { NotebookDot(nb.colorHex, 12); Text(nb.name, fontSize = 16.sp, color = Ink, modifier = Modifier.padding(start = 12.dp)) }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { moveOpen = false }) { Text("Cancel") } }
+    )
     noteMenu?.let { n ->
         AlertDialog(
             onDismissRequest = { noteMenu = null },
@@ -565,11 +612,16 @@ private fun NotebookCard(notebook: Notebook, count: Int, onClick: () -> Unit, on
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NoteRow(note: Note, notebook: Notebook?, showNotebook: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun NoteRow(note: Note, notebook: Notebook?, showNotebook: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, selecting: Boolean = false, selected: Boolean = false) {
     Column(
-        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 22.dp, vertical = 12.dp)
+        Modifier.fillMaxWidth().background(if (selected) AccentWash else androidx.compose.ui.graphics.Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 22.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (selecting) {
+                Icon(if (selected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked, contentDescription = if (selected) "Selected" else "Not selected", tint = if (selected) Accent else InkFaint, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+            }
             if (note.pinned) { Icon(Icons.Filled.PushPin, contentDescription = "Pinned", tint = Accent, modifier = Modifier.size(14.dp)); Spacer(Modifier.width(6.dp)) }
             Text(
                 note.title.ifBlank { "Untitled note" }, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
