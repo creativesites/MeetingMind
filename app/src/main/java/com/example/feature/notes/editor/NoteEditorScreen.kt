@@ -196,6 +196,7 @@ fun NoteEditorScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     var showVersions by remember { mutableStateOf(false) }
     var blockMenuFor by remember { mutableStateOf<NoteBlock?>(null) }
+    var taskDraft by remember { mutableStateOf<com.example.core.tasks.Task?>(null) }
     var exporting by remember { mutableStateOf(false) }
     var pendingExport by remember { mutableStateOf<Pair<ExportFormat, Boolean>?>(null) }
     var pendingCapture by remember { mutableStateOf<Pair<File, Boolean>?>(null) }
@@ -762,7 +763,20 @@ fun NoteEditorScreen(
             onDismiss = { blockMenuFor = null },
             onEditMarkdown = if (b.type == NoteBlockType.MARKDOWN) ({ viewModel.editMarkdown(b.id); blockMenuFor = null }) else null,
             onAiTools = if (b.type == NoteBlockType.MARKDOWN) ({ viewModel.openPasteTools(b.id); blockMenuFor = null }) else null,
-            onSplitMarkdown = if (b.type == NoteBlockType.MARKDOWN) ({ viewModel.convertToBlocks(b.id); blockMenuFor = null }) else null
+            onSplitMarkdown = if (b.type == NoteBlockType.MARKDOWN) ({ viewModel.convertToBlocks(b.id); blockMenuFor = null }) else null,
+            onMakeTask = if (b.type.isText && b.type != NoteBlockType.MARKDOWN && b.content.text.isNotBlank()) ({
+                blockMenuFor = null
+                scope.launch { taskDraft = viewModel.taskFor(b.id) }
+            }) else null
+        )
+    }
+    taskDraft?.let { t ->
+        val people by viewModel.people.collectAsState()
+        com.example.feature.tasks.TaskEditorSheet(
+            task = t, people = people,
+            onSave = { task, newPerson -> viewModel.saveTask(task, newPerson); taskDraft = null },
+            onDelete = null, onOpenSource = null,
+            onDismiss = { taskDraft = null }
         )
     }
     if (showVersions) {

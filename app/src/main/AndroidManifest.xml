@@ -81,6 +81,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
         <receiver android:name="com.example.core.notify.DailyAlarmReceiver" android:exported="false" />
+        <receiver android:name="com.example.core.tasks.TaskReminderReceiver" android:exported="false" />
         <receiver android:name="com.example.core.notify.DailyAlarmResync" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

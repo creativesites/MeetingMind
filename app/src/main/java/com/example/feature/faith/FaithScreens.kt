@@ -124,7 +124,8 @@ fun FaithScreen(
     onShare: (com.example.feature.share.ShareRequest) -> Unit = {},
     onPrayWithMe: () -> Unit = {},
     onOpenPlans: () -> Unit = {},
-    onOpenPrayerList: () -> Unit = {}
+    onOpenPrayerList: () -> Unit = {},
+    onOpenTasks: () -> Unit = {}
 ) {
     var studyPicker by remember { mutableStateOf(false) }
     if (studyPicker) com.example.feature.study.StudyTemplateSheet(null, onPick = { t -> studyPicker = false; viewModel.startStudy(t, onOpenNote) }, onDismiss = { studyPicker = false })
@@ -162,6 +163,8 @@ fun FaithScreen(
             // The daily rhythm: today's reading and who to pray for.
             item { Spacer(Modifier.height(14.dp)); ReadingPlanCard(extras, onOpenPlans, onRead = onReadPassage) }
             item { Spacer(Modifier.height(10.dp)); PrayingForCard(extras, onOpenPrayerList) }
+            // What you said you'd do: "Apply this" points, prayers, people to follow up.
+            item { Spacer(Modifier.height(10.dp)); com.example.feature.tasks.TasksPeekCard("To live out", setOf(com.example.core.tasks.TaskKind.APPLY, com.example.core.tasks.TaskKind.PRAYER, com.example.core.tasks.TaskKind.FOLLOW_UP), onOpenTasks) }
 
             // Today: the Verse of the Day, leading into a devotional.
             item {

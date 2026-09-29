@@ -406,7 +406,8 @@ internal fun BlockMenu(
     onDismiss: () -> Unit,
     onEditMarkdown: (() -> Unit)? = null,
     onSplitMarkdown: (() -> Unit)? = null,
-    onAiTools: (() -> Unit)? = null
+    onAiTools: (() -> Unit)? = null,
+    onMakeTask: (() -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -414,6 +415,7 @@ internal fun BlockMenu(
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
         text = {
             Column {
+                onMakeTask?.let { MenuRow("Make it a task…") { it() } }
                 onAiTools?.let { MenuRow("AI tools") { it() } }
                 onEditMarkdown?.let { MenuRow("Edit Markdown") { it() } }
                 onSplitMarkdown?.let { MenuRow("Split into separate blocks") { it() } }

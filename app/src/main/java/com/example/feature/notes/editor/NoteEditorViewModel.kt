@@ -468,6 +468,46 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     fun toggleChecked(blockId: String) {
         val index = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
         update(BlockEditing.toggleChecked(_blocks.value, index))
+        val checked = _blocks.value.getOrNull(index)?.checked ?: return
+        viewModelScope.launch { tasks.forBlock(blockId)?.takeIf { it.done != checked }?.let { tasks.toggleDone(it.id) } }
+    }
+
+    // ------------------------------------------------------------ tasks
+
+    private val tasks by lazy { com.example.core.tasks.TaskReminders.repository(getApplication()) }
+    val people: StateFlow<List<com.example.core.tasks.Person>> by lazy {
+        tasks.observePeople().stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+
+    /** A task drafted from one line of the note — the existing one if the line is already a task. */
+    suspend fun taskFor(blockId: String): com.example.core.tasks.Task? {
+        tasks.forBlock(blockId)?.let { return it }
+        val b = _blocks.value.firstOrNull { it.id == blockId } ?: return null
+        val text = b.content.text.trim().ifEmpty { return null }
+        val workflow = _note.value?.workflow
+        val faith = com.example.ai.faith.AskSermon.isFaith(workflow)
+        val kind = when {
+            b.sectionKey?.contains("apply", ignoreCase = true) == true || (faith && b.sectionKey?.contains("action") == true) -> com.example.core.tasks.TaskKind.APPLY
+            workflow == com.example.core.model.RecordingType.PRAYER_REQUEST -> com.example.core.tasks.TaskKind.PRAYER
+            else -> com.example.core.tasks.TaskKind.TASK
+        }
+        val person = com.example.core.tasks.TaskRules.personMentioned(text, tasks.allPeople())
+        return com.example.core.tasks.Task(
+            id = "", title = text, kind = kind, personId = person?.id, noteId = noteId, blockId = b.id,
+            meetingId = b.payload[NoteBlock.PAYLOAD_MEETING_ID], startMs = b.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()
+        )
+    }
+
+    fun saveTask(task: com.example.core.tasks.Task, newPersonName: String?) = viewModelScope.launch {
+        val personId = newPersonName?.takeIf { it.isNotBlank() }?.let { tasks.savePerson(it).id } ?: task.personId
+        tasks.save(task.copy(personId = personId))
+        personId?.let { tasks.linkNote(noteId, it) }
+        // A line that became a task reads as one: it gets a checkbox.
+        task.blockId?.let { id ->
+            val i = _blocks.value.indexOfFirst { it.id == id }
+            val b = _blocks.value.getOrNull(i)
+            if (b != null && b.type != NoteBlockType.CHECKLIST && b.type.isText) update(_blocks.value.toMutableList().also { it[i] = b.copy(type = NoteBlockType.CHECKLIST) })
+        }
     }
 
     // ------------------------------------------------------------ blocks

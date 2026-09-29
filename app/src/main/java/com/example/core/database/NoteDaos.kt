@@ -153,6 +153,10 @@ interface NoteDao {
     @Query("SELECT * FROM note_blocks WHERE noteId = :noteId ORDER BY position")
     suspend fun getBlocks(noteId: String): List<NoteBlockEntity>
 
+    /** A task linked to a checklist line was ticked elsewhere. */
+    @Query("UPDATE note_blocks SET checked = :checked, updatedAt = :now WHERE id = :blockId")
+    suspend fun setBlockChecked(blockId: String, checked: Boolean, now: Long)
+
     @Upsert
     suspend fun upsertBlocks(blocks: List<NoteBlockEntity>)
 

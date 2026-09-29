@@ -50,7 +50,7 @@ class NoteAiMigrationTest {
     @Test
     fun `the job table is added and notes are untouched`() = runBlocking {
         val db = Room.databaseBuilder(context, MeetMindDatabase::class.java, dbName)
-            .addMigrations(MeetMindDatabase.MIGRATION_13_14, MeetMindDatabase.MIGRATION_14_15).allowMainThreadQueries().build().also { migrated = it }
+            .addMigrations(MeetMindDatabase.MIGRATION_13_14, MeetMindDatabase.MIGRATION_14_15, MeetMindDatabase.MIGRATION_15_16).allowMainThreadQueries().build().also { migrated = it }
         assertEquals("Kept", db.noteDao().getById("n1")!!.title)
         db.noteAiJobDao().upsert(NoteAiJobEntity("j", "NOTE", "n1", "SUMMARIZE", "QUEUED", "{}", null, null, null, 1, 1))
         assertEquals("SUMMARIZE", db.noteAiJobDao().getById("j")!!.tool)

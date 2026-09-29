@@ -272,6 +272,7 @@ fun MeetMindApp() {
             com.example.core.notify.DeepLink.PrayerList -> navController.navigate(Routes.PRAYER_LIST) { launchSingleTop = true }
             com.example.core.notify.DeepLink.ReadingPlans -> navController.navigate(Routes.PLANS) { launchSingleTop = true }
             com.example.core.notify.DeepLink.Home -> Unit
+            com.example.core.notify.DeepLink.Tasks -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
             null -> Unit
         }
     }
@@ -388,7 +389,8 @@ fun MeetMindApp() {
                     onShare = { req -> com.example.feature.share.ShareRequests.pending = req; navController.navigate(Routes.SHARE) },
                     onPrayWithMe = { navController.navigate(Routes.prayRoute()) },
                     onOpenPlans = { navController.navigate(Routes.PLANS) },
-                    onOpenPrayerList = { navController.navigate(Routes.PRAYER_LIST) }
+                    onOpenPrayerList = { navController.navigate(Routes.PRAYER_LIST) },
+                    onOpenTasks = { navController.navigate(Routes.TASKS) }
                 )
             }
         }
@@ -437,6 +439,14 @@ fun MeetMindApp() {
         composable(Routes.PLANS) {
             val vm: com.example.feature.faith.FaithExtrasViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
             com.example.feature.faith.ReadingPlansScreen(vm, onNavigateBack = { navController.popBackStack() }, onRead = { navController.navigate(Routes.bibleRoute(it.passageId())) })
+        }
+        composable(Routes.TASKS) {
+            val vm: com.example.feature.tasks.TasksViewModel = viewModel()
+            com.example.feature.tasks.TasksScreen(
+                vm, onNavigateBack = { navController.popBackStack() },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenRecording = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
+            )
         }
         composable(Routes.PRAYER_LIST) {
             val vm: com.example.feature.faith.FaithExtrasViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)

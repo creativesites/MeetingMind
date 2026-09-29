@@ -23,6 +23,7 @@ sealed interface DeepLink {
     data object PrayerList : DeepLink
     data object ReadingPlans : DeepLink
     data object Home : DeepLink
+    data object Tasks : DeepLink
 }
 
 /**
@@ -50,6 +51,7 @@ object DeepLinks {
             "prayerlist" -> DeepLink.PrayerList
             "plans" -> DeepLink.ReadingPlans
             "home" -> DeepLink.Home
+            "tasks" -> DeepLink.Tasks
             else -> null
         }
         intent.removeExtra(EXTRA_TARGET)
@@ -65,6 +67,7 @@ object DeepLinks {
             DeepLink.PrayerList -> "prayerlist" to null
             DeepLink.ReadingPlans -> "plans" to null
             DeepLink.Home -> "home" to null
+            DeepLink.Tasks -> "tasks" to null
         }
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -162,6 +165,27 @@ object AppNotifications {
                 .setAutoCancel(true)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setContentIntent(DeepLinks.pendingIntent(context, link))
+                .build()
+        )
+    }
+
+    /** A task's reminder, with "Done" right on the notification. */
+    fun taskReminder(context: Context, id: Int, title: String, text: String, done: PendingIntent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+                NotificationChannel(CHANNEL_REMINDERS, "Reminders", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "Prayer times, reading plans, evening reflection and meetings" }
+            )
+        }
+        post(
+            context, id,
+            NotificationCompat.Builder(context, CHANNEL_REMINDERS)
+                .setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Tasks))
+                .addAction(android.R.drawable.checkbox_on_background, "Done", done)
                 .build()
         )
     }

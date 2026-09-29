@@ -100,6 +100,7 @@ class DailyAlarmResync : BroadcastReceiver() {
                 val prefs = UserPreferencesManager(context.applicationContext)
                 DevotionalScheduler.sync(context.applicationContext, prefs.devotionalProfile.first())
                 ReminderScheduler.sync(context.applicationContext, prefs.reminderSettings.first())
+                runCatching { com.example.core.tasks.TaskReminders.sync(context.applicationContext) }
             } finally {
                 pending.finish()
             }

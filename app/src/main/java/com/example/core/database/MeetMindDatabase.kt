@@ -34,7 +34,12 @@ import androidx.room.migration.Migration
         ScriptureCollectionEntity::class,
         ScriptureCollectionItemEntity::class,
         NoteAiJobEntity::class,
-        NoteVersionEntity::class
+        NoteVersionEntity::class,
+        PersonEntity::class,
+        TaskEntity::class,
+        NotePersonCrossRef::class,
+        NoteFtsEntity::class,
+        TranscriptFtsEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
@@ -58,6 +63,9 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun attachmentDao(): AttachmentDao
     abstract fun scriptureDao(): ScriptureDao
+    abstract fun peopleDao(): PeopleDao
+    abstract fun taskDao(): TaskDao
+    abstract fun searchDao(): SearchDao
     abstract fun noteAiJobDao(): NoteAiJobDao
     abstract fun noteVersionDao(): NoteVersionDao
 
@@ -412,6 +420,41 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 15 → 16 (Faith spec slices E and F): people, tasks with reminders, note↔person links,
+         * and full-text indexes over notes and transcripts. Only adds; nothing existing changes.
+         * The FTS tables and triggers are Room's own generated SQL (schemas/…/16.json), then filled
+         * from the existing rows with 'rebuild'.
+         */
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_15_16_SQL.forEach { db.execSQL(it) }
+                db.execSQL("INSERT INTO notes_fts(notes_fts) VALUES ('rebuild')")
+                db.execSQL("INSERT INTO transcript_fts(transcript_fts) VALUES ('rebuild')")
+            }
+        }
+
+        internal val MIGRATION_15_16_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `people` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `relationship` TEXT, `notes` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `deletedAt` INTEGER, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_people_name` ON `people` (`name`)",
+            "CREATE TABLE IF NOT EXISTS `tasks` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `notes` TEXT NOT NULL, `kind` TEXT NOT NULL, `dueAt` INTEGER, `remindAt` INTEGER, `repeat` TEXT NOT NULL, `doneAt` INTEGER, `personId` TEXT, `noteId` TEXT, `blockId` TEXT, `meetingId` TEXT, `startMs` INTEGER, `scripture` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `deletedAt` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`personId`) REFERENCES `people`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE INDEX IF NOT EXISTS `index_tasks_noteId` ON `tasks` (`noteId`)",
+            "CREATE INDEX IF NOT EXISTS `index_tasks_personId` ON `tasks` (`personId`)",
+            "CREATE INDEX IF NOT EXISTS `index_tasks_doneAt_dueAt` ON `tasks` (`doneAt`, `dueAt`)",
+            "CREATE TABLE IF NOT EXISTS `note_people` (`noteId` TEXT NOT NULL, `personId` TEXT NOT NULL, PRIMARY KEY(`noteId`, `personId`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`personId`) REFERENCES `people`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_note_people_personId` ON `note_people` (`personId`)",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS `notes_fts` USING FTS4(`title` TEXT NOT NULL, `plainText` TEXT NOT NULL, tokenize=unicode61, content=`notes`)",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_notes_fts_BEFORE_UPDATE BEFORE UPDATE ON `notes` BEGIN DELETE FROM `notes_fts` WHERE `docid`=OLD.`rowid`; END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_notes_fts_BEFORE_DELETE BEFORE DELETE ON `notes` BEGIN DELETE FROM `notes_fts` WHERE `docid`=OLD.`rowid`; END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_notes_fts_AFTER_UPDATE AFTER UPDATE ON `notes` BEGIN INSERT INTO `notes_fts`(`docid`, `title`, `plainText`) VALUES (NEW.`rowid`, NEW.`title`, NEW.`plainText`); END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_notes_fts_AFTER_INSERT AFTER INSERT ON `notes` BEGIN INSERT INTO `notes_fts`(`docid`, `title`, `plainText`) VALUES (NEW.`rowid`, NEW.`title`, NEW.`plainText`); END",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS `transcript_fts` USING FTS4(`text` TEXT NOT NULL, tokenize=unicode61, content=`transcript_segments`)",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_fts_BEFORE_UPDATE BEFORE UPDATE ON `transcript_segments` BEGIN DELETE FROM `transcript_fts` WHERE `docid`=OLD.`rowid`; END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_fts_BEFORE_DELETE BEFORE DELETE ON `transcript_segments` BEGIN DELETE FROM `transcript_fts` WHERE `docid`=OLD.`rowid`; END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_fts_AFTER_UPDATE AFTER UPDATE ON `transcript_segments` BEGIN INSERT INTO `transcript_fts`(`docid`, `text`) VALUES (NEW.`rowid`, NEW.`text`); END",
+            "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_fts_AFTER_INSERT AFTER INSERT ON `transcript_segments` BEGIN INSERT INTO `transcript_fts`(`docid`, `text`) VALUES (NEW.`rowid`, NEW.`text`); END"
+        )
+
         /** CREATE statements for the notes tables, in dependency order. */
         internal val NOTES_SCHEMA_SQL: List<String> = listOf(
             """CREATE TABLE IF NOT EXISTS `notebooks` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `space` TEXT NOT NULL,
@@ -465,7 +508,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 15
+        const val VERSION = 16
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {
@@ -483,7 +526,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                     .build()
                 INSTANCE = instance
                 instance
