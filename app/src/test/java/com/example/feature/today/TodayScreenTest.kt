@@ -39,7 +39,9 @@ class TodayScreenTest {
         MeetMindDatabase.setInstanceForTest(db)
         runBlocking {
             val notes = NoteRepository(app, db)
-            val now = System.currentTimeMillis()
+            // Every sample sits inside today, however early the test runs (before 3am, "two hours ago" is yesterday).
+            val startOfToday = java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val now = maxOf(System.currentTimeMillis(), startOfToday + 3 * 3_600_000L)
             val rec = notes.createNote(RecordingType.MEETING, title = "Product sync", eventDate = now - 3_600_000L)
             db.meetingDao().insertMeeting(MeetingEntity("m1", "Product sync", now - 3_600_000L, 40 * 60_000L, "LOCAL_RECORDING", "/a.wav", "READY", 3, "en", null, noteId = rec.id))
             notes.createNote(RecordingType.SERMON, title = "Grace that holds", eventDate = now - 7_200_000L)

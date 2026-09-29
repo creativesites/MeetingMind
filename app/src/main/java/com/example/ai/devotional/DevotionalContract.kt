@@ -21,7 +21,11 @@ data class DevotionalBrief(
     /** What the person asked for in their own words, when they asked for one on demand. */
     val request: String? = null,
     /** The hour it's being read (0–23); null for the scheduled morning devotional. */
-    val hour: Int? = null
+    val hour: Int? = null,
+    /** Recent devotionals' titles and first lines, newest first, so today's is not a rerun. */
+    val recent: List<String> = emptyList(),
+    /** Picks today's angle and opening; the day number plus "another one" steps. */
+    val dayIndex: Long = 0
 )
 
 /** The model's answer, before checking. */
@@ -51,7 +55,40 @@ object DevotionalContract {
         4. Stay within historic, mainstream Christian teaching, in the tradition named. Where Christians differ, do not take sides.
         5. Be warm, honest and specific. No clichés, no guilt, no hype. Address the reader as "you".
         6. Output only JSON, no other text.
+        7. Personal details they've shared (where they live, their work, their family, their circumstances) are background that shapes your choices, not material to repeat. Never open with them, never mention their city or country, and bring one in at most once, lightly, only when today's passage truly calls for it — most days, not at all.
+        8. Don't assume they are struggling. Most days are ordinary or good; unless they've said otherwise, write for a normal day with curiosity, delight, gratitude and hope as readily as comfort.
+        9. Every day should feel new. Don't reuse the titles, openings, images, illustrations or turns of phrase of their recent devotionals. Avoid stock openings such as "In the quiet of…", "As you…", "Picture this…", "Have you ever…", "Today, …" and "From your…".
     """.trimIndent()
+
+    /** Ways into a passage, one per day, so the devotional's shape changes as well as its words. */
+    val ANGLES = listOf(
+        "Tell the story around the passage — who was there, what was at stake — and let the reader find themselves in it.",
+        "Take one word or phrase from the passage and turn it over slowly: what it meant then, what it opens up now.",
+        "Build it around one concrete, everyday image from ordinary life (not the reader's own details) that lights up the passage.",
+        "Write it as a short guided practice: something to notice, try or do with the passage today, step by step.",
+        "Open up the historical or cultural background that makes the passage surprising, then bring it home.",
+        "Focus on delight and wonder — what in this passage is simply good news worth enjoying?",
+        "Write it as a conversation with an honest question someone might ask about this passage, and answer it gently.",
+        "Connect the passage to one character elsewhere in Scripture who lived the same truth, and learn from them.",
+        "Keep it spare and poetic: short paragraphs, room to breathe, one idea held up to the light.",
+        "Make it practical and energising: what this passage means for work, relationships and choices this week.",
+        "Centre it on gratitude — trace what the passage invites the reader to thank God for, specifically.",
+        "Let it be playful and warm — a light touch, a smile, still true and still reverent."
+    )
+
+    /** How the first sentence begins, stepped separately from the angle so the pairs keep changing. */
+    val OPENINGS = listOf(
+        "Begin with a short, striking sentence about the passage itself.",
+        "Begin with a vivid detail from the passage's setting.",
+        "Begin with a question that the passage answers.",
+        "Begin with a small scene from ordinary life that anyone would recognise.",
+        "Begin with a surprising fact or observation about the text.",
+        "Begin mid-thought, as if continuing a conversation with a friend.",
+        "Begin with one word from the passage, on its own."
+    )
+
+    fun angleFor(dayIndex: Long): String = ANGLES[Math.floorMod(dayIndex, ANGLES.size.toLong()).toInt()]
+    fun openingFor(dayIndex: Long): String = OPENINGS[Math.floorMod(dayIndex * 3 + 1, OPENINGS.size.toLong()).toInt()]
 
     fun prompt(brief: DevotionalBrief): String {
         val p = brief.profile
@@ -77,7 +114,13 @@ object DevotionalContract {
             if (p.moreOf.isNotEmpty()) appendLine("They've enjoyed: ${p.moreOf.joinToString(", ")}.")
             if (p.lessOf.isNotEmpty()) appendLine("Go lighter on: ${p.lessOf.joinToString(", ")}.")
             p.season?.let { appendLine("Life season: $it.") }
-            p.aboutMe.trim().takeIf { it.isNotEmpty() }?.let { appendLine("About them, in their words: ${it.take(400)}") }
+            p.aboutMe.trim().takeIf { it.isNotEmpty() }?.let { appendLine("Background about them, in their words (for your understanding only — see rule 7): ${it.take(400)}") }
+            appendLine("Today's angle: ${angleFor(brief.dayIndex)}")
+            appendLine("Opening: ${openingFor(brief.dayIndex)}")
+            if (brief.recent.isNotEmpty()) {
+                appendLine("Their recent devotionals (don't repeat their titles, openings, images or ideas):")
+                brief.recent.take(10).forEach { appendLine("- ${it.take(180)}") }
+            }
             brief.name?.takeIf { it.isNotBlank() }?.let { appendLine("Their first name: $it (use it at most once).") }
             brief.request?.trim()?.takeIf { it.isNotEmpty() }?.let {
                 appendLine("They asked for a devotional about this, in their words — let it shape everything, gently: ${it.take(600)}")

@@ -111,7 +111,9 @@ class DevotionalEngine(
         signals: DevotionalSignals = DevotionalSignals(),
         name: String? = null,
         evening: Boolean = false,
-        ask: DevotionalAsk? = null
+        ask: DevotionalAsk? = null,
+        /** Recent devotionals ("title — first lines"), newest first, for the model not to repeat. */
+        recent: List<String> = emptyList()
     ): Devotional {
         lastFallbackReason = null
         val profile = if (ask == null) profile else profile.copy(
@@ -146,7 +148,10 @@ class DevotionalEngine(
         for (candidate in pool) {
             val shared = if (candidate.isCloud && !profile.sharePrivateWithCloud) signals.general else signals.general + signals.private
             // On demand, it's read now — say so; the scheduled one comes out in the morning but stays time-neutral.
-            val brief = DevotionalBrief(passage, text, profile, day, weekday, shared, name, ask?.about, hour = ask?.hour)
+            val brief = DevotionalBrief(
+                passage, text, profile, day, weekday, shared, name, ask?.about, hour = ask?.hour,
+                recent = recent, dayIndex = date.toEpochDay() + variant * 5L
+            )
             // Each model gets a fair turn, not forever: a hung download or network moves on to the next.
             val result = runCatching {
                 kotlinx.coroutines.withTimeoutOrNull(if (candidate.isCloud) CLOUD_TIMEOUT_MS else DEVICE_TIMEOUT_MS) {

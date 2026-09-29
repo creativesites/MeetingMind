@@ -133,9 +133,14 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     fun setLook(look: com.example.core.identity.LookAndFeel) { lookTouched = true; _look.value = look }
 
     /** The offline pack by default: most people want it to just work, privately. */
-    private val _setup = MutableStateFlow(SetupChoice.OFFLINE_PACK)
+    private val _setup = MutableStateFlow(SetupChoice.INTERNET)
     val setup: StateFlow<SetupChoice> = _setup.asStateFlow()
     fun setSetup(choice: SetupChoice) { _setup.value = choice }
+    /** A Gemini key typed during setup, saved when setup finishes. */
+    private val _geminiKey = MutableStateFlow("")
+    val geminiKey: StateFlow<String> = _geminiKey.asStateFlow()
+    fun setGeminiKey(key: String) { _geminiKey.value = key.trim() }
+    val hasBuiltInKey: Boolean get() = com.example.ai.cloud.GeminiCredentialStore.systemKey != null
 
     private val _wifiOnly = MutableStateFlow(false)
     val wifiOnly: StateFlow<Boolean> = _wifiOnly.asStateFlow()
@@ -157,7 +162,12 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
                     val app = getApplication<Application>()
                     SetupGuide.downloadMissing(app, SetupGuide.observe(app).first(), _wifiOnly.value)
                 }
-                SetupChoice.INTERNET -> prefs.setProcessingProfile(ProcessingProfile.INTERNET)
+                SetupChoice.INTERNET -> {
+                    prefs.setProcessingProfile(ProcessingProfile.INTERNET)
+                    _geminiKey.value.takeIf { it.isNotBlank() }?.let {
+                        com.example.ai.cloud.GeminiCredentialStore(getApplication<Application>()).setApiKey(it)
+                    }
+                }
                 SetupChoice.LATER -> Unit
             }
             prefs.setOnboardingCompleted(true)
@@ -330,8 +340,34 @@ private fun SpacesStep(
 private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (SetupChoice) -> Unit, wifiOnly: Boolean, onWifiOnly: (Boolean) -> Unit) {
     StepTitle("How should the AI run?", "Recording always works. Turning recordings into transcripts and summaries needs a little AI setup.")
     ChoiceCard(
+        selected = choice == SetupChoice.INTERNET, onClick = { onChoice(SetupChoice.INTERNET) },
+        icon = Icons.Filled.Cloud, title = "Internet mode", badge = "Recommended",
+        line = "Best quality, nothing big to download — Google's Gemini does the work. Needs a connection; recordings are sent to Google.",
+        tag = "setup_choice_internet"
+    ) {
+        if (choice == SetupChoice.INTERNET) {
+            val key by vm.geminiKey.collectAsState()
+            val context = androidx.compose.ui.platform.LocalContext.current
+            Column(Modifier.padding(top = 10.dp)) {
+                OutlinedTextField(
+                    value = key, onValueChange = vm::setGeminiKey, singleLine = true,
+                    placeholder = { Text(if (vm.hasBuiltInKey) "Optional — a tester key is built in" else "Paste your Gemini API key") },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth().testTag("setup_gemini_key")
+                )
+                Text(
+                    "Get a free key at aistudio.google.com/apikey",
+                    color = Brand.Cyan, fontSize = 12.5.sp,
+                    modifier = Modifier.padding(top = 6.dp).clickable {
+                        runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://aistudio.google.com/apikey"))) }
+                    }
+                )
+            }
+        }
+    }
+    ChoiceCard(
         selected = choice == SetupChoice.OFFLINE_PACK, onClick = { onChoice(SetupChoice.OFFLINE_PACK) },
-        icon = Icons.Filled.PhoneAndroid, title = "Offline pack", badge = "Recommended",
+        icon = Icons.Filled.PhoneAndroid, title = "Offline pack", badge = "Most private",
         line = "Private and free. Three pieces, one download (${SetupGuide.formatBytes(vm.packBytes)}) that keeps going in the background.",
         tag = "setup_choice_offline"
     ) {
@@ -353,12 +389,6 @@ private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (S
             }
         }
     }
-    ChoiceCard(
-        selected = choice == SetupChoice.INTERNET, onClick = { onChoice(SetupChoice.INTERNET) },
-        icon = Icons.Filled.Cloud, title = "Internet mode", badge = null,
-        line = "No big downloads — Gemini does the work. Needs a connection and your own Gemini API key (add it in Settings). Recordings are sent to Google.",
-        tag = "setup_choice_internet"
-    )
     ChoiceCard(
         selected = choice == SetupChoice.LATER, onClick = { onChoice(SetupChoice.LATER) },
         icon = Icons.Filled.Schedule, title = "Decide later", badge = null,

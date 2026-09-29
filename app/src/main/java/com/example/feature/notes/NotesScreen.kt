@@ -241,16 +241,17 @@ fun NotesScreen(
                 if (onOpenFaith != null && appIdentity.showsFaith && (space == null || space == NotebookSpace.FAITH)) {
                     item(key = "faith") {
                         Surface(
-                            onClick = onOpenFaith, shape = RoundedCornerShape(18.dp), color = Ink,
+                            onClick = onOpenFaith, shape = RoundedCornerShape(18.dp), color = com.example.ui.theme.FaithGoldWash,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.FaithGold.copy(alpha = 0.35f)),
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 16.dp).testTag("notes_open_faith")
                         ) {
                             Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = Color(0xFFE9C46A).forTheme(), modifier = Modifier.size(22.dp))
+                                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = com.example.ui.theme.FaithGold, modifier = Modifier.size(22.dp))
                                 Column(Modifier.weight(1f).padding(start = 14.dp)) {
-                                    Text("Faith", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif)
-                                    Text("Bible, verse of the day, prayer and your journey", fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.7f))
+                                    Text("Faith", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif)
+                                    Text("Bible, verse of the day, prayer and your journey", fontSize = 12.5.sp, color = InkSecondary)
                                 }
-                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = InkSecondary, modifier = Modifier.size(18.dp))
                             }
                         }
                     }

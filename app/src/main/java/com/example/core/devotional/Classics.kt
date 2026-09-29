@@ -130,7 +130,13 @@ object TopicPassages {
         "Identity" to listOf("2 Corinthians 5:17", "1 John 3:1-2", "Psalm 139:13-16", "Galatians 2:20", "Ephesians 1:3-7"),
         "Joy" to listOf("Nehemiah 8:10", "Philippians 4:4", "Psalm 16:11", "John 15:11", "Habakkuk 3:17-18"),
         "Trust" to listOf("Proverbs 3:5-6", "Psalm 56:3-4", "Isaiah 26:4", "Psalm 37:3-5", "Jeremiah 17:7-8"),
-        "Healing" to listOf("Psalm 147:3", "Isaiah 53:4-5", "Jeremiah 17:14", "James 5:14-15", "Psalm 30:2")
+        "Healing" to listOf("Psalm 147:3", "Isaiah 53:4-5", "Jeremiah 17:14", "James 5:14-15", "Psalm 30:2"),
+        "Wonder" to listOf("Psalm 8", "Psalm 19:1-6", "Job 38:1-11", "Psalm 104:24-30", "Romans 11:33-36", "Isaiah 40:25-26"),
+        "Work & calling" to listOf("Colossians 3:23-24", "Genesis 2:15", "Proverbs 16:3", "Ecclesiastes 3:9-13", "1 Corinthians 15:58", "Nehemiah 2:17-20"),
+        "Creativity" to listOf("Exodus 31:1-5", "Genesis 1:26-31", "Psalm 33:1-3", "Ephesians 2:10", "Psalm 96:1-6"),
+        "Friendship" to listOf("Proverbs 17:17", "Ecclesiastes 4:9-12", "John 15:12-15", "1 Samuel 18:1-4", "Proverbs 27:9", "Romans 12:9-13"),
+        "Family" to listOf("Deuteronomy 6:4-9", "Psalm 127", "Ephesians 6:1-4", "Ruth 1:16-17", "Colossians 3:12-15", "Joshua 24:15"),
+        "Generosity" to listOf("2 Corinthians 9:6-8", "Acts 20:35", "Proverbs 11:24-25", "Luke 6:38", "1 Timothy 6:17-19", "Mark 12:41-44")
     )
 
     val bySeason: Map<LiturgicalSeason, List<String>> = mapOf(

@@ -171,6 +171,22 @@ class DevotionalEngineTest {
         listOf("Do not quote Bible verses", "Never claim to speak for God", "no medical, legal, financial", "Output only JSON").forEach { assertTrue(it, p.contains(it)) }
     }
 
+    @Test fun `each day has its own angle, personal details stay in the background, recent ones aren't repeated`() {
+        val base = DevotionalBrief(
+            ScriptureReferenceParser.parse("Psalm 23")!!, null, profile.copy(aboutMe = "Software engineer in Lusaka"),
+            null, "Tuesday", emptyList(), null, recent = listOf("From your room in Lusaka — the city hums…"), dayIndex = 100
+        )
+        val p = DevotionalContract.prompt(base)
+        assertTrue(p.contains("never mention their city or country"))
+        assertTrue(p.contains("Don't assume they are struggling"))
+        assertTrue(p.contains("From your room in Lusaka"))
+        assertTrue(p.contains("don't repeat their titles"))
+        // A week of days gives a week of different angles.
+        assertEquals(7, (100L until 107L).map { DevotionalContract.angleFor(it) }.toSet().size)
+        assertFalse(DevotionalContract.prompt(base.copy(dayIndex = 101)).substringAfter("Today's angle:").substringBefore('\n') ==
+            p.substringAfter("Today's angle:").substringBefore('\n'))
+    }
+
     @Test fun `crisis detection`() {
         assertTrue(DevotionalContract.crisisIn(listOf("I keep thinking about suicide")))
         assertFalse(DevotionalContract.crisisIn(listOf("Died to self, alive in Christ", "a killer workout")))

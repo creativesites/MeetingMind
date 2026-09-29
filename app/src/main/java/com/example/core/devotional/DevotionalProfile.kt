@@ -35,13 +35,16 @@ enum class DevotionalTone(val label: String, val guidance: String) {
 
 /** Topics a person can ask to hear more about. */
 object DevotionalTopics {
+    // Most days are ordinary, good days: the everyday and joyful come first, hard things after.
     val all = listOf(
-        "Peace", "Anxiety", "Hope", "Grief", "Faith", "Forgiveness", "Purpose", "Patience", "Courage",
-        "Gratitude", "Rest", "Love", "Prayer", "Wisdom", "Identity", "Joy", "Trust", "Healing"
+        "Joy", "Gratitude", "Wonder", "Purpose", "Work & calling", "Creativity", "Friendship", "Family",
+        "Generosity", "Courage", "Wisdom", "Prayer", "Love", "Faith", "Hope", "Peace", "Rest", "Patience",
+        "Trust", "Identity", "Forgiveness", "Healing", "Anxiety", "Grief"
     )
     val seasons = listOf(
-        "New job", "Exams", "Marriage", "New parent", "Parenting teens", "Grief and loss", "Illness",
-        "Waiting", "Leadership", "Singleness", "Moving", "Retirement", "Money worries", "A fresh start"
+        "Life is good", "A busy season", "Ordinary days", "Celebrating", "Building something", "Learning something new",
+        "Starting out", "New job", "Leadership", "Marriage", "New parent", "Parenting teens", "Singleness", "Moving",
+        "Travelling", "Retirement", "Exams", "Waiting", "A fresh start", "Money worries", "Illness", "Grief and loss"
     )
 }
 

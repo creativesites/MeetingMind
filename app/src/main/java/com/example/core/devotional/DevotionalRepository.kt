@@ -146,7 +146,10 @@ class DevotionalRepository(
         )
         val signals = if (profile.source == DevotionalSource.CLASSIC) DevotionalSignals() else signals(date)
         return try {
-            val d = engine.write(date, profile, signals, app.identity.displayName?.substringBefore(' '), evening, ask)
+            // What was written lately, so today's reads as new: titles and first lines only.
+            val lately = runCatching { recent(10) }.getOrDefault(emptyList())
+                .map { n -> "${n.title.trim()} — ${n.plainText.replace(Regex("\\s+"), " ").take(140)}" }
+            val d = engine.write(date, profile, signals, app.identity.displayName?.substringBefore(' '), evening, ask, lately)
             d to engine.lastFallbackReason.takeIf { d.origin == DevotionalOrigin.CLASSIC && profile.source != DevotionalSource.CLASSIC }
         } finally {
             runCatching { com.example.ai.modelmanagement.LlmEngineManager.release() }

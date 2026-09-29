@@ -104,7 +104,7 @@ fun DevotionalSettingsSheet(profile: DevotionalProfile, onSave: (DevotionalProfi
                         Chip(t, t in p.topics) { p = p.copy(topics = if (t in p.topics) p.topics - t else p.topics + t) }
                     }
                 }
-                Label("A season you're in")
+                Label("Where life is right now (optional)")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     DevotionalTopics.seasons.forEach { s -> Chip(s, p.season == s) { p = p.copy(season = if (p.season == s) null else s) } }
                 }
@@ -112,6 +112,10 @@ fun DevotionalSettingsSheet(profile: DevotionalProfile, onSave: (DevotionalProfi
                 OutlinedTextField(
                     value = p.aboutMe, onValueChange = { p = p.copy(aboutMe = it.take(400)) }, minLines = 2,
                     placeholder = { Text("e.g. Nurse on night shifts, mum of two, learning to rest") }, modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    "Used quietly in the background — it shapes what's chosen, but won't be repeated back to you every day.",
+                    fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 6.dp)
                 )
                 Label("Include")
                 ToggleRow("A prayer", null, p.includePrayer) { p = p.copy(includePrayer = it) }
@@ -199,7 +203,7 @@ private fun Label(text: String) {
 @Composable
 private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
-        onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Gold.copy(alpha = 0.14f) else Color.White,
+        onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Gold.copy(alpha = 0.14f) else com.example.ui.theme.SurfaceBase,
         border = BorderStroke(1.dp, if (selected) Gold else Line)
     ) {
         Text(label, fontSize = 13.sp, color = if (selected) FaithGoldInk else InkSecondary, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,

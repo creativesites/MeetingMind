@@ -53,9 +53,9 @@ class OnboardingTest {
         }
     }
 
-    @Test fun `the offline pack is the recommended default, sized for this phone`() {
+    @Test fun `internet mode is the default, with the offline pack sized for this phone`() {
         val vm = OnboardingViewModel(app)
-        assertEquals(SetupChoice.OFFLINE_PACK, vm.setup.value)
+        assertEquals(SetupChoice.INTERNET, vm.setup.value)
         assertEquals(3, vm.pack.size)
         assertTrue(vm.packBytes > 500_000_000L)
     }
