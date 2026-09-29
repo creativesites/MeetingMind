@@ -83,6 +83,22 @@ object GeminiChunkPlanner {
         return bounds.mapIndexed { index, (from, to) -> AudioChunk(index, from, to) }
     }
 
+    /**
+     * Chunks for only the stretches that aren't transcribed yet. Each gap is widened by the overlap
+     * on both sides (kept inside the recording), so what's new can be joined to what's already
+     * there the same way two ordinary chunks are.
+     */
+    fun planGaps(gaps: List<LongRange>, totalDurationMs: Long, config: ChunkPlanConfig = ChunkPlanConfig(), firstIndex: Int = 0): List<AudioChunk> {
+        val out = mutableListOf<AudioChunk>()
+        for (gap in gaps) {
+            val from = maxOf(0L, gap.first - config.overlapMs)
+            val to = minOf(totalDurationMs, gap.last + 1 + config.overlapMs)
+            if (to <= from) continue
+            plan(to - from, config).forEach { c -> out += AudioChunk(firstIndex + out.size, from + c.startMs, from + c.endMs) }
+        }
+        return out
+    }
+
     /** The time range two consecutive chunks share, or null when they do not overlap. */
     fun overlapBetween(earlier: AudioChunk, later: AudioChunk): LongRange? {
         val from = maxOf(earlier.startMs, later.startMs)

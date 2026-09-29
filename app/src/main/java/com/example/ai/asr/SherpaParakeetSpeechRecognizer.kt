@@ -119,6 +119,7 @@ class SherpaParakeetSpeechRecognizer(
                     )
                     val words = decodeWindow(recognizer, decoded.samples, sampleRate, window)
                     checkpoints?.append(meetingId, modelId, windows, index, words)
+                    options.onWindowDone?.invoke(window.startMs, window.endMs, words)
                     perWindowWords += words
                 }
             }

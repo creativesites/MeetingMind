@@ -250,9 +250,11 @@ class MeetingProcessingPipeline(
             // the user still gets a transcript. That is the only direction the fallback ever
             // runs — OFFLINE has no cloud route and can never fall the other way.
             var cloudWords: List<CanonicalWord>? = null
+            var localRunWords: List<CanonicalWord>? = null
             var cloudChunkCount = 1
             var cloudDegradedReason: String? = null
             var effectiveProfile = processingProfile
+            var vadCache: List<com.example.ai.transcript.SpeechRegion>? = null
             if (processingProfile == ProcessingProfile.INTERNET) {
                 updateJob("Transcribing with Google's AI...", 30, ProcessingStage.TRANSCRIBING)
                 val cloudStart = System.currentTimeMillis()
@@ -265,53 +267,73 @@ class MeetingProcessingPipeline(
                         "format ${com.example.core.audio.CloudAudio.sniffMime(audioFile) ?: "unknown"}, length ${(measuredMs ?: totalDurationMs) / 1000}s" +
                         (if (measuredMs == null) " (from import; file length unreadable)" else "")
                 )
-                val cloudResult = cloudTranscriptionEngine.transcribe(
-                    audioFile = audioFile,
-                    totalDurationMs = measuredMs ?: totalDurationMs,
-                    vocabularyHints = vocabularyHints,
-                    onProgress = { progress, status ->
-                        onProgress(status, (25 + progress * 30).toInt(), ProcessingStage.TRANSCRIBING)
-                    },
-                    // Finished parts are readable at once: saved as provisional segments, replaced
-                    // by the full transcript when it's done.
-                    onPartial = { words, done, total ->
-                        val type = runCatching { com.example.core.model.RecordingType.valueOf(existingMeeting.recordingType) }.getOrDefault(com.example.core.model.RecordingType.GENERAL)
-                        val partial = CanonicalTranscriptAssembler.projectToSegments(
-                            CanonicalTranscriptAssembler.assemble(
-                                meetingId = meetingId, words = words, recordingType = type, singleSpeakerMode = expectedSpeakerCount == 1,
-                                metadata = TranscriptMetadata(meetingId = meetingId, language = existingMeeting.language, processingMode = processingProfile.name,
-                                    transcriptionEngine = com.example.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL),
-                                speakerNameFor = { id -> defaultSpeakerNameFor(speakerIndexOf(id)) },
-                                structureEngine = structureEngine
+                // Gemini first, the phone behind it — and either can take over from the other:
+                // what's finished is saved region by region, so a switch (yours, or a dropped
+                // connection) continues from there instead of starting again.
+                val runner = com.example.ai.transcription.TranscriptionRunner(
+                    store = com.example.ai.transcription.TranscriptionCheckpoints(transcriptionRegionsDir(context)),
+                    gemini = cloudTranscriptionEngine,
+                    local = { gaps, onRegion, onProg ->
+                        val speech = vadCache ?: run {
+                            updateJob("Detecting speech intervals (VAD)...", 20, ProcessingStage.DETECTING_SPEECH)
+                            (when (val v = vad.detectSpeechIntervals(audioFile, totalDurationMs)) { is AiResult.Success -> v.value; else -> emptyList() }).also { vadCache = it }
+                        }
+                        val restricted = com.example.ai.transcription.Coverage.restrict(speech, gaps)
+                        if (speech.isNotEmpty() && restricted.isEmpty()) AiResult.Success(emptyList())
+                        else {
+                            updateJob("Transcribing with local AI...", 35, ProcessingStage.TRANSCRIBING)
+                            speechRecognizer.transcribe(
+                                audioFile = audioFile, totalDurationMs = totalDurationMs, meetingId = meetingId,
+                                speechRegions = restricted,
+                                options = TranscriptionOptions(modelId = modelId, vocabularyHints = vocabularyHints, onWindowDone = onRegion),
+                                onProgress = { prog, status -> onProg(prog, status); onProgress(status, (35 + prog * 20).toInt(), ProcessingStage.TRANSCRIBING) }
                             )
-                        )
-                        transcriptDao.deletePartialSegments(meetingId)
-                        transcriptDao.insertSegments(partial.mapIndexed { i, seg ->
-                            TranscriptSegmentEntity(
-                                id = "partial_${i}_${seg.id}", meetingId = meetingId, speakerId = seg.speakerId, speakerName = seg.speakerName,
-                                startMs = seg.startMs, endMs = seg.endMs, text = seg.text, confidence = seg.confidence
-                            )
-                        })
-                        updateJob("Transcribed $done of $total parts — you can start reading", (25 + done * 30 / total), ProcessingStage.TRANSCRIBING)
+                        }
                     }
                 )
-                when (cloudResult) {
-                    is AiResult.Success -> {
-                        cloudWords = cloudResult.value.words
-                        cloudChunkCount = cloudResult.value.chunkCount
-                        cloudDegradedReason = cloudResult.value.degradedReason
-                        Log.d(
-                            PERF_TAG,
-                            "Cloud transcription: ${System.currentTimeMillis() - cloudStart}ms, " +
-                                "${cloudResult.value.chunkCount} chunks, smartPass=${cloudResult.value.smartPassApplied}"
-                        )
-                    }
-                    else -> {
-                        effectiveProfile = ProcessingProfile.OFFLINE
-                        cloudDegradedReason = cloudResult.describeFailure()
-                        Log.d(PERF_TAG, "Cloud transcription unavailable (${cloudDegradedReason ?: "no reason given"}) — falling back to on-device processing")
-                        updateJob("Cloud transcription unavailable — processing on device...", 20, ProcessingStage.PREPARING_AUDIO)
-                    }
+                val outcome = try {
+                    runner.run(
+                        meetingId = meetingId, audioFile = audioFile, totalMs = measuredMs ?: totalDurationMs,
+                        start = com.example.ai.transcription.TranscriptionRoute.GEMINI, vocabularyHints = vocabularyHints,
+                        onProgress = { progress, status -> onProgress(status, (25 + progress * 30).toInt(), ProcessingStage.TRANSCRIBING) },
+                        // Finished parts are readable at once: saved as provisional segments, replaced
+                        // by the full transcript when it's done.
+                        onPartial = { words, done, total ->
+                            val type = runCatching { com.example.core.model.RecordingType.valueOf(existingMeeting.recordingType) }.getOrDefault(com.example.core.model.RecordingType.GENERAL)
+                            val partial = CanonicalTranscriptAssembler.projectToSegments(
+                                CanonicalTranscriptAssembler.assemble(
+                                    meetingId = meetingId, words = words, recordingType = type, singleSpeakerMode = expectedSpeakerCount == 1,
+                                    metadata = TranscriptMetadata(meetingId = meetingId, language = existingMeeting.language, processingMode = processingProfile.name,
+                                        transcriptionEngine = com.example.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL),
+                                    speakerNameFor = { id -> defaultSpeakerNameFor(speakerIndexOf(id)) },
+                                    structureEngine = structureEngine
+                                )
+                            )
+                            transcriptDao.deletePartialSegments(meetingId)
+                            transcriptDao.insertSegments(partial.mapIndexed { i, seg ->
+                                TranscriptSegmentEntity(
+                                    id = "partial_${i}_${seg.id}", meetingId = meetingId, speakerId = seg.speakerId, speakerName = seg.speakerName,
+                                    startMs = seg.startMs, endMs = seg.endMs, text = seg.text, confidence = seg.confidence
+                                )
+                            })
+                            updateJob("Transcribed $done of $total parts — you can start reading", (25 + done * 30 / total), ProcessingStage.TRANSCRIBING)
+                        }
+                    )
+                } finally {
+                    com.example.ai.transcription.TranscriptionRoutes.publish(meetingId, null)
+                }
+                cloudDegradedReason = outcome.geminiFailure
+                if (outcome.complete && outcome.usedGemini) {
+                    cloudWords = outcome.words()
+                    cloudChunkCount = outcome.regions.count { it.route == com.example.ai.transcription.TranscriptionRoute.GEMINI }.coerceAtLeast(1)
+                    if (outcome.usedLocal) cloudDegradedReason = "Part of this recording was transcribed on this phone; those parts have no speaker labels."
+                    Log.d(PERF_TAG, "Transcription: ${System.currentTimeMillis() - cloudStart}ms, gemini=${outcome.usedGemini}, local=${outcome.usedLocal}")
+                } else if (outcome.complete) {
+                    localRunWords = outcome.words()
+                    effectiveProfile = ProcessingProfile.OFFLINE
+                } else {
+                    cloudDegradedReason = outcome.failure ?: outcome.geminiFailure
+                    Log.d(PERF_TAG, "Transcription incomplete: $cloudDegradedReason")
                 }
             }
 
@@ -319,7 +341,7 @@ class MeetingProcessingPipeline(
             // a region boundary is never a transcript boundary. Best-effort: with no VAD model
             // installed the recording is windowed end to end instead of being skipped.
             val vadStart = System.currentTimeMillis()
-            val speechRegions = if (cloudWords != null) emptyList() else {
+            val speechRegions = if (cloudWords != null || localRunWords != null) emptyList() else {
                 updateJob("Detecting speech intervals (VAD)...", 20, ProcessingStage.DETECTING_SPEECH)
                 when (val vadResult = vad.detectSpeechIntervals(audioFile, totalDurationMs)) {
                     is AiResult.Success -> vadResult.value
@@ -335,6 +357,11 @@ class MeetingProcessingPipeline(
             val asrStart = System.currentTimeMillis()
             val asrResult: AiResult<List<CanonicalWord>> = if (cloudWords != null) {
                 AiResult.Success(cloudWords)
+            } else if (localRunWords != null) {
+                AiResult.Success(localRunWords)
+            } else if (processingProfile == ProcessingProfile.INTERNET) {
+                // Both engines were tried and the recording is not fully transcribed.
+                AiResult.Failed(cloudDegradedReason ?: "Transcription didn't finish.")
             } else {
                 updateJob("Transcribing with local AI...", 35, ProcessingStage.TRANSCRIBING)
                 speechRecognizer.transcribe(
@@ -668,6 +695,7 @@ class MeetingProcessingPipeline(
             meetingDao.updateMeeting(updatedMeeting)
             // Finished: the resume checkpoint has done its job.
             AsrCheckpointStore(asrCheckpointDir(context)).clear(meetingId)
+            com.example.ai.transcription.TranscriptionCheckpoints(transcriptionRegionsDir(context)).clear(meetingId)
             // The recording's note picks up its generated title and summary. A failure here must
             // never fail a recording that processed successfully.
             runCatching { com.example.core.repository.NoteRepository(context, database).syncFromRecording(meetingId) }
@@ -1007,4 +1035,6 @@ class MeetingProcessingPipeline(
 }
 
 /** Where interrupted local transcriptions keep their finished windows. */
+internal fun transcriptionRegionsDir(context: android.content.Context) = java.io.File(context.filesDir, "transcription_regions")
+
 internal fun asrCheckpointDir(context: android.content.Context) = java.io.File(context.filesDir, "asr_checkpoints")

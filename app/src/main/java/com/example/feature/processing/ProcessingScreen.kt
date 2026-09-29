@@ -443,7 +443,10 @@ fun ProcessingScreen(
 
     val profile by viewModel.processingProfile.collectAsState()
     val firstWords by remember(meetingId) { viewModel.partialTranscript(meetingId) }.collectAsState(initial = emptyList())
+    val routes by com.example.ai.transcription.TranscriptionRoutes.info.collectAsState()
     ProcessingRunning(
+        route = routes[meetingId],
+        onSwitchRoute = { com.example.ai.transcription.TranscriptionRoutes.request(meetingId, it) },
         firstWords = firstWords,
         state = state,
         profile = profile,
@@ -468,7 +471,10 @@ internal fun ProcessingRunning(
     onViewRecording: () -> Unit,
     onGetModel: () -> Unit,
     /** Transcript of the parts already done — readable before the whole recording is finished. */
-    firstWords: List<String> = emptyList()
+    firstWords: List<String> = emptyList(),
+    /** Which engine is transcribing right now, and whether the other can take over. */
+    route: com.example.ai.transcription.RouteInfo? = null,
+    onSwitchRoute: (com.example.ai.transcription.TranscriptionRoute) -> Unit = {}
 ) {
     var confirmStop by remember { mutableStateOf(false) }
     val failed = state.error != null || state.modelRequired
@@ -535,6 +541,27 @@ internal fun ProcessingRunning(
 
             Spacer(Modifier.height(28.dp))
 
+            if (!failed && !state.isComplete && route != null) {
+                val other = route.canSwitchTo
+                androidx.compose.foundation.layout.Row(
+                    Modifier.fillMaxWidth().padding(bottom = 14.dp).testTag("processing_route"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "On ${route.current.label} · ${route.percentDone}% done",
+                            style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold
+                        )
+                        route.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                    if (other != null) androidx.compose.material3.TextButton(onClick = { onSwitchRoute(other) }, modifier = Modifier.testTag("processing_switch")) {
+                        Text(
+                            if (other == com.example.ai.transcription.TranscriptionRoute.GEMINI) "Switch to Gemini — faster" else "Continue on this phone",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
             if (!failed && !state.isComplete && firstWords.isNotEmpty()) {
                 androidx.compose.material3.Surface(
                     onClick = onViewRecording, shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),

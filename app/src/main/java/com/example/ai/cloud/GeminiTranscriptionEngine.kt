@@ -69,7 +69,14 @@ class GeminiTranscriptionEngine(
         vocabularyHints: List<String> = emptyList(),
         onProgress: (progress: Float, statusText: String) -> Unit = { _, _ -> },
         /** The words of the parts finished so far, in order — to show before the rest is done. */
-        onPartial: suspend (words: List<CanonicalWord>, done: Int, total: Int) -> Unit = { _, _, _ -> }
+        onPartial: suspend (words: List<CanonicalWord>, done: Int, total: Int) -> Unit = { _, _, _ -> },
+        /**
+         * Parts an earlier run already finished (Gemini's own words, with their chunk-local speaker
+         * ids). Only the stretches they don't cover are sent; the rest is reused as it was.
+         */
+        restored: List<com.example.ai.transcription.DoneRegion> = emptyList(),
+        /** Called as each part finishes, so it can be saved and never has to be paid for twice. */
+        onChunkDone: (chunk: AudioChunk, words: List<CanonicalWord>) -> Unit = { _, _ -> }
     ): AiResult<CloudTranscriptionResult> {
         if (!transport.refreshConfigured()) {
             return AiResult.ModelUnavailable(
@@ -78,9 +85,11 @@ class GeminiTranscriptionEngine(
             )
         }
 
-        val chunks = GeminiChunkPlanner.plan(totalDurationMs, chunkConfig)
-        GeminiLog.add("Transcription plan: ${chunks.size} part(s) for ${totalDurationMs / 1000}s of audio")
-        if (chunks.isEmpty()) return AiResult.Success(CloudTranscriptionResult(emptyList(), 0, false, null))
+        val reused = restored.filter { it.route == com.example.ai.transcription.TranscriptionRoute.GEMINI }
+        val chunks = if (restored.isEmpty()) GeminiChunkPlanner.plan(totalDurationMs, chunkConfig)
+        else GeminiChunkPlanner.planGaps(com.example.ai.transcription.Coverage.gaps(totalDurationMs, restored), totalDurationMs, chunkConfig, firstIndex = reused.size)
+        GeminiLog.add("Transcription plan: ${chunks.size} part(s) for ${totalDurationMs / 1000}s of audio" + if (restored.isNotEmpty()) " (${reused.size} already done)" else "")
+        if (chunks.isEmpty() && reused.isEmpty()) return AiResult.Success(CloudTranscriptionResult(emptyList(), 0, false, null))
 
         // --- Pass A: verbatim. This one is required; without it there is no transcript at all. ---
         val verbatimModel = router.route(AiRoute.GEMINI_TRANSCRIPTION_VERBATIM).modelId
@@ -89,6 +98,7 @@ class GeminiTranscriptionEngine(
         // Parts go out a few at a time and come back in order: each finished prefix of the
         // recording is handed on at once (a progressive transcript), without waiting for the rest.
         val transcribedChunks = mutableListOf<ChunkTranscription>()
+        reused.forEachIndexed { i, r -> transcribedChunks += ChunkTranscription(AudioChunk(i, r.startMs, r.endMs), r.words) }
         val started = System.currentTimeMillis()
         val failure: AiResult<CloudTranscriptionResult>? = kotlinx.coroutines.coroutineScope {
             val gate = kotlinx.coroutines.sync.Semaphore(if (chunks.size > 1) CONCURRENCY else 1)
@@ -108,7 +118,7 @@ class GeminiTranscriptionEngine(
                                 // the API rejects it alongside timestamps and speakers.
                                 transcription = AudioTranscriptionConfig(mode = "VERBATIM", wordTimestamp = true, diarization = true),
                                 // One chunk is the whole recording: send the file as it is, no decoding.
-                                uploadWholeFile = chunks.size == 1
+                                uploadWholeFile = chunks.size == 1 && restored.isEmpty() && chunk.startMs == 0L
                             )
                         )
                     } finally { gate.release() }
@@ -132,10 +142,12 @@ class GeminiTranscriptionEngine(
                     return@coroutineScope AiResult.Failed("Cloud transcription returned an unreadable result for part ${chunk.index + 1}.")
                 }
                 transcribedChunks += ChunkTranscription(chunk, words)
+                transcribedChunks.sortBy { it.chunk.startMs }
+                runCatching { onChunkDone(chunk, words) }
                 if (i == 0) GeminiLog.add("Time to first transcript: ${(System.currentTimeMillis() - started) / 1000}s")
                 onProgress((i + 1).toFloat() / (chunks.size * 2), "Transcribed ${i + 1} of ${chunks.size} parts")
                 if (chunks.size > 1 && i < chunks.lastIndex) {
-                    val so = GlobalSpeakerResolver.applyMapping(transcribedChunks, GlobalSpeakerResolver.resolve(transcribedChunks))
+                    val so = GlobalSpeakerResolver.applyMapping(transcribedChunks.toList(), GlobalSpeakerResolver.resolve(transcribedChunks.toList()))
                     runCatching { onPartial(AsrWindowReconciler.reconcile(so.map { it.words }), i + 1, chunks.size) }
                 }
             }

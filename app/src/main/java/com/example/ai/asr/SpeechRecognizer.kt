@@ -19,7 +19,9 @@ data class TranscriptionOptions(
     val temperature: Float = 0.0f,
     val includeTimestamps: Boolean = true,
     /** How speech regions are grouped into decode windows — see [AsrWindowConfig]. */
-    val windowConfig: AsrWindowConfig = AsrWindowConfig()
+    val windowConfig: AsrWindowConfig = AsrWindowConfig(),
+    /** Called with each decode window's words as it finishes (absolute times), so the work can be saved and handed to another engine. */
+    val onWindowDone: ((startMs: Long, endMs: Long, words: List<com.example.ai.transcript.CanonicalWord>) -> Unit)? = null
 )
 
 /**
