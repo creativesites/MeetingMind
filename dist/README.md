@@ -1,12 +1,16 @@
 # Installable builds
 
-**v38** (`MeetingMind-v38-arm64-v8a.apk`, `MeetingMind-v38-armeabi-v7a.apk`) is v37 plus a **crash reporter**:
-if the app closes unexpectedly, the next launch (after unlock) shows what went wrong, with a Copy button,
-before the app opens. Built from `84e1c17` plus commit `18437e1`. Same signing key, so it installs over v37.
+**v39** (`MeetingMind-v39-arm64-v8a.apk`, `MeetingMind-v39-armeabi-v7a.apk`) is the Professional work through **W11**,
+plus two fixes. Same signing key, so it installs over the earlier test builds and keeps your data.
 
-`MeetingMind-v37-arm64-v8a.apk` (most phones) and `MeetingMind-v37-armeabi-v7a.apk` (older 32-bit
-phones) — debug-signed test builds of **W7–W10**, built from branch `ccr-417dd2a6-v88ts6` at commit
-`84e1c17`. They are not built from this branch's source. v34 is the previous build.
+- **Fixed: the crash right after unlocking.** The Work screen's start-up code read a value before it existed.
+- **A crash reporter.** If the app closes unexpectedly, the next launch (after unlock) shows what went wrong,
+  with a Copy button, before the app opens.
+- **Work Inbox (W11).** Share a PDF, a page, a note or audio into MeetingMind. Process proposes where it goes,
+  and nothing is filed until you confirm.
+
+Built from the agent's `2c29248` (W11) plus the reporter (`18437e1`) and the fix. The v37 and v38 builds were
+removed; v38 has the crash.
 
 ## What's new in v37 (W7–W10)
 
