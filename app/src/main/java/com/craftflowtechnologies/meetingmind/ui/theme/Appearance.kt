@@ -27,7 +27,8 @@ enum class TextSize(val label: String, val scale: Float) {
 enum class HomeStyle(val label: String, val description: String) {
     TODAY("Today", "The day, your calendar and timeline, and everything you've captured"),
     CALM("Calm", "Quiet and simple, with your stories and your recent recordings and notes"),
-    FOCUS("Focus", "One page only: what's next, what's due, and Record")
+    FOCUS("Focus", "One page only: what's next, what's due, and Record"),
+    PROFESSIONAL("Professional", "A briefing for the working day: next meeting and prep, what needs you, your schedule, tasks, projects and people — with everything else still here")
 }
 
 /** Parts of the Today home a person can hide. */

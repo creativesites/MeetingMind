@@ -161,6 +161,27 @@ private fun <T> Segments(items: List<T>, selected: T, label: (T) -> String, onPi
 /** A small live sample, so a change is seen before leaving the page. */
 @Composable
 private fun Preview(a: Appearance) {
+    if (a.homeStyle == HomeStyle.PROFESSIONAL) {
+        // The Professional home's briefing, in miniature.
+        Column(
+            Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp))
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFF0B1024), androidx.compose.ui.graphics.Color(0xFF1B2250))))
+                .padding(18.dp)
+        ) {
+            Text("YOUR DAY", fontSize = 10.5.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.SemiBold, color = androidx.compose.ui.graphics.Color(0xFFA5B4FC))
+            Text("3 meetings today  ·  2 to review", fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.78f))
+            Text("NEXT · IN 25 MIN", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = androidx.compose.ui.graphics.Color(0xFFFCA5A5), modifier = Modifier.padding(top = 12.dp))
+            Text("Acme — project review", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.White)
+            Text("Last time: OAuth2 chosen · Sarah owes credentials", fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f))
+            Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("● Record", color = androidx.compose.ui.graphics.Color(0xFF0B1024), fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(androidx.compose.ui.graphics.Color.White).padding(horizontal = 14.dp, vertical = 8.dp))
+                Spacer(Modifier.size(10.dp))
+                Text("Professional home · " + a.textSize.label.lowercase() + " text", fontSize = 12.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.55f))
+            }
+        }
+        return
+    }
     Column(Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(SurfaceRaised).border(1.dp, LineSoft, RoundedCornerShape(20.dp)).padding(18.dp)) {
         Text("UP NEXT · 10:30", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Accent)
         Text("Sunday service", fontSize = 21.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif, color = Ink, modifier = Modifier.padding(top = 6.dp))

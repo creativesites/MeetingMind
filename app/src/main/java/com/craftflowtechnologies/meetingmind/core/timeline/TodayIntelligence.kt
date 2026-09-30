@@ -112,6 +112,13 @@ object Greetings {
         SkyPhase.DUSK to listOf("Evening, %s — time to reflect", "Good evening, %s. What did today hold?")
     )
 
+    /** "Good morning, Ana": for the Professional home and anyone who'd rather Home didn't joke. */
+    fun plain(identity: AppIdentity, now: Calendar = Calendar.getInstance()): String {
+        val hour = now.get(Calendar.HOUR_OF_DAY)
+        val part = when { hour < 12 -> "Good morning"; hour < 18 -> "Good afternoon"; else -> "Good evening" }
+        return identity.firstName?.let { "$part, $it" } ?: part
+    }
+
     fun pick(identity: AppIdentity, now: Calendar = Calendar.getInstance()): String {
         val name = identity.firstName ?: "friend"
         val phase = TimeOfDaySky.at(now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE)).phase

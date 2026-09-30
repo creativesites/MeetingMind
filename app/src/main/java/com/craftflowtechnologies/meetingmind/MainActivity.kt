@@ -360,7 +360,28 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
             val setupState by setupVm.state.collectAsState()
             val setupSnoozedUntil by setupVm.snoozedUntil.collectAsState()
             val homeStyle = com.craftflowtechnologies.meetingmind.ui.theme.LocalAppearance.current.homeStyle
-            if (homeStyle != com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) com.craftflowtechnologies.meetingmind.feature.today.FocusHome(
+            if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.PROFESSIONAL) com.craftflowtechnologies.meetingmind.feature.work.ProfessionalHome(
+                today = vm,
+                work = viewModel(viewModelStoreOwner = context as ComponentActivity),
+                onRecord = { navController.navigate(Routes.RECORDING) },
+                onRecordType = { navController.navigate(Routes.recordTypeRoute(it)) },
+                onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
+                onNewNote = { openNewNote(false) },
+                onImport = { navController.navigate(Routes.IMPORT) },
+                onSearch = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenProcessing = openProcessing,
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
+                onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
+                onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
+                onOpenWrapUp = { id, compose -> navController.navigate(Routes.wrapUpRoute(id, compose)) },
+                onOpenProject = { navController.navigate(Routes.projectRoute(it)) },
+                onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
+                onCustomize = { navController.navigate(Routes.APPEARANCE) },
+                onNavigateBottomNav = navigateToPrimary
+            ) else if (homeStyle != com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) com.craftflowtechnologies.meetingmind.feature.today.FocusHome(
                 rich = homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM,
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 viewModel = vm,
