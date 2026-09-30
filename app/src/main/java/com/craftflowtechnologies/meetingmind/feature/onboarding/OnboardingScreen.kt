@@ -131,6 +131,11 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setLook(look: com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel) { lookTouched = true; _look.value = look }
 
+    /** What kind of work, when Work is picked: sets the words, sections and privacy defaults. */
+    private val _workProfile = MutableStateFlow<com.craftflowtechnologies.meetingmind.core.work.WorkProfile?>(null)
+    val workProfile: StateFlow<com.craftflowtechnologies.meetingmind.core.work.WorkProfile?> = _workProfile.asStateFlow()
+    fun setWorkProfile(profile: com.craftflowtechnologies.meetingmind.core.work.WorkProfile) { _workProfile.value = profile }
+
     /** The offline pack by default: most people want it to just work, privately. */
     private val _setup = MutableStateFlow(SetupChoice.INTERNET)
     val setup: StateFlow<SetupChoice> = _setup.asStateFlow()
@@ -170,6 +175,9 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
             prefs.setUserName(_userName.value)
             prefs.setSpaces(_spaces.value)
             prefs.setLook(_look.value)
+            if (com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in _spaces.value) {
+                prefs.setWorkSettings(com.craftflowtechnologies.meetingmind.core.work.WorkSettings.forProfile(_workProfile.value ?: com.craftflowtechnologies.meetingmind.core.work.WorkProfile.GENERAL))
+            }
             prefs.setWifiOnlyDownload(_wifiOnly.value)
             _bible.value?.let { t ->
                 // Becomes the reading Bible now, and downloads in the background for offline use.
@@ -209,6 +217,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
     val userName by viewModel.userName.collectAsState()
     val spaces by viewModel.spaces.collectAsState()
     val look by viewModel.look.collectAsState()
+    val workProfile by viewModel.workProfile.collectAsState()
     val setup by viewModel.setup.collectAsState()
     val wifiOnly by viewModel.wifiOnly.collectAsState()
     val bible by viewModel.bible.collectAsState()
@@ -245,7 +254,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                         0 -> Welcome()
                         1 -> WhatItDoes()
                         2 -> NameStep(userName, viewModel::setUserName)
-                        3 -> SpacesStep(spaces, viewModel::setSpaces, look, viewModel::setLook)
+                        3 -> SpacesStep(spaces, viewModel::setSpaces, look, viewModel::setLook, workProfile, viewModel::setWorkProfile)
                         4 -> SetupStep(viewModel, setup, viewModel::setSetup, wifiOnly, viewModel::setWifiOnly)
                         5 -> BibleStep(viewModel)
                         else -> PermissionsStep()
@@ -348,10 +357,29 @@ private fun NameStep(name: String, onName: (String) -> Unit) {
 @Composable
 private fun SpacesStep(
     spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>, onSpaces: (Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>) -> Unit,
-    look: com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel, onLook: (com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel) -> Unit
+    look: com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel, onLook: (com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel) -> Unit,
+    workProfile: com.craftflowtechnologies.meetingmind.core.work.WorkProfile?, onWorkProfile: (com.craftflowtechnologies.meetingmind.core.work.WorkProfile) -> Unit
 ) {
     StepTitle("What's it for?", "Pick what you'll use it for — the app shows only those. Change it any time in Settings.")
     com.craftflowtechnologies.meetingmind.core.identity.SpacesPicker(spaces, onSpaces)
+    if (com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in spaces) {
+        Text("What kind of work?", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 4.dp))
+        Text("Sets the words, templates and privacy. Doctors and lawyers get on-device only.", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp))
+        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.craftflowtechnologies.meetingmind.core.work.WorkProfile.entries.forEach { p ->
+                val on = p == workProfile
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (on) Color.White else Color.White.copy(alpha = 0.08f),
+                    modifier = Modifier.clickable { onWorkProfile(p) }.testTag("work_profile_${p.name}")
+                ) {
+                    Text(p.label, color = if (on) Color.Black else Color.White, fontSize = 13.5.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                }
+            }
+        }
+        workProfile?.let { Text(it.description, color = Color.White.copy(alpha = 0.6f), fontSize = 12.5.sp, modifier = Modifier.padding(top = 8.dp)) }
+    }
     Text("How should it feel?", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
     com.craftflowtechnologies.meetingmind.core.identity.LookPicker(look, onLook)
     Spacer(Modifier.height(12.dp))

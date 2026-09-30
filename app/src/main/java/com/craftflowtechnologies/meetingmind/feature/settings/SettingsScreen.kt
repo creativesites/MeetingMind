@@ -152,6 +152,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    val workSettings: StateFlow<com.craftflowtechnologies.meetingmind.core.work.WorkSettings> = userPrefs.workSettings.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), com.craftflowtechnologies.meetingmind.core.work.WorkSettings()
+    )
+
     val preferencesState: StateFlow<AppPreferencesState> = userPrefs.preferencesFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -248,11 +252,13 @@ fun SettingsScreen(
     onOpenSetup: () -> Unit = {},
     onOpenDataBackup: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
+    onOpenWork: () -> Unit = {},
     onReplayTour: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs by viewModel.preferencesState.collectAsState()
     val geminiKeyDisplay by viewModel.geminiKeyDisplay.collectAsState()
+    val work by viewModel.workSettings.collectAsState()
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showSpaces by remember { mutableStateOf(false) }
@@ -387,6 +393,13 @@ fun SettingsScreen(
                         title = "What it's for",
                         subtitle = prefs.identity.spaces.sortedBy { it.ordinal }.joinToString(" · ") { it.displayName },
                         onClick = { showSpaces = true }
+                    )
+                }
+                if (com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in prefs.identity.spaces) settingsRow {
+                    SettingsNavRow(
+                        title = "Work",
+                        subtitle = listOfNotNull(work.profile.label, work.terms.organisation + " · " + work.terms.project, "on this phone only".takeIf { work.keepOnDevice }).joinToString(" · "),
+                        onClick = onOpenWork
                     )
                 }
                 settingsRow {

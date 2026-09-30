@@ -932,6 +932,7 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onOpenSetup = { navController.navigate(Routes.SETUP) },
                 onOpenDataBackup = { navController.navigate(Routes.DATA_BACKUP) },
                 onOpenAppearance = { navController.navigate(Routes.APPEARANCE) },
+                onOpenWork = { navController.navigate(Routes.WORK_SETTINGS) },
                 onReplayTour = {
                     recoveryScope.launch {
                         com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context).setTourCompleted(false)
