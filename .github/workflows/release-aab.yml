@@ -1,0 +1,89 @@
+name: Release AAB (Play Store)
+
+# Builds the Play Store bundle, signed with the upload key, and attaches it to a DRAFT GitHub release.
+#
+# Why this runs on GitHub: the upload key is a secret that lives only in this repository's secrets,
+# never in a chat, a branch or a developer's machine. The bundle is far over the 100 MB file limit
+# for a commit, so it is published as a release asset instead.
+#
+# To run it, push a tag that starts with "aab-" (for example aab-v40) on the commit to release, or
+# create a release for such a tag in the GitHub UI. Secrets needed (Settings > Secrets > Actions):
+#   KEYSTORE_BASE64    the upload keystore file, base64-encoded (base64 -w0 upload.jks)
+#   KEYSTORE_PASSWORD  its store password
+#   KEY_PASSWORD       the password of the key "upload" inside it
+# Optional, for features that need them (leave unset to build without): YOUVERSION_APP_KEY,
+# DEEPSEEK_PROXY_URL. The tester Gemini and DeepSeek keys are deliberately never used here.
+on:
+  push:
+    tags:
+      - 'aab-*'
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Check the signing secrets exist
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then echo "::error::Secret $name is not set"; exit 1; fi
+          done
+
+      - name: Run unit tests
+        # A release that fails its own tests is not a release.
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build the signed bundle
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          YOUVERSION_APP_KEY: ${{ secrets.YOUVERSION_APP_KEY }}
+          DEEPSEEK_PROXY_URL: ${{ secrets.DEEPSEEK_PROXY_URL }}
+        run: |
+          set -euo pipefail
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          export KEYSTORE_PATH="$RUNNER_TEMP/upload.jks"
+          ./gradlew bundleRelease
+          rm -f "$RUNNER_TEMP/upload.jks"
+
+      - name: Check no tester credential was baked in
+        run: |
+          set -euo pipefail
+          aab="$(ls app/build/outputs/bundle/release/*.aab)"
+          if unzip -p "$aab" 'base/dex/*' | strings | grep -qE 'AIzaSy[0-9A-Za-z_-]{33}|AQ\.[0-9A-Za-z_-]{20,}'; then
+            echo "::error::the bundle contains something shaped like an API key"; exit 1
+          fi
+          echo "No credential-shaped strings found."
+
+      - name: Name the bundle
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/bundle/release/*.aab "dist/MeetingMind-${GITHUB_REF_NAME#aab-}.aab"
+          ls -la dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: MeetingMind Play bundle ${{ github.ref_name }}
+          # A draft is visible only to people with access to the repository: this repository is
+          # public, and the bundle should not be handed out before it goes to Play.
+          draft: true
+          prerelease: true
+          files: dist/*.aab

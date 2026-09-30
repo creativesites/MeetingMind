@@ -1,16 +1,18 @@
 # Installable builds
 
-**v39** (`MeetingMind-v39-arm64-v8a.apk`, `MeetingMind-v39-armeabi-v7a.apk`) is the Professional work through **W11**,
-plus two fixes. Same signing key, so it installs over the earlier test builds and keeps your data.
+**v40** (`MeetingMind-v40-arm64-v8a.apk`, `MeetingMind-v40-armeabi-v7a.apk`) is the Professional work through **W12**,
+with the unlock crash fixed and a crash reporter. Same signing key, so it installs over the earlier test builds and
+keeps your data.
 
-- **Fixed: the crash right after unlocking.** The Work screen's start-up code read a value before it existed.
-- **A crash reporter.** If the app closes unexpectedly, the next launch (after unlock) shows what went wrong,
-  with a Copy button, before the app opens.
-- **Work Inbox (W11).** Share a PDF, a page, a note or audio into MeetingMind. Process proposes where it goes,
-  and nothing is filed until you confirm.
+- **Fixed: the crash right after unlocking** (the Work screen read a value before it existed).
+- **Crash reporter.** If the app closes unexpectedly, the next launch (after unlock) shows what went wrong, with a
+  Copy button, before the app opens.
+- **Work Inbox (W11)** and **rhythm and review (W12)**: morning Pulse, prep and "Starting now" notices, the Weekly
+  Review with next week's plan, marks from the recording notification, a next-meeting widget, the Work tab and an
+  accent colour. The notices are switched on in Settings → Work.
 
-Built from the agent's `2c29248` (W11) plus the reporter (`18437e1`) and the fix. The v37 and v38 builds were
-removed; v38 has the crash.
+Built from the agent's `d8fb2e8` plus the reporter (`3b33dd7`). The v39 build was removed: it is the same code
+without W12.
 
 ## What's new in v37 (W7–W10)
 
