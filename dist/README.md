@@ -1,6 +1,31 @@
 # Installable builds
 
-`MeetingMind-v30-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+`MeetingMind-v34-arm64-v8a.apk` (most phones) and `MeetingMind-v34-armeabi-v7a.apk` (older
+32-bit phones) — debug-signed, for device testing.
+
+## What's new in v34
+
+Everything in v31–v33 is kept. v34 adds the professional vertical on top.
+
+- **A Work space**, in Notes next to Faith, that's useful before your first recording:
+  - Start a client call, 1:1, standup, consultation, brief, decision record or weekly review.
+  - Projects with their notes, tasks, decisions and people.
+  - People built from your meetings (no contacts access), with organisations from email domains.
+  - My tasks, Waiting on (with Nudge), the decision log and open questions.
+- **A fourth home, Professional** (Settings → Look and home): a briefing card for your day, then
+  what needs you, your schedule, tasks, projects and people. Every feature is still there.
+- **The Wrap-up after a work recording.** Confirm what was agreed in under a minute. Actions become
+  tasks, and what others owe you goes to Waiting on.
+- **Follow-ups** on WhatsApp or email. The app picks the channel per person and region, and writes
+  only what you confirmed.
+- **Names update everywhere.** Rename "Speaker 1" and the summary, tasks, decisions and note all
+  change.
+- **Mark moments while recording:** key moment, action, question. There's also a consent reminder
+  for work recordings.
+- **Settings → Work and a "What kind of work?" step in onboarding.** Clinical and Legal keep
+  everything on the phone and add a Consultation template that never adds a diagnosis, dose or
+  legal opinion that wasn't said.
+
 
 ## What's new in v30
 

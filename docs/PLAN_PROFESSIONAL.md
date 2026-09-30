@@ -1039,18 +1039,37 @@ The same approach as `PLAN_V1` §11: by real use, not the test suite.
 
 ## 14. Status
 
-v31 builds W1–W6 in one release. Schema 15 is in the migration `WorkSchema.MIGRATION_14_15`.
+**v34 is the professional vertical rebuilt on top of main (v33).** Main's work is kept exactly as it
+is: its tables (`people`, `tasks`, `note_people`), its task editor, its three homes and its Faith
+system are unchanged. The vertical adds to them rather than running alongside them.
+
+- **Schema 17 adds columns only** (`MIGRATION_16_17`):
+  - people: `kind`, `orgId`, contacts, `preferredChannel`, `isSelf`, `confidential`, `lastSeenAt`, `space`
+  - tasks: `waitingOn`, `ownerSpeakerId`, `sourceItemId`, `space`
+  - speakers: `personId`
+  - meetings: `reviewedAt`
+  - notebooks: `kind`, `propertiesJson`
+- **Findings stay where main keeps them** (action items, decisions, questions and follow-ups).
+  Confirming the Wrap-up turns actions and follow-ups into main's tasks, once each.
+- **The Work space** (Notes → Work, like Faith) is useful before the first recording:
+  - templates for client calls, 1:1s, standups, consultations, briefs, decision records and
+    weekly reviews
+  - projects, people, tasks, Waiting on with Nudge, the decision log and open questions
+- **The Professional home** is the fourth home in Look and home: a briefing card, then Needs you,
+  Schedule, tasks, Waiting on, projects and people. Every other feature is still reachable from it.
+- **Settings → Work** sets the profile, words, tone and privacy. Onboarding asks "What kind of
+  work?" when Work is picked.
 
 | # | Milestone | Status |
 | --- | --- | --- |
 | W0 | Validate on real meetings | **Needs you.** Five real work meetings recorded on the phone, then compare what was caught with what was said. Nothing in this repository can stand in for it. |
-| W1 | Items and migration | Done. One `items` table; old findings migrated and marked reviewed; `DueDates` reads deadlines into days. |
-| W2 | People and organisations | Done, **without contacts**. People are built from named speakers, calendar attendees and typed owners; a one-time backfill runs after upgrade. Organisations come from work email domains. Merge, "Same person?", aliases. |
-| — | Dynamic names | Done (§5.5). `SpeakerNames` and the owner join in `ItemDao`. |
-| W3 | Marks and the Wrap-up | Done. Marks are in the recording screen; notification and lock-screen marks are still to do. |
-| W4 | Composer and follow-up | Done. Written from confirmed items with no model; the channel is adaptive; "Did it go?" marks it sent. |
-| W5 | Work Home | Done, as sections inside Today in the person's order. Widgets and the Work notification channel are still to do. |
-| W6 | Personalisation and projects | Mostly done: profiles (including Clinical and Legal), words, Home sections, greeting, tab slot, tone, sign-off, signature, footer, keep-on-phone, consent reminder, new workflows, onboarding step, confidential enforcement. |
+| W1 | Findings and migration | Done, on main's tables (schema 17). `DueDates` reads deadlines into days. |
+| W2 | People and organisations | Done, **without contacts**, on main's `people` table. People are built from named speakers, calendar attendees and typed owners; a one-time backfill runs after upgrade. Organisations come from work email domains. Merge, "Same person?", aliases. |
+| — | Dynamic names | Done (§5.5). `SpeakerNames.propagate` renames everywhere; owners are read through speaker ids. |
+| W3 | Marks and the Wrap-up | Done. Marks and the consent line are on the recording screen; notification and lock-screen marks are still to do. |
+| W4 | Composer and follow-up | Done. Written from confirmed findings with no model; the channel is adaptive; "Did it go?" marks it sent. |
+| W5 | Work Home | Done as the **Professional home** and the **Work space**. The Work tab slot, widgets and the Work notification channel are still to do. |
+| W6 | Personalisation and projects | Done: profiles (including Clinical and Legal), words, tone, keep-on-phone, consent reminder, new workflows, the onboarding step and confidential enforcement. |
 
 **Still to do in P1**, in the order I'd take them:
 
@@ -1062,7 +1081,8 @@ v31 builds W1–W6 in one release. Schema 15 is in the migration `WorkSchema.MIG
 2. Workflow and project rules learned from Wrap-up corrections (§8.4).
 3. Next-meeting widget (§7.5).
 4. Marks from the notification and lock screen.
-5. The accent colour choice and dark mode for the new screens (§8.7).
+5. The accent colour choice (§8.7). The new screens already use main's theme tokens, so dark mode works.
+6. The Work tab slot in the bottom bar (§8.2).
 
 **Decisions made while building**
 
