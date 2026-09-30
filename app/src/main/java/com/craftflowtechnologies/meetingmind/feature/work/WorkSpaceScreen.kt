@@ -132,7 +132,9 @@ fun WorkSpaceScreen(
     onOpenProject: (String) -> Unit,
     onOpenAll: (WorkTab) -> Unit,
     onOpenSettings: () -> Unit,
-    onSearch: () -> Unit
+    onSearch: () -> Unit,
+    /** "✨ Create brief" for the week. */
+    onOpenBrief: (com.craftflowtechnologies.meetingmind.core.work.BriefTarget) -> Unit = {}
 ) {
     var savedFilter by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.SavedFilter?>(null) }
     val settings by viewModel.settings.collectAsState()
@@ -191,6 +193,9 @@ fun WorkSpaceScreen(
 
             // Answers from the record, one tap each (D5.5).
             item { SavedFilterRow { savedFilter = it } }
+            item {
+                Row(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp)) { Pill("✨ Create brief") { onOpenBrief(com.craftflowtechnologies.meetingmind.core.work.BriefTarget.weekly) } }
+            }
 
             // What needs you: findings to confirm, follow-ups to send.
             if (toReview.isNotEmpty()) {

@@ -165,6 +165,9 @@ interface WorkDao {
     @Query("SELECT m.* FROM meetings m JOIN notes n ON n.id = m.noteId WHERE n.notebookId = :notebookId ORDER BY m.createdAt DESC")
     suspend fun meetingsInProject(notebookId: String): List<MeetingEntity>
 
+    @Query("SELECT id FROM notes WHERE deletedAt IS NULL AND notebookId = :notebookId")
+    suspend fun noteIdsInProject(notebookId: String): List<String>
+
     // Projects and work notes
 
     @Query("SELECT * FROM notebooks WHERE deletedAt IS NULL AND archivedAt IS NULL AND (kind = 'PROJECT' OR space = 'WORK') ORDER BY kind = 'PROJECT' DESC, updatedAt DESC")

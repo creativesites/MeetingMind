@@ -183,6 +183,17 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------------------------------------------------------------- pulse, context, prepare
 
+    /** The one place a model for work-memory writing is chosen: sensitive material only ever gets the local one. */
+    private val workModels = com.craftflowtechnologies.meetingmind.core.work.DeviceWorkModels(
+        application, com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(application),
+        com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(application)
+    ) { prefs.preferencesFlow.first().processingProfile }
+    private val packPrivacy = com.craftflowtechnologies.meetingmind.core.work.DevicePackPrivacy(application)
+    val briefs = com.craftflowtechnologies.meetingmind.core.work.BriefBuilder(database, workModels, packPrivacy)
+    val memory = com.craftflowtechnologies.meetingmind.core.work.MemoryRepository(database, workModels, packPrivacy)
+    val prepareWriter = com.craftflowtechnologies.meetingmind.core.work.PrepareWriter(database, workModels, packPrivacy)
+    val scopedAsk = com.craftflowtechnologies.meetingmind.ai.assistant.ScopedAsk(database, workModels, packPrivacy, dateLabel = { com.craftflowtechnologies.meetingmind.core.work.Pulse.shortDate(it) })
+
     val context = ContextRepository(database)
     val prepare = Prepare(database)
     val savedViews = SavedViews(database)
@@ -204,6 +215,9 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Today's calendar, as Pulse and Prepare want it. Only a real change is passed on. */
     fun setPulseEvents(events: List<PulseEvent>) { if (calendarEvents.value != events) calendarEvents.value = events }
+
+    /** Ticks whenever an item or its log changes, for screens that read history. */
+    val itemVersion: Flow<Long> = database.itemDao().observeVersion()
 
     fun markPulseSeen() = viewModelScope.launch { prefs.setPulseSeenAt(System.currentTimeMillis()) }
 
@@ -240,7 +254,8 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             members = if (type == ContextType.PROJECT) context.members(id).map { m -> Triple(m.personId, people.get(m.personId)?.name ?: "Someone", m.role) } else emptyList(),
             org = if (type == ContextType.ORG) database.peopleDao().getById(id) else null,
             projectProps = if (type == ContextType.PROJECT) database.notebookDao().getById(id)?.propertiesJson else null,
-            openItems = items.count { it.itemStatus in setOf(ItemStatus.OPEN, ItemStatus.UNCLEAR, ItemStatus.PROPOSED) }
+            openItems = items.count { it.itemStatus in setOf(ItemStatus.OPEN, ItemStatus.UNCLEAR, ItemStatus.PROPOSED) },
+            projectName = if (type == ContextType.PROJECT) database.notebookDao().getById(id)?.name else null
         )
     }
 

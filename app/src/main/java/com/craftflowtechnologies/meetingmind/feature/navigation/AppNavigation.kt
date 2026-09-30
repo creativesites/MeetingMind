@@ -48,6 +48,9 @@ object Routes {
     const val WORK_SETTINGS = "work_settings"
     /** One context page for a person, an organisation or a project (D5.2). */
     const val CONTEXT = "context/{type}/{id}"
+    /** An Intelligence Brief: [kind] is a BriefKind name, and the id is the meeting, organisation, project or person ("-" for the weekly one). */
+    const val BRIEF = "brief/{kind}/{id}"
+    fun brief(kind: com.craftflowtechnologies.meetingmind.core.work.BriefKind, id: String = "-") = "brief/${kind.name}/${android.net.Uri.encode(id)}"
     fun context(type: com.craftflowtechnologies.meetingmind.core.work.ContextType, id: String) = "context/${type.name}/$id"
     fun workAllRoute(tab: String) = "work_all?tab=$tab"
     fun workPersonRoute(personId: String) = "work_person/$personId"

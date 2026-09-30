@@ -8,7 +8,7 @@ import com.craftflowtechnologies.meetingmind.ai.faith.Prompts
 import com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter
 import org.json.JSONObject
 
-enum class SourceKind(val label: String) { NOTE("Note"), RECORDING("Recording"), TASK("Task"), SCRIPTURE("Scripture") }
+enum class SourceKind(val label: String) { NOTE("Note"), RECORDING("Recording"), TASK("Task"), SCRIPTURE("Scripture"), ITEM("Item") }
 
 /** One thing Ask can cite: a note, a moment in a recording, a task. [key] is its number in the prompt. */
 data class AskSource(

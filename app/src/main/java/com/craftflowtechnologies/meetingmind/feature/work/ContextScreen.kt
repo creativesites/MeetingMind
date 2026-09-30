@@ -58,7 +58,8 @@ data class ContextState(
     val members: List<Triple<String, String, String>> = emptyList(),
     val org: PersonEntity? = null,
     val projectProps: String? = null,
-    val openItems: Int = 0
+    val openItems: Int = 0,
+    val projectName: String? = null
 )
 
 /**
@@ -76,11 +77,14 @@ fun ContextScreen(
     onOpenContext: (ContextType, String) -> Unit,
     onOpenNote: (String) -> Unit,
     onOpenMeeting: (String, Long?) -> Unit,
-    onRecordInto: (noteId: String, type: RecordingType, title: String) -> Unit
+    onRecordInto: (noteId: String, type: RecordingType, title: String) -> Unit,
+    /** Opens a brief for this page. */
+    onOpenBrief: (com.craftflowtechnologies.meetingmind.core.work.BriefTarget) -> Unit = {}
 ) {
     val state by remember(type, id) { viewModel.contextState(type, id) }.collectAsState(initial = null)
     var preparing by remember { mutableStateOf(false) }
     var chip by remember { mutableStateOf<SavedFilter?>(null) }
+    var asking by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var monthOnly by rememberSaveable { mutableStateOf(false) }
     var addingMember by remember { mutableStateOf(false) }
@@ -89,7 +93,7 @@ fun ContextScreen(
 
     val top: LazyListScope.() -> Unit = {
         state?.let { st ->
-            contextHeaderItems(st, onPrepare = { preparing = true })
+            contextHeaderItems(st, onPrepare = { preparing = true }, onBrief = { onOpenBrief(briefTarget(type, id)) }, onAsk = { asking = true })
             item { SavedFilterRow { chip = it } }
             when (type) {
                 ContextType.ORG -> orgItems(st, onEdit = { editing = true }, onOpenProject = { onOpenContext(ContextType.PROJECT, it) })
@@ -101,11 +105,16 @@ fun ContextScreen(
     }
     val bottom: LazyListScope.() -> Unit = {
         state?.let { st -> contextBottomItems(st, viewModel, onOpenMeeting, monthOnly) { monthOnly = !monthOnly } }
+        item(key = "ctx-memory") { MemorySection(type, id, state?.header?.lastMeeting?.id, viewModel, onOpenMeeting) }
     }
 
     if (type == ContextType.PROJECT) ProjectScreen(viewModel, id, onNavigateBack, onOpenNote, onOpenMeeting, onRecordInto, extraTop = top, extraBottom = bottom)
     else WorkPersonScreen(viewModel, id, onNavigateBack, onOpenPerson = { onOpenContext(ContextType.PERSON, it) }, onOpenNote = onOpenNote, onOpenMeeting = onOpenMeeting, extraTop = top, extraBottom = bottom)
 
+    if (asking) ScopedAskSheet(
+        com.craftflowtechnologies.meetingmind.ai.assistant.AskScope(type, id, label = state?.projectName ?: askLabel(type)),
+        viewModel, onOpenMeeting, onOpenNote, onDismiss = { asking = false }
+    )
     if (preparing) PrepareSheet(PrepTarget.Entity(type, id), viewModel, onOpenMeeting, onDismiss = { preparing = false })
     chip?.let { f ->
         val answer by produceState<com.craftflowtechnologies.meetingmind.core.work.SavedAnswer?>(null, f) { value = viewModel.savedViews.answer(f, type to id) }
@@ -124,7 +133,16 @@ fun ContextScreen(
     }
 }
 
-private fun LazyListScope.contextHeaderItems(st: ContextState, onPrepare: () -> Unit) {
+private fun briefTarget(type: ContextType, id: String) = when (type) {
+    ContextType.PROJECT -> com.craftflowtechnologies.meetingmind.core.work.BriefTarget.forProject(id)
+    ContextType.ORG -> com.craftflowtechnologies.meetingmind.core.work.BriefTarget.forClient(id)
+    ContextType.PERSON -> com.craftflowtechnologies.meetingmind.core.work.BriefTarget.forPerson(id)
+}
+
+private fun askLabel(type: ContextType) = when (type) { ContextType.PROJECT -> "This project"; ContextType.ORG -> "This organisation"; ContextType.PERSON -> "This person" }
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+private fun LazyListScope.contextHeaderItems(st: ContextState, onPrepare: () -> Unit, onBrief: () -> Unit, onAsk: () -> Unit) {
     item(key = "ctx-header") {
         val h = st.header
         Column(Modifier.padding(horizontal = 20.dp).padding(top = 14.dp).testTag("context_header")) {
@@ -132,7 +150,11 @@ private fun LazyListScope.contextHeaderItems(st: ContextState, onPrepare: () -> 
                 Fig("${h.youOwe}", "you owe"); Fig("${h.theyOwe}", "they owe"); Fig("${h.open}", "open"); Fig("${h.decided}", "decided")
             }
             h.next?.let { Text("Next: $it" + (h.nextAt?.let { d -> " · " + Pulse.shortDate(d) } ?: ""), fontSize = 13.sp, color = InkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp)) }
-            Row(Modifier.padding(top = 12.dp)) { Pill("Prepare for conversation", filled = true, onClick = onPrepare) }
+            androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill("Prepare for conversation", filled = true, onClick = onPrepare)
+                Pill("✨ Create brief", onClick = onBrief)
+                Pill("Ask", onClick = onAsk)
+            }
         }
     }
 }
@@ -295,10 +317,63 @@ fun PersonContextScreen(
     onNavigateBack: () -> Unit,
     onOpenContext: (ContextType, String) -> Unit,
     onOpenNote: (String) -> Unit,
-    onOpenMeeting: (String, Long?) -> Unit
+    onOpenMeeting: (String, Long?) -> Unit,
+    onOpenBrief: (com.craftflowtechnologies.meetingmind.core.work.BriefTarget) -> Unit = {}
 ) {
     val type by produceState<ContextType?>(null, personId) {
         value = if (viewModel.people.get(personId)?.kind == com.craftflowtechnologies.meetingmind.core.work.PersonKind.ORG) ContextType.ORG else ContextType.PERSON
     }
-    type?.let { ContextScreen(it, personId, viewModel, onNavigateBack, onOpenContext, onOpenNote, onOpenMeeting, onRecordInto = { _, _, _ -> }) }
+    type?.let { ContextScreen(it, personId, viewModel, onNavigateBack, onOpenContext, onOpenNote, onOpenMeeting, onRecordInto = { _, _, _ -> }, onOpenBrief = onOpenBrief) }
 }
+
+/**
+ * The history view (docs/PLAN_PROFESSIONAL.md D5.5): what's on record in numbers, one cited
+ * paragraph per month, what matters most, and what is still open. The lists and counts come from
+ * the database at once; the monthly stories fill in when a model has written them.
+ */
+@Composable
+private fun MemorySection(type: ContextType, id: String, lastMeetingId: String?, viewModel: WorkViewModel, onOpenMeeting: (String, Long?) -> Unit) {
+    var history by remember(type, id) { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.MemoryHistory?>(null) }
+    val version by viewModel.itemVersion.collectAsState(initial = 0L)
+    androidx.compose.runtime.LaunchedEffect(type, id, version) {
+        history = viewModel.memory.history(type, id, tell = false)
+        history = viewModel.memory.history(type, id, tell = true)
+    }
+    val h = history ?: return
+    if (h.months.isEmpty() && h.mostImportant.isEmpty() && h.stillOpen.isEmpty() && h.counts.meetings == 0) return
+    val scope = rememberCoroutineScope()
+    Column(Modifier.testTag("memory_history")) {
+        WorkSectionTitle("History")
+        val c = h.counts
+        Text(
+            listOf("${c.meetings} meetings", "${c.decisions} decisions", "${c.commitments} promises", "${c.questions} questions", "${c.risks} risks").joinToString("  ·  "),
+            fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(horizontal = 20.dp)
+        )
+        val told = h.months.filter { it.text != null }
+        if (told.isNotEmpty()) {
+            WorkSectionTitle("The story", top = 16.dp)
+            told.forEach { m ->
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
+                    Text(monthLabel(m.month), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = InkMuted)
+                    Text(m.text.orEmpty(), fontSize = 14.sp, color = Ink, lineHeight = 20.sp, modifier = Modifier.clickable {
+                        // A story cites its items: the first one opens its evidence.
+                        scope.launch { m.cites.firstNotNullOfOrNull { viewModel.evidenceOf(it) }?.let { (mt, at) -> onOpenMeeting(mt, at) } }
+                    })
+                }
+            }
+        }
+        if (h.mostImportant.isNotEmpty()) {
+            WorkSectionTitle("Most important", top = 16.dp)
+            h.mostImportant.forEach { i -> HistoryLine(i.text, i.id, viewModel, onOpenMeeting) }
+        }
+        val open = h.stillOpen.filter { i -> h.mostImportant.none { it.id == i.id } }
+        if (open.isNotEmpty()) {
+            WorkSectionTitle("Still open", "${open.size}", top = 16.dp)
+            open.take(10).forEach { i -> HistoryLine(i.text, i.id, viewModel, onOpenMeeting) }
+        }
+    }
+}
+
+private fun monthLabel(month: String): String = runCatching {
+    java.time.YearMonth.parse(month).format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.getDefault()))
+}.getOrDefault(month)

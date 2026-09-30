@@ -683,7 +683,8 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onOpenProject = { navController.navigate(Routes.projectRoute(it)) },
                 onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
                 onOpenSettings = { navController.navigate(Routes.WORK_SETTINGS) },
-                onSearch = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH) }
+                onSearch = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH) },
+                onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) }
             )
         }
         composable(Routes.WORK_ALL, arguments = listOf(navArgument("tab") { type = NavType.StringType; defaultValue = "MINE" })) { entry ->
@@ -705,7 +706,8 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onNavigateBack = { navController.popBackStack() },
                 onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
-                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) }
             )
         }
         composable(Routes.PROJECT, arguments = listOf(navArgument("projectId") { type = NavType.StringType })) { entry ->
@@ -716,7 +718,17 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
-                onRecordInto = { noteId, type, title -> navController.navigate(Routes.recordEventRoute(noteId, type, title, null)) }
+                onRecordInto = { noteId, type, title -> navController.navigate(Routes.recordEventRoute(noteId, type, title, null)) },
+                onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) }
+            )
+        }
+        composable(Routes.BRIEF, arguments = listOf(navArgument("kind") { type = NavType.StringType }, navArgument("id") { type = NavType.StringType })) { entry ->
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val kind = runCatching { com.craftflowtechnologies.meetingmind.core.work.BriefKind.valueOf(entry.arguments?.getString("kind").orEmpty()) }.getOrDefault(com.craftflowtechnologies.meetingmind.core.work.BriefKind.WEEKLY)
+            com.craftflowtechnologies.meetingmind.feature.work.BriefScreen(
+                target = com.craftflowtechnologies.meetingmind.core.work.BriefTarget.of(kind, entry.arguments?.getString("id").orEmpty()), viewModel = vm,
+                onNavigateBack = { navController.popBackStack() },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
             )
         }
         composable(Routes.CONTEXT, arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.StringType })) { entry ->
@@ -729,7 +741,8 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
-                onRecordInto = { noteId, t, title -> navController.navigate(Routes.recordEventRoute(noteId, t, title, null)) }
+                onRecordInto = { noteId, t, title -> navController.navigate(Routes.recordEventRoute(noteId, t, title, null)) },
+                onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) }
             )
         }
         composable(Routes.WRAP_UP, arguments = listOf(
@@ -906,7 +919,8 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                     if (navController.previousBackStackEntry?.arguments?.getString("noteId") == noteId) navController.popBackStack()
                     else navController.navigate(Routes.noteRoute(noteId))
                 },
-                onStudy = { noteId, mId -> navController.navigate(Routes.studyRoute(noteId, meetingId = mId)) }
+                onStudy = { noteId, mId -> navController.navigate(Routes.studyRoute(noteId, meetingId = mId)) },
+                onCreateBrief = { mId -> navController.navigate(Routes.brief(com.craftflowtechnologies.meetingmind.core.work.BriefKind.MEETING, mId)) }
             )
         }
 

@@ -45,7 +45,9 @@ import androidx.room.migration.Migration
         ItemLinkEntity::class,
         ItemEventEntity::class,
         ProjectMemberEntity::class,
-        SegmentSignalEntity::class
+        SegmentSignalEntity::class,
+        BriefEntity::class,
+        MemoryStoryEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
@@ -55,6 +57,8 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun workDao(): WorkDao
     abstract fun itemDao(): ItemDao
     abstract fun signalDao(): SignalDao
+    abstract fun briefDao(): BriefDao
+    abstract fun memoryStoryDao(): MemoryStoryDao
     abstract fun transcriptDao(): TranscriptDao
     abstract fun speakerDao(): SpeakerDao
     abstract fun actionItemDao(): ActionItemDao
@@ -474,6 +478,19 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /** Cached brief prose and monthly memory stories (docs/PLAN_PROFESSIONAL.md D5). Two new tables and an index only. */
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_19_20_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_19_20_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `briefs` (`id` TEXT NOT NULL, `entityType` TEXT NOT NULL, `entityId` TEXT NOT NULL, `kind` TEXT NOT NULL, `contentJson` TEXT NOT NULL, `citedIdsJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_briefs_entityType_entityId_kind` ON `briefs` (`entityType`, `entityId`, `kind`)",
+            "CREATE TABLE IF NOT EXISTS `memory_stories` (`entityType` TEXT NOT NULL, `entityId` TEXT NOT NULL, `month` TEXT NOT NULL, `text` TEXT NOT NULL, `citedIdsJson` TEXT NOT NULL, `itemCount` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`entityType`, `entityId`, `month`))"
+        )
+
         internal val MIGRATION_18_19_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `segment_signals` (`id` TEXT NOT NULL, `segmentId` TEXT NOT NULL, `meetingId` TEXT NOT NULL, `kind` TEXT NOT NULL, `entityId` TEXT, `value` TEXT, `confidence` REAL NOT NULL, `text` TEXT NOT NULL DEFAULT '', `signalId` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`))",
             "CREATE INDEX IF NOT EXISTS `index_segment_signals_meetingId` ON `segment_signals` (`meetingId`)",
@@ -600,7 +617,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 19
+        const val VERSION = 20
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {
@@ -618,7 +635,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
                     .build()
                 INSTANCE = instance
                 instance

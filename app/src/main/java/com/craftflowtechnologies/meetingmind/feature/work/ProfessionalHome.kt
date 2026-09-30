@@ -322,10 +322,8 @@ fun ProfessionalHome(
     nudging?.let { NudgeSheet(it, work) { nudging = null } }
     editing?.let { t -> WorkTaskSheet(t, work, onDismiss = { editing = null }, onOpenSource = t.meetingId?.let { m -> { editing = null; onOpenMeeting(m, t.startMs) } }) }
     preparing?.let { PrepareSheet(it, work, onOpenMeeting, onDismiss = { preparing = null }) }
-    if (askOpen) {
-        val lib: com.craftflowtechnologies.meetingmind.feature.assistant.LibraryAssistantViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
-        com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(lib.work, onOpenNote = { askOpen = false; onOpenNote(it) }, onOpenTasks = { askOpen = false; onOpenAll(WorkTab.MINE) }, onDismiss = { askOpen = false })
-    }
+    // "Ask about my work": grounded in the record, limited to Work, and never uncited.
+    if (askOpen) ScopedAskSheet(com.craftflowtechnologies.meetingmind.ai.assistant.AskScope(), work, onOpenMeeting, onOpenNote, onDismiss = { askOpen = false })
 }
 
 private fun pulseEventOf(e: com.craftflowtechnologies.meetingmind.core.calendar.CalendarEvent) =

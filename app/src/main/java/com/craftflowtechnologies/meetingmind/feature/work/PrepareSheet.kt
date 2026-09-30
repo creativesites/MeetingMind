@@ -56,6 +56,20 @@ fun PrepareSheet(target: PrepTarget, viewModel: WorkViewModel, onOpenMeeting: (S
             is PrepTarget.Entity -> viewModel.prepare.forEntity(target.type, target.id)
         }
     }
+    // The model's optional prose: one line about last time and agenda wording, each citing its evidence.
+    val proseScope by produceState<com.craftflowtechnologies.meetingmind.core.work.PackScope?>(null, target) {
+        value = when (target) {
+            is PrepTarget.Entity -> com.craftflowtechnologies.meetingmind.core.work.PackScope.Entity(target.type, target.id)
+            is PrepTarget.Event -> viewModel.context.resolveEvent(target.event).let { ref ->
+                ref.projectId?.let { com.craftflowtechnologies.meetingmind.core.work.PackScope.Entity(ContextType.PROJECT, it) }
+                    ?: ref.ids.firstOrNull()?.let { com.craftflowtechnologies.meetingmind.core.work.PackScope.Entity(ContextType.PERSON, it) }
+            }
+        }
+    }
+    val prose by produceState<com.craftflowtechnologies.meetingmind.core.work.PrepProse?>(null, pack, proseScope) {
+        val p = pack; val sc = proseScope
+        if (p != null && sc != null) value = viewModel.prepareWriter.write(sc, p)
+    }
     val scope = rememberCoroutineScope()
     fun open(itemId: String?) { if (itemId != null) scope.launch { viewModel.evidenceOf(itemId)?.let { (m, at) -> onDismiss(); onOpenMeeting(m, at) } } }
 
@@ -71,6 +85,9 @@ fun PrepareSheet(target: PrepTarget, viewModel: WorkViewModel, onOpenMeeting: (S
                     p.lastMeeting?.let { last ->
                         item {
                             WorkSectionTitle("Last time", dayLabel(last.at))
+                            prose?.lastTime?.let { line ->
+                                Text("✨ ${line.text}", fontSize = 15.sp, color = Ink, modifier = Modifier.fillMaxWidth().clickable { open(line.cites.firstOrNull()) }.padding(horizontal = 20.dp, vertical = 4.dp).testTag("prepare_last_time"))
+                            }
                             Column(Modifier.fillMaxWidth().clickable { onOpenMeeting(last.meetingId, last.startMs).also { onDismiss() } }.padding(horizontal = 20.dp, vertical = 4.dp)) {
                                 Text(last.title.ifBlank { "Meeting" }, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Ink)
                                 last.quote?.let { Text("“$it”", fontSize = 14.sp, fontStyle = FontStyle.Italic, color = InkSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp)) }
@@ -80,6 +97,11 @@ fun PrepareSheet(target: PrepTarget, viewModel: WorkViewModel, onOpenMeeting: (S
                     }
                     if (p.agenda.isNotEmpty()) {
                         item { WorkSectionTitle("Suggested agenda") }
+                        prose?.agenda?.takeIf { it.isNotEmpty() }?.let { lines ->
+                            items(lines.size, key = { "aw-$it" }) { i ->
+                                Text("✨ ${lines[i].text}", fontSize = 14.sp, color = InkSecondary, modifier = Modifier.fillMaxWidth().clickable { open(lines[i].cites.firstOrNull()) }.padding(horizontal = 20.dp, vertical = 4.dp))
+                            }
+                        }
                         items(p.agenda.size, key = { "a-" + p.agenda[it].itemId }) { i ->
                             val a = p.agenda[i]
                             Row(Modifier.fillMaxWidth().clickable { open(a.itemId) }.padding(horizontal = 20.dp, vertical = 7.dp), verticalAlignment = Alignment.Top) {

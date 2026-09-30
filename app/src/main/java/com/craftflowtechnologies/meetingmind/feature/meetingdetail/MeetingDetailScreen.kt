@@ -763,7 +763,9 @@ fun MeetingDetailScreen(
     /** Opens the note this recording belongs to. */
     onOpenNote: (noteId: String) -> Unit = {},
     /** "Study this sermon": the sermon's timeline, Scripture and transcript beside its note. */
-    onStudy: (noteId: String, meetingId: String) -> Unit = { _, _ -> }
+    onStudy: (noteId: String, meetingId: String) -> Unit = { _, _ -> },
+    /** "✨ Brief" on a work recording: its Intelligence Brief. */
+    onCreateBrief: ((meetingId: String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val meeting by viewModel.meeting.collectAsState()
@@ -979,6 +981,14 @@ fun MeetingDetailScreen(
                                 Icon(Icons.Filled.EditNote, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Note", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                            }
+                        }
+                        if (onCreateBrief != null && meeting?.status == MeetingStatus.READY && meeting?.recordingType?.let { com.craftflowtechnologies.meetingmind.core.model.Workflows.space(it) == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK } == true) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(onClick = { meeting?.id?.let(onCreateBrief) }, shape = RoundedCornerShape(50), color = AccentWash, modifier = Modifier.testTag("meeting_brief_btn")) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("✨ Brief", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                                }
                             }
                         }
                         if (meeting?.recordingType in setOf(RecordingType.SERMON, RecordingType.BIBLE_STUDY, RecordingType.DEVOTIONAL, RecordingType.TESTIMONY) && meeting?.status == MeetingStatus.READY) {
