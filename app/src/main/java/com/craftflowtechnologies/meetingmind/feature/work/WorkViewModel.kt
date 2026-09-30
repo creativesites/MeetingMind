@@ -196,6 +196,25 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------------------------------------------------------------- inbox (D7)
 
+    // ---------------------------------------------------------------- weekly review
+
+    private val weeklyReviews = com.craftflowtechnologies.meetingmind.core.work.WeeklyReviews(database)
+    private val _review = MutableStateFlow<com.craftflowtechnologies.meetingmind.core.work.WeeklyReviewData?>(null)
+    val review: StateFlow<com.craftflowtechnologies.meetingmind.core.work.WeeklyReviewData?> = _review
+
+    fun loadReview() { viewModelScope.launch { _review.value = runCatching { weeklyReviews.build() }.getOrNull() } }
+
+    /** Next week's plan, in one pass; the review is read again afterwards, so what's left is what's still open. */
+    fun applyPlan(decisions: List<com.craftflowtechnologies.meetingmind.core.work.PlanDecision>, done: (Int) -> Unit) {
+        viewModelScope.launch {
+            val n = runCatching { weeklyReviews.applyPlan(decisions) }.getOrDefault(0)
+            _review.value = runCatching { weeklyReviews.build() }.getOrNull()
+            done(n)
+        }
+    }
+
+    val nextMonday: Long get() = weeklyReviews.nextMonday()
+
     private val inbox = com.craftflowtechnologies.meetingmind.core.work.InboxRepository(database)
     val inboxItems: StateFlow<List<com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity>> = inbox.observeOpen().state(emptyList())
     val inboxCount: StateFlow<Int> = inbox.observeOpenCount().state(0)

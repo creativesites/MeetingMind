@@ -49,3 +49,33 @@ class AppearanceTest {
         assertFalse(a.copy(hidden = setOf(HomeSection.TIMELINE)).shows(HomeSection.TIMELINE))
     }
 }
+
+/** The accent is a token: every choice must read on both themes (docs/PLAN_PROFESSIONAL.md §8.7). */
+class AccentTokenTest {
+    private fun lum(c: androidx.compose.ui.graphics.Color): Double {
+        fun ch(v: Float) = v.toDouble().let { if (it <= 0.03928) it / 12.92 else Math.pow((it + 0.055) / 1.055, 2.4) }
+        return 0.2126 * ch(c.red) + 0.7152 * ch(c.green) + 0.0722 * ch(c.blue)
+    }
+    private fun contrast(a: androidx.compose.ui.graphics.Color, b: androidx.compose.ui.graphics.Color): Double =
+        (maxOf(lum(a), lum(b)) + 0.05) / (minOf(lum(a), lum(b)) + 0.05)
+
+    @org.junit.Test fun theProfessionalChoicesAreOffered() {
+        val names = com.craftflowtechnologies.meetingmind.ui.theme.AccentChoice.entries.map { it.name }
+        listOf("INDIGO", "TEAL", "SLATE", "EMERALD", "CRIMSON").forEach { org.junit.Assert.assertTrue("$it missing", it in names) }
+    }
+
+    @org.junit.Test fun everyAccentReadsOnBothThemes() {
+        com.craftflowtechnologies.meetingmind.ui.theme.AccentChoice.entries.forEach { a ->
+            val dark = a.on(com.craftflowtechnologies.meetingmind.ui.theme.GraphiteColors)
+            val light = a.on(com.craftflowtechnologies.meetingmind.ui.theme.PaperColors)
+            org.junit.Assert.assertTrue("${a.name} on Graphite", contrast(dark.accent, dark.background) >= 3.0)
+            org.junit.Assert.assertTrue("${a.name} on Paper", contrast(light.accent, light.background) >= 3.0)
+            org.junit.Assert.assertNotEquals(dark.accent, light.accent)
+        }
+    }
+
+    @org.junit.Test fun aSavedChoiceSurvivesItsEncoding() {
+        val a = com.craftflowtechnologies.meetingmind.ui.theme.Appearance(accent = com.craftflowtechnologies.meetingmind.ui.theme.AccentChoice.CRIMSON)
+        org.junit.Assert.assertEquals(a, com.craftflowtechnologies.meetingmind.ui.theme.Appearance.decode(a.encode()))
+    }
+}

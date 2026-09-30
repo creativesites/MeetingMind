@@ -250,7 +250,9 @@ fun SearchScreen(
         containerColor = SurfaceBase,
         bottomBar = {
             com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar(
-                current = com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH,
+                // With Work in the fourth slot, Search is reached from the top of Home and no tab is current.
+                current = if (com.craftflowtechnologies.meetingmind.core.ui.LocalTabSlot.current == com.craftflowtechnologies.meetingmind.core.work.TabSlot.WORK)
+                    com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NONE else com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH,
                 onNavigate = onNavigateBottomNav,
                 showNewAction = true
             )

@@ -152,11 +152,11 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** Taps during recording: key moments, actions, questions (docs/PLAN_PROFESSIONAL.md §4.2). */
-    private val _marks = MutableStateFlow<List<com.craftflowtechnologies.meetingmind.core.work.Mark>>(emptyList())
-    val marks: StateFlow<List<com.craftflowtechnologies.meetingmind.core.work.Mark>> = _marks
+    // Kept in one place (RecordingMarks) so a tap on the notification or the lock screen shows here too.
+    val marks: StateFlow<List<com.craftflowtechnologies.meetingmind.core.work.Mark>> = com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.marks
 
     fun mark(kind: com.craftflowtechnologies.meetingmind.core.work.MarkKind) {
-        _marks.value = _marks.value + com.craftflowtechnologies.meetingmind.core.work.Mark(kind, durationMs.value)
+        com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.add(kind, durationMs.value)
     }
 
     val workSettings: StateFlow<com.craftflowtechnologies.meetingmind.core.work.WorkSettings> = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(application).workSettings
@@ -180,7 +180,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         meetingTitle = title
         this.recordingContext = context
         currentMeetingId = UUID.randomUUID().toString()
-        _marks.value = emptyList()
+        com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.clear()
         ensureBound()
         viewModelScope.launch {
             val service = _boundService.filterNotNull().first()
@@ -208,8 +208,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     fun finishRecording(onComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit) {
         val service = _boundService.value ?: return
         service.stopRecording { meetingId, file, duration ->
-            val marks = _marks.value
-            _marks.value = emptyList()
+            val marks = com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.take()
             viewModelScope.launch {
                 // The recording exists now, so its marks can be kept on its note.
                 if (file != null) runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.save(com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(getApplication()), meetingId, marks) }

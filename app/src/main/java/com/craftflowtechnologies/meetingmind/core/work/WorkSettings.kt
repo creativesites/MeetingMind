@@ -97,6 +97,14 @@ data class WorkSettings(
     val prepLeadMinutes: Int = 15,
     val weeklyReviewDay: Int = 6,
     val quietDays: Int = 21,
+    /** Which nudges arrive, and when (D5.1). All of them only inside working days and hours. */
+    val notifyMorning: Boolean = true,
+    val morningMinute: Int = 8 * 60 + 45,
+    val notifyPrep: Boolean = true,
+    /** "Starting now — record?" is asked only of people who turn it on. */
+    val notifyStartNow: Boolean = false,
+    val notifyWeekly: Boolean = true,
+    val weeklyReviewMinute: Int = 16 * 60 + 30,
     // Outputs (§8.5)
     val tone: Tone = Tone.FRIENDLY,
     val signOff: String = "Thanks",
@@ -129,6 +137,8 @@ data class WorkSettings(
         put("days", JSONArray(workDays.toList()))
         put("start", workStartMinute); put("end", workEndMinute)
         put("prep", prepLeadMinutes); put("review", weeklyReviewDay); put("quiet", quietDays)
+        put("nMorning", notifyMorning); put("morningAt", morningMinute); put("nPrep", notifyPrep)
+        put("nStart", notifyStartNow); put("nWeekly", notifyWeekly); put("weeklyAt", weeklyReviewMinute)
         put("tone", tone.name); put("signOff", signOff); put("signature", signature)
         defaultChannel?.let { put("channel", it.name) }
         put("footer", footer); put("onDevice", onDeviceOnly); put("consent", consentReminder)
@@ -169,6 +179,12 @@ data class WorkSettings(
                     prepLeadMinutes = o.optInt("prep", 15),
                     weeklyReviewDay = o.optInt("review", 6),
                     quietDays = o.optInt("quiet", 21),
+                    notifyMorning = o.optBoolean("nMorning", true),
+                    morningMinute = o.optInt("morningAt", 8 * 60 + 45),
+                    notifyPrep = o.optBoolean("nPrep", true),
+                    notifyStartNow = o.optBoolean("nStart", false),
+                    notifyWeekly = o.optBoolean("nWeekly", true),
+                    weeklyReviewMinute = o.optInt("weeklyAt", 16 * 60 + 30),
                     tone = enumOr(o.optString("tone"), Tone.FRIENDLY),
                     signOff = o.optString("signOff", "Thanks"),
                     signature = o.optString("signature", ""),

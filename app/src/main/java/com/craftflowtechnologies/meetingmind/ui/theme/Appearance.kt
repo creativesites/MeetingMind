@@ -9,6 +9,8 @@ enum class AccentChoice(val label: String, val dark: Color, val light: Color) {
     TEAL("Teal", Color(0xFF4FD1C5), Color(0xFF0F766E)),
     SKY("Sky", Color(0xFF7DD3FC), Color(0xFF0369A1)),
     GREEN("Green", Color(0xFF4ADE80), Color(0xFF15803D)),
+    EMERALD("Emerald", Color(0xFF34D399), Color(0xFF047857)),
+    CRIMSON("Crimson", Color(0xFFF87171), Color(0xFFB91C1C)),
     AMBER("Amber", Color(0xFFF2B447), Color(0xFFB45309)),
     ROSE("Rose", Color(0xFFF472B6), Color(0xFFBE185D)),
     SLATE("Slate", Color(0xFFCBD5E1), Color(0xFF475569));

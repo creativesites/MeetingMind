@@ -177,6 +177,33 @@ object AppNotifications {
     }
 
     const val CHANNEL_REMINDERS = "meetmind_reminders"
+    const val CHANNEL_WORK_RHYTHM = "meetmind_work_rhythm"
+
+    /**
+     * A Work nudge: the morning line, Prep, "Starting now" or the weekly review. The words come
+     * from `WorkNotices`, which already leaves out titles and names for a sensitive profile.
+     */
+    fun workNotice(context: Context, n: com.craftflowtechnologies.meetingmind.core.work.WorkNotice) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+                NotificationChannel(CHANNEL_WORK_RHYTHM, "Work rhythm", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "Your morning line, meeting prep, \"starting now\" and the weekly review, on your working days and hours"
+                }
+            )
+        }
+        post(
+            context, n.id,
+            NotificationCompat.Builder(context, CHANNEL_WORK_RHYTHM)
+                .setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setContentTitle(n.title)
+                .setContentText(n.text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(n.text))
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(DeepLinks.pendingIntent(context, n.link))
+                .build()
+        )
+    }
 
     /** A gentle reminder: prayer times, today's reading, evening reflection, a meeting soon. */
     fun faithReminder(context: Context, id: Int, title: String, text: String, link: DeepLink) {

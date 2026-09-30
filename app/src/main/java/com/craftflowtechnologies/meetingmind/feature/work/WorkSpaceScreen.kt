@@ -70,6 +70,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.craftflowtechnologies.meetingmind.core.calendar.CalendarEvent
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.work.FindingKind
@@ -135,7 +136,11 @@ fun WorkSpaceScreen(
     onSearch: () -> Unit,
     /** "✨ Create brief" for the week. */
     onOpenBrief: (com.craftflowtechnologies.meetingmind.core.work.BriefTarget) -> Unit = {},
-    onOpenInbox: () -> Unit = {}
+    onOpenInbox: () -> Unit = {},
+    /** The weekly review (D5.6). */
+    onOpenWeeklyReview: () -> Unit = {},
+    /** Set when Work is the bar's fourth slot: the space then carries the bar, with Work current. */
+    onNavigateBottomNav: ((com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit)? = null
 ) {
     var savedFilter by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.SavedFilter?>(null) }
     val settings by viewModel.settings.collectAsState()
@@ -162,8 +167,27 @@ fun WorkSpaceScreen(
     var recordPicker by remember { mutableStateOf(false) }
     val nothingYet = myTasks.isEmpty() && waitingOn.isEmpty() && recent.isEmpty() && workNotes.isEmpty() && projects.isEmpty()
 
-    Scaffold(containerColor = SurfaceBase) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("work_space"), contentPadding = PaddingValues(bottom = 48.dp)) {
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // A Prep notification opens the sheet here, for the event it named.
+    val pendingPrep by com.craftflowtechnologies.meetingmind.core.work.PendingPrepare.event.collectAsState()
+    pendingPrep?.let { e -> PrepareSheet(PrepTarget.Event(e), viewModel, onOpenMeeting, onDismiss = { com.craftflowtechnologies.meetingmind.core.work.PendingPrepare.event.value = null }) }
+    // Where the Projects section sits, for the shortcut row: the items above it, counted the way they are built below.
+    val projectsIndex = 1 + (if (!introDismissed) 1 else 0) + 6 +
+        (if (toReview.isNotEmpty()) 1 + minOf(4, toReview.size) else 0) + (if (followUps.isNotEmpty()) 1 + minOf(4, followUps.size) else 0) +
+        1 + 2 + (if (myTasks.isEmpty()) 1 else minOf(5, myTasks.size)) + (if (waitingOn.isNotEmpty()) 1 + minOf(4, waitingOn.size) else 0)
+    Scaffold(
+        containerColor = SurfaceBase,
+        bottomBar = {
+            if (onNavigateBottomNav != null && settings.tabSlot == com.craftflowtechnologies.meetingmind.core.work.TabSlot.WORK) {
+                com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar(
+                    current = com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH,
+                    onNavigate = onNavigateBottomNav
+                )
+            }
+        }
+    ) { padding ->
+        LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("work_space"), state = listState, contentPadding = PaddingValues(bottom = 48.dp)) {
             item {
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 8.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Ink) }
@@ -192,6 +216,21 @@ fun WorkSpaceScreen(
                 }
             }
 
+            // Where things live, one tap each (§7.4).
+            item {
+                LazyRow(Modifier.padding(top = 10.dp), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val shortcuts = listOf<Pair<String, () -> Unit>>(
+                        "Inbox" to onOpenInbox,
+                        terms.projects to { scope.launch { listState.animateScrollToItem(projectsIndex) }; Unit },
+                        (if (terms.person == "Contact") "People" else terms.people) to { onOpenAll(WorkTab.PEOPLE) },
+                        terms.organisations to { onOpenAll(WorkTab.PEOPLE) },
+                        "Decisions" to { onOpenAll(WorkTab.DECISIONS) },
+                        "Commitments" to { onOpenAll(WorkTab.MINE) }
+                    )
+                    items(shortcuts, key = { it.first }) { (label, go) -> Pill(label, onClick = go, modifier = Modifier.testTag("work_shortcut_${label.lowercase()}")) }
+                }
+            }
+
             // The Inbox: what was shared in, waiting to be filed.
             item {
                 val inboxCount by viewModel.inboxCount.collectAsState()
@@ -209,7 +248,10 @@ fun WorkSpaceScreen(
             // Answers from the record, one tap each (D5.5).
             item { SavedFilterRow { savedFilter = it } }
             item {
-                Row(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp)) { Pill("✨ Create brief") { onOpenBrief(com.craftflowtechnologies.meetingmind.core.work.BriefTarget.weekly) } }
+                Row(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Pill("Weekly review", onClick = onOpenWeeklyReview, modifier = Modifier.testTag("work_weekly_review"))
+                    Pill("✨ Create brief") { onOpenBrief(com.craftflowtechnologies.meetingmind.core.work.BriefTarget.weekly) }
+                }
             }
 
             // What needs you: findings to confirm, follow-ups to send.
@@ -474,9 +516,9 @@ private fun UpNextCard(
 }
 
 @Composable
-internal fun Pill(label: String, filled: Boolean = false, onClick: () -> Unit) {
+internal fun Pill(label: String, filled: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(50)).then(if (filled) Modifier.background(Ink) else Modifier.border(1.dp, LineSoft, RoundedCornerShape(50)))
+        modifier.clip(RoundedCornerShape(50)).then(if (filled) Modifier.background(Ink) else Modifier.border(1.dp, LineSoft, RoundedCornerShape(50)))
             .clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 9.dp)
     ) { Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (filled) OnInk else Ink) }
 }
