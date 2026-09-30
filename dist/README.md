@@ -1,7 +1,18 @@
 # Installable builds
 
-`MeetingMind-v34-arm64-v8a.apk` (most phones) and `MeetingMind-v34-armeabi-v7a.apk` (older
-32-bit phones) — debug-signed, for device testing.
+`MeetingMind-v37-arm64-v8a.apk` (most phones) and `MeetingMind-v37-armeabi-v7a.apk` (older 32-bit
+phones) — debug-signed test builds of **W7–W10**, built from branch `ccr-417dd2a6-v88ts6` at commit
+`84e1c17`. They are not built from this branch's source. v34 is the previous build.
+
+## What's new in v37 (W7–W10)
+
+- **Work Pulse** on the Professional home: what needs you today, and what changed since you last looked.
+- **Decisions, promises, questions and risks now last across meetings**, with a link to the exact moment
+  they were said. "You owe" and "They owe" replace Waiting on.
+- **Person, organisation and project pages** with a timeline and history.
+- **Meeting prep** (Prepare) and the **Intelligence Brief**, exportable to PDF, DOCX and Markdown.
+- **Changes card** in the Wrap-up: when a decision or date moves, it proposes what it replaces.
+- **Ask about a person, organisation or project**, answered only with cited sources.
 
 ## What's new in v34
 
