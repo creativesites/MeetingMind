@@ -467,9 +467,11 @@ Spec: D8.
      only.
    - Send stays a draft handoff.
    - Indexed mail becomes evidence in Memory, cited.
-   - **OAuth client ids and secrets can't be created by you.** Use placeholders in
-     `local.properties`, and write the exact setup steps the owner must do (consoles, redirect
-     URIs, scopes, verification) in the handoff.
+   - **The sign-in registrations already exist.** Read `docs/INTEGRATION_CREDENTIALS.md` and use
+     the client ids there, chosen per build type (dev client for debug builds, Play client for
+     release). They are public identifiers and are committed. **Never commit or paste a client
+     secret or token.** You can't create or change registrations. If something there looks wrong,
+     say so in the handoff.
    - Disabled in Clinical and Legal unless the person explicitly enables it, with a warning.
    - Never sent to cloud AI when `mustStayOnDevice`.
 4. **Storage:** the SAF picker as a provider now. Drive, OneDrive and Dropbox get stubs with
