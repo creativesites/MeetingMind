@@ -18,8 +18,17 @@ data class ExportDocument(
     /** Printed once at the end — e.g. every Bible version's copyright line. */
     val closingNotes: List<String> = emptyList(),
     /** Body text in a serif face. Faith notes use it (PLAN_V1 §7.8). */
-    val serifBody: Boolean = false
+    val serifBody: Boolean = false,
+    /** How the PDF is styled: notes use the default; a brief has its own type, status chip and sections. */
+    val theme: ExportTheme = ExportTheme.DEFAULT,
+    /** A brief's status (On track, Attention), shown as a chip under the title. */
+    val statusChip: StatusChip? = null
 )
+
+enum class ExportTheme { DEFAULT, BRIEF }
+
+/** A short status under a title. [attention] picks the warmer colour. */
+data class StatusChip(val label: String, val attention: Boolean = false)
 
 enum class ListKind { BULLET, NUMBERED, CHECKLIST }
 
@@ -59,6 +68,9 @@ sealed interface ExportBlock {
     data class Facts(val rows: List<Pair<String, String>>) : ExportBlock
 
     data object Divider : ExportBlock
+
+    /** Starts a new page (a brief's evidence appendix). */
+    data object PageBreak : ExportBlock
 }
 
 /** Assigns 1, 2, 3… to consecutive numbered items, restarting after anything else. */
@@ -84,6 +96,7 @@ object MarkdownDocumentRenderer {
     fun render(document: ExportDocument): String = buildString {
         append("# ").append(document.title.ifBlank { "Untitled" }).append("\n\n")
         document.subtitle?.let { append("_").append(it).append("_\n\n") }
+        document.statusChip?.let { append("**").append(it.label).append("**\n\n") }
 
         val numbers = document.numberedPositions()
         var previousWasList = false
@@ -130,7 +143,7 @@ object MarkdownDocumentRenderer {
                     block.rows.forEach { (k, v) -> append("**").append(k).append(":** ").append(v).append("  \n") }
                     append("\n")
                 }
-                ExportBlock.Divider -> append("---\n\n")
+                ExportBlock.Divider, ExportBlock.PageBreak -> append("---\n\n")
             }
             previousWasList = isList
         }

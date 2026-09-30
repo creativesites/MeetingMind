@@ -37,11 +37,12 @@ import com.craftflowtechnologies.meetingmind.core.work.DueDates
 import com.craftflowtechnologies.meetingmind.core.work.FindingKind
 import com.craftflowtechnologies.meetingmind.core.work.WorkTask
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
+import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 
-enum class WorkTab(val label: String) { MINE("My tasks"), WAITING("Waiting on"), DECISIONS("Decisions"), QUESTIONS("Open questions"), PEOPLE("People") }
+enum class WorkTab(val label: String) { MINE("You owe"), WAITING("They owe"), DECISIONS("Decisions"), QUESTIONS("Open questions"), PEOPLE("People") }
 
 /**
  * Everything in Work, one list at a time (docs/PLAN_PROFESSIONAL.md §7.4): what you owe, what
@@ -57,8 +58,10 @@ fun WorkAllScreen(
     onOpenPerson: (String) -> Unit
 ) {
     var tab by rememberSaveable { mutableStateOf(initial) }
-    val tasks by viewModel.tasks.collectAsState()
-    val decisions by viewModel.decisions.collectAsState()
+    val youOwe by viewModel.youOwe.collectAsState()
+    val theyOwe by viewModel.theyOwe.collectAsState()
+    val unclear by viewModel.unclear.collectAsState()
+    val decisions by viewModel.decisionLog.collectAsState()
     val questions by viewModel.openQuestions.collectAsState()
     val everyone by viewModel.everyone.collectAsState()
     val orgs by viewModel.organisations.collectAsState()
@@ -83,7 +86,7 @@ fun WorkAllScreen(
             }
             when (tab) {
                 WorkTab.MINE, WorkTab.WAITING -> {
-                    val list = tasks.filter { it.waitingOn == (tab == WorkTab.WAITING) && (showDone || !it.done) }
+                    val list = (if (tab == WorkTab.WAITING) theyOwe else youOwe).filter { showDone || !it.done }
                     val now = System.currentTimeMillis()
                     val groups = list.groupBy { t ->
                         when {
@@ -110,13 +113,27 @@ fun WorkAllScreen(
                             }
                         }
                     }
+                    if (tab == WorkTab.MINE && unclear.isNotEmpty()) {
+                        item(key = "g-unclear") { WorkSectionTitle("Unclear", "${unclear.size}", top = 12.dp) }
+                        items(unclear, key = { "u-" + it.id }) { u ->
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                                Text(u.text, fontSize = 15.sp, color = Ink)
+                                Text("Not clear who owes this or when.", fontSize = 12.sp, color = InkMuted)
+                                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Chip("I owe it") { viewModel.settleUnclear(u, true) }
+                                    Chip("They owe it") { viewModel.settleUnclear(u, false) }
+                                    Chip("Dismiss") { viewModel.dismissUnclear(u) }
+                                }
+                            }
+                        }
+                    }
                     item { TextButton(onClick = { showDone = !showDone }, modifier = Modifier.padding(horizontal = 12.dp)) { Text(if (showDone) "Hide done" else "Show done") } }
                 }
                 WorkTab.DECISIONS -> {
                     if (decisions.isEmpty()) item { EmptyLine("Decisions from your meetings build up here, newest first, each linked to the moment it was made.") }
                     decisions.groupBy { dayLabel(it.createdAt) }.forEach { (day, list) ->
                         item(key = "d-$day") { WorkSectionTitle(day, top = 12.dp) }
-                        items(list, key = { it.id }) { d -> FindingLine(FindingKind.DECISION, d.text, d.meetingTitle, onClick = { onOpenMeeting(d.meetingId, null) }) }
+                        items(list, key = { it.id }) { d -> FindingLine(FindingKind.DECISION, d.text, if (d.detail == "SUPERSEDED") "${d.meetingTitle} · Replaced later" else d.meetingTitle, onClick = { onOpenMeeting(d.meetingId, null) }) }
                     }
                 }
                 WorkTab.QUESTIONS -> {

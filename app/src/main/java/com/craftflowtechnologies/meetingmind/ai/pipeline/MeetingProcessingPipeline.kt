@@ -208,6 +208,7 @@ class MeetingProcessingPipeline(
         followUpDao.deleteFollowUpsForMeeting(meetingId)
         topicDao.deleteTopicsForMeeting(meetingId)
         embeddingDao.deleteEmbeddingsForMeeting(meetingId)
+        database.signalDao().deleteForMeeting(meetingId)
 
         val jobId = "job_$meetingId"
         val jobStartedAt = System.currentTimeMillis()
@@ -662,6 +663,7 @@ class MeetingProcessingPipeline(
             // Only persist intelligence output when it's real (summary != null)
             if (summary != null) {
                 persistIntelligence(meetingId, summary, actionItemDao, decisionDao, questionDao, followUpDao, topicDao)
+                persistSignals(meetingId, summary)
             }
             // Marks tapped while recording meet what extraction found (docs/PLAN_PROFESSIONAL.md §4.2).
             runCatching {
@@ -898,6 +900,19 @@ class MeetingProcessingPipeline(
                 )
             }
         )
+    }
+
+    /** One row per paragraph a signal cites, so a paragraph can be filtered by what it holds. */
+    private suspend fun persistSignals(meetingId: String, summary: MeetingSummary) {
+        if (summary.signals.isEmpty()) return
+        database.signalDao().insertAll(summary.signals.flatMap { s ->
+            s.sourceSegmentIds.mapIndexed { i, segmentId ->
+                com.craftflowtechnologies.meetingmind.core.database.SegmentSignalEntity(
+                    id = "${s.id}_$i", segmentId = segmentId, meetingId = meetingId, kind = s.kind, entityId = s.speakerId,
+                    value = s.value, confidence = s.confidence, text = s.text, signalId = s.id
+                )
+            }
+        })
     }
 
     private fun List<String>.toJsonArrayString(): String {

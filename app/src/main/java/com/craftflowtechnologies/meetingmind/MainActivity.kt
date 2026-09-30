@@ -80,6 +80,7 @@ import com.craftflowtechnologies.meetingmind.feature.settings.SettingsViewModel
 import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
 import com.craftflowtechnologies.meetingmind.ui.theme.isDark
 import java.net.URLDecoder
+import androidx.lifecycle.lifecycleScope
 
 // FragmentActivity (a ComponentActivity) because BiometricPrompt needs one — see docs/APP_LOCK.md.
 class MainActivity : FragmentActivity() {
@@ -90,6 +91,10 @@ class MainActivity : FragmentActivity() {
         com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.install(applicationContext, BuildConfig.VERSION_NAME)
         enableEdgeToEdge()
         com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.handle(intent)
+        // Something shared into the app: it becomes a Work Inbox item, and only on a fresh launch (not a rotation).
+        if (savedInstanceState == null && com.craftflowtechnologies.meetingmind.core.work.ShareIn.isShare(intent)) {
+            com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
+        }
         // The database opens (and migrates) before anything reads it. If it can't, the recovery
         // screen offers the data back instead of the app crashing or wiping it (PRD_M0 §4.1).
         val database = androidx.compose.runtime.mutableStateOf<com.craftflowtechnologies.meetingmind.core.database.DatabaseGuard.OpenResult?>(null)
@@ -166,6 +171,7 @@ class MainActivity : FragmentActivity() {
                 val profile = UserPreferencesManager(applicationContext).devotionalProfile.first()
                 com.craftflowtechnologies.meetingmind.core.devotional.DevotionalScheduler.sync(applicationContext, profile)
                 com.craftflowtechnologies.meetingmind.core.faith.ReminderScheduler.sync(applicationContext, UserPreferencesManager(applicationContext).reminderSettings.first())
+                UserPreferencesManager(applicationContext).let { it.syncWorkRhythm(it.workSettings.first()) }
                 com.craftflowtechnologies.meetingmind.core.widget.Widgets.refresh(applicationContext)
             }
             runCatching { com.craftflowtechnologies.meetingmind.core.backup.BackupScheduler.sync(applicationContext) }
@@ -206,6 +212,9 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         // A notification tapped while the app is already open.
         com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.handle(intent)
+        if (com.craftflowtechnologies.meetingmind.core.work.ShareIn.isShare(intent)) {
+            com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
+        }
     }
 }
 
@@ -217,6 +226,16 @@ private object RecordingRecovery {
 
 @Composable
 fun MeetMindApp(navController: NavHostController = rememberNavController()) {
+    // The fourth bottom-bar slot: Search, or Work when the person put Work there (§7.4).
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val workSettings by remember { UserPreferencesManager(context).workSettings }.collectAsState(initial = com.craftflowtechnologies.meetingmind.core.work.WorkSettings())
+    androidx.compose.runtime.CompositionLocalProvider(com.craftflowtechnologies.meetingmind.core.ui.LocalTabSlot provides workSettings.tabSlot) {
+        MeetMindAppBody(navController, workSettings.tabSlot)
+    }
+}
+
+@Composable
+private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craftflowtechnologies.meetingmind.core.work.TabSlot) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefsManager = remember { UserPreferencesManager(context) }
     val prefsState by prefsManager.preferencesFlow.collectAsState(initial = null)
@@ -287,7 +306,8 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
             val route = when (destination) {
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME -> Routes.HOME
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NOTES -> Routes.NOTES
-                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH -> Routes.SEARCH
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH -> com.craftflowtechnologies.meetingmind.core.ui.TabSlots.route(tabSlot, Routes.WORK, Routes.SEARCH)
+                com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NONE -> Routes.HOME
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SETTINGS -> Routes.SETTINGS
                 com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NEW -> Routes.HOME
             }
@@ -334,10 +354,29 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.ReadingPlans -> navController.navigate(Routes.PLANS) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Home -> Unit
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Tasks -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
+            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Inbox -> navController.navigate(Routes.WORK_INBOX) { launchSingleTop = true }
+            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.WorkSpace -> navController.navigate(Routes.WORK) { launchSingleTop = true }
+            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.WeeklyReview -> navController.navigate(Routes.WEEKLY_REVIEW) { launchSingleTop = true }
+            // Prepare opens the sheet on Work, over the space that owns it; the sheet reads the event from the link.
+            is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Prepare -> {
+                com.craftflowtechnologies.meetingmind.core.work.PendingPrepare.event.value = com.craftflowtechnologies.meetingmind.core.work.PulseEvent(
+                    link.eventKey, link.title, link.begin, link.end,
+                    link.people.split(", ").filter { it.isNotBlank() }, link.emails.split(", ").filter { it.isNotBlank() }
+                )
+                navController.navigate(Routes.WORK) { launchSingleTop = true }
+            }
+            // "Starting now — record?": the recorder, with the workflow and title filled in.
+            is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.RecordEvent -> navController.navigate(
+                Routes.recordTitledRoute(RecordingType.entries.firstOrNull { it.name == link.workflow } ?: RecordingType.MEETING, link.title)
+            ) { launchSingleTop = true }
             null -> Unit
         }
     }
 
+    // Search is always one tap from the top of Home, whatever the fourth slot holds.
+    val openSearch: () -> Unit = {
+        navController.navigate(Routes.SEARCH) { popUpTo(Routes.HOME) { saveState = true }; launchSingleTop = true; restoreState = true }
+    }
     val activeProcessing = com.craftflowtechnologies.meetingmind.core.ui.rememberActiveProcessing()
     val routesWithNav = setOf(Routes.HOME, Routes.NOTES, Routes.SEARCH, Routes.SETTINGS)
     val onProcessingScreen = currentRoute == Routes.PROCESSING
@@ -376,7 +415,7 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
                 onNewNote = { openNewNote(false) },
                 onImport = { navController.navigate(Routes.IMPORT) },
-                onSearch = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH) },
+                onSearch = openSearch,
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenProcessing = openProcessing,
                 onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
@@ -388,6 +427,8 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onOpenProject = { navController.navigate(Routes.projectRoute(it)) },
                 onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
                 onCustomize = { navController.navigate(Routes.APPEARANCE) },
+                onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
+                onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
                 onNavigateBottomNav = navigateToPrimary
             ) else if (homeStyle != com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) com.craftflowtechnologies.meetingmind.feature.today.FocusHome(
                 rich = homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM,
@@ -395,7 +436,7 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 viewModel = vm,
                 onRecord = { navController.navigate(Routes.RECORDING) },
                 onNewNote = { openNewNote(false) },
-                onSearch = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH) },
+                onSearch = openSearch,
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenProcessing = openProcessing,
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
@@ -409,7 +450,7 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onRecord = { navController.navigate(Routes.RECORDING) },
                 onRecordType = { navController.navigate(Routes.recordTypeRoute(it)) },
                 onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
-                onSearch = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH) },
+                onSearch = openSearch,
                 onNavigateBottomNav = navigateToPrimary,
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
@@ -690,7 +731,38 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onOpenProject = { navController.navigate(Routes.projectRoute(it)) },
                 onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
                 onOpenSettings = { navController.navigate(Routes.WORK_SETTINGS) },
-                onSearch = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH) }
+                onSearch = openSearch,
+                onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
+                onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) },
+                onOpenWeeklyReview = { navController.navigate(Routes.WEEKLY_REVIEW) },
+                onNavigateBottomNav = navigateToPrimary
+            )
+        }
+        composable(Routes.WEEKLY_REVIEW) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.craftflowtechnologies.meetingmind.feature.work.WeeklyReviewScreen(
+                viewModel = vm, onNavigateBack = { navController.popBackStack() },
+                onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
+                onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) }
+            )
+        }
+        composable(Routes.WORK_INBOX) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.craftflowtechnologies.meetingmind.feature.work.InboxScreen(
+                viewModel = vm, onNavigateBack = { navController.popBackStack() },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onImportAudio = { path -> navController.navigate(Routes.importFileRoute(path)) }
+            )
+        }
+        composable(Routes.IMPORT_FILE, arguments = listOf(navArgument("path") { type = NavType.StringType })) { entry ->
+            val vm: ImportViewModel = viewModel()
+            val path = URLDecoder.decode(entry.arguments?.getString("path").orEmpty(), "UTF-8")
+            LaunchedEffect(path) { vm.handleSelectedUri(android.net.Uri.fromFile(java.io.File(path))) }
+            ImportScreen(
+                viewModel = vm, onNavigateBack = { navController.popBackStack() },
+                onStartProcessing = { meetingId, audioPath, durationMs ->
+                    navController.navigate(Routes.processingRoute(meetingId, audioPath, durationMs)) { popUpTo(Routes.IMPORT_FILE) { inclusive = true } }
+                }
             )
         }
         composable(Routes.WORK_ALL, arguments = listOf(navArgument("tab") { type = NavType.StringType; defaultValue = "MINE" })) { entry ->
@@ -706,22 +778,49 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
         }
         composable(Routes.WORK_PERSON, arguments = listOf(navArgument("personId") { type = NavType.StringType })) { entry ->
             val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            com.craftflowtechnologies.meetingmind.feature.work.WorkPersonScreen(
+            // A person or an organisation: the context page picks up whichever it is.
+            com.craftflowtechnologies.meetingmind.feature.work.PersonContextScreen(
                 viewModel = vm, personId = entry.arguments?.getString("personId").orEmpty(),
                 onNavigateBack = { navController.popBackStack() },
-                onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
+                onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
-                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) }
             )
         }
         composable(Routes.PROJECT, arguments = listOf(navArgument("projectId") { type = NavType.StringType })) { entry ->
             val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            com.craftflowtechnologies.meetingmind.feature.work.ProjectScreen(
-                viewModel = vm, projectId = entry.arguments?.getString("projectId").orEmpty(),
+            com.craftflowtechnologies.meetingmind.feature.work.ContextScreen(
+                type = com.craftflowtechnologies.meetingmind.core.work.ContextType.PROJECT, id = entry.arguments?.getString("projectId").orEmpty(), viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
+                onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
-                onRecordInto = { noteId, type, title -> navController.navigate(Routes.recordEventRoute(noteId, type, title, null)) }
+                onRecordInto = { noteId, type, title -> navController.navigate(Routes.recordEventRoute(noteId, type, title, null)) },
+                onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) }
+            )
+        }
+        composable(Routes.BRIEF, arguments = listOf(navArgument("kind") { type = NavType.StringType }, navArgument("id") { type = NavType.StringType })) { entry ->
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val kind = runCatching { com.craftflowtechnologies.meetingmind.core.work.BriefKind.valueOf(entry.arguments?.getString("kind").orEmpty()) }.getOrDefault(com.craftflowtechnologies.meetingmind.core.work.BriefKind.WEEKLY)
+            com.craftflowtechnologies.meetingmind.feature.work.BriefScreen(
+                target = com.craftflowtechnologies.meetingmind.core.work.BriefTarget.of(kind, entry.arguments?.getString("id").orEmpty()), viewModel = vm,
+                onNavigateBack = { navController.popBackStack() },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
+            )
+        }
+        composable(Routes.CONTEXT, arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.StringType })) { entry ->
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val type = runCatching { com.craftflowtechnologies.meetingmind.core.work.ContextType.valueOf(entry.arguments?.getString("type").orEmpty()) }
+                .getOrDefault(com.craftflowtechnologies.meetingmind.core.work.ContextType.PERSON)
+            com.craftflowtechnologies.meetingmind.feature.work.ContextScreen(
+                type = type, id = entry.arguments?.getString("id").orEmpty(), viewModel = vm,
+                onNavigateBack = { navController.popBackStack() },
+                onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onRecordInto = { noteId, t, title -> navController.navigate(Routes.recordEventRoute(noteId, t, title, null)) },
+                onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) }
             )
         }
         composable(Routes.WRAP_UP, arguments = listOf(
@@ -898,7 +997,8 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                     if (navController.previousBackStackEntry?.arguments?.getString("noteId") == noteId) navController.popBackStack()
                     else navController.navigate(Routes.noteRoute(noteId))
                 },
-                onStudy = { noteId, mId -> navController.navigate(Routes.studyRoute(noteId, meetingId = mId)) }
+                onStudy = { noteId, mId -> navController.navigate(Routes.studyRoute(noteId, meetingId = mId)) },
+                onCreateBrief = { mId -> navController.navigate(Routes.brief(com.craftflowtechnologies.meetingmind.core.work.BriefKind.MEETING, mId)) }
             )
         }
 

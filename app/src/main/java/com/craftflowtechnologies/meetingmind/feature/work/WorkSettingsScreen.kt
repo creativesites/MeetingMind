@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.work.Channel
 import com.craftflowtechnologies.meetingmind.core.work.GreetingStyle
 import com.craftflowtechnologies.meetingmind.core.work.TabSlot
+import com.craftflowtechnologies.meetingmind.core.work.WorkWindow
 import com.craftflowtechnologies.meetingmind.core.work.Terms
 import com.craftflowtechnologies.meetingmind.core.work.Tone
 import com.craftflowtechnologies.meetingmind.core.work.WorkProfile
@@ -74,7 +75,10 @@ fun WorkSettingsScreen(viewModel: WorkViewModel, onNavigateBack: () -> Unit) {
                         Row(
                             Modifier.fillMaxWidth().clickable {
                                 // A new profile brings its defaults; the name and signature stay.
-                                set { old -> WorkSettings.forProfile(p).copy(signOff = old.signOff, signature = old.signature, tabSlot = old.tabSlot, greeting = old.greeting) }
+                                set { old -> WorkSettings.forProfile(p).copy(signOff = old.signOff, signature = old.signature, tabSlot = old.tabSlot, greeting = old.greeting,
+                                    workDays = old.workDays, workStartMinute = old.workStartMinute, workEndMinute = old.workEndMinute, prepLeadMinutes = old.prepLeadMinutes,
+                                    weeklyReviewDay = old.weeklyReviewDay, notifyMorning = old.notifyMorning, morningMinute = old.morningMinute, notifyPrep = old.notifyPrep,
+                                    notifyStartNow = old.notifyStartNow, notifyWeekly = old.notifyWeekly, weeklyReviewMinute = old.weeklyReviewMinute) }
                             }.padding(horizontal = 8.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -129,6 +133,34 @@ fun WorkSettingsScreen(viewModel: WorkViewModel, onNavigateBack: () -> Unit) {
                         TabSlot.entries.forEach { t -> Chip(t.label, s.tabSlot == t, Ink) { set { it.copy(tabSlot = t) } } }
                     }
                     Text("With Work in the bar, Search is still at the top of Home.", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+
+            item { WorkSectionTitle("Rhythm") }
+            item {
+                val days = listOf(2 to "Mon", 3 to "Tue", 4 to "Wed", 5 to "Thu", 6 to "Fri", 7 to "Sat", 1 to "Sun")
+                fun hours(m: Int) = "%d:%02d".format(m / 60, m % 60)
+                Column(Modifier.padding(horizontal = 20.dp)) {
+                    Text("Nudges only arrive on your working days, inside your working hours.", fontSize = 13.sp, color = InkSecondary)
+                    Text("Working days", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 10.dp, bottom = 6.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        days.forEach { (n, label) -> Chip(label, n in s.workDays, Ink) { set { it.copy(workDays = if (n in it.workDays) it.workDays - n else it.workDays + n) } } }
+                    }
+                    Text("Working hours", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 10.dp, bottom = 6.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(7 * 60 to 16 * 60, 8 * 60 + 30 to 17 * 60 + 30, 9 * 60 to 18 * 60, 10 * 60 to 19 * 60).forEach { (a, b) ->
+                            Chip("${hours(a)}–${hours(b)}", s.workStartMinute == a && s.workEndMinute == b, Ink) { set { it.copy(workStartMinute = a, workEndMinute = b) } }
+                        }
+                    }
+                    ToggleRow("Morning line", "One line at ${hours(s.morningMinute)}: today's meetings and what needs you", s.notifyMorning) { on -> set { it.copy(notifyMorning = on) } }
+                    ToggleRow("Prep before meetings", "${s.prepLeadMinutes} minutes ahead, for meetings with people you know", s.notifyPrep) { on -> set { it.copy(notifyPrep = on) } }
+                    ToggleRow("“Starting now — record?”", "Asks when a meeting begins. Off unless you turn it on.", s.notifyStartNow) { on -> set { it.copy(notifyStartNow = on) } }
+                    ToggleRow("Weekly review", "On ${days.firstOrNull { it.first == s.weeklyReviewDay }?.second ?: "Fri"} at ${hours(WorkWindow.clampToHours(s, s.weeklyReviewMinute))}", s.notifyWeekly) { on -> set { it.copy(notifyWeekly = on) } }
+                    Text("Review day", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        days.forEach { (n, label) -> Chip(label, s.weeklyReviewDay == n, Ink) { set { it.copy(weeklyReviewDay = n) } } }
+                    }
+                    if (s.profile.sensitive) Text("For ${s.profile.label.lowercase()} work, notifications show counts only: no names, no titles.", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 8.dp))
                 }
             }
 

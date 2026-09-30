@@ -12,7 +12,21 @@ import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.repository.NoteCodec
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
+import com.craftflowtechnologies.meetingmind.core.work.AttentionRow
 import com.craftflowtechnologies.meetingmind.core.work.Channel
+import com.craftflowtechnologies.meetingmind.core.work.ContextRepository
+import com.craftflowtechnologies.meetingmind.core.work.ContextType
+import com.craftflowtechnologies.meetingmind.core.work.DueDates
+import com.craftflowtechnologies.meetingmind.core.work.ItemRepository
+import com.craftflowtechnologies.meetingmind.core.work.ItemStatus
+import com.craftflowtechnologies.meetingmind.core.work.Prepare
+import com.craftflowtechnologies.meetingmind.core.work.Pulse
+import com.craftflowtechnologies.meetingmind.core.work.PulseEvent
+import com.craftflowtechnologies.meetingmind.core.work.SavedViews
+import com.craftflowtechnologies.meetingmind.core.work.itemStatus
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.mapLatest
+import com.craftflowtechnologies.meetingmind.core.work.Direction
 import com.craftflowtechnologies.meetingmind.core.work.FollowUpLine
 import com.craftflowtechnologies.meetingmind.core.work.MeetingRow
 import com.craftflowtechnologies.meetingmind.core.work.WorkPeople
@@ -40,6 +54,7 @@ data class ProjectCard(val notebook: Notebook, val notes: Int, val openTasks: In
  * (docs/PLAN_PROFESSIONAL.md §6–7). Every list is a live view of the database, so a rename, a
  * tick or a new recording shows everywhere at once.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class WorkViewModel(application: Application) : AndroidViewModel(application) {
     private val database = MeetMindDatabase.getInstance(application)
     private val prefs = UserPreferencesManager(application)
@@ -56,10 +71,22 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     val tasks: StateFlow<List<WorkTask>> = work.observeTasks().state(emptyList())
     val myTasks: StateFlow<List<WorkTask>> = tasks.map { l -> l.filter { !it.done && !it.waitingOn } }.state(emptyList())
-    val waitingOn: StateFlow<List<WorkTask>> = tasks.map { l -> l.filter { !it.done && it.waitingOn } }.state(emptyList())
+    /** What people owe you: their open commitments (D4.2). */
+    val theyOwe: StateFlow<List<WorkTask>> = work.observeCommitments(Direction.THEIRS).state(emptyList())
+    val waitingOn: StateFlow<List<WorkTask>> = theyOwe.map { l -> l.filter { !it.done } }.state(emptyList())
+    /** What you owe: your tasks, plus any commitment you made that has no task of its own. */
+    val youOwe: StateFlow<List<WorkTask>> = combine(tasks, work.observeCommitments(Direction.MINE)) { t, c ->
+        val taskIds = t.map { it.id }.toSet()
+        t.filter { !it.waitingOn } + c.filter { it.id !in taskIds }
+    }.state(emptyList())
     val toReview: StateFlow<List<MeetingRow>> = work.observeToReview().state(emptyList())
     val followUps: StateFlow<List<MeetingRow>> = work.observeFollowUps().state(emptyList())
     val decisions: StateFlow<List<FindingRow>> = work.observeDecisions().state(emptyList())
+    /** Promises nobody could place, waiting to be settled or dismissed. */
+    val unclear: StateFlow<List<com.craftflowtechnologies.meetingmind.core.database.ItemEntity>> = ItemRepository(database).observeUnclear().state(emptyList())
+    fun settleUnclear(i: com.craftflowtechnologies.meetingmind.core.database.ItemEntity, mine: Boolean) = viewModelScope.launch { ItemRepository(database).settle(i.id, if (mine) Direction.MINE else Direction.THEIRS, null) }
+    fun dismissUnclear(i: com.craftflowtechnologies.meetingmind.core.database.ItemEntity) = viewModelScope.launch { ItemRepository(database).setStatus(i.id, ItemStatus.CANCELLED) }
+    val decisionLog: StateFlow<List<FindingRow>> = work.observeDecisionLog().state(emptyList())
     val openQuestions: StateFlow<List<FindingRow>> = work.observeOpenQuestions().state(emptyList())
     val recent: StateFlow<List<MeetingRow>> = work.observeRecentWork(12).state(emptyList())
     val everyone: StateFlow<List<WorkPerson>> = people.observePeople().state(emptyList())
@@ -79,8 +106,13 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     /** Meeting titles, for the "from Acme review" line under a task. */
     val titles: StateFlow<Map<String, String>> = database.meetingDao().getAllMeetings().map { l -> l.associate { it.id to it.title } }.state(emptyMap())
 
+    // Declared before the init block below, which sets it: property initialisers run in source order.
+    private val pulseSince = MutableStateFlow<Long?>(null)
+
     init {
         viewModelScope.launch { _self.value = people.self(prefs.preferencesFlow.first().userName) }
+        // What changed is measured from the last time the Pulse was read, fixed for this session.
+        viewModelScope.launch { pulseSince.value = prefs.pulseSeenAt.first() ?: (System.currentTimeMillis() - 24 * 3_600_000L) }
     }
 
     // ---------------------------------------------------------------- tasks
@@ -151,6 +183,120 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun ownerOf(t: WorkTask): WorkPerson? = t.personId?.let { people.get(it) }
 
     fun nudgeLine(t: WorkTask) = FollowUpLine(t.title, t.ownerName, t.dueAt, null)
+
+    // ---------------------------------------------------------------- pulse, context, prepare
+
+    /** The one place a model for work-memory writing is chosen: sensitive material only ever gets the local one. */
+    private val workModels = com.craftflowtechnologies.meetingmind.core.work.DeviceWorkModels(
+        application, com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(application),
+        com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(application)
+    ) { prefs.preferencesFlow.first().processingProfile }
+    private val packPrivacy = com.craftflowtechnologies.meetingmind.core.work.DevicePackPrivacy(application)
+    val briefs = com.craftflowtechnologies.meetingmind.core.work.BriefBuilder(database, workModels, packPrivacy)
+    val memory = com.craftflowtechnologies.meetingmind.core.work.MemoryRepository(database, workModels, packPrivacy)
+    val prepareWriter = com.craftflowtechnologies.meetingmind.core.work.PrepareWriter(database, workModels, packPrivacy)
+    val scopedAsk = com.craftflowtechnologies.meetingmind.ai.assistant.ScopedAsk(database, workModels, packPrivacy, dateLabel = { com.craftflowtechnologies.meetingmind.core.work.Pulse.shortDate(it) })
+
+    // ---------------------------------------------------------------- inbox (D7)
+
+    // ---------------------------------------------------------------- weekly review
+
+    private val weeklyReviews = com.craftflowtechnologies.meetingmind.core.work.WeeklyReviews(database)
+    private val _review = MutableStateFlow<com.craftflowtechnologies.meetingmind.core.work.WeeklyReviewData?>(null)
+    val review: StateFlow<com.craftflowtechnologies.meetingmind.core.work.WeeklyReviewData?> = _review
+
+    fun loadReview() { viewModelScope.launch { _review.value = runCatching { weeklyReviews.build() }.getOrNull() } }
+
+    /** Next week's plan, in one pass; the review is read again afterwards, so what's left is what's still open. */
+    fun applyPlan(decisions: List<com.craftflowtechnologies.meetingmind.core.work.PlanDecision>, done: (Int) -> Unit) {
+        viewModelScope.launch {
+            val n = runCatching { weeklyReviews.applyPlan(decisions) }.getOrDefault(0)
+            _review.value = runCatching { weeklyReviews.build() }.getOrNull()
+            done(n)
+        }
+    }
+
+    val nextMonday: Long get() = weeklyReviews.nextMonday()
+
+    private val inbox = com.craftflowtechnologies.meetingmind.core.work.InboxRepository(database)
+    val inboxItems: StateFlow<List<com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity>> = inbox.observeOpen().state(emptyList())
+    val inboxCount: StateFlow<Int> = inbox.observeOpenCount().state(0)
+    private fun proposer() = com.craftflowtechnologies.meetingmind.core.work.InboxProposer(database, workModels, settings.value.keepOnDevice)
+    suspend fun inboxCandidates() = proposer().candidates()
+    /** Proposes one filing for an item. Nothing is filed until [fileInbox]. */
+    suspend fun proposeInbox(item: com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity) = proposer().propose(item)
+    suspend fun fileInbox(item: com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity, filing: com.craftflowtechnologies.meetingmind.core.work.Filing) =
+        com.craftflowtechnologies.meetingmind.core.work.InboxFiler(getApplication(), database).file(item.id, filing)
+    fun dismissInbox(item: com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity) = viewModelScope.launch { inbox.dismiss(item.id) }
+    /** Adds what a document scan or a picker returned, the same way a share does. */
+    fun addToInbox(parts: List<com.craftflowtechnologies.meetingmind.core.work.SharedPart>) = viewModelScope.launch {
+        inbox.add(parts) { com.craftflowtechnologies.meetingmind.core.work.ShareIn.copy(getApplication(), it) }
+    }
+
+    val context = ContextRepository(database)
+    val prepare = Prepare(database)
+    val savedViews = SavedViews(database)
+    private val pulseEngine = Pulse(database)
+    private val calendarEvents = MutableStateFlow<List<PulseEvent>>(emptyList())
+
+    /** The Work Pulse, recomputed whenever an item, its log, today's calendar or the settings change. */
+    val pulse: StateFlow<PulseUi> = combine(database.itemDao().observeVersion(), calendarEvents, settings, pulseSince, inboxCount) { _, events, s, since, inbox -> listOf(events, s, since, inbox) }
+        .mapLatest { list ->
+            @Suppress("UNCHECKED_CAST") val events = list[0] as List<PulseEvent>; val s = list[1] as WorkSettings; val since = list[2] as Long?; val inbox = list[3] as Int
+            val now = System.currentTimeMillis()
+            val from = since ?: (now - 24 * 3_600_000L)
+            val attention = pulseEngine.attention(now, 4, pulseEngine.projectIdsFor(events), s.quietDays)
+            PulseUi(
+                attention = attention, sinceLabel = sinceLabel(from, now), changes = pulseEngine.changesSince(from), today = pulseEngine.today(events),
+                coldStart = database.itemDao().allLive().none { it.reviewed }, inbox = inbox
+            )
+        }.state(PulseUi())
+
+    /** Today's calendar, as Pulse and Prepare want it. Only a real change is passed on. */
+    fun setPulseEvents(events: List<PulseEvent>) { if (calendarEvents.value != events) calendarEvents.value = events }
+
+    /** Ticks whenever an item or its log changes, for screens that read history. */
+    val itemVersion: Flow<Long> = database.itemDao().observeVersion()
+
+    fun markPulseSeen() = viewModelScope.launch { prefs.setPulseSeenAt(System.currentTimeMillis()) }
+
+    /** Where a row or a change is evidenced: the recording and the moment in it. */
+    suspend fun evidenceOf(itemId: String): Pair<String, Long?>? {
+        val item = database.itemDao().getById(itemId) ?: return null
+        val meeting = item.meetingId ?: return null
+        return meeting to database.itemDao().evidenceFor(itemId).firstOrNull()?.startMs
+    }
+
+    /** A row of Needs you as a task, for the nudge sheet. */
+    suspend fun asTask(row: AttentionRow): WorkTask = WorkTask(
+        id = row.taskId ?: row.itemId.orEmpty(), title = row.title, dueAt = row.dueAt, doneAt = null, waitingOn = true,
+        ownerName = row.personId?.let { people.get(it)?.name }, personId = row.personId, meetingId = row.meetingId, noteId = null, startMs = row.startMs,
+        kind = com.craftflowtechnologies.meetingmind.core.tasks.TaskKind.TASK
+    )
+
+    private fun sinceLabel(since: Long, now: Long): String {
+        val days = ((DueDates.startOfDay(now) - DueDates.startOfDay(since)) / 86_400_000L).toInt()
+        return when {
+            days <= 0 -> "Since earlier today"
+            days == 1 -> "Since yesterday"
+            days < 7 -> "Since " + java.text.SimpleDateFormat("EEEE", java.util.Locale.getDefault()).format(java.util.Date(since))
+            else -> "Since " + Pulse.shortDate(since)
+        }
+    }
+
+    /** One context page's data; refreshes with the items. */
+    fun contextState(type: ContextType, id: String): Flow<ContextState> = database.itemDao().observeVersion().mapLatest {
+        val items = context.items(type, id)
+        ContextState(
+            header = context.header(type, id), history = context.decisionHistory(type, id), risks = context.risks(type, id), timeline = context.timeline(type, id),
+            projects = if (type == ContextType.ORG) context.projectsOf(id).map { it.id to it.name } else emptyList(),
+            members = if (type == ContextType.PROJECT) context.members(id).map { m -> Triple(m.personId, people.get(m.personId)?.name ?: "Someone", m.role) } else emptyList(),
+            org = if (type == ContextType.ORG) database.peopleDao().getById(id) else null,
+            projectProps = if (type == ContextType.PROJECT) database.notebookDao().getById(id)?.propertiesJson else null,
+            openItems = items.count { it.itemStatus in setOf(ItemStatus.OPEN, ItemStatus.UNCLEAR, ItemStatus.PROPOSED) },
+            projectName = if (type == ContextType.PROJECT) database.notebookDao().getById(id)?.name else null
+        )
+    }
 
     private val state = application.getSharedPreferences("work_state", android.content.Context.MODE_PRIVATE)
     private val notSame = MutableStateFlow(state.getStringSet(NOT_SAME, emptySet()).orEmpty())

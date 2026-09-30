@@ -39,7 +39,16 @@ import androidx.room.migration.Migration
         TaskEntity::class,
         NotePersonCrossRef::class,
         NoteFtsEntity::class,
-        TranscriptFtsEntity::class
+        TranscriptFtsEntity::class,
+        ItemEntity::class,
+        ItemEvidenceEntity::class,
+        ItemLinkEntity::class,
+        ItemEventEntity::class,
+        ProjectMemberEntity::class,
+        SegmentSignalEntity::class,
+        BriefEntity::class,
+        MemoryStoryEntity::class,
+        InboxItemEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
@@ -47,6 +56,11 @@ import androidx.room.migration.Migration
 abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun meetingDao(): MeetingDao
     abstract fun workDao(): WorkDao
+    abstract fun itemDao(): ItemDao
+    abstract fun signalDao(): SignalDao
+    abstract fun briefDao(): BriefDao
+    abstract fun inboxDao(): InboxDao
+    abstract fun memoryStoryDao(): MemoryStoryDao
     abstract fun transcriptDao(): TranscriptDao
     abstract fun speakerDao(): SpeakerDao
     abstract fun actionItemDao(): ActionItemDao
@@ -448,6 +462,80 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Direction v2's context model: items with their evidence, links and change log, project
+         * members, and an organisation's domains, description, URLs, logo and properties. New
+         * tables and columns only — nothing is dropped or rebuilt.
+         */
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_17_18_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        /** Signals with evidence, per paragraph (docs/PLAN_PROFESSIONAL.md D6). A new table and its indices only. */
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_18_19_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        /** Cached brief prose and monthly memory stories (docs/PLAN_PROFESSIONAL.md D5). Two new tables and an index only. */
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_19_20_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        /** The Work Inbox (docs/PLAN_PROFESSIONAL.md D7). A new table and its index only. */
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_20_21_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_20_21_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `inbox_items` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `uri` TEXT, `text` TEXT, `title` TEXT, `status` TEXT NOT NULL, `proposedJson` TEXT, `createdAt` INTEGER NOT NULL, `processedAt` INTEGER, `resultRefJson` TEXT, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_inbox_items_status` ON `inbox_items` (`status`)"
+        )
+
+        internal val MIGRATION_19_20_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `briefs` (`id` TEXT NOT NULL, `entityType` TEXT NOT NULL, `entityId` TEXT NOT NULL, `kind` TEXT NOT NULL, `contentJson` TEXT NOT NULL, `citedIdsJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_briefs_entityType_entityId_kind` ON `briefs` (`entityType`, `entityId`, `kind`)",
+            "CREATE TABLE IF NOT EXISTS `memory_stories` (`entityType` TEXT NOT NULL, `entityId` TEXT NOT NULL, `month` TEXT NOT NULL, `text` TEXT NOT NULL, `citedIdsJson` TEXT NOT NULL, `itemCount` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`entityType`, `entityId`, `month`))"
+        )
+
+        internal val MIGRATION_18_19_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `segment_signals` (`id` TEXT NOT NULL, `segmentId` TEXT NOT NULL, `meetingId` TEXT NOT NULL, `kind` TEXT NOT NULL, `entityId` TEXT, `value` TEXT, `confidence` REAL NOT NULL, `text` TEXT NOT NULL DEFAULT '', `signalId` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_segment_signals_meetingId` ON `segment_signals` (`meetingId`)",
+            "CREATE INDEX IF NOT EXISTS `index_segment_signals_meetingId_kind` ON `segment_signals` (`meetingId`, `kind`)",
+            "CREATE INDEX IF NOT EXISTS `index_segment_signals_segmentId` ON `segment_signals` (`segmentId`)"
+        )
+
+        internal val MIGRATION_17_18_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `items` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `status` TEXT NOT NULL, `text` TEXT NOT NULL, `value` TEXT, `ownerPersonId` TEXT, `ownerSpeakerId` TEXT, `counterpartyPersonId` TEXT, `projectId` TEXT, `orgId` TEXT, `meetingId` TEXT, `noteId` TEXT, `dueAt` INTEGER, `dueText` TEXT, `supersedesId` TEXT, `answerText` TEXT, `answeredAt` INTEGER, `answerItemId` TEXT, `taskId` TEXT, `reason` TEXT, `severity` TEXT, `direction` TEXT, `confidence` REAL, `reviewed` INTEGER NOT NULL DEFAULT 0, `source` TEXT NOT NULL DEFAULT 'AI', `sourceFindingId` TEXT, `space` TEXT NOT NULL DEFAULT 'WORK', `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `closedAt` INTEGER, `deletedAt` INTEGER, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_items_kind_status` ON `items` (`kind`, `status`)",
+            "CREATE INDEX IF NOT EXISTS `index_items_projectId` ON `items` (`projectId`)",
+            "CREATE INDEX IF NOT EXISTS `index_items_orgId` ON `items` (`orgId`)",
+            "CREATE INDEX IF NOT EXISTS `index_items_ownerPersonId` ON `items` (`ownerPersonId`)",
+            "CREATE INDEX IF NOT EXISTS `index_items_counterpartyPersonId` ON `items` (`counterpartyPersonId`)",
+            "CREATE INDEX IF NOT EXISTS `index_items_dueAt` ON `items` (`dueAt`)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_items_sourceFindingId` ON `items` (`sourceFindingId`)",
+            "CREATE TABLE IF NOT EXISTS `item_evidence` (`id` TEXT NOT NULL, `itemId` TEXT NOT NULL, `meetingId` TEXT, `noteId` TEXT, `blockId` TEXT, `segmentIdsJson` TEXT NOT NULL, `startMs` INTEGER, `endMs` INTEGER, `quote` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_item_evidence_itemId` ON `item_evidence` (`itemId`)",
+            "CREATE TABLE IF NOT EXISTS `item_links` (`itemId` TEXT NOT NULL, `targetType` TEXT NOT NULL, `targetId` TEXT NOT NULL, `role` TEXT NOT NULL, PRIMARY KEY(`itemId`, `targetType`, `targetId`))",
+            "CREATE INDEX IF NOT EXISTS `index_item_links_targetType_targetId` ON `item_links` (`targetType`, `targetId`)",
+            "CREATE TABLE IF NOT EXISTS `item_events` (`id` TEXT NOT NULL, `itemId` TEXT, `entityType` TEXT NOT NULL, `entityId` TEXT NOT NULL, `type` TEXT NOT NULL, `beforeJson` TEXT, `afterJson` TEXT, `at` INTEGER NOT NULL, `evidenceId` TEXT, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_item_events_at` ON `item_events` (`at`)",
+            "CREATE INDEX IF NOT EXISTS `index_item_events_itemId` ON `item_events` (`itemId`)",
+            "CREATE TABLE IF NOT EXISTS `project_members` (`notebookId` TEXT NOT NULL, `personId` TEXT NOT NULL, `role` TEXT NOT NULL, PRIMARY KEY(`notebookId`, `personId`))",
+            "ALTER TABLE people ADD COLUMN `domainsJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE people ADD COLUMN `description` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE people ADD COLUMN `urlsJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE people ADD COLUMN `logoPath` TEXT",
+            "ALTER TABLE people ADD COLUMN `propertiesJson` TEXT NOT NULL DEFAULT '{}'"
+        )
+
         internal val MIGRATION_16_17_SQL: List<String> = listOf(
             "ALTER TABLE people ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'PERSON'",
             "ALTER TABLE people ADD COLUMN `orgId` TEXT",
@@ -543,7 +631,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 17
+        const val VERSION = 21
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {
@@ -561,7 +649,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
                     .build()
                 INSTANCE = instance
                 instance

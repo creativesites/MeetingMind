@@ -17,8 +17,8 @@ android {
     applicationId = "com.craftflowtechnologies.meetingmind"
     minSdk = 24
     targetSdk = 36
-    versionCode = 34
-    versionName = "1.0-v34"
+    versionCode = 38
+    versionName = "1.0-v38"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -169,6 +169,8 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   // implementation(libs.play.services.location)
+  // Document scanner for the Work Inbox: runs on the device, and hands back a PDF or pictures (docs/PLAN_PROFESSIONAL.md D7).
+  implementation(libs.mlkit.document.scanner)
   // sherpa-onnx: on-device speech recognition (VAD + Parakeet TDT ASR). Prebuilt AAR from
   // GitHub Releases — see settings.gradle.kts ivy repository and docs/AI_ARCHITECTURE.md.
   // Declared with an explicit "@aar" artifact type since the ivy repo pattern resolves a

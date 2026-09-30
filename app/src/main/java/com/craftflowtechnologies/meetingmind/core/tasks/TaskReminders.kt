@@ -30,7 +30,10 @@ object TaskReminders {
     fun repository(context: Context): TaskRepository {
         val app = context.applicationContext
         val db = MeetMindDatabase.getInstance(app)
-        return TaskRepository(db.taskDao(), db.peopleDao(), onRemindersChanged = { sync(app) })
+        return TaskRepository(
+            db.taskDao(), db.peopleDao(), onRemindersChanged = { sync(app) },
+            onTaskDone = { id, done -> com.craftflowtechnologies.meetingmind.core.work.ItemRepository(db).onTaskDone(id, done) }
+        )
     }
 
     suspend fun sync(context: Context) {

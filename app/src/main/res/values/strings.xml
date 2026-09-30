@@ -11,6 +11,8 @@
     <string name="google_sign_in_web_client_id" translatable="false"></string>
     <string name="widget_verse_description">Verse of the day, on a picture</string>
     <string name="widget_today_description">Your next event and today\'s devotional</string>
+    <string name="widget_next_meeting_description">Your next meeting, a countdown, and Record</string>
+    <string name="widget_next_meeting_label">Next meeting</string>
     <string name="widget_verse_label">Verse of the day</string>
     <string name="widget_today_label">Today</string>
 

@@ -186,6 +186,7 @@ class WorkPeople(private val database: MeetMindDatabase) {
             work.moveTasks(fromId, intoId)
             work.moveMembers(fromId, intoId)
             work.copyNoteLinks(fromId, intoId)
+            database.itemDao().let { it.moveOwner(fromId, intoId); it.moveCounterparty(fromId, intoId); it.moveLinks(fromId, intoId); it.moveOrg(fromId, intoId) }
             people.upsert(
                 into.copy(
                     aliasesJson = jsonList((idList(into.aliasesJson) + idList(from.aliasesJson) + from.name).filter { !sameName(it, into.name) }),

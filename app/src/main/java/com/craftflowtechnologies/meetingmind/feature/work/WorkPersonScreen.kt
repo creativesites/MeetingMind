@@ -65,7 +65,10 @@ fun WorkPersonScreen(
     onNavigateBack: () -> Unit,
     onOpenPerson: (String) -> Unit,
     onOpenNote: (String) -> Unit,
-    onOpenMeeting: (String, Long?) -> Unit
+    onOpenMeeting: (String, Long?) -> Unit,
+    /** Sections a context page adds after the masthead and at the end. */
+    extraTop: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = null,
+    extraBottom: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = null
 ) {
     val person by remember(personId) { viewModel.person(personId) }.collectAsState(initial = null)
     val tasks by remember(personId) { viewModel.tasksWith(personId) }.collectAsState(initial = emptyList())
@@ -121,6 +124,7 @@ fun WorkPersonScreen(
                 }
                 if (p.aliases.isNotEmpty()) Text("Also known as " + p.aliases.joinToString(", "), fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(horizontal = 20.dp))
             }
+            extraTop?.invoke(this)
             if (p.kind == PersonKind.ORG && members.isNotEmpty()) {
                 item { WorkSectionTitle("People", "${members.size}") }
                 items(members, key = { "m-" + it.id }) { m -> PersonRow(m, null) { onOpenPerson(m.id) } }
@@ -151,6 +155,7 @@ fun WorkPersonScreen(
                     }
                 }
             }
+            extraBottom?.invoke(this)
         }
     }
 

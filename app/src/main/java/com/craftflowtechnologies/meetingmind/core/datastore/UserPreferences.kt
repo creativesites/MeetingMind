@@ -140,6 +140,14 @@ class UserPreferencesManager(private val context: Context) {
     private val TOUR_COMPLETED = booleanPreferencesKey("tour_completed")
     private val GETTING_STARTED_DISMISSED = booleanPreferencesKey("getting_started_dismissed")
     private val WORK_SETTINGS = stringPreferencesKey("work_settings")
+    private val PULSE_SEEN_AT = androidx.datastore.preferences.core.longPreferencesKey("pulse_seen_at")
+
+    /** When the Work Pulse was last on screen long enough to be read; "what changed" is measured from it. */
+    val pulseSeenAt: Flow<Long?> = context.dataStore.data.map { it[PULSE_SEEN_AT] }
+
+    suspend fun setPulseSeenAt(epochMs: Long) {
+        context.dataStore.edit { it[PULSE_SEEN_AT] = epochMs }
+    }
 
     /** Work profile, words, rhythm, outputs and privacy (docs/PLAN_PROFESSIONAL.md §8). */
     val workSettings: Flow<com.craftflowtechnologies.meetingmind.core.work.WorkSettings> =
@@ -147,10 +155,26 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setWorkSettings(settings: com.craftflowtechnologies.meetingmind.core.work.WorkSettings) {
         context.dataStore.edit { it[WORK_SETTINGS] = settings.toJson() }
+        syncWorkRhythm(settings)
     }
 
     suspend fun updateWorkSettings(change: (com.craftflowtechnologies.meetingmind.core.work.WorkSettings) -> com.craftflowtechnologies.meetingmind.core.work.WorkSettings) {
-        context.dataStore.edit { it[WORK_SETTINGS] = change(com.craftflowtechnologies.meetingmind.core.work.WorkSettings.fromJson(it[WORK_SETTINGS])).toJson() }
+        var updated = com.craftflowtechnologies.meetingmind.core.work.WorkSettings()
+        context.dataStore.edit {
+            updated = change(com.craftflowtechnologies.meetingmind.core.work.WorkSettings.fromJson(it[WORK_SETTINGS]))
+            it[WORK_SETTINGS] = updated.toJson()
+        }
+        syncWorkRhythm(updated)
+    }
+
+    /** Whether the person uses the Work space at all: the Work nudges only ever run for them. */
+    suspend fun usesWork(): Boolean =
+        com.craftflowtechnologies.meetingmind.core.identity.AppIdentity.parseSpaces(context.dataStore.data.first()[SPACES])
+            .contains(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK)
+
+    /** Sets the Work nudges (morning, Prep, weekly review) to the settings just kept. */
+    suspend fun syncWorkRhythm(settings: com.craftflowtechnologies.meetingmind.core.work.WorkSettings) {
+        runCatching { com.craftflowtechnologies.meetingmind.core.work.WorkRhythmScheduler.sync(context, settings, usesWork()) }
     }
 
     private val DEVOTIONAL_PROFILE = stringPreferencesKey("devotional_profile")

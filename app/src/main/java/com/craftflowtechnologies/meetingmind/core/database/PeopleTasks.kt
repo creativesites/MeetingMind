@@ -47,7 +47,13 @@ data class PersonEntity(
     @ColumnInfo(defaultValue = "0") val confidential: Boolean = false,
     val lastSeenAt: Long? = null,
     /** WORK for people met at work; null for everyone else (prayer list, family). */
-    val space: String? = null
+    val space: String? = null,
+    // Schema 18: an organisation's context (docs/PLAN_PROFESSIONAL.md D4.4).
+    @ColumnInfo(defaultValue = "[]") val domainsJson: String = "[]",
+    @ColumnInfo(defaultValue = "") val description: String = "",
+    @ColumnInfo(defaultValue = "[]") val urlsJson: String = "[]",
+    val logoPath: String? = null,
+    @ColumnInfo(defaultValue = "{}") val propertiesJson: String = "{}"
 )
 
 @Entity(

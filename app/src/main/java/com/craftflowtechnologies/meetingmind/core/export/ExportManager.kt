@@ -15,6 +15,16 @@ import java.io.OutputStream
  */
 object ExportManager {
 
+    /** Writes a finished [ExportDocument] (a brief) as Markdown, PDF or Word. */
+    fun writeDocument(format: ExportFormat, document: ExportDocument, out: OutputStream) {
+        when (format) {
+            ExportFormat.MARKDOWN -> out.write(MarkdownDocumentRenderer.render(document).toByteArray(Charsets.UTF_8))
+            ExportFormat.PDF -> PdfDocumentRenderer.render(document, out)
+            ExportFormat.DOCX -> DocxDocumentRenderer.render(document, out)
+            else -> error("A brief can be exported as Markdown, PDF or Word")
+        }
+    }
+
     fun write(
         format: ExportFormat,
         contentType: ExportContentType,

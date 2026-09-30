@@ -192,9 +192,18 @@ object MeetingPrep {
     }
 }
 
+/** Work's part of the week: what was decided, promised and finished, and what is still open. */
+data class WorkWeek(
+    val meetings: Int, val decisions: Int, val commitmentsMade: Int, val commitmentsDone: Int, val openQuestions: Int, val slipped: Int
+) { val isEmpty get() = meetings + decisions + commitmentsMade + commitmentsDone + openQuestions + slipped == 0 }
+
 /** The week in numbers, for the Sunday-evening card. Only what happened; nothing inferred. */
-data class WeekReview(val recordings: Int, val notes: Int, val faith: Int, val answered: Int, val minutesRecorded: Int) {
-    val isEmpty get() = recordings + notes + faith + answered == 0
+data class WeekReview(
+    val recordings: Int, val notes: Int, val faith: Int, val answered: Int, val minutesRecorded: Int,
+    /** The Work facts, from the record of items (the weekly review screen fills this in). */
+    val work: WorkWeek? = null
+) {
+    val isEmpty get() = recordings + notes + faith + answered == 0 && (work?.isEmpty ?: true)
 
     companion object {
         fun of(items: List<TimelineItem>): WeekReview = WeekReview(
