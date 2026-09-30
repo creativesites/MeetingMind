@@ -134,7 +134,8 @@ fun WorkSpaceScreen(
     onOpenSettings: () -> Unit,
     onSearch: () -> Unit,
     /** "✨ Create brief" for the week. */
-    onOpenBrief: (com.craftflowtechnologies.meetingmind.core.work.BriefTarget) -> Unit = {}
+    onOpenBrief: (com.craftflowtechnologies.meetingmind.core.work.BriefTarget) -> Unit = {},
+    onOpenInbox: () -> Unit = {}
 ) {
     var savedFilter by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.SavedFilter?>(null) }
     val settings by viewModel.settings.collectAsState()
@@ -191,6 +192,20 @@ fun WorkSpaceScreen(
                 }
             }
 
+            // The Inbox: what was shared in, waiting to be filed.
+            item {
+                val inboxCount by viewModel.inboxCount.collectAsState()
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 10.dp).clip(RoundedCornerShape(16.dp)).background(if (inboxCount > 0) AccentWash else SurfaceRaised)
+                        .clickable { onOpenInbox() }.padding(14.dp).testTag("work_inbox_card"), verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Inbox", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                        Text(if (inboxCount > 0) "$inboxCount ${if (inboxCount == 1) "item" else "items"} to file" else "Share anything here to file it", fontSize = 12.sp, color = InkSecondary)
+                    }
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Accent)
+                }
+            }
             // Answers from the record, one tap each (D5.5).
             item { SavedFilterRow { savedFilter = it } }
             item {

@@ -194,6 +194,23 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     val prepareWriter = com.craftflowtechnologies.meetingmind.core.work.PrepareWriter(database, workModels, packPrivacy)
     val scopedAsk = com.craftflowtechnologies.meetingmind.ai.assistant.ScopedAsk(database, workModels, packPrivacy, dateLabel = { com.craftflowtechnologies.meetingmind.core.work.Pulse.shortDate(it) })
 
+    // ---------------------------------------------------------------- inbox (D7)
+
+    private val inbox = com.craftflowtechnologies.meetingmind.core.work.InboxRepository(database)
+    val inboxItems: StateFlow<List<com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity>> = inbox.observeOpen().state(emptyList())
+    val inboxCount: StateFlow<Int> = inbox.observeOpenCount().state(0)
+    private fun proposer() = com.craftflowtechnologies.meetingmind.core.work.InboxProposer(database, workModels, settings.value.keepOnDevice)
+    suspend fun inboxCandidates() = proposer().candidates()
+    /** Proposes one filing for an item. Nothing is filed until [fileInbox]. */
+    suspend fun proposeInbox(item: com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity) = proposer().propose(item)
+    suspend fun fileInbox(item: com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity, filing: com.craftflowtechnologies.meetingmind.core.work.Filing) =
+        com.craftflowtechnologies.meetingmind.core.work.InboxFiler(getApplication(), database).file(item.id, filing)
+    fun dismissInbox(item: com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity) = viewModelScope.launch { inbox.dismiss(item.id) }
+    /** Adds what a document scan or a picker returned, the same way a share does. */
+    fun addToInbox(parts: List<com.craftflowtechnologies.meetingmind.core.work.SharedPart>) = viewModelScope.launch {
+        inbox.add(parts) { com.craftflowtechnologies.meetingmind.core.work.ShareIn.copy(getApplication(), it) }
+    }
+
     val context = ContextRepository(database)
     val prepare = Prepare(database)
     val savedViews = SavedViews(database)
@@ -202,14 +219,15 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     private val pulseSince = MutableStateFlow<Long?>(null)
 
     /** The Work Pulse, recomputed whenever an item, its log, today's calendar or the settings change. */
-    val pulse: StateFlow<PulseUi> = combine(database.itemDao().observeVersion(), calendarEvents, settings, pulseSince) { _, events, s, since -> Triple(events, s, since) }
-        .mapLatest { (events, s, since) ->
+    val pulse: StateFlow<PulseUi> = combine(database.itemDao().observeVersion(), calendarEvents, settings, pulseSince, inboxCount) { _, events, s, since, inbox -> listOf(events, s, since, inbox) }
+        .mapLatest { list ->
+            @Suppress("UNCHECKED_CAST") val events = list[0] as List<PulseEvent>; val s = list[1] as WorkSettings; val since = list[2] as Long?; val inbox = list[3] as Int
             val now = System.currentTimeMillis()
             val from = since ?: (now - 24 * 3_600_000L)
             val attention = pulseEngine.attention(now, 4, pulseEngine.projectIdsFor(events), s.quietDays)
             PulseUi(
                 attention = attention, sinceLabel = sinceLabel(from, now), changes = pulseEngine.changesSince(from), today = pulseEngine.today(events),
-                coldStart = database.itemDao().allLive().none { it.reviewed }
+                coldStart = database.itemDao().allLive().none { it.reviewed }, inbox = inbox
             )
         }.state(PulseUi())
 

@@ -61,6 +61,7 @@ MeetingMind incorporates the following open-source runtimes, models, and librari
 - **Firebase Android SDK** (Auth, Firestore): Apache License 2.0
 - **Coil**: Apache License 2.0
 - **OkHttp**: Apache License 2.0
+- **ML Kit Document Scanner** (`com.google.android.gms:play-services-mlkit-document-scanner`): Google APIs Terms of Service / ML Kit Terms. Used by the Work Inbox "Scan" button; runs on the device.
 
 
 ## Inter and Outfit fonts

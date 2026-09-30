@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -14,20 +15,20 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** 19 → 20: cached brief prose and monthly memory stories. Every existing row survives. */
+/** 20 → 21: the Work Inbox. Every existing row survives. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
-class Migration19To20Test {
+class Migration20To21Test {
     private lateinit var context: Context
-    private val dbName = "migration-19-20-test.db"
+    private val dbName = "migration-20-21-test.db"
     private var migrated: MeetMindDatabase? = null
-    private val tables = listOf("people", "tasks", "meetings", "notebooks", "notes", "decisions", "items", "item_evidence", "item_links", "item_events", "project_members", "segment_signals", "transcript_segments")
+    private val tables = listOf("people", "tasks", "meetings", "notebooks", "notes", "decisions", "items", "item_evidence", "item_links", "item_events", "project_members", "segment_signals", "briefs", "memory_stories", "transcript_segments")
 
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
         context.deleteDatabase(dbName)
-        ExportedSchema.create(context.getDatabasePath(dbName), 19)
+        ExportedSchema.create(context.getDatabasePath(dbName), 20)
         SQLiteDatabase.openDatabase(context.getDatabasePath(dbName).path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
             db.execSQL(
                 "INSERT INTO meetings (id, title, createdAt, durationMs, source, audioFilePath, status, participantCount, language, summaryText, updatedAt, recordingType, processingProfile, processingVersion) " +
@@ -52,7 +53,7 @@ class Migration19To20Test {
 
     private fun open(): MeetMindDatabase =
         Room.databaseBuilder(context, MeetMindDatabase::class.java, dbName)
-            .addMigrations(MeetMindDatabase.MIGRATION_19_20, MeetMindDatabase.MIGRATION_20_21)
+            .addMigrations(MeetMindDatabase.MIGRATION_20_21, MeetMindDatabase.MIGRATION_20_21)
             .allowMainThreadQueries().build().also { migrated = it }
 
     @Test
@@ -65,19 +66,18 @@ class Migration19To20Test {
     }
 
     @Test
-    fun briefsAndStoriesCanBeStoredAndFound() = runBlocking {
+    fun theInboxStoresItemsAndFindsTheOpenOnes() = runBlocking {
         val db = open()
-        assertNull(db.briefDao().latest("PROJECT", "nb", "PROJECT"))
-        db.briefDao().upsert(BriefEntity("b1", "PROJECT", "nb", "PROJECT", "{}", "[]", 10))
-        db.briefDao().upsert(BriefEntity("b2", "PROJECT", "nb", "PROJECT", "{\"executive\":[]}", "[\"i1\"]", 20))
-        assertEquals("b2", db.briefDao().latest("PROJECT", "nb", "PROJECT")!!.id)
-        db.briefDao().clear("PROJECT", "nb", "PROJECT")
-        assertEquals(0, db.briefDao().count())
-        db.memoryStoryDao().upsert(MemoryStoryEntity("PROJECT", "nb", "2026-09", "Launch was set.", "[\"i1\"]", 3, 30))
-        db.memoryStoryDao().upsert(MemoryStoryEntity("PROJECT", "nb", "2026-09", "Launch was set again.", "[\"i1\"]", 4, 40)) // same month replaces
-        db.memoryStoryDao().upsert(MemoryStoryEntity("PROJECT", "nb", "2026-10", "It moved.", "[]", 1, 50))
-        assertEquals(listOf("2026-10", "2026-09"), db.memoryStoryDao().forEntity("PROJECT", "nb").map { it.month })
-        assertEquals(4, db.memoryStoryDao().get("PROJECT", "nb", "2026-09")!!.itemCount)
+        val dao = db.inboxDao()
+        dao.upsert(InboxItemEntity("a", "TEXT", text = "Call Ana about pricing", title = "Pricing", status = "NEW", createdAt = 10))
+        dao.upsert(InboxItemEntity("b", "PDF", uri = "/files/inbox/x.pdf", status = "PROPOSED", proposedJson = "{}", createdAt = 20))
+        dao.upsert(InboxItemEntity("c", "URL", text = "https://acme.com", status = "FILED", createdAt = 30, processedAt = 31, resultRefJson = "{}"))
+        assertEquals(listOf("b", "a"), dao.open().map { it.id })
+        assertEquals(2, dao.observeOpenCount().first())
+        dao.update(dao.get("a")!!.copy(status = "DISMISSED"))
+        assertEquals(listOf("b"), dao.open().map { it.id })
+        assertNull(dao.get("b")!!.title)
+        assertEquals(3, dao.all().size)
         assertEquals("Launch on October 14", db.itemDao().getById("i1")!!.text)
     }
 }

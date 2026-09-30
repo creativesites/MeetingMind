@@ -40,7 +40,9 @@ data class PulseUi(
     val today: List<PulseDayLine> = emptyList(),
     /** True when there is nothing yet in the record: the card offers a way to begin instead of an empty state. */
     val coldStart: Boolean = true,
-    val summary: String = ""
+    val summary: String = "",
+    /** Things shared in, waiting to be filed. */
+    val inbox: Int = 0
 ) {
     val changeLines: List<ChangeLine> get() = changes.flatMap { it.lines }
 }
@@ -56,7 +58,8 @@ class PulseActions(
     val onRecordEvent: (PulseEvent) -> Unit = {},
     val onAsk: () -> Unit = {},
     val onRecord: () -> Unit = {},
-    val onTemplates: () -> Unit = {}
+    val onTemplates: () -> Unit = {},
+    val onOpenInbox: () -> Unit = {}
 )
 
 private const val MAX_CHANGES_SHOWN = 3
@@ -111,6 +114,10 @@ fun PulseCard(ui: PulseUi, timeFormat: DateFormat, actions: PulseActions, modifi
             }
         }
 
+        if (ui.inbox > 0) Text(
+            "Inbox · ${ui.inbox} to file", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Briefing.Lavender,
+            modifier = Modifier.padding(top = 12.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = actions.onOpenInbox).padding(vertical = 4.dp).testTag("pulse_inbox")
+        )
         Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PulseButton("Ask about my work", primary = ui.attention.isEmpty() && !ui.coldStart, onClick = actions.onAsk, tag = "pulse_ask")
             if (!ui.coldStart || ui.today.isNotEmpty()) PulseButton("● Record", onClick = actions.onRecord)

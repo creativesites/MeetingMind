@@ -46,6 +46,11 @@ object Routes {
     const val PROJECT = "project/{projectId}"
     const val WRAP_UP = "wrapup/{meetingId}?compose={compose}"
     const val WORK_SETTINGS = "work_settings"
+    /** The Work Inbox: things shared into the app, waiting to be filed. */
+    const val WORK_INBOX = "work_inbox"
+    /** Imports a file already in the app (an inbox audio item) as a recording. */
+    const val IMPORT_FILE = "import_file/{path}"
+    fun importFileRoute(path: String) = "import_file/" + java.net.URLEncoder.encode(path, "UTF-8")
     /** One context page for a person, an organisation or a project (D5.2). */
     const val CONTEXT = "context/{type}/{id}"
     /** An Intelligence Brief: [kind] is a BriefKind name, and the id is the meeting, organisation, project or person ("-" for the weekly one). */

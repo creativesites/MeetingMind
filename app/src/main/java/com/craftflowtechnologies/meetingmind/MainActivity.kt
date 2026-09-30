@@ -80,6 +80,7 @@ import com.craftflowtechnologies.meetingmind.feature.settings.SettingsViewModel
 import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
 import com.craftflowtechnologies.meetingmind.ui.theme.isDark
 import java.net.URLDecoder
+import androidx.lifecycle.lifecycleScope
 
 // FragmentActivity (a ComponentActivity) because BiometricPrompt needs one — see docs/APP_LOCK.md.
 class MainActivity : FragmentActivity() {
@@ -89,6 +90,10 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.handle(intent)
+        // Something shared into the app: it becomes a Work Inbox item, and only on a fresh launch (not a rotation).
+        if (savedInstanceState == null && com.craftflowtechnologies.meetingmind.core.work.ShareIn.isShare(intent)) {
+            com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
+        }
         // The database opens (and migrates) before anything reads it. If it can't, the recovery
         // screen offers the data back instead of the app crashing or wiping it (PRD_M0 §4.1).
         val database = androidx.compose.runtime.mutableStateOf<com.craftflowtechnologies.meetingmind.core.database.DatabaseGuard.OpenResult?>(null)
@@ -198,6 +203,9 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         // A notification tapped while the app is already open.
         com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.handle(intent)
+        if (com.craftflowtechnologies.meetingmind.core.work.ShareIn.isShare(intent)) {
+            com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
+        }
     }
 }
 
@@ -326,6 +334,9 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.ReadingPlans -> navController.navigate(Routes.PLANS) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Home -> Unit
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Tasks -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
+            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Inbox -> navController.navigate(Routes.WORK_INBOX) { launchSingleTop = true }
+            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.WorkSpace -> navController.navigate(Routes.WORK) { launchSingleTop = true }
+            is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Prepare, is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.RecordEvent, com.craftflowtechnologies.meetingmind.core.notify.DeepLink.WeeklyReview -> Unit
             null -> Unit
         }
     }
@@ -381,6 +392,7 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
                 onCustomize = { navController.navigate(Routes.APPEARANCE) },
                 onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
+                onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
                 onNavigateBottomNav = navigateToPrimary
             ) else if (homeStyle != com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) com.craftflowtechnologies.meetingmind.feature.today.FocusHome(
                 rich = homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM,
@@ -684,7 +696,27 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
                 onOpenSettings = { navController.navigate(Routes.WORK_SETTINGS) },
                 onSearch = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH) },
+                onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
                 onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) }
+            )
+        }
+        composable(Routes.WORK_INBOX) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.craftflowtechnologies.meetingmind.feature.work.InboxScreen(
+                viewModel = vm, onNavigateBack = { navController.popBackStack() },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onImportAudio = { path -> navController.navigate(Routes.importFileRoute(path)) }
+            )
+        }
+        composable(Routes.IMPORT_FILE, arguments = listOf(navArgument("path") { type = NavType.StringType })) { entry ->
+            val vm: ImportViewModel = viewModel()
+            val path = URLDecoder.decode(entry.arguments?.getString("path").orEmpty(), "UTF-8")
+            LaunchedEffect(path) { vm.handleSelectedUri(android.net.Uri.fromFile(java.io.File(path))) }
+            ImportScreen(
+                viewModel = vm, onNavigateBack = { navController.popBackStack() },
+                onStartProcessing = { meetingId, audioPath, durationMs ->
+                    navController.navigate(Routes.processingRoute(meetingId, audioPath, durationMs)) { popUpTo(Routes.IMPORT_FILE) { inclusive = true } }
+                }
             )
         }
         composable(Routes.WORK_ALL, arguments = listOf(navArgument("tab") { type = NavType.StringType; defaultValue = "MINE" })) { entry ->

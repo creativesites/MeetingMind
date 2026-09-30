@@ -114,6 +114,7 @@ fun ProfessionalHome(
     onOpenPerson: (String) -> Unit,
     onCustomize: () -> Unit,
     onOpenContext: (com.craftflowtechnologies.meetingmind.core.work.ContextType, String) -> Unit = { _, _ -> },
+    onOpenInbox: () -> Unit = {},
     onNavigateBottomNav: (com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit
 ) {
     val identity by today.identity.collectAsState()
@@ -195,7 +196,7 @@ fun ProfessionalHome(
                             (todayItems.firstNotNullOfOrNull { (it.target as? DeepTarget.Event)?.event?.takeIf { ev -> ev.key == e.key } })
                                 ?.let { ev -> today.noteForEvent(ev) { id, type -> onRecordEvent(id, type, e.title, UpNext.speakerCount(ev)) } }
                         },
-                        onAsk = { askOpen = true }, onRecord = onRecord, onTemplates = onOpenWork
+                        onAsk = { askOpen = true }, onRecord = onRecord, onTemplates = onOpenWork, onOpenInbox = onOpenInbox
                     ),
                     modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)
                 )
