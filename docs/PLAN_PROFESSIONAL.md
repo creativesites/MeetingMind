@@ -3,7 +3,10 @@
 The Professional vertical, planned for the best experience first and the feature list second. It
 also covers a Work Home and the professional additions to the app's personalisation.
 
-Written against schema version 14 (v30). It follows the rules in `docs/PLAN_V1.md` §9 and
+**Revised after v34 by Direction v2** (the section after §0): Professional becomes a memory and
+execution layer for professional work, built around Work Pulse, the Intelligence Brief and Memory.
+
+Originally written against schema version 14 (v30). It follows the rules in `docs/PLAN_V1.md` §9 and
 `docs/PRODUCT_DIRECTION.md` §7, and builds on the identity and Today hub from `docs/PLAN_V2.md`
 F0–F1.
 
@@ -14,12 +17,13 @@ F0–F1.
 | Question | Answer |
 | --- | --- |
 | Generalised or focused? | **One engine for every kind of professional, with a focused launch.** The engine works for anyone with people, conversations and commitments. Defaults, templates, onboarding and marketing are aimed first at **people who do client work**: consultants, agencies, freelancers, and founders selling to businesses. |
-| What is it? | The layer between conversations and work. **Capture → Understand → Structure → Act → Produce → Remember.** |
+| What is it? | **A memory and execution layer for professional work** (Direction v2). The loop is **Prepare → Capture → Understand → Act → Communicate → Execute → Remember → Review** (D3). The fundamental object is the ongoing body of work; a meeting is one event in it. |
+| The three flagships | **Work Pulse** (the daily habit), **Intelligence Brief** (the wow), **Memory** (retention). See D5. |
 | What is it not? | Not a CRM, not a project manager, not an email client. No pipelines, forecasting, Gantt charts, invoicing or HR. |
-| The north star | *Within five minutes of a meeting ending, the person has sent their follow-up and trusts that nothing was dropped, having typed almost nothing.* |
-| The most important screen | **The Wrap-up** (§4.3): a 60-second review after processing that files the meeting, confirms what was extracted and sends the follow-up. |
+| The north stars | **Daily:** *the person opens Work Pulse on most workdays because it tells them something true and new* (D5.1). **Per meeting:** *within five minutes of a meeting ending, the person has sent their follow-up and trusts that nothing was dropped, having typed almost nothing.* |
+| The most important screens | **Work Pulse** (D5.1), which answers "what needs me today?", and **the Wrap-up** (§4.3), the 60-second review that feeds everything else. |
 | Connectors in the first release | Device calendar (exists) and the **Android share sheet**, with WhatsApp and email chosen adaptively (§6.5). No OAuth and **no contacts permission**: MeetingMind keeps its own People list, built from its own history (§5.1). |
-| Home | A **Work Home**. It is the same Today hub arranged for work, not a separate app (§7). |
+| Home | The **Professional home** (built in v34), rebuilt around **Work Pulse** (D5.1). |
 
 ### Why the launch is focused on client work
 
@@ -45,7 +49,519 @@ These take precedence over anything below that disagrees.
 | Follow-up channel | **Adaptive** (§6.5). WhatsApp or email is chosen per person from what worked before, then from the region and whether an email address is known. |
 | Paid and free | Not decided. Gating comes later, so nothing in P1 is built around a paywall. |
 | Contacts permission | **Not asked.** MeetingMind builds its own People list from history: speakers, calendar attendees, and names the person types or confirms (§5.1). |
+| Centre of gravity (after v34) | **Direction v2.** Context and continuity before more features: first-class decisions, commitments, questions and risks; organisations and projects as context containers; Pulse, Brief and Memory as the flagships. Kanban, Gantt and the whiteboard wait until the model exists. |
+| Commitments | **Their own object** (D4.2), distinct from tasks, with a direction (you owe or they owe). This reverses Principle 3's "no separate object". |
 | Speaker names | **Dynamic everywhere** (§5.5). Renaming "Speaker 1" in the transcript updates the summary, items, note, AI outputs and exports. |
+
+---
+
+## Direction v2: a memory and execution layer for professional work
+
+Added after v34, and it **takes precedence** over anything later in this document that disagrees.
+Sections 1–14 stay as the record of the foundation, and each place this changes is marked
+*(superseded by Direction v2)*.
+
+### D1. The diagnosis, accepted
+
+v34 made **Right after** excellent: the Wrap-up, the follow-up, dynamic names. That was the P1
+bet in §3. It still feels like *"a very good recorder with professional features"*, because:
+
+- **It's recording-centric.** A professional's day is *Prepare → Meet → Capture → Understand →
+  Decide → Assign → Communicate → Execute → Review → Meet again*. We own Capture → Understand,
+  have the beginnings of Decide → Assign, and don't yet own Prepare, Execute, Review or
+  continuity.
+- **Findings are meeting-local.** A decision, a question or a promise lives inside the recording
+  it came from. Nothing tracks it after that meeting ends, so nothing can say what changed.
+- **There's no pull.** Nothing tells the person something new each day, and nothing makes them
+  show the app to someone else.
+
+The change is a change of **centre of gravity**, not 30 more features:
+
+> **Before:** MeetingMind Professional = notes + recordings + AI + tasks.
+> **After:** MeetingMind Professional = **a memory and execution layer for professional work.**
+> The fundamental object is the ongoing body of work. A meeting is one event inside it.
+
+**The positioning line** (replaces §2):
+
+> **Remember the work. Understand what changed. Know what to do next.**
+
+**The killer test.** Ask *"What is happening with Myavana?"* and get, with every line opening its
+evidence:
+
+- active projects and the last meeting
+- the decisions in force
+- what you owe and what they owe you
+- open questions and risks
+- the next meeting and what to prepare
+
+Until that works offline from the database, Professional is not done.
+
+### D2. Reconciled with what v34 already has
+
+The direction's gap list was written against an older build. This is the honest state, and what
+changes.
+
+| Area | The direction says | v34 actually has | Decision |
+| --- | --- | --- | --- |
+| Organisations | Missing | `people` rows with `kind = ORG`, found from email domains, with a page | **Keep the table and grow it.** Add domain, description, URLs, logo and custom properties. It's a context container, never a CRM. |
+| Projects | Missing | Notebooks with `kind = PROJECT`, and a project hub (notes, tasks, people) | **Keep the notebook.** Notes already live in notebooks. Add organisation, members, overview, risks, files and a timeline. |
+| Professional Home | Partial | Built: briefing card, Needs you, schedule, tasks, projects, people | **Rebuild its core around Work Pulse** (D5.1). The briefing card becomes the Pulse. |
+| Decision log | Missing | A list that reads main's meeting-local `decisions` | **Make decisions first-class** (D4), with status, supersedes, links and evidence. |
+| Commitments | Missing | "Waiting on" tasks (`tasks.waitingOn`) | **Commitments become their own object** (D4.2). This reverses Principle 3's "no separate object". |
+| Open questions | Meeting-local | A list across meetings, with Answered | **First-class**, with owner, project, answer and where it was answered. |
+| People | Data model exists | Built from history, merge, "Same person?", person page | **Add relationship intelligence**: Relationship Pulse (D5.2). |
+| Meeting prep | Mostly missing | Up next on the home. The §4.1 prep card was never built. | **Build it as the Prepare skill** (D5.4). |
+| Risks, requirements | Missing | Reserved in §5.2, never built | **Build them** as signal kinds (D6). |
+| Integrations | Missing | Device calendar and the share sheet; §6.6 provider interfaces planned | **Keep the provider abstraction.** Capability-first integration centre (D8). |
+| Automation | Missing | Wrap-up → tasks is the only fixed recipe | **Trigger → Context → Skill → Approved actions** under recipes (D8). |
+| Kanban, Gantt, whiteboard | In the old plan | Not built | **Agreed: later.** They are views over the model (D9). |
+
+### D3. The loop, made explicit
+
+The five moments in §3 become the whole loop. Every screen belongs to one step, and every step
+hands to the next.
+
+| Step | The person asks | MeetingMind answers with | State in v34 |
+| --- | --- | --- | --- |
+| **Prepare** | "What do I need for my 10:00?" | Prep: last time, you owe, they owe, decisions, open questions, suggested agenda from open items | Missing |
+| **Capture** | "Get it all down" | Record, import, calendar-linked note, marks, quick notes, attachments, URLs | Strong |
+| **Understand** | "What happened?" | Transcript, summary, and **signals with evidence** (D6) | Strong, but thin on signals |
+| **Act** | "Who does what?" | Wrap-up: tasks, commitments, decisions, questions, risks, linked to people, organisation and project | Built for tasks, thin elsewhere |
+| **Communicate** | "What do I send?" | Follow-up, minutes, client update, executive summary, **Brief** (D5.3) | Follow-up and exports built |
+| **Execute** | "What's on me today?" | **Work Pulse** (D5.1), tasks, nudges | Partial |
+| **Remember** | "What happened with Acme in March?" | **Memory** (D5.5): scoped Ask and entity history | Missing |
+| **Review** | "What slipped this week?" | Weekly review (§4.5), then next week's plan | Missing |
+
+### D4. The context model
+
+Five core entities: **Person, Organisation, Project, Meeting, Note.** Everything else attaches to
+them through links, and every derived object carries evidence.
+
+```
+                 ORGANISATION
+               /      |       \
+          People   Projects   Notes ── Documents
+             \        |        /
+              Meetings / Notes
+                      |
+     Decisions · Commitments · Questions · Risks · Requirements …
+                      |
+                    Tasks
+```
+
+This is a graph, but it's stored as plain tables and link rows. All of it is **core, not
+professional**, so `PLAN_V1` §9 rule 1 holds. Faith uses the same objects: a sermon-series project,
+a prayer commitment, a study question.
+
+#### D4.1 Items: the durable record
+
+v34 left findings in main's meeting-local tables (`action_items`, `decisions`, `questions`,
+`follow_ups`). **Those stay** as the extraction output for one recording, and main's screens keep
+reading them. §5.2's single `items` table comes back as the **durable, cross-meeting record**.
+Wrap-up *confirm* promotes findings into items, once each, the same way it already promotes
+actions into main's `tasks`.
+
+```
+items
+  id, kind, status, text,
+  value?,                        -- structured value: a date for DEADLINE, a number for METRIC
+  ownerPersonId?, ownerSpeakerId?,     -- who holds it (null = me)
+  counterpartyPersonId?,               -- commitments: who it's owed to
+  projectId?, orgId?,                  -- denormalised context for fast queries
+  dueAt?, dueText?,
+  supersedesId?,                       -- decisions, deadlines, scope: what this replaced
+  answerText?, answeredAt?, answerItemId?,   -- questions
+  taskId?,                             -- the main task that executes it, if any
+  reason?,                             -- decisions: why, when it was said
+  confidence?, reviewed, source,       -- USER | AI | MARK
+  createdAt, updatedAt, closedAt?
+item_evidence   itemId, meetingId?, noteId?, blockId?, segmentIdsJson, startMs?, endMs?, quote
+item_links      itemId, targetType (PERSON · ORG · PROJECT · NOTE · MEETING · ITEM), targetId, role
+item_events     id, itemId?, entityType, entityId, type, beforeJson?, afterJson?, at, evidenceId?
+```
+
+- **Evidence is required** for every AI item. `sourceSegmentIdsJson` already exists on every
+  finding, so evidence is copied, not invented. An item without evidence is shown only if the
+  person typed it.
+- **`item_events` is the change log** that Work Pulse, "What changed" and the project timeline
+  read. Every create, status change, reassignment, date change and supersession writes one row, in
+  the same transaction.
+- **Tasks stay main's `tasks` table.** An item links to a task. Items never duplicate it.
+
+#### D4.2 Commitments are not tasks
+
+A **task** is work: *"Fix the dashboard."* A **commitment** is a promise between people, with a
+direction: *"Candace said she'd send the production credentials by Friday."*
+
+| | Mine (I promised) | Theirs (they promised me) |
+| --- | --- | --- |
+| Shown as | **You owe** | **They owe** |
+| Task | Created and linked; ticking the task closes the commitment, and the reverse | None. This replaces v34's `waitingOn` tasks, which are migrated. |
+| Actions | Do, reschedule, renegotiate (drafts a message) | Nudge, mark received, release |
+
+- **Status:** Open · Completed · Cancelled · Unclear. *Due soon* and *Overdue* are computed from
+  `dueAt`, never stored.
+- **Unclear** is for when the model heard a promise but not who made it or when it's due. It's
+  shown in the Wrap-up as a question to settle, never silently guessed.
+- The two questions this makes answerable offline: **"What have I promised people?"** and **"Who
+  is waiting on me?"**
+
+#### D4.3 Decisions, questions and risks are first-class
+
+- **Decision:** what, why, project, organisation, people, date, evidence. The status is *Proposed*,
+  *Active*, *Superseded* or *Reversed*. A *Proposed* decision (options discussed, nothing decided)
+  feeds Pulse's **Decision needed**. The supersede chain gives the decision log its history:
+  *"WordPress is the source of truth (Sep 29), replacing Headless CMS (Sep 12)."*
+- **Open question:** question, owner, project, status (*Open*, *Answered*, *Dropped*), the answer
+  and the meeting that answered it. A later meeting that answers it proposes "Answered?" in its
+  Wrap-up.
+- **Risk:** statement, severity, project, what it blocks, evidence. It's closed when the blocker
+  goes.
+
+#### D4.4 Organisations and projects grow up
+
+- **Organisation** (`people`, `kind = ORG`): name, domain(s), description, logo, URLs, custom
+  properties, members, projects. Its page is the context page (D5.2) with People and Projects
+  rows. There are no deals, stages or forecasts (§11).
+- **Project** (notebook, `kind = PROJECT`): organisation, members, status, overview (a
+  generated, cited paragraph), dates, files, custom properties.
+  - The project page adds **Decisions, Commitments, Questions, Risks and Timeline**.
+  - The timeline is `item_events` and meetings in date order.
+  - **"What changed this month?"** is a filter on that timeline, not a model call.
+- **Linking is inferred**, never required (Principle 2):
+  - A meeting inherits its project from the calendar title and attendees, or from the Wrap-up
+    guess.
+  - Its items inherit the project and organisation from the meeting.
+
+### D5. The three flagship experiences
+
+Three experiences define the vertical. Everything else serves them.
+
+| Experience | The promise | Frequency | Role |
+| --- | --- | --- | --- |
+| **Work Pulse** | "Open MeetingMind. Know what matters." | Daily | The habit |
+| **Intelligence Brief** | "Turn everything it knows into something I can send." | As needed, shared | The wow |
+| **Memory** | "What do I know about this?" | Constantly, and more valuable over time | Retention |
+
+They reinforce each other:
+
+1. Pulse shows *what changed*.
+2. The evidence shows *why*.
+3. Memory shows *the whole history*.
+4. A Brief turns it into *something to send*.
+5. The next meeting adds information, and tomorrow's Pulse picks it up.
+
+#### D5.1 Work Pulse (the Professional home's core)
+
+It replaces the briefing card at the top of the Professional home. It answers *"What do I need to
+know and do today?"*, not *"What notes have I made?"*
+
+```
+WORK PULSE · Good morning, Winston          4 things need you
+─────────────────────────────────────────────────────────────
+● YOU PROMISED    Send revised proposal to Acme · due today      ▶
+● WAITING ON      John — production credentials · 5 days         [Nudge]
+● DECISION NEEDED Myavana launch date · 2 options, no decision   ▶
+● FOLLOW UP       NetOne · 8 days quiet · 3 unresolved           [Prepare]
+─────────────────────────────────────────────────────────────
+TODAY   10:00 Myavana — Sync · 3 open from last time   [Prepare]
+        14:00 NetOne · last met Sep 24 · 2 questions   [Prepare]
+─────────────────────────────────────────────────────────────
+SINCE YESTERDAY
+  Myavana   +2 commitments · +1 decision · launch Oct 14 → Oct 21  ▶
+  Sarah committed to API docs by Fri                                 ▶
+─────────────────────────────────────────────────────────────
+[ Ask about my work ]
+```
+
+- **Built from the database, not a model.** The attention rows are queries over items and tasks.
+  "Since yesterday" reads `item_events` since the last time the Pulse was seen
+  (`pulseSeenAt`). It works offline and with no AI.
+- **Every row has evidence.** ▶ plays the moment, or opens the item.
+- **The attention budget:** at most **four** rows, ranked:
+  1. overdue and due today, mine first
+  2. decision needed on a project that has a meeting today
+  3. commitments owed to me and overdue
+  4. quiet relationships with open items
+
+  The rest is behind "See all". A Pulse that lists 20 things is a to-do list, and people stop
+  opening it.
+- **Changes are specific sentences**, never counts alone: "Launch moved Oct 14 → Oct 21", made from
+  a `DEADLINE` item superseding another, with the new evidence.
+- **Cold start (Principle 6):**
+  - On day one, Pulse reads the calendar ("3 meetings today, first time meeting NetOne") and any
+    past recordings backfilled into items.
+  - It never shows an empty state that says "record something first".
+- **Notification:** an optional morning Pulse, one line ("4 things need you · first meeting
+  10:00"). It respects working days and quiet hours (§8.4).
+- **Sensitive profiles** (Clinical, Legal) show counts on the lock screen and in notifications,
+  never names.
+
+#### D5.2 Context pages and Relationship Pulse
+
+§6.3's one-layout context page is built for person, organisation and project. Each page opens with
+a **pulse header**:
+
+```
+CANDACE · Myavana · last spoke yesterday
+YOU OWE     Production build · Architecture update
+SHE OWES    Credentials · Final copy
+OPEN        Launch timing
+DECIDED     WordPress stays the source of truth
+NEXT        Fri — Hair Journey sync                   [Prepare for conversation]
+```
+
+Below the header: meetings, notes, projects, decisions, the timeline, and **Ask about Candace**.
+For organisations and projects, the same header is aggregated across their members.
+
+#### D5.3 Intelligence Brief (the wow)
+
+**✨ Create brief** is available on a meeting, person, organisation, project and the week. It
+produces a polished, shareable document:
+
+- Executive picture
+- What changed
+- Decisions
+- Commitments
+- Risks
+- Open questions
+- Next 7 days
+- Decisions required
+- Recommended next conversation
+- Evidence
+
+Variants:
+
+- meeting brief
+- client brief
+- project status for *"something I can send my boss"*
+- relationship brief
+- weekly brief
+
+**Grounding rules.** These are what make the reaction *"it actually understands"* and not *"pretty
+summary"*:
+
+1. **The structure is deterministic.** Decisions, commitments, risks, questions and changes are
+   database rows rendered by a template. The model never lists them.
+2. **The model writes only the prose:** the executive picture and the recommended next
+   conversation. It writes from a **context pack** of those rows plus the relevant summaries. It
+   works under `FIDELITY_CONTRACT`, and every sentence must cite an item or evidence id. A sentence
+   without a citation is dropped before display.
+3. **Every claim expands to its evidence.** In the app that's a timestamp that plays; in the PDF
+   it's an appendix of cited moments.
+4. **Progress bars and status colours come from counts**, never from the model's opinion. The
+   status is Attention when there are overdue commitments, open risks or pending decisions, and
+   On track otherwise.
+5. **Without a model** the brief still renders, with no prose paragraphs.
+
+**Export** reuses `NoteExporter`: PDF, DOCX and Markdown, with a new **Brief** PDF theme designed
+to be screenshotted.
+
+- Confidential material prints a confidentiality line.
+- For sensitive profiles the prose is written by the on-device model only.
+
+This is the first thing to demo, and the feature people show to someone else.
+
+#### D5.4 Prepare (the flagship skill)
+
+*"Prepare me for my meeting with Acme"*, from Pulse, a calendar row, a context page or Ask:
+
+- **Last time:** a cited quote
+- **Still open**, **They owe**, **You owe**
+- **Decisions made**, **Questions to resolve**
+- **Suggested agenda**, ordered from open items and pending decisions only (§4.1: the model never
+  invents an agenda)
+
+It's a Brief variant, so it follows the same grounding rules. It is also the §4.1 prep card, built
+at last.
+
+#### D5.5 Memory
+
+- **Every meeting contributes to the memory** of its people, organisation and project. Memory is
+  the items, events and summaries, reachable through two surfaces:
+  - **The history view** on any context page. *"Acme — 4 months: 12 meetings · 37 decisions · 3
+    scope changes"*, then **The story**: one short cited paragraph per month, then **Most
+    important** and **Still open**.
+    - Story paragraphs are generated once per month per entity and cached.
+    - They're regenerated only when that month gains items.
+  - **Scoped Ask** (§4.4). *"What did Candace say about the October launch?"* Retrieval is scoped
+    through `item_links` and `note_people` before transcript chunks are searched. It builds on
+    `AskEverything` and `TranscriptRetriever`. An answer with no citation is not shown.
+- **Structured questions** stay database queries offered as chips (§4.4), and now include:
+  - "What have I promised?"
+  - "Who's waiting on me?"
+  - "Decisions still active from the last 3 months"
+  - "What changed on this project this month?"
+
+#### D5.6 Weekly Review (the second habit)
+
+§4.5, promoted:
+
+1. **The facts:** meetings, actions, decisions, commitments and unresolved questions this week.
+2. **The questions:**
+   - What changed?
+   - What did I finish?
+   - What slipped?
+   - Who am I waiting on, and who is waiting on me?
+   - Which projects need attention?
+3. **Create next week's plan:** carry forward, reschedule or drop, in one pass.
+4. **Weekly brief** (D5.3), optional, to send.
+
+### D6. Meeting intelligence 2.0: signals with evidence
+
+Extraction returns **signals**, each with evidence (segment ids and time range) and a confidence
+score. The signal kinds:
+
+- Decision, Proposed decision
+- Commitment, Action, Question
+- Risk, Requirement, Constraint, Assumption, Dependency
+- Objection or Concern
+- Deadline, Metric
+- Scope change
+- Approval, Rejection
+- Agreement, Disagreement
+
+§5.4's `segment_signals` is the index. Items (D4.1) are what gets reviewed and tracked.
+
+> *"We can't ship this until legal approves the wording."*
+> → **Constraint:** legal approval required · **Dependency:** legal → copy approval ·
+> **Risk:** release blocked · ▶ 32:18
+
+- **The Wrap-up stays under 60 seconds** (Principle 5). It shows Decisions, You owe, They owe and
+  Questions, plus a new **Changes** card: *"This replaces: Launch Oct 14?"* Confirming it sets
+  `supersedesId`.
+- **Risks and requirements** are shown by profile, for Client work, Product and Legal. The other
+  kinds are kept, but reached only through filters, Ask and briefs. They never show as a feed
+  (§5.4).
+- **Change detection** matches new decisions, deadlines and scope against the open items of the
+  same project. The model proposes a match; the person confirms it in the Changes card. A
+  supersession is never written silently, because a wrong one corrupts the memory.
+- **W0 comes first.** Pulse, Brief and Memory all amplify extraction quality, good or bad. The W0
+  recall gates (actions ≥ 80%, decisions ≥ 70%, no invented owners) must be measured before
+  Pulse ships to anyone outside the team, and commitments gain their own gate: ≥ 75% recall and
+  no invented promises.
+- **Profiles set the words.** Clinical says *patient*, *plan* and *follow-up*; Legal says
+  *matter*, *instruction* and *undertaking*. The objects stay the same.
+- **CONSULTATION** keeps its rule: no diagnosis, dose or legal opinion that wasn't said.
+
+### D7. Work Inbox: the front door
+
+Everything that isn't a live meeting enters here:
+
+- voice memos and recordings
+- PDFs and shared files
+- web pages
+- quick notes
+- document scans
+- forwarded email (once email is connected)
+
+- **The share target** (§6.1, now pulled forward) puts things in the Inbox, not straight into a
+  note.
+- **Process with MeetingMind** proposes what it is and where it goes, as one Wrap-up-style card:
+  - *Note in project X*
+  - *Tasks*
+  - *Decision*
+  - *Contact details for Candace*
+  - *Document for Acme*
+  - *Meeting material for Friday*
+
+  The person confirms or changes it with one tap.
+- **Without AI**, the Inbox is a manual "file to…" list, and it still works.
+- The Inbox count shows on Pulse and in the Work space. **Nothing processed from the Inbox skips
+  confirmation.**
+
+### D8. Integrations and automation
+
+- **Keep §6.6's provider interfaces**, and add capabilities to each one. The integration centre
+  lists what each connection **enables**:
+  - **Calendar:** detection, attendees, prep, auto-notes, reminders
+  - **Email:** relevant correspondence in Memory, reply drafts, attach minutes
+  - **Storage:** project documents, attachments, retrieval
+- **Order:**
+  1. Android Calendar (have)
+  2. Share sheet (have)
+  3. Gmail and Outlook (read opt-in and scoped to known people and domains; send stays a draft
+     handoff)
+  4. Drive, OneDrive and Dropbox
+  5. Slack
+  6. Meet, Zoom and Teams recordings
+  7. HubSpot export
+
+  The "Notify me" counts (§6.6) can reorder anything after step 3.
+- **Email read access is a trust decision**, like contacts was (§13.4).
+  - It's opt-in per account and limited to people MeetingMind already knows.
+  - It's off and unavailable in Clinical and Legal unless the person turns it on, with a clear
+    warning.
+  - Confidential projects never send email content to cloud AI.
+- **Automation is Trigger → Context → Skill → Approved actions → Output**, exposed as **recipes**
+  (§6.7), not a builder. The Wrap-up is recipe #1.
+  - Next: *"When a client meeting ends, draft minutes and the follow-up, create the tasks,
+    update the project, and remind me Friday."*
+  - **Nothing outward happens without approval:** nothing is sent, shared or written to another
+    service.
+
+### D9. Views and navigation
+
+- **Views come after the model.** Kanban is tasks by status, and a timeline is tasks by date.
+  Decision log, commitments, risks and people are saved views over items.
+  - A **lightweight timeline** is in scope.
+  - **Dependency-editing Gantt and the whiteboard stay out** on the phone (Principle 9, §11).
+  - **Professional X-Ray** (the explained project graph) comes after Brief and Memory prove the
+    data is right. It's a view, not a foundation.
+- **Navigation.** The direction's *Home · Inbox · Work · Meetings · Notes · Memory* is the right
+  mental model, but the bottom bar is shared with Faith and Personal people. So:
+  - **Home** is the Professional home, with Pulse at its core.
+  - **Work** takes the fourth tab slot for work identities (`TabSlot.WORK`, already in settings).
+    It holds Inbox · Projects · People · Organisations · Decisions · Commitments.
+  - **Notes** stays as it is. Meetings are notes.
+  - **Memory is Ask**, available from every screen and pre-scoped by where you are. It isn't a tab.
+  - People who aren't in a work identity see no change.
+
+### D10. Where this pushes back on the direction
+
+- **Commitments and tasks don't both show for the same promise.** "You owe" and "My tasks" read
+  the same linked row, and ticking either closes both. Two lists of the same thing is exactly the
+  review fatigue Principle 5 warns about.
+- **Pulse stays short.** Four rows, ranked. The habit comes from being right, not from volume.
+- **No silent intelligence.** Supersessions, commitments with no owner, and Inbox filing are all
+  confirmed. The memory is only valuable if it's trusted.
+- **No CRM, still.** Organisations are context containers, never pipelines (§11).
+- **Evidence over eloquence.** A brief that can't cite a line doesn't print it.
+
+### D11. Roadmap from here
+
+W0–W6 are done (§14). The direction's P0–P8 map onto these milestones. Pulse moves earlier than
+the direction's P5, because the habit is what makes the rest worth building, and a database-only
+Pulse needs nothing past W7.
+
+| # | Milestone | Contents | Gate |
+| --- | --- | --- | --- |
+| **W0** | Validate extraction | Unchanged, plus commitment recall. **Blocks W9 shipping.** | Actions ≥ 80%, decisions ≥ 70%, commitments ≥ 75%, no invented owners or promises |
+| **W7** | Context model (P0) | Schema 18: `items`, `item_evidence`, `item_links`, `item_events`; org and project fields; project members. Wrap-up confirm promotes findings to items. Migrate `waitingOn` tasks to commitments, and backfill items from past recordings. | Every past recording's decisions, questions and promises exist as items with evidence; no main table loses a row |
+| **W8** | Pulse and context pages (P1 + P5a) | Work Pulse on the Professional home; context pages for person, organisation and project with pulse headers, timelines and item lists; decision log and commitments views; Prepare v1 from the database | Airplane mode, no model: Pulse shows 4 correct rows and "since yesterday"; "What have I promised?" answers |
+| **W9** | Intelligence 2.0 (P2) | Signals with evidence; Changes card and supersession; risks and requirements by profile; `segment_signals` | On the W0 set, "launch moved" is detected and confirmed, with the right evidence |
+| **W10** | Brief, Prepare and Memory (P4) | Intelligence Brief (all variants) with the PDF theme; Prepare skill; history view and scoped Ask | A project brief is generated and exported, and every sentence opens its evidence |
+| **W11** | Inbox (P5b) | Share target into Inbox, Process card, document scan, web capture | A shared PDF is filed to a project in two taps |
+| **W12** | Rhythm and review (P3) | Morning Pulse, prep and "Starting now" notifications, Weekly Review with next-week plan, widgets, the Work tab slot | A week of real use: Pulse opened on 4 of 5 workdays |
+| — | **P2 release** | | A real consultant says they'd miss Pulse, and sends a Brief to someone else unprompted |
+| **W13** | Integrations (P6) | Provider capability model, Gmail and Outlook (scoped), then storage | Email context appears in Memory for a known person, cited |
+| **W14** | Views (P7) | Kanban, timeline, saved views, X-Ray | |
+| **W15** | Automation (P8) | Recipes on Trigger → Context → Skill → Approved actions | A client-meeting recipe runs end to end, with approval |
+
+### D12. Data changes for Direction v2
+
+These are additive, following the v34 rule: main's tables are kept.
+
+| Change | Kind | Milestone |
+| --- | --- | --- |
+| `items`, `item_evidence`, `item_links`, `item_events` | new core tables | W7 |
+| `people` (ORG): `domainsJson`, `description`, `urlsJson`, `logoPath`, `propertiesJson` | columns | W7 |
+| `project_members` (notebookId, personId, role) | new core table | W7 |
+| Migrate `tasks.waitingOn = 1` to commitment items (the task row is kept and marked migrated) | data | W7 |
+| `segment_signals` | new core table (§5.4) | W9 |
+| `briefs` cache (entityType, entityId, kind, contentJson, citedIdsJson, createdAt) and the monthly memory story cache | new core tables | W10 |
+| `inbox_items` (kind, uri, text, status, proposedJson) | new core table | W11 |
+| Preferences: `pulseSeenAt`, Pulse notification, attention ranking | DataStore | W8 |
 
 ---
 
@@ -58,7 +574,7 @@ These decide the arguments. Each one can be checked in review.
 2. **No required fields, ever.** Every property is inferred from the calendar, People history,
    attendees or transcript, and appears as a suggestion the person confirms with one tap. Typing
    is always allowed and never required.
-3. **Four nouns.** People see **My tasks, Waiting on, Decisions and Open questions**. Actions,
+3. **Few nouns.** *(Revised by Direction v2: commitments are now a separate object, D4.2.)* People see **You owe, They owe, Decisions and Open questions**, plus My tasks for work that isn't a promise. Actions,
    commitments, follow-ups and reminders are the same object seen from different angles
    (§5.2). The data layer can be richer than the UI; the UI stays this simple.
 4. **Evidence is never overwritten.** Transcript text is evidence. Notes, items and outputs are
@@ -75,7 +591,11 @@ These decide the arguments. Each one can be checked in review.
    label: confidential material never leaves the phone (§6.4).
 9. **Phone first.** Anything that needs a big screen (Gantt, visual automation builders, heavy
    document editing) is out of scope or deferred.
-10. **The existing rules still hold.**
+10. **Change is the product** (Direction v2). What changed since last time is worth more than
+    what exists. Every state change is logged (`item_events`), and every change shown cites its
+    evidence.
+11. **An attention budget.** Pulse shows at most four things. Being right beats being complete.
+12. **The existing rules still hold.**
     - A vertical adds configuration, not tables or type-branching UI.
     - Everything extracted cites its source.
     - Nothing needs a model to be usable.
@@ -84,7 +604,9 @@ These decide the arguments. Each one can be checked in review.
 
 ## 2. The positioning in one line
 
-> **MeetingMind remembers the work, understands the context, and helps move it forward.**
+> **Remember the work. Understand what changed. Know what to do next.** *(Direction v2; it
+> replaces "MeetingMind remembers the work, understands the context, and helps move it
+> forward.")*
 
 Every professional, whether consultant, founder, salesperson, journalist, manager or engineer,
 shares the same raw material:
@@ -307,6 +829,10 @@ group, a sermon series. That keeps `PLAN_V1` §9 rule 1 intact.
    only, and can be switched off.
 
 ### 5.2 The four nouns and a single item table
+
+*(Superseded by Direction v2, D4.1.* v34 kept main's meeting-local tables instead of this one.
+The `items` table returns as the durable cross-meeting record, beside main's tables rather than
+replacing them. *Waiting on* becomes a commitment object.)*
 
 Today there are four tables tied to meetings: `action_items`, `decisions`, `questions` and
 `follow_ups`. Actions and follow-ups are the same thing to a user. Action deadlines are free text,
@@ -725,6 +1251,9 @@ Up next tile. The professional look makes these changes:
 
 ### 7.4 The Work tab and the items screen
 
+*(Updated by Direction v2, D9: Work gains Inbox, Organisations and Commitments; Memory is Ask,
+available from every screen.)*
+
 `BottomNavDestination` is `HOME · NOTES · NEW · SEARCH · SETTINGS`. Search is already in the hero
 dock, so for work identities the **fourth slot can be Work**. This is configurable (§8.2), and
 Search stays the default for others.
@@ -951,6 +1480,8 @@ Custom words can be typed. Plurals follow simple English rules, with an override
 
 ## 9. Milestones
 
+*(W7 onward is superseded by the Direction v2 roadmap, D11. W0–W6 are kept as built.)*
+
 Each milestone ends with a tested APK and a gate that can be demonstrated, following the practice
 from `PLAN_V1`.
 
@@ -972,6 +1503,8 @@ from `PLAN_V1`.
 
 ## 10. Data changes, all at once
 
+*(As planned before v34. What was actually built is in §14, and what comes next is in D12.)*
+
 | Change | Kind | Milestone |
 | --- | --- | --- |
 | `items` table; migrate `action_items`, `decisions`, `questions`, `follow_ups` into it | new core table | W1 |
@@ -992,7 +1525,8 @@ points). No table exists only for Professional.
 ## 11. Non-goals
 
 - CRM pipelines, deal stages or forecasting. **Export** to a CRM is fine.
-- Full project management: no Gantt, resource planning, sprints or time tracking.
+- Full project management: no dependency-editing Gantt, resource planning, sprints or time
+  tracking. Kanban and a lightweight timeline are **views** over tasks (D9), not a project tool.
 - An email or Slack client. MeetingMind drafts and hands off.
 - Team workspaces and shared projects. These need a backend and accounts; see
   `FUTURE_BACKEND.md`.
@@ -1071,18 +1605,15 @@ system are unchanged. The vertical adds to them rather than running alongside th
 | W5 | Work Home | Done as the **Professional home** and the **Work space**. The Work tab slot, widgets and the Work notification channel are still to do. |
 | W6 | Personalisation and projects | Done: profiles (including Clinical and Legal), words, tone, keep-on-phone, consent reminder, new workflows, the onboarding step and confidential enforcement. |
 
-**Still to do in P1**, in the order I'd take them:
+**Next:** the Direction v2 roadmap (D11). Start with W0 measurement and W7, the context model.
 
-1. Work rhythm (§8.4):
-   - prep notification before events with people
-   - "Starting now — record?"
-   - the morning due-today digest
-   - the weekly review card
-2. Workflow and project rules learned from Wrap-up corrections (§8.4).
-3. Next-meeting widget (§7.5).
-4. Marks from the notification and lock screen.
-5. The accent colour choice (§8.7). The new screens already use main's theme tokens, so dark mode works.
-6. The Work tab slot in the bottom bar (§8.2).
+**Small P1 leftovers**, folded into D11:
+
+- Work rhythm notifications (W12)
+- marks from the notification and lock screen (W12)
+- the next-meeting widget (W12)
+- the Work tab slot (W12)
+- the accent colour choice (W12)
 
 **Decisions made while building**
 
