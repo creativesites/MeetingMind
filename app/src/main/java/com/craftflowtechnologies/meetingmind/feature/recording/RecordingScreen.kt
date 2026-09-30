@@ -626,7 +626,7 @@ private fun MarkBar(marks: List<com.craftflowtechnologies.meetingmind.core.work.
                 modifier = Modifier.weight(1f).height(64.dp).testTag("mark_${kind.name.lowercase()}")
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    Text(symbol + if (count > 0) "  $count" else "", fontSize = 20.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text(symbol + if (count > 0) "  $count" else "", fontSize = 20.sp, color = com.craftflowtechnologies.meetingmind.ui.theme.Briefing.OnBrief, fontWeight = FontWeight.SemiBold)
                     Text(kind.label, fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
                 }
             }
@@ -643,7 +643,7 @@ private fun ConsentLine() {
     Row(Modifier.padding(top = 12.dp, start = 24.dp, end = 24.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("Let people know you're recording.", fontSize = 12.sp, color = Color.White.copy(alpha = 0.75f))
         Text(
-            "  Share a note", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold,
+            "  Share a note", fontSize = 12.sp, color = com.craftflowtechnologies.meetingmind.ui.theme.Briefing.OnBrief, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.clickable {
                 val text = "I'm taking notes of this conversation with MeetingMind. The recording stays on my phone."
                 context.startActivity(android.content.Intent.createChooser(

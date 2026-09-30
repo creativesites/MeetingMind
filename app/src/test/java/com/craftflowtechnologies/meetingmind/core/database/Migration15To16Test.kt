@@ -50,7 +50,7 @@ class Migration15To16Test {
 
     private fun open(): MeetMindDatabase =
         Room.databaseBuilder(context, MeetMindDatabase::class.java, dbName)
-            .addMigrations(MeetMindDatabase.MIGRATION_15_16)
+            .addMigrations(MeetMindDatabase.MIGRATION_15_16, MeetMindDatabase.MIGRATION_16_17)
             .allowMainThreadQueries().build().also { migrated = it }
 
     @Test

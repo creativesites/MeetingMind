@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
+import com.craftflowtechnologies.meetingmind.ui.theme.Briefing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -366,14 +367,14 @@ private fun IntroCard(profile: WorkProfile, onTry: () -> Unit, onRecord: () -> U
     val dark = LocalMMColors.current.isDark
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp).clip(RoundedCornerShape(22.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF1E1B4B), Color(0xFF312E81), Color(0xFF0F172A))))
+            .background(Brush.linearGradient(listOf(Briefing.Indigo, Briefing.IndigoDeep, Briefing.Slate)))
             .padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("MEETINGMIND FOR ${profile.label.uppercase()}", fontSize = 10.5.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFA5B4FC), modifier = Modifier.weight(1f))
+            Text("MEETINGMIND FOR ${profile.label.uppercase()}", fontSize = 10.5.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = Briefing.Lavender, modifier = Modifier.weight(1f))
             Text("✕", color = Color.White.copy(alpha = 0.6f), modifier = Modifier.clip(CircleShape).clickable(onClick = onDismiss).padding(6.dp))
         }
-        Text("From conversation to done", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(top = 4.dp))
+        Text("From conversation to done", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief, modifier = Modifier.padding(top = 4.dp))
         listOf(
             "1" to "Record or write — tap ⭐ ✓ ? to flag what matters as it happens.",
             "2" to "Wrap up in a minute: decisions, your tasks and what others owe you, already found.",
@@ -381,17 +382,17 @@ private fun IntroCard(profile: WorkProfile, onTry: () -> Unit, onRecord: () -> U
         ).forEach { (n, line) ->
             Row(Modifier.padding(top = 10.dp)) {
                 Box(Modifier.size(22.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                    Text(n, fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(n, fontSize = 11.sp, color = Briefing.OnBrief, fontWeight = FontWeight.Bold)
                 }
                 Text(line, fontSize = 13.5.sp, lineHeight = 19.sp, color = Color.White.copy(alpha = 0.88f), modifier = Modifier.padding(start = 10.dp))
             }
         }
         Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.clip(RoundedCornerShape(50)).background(Color.White).clickable(onClick = onRecord).padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Text("Record a meeting", color = Color(0xFF1E1B4B), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Box(Modifier.clip(RoundedCornerShape(50)).background(Briefing.OnBrief).clickable(onClick = onRecord).padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Text("Record a meeting", color = Briefing.Indigo, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             }
             Box(Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable(onClick = onTry).padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Text("Write meeting notes", color = Color.White, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text("Write meeting notes", color = Briefing.OnBrief, fontWeight = FontWeight.Medium, fontSize = 14.sp)
             }
         }
         Text(if (profile.sensitive) "Your work stays on this phone." else "Private by default: nothing leaves your phone unless you turn on Internet mode.",
@@ -481,7 +482,7 @@ private fun RecordCard(onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.size(46.dp).clip(CircleShape).background(LocalMMColors.current.recording), contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.Mic, null, tint = Color.White)
+            Icon(Icons.Filled.Mic, null, tint = Briefing.OnBrief)
         }
         Column(Modifier.padding(start = 14.dp).weight(1f)) {
             Text("Record a meeting", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = OnInk)

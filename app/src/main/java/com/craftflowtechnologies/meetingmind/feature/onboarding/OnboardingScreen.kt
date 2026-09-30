@@ -363,7 +363,7 @@ private fun SpacesStep(
     StepTitle("What's it for?", "Pick what you'll use it for — the app shows only those. Change it any time in Settings.")
     com.craftflowtechnologies.meetingmind.core.identity.SpacesPicker(spaces, onSpaces)
     if (com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in spaces) {
-        Text("What kind of work?", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 4.dp))
+        Text("What kind of work?", color = com.craftflowtechnologies.meetingmind.ui.theme.Briefing.OnBrief, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 4.dp))
         Text("Sets the words, templates and privacy. Doctors and lawyers get on-device only.", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp))
         @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -371,10 +371,10 @@ private fun SpacesStep(
                 val on = p == workProfile
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = if (on) Color.White else Color.White.copy(alpha = 0.08f),
+                    color = if (on) com.craftflowtechnologies.meetingmind.ui.theme.Briefing.OnBrief else Color.White.copy(alpha = 0.08f),
                     modifier = Modifier.clickable { onWorkProfile(p) }.testTag("work_profile_${p.name}")
                 ) {
-                    Text(p.label, color = if (on) Color.Black else Color.White, fontSize = 13.5.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                    Text(p.label, color = if (on) Color.Black else com.craftflowtechnologies.meetingmind.ui.theme.Briefing.OnBrief, fontSize = 13.5.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
                 }
             }
         }

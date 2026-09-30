@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.settings
 
+import com.craftflowtechnologies.meetingmind.ui.theme.Briefing
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -165,17 +166,17 @@ private fun Preview(a: Appearance) {
         // The Professional home's briefing, in miniature.
         Column(
             Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp))
-                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFF0B1024), androidx.compose.ui.graphics.Color(0xFF1B2250))))
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Briefing.Top, Briefing.Bottom)))
                 .padding(18.dp)
         ) {
-            Text("YOUR DAY", fontSize = 10.5.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.SemiBold, color = androidx.compose.ui.graphics.Color(0xFFA5B4FC))
+            Text("YOUR DAY", fontSize = 10.5.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.SemiBold, color = Briefing.Lavender)
             Text("3 meetings today  ·  2 to review", fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.78f))
-            Text("NEXT · IN 25 MIN", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = androidx.compose.ui.graphics.Color(0xFFFCA5A5), modifier = Modifier.padding(top = 12.dp))
-            Text("Acme — project review", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.White)
+            Text("NEXT · IN 25 MIN", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Briefing.Rose, modifier = Modifier.padding(top = 12.dp))
+            Text("Acme — project review", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief)
             Text("Last time: OAuth2 chosen · Sarah owes credentials", fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f))
             Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("● Record", color = androidx.compose.ui.graphics.Color(0xFF0B1024), fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
-                    modifier = Modifier.clip(RoundedCornerShape(50)).background(androidx.compose.ui.graphics.Color.White).padding(horizontal = 14.dp, vertical = 8.dp))
+                Text("● Record", color = Briefing.Top, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(Briefing.OnBrief).padding(horizontal = 14.dp, vertical = 8.dp))
                 Spacer(Modifier.size(10.dp))
                 Text("Professional home · " + a.textSize.label.lowercase() + " text", fontSize = 12.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.55f))
             }

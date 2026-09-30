@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
+import com.craftflowtechnologies.meetingmind.ui.theme.Briefing
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -108,7 +109,7 @@ fun FollowUpSheet(
             }
             Button(
                 onClick = { go(channel) }, modifier = Modifier.fillMaxWidth().padding(top = 14.dp), shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = if (channel == Channel.WHATSAPP) Color(0xFF128C7E) else Ink, contentColor = if (channel == Channel.WHATSAPP) Color.White else com.craftflowtechnologies.meetingmind.ui.theme.OnInk)
+                colors = ButtonDefaults.buttonColors(containerColor = if (channel == Channel.WHATSAPP) Briefing.WhatsApp else Ink, contentColor = if (channel == Channel.WHATSAPP) Briefing.OnBrief else com.craftflowtechnologies.meetingmind.ui.theme.OnInk)
             ) { Text("Send on " + channel.label, fontSize = 16.sp, modifier = Modifier.padding(vertical = 4.dp)) }
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 Channel.entries.filter { it != channel }.forEach { c ->

@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
+import com.craftflowtechnologies.meetingmind.ui.theme.Briefing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -79,9 +80,9 @@ import java.util.Date
 import java.util.Locale
 
 /** The briefing card's own palette: a deep executive ink, the same in light and dark. */
-private val BriefTop = Color(0xFF0B1024)
-private val BriefBottom = Color(0xFF1B2250)
-private val BriefLine = Color(0xFFA5B4FC)
+private val BriefTop = Briefing.Top
+private val BriefBottom = Briefing.Bottom
+private val BriefLine = Briefing.Lavender
 
 /**
  * The fourth home: Professional (docs/PLAN_PROFESSIONAL.md §7). A briefing for the working day —
@@ -179,15 +180,15 @@ fun ProfessionalHome(
                     when (val u = upNext) {
                         is UpNextTile.Event -> {
                             val e = u.event
-                            Text("NEXT · " + UpNext.whenLabel(e, now, fmt).uppercase(), fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFFCA5A5))
-                            Text(e.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                            Text("NEXT · " + UpNext.whenLabel(e, now, fmt).uppercase(), fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Briefing.Rose)
+                            Text(e.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                             val with = e.otherPeople
                             if (with.isNotEmpty()) Text("With " + with.take(3).joinToString(", ") + if (with.size > 3) " +${with.size - 3}" else "", fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 2.dp))
                             u.prep?.let { p ->
                                 Row(Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.08f)).clickable { p.lastNoteId?.let(onOpenNote) }.padding(12.dp)) {
                                     Column {
                                         Text("LAST TIME", fontSize = 10.sp, letterSpacing = 1.sp, color = BriefLine, fontWeight = FontWeight.SemiBold)
-                                        Text(p.lastTitle ?: "With ${p.sharedPeople.joinToString()}", fontSize = 14.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(p.lastTitle ?: "With ${p.sharedPeople.joinToString()}", fontSize = 14.sp, color = Briefing.OnBrief, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
                             }
@@ -198,12 +199,12 @@ fun ProfessionalHome(
                         }
                         is UpNextTile.Item -> {
                             Text("TODAY", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = BriefLine)
-                            Text(u.item.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                            Text(u.item.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                             Row(Modifier.padding(top = 14.dp)) { BriefButton("Open") { open(u.item, today, onOpenNote, onOpenProcessing) } }
                         }
                         UpNextTile.Nothing -> {
                             Text("A CLEAR RUN OF TIME", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = BriefLine)
-                            Text("Nothing else scheduled", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(top = 4.dp))
+                            Text("Nothing else scheduled", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief, modifier = Modifier.padding(top = 4.dp))
                             Row(Modifier.padding(top = 14.dp)) { BriefButton("● Record a conversation", primary = true, onClick = onRecord) }
                         }
                     }
@@ -338,8 +339,8 @@ private fun open(item: TimelineItem, today: TodayViewModel, onOpenNote: (String)
 @Composable
 private fun BriefButton(label: String, primary: Boolean = false, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(50)).background(if (primary) Color.White else Color.White.copy(alpha = 0.12f)).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp)
-    ) { Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (primary) BriefTop else Color.White) }
+        Modifier.clip(RoundedCornerShape(50)).background(if (primary) Briefing.OnBrief else Color.White.copy(alpha = 0.12f)).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp)
+    ) { Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (primary) BriefTop else Briefing.OnBrief) }
 }
 
 @Composable
