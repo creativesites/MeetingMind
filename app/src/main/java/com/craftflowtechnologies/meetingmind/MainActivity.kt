@@ -253,6 +253,8 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
     }
 
     LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
+    // People is built from history, once, after the work schema arrives (PLAN_PROFESSIONAL.md §5.1).
+    LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.core.work.WorkStartup.run(context) }
     val playbackState by PlaybackController.state.collectAsState()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route

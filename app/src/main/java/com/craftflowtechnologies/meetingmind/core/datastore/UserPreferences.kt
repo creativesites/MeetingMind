@@ -139,6 +139,20 @@ class UserPreferencesManager(private val context: Context) {
     private val SETUP_SNOOZED_UNTIL = androidx.datastore.preferences.core.longPreferencesKey("setup_snoozed_until")
     private val TOUR_COMPLETED = booleanPreferencesKey("tour_completed")
     private val GETTING_STARTED_DISMISSED = booleanPreferencesKey("getting_started_dismissed")
+    private val WORK_SETTINGS = stringPreferencesKey("work_settings")
+
+    /** Work profile, words, rhythm, outputs and privacy (docs/PLAN_PROFESSIONAL.md §8). */
+    val workSettings: Flow<com.craftflowtechnologies.meetingmind.core.work.WorkSettings> =
+        context.dataStore.data.map { com.craftflowtechnologies.meetingmind.core.work.WorkSettings.fromJson(it[WORK_SETTINGS]) }
+
+    suspend fun setWorkSettings(settings: com.craftflowtechnologies.meetingmind.core.work.WorkSettings) {
+        context.dataStore.edit { it[WORK_SETTINGS] = settings.toJson() }
+    }
+
+    suspend fun updateWorkSettings(change: (com.craftflowtechnologies.meetingmind.core.work.WorkSettings) -> com.craftflowtechnologies.meetingmind.core.work.WorkSettings) {
+        context.dataStore.edit { it[WORK_SETTINGS] = change(com.craftflowtechnologies.meetingmind.core.work.WorkSettings.fromJson(it[WORK_SETTINGS])).toJson() }
+    }
+
     private val DEVOTIONAL_PROFILE = stringPreferencesKey("devotional_profile")
 
     /** How the person wants their daily devotional (PLAN_V2 F2). */

@@ -655,12 +655,20 @@ class MeetingProcessingPipeline(
                         confidence = speakerAttributionConfidence[seg.speakerId]
                     )
                 }
-            speakerDao.insertSpeakers(uniqueSpeakers)
+            // A speaker already linked to a person stays linked when the recording is processed again.
+            val linkedPeople = speakerDao.getSpeakersForMeetingDirect(meetingId).associate { it.id to it.personId }
+            speakerDao.insertSpeakers(uniqueSpeakers.map { it.copy(personId = linkedPeople[it.id]) })
 
             // Only persist intelligence output when it's real (summary != null)
             if (summary != null) {
                 persistIntelligence(meetingId, summary, actionItemDao, decisionDao, questionDao, followUpDao, topicDao)
             }
+            // Marks tapped while recording meet what extraction found (docs/PLAN_PROFESSIONAL.md §4.2).
+            runCatching {
+                com.craftflowtechnologies.meetingmind.core.work.Marks.reconcile(database, meetingId, diarizedSegments.map {
+                    com.craftflowtechnologies.meetingmind.core.work.Marks.Segment(it.id, it.startMs, it.endMs, it.speakerId, it.cleanedText ?: it.text)
+                })
+            }.onFailure { Log.w(PERF_TAG, "Marks not reconciled: ${it.message}") }
 
             embeddingDao.insertEmbeddings(embeddingEntities)
 

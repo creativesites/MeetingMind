@@ -178,7 +178,7 @@ class MeetingDetailViewModel(
         // with the local model behind it so a cloud failure still gets an answer. Offline never
         // reaches the cloud engine at all.
         val engine: com.craftflowtechnologies.meetingmind.ai.llm.MeetingIntelligenceEngine =
-            if (prefsNow.processingProfile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET) {
+            if (com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile) == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET) {
                 com.craftflowtechnologies.meetingmind.ai.llm.FallbackMeetingIntelligenceEngine(
                     primary = com.craftflowtechnologies.meetingmind.ai.cloud.GeminiIntelligenceEngine(
                         com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(getApplication())
@@ -217,7 +217,7 @@ class MeetingDetailViewModel(
             try {
                 val prefsNow = userPrefs.preferencesFlow.first()
                 val mode = prefsNow.transcriptCleanupMode
-                reprocessCleanupUseCase(meetingId, mode, processingProfile = prefsNow.processingProfile)
+                reprocessCleanupUseCase(meetingId, mode, processingProfile = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile))
                 onDone("Transcript re-cleaned (${mode.name.lowercase()} mode)")
             } catch (e: Exception) {
                 onDone("Re-clean failed: ${e.message ?: "unknown error"}")
@@ -263,7 +263,7 @@ class MeetingDetailViewModel(
                     cleanupMode = mode,
                     singleSpeakerMode = meetingNow.speakerCountPreference == 1,
                     onEngineUsed = { engineLabel = it },
-                    processingProfile = prefsNow.processingProfile
+                    processingProfile = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile)
                 )
                 val elapsed = System.currentTimeMillis() - start
                 // Only segments the tool actually proposes a real change for — a review screen
