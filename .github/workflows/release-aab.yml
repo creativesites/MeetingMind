@@ -6,8 +6,9 @@ name: Release AAB (Play Store)
 # never in a chat, a branch or a developer's machine. The bundle is far over the 100 MB file limit
 # for a commit, so it is published as a release asset instead.
 #
-# To run it, push a tag that starts with "aab-" (for example aab-v40) on the commit to release, or
-# create a release for such a tag in the GitHub UI. Secrets needed (Settings > Secrets > Actions):
+# To run it: push a tag that starts with "aab-" (for example aab-v41) on the commit to release, or
+# push a commit to the branch below whose message contains [build-aab]. The release is then named
+# aab-v<versionCode>. Secrets needed (Settings > Secrets and variables > Actions):
 #   KEYSTORE_BASE64    the upload keystore file, base64-encoded (base64 -w0 upload.jks)
 #   KEYSTORE_PASSWORD  its store password
 #   KEY_PASSWORD       the password of the key "upload" inside it
@@ -21,12 +22,16 @@ on:
   push:
     tags:
       - 'aab-*'
+    branches:
+      - ccr-5e66b00c-btultn
 
 permissions:
   contents: write
 
 jobs:
   bundle:
+    # An ordinary push to the branch does nothing; only a tag or a [build-aab] commit builds.
+    if: startsWith(github.ref, 'refs/tags/aab-') || contains(github.event.head_commit.message, '[build-aab]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +42,13 @@ jobs:
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v4
+
+      - name: Work out the release name
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/aab-* ]]; then tag="$GITHUB_REF_NAME"
+          else tag="aab-v$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)"; fi
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
 
       - name: Check the signing secrets exist
         env:
@@ -85,13 +97,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp app/build/outputs/bundle/release/*.aab "dist/MeetingMind-${GITHUB_REF_NAME#aab-}.aab"
+          cp app/build/outputs/bundle/release/*.aab "dist/MeetingMind-${RELEASE_TAG#aab-}.aab"
           ls -la dist
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: MeetingMind Play bundle ${{ github.ref_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: MeetingMind Play bundle ${{ env.RELEASE_TAG }}
           # A draft is visible only to people with access to the repository: this repository is
           # public, and the bundle should not be handed out before it goes to Play.
           draft: true
