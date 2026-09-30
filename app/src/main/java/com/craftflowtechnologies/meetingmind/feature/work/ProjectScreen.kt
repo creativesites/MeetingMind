@@ -153,7 +153,7 @@ fun ProjectScreen(
             }
             items(notes, key = { "n-" + it.id }) { n ->
                 Row(Modifier.fillMaxWidth().clickable { onOpenNote(n.id) }.padding(horizontal = 20.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Description, null, tint = tintFor(n.workflow))
+                    WorkTypeTile(n.workflow, n.title)
                     Column(Modifier.padding(start = 14.dp).weight(1f)) {
                         Text(n.title.ifBlank { n.workflow.displayName }, fontSize = 15.sp, color = Ink, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(n.workflow.displayName + " · " + dayLabel(n.eventDate ?: n.createdAt), fontSize = 12.sp, color = InkMuted)

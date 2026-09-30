@@ -88,7 +88,6 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.install(applicationContext, BuildConfig.VERSION_NAME)
         enableEdgeToEdge()
         com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.handle(intent)
         // Something shared into the app: it becomes a Work Inbox item, and only on a fresh launch (not a rotation).
@@ -144,14 +143,7 @@ class MainActivity : FragmentActivity() {
                         // Held above the lock gate so locking never loses the back stack.
                         val navController = rememberNavController()
                         AppLockGate(appLock) {
-                            // A crash on the last run is shown first, so it can be copied even if the app crashes again.
-                            var crash by remember { androidx.compose.runtime.mutableStateOf(com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.pending(applicationContext)) }
-                            val lastCrash = crash
-                            if (lastCrash != null) {
-                                com.craftflowtechnologies.meetingmind.feature.settings.CrashReportScreen(lastCrash) {
-                                    com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.clear(applicationContext); crash = null
-                                }
-                            } else when (val opened = database.value) {
+                            when (val opened = database.value) {
                                 null -> Unit
                                 is com.craftflowtechnologies.meetingmind.core.database.DatabaseGuard.OpenResult.Failed ->
                                     com.craftflowtechnologies.meetingmind.feature.settings.DatabaseRecoveryScreen(opened.message, onRetry = { openDatabase() })

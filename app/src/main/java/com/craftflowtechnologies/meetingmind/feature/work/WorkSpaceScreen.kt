@@ -2,6 +2,14 @@ package com.craftflowtechnologies.meetingmind.feature.work
 
 import com.craftflowtechnologies.meetingmind.ui.theme.Briefing
 import androidx.compose.foundation.background
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -189,15 +197,11 @@ fun WorkSpaceScreen(
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("work_space"), state = listState, contentPadding = PaddingValues(bottom = 48.dp)) {
             item {
-                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 8.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Ink) }
-                    Column(Modifier.weight(1f)) {
-                        Text("Work", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-0.5).sp)
-                        Text("Meetings, ${terms.organisations.lowercase()} and follow-through, in one place", fontSize = 13.sp, color = InkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, "Search", tint = Ink) }
-                    IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("work_settings")) { Icon(Icons.Filled.Tune, "Work settings", tint = InkSecondary) }
-                }
+                WorkMasthead(
+                    now = now,
+                    status = statusLine(myTasks.size, waitingOn.size, toReview.size, "Meetings, ${terms.organisations.lowercase()} and follow-through, in one place"),
+                    onBack = onNavigateBack, onSearch = onSearch, onSettings = onOpenSettings
+                )
             }
 
             // How it works: the promise, in three steps, until the person has seen it or lived it.
@@ -381,18 +385,16 @@ fun WorkSpaceScreen(
             if (recent.isEmpty() && workNotes.isEmpty()) item {
                 EmptyLine("Your meetings and work notes will gather here. Start with a template above — nothing leaves your phone unless you turn on Internet mode.")
             }
-            val merged = (recent.map { Triple(it.at, it.title, { onOpenMeeting(it.meetingId, null) } as () -> Unit) to it.type.displayName } +
-                workNotes.filter { n -> recent.none { it.noteId == n.id } }.map { n -> Triple(n.eventDate ?: n.updatedAt, n.title.ifBlank { n.workflow.displayName }, { onOpenNote(n.id) } as () -> Unit) to n.workflow.displayName })
+            val merged = (recent.map { Triple(it.at, it.title, { onOpenMeeting(it.meetingId, null) } as () -> Unit) to it.type } +
+                workNotes.filter { n -> recent.none { it.noteId == n.id } }.map { n -> Triple(n.eventDate ?: n.updatedAt, n.title.ifBlank { n.workflow.displayName }, { onOpenNote(n.id) } as () -> Unit) to n.workflow })
                 .sortedByDescending { it.first.first }.take(12)
             items(merged.size, key = { "rec-$it" }) { i ->
-                val (t, kind) = merged[i]
-                Row(Modifier.fillMaxWidth().clickable(onClick = t.third).padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(SurfaceSunk), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Description, null, tint = InkSecondary, modifier = Modifier.size(18.dp))
-                    }
-                    Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                val (t, type) = merged[i]
+                Row(Modifier.fillMaxWidth().clickable(onClick = t.third).padding(horizontal = 20.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    WorkTypeTile(type, t.second)
+                    Column(Modifier.padding(start = 14.dp).weight(1f)) {
                         Text(t.second, fontSize = 15.sp, color = Ink, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("$kind · ${dayLabel(t.first)}", fontSize = 12.sp, color = InkMuted)
+                        Text("${type.displayName} · ${dayLabel(t.first)}", fontSize = 12.sp, color = InkMuted)
                     }
                 }
             }
@@ -431,43 +433,110 @@ internal fun tintFor(type: RecordingType): Color {
     }
 }
 
-/** The promise, in three steps (the user-confidence card). */
+/** The top of Work: the date, the title, and one line of what's live. */
 @Composable
-private fun IntroCard(profile: WorkProfile, onTry: () -> Unit, onRecord: () -> Unit, onDismiss: () -> Unit) {
-    val dark = LocalMMColors.current.isDark
+internal fun WorkMasthead(now: Long, status: String, onBack: () -> Unit, onSearch: () -> Unit, onSettings: () -> Unit) {
+    val date = remember(now / 3_600_000L) { java.text.SimpleDateFormat("EEEE d MMMM", java.util.Locale.getDefault()).format(java.util.Date(now)).uppercase() }
+    Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp).padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RoundIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
+            Spacer(Modifier.weight(1f))
+            RoundIconButton(Icons.Filled.Search, "Search", onSearch)
+            Spacer(Modifier.width(8.dp))
+            RoundIconButton(Icons.Filled.Tune, "Work settings", onSettings, Modifier.testTag("work_settings"))
+        }
+        Text(date, fontSize = 11.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(start = 4.dp, top = 22.dp))
+        Text("Work", fontSize = 44.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-1.2).sp, modifier = Modifier.padding(start = 3.dp))
+        Text(status, fontSize = 14.sp, color = InkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 4.dp))
+    }
+}
+
+@Composable
+private fun RoundIconButton(icon: ImageVector, description: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier.size(42.dp).clip(CircleShape).background(SurfaceRaised).border(1.dp, LineSoft, CircleShape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Icon(icon, description, tint = Ink, modifier = Modifier.size(20.dp)) }
+}
+
+/** "3 tasks · 1 waiting on · 2 to review", or [fallback] when there's nothing yet. */
+internal fun statusLine(tasks: Int, waiting: Int, review: Int, fallback: String): String {
+    val parts = listOfNotNull(
+        "$tasks ${if (tasks == 1) "task" else "tasks"}".takeIf { tasks > 0 },
+        "$waiting waiting on".takeIf { waiting > 0 },
+        "$review to review".takeIf { review > 0 }
+    )
+    return if (parts.isEmpty()) fallback else parts.joinToString(" · ")
+}
+
+/** The promise, in three steps (the welcome card): a deep ink surface with a soft light at its corner. */
+@Composable
+internal fun IntroCard(profile: WorkProfile, onTry: () -> Unit, onRecord: () -> Unit, onDismiss: () -> Unit) {
+    val shape = RoundedCornerShape(28.dp)
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp).clip(RoundedCornerShape(22.dp))
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 14.dp).clip(shape)
             .background(Brush.linearGradient(listOf(Briefing.Indigo, Briefing.IndigoDeep, Briefing.Slate)))
-            .padding(18.dp)
+            .drawBehind {
+                drawCircle(
+                    brush = Brush.radialGradient(listOf(Briefing.Lavender.copy(alpha = 0.30f), Color.Transparent), center = Offset(size.width * 0.92f, 0f), radius = size.width * 0.75f),
+                    radius = size.width * 0.75f, center = Offset(size.width * 0.92f, 0f)
+                )
+            }
+            .border(1.dp, Briefing.Lavender.copy(alpha = 0.16f), shape)
+            .padding(horizontal = 22.dp, vertical = 20.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("MEETINGMIND FOR ${profile.label.uppercase()}", fontSize = 10.5.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = Briefing.Lavender, modifier = Modifier.weight(1f))
-            Text("✕", color = Color.White.copy(alpha = 0.6f), modifier = Modifier.clip(CircleShape).clickable(onClick = onDismiss).padding(6.dp))
-        }
-        Text("From conversation to done", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief, modifier = Modifier.padding(top = 4.dp))
-        listOf(
-            "1" to "Record or write — tap ⭐ ✓ ? to flag what matters as it happens.",
-            "2" to "Wrap up in a minute: decisions, your tasks and what others owe you, already found.",
-            "3" to "Send the follow-up on WhatsApp or email, and track everything until it's done."
-        ).forEach { (n, line) ->
-            Row(Modifier.padding(top = 10.dp)) {
-                Box(Modifier.size(22.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                    Text(n, fontSize = 11.sp, color = Briefing.OnBrief, fontWeight = FontWeight.Bold)
-                }
-                Text(line, fontSize = 13.5.sp, lineHeight = 19.sp, color = Color.White.copy(alpha = 0.88f), modifier = Modifier.padding(start = 10.dp))
+            Box(Modifier.size(6.dp).clip(CircleShape).background(Briefing.Lavender))
+            Text("FOR ${profile.label.uppercase()}", fontSize = 10.5.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.SemiBold, color = Briefing.Lavender, modifier = Modifier.padding(start = 8.dp).weight(1f))
+            Box(Modifier.size(30.dp).clip(CircleShape).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Close, "Dismiss", tint = Briefing.OnBrief.copy(alpha = 0.55f), modifier = Modifier.size(16.dp))
             }
         }
-        Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.clip(RoundedCornerShape(50)).background(Briefing.OnBrief).clickable(onClick = onRecord).padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Text("Record a meeting", color = Briefing.Indigo, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Text("From conversation\nto done.", fontSize = 30.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief, letterSpacing = (-0.8).sp, modifier = Modifier.padding(top = 14.dp))
+        Text("Record it. Wrap up in a minute. Send the follow-up. Nothing dropped.", fontSize = 14.sp, lineHeight = 20.sp, color = Briefing.OnBrief.copy(alpha = 0.66f), modifier = Modifier.padding(top = 8.dp))
+
+        Row(Modifier.fillMaxWidth().padding(top = 20.dp), verticalAlignment = Alignment.Top) {
+            IntroStep(Icons.Filled.Mic, "Record", "Flag what matters", Modifier.weight(1f))
+            IntroStep(Icons.Filled.TaskAlt, "Wrap up", "Found for you", Modifier.weight(1f))
+            IntroStep(Icons.AutoMirrored.Filled.Send, "Send", "WhatsApp, email", Modifier.weight(1f))
+        }
+
+        Row(Modifier.fillMaxWidth().padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(50)).background(Briefing.OnBrief).clickable(onClick = onRecord),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(Icons.Filled.Mic, null, tint = Briefing.Indigo, modifier = Modifier.size(18.dp))
+                Text("Record", color = Briefing.Indigo, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
             }
-            Box(Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable(onClick = onTry).padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Text("Write meeting notes", color = Briefing.OnBrief, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+            Row(
+                Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(50)).background(Briefing.OnBrief.copy(alpha = 0.10f))
+                    .border(1.dp, Briefing.OnBrief.copy(alpha = 0.16f), RoundedCornerShape(50)).clickable(onClick = onTry),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(Icons.Filled.EditNote, null, tint = Briefing.OnBrief, modifier = Modifier.size(19.dp))
+                Text("Write notes", color = Briefing.OnBrief, fontWeight = FontWeight.Medium, fontSize = 15.sp, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
             }
         }
-        Text(if (profile.sensitive) "Your work stays on this phone." else "Private by default: nothing leaves your phone unless you turn on Internet mode.",
-            fontSize = 11.5.sp, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.padding(top = 12.dp))
-        if (dark) Spacer(Modifier.height(0.dp))
+        Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Lock, null, tint = Briefing.OnBrief.copy(alpha = 0.5f), modifier = Modifier.size(13.dp))
+            Text(
+                if (profile.sensitive) "Your work stays on this phone." else "Private by default. Nothing leaves your phone unless you turn on Internet mode.",
+                fontSize = 11.5.sp, lineHeight = 16.sp, color = Briefing.OnBrief.copy(alpha = 0.5f), modifier = Modifier.padding(start = 6.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun IntroStep(icon: ImageVector, title: String, line: String, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.Start) {
+        Box(
+            Modifier.size(38.dp).clip(CircleShape).background(Briefing.OnBrief.copy(alpha = 0.10f)).border(1.dp, Briefing.OnBrief.copy(alpha = 0.14f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) { Icon(icon, null, tint = Briefing.Lavender, modifier = Modifier.size(19.dp)) }
+        Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Briefing.OnBrief, modifier = Modifier.padding(top = 8.dp))
+        Text(line, fontSize = 12.sp, lineHeight = 16.sp, color = Briefing.OnBrief.copy(alpha = 0.58f), modifier = Modifier.padding(top = 1.dp, end = 6.dp))
     }
 }
 
@@ -502,14 +571,20 @@ private fun UpNextCard(
                     Pill("Notes") { today.noteForEvent(event) { id, _ -> onOpenNote(id) } }
                 }
             } else {
-                Text(if (calendarOn == true) "NOTHING SCHEDULED" else "YOUR MEETINGS", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted)
-                Text(if (calendarOn == true) "A clear run of time" else "See who you're meeting, and what's still open", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 4.dp))
-                Text(
-                    if (calendarOn == true) "Record a conversation when it happens, or plan ahead with a template."
-                    else "Turn on your phone's calendar on Home for meeting prep: the last conversation, what's owed, one tap to record.",
-                    fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 4.dp)
-                )
-                Row(Modifier.padding(top = 12.dp)) { Pill("● Record now", filled = true, onClick = onRecord) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(42.dp).clip(RoundedCornerShape(13.dp)).background(AccentWash), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.CalendarMonth, null, tint = Accent, modifier = Modifier.size(21.dp))
+                    }
+                    Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                        Text(if (calendarOn == true) "Nothing scheduled" else "Your meetings", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                        Text(
+                            if (calendarOn == true) "Record when it happens, or plan with a template."
+                            else "Turn on your calendar on Home for meeting prep.",
+                            fontSize = 12.5.sp, lineHeight = 17.sp, color = InkSecondary, modifier = Modifier.padding(top = 1.dp)
+                        )
+                    }
+                    Pill("Record", filled = true, onClick = onRecord)
+                }
             }
         }
     }

@@ -1,18 +1,17 @@
 # Installable builds
 
-**v40** (`MeetingMind-v40-arm64-v8a.apk`, `MeetingMind-v40-armeabi-v7a.apk`) is the Professional work through **W12**,
-with the unlock crash fixed and a crash reporter. Same signing key, so it installs over the earlier test builds and
-keeps your data.
+**v41** (`MeetingMind-v41-arm64-v8a.apk`, `MeetingMind-v41-armeabi-v7a.apk`) is the Professional work through **W12**
+with a redesigned Work screen. Same signing key, so it installs over the earlier test builds and keeps your data.
 
-- **Fixed: the crash right after unlocking** (the Work screen read a value before it existed).
-- **Crash reporter.** If the app closes unexpectedly, the next launch (after unlock) shows what went wrong, with a
-  Copy button, before the app opens.
-- **Work Inbox (W11)** and **rhythm and review (W12)**: morning Pulse, prep and "Starting now" notices, the Weekly
-  Review with next week's plan, marks from the recording notification, a next-meeting widget, the Work tab and an
-  accent colour. The notices are switched on in Settings → Work.
+- **Redesigned Work header:** the date, a large title with a live status line ("3 tasks · 1 waiting on"), round
+  search and settings buttons, and a new welcome card. The empty schedule is now one slim row.
+- **New list icons:** each recording, note and summary has its own tinted tile (recording, client call, 1:1,
+  decision record, action items, summary) instead of the same grey document.
+- **The crash screen is gone.** The unlock crash was fixed in v39 and v40.
+- **Play Store bundle:** built on GitHub from the `aab-*` tag workflow (`.github/workflows/release-aab.yml`), signed with
+  your upload key and carrying the built-in testing API keys. It goes to a draft release, never into git.
 
-Built from the agent's `d8fb2e8` plus the reporter (`3b33dd7`). The v39 build was removed: it is the same code
-without W12.
+Built from this branch at the commit that added this file. The v40 build was removed.
 
 ## What's new in v37 (W7–W10)
 

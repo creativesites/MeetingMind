@@ -11,8 +11,12 @@ name: Release AAB (Play Store)
 #   KEYSTORE_BASE64    the upload keystore file, base64-encoded (base64 -w0 upload.jks)
 #   KEYSTORE_PASSWORD  its store password
 #   KEY_PASSWORD       the password of the key "upload" inside it
-# Optional, for features that need them (leave unset to build without): YOUVERSION_APP_KEY,
-# DEEPSEEK_PROXY_URL. The tester Gemini and DeepSeek keys are deliberately never used here.
+#   SYSTEM_GEMINI_API_KEY    the built-in key testers use for Internet mode (required)
+# Optional: SYSTEM_DEEPSEEK_API_KEY (built-in fallback key), YOUVERSION_APP_KEY, DEEPSEEK_PROXY_URL.
+#
+# THE BUNDLE THIS MAKES CONTAINS THE BUILT-IN API KEYS. It is attached to a draft release, which only
+# people with access to the repository can see, and is never committed. Download it, upload it to
+# Play, then DELETE the release so the keys are not left lying around.
 on:
   push:
     tags:
@@ -39,8 +43,9 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SYSTEM_GEMINI_API_KEY: ${{ secrets.SYSTEM_GEMINI_API_KEY }}
         run: |
-          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_PASSWORD; do
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_PASSWORD SYSTEM_GEMINI_API_KEY; do
             if [ -z "${!name}" ]; then echo "::error::Secret $name is not set"; exit 1; fi
           done
 
@@ -53,6 +58,8 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SYSTEM_GEMINI_API_KEY: ${{ secrets.SYSTEM_GEMINI_API_KEY }}
+          SYSTEM_DEEPSEEK_API_KEY: ${{ secrets.SYSTEM_DEEPSEEK_API_KEY }}
           YOUVERSION_APP_KEY: ${{ secrets.YOUVERSION_APP_KEY }}
           DEEPSEEK_PROXY_URL: ${{ secrets.DEEPSEEK_PROXY_URL }}
         run: |
@@ -62,14 +69,17 @@ jobs:
           ./gradlew bundleRelease
           rm -f "$RUNNER_TEMP/upload.jks"
 
-      - name: Check no tester credential was baked in
+      - name: Check the built-in key is in the bundle
+        # The opposite of the public APK check: for this bundle the key is meant to be there, and a
+        # bundle without it would ship to testers with Internet mode broken. The key is never printed.
         run: |
           set -euo pipefail
           aab="$(ls app/build/outputs/bundle/release/*.aab)"
           if unzip -p "$aab" 'base/dex/*' | strings | grep -qE 'AIzaSy[0-9A-Za-z_-]{33}|AQ\.[0-9A-Za-z_-]{20,}'; then
-            echo "::error::the bundle contains something shaped like an API key"; exit 1
+            echo "The built-in Gemini key is in the bundle."
+          else
+            echo "::error::the built-in Gemini key is not in the bundle"; exit 1
           fi
-          echo "No credential-shaped strings found."
 
       - name: Name the bundle
         run: |
@@ -86,4 +96,6 @@ jobs:
           # public, and the bundle should not be handed out before it goes to Play.
           draft: true
           prerelease: true
+          body: |
+            **This bundle contains the built-in API keys.** Download it, upload it to Play Console, then delete this release.
           files: dist/*.aab
