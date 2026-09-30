@@ -106,6 +106,9 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     /** Meeting titles, for the "from Acme review" line under a task. */
     val titles: StateFlow<Map<String, String>> = database.meetingDao().getAllMeetings().map { l -> l.associate { it.id to it.title } }.state(emptyMap())
 
+    // Declared before the init block below, which sets it: property initialisers run in source order.
+    private val pulseSince = MutableStateFlow<Long?>(null)
+
     init {
         viewModelScope.launch { _self.value = people.self(prefs.preferencesFlow.first().userName) }
         // What changed is measured from the last time the Pulse was read, fixed for this session.
@@ -235,7 +238,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     val savedViews = SavedViews(database)
     private val pulseEngine = Pulse(database)
     private val calendarEvents = MutableStateFlow<List<PulseEvent>>(emptyList())
-    private val pulseSince = MutableStateFlow<Long?>(null)
 
     /** The Work Pulse, recomputed whenever an item, its log, today's calendar or the settings change. */
     val pulse: StateFlow<PulseUi> = combine(database.itemDao().observeVersion(), calendarEvents, settings, pulseSince, inboxCount) { _, events, s, since, inbox -> listOf(events, s, since, inbox) }
