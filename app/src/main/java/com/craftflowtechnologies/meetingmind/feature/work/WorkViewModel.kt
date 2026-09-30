@@ -13,6 +13,7 @@ import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.repository.NoteCodec
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.work.Channel
+import com.craftflowtechnologies.meetingmind.core.work.Direction
 import com.craftflowtechnologies.meetingmind.core.work.FollowUpLine
 import com.craftflowtechnologies.meetingmind.core.work.MeetingRow
 import com.craftflowtechnologies.meetingmind.core.work.WorkPeople
@@ -56,10 +57,18 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     val tasks: StateFlow<List<WorkTask>> = work.observeTasks().state(emptyList())
     val myTasks: StateFlow<List<WorkTask>> = tasks.map { l -> l.filter { !it.done && !it.waitingOn } }.state(emptyList())
-    val waitingOn: StateFlow<List<WorkTask>> = tasks.map { l -> l.filter { !it.done && it.waitingOn } }.state(emptyList())
+    /** What people owe you: their open commitments (D4.2). */
+    val theyOwe: StateFlow<List<WorkTask>> = work.observeCommitments(Direction.THEIRS).state(emptyList())
+    val waitingOn: StateFlow<List<WorkTask>> = theyOwe.map { l -> l.filter { !it.done } }.state(emptyList())
+    /** What you owe: your tasks, plus any commitment you made that has no task of its own. */
+    val youOwe: StateFlow<List<WorkTask>> = combine(tasks, work.observeCommitments(Direction.MINE)) { t, c ->
+        val taskIds = t.map { it.id }.toSet()
+        t.filter { !it.waitingOn } + c.filter { it.id !in taskIds }
+    }.state(emptyList())
     val toReview: StateFlow<List<MeetingRow>> = work.observeToReview().state(emptyList())
     val followUps: StateFlow<List<MeetingRow>> = work.observeFollowUps().state(emptyList())
     val decisions: StateFlow<List<FindingRow>> = work.observeDecisions().state(emptyList())
+    val decisionLog: StateFlow<List<FindingRow>> = work.observeDecisionLog().state(emptyList())
     val openQuestions: StateFlow<List<FindingRow>> = work.observeOpenQuestions().state(emptyList())
     val recent: StateFlow<List<MeetingRow>> = work.observeRecentWork(12).state(emptyList())
     val everyone: StateFlow<List<WorkPerson>> = people.observePeople().state(emptyList())

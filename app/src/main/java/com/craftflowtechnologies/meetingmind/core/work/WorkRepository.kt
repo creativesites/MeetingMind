@@ -3,6 +3,8 @@ package com.craftflowtechnologies.meetingmind.core.work
 import androidx.room.withTransaction
 import com.craftflowtechnologies.meetingmind.core.database.ActionItemEntity
 import com.craftflowtechnologies.meetingmind.core.database.FindingRow
+import com.craftflowtechnologies.meetingmind.core.database.ItemEntity
+import com.craftflowtechnologies.meetingmind.core.database.ItemLinkEntity
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.database.MeetingEntity
 import com.craftflowtechnologies.meetingmind.core.database.NoteEntity
@@ -191,13 +193,7 @@ class WorkRepository(private val database: MeetMindDatabase) {
         val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId).associateBy { it.id }
         val now = System.currentTimeMillis()
         findings(meetingId).filter { (it.kind == FindingKind.ACTION || it.kind == FindingKind.FOLLOW_UP) && it.taskId == null }.forEach { f ->
-            val speaker = f.ownerSpeakerId?.let { speakers[it] }
-            val ownerPerson = when {
-                f.isMine -> null
-                speaker?.personId != null -> speaker.personId
-                f.ownerName != null && !SpeakerNames.isGenericLabel(f.ownerName) -> people.resolve(f.ownerName)?.id
-                else -> null
-            }
+            val ownerPerson = ownerPersonOf(f, speakers, people)
             database.taskDao().upsert(
                 TaskEntity(
                     id = "task_${UUID.randomUUID()}", title = f.text, notes = "", kind = if (f.kind == FindingKind.FOLLOW_UP) TaskKind.FOLLOW_UP.name else TaskKind.TASK.name,
@@ -208,6 +204,28 @@ class WorkRepository(private val database: MeetMindDatabase) {
             )
         }
         work.setReviewed(meetingId, now)
+        promoteToItems(meetingId, reviewed = true)
+    }
+
+    /** Who a finding belongs to: null for the app's own user (or nobody named), else a person. */
+    private suspend fun ownerPersonOf(f: Finding, speakers: Map<String, com.craftflowtechnologies.meetingmind.core.database.SpeakerEntity>, people: WorkPeople): String? {
+        val speaker = f.ownerSpeakerId?.let { speakers[it] }
+        return when {
+            f.isMine -> null
+            speaker?.personId != null -> speaker.personId
+            f.ownerName != null && !SpeakerNames.isGenericLabel(f.ownerName) -> people.resolve(f.ownerName)?.id
+            else -> null
+        }
+    }
+
+    /**
+     * Promotes a recording's findings to items (D4.1). Called by [confirm], and once for older
+     * recordings by [WorkStartup]. Safe to repeat: each finding becomes one item.
+     */
+    suspend fun promoteToItems(meetingId: String, reviewed: Boolean) = withContext(Dispatchers.IO) {
+        val people = WorkPeople(database)
+        val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId).associateBy { it.id }
+        ItemPromotion(database).promote(meetingId, findings(meetingId), reviewed) { ownerPersonOf(it, speakers, people) }
     }
 
     // ---------------------------------------------------------------- tasks
@@ -237,31 +255,92 @@ class WorkRepository(private val database: MeetMindDatabase) {
 
     suspend fun addTask(title: String, waitingOnPersonId: String? = null, noteId: String? = null, dueText: String? = null) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        database.taskDao().upsert(
-            TaskEntity(
-                "task_${UUID.randomUUID()}", title.trim(), "", TaskKind.TASK.name, DueDates.parse(dueText ?: title, now), null, "NONE", null,
-                waitingOnPersonId, noteId, null, null, null, null, now, now, waitingOn = waitingOnPersonId != null, space = "WORK"
-            )
+        val task = TaskEntity(
+            "task_${UUID.randomUUID()}", title.trim(), "", TaskKind.TASK.name, DueDates.parse(dueText ?: title, now), null, "NONE", null,
+            waitingOnPersonId, noteId, null, null, null, null, now, now, waitingOn = waitingOnPersonId != null, space = "WORK"
         )
+        database.taskDao().upsert(task)
+        // Something someone owes you is a commitment, so it shows under They owe and in the change log.
+        if (waitingOnPersonId != null) {
+            val notebook = noteId?.let { database.noteDao().getById(it) }?.notebookId
+            ItemRepository(database).create(
+                ItemEntity("", ItemKind.COMMITMENT.name, ItemStatus.OPEN.name, task.title, ownerPersonId = waitingOnPersonId, projectId = notebook, noteId = noteId,
+                    dueAt = task.dueAt, taskId = task.id, direction = Direction.THEIRS.name, reviewed = true, source = ItemSource.USER, createdAt = now, updatedAt = now),
+                links = listOf(ItemLinkEntity("", LinkType.PERSON, waitingOnPersonId, "OWNER"))
+            )
+        }
     }
 
     suspend fun toggle(taskId: String) = withContext(Dispatchers.IO) {
+        // A commitment with no task of its own is ticked as the item.
+        if (taskId.startsWith("item_")) return@withContext toggleCommitment(taskId)
         val t = database.taskDao().getById(taskId) ?: return@withContext
         database.taskDao().setDone(taskId, if (t.doneAt == null) System.currentTimeMillis() else null, System.currentTimeMillis())
+        ItemRepository(database).onTaskDone(taskId, done = t.doneAt == null)
     }
 
     suspend fun snooze(taskId: String, days: Int) = withContext(Dispatchers.IO) {
+        if (taskId.startsWith("item_")) {
+            val due = DueDates.startOfDay(System.currentTimeMillis()) + days * 86_400_000L
+            return@withContext ItemRepository(database).setDue(taskId, due, null)
+        }
         val t = database.taskDao().getById(taskId) ?: return@withContext
         database.taskDao().upsert(t.copy(dueAt = DueDates.startOfDay(System.currentTimeMillis()) + days * 86_400_000L, updatedAt = System.currentTimeMillis()))
     }
 
     // ---------------------------------------------------------------- logs
 
-    fun observeDecisions(limit: Int = 200): Flow<List<FindingRow>> = work.observeDecisions(WorkTypeNames, limit)
-    fun observeOpenQuestions(limit: Int = 200): Flow<List<FindingRow>> = work.observeOpenQuestions(WorkTypeNames, limit)
+    /** Decisions in force, from items (D4.3): superseded and reversed ones drop out of the working list. */
+    fun observeDecisions(limit: Int = 200): Flow<List<FindingRow>> =
+        database.itemDao().observeDecisions(limit).map { l -> l.filter { it.status == ItemStatus.ACTIVE.name || it.status == ItemStatus.PROPOSED.name }.map { it.toRow() } }
+
+    /** The whole decision log, newest first, including what was replaced. */
+    fun observeDecisionLog(limit: Int = 500): Flow<List<FindingRow>> = database.itemDao().observeDecisions(limit).map { l -> l.map { it.toRow() } }
+
+    fun observeOpenQuestions(limit: Int = 200): Flow<List<FindingRow>> = database.itemDao().observeOpenQuestions(limit).map { l -> l.map { it.toRow() } }
+
+    private suspend fun ItemEntity.toRow(): FindingRow = withContext(Dispatchers.IO) {
+        val meeting = meetingId?.let { database.meetingDao().getMeetingById(it) }
+        FindingRow(id, meetingId.orEmpty(), text, status, answerText, status == ItemStatus.ANSWERED.name,
+            database.itemDao().evidenceFor(id).firstOrNull()?.segmentIdsJson ?: "[]", meeting?.title.orEmpty(), createdAt, noteId, meeting?.recordingType.orEmpty())
+    }
+
+    /**
+     * Commitments as the Work lists show them (D4.2): what you owe, or what you're owed. A row
+     * carries its task's id when it has one, so editing and nudging work as they did.
+     */
+    fun observeCommitments(direction: Direction): Flow<List<WorkTask>> = combine(
+        database.itemDao().observeCommitments(direction.name), database.peopleDao().observeWithCounts()
+    ) { list, people ->
+        val names = people.associate { it.id to it.name }
+        withContext(Dispatchers.IO) {
+            list.filter { it.status != ItemStatus.CANCELLED.name }.map { i ->
+                WorkTask(
+                    id = i.taskId ?: i.id, title = i.text, dueAt = i.dueAt, doneAt = if (i.status == ItemStatus.COMPLETED.name) (i.closedAt ?: i.updatedAt) else null,
+                    waitingOn = direction == Direction.THEIRS,
+                    ownerName = i.ownerPersonId?.let { names[it] } ?: i.ownerSpeakerId?.let { work.speaker(it) }?.let { it.customName.ifBlank { it.originalLabel } },
+                    personId = i.ownerPersonId, meetingId = i.meetingId, noteId = i.noteId,
+                    startMs = database.itemDao().evidenceFor(i.id).firstOrNull()?.startMs, kind = TaskKind.TASK
+                )
+            }
+        }
+    }
+
+    private suspend fun toggleCommitment(itemId: String) {
+        val items = ItemRepository(database)
+        val item = items.get(itemId) ?: return
+        items.setStatus(itemId, if (item.status == ItemStatus.COMPLETED.name) ItemStatus.OPEN else ItemStatus.COMPLETED)
+    }
     fun observeWorkNotes(limit: Int = 30): Flow<List<NoteEntity>> = work.observeWorkNotes(WorkTypeNames, limit)
 
     suspend fun resolveQuestion(id: String, meetingId: String, answer: String?) = withContext(Dispatchers.IO) {
+        // From the Work lists the id is the item's; the recording's own question is kept in step.
+        database.itemDao().getById(id)?.let { item ->
+            ItemRepository(database).answer(id, answer)
+            item.sourceFindingId?.let { qid -> database.questionDao().getQuestionsForMeetingDirect(item.meetingId ?: meetingId).firstOrNull { it.id == qid } }
+                ?.let { database.questionDao().updateQuestion(it.copy(resolved = true, answer = answer?.trim()?.ifEmpty { null } ?: it.answer)) }
+            return@withContext
+        }
         database.questionDao().getQuestionsForMeetingDirect(meetingId).firstOrNull { it.id == id }
             ?.let { database.questionDao().updateQuestion(it.copy(resolved = true, answer = answer?.trim()?.ifEmpty { null } ?: it.answer)) }
     }
@@ -289,7 +368,10 @@ class WorkRepository(private val database: MeetMindDatabase) {
         val m = database.meetingDao().getMeetingById(meetingId) ?: return@withContext
         m.noteId?.let { setNoteMeta(it, mapOf(FOLLOW_UP_SENT to System.currentTimeMillis().toString(), FOLLOW_UP_CHANNEL to channel.name)) }
         work.tasksForMeeting(meetingId).filter { it.kind == TaskKind.FOLLOW_UP.name && !it.waitingOn && it.doneAt == null }
-            .forEach { database.taskDao().setDone(it.id, System.currentTimeMillis(), System.currentTimeMillis()) }
+            .forEach {
+                database.taskDao().setDone(it.id, System.currentTimeMillis(), System.currentTimeMillis())
+                ItemRepository(database).onTaskDone(it.id, done = true)
+            }
     }
 
     suspend fun skipFollowUp(meetingId: String) = withContext(Dispatchers.IO) {

@@ -41,7 +41,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 
-enum class WorkTab(val label: String) { MINE("My tasks"), WAITING("Waiting on"), DECISIONS("Decisions"), QUESTIONS("Open questions"), PEOPLE("People") }
+enum class WorkTab(val label: String) { MINE("You owe"), WAITING("They owe"), DECISIONS("Decisions"), QUESTIONS("Open questions"), PEOPLE("People") }
 
 /**
  * Everything in Work, one list at a time (docs/PLAN_PROFESSIONAL.md §7.4): what you owe, what
@@ -57,8 +57,9 @@ fun WorkAllScreen(
     onOpenPerson: (String) -> Unit
 ) {
     var tab by rememberSaveable { mutableStateOf(initial) }
-    val tasks by viewModel.tasks.collectAsState()
-    val decisions by viewModel.decisions.collectAsState()
+    val youOwe by viewModel.youOwe.collectAsState()
+    val theyOwe by viewModel.theyOwe.collectAsState()
+    val decisions by viewModel.decisionLog.collectAsState()
     val questions by viewModel.openQuestions.collectAsState()
     val everyone by viewModel.everyone.collectAsState()
     val orgs by viewModel.organisations.collectAsState()
@@ -83,7 +84,7 @@ fun WorkAllScreen(
             }
             when (tab) {
                 WorkTab.MINE, WorkTab.WAITING -> {
-                    val list = tasks.filter { it.waitingOn == (tab == WorkTab.WAITING) && (showDone || !it.done) }
+                    val list = (if (tab == WorkTab.WAITING) theyOwe else youOwe).filter { showDone || !it.done }
                     val now = System.currentTimeMillis()
                     val groups = list.groupBy { t ->
                         when {
@@ -116,7 +117,7 @@ fun WorkAllScreen(
                     if (decisions.isEmpty()) item { EmptyLine("Decisions from your meetings build up here, newest first, each linked to the moment it was made.") }
                     decisions.groupBy { dayLabel(it.createdAt) }.forEach { (day, list) ->
                         item(key = "d-$day") { WorkSectionTitle(day, top = 12.dp) }
-                        items(list, key = { it.id }) { d -> FindingLine(FindingKind.DECISION, d.text, d.meetingTitle, onClick = { onOpenMeeting(d.meetingId, null) }) }
+                        items(list, key = { it.id }) { d -> FindingLine(FindingKind.DECISION, d.text, if (d.detail == "SUPERSEDED") "${d.meetingTitle} · Replaced later" else d.meetingTitle, onClick = { onOpenMeeting(d.meetingId, null) }) }
                     }
                 }
                 WorkTab.QUESTIONS -> {
