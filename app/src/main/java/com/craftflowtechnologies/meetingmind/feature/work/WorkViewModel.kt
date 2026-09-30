@@ -12,7 +12,19 @@ import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.repository.NoteCodec
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
+import com.craftflowtechnologies.meetingmind.core.work.AttentionRow
 import com.craftflowtechnologies.meetingmind.core.work.Channel
+import com.craftflowtechnologies.meetingmind.core.work.ContextRepository
+import com.craftflowtechnologies.meetingmind.core.work.ContextType
+import com.craftflowtechnologies.meetingmind.core.work.DueDates
+import com.craftflowtechnologies.meetingmind.core.work.ItemStatus
+import com.craftflowtechnologies.meetingmind.core.work.Prepare
+import com.craftflowtechnologies.meetingmind.core.work.Pulse
+import com.craftflowtechnologies.meetingmind.core.work.PulseEvent
+import com.craftflowtechnologies.meetingmind.core.work.SavedViews
+import com.craftflowtechnologies.meetingmind.core.work.itemStatus
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.mapLatest
 import com.craftflowtechnologies.meetingmind.core.work.Direction
 import com.craftflowtechnologies.meetingmind.core.work.FollowUpLine
 import com.craftflowtechnologies.meetingmind.core.work.MeetingRow
@@ -41,6 +53,7 @@ data class ProjectCard(val notebook: Notebook, val notes: Int, val openTasks: In
  * (docs/PLAN_PROFESSIONAL.md §6–7). Every list is a live view of the database, so a rename, a
  * tick or a new recording shows everywhere at once.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class WorkViewModel(application: Application) : AndroidViewModel(application) {
     private val database = MeetMindDatabase.getInstance(application)
     private val prefs = UserPreferencesManager(application)
@@ -90,6 +103,8 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch { _self.value = people.self(prefs.preferencesFlow.first().userName) }
+        // What changed is measured from the last time the Pulse was read, fixed for this session.
+        viewModelScope.launch { pulseSince.value = prefs.pulseSeenAt.first() ?: (System.currentTimeMillis() - 24 * 3_600_000L) }
     }
 
     // ---------------------------------------------------------------- tasks
@@ -160,6 +175,69 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun ownerOf(t: WorkTask): WorkPerson? = t.personId?.let { people.get(it) }
 
     fun nudgeLine(t: WorkTask) = FollowUpLine(t.title, t.ownerName, t.dueAt, null)
+
+    // ---------------------------------------------------------------- pulse, context, prepare
+
+    val context = ContextRepository(database)
+    val prepare = Prepare(database)
+    val savedViews = SavedViews(database)
+    private val pulseEngine = Pulse(database)
+    private val calendarEvents = MutableStateFlow<List<PulseEvent>>(emptyList())
+    private val pulseSince = MutableStateFlow<Long?>(null)
+
+    /** The Work Pulse, recomputed whenever an item, its log, today's calendar or the settings change. */
+    val pulse: StateFlow<PulseUi> = combine(database.itemDao().observeVersion(), calendarEvents, settings, pulseSince) { _, events, s, since -> Triple(events, s, since) }
+        .mapLatest { (events, s, since) ->
+            val now = System.currentTimeMillis()
+            val from = since ?: (now - 24 * 3_600_000L)
+            val attention = pulseEngine.attention(now, 4, pulseEngine.projectIdsFor(events), s.quietDays)
+            PulseUi(
+                attention = attention, sinceLabel = sinceLabel(from, now), changes = pulseEngine.changesSince(from), today = pulseEngine.today(events),
+                coldStart = database.itemDao().allLive().none { it.reviewed }
+            )
+        }.state(PulseUi())
+
+    /** Today's calendar, as Pulse and Prepare want it. Only a real change is passed on. */
+    fun setPulseEvents(events: List<PulseEvent>) { if (calendarEvents.value != events) calendarEvents.value = events }
+
+    fun markPulseSeen() = viewModelScope.launch { prefs.setPulseSeenAt(System.currentTimeMillis()) }
+
+    /** Where a row or a change is evidenced: the recording and the moment in it. */
+    suspend fun evidenceOf(itemId: String): Pair<String, Long?>? {
+        val item = database.itemDao().getById(itemId) ?: return null
+        val meeting = item.meetingId ?: return null
+        return meeting to database.itemDao().evidenceFor(itemId).firstOrNull()?.startMs
+    }
+
+    /** A row of Needs you as a task, for the nudge sheet. */
+    suspend fun asTask(row: AttentionRow): WorkTask = WorkTask(
+        id = row.taskId ?: row.itemId.orEmpty(), title = row.title, dueAt = row.dueAt, doneAt = null, waitingOn = true,
+        ownerName = row.personId?.let { people.get(it)?.name }, personId = row.personId, meetingId = row.meetingId, noteId = null, startMs = row.startMs,
+        kind = com.craftflowtechnologies.meetingmind.core.tasks.TaskKind.TASK
+    )
+
+    private fun sinceLabel(since: Long, now: Long): String {
+        val days = ((DueDates.startOfDay(now) - DueDates.startOfDay(since)) / 86_400_000L).toInt()
+        return when {
+            days <= 0 -> "Since earlier today"
+            days == 1 -> "Since yesterday"
+            days < 7 -> "Since " + java.text.SimpleDateFormat("EEEE", java.util.Locale.getDefault()).format(java.util.Date(since))
+            else -> "Since " + Pulse.shortDate(since)
+        }
+    }
+
+    /** One context page's data; refreshes with the items. */
+    fun contextState(type: ContextType, id: String): Flow<ContextState> = database.itemDao().observeVersion().mapLatest {
+        val items = context.items(type, id)
+        ContextState(
+            header = context.header(type, id), history = context.decisionHistory(type, id), risks = context.risks(type, id), timeline = context.timeline(type, id),
+            projects = if (type == ContextType.ORG) context.projectsOf(id).map { it.id to it.name } else emptyList(),
+            members = if (type == ContextType.PROJECT) context.members(id).map { m -> Triple(m.personId, people.get(m.personId)?.name ?: "Someone", m.role) } else emptyList(),
+            org = if (type == ContextType.ORG) database.peopleDao().getById(id) else null,
+            projectProps = if (type == ContextType.PROJECT) database.notebookDao().getById(id)?.propertiesJson else null,
+            openItems = items.count { it.itemStatus in setOf(ItemStatus.OPEN, ItemStatus.UNCLEAR, ItemStatus.PROPOSED) }
+        )
+    }
 
     private val state = application.getSharedPreferences("work_state", android.content.Context.MODE_PRIVATE)
     private val notSame = MutableStateFlow(state.getStringSet(NOT_SAME, emptySet()).orEmpty())

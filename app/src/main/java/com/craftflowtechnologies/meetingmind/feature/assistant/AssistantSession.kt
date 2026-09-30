@@ -164,4 +164,6 @@ class AssistantSession(
 /** The assistant across the whole library, for Faith home and elsewhere without a note open. */
 class LibraryAssistantViewModel(app: Application) : AndroidViewModel(app) {
     val faith = AssistantSession(app, viewModelScope, null, null, libraryLabel = "Faith", faithLibrary = true)
+    /** Ask about my work: the same library, opened from the Pulse. */
+    val work = AssistantSession(app, viewModelScope, null, null, libraryLabel = "Your work")
 }

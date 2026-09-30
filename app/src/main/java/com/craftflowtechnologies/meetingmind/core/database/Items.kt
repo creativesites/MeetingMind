@@ -183,5 +183,50 @@ interface ItemDao {
     @Query("SELECT * FROM project_members WHERE notebookId = :notebookId")
     suspend fun membersOf(notebookId: String): List<ProjectMemberEntity>
 
+    @Query("SELECT * FROM item_events WHERE itemId IN (:itemIds) ORDER BY at DESC, rowid DESC")
+    suspend fun eventsForItems(itemIds: List<String>): List<ItemEventEntity>
+
+    @Query("DELETE FROM project_members WHERE notebookId = :notebookId AND personId = :personId")
+    suspend fun removeMember(notebookId: String, personId: String)
+
+    /** Changes whenever an item or its log does, so screens built on them can refresh. */
+    @Query("SELECT (SELECT COUNT(*) FROM item_events) + (SELECT IFNULL(MAX(updatedAt), 0) FROM items)")
+    fun observeVersion(): Flow<Long>
+
     @Query("SELECT * FROM items") suspend fun exportAll(): List<ItemEntity>
+
+    /** Reviewed items that are about any of these people, organisations or projects. */
+    @Query(
+        """SELECT * FROM items WHERE deletedAt IS NULL AND reviewed = 1 AND (projectId IN (:ids) OR orgId IN (:ids) OR ownerPersonId IN (:ids)
+             OR counterpartyPersonId IN (:ids) OR id IN (SELECT itemId FROM item_links WHERE targetId IN (:ids))) ORDER BY createdAt DESC"""
+    )
+    suspend fun around(ids: List<String>): List<ItemEntity>
+
+    @Query("SELECT * FROM items WHERE deletedAt IS NULL AND reviewed = 1 AND kind = :kind AND status = :status ORDER BY createdAt DESC")
+    suspend fun byKindStatus(kind: String, status: String): List<ItemEntity>
+
+    @Query("SELECT * FROM items WHERE deletedAt IS NULL AND reviewed = 1 AND kind = 'COMMITMENT' AND status IN ('OPEN', 'UNCLEAR')")
+    suspend fun openCommitments(): List<ItemEntity>
+
+    @Query("SELECT * FROM items WHERE deletedAt IS NULL AND reviewed = 1 AND status IN ('OPEN', 'UNCLEAR', 'PROPOSED')")
+    suspend fun openItems(): List<ItemEntity>
+
+    @Query("SELECT taskId FROM items WHERE deletedAt IS NULL AND taskId IS NOT NULL AND kind = 'COMMITMENT' AND status IN ('OPEN', 'UNCLEAR')")
+    suspend fun openCommitmentTaskIds(): List<String>
+
+    @Query("SELECT * FROM item_events WHERE at >= :from AND at < :to ORDER BY at DESC, rowid DESC")
+    suspend fun eventsBetween(from: Long, to: Long): List<ItemEventEntity>
+
+    // A merged person's items follow them (docs/PLAN_PROFESSIONAL.md principle 7).
+    @Query("UPDATE items SET ownerPersonId = :toId WHERE ownerPersonId = :fromId")
+    suspend fun moveOwner(fromId: String, toId: String)
+
+    @Query("UPDATE items SET counterpartyPersonId = :toId WHERE counterpartyPersonId = :fromId")
+    suspend fun moveCounterparty(fromId: String, toId: String)
+
+    @Query("UPDATE OR IGNORE item_links SET targetId = :toId WHERE targetType IN ('PERSON', 'ORG') AND targetId = :fromId")
+    suspend fun moveLinks(fromId: String, toId: String)
+
+    @Query("UPDATE items SET orgId = :toId WHERE orgId = :fromId")
+    suspend fun moveOrg(fromId: String, toId: String)
 }

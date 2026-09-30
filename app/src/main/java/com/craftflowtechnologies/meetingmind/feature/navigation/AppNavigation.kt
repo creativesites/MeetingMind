@@ -46,6 +46,9 @@ object Routes {
     const val PROJECT = "project/{projectId}"
     const val WRAP_UP = "wrapup/{meetingId}?compose={compose}"
     const val WORK_SETTINGS = "work_settings"
+    /** One context page for a person, an organisation or a project (D5.2). */
+    const val CONTEXT = "context/{type}/{id}"
+    fun context(type: com.craftflowtechnologies.meetingmind.core.work.ContextType, id: String) = "context/${type.name}/$id"
     fun workAllRoute(tab: String) = "work_all?tab=$tab"
     fun workPersonRoute(personId: String) = "work_person/$personId"
     fun projectRoute(projectId: String) = "project/$projectId"

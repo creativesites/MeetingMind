@@ -140,6 +140,14 @@ class UserPreferencesManager(private val context: Context) {
     private val TOUR_COMPLETED = booleanPreferencesKey("tour_completed")
     private val GETTING_STARTED_DISMISSED = booleanPreferencesKey("getting_started_dismissed")
     private val WORK_SETTINGS = stringPreferencesKey("work_settings")
+    private val PULSE_SEEN_AT = androidx.datastore.preferences.core.longPreferencesKey("pulse_seen_at")
+
+    /** When the Work Pulse was last on screen long enough to be read; "what changed" is measured from it. */
+    val pulseSeenAt: Flow<Long?> = context.dataStore.data.map { it[PULSE_SEEN_AT] }
+
+    suspend fun setPulseSeenAt(epochMs: Long) {
+        context.dataStore.edit { it[PULSE_SEEN_AT] = epochMs }
+    }
 
     /** Work profile, words, rhythm, outputs and privacy (docs/PLAN_PROFESSIONAL.md §8). */
     val workSettings: Flow<com.craftflowtechnologies.meetingmind.core.work.WorkSettings> =

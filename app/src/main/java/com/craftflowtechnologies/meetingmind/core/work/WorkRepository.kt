@@ -222,10 +222,10 @@ class WorkRepository(private val database: MeetMindDatabase) {
      * Promotes a recording's findings to items (D4.1). Called by [confirm], and once for older
      * recordings by [WorkStartup]. Safe to repeat: each finding becomes one item.
      */
-    suspend fun promoteToItems(meetingId: String, reviewed: Boolean) = withContext(Dispatchers.IO) {
+    suspend fun promoteToItems(meetingId: String, reviewed: Boolean, clock: () -> Long = System::currentTimeMillis) = withContext(Dispatchers.IO) {
         val people = WorkPeople(database)
         val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId).associateBy { it.id }
-        ItemPromotion(database).promote(meetingId, findings(meetingId), reviewed) { ownerPersonOf(it, speakers, people) }
+        ItemPromotion(database, ItemRepository(database, clock)).promote(meetingId, findings(meetingId), reviewed) { ownerPersonOf(it, speakers, people) }
     }
 
     // ---------------------------------------------------------------- tasks

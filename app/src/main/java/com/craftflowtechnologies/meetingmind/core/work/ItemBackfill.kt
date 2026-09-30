@@ -15,18 +15,18 @@ object ItemBackfill {
         for (m in database.workDao().allMeetings()) {
             if (!work.isWork(m.recordingType)) continue
             // Recordings that were never through a Wrap-up come across unreviewed, out of the lists.
-            work.promoteToItems(m.id, reviewed = m.reviewedAt != null)
+            // Their events carry the recording's date, so history doesn't read as news in "what changed".
+            work.promoteToItems(m.id, reviewed = m.reviewedAt != null, clock = { m.createdAt })
         }
         waitingOnToCommitments(database)
     }
 
     internal suspend fun waitingOnToCommitments(database: MeetMindDatabase) {
         val dao = database.itemDao()
-        val items = ItemRepository(database)
         for (t in database.taskDao().exportAll().filter { it.waitingOn && it.deletedAt == null }) {
             if (dao.commitmentsForTask(t.id).isNotEmpty()) continue
             val fromFinding = t.sourceItemId?.let { dao.bySourceFinding(it) }
-            if (fromFinding != null) { items.setTask(fromFinding.id, t.id); continue }
+            if (fromFinding != null) { ItemRepository(database) { t.createdAt }.setTask(fromFinding.id, t.id); continue }
             val note = t.noteId?.let { database.noteDao().getById(it) }
             val links = buildList {
                 t.meetingId?.let { add(ItemLinkEntity("", LinkType.MEETING, it, "SOURCE")) }
@@ -34,7 +34,7 @@ object ItemBackfill {
                 note?.notebookId?.let { add(ItemLinkEntity("", LinkType.PROJECT, it, "PROJECT")) }
                 t.personId?.let { add(ItemLinkEntity("", LinkType.PERSON, it, "OWNER")) }
             }
-            items.create(
+            ItemRepository(database) { t.createdAt }.create(
                 ItemEntity(
                     id = "", kind = ItemKind.COMMITMENT.name, status = if (t.doneAt != null) ItemStatus.COMPLETED.name else ItemStatus.OPEN.name,
                     text = t.title, ownerPersonId = t.personId, ownerSpeakerId = t.ownerSpeakerId, projectId = note?.notebookId,

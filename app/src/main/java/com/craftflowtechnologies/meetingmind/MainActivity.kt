@@ -380,6 +380,7 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onOpenProject = { navController.navigate(Routes.projectRoute(it)) },
                 onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
                 onCustomize = { navController.navigate(Routes.APPEARANCE) },
+                onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
                 onNavigateBottomNav = navigateToPrimary
             ) else if (homeStyle != com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) com.craftflowtechnologies.meetingmind.feature.today.FocusHome(
                 rich = homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM,
@@ -698,22 +699,37 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
         }
         composable(Routes.WORK_PERSON, arguments = listOf(navArgument("personId") { type = NavType.StringType })) { entry ->
             val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            com.craftflowtechnologies.meetingmind.feature.work.WorkPersonScreen(
+            // A person or an organisation: the context page picks up whichever it is.
+            com.craftflowtechnologies.meetingmind.feature.work.PersonContextScreen(
                 viewModel = vm, personId = entry.arguments?.getString("personId").orEmpty(),
                 onNavigateBack = { navController.popBackStack() },
-                onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
+                onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
             )
         }
         composable(Routes.PROJECT, arguments = listOf(navArgument("projectId") { type = NavType.StringType })) { entry ->
             val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            com.craftflowtechnologies.meetingmind.feature.work.ProjectScreen(
-                viewModel = vm, projectId = entry.arguments?.getString("projectId").orEmpty(),
+            com.craftflowtechnologies.meetingmind.feature.work.ContextScreen(
+                type = com.craftflowtechnologies.meetingmind.core.work.ContextType.PROJECT, id = entry.arguments?.getString("projectId").orEmpty(), viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
+                onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
                 onRecordInto = { noteId, type, title -> navController.navigate(Routes.recordEventRoute(noteId, type, title, null)) }
+            )
+        }
+        composable(Routes.CONTEXT, arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.StringType })) { entry ->
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val type = runCatching { com.craftflowtechnologies.meetingmind.core.work.ContextType.valueOf(entry.arguments?.getString("type").orEmpty()) }
+                .getOrDefault(com.craftflowtechnologies.meetingmind.core.work.ContextType.PERSON)
+            com.craftflowtechnologies.meetingmind.feature.work.ContextScreen(
+                type = type, id = entry.arguments?.getString("id").orEmpty(), viewModel = vm,
+                onNavigateBack = { navController.popBackStack() },
+                onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onRecordInto = { noteId, t, title -> navController.navigate(Routes.recordEventRoute(noteId, t, title, null)) }
             )
         }
         composable(Routes.WRAP_UP, arguments = listOf(

@@ -60,7 +60,9 @@ import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.timeline.DeepTarget
 import com.craftflowtechnologies.meetingmind.core.timeline.ItemKind
 import com.craftflowtechnologies.meetingmind.core.timeline.TimelineItem
+import com.craftflowtechnologies.meetingmind.core.work.PulseEvent
 import com.craftflowtechnologies.meetingmind.core.work.WorkTask
+import kotlinx.coroutines.launch
 import com.craftflowtechnologies.meetingmind.feature.today.TodayViewModel
 import com.craftflowtechnologies.meetingmind.feature.today.UpNextTile
 import com.craftflowtechnologies.meetingmind.feature.today.itemIcon
@@ -111,6 +113,7 @@ fun ProfessionalHome(
     onOpenProject: (String) -> Unit,
     onOpenPerson: (String) -> Unit,
     onCustomize: () -> Unit,
+    onOpenContext: (com.craftflowtechnologies.meetingmind.core.work.ContextType, String) -> Unit = { _, _ -> },
     onNavigateBottomNav: (com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit
 ) {
     val identity by today.identity.collectAsState()
@@ -131,7 +134,16 @@ fun ProfessionalHome(
     val titles by work.titles.collectAsState()
     var nudging by remember { mutableStateOf<WorkTask?>(null) }
     var editing by remember { mutableStateOf<WorkTask?>(null) }
+    var preparing by remember { mutableStateOf<PrepTarget?>(null) }
+    var askOpen by remember { mutableStateOf(false) }
+    val pulse by work.pulse.collectAsState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); today.tick() } }
+    // "What changed" is measured from the last time the Pulse was read, so it counts as read after two seconds.
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(2_000); work.markPulseSeen() }
+    LaunchedEffect(todayItems, now / 60_000) {
+        work.setPulseEvents(todayItems.mapNotNull { (it.target as? DeepTarget.Event)?.event }.filter { it.end >= now && !it.allDay }.map(::pulseEventOf))
+    }
     val fmt = timeFormat()
     val dueToday = myTasks.filter { it.dueAt != null && it.dueAt < com.craftflowtechnologies.meetingmind.core.work.DueDates.startOfDay(now) + 86_400_000L }
     val overdue = myTasks.count { it.isOverdue(now) }
@@ -163,52 +175,30 @@ fun ProfessionalHome(
                 }
             }
 
-            // The briefing: the day in one line, and what's next with what to remember.
+            // The Work Pulse: what needs you, what changed, and today with what's still open (D5.1).
             item {
-                Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 16.dp).clip(RoundedCornerShape(26.dp))
-                        .background(Brush.linearGradient(listOf(BriefTop, BriefBottom))).padding(20.dp)
-                ) {
-                    val line = listOfNotNull(
+                PulseCard(
+                    ui = pulse.copy(summary = listOfNotNull(
                         "$meetingsToday ${if (meetingsToday == 1) "meeting" else "meetings"} today",
                         toReview.size.takeIf { it > 0 }?.let { "$it to review" },
                         overdue.takeIf { it > 0 }?.let { "$it overdue" }
-                    ).joinToString("  ·  ")
-                    Text("YOUR DAY", fontSize = 10.5.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.SemiBold, color = BriefLine)
-                    Text(line, fontSize = 14.sp, color = Color.White.copy(alpha = 0.78f), modifier = Modifier.padding(top = 2.dp))
-                    Box(Modifier.fillMaxWidth().padding(vertical = 14.dp).height(1.dp).background(Color.White.copy(alpha = 0.10f)))
-                    when (val u = upNext) {
-                        is UpNextTile.Event -> {
-                            val e = u.event
-                            Text("NEXT · " + UpNext.whenLabel(e, now, fmt).uppercase(), fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Briefing.Rose)
-                            Text(e.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
-                            val with = e.otherPeople
-                            if (with.isNotEmpty()) Text("With " + with.take(3).joinToString(", ") + if (with.size > 3) " +${with.size - 3}" else "", fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 2.dp))
-                            u.prep?.let { p ->
-                                Row(Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.08f)).clickable { p.lastNoteId?.let(onOpenNote) }.padding(12.dp)) {
-                                    Column {
-                                        Text("LAST TIME", fontSize = 10.sp, letterSpacing = 1.sp, color = BriefLine, fontWeight = FontWeight.SemiBold)
-                                        Text(p.lastTitle ?: "With ${p.sharedPeople.joinToString()}", fontSize = 14.sp, color = Briefing.OnBrief, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                }
-                            }
-                            Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                BriefButton("● Record", primary = true) { today.noteForEvent(e) { id, type -> onRecordEvent(id, type, e.title, UpNext.speakerCount(e)) } }
-                                BriefButton("Notes") { today.noteForEvent(e) { id, _ -> onOpenNote(id) } }
-                            }
-                        }
-                        is UpNextTile.Item -> {
-                            Text("TODAY", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = BriefLine)
-                            Text(u.item.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
-                            Row(Modifier.padding(top = 14.dp)) { BriefButton("Open") { open(u.item, today, onOpenNote, onOpenProcessing) } }
-                        }
-                        UpNextTile.Nothing -> {
-                            Text("A CLEAR RUN OF TIME", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = BriefLine)
-                            Text("Nothing else scheduled", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief, modifier = Modifier.padding(top = 4.dp))
-                            Row(Modifier.padding(top = 14.dp)) { BriefButton("● Record a conversation", primary = true, onClick = onRecord) }
-                        }
-                    }
-                }
+                    ).joinToString("  ·  ")),
+                    timeFormat = fmt,
+                    actions = PulseActions(
+                        onPlay = { r -> r.meetingId?.let { onOpenMeeting(it, r.startMs) } },
+                        onNudge = { r -> scope.launch { nudging = work.asTask(r) } },
+                        onPrepareRow = { r -> r.entityType?.let { t -> r.entityId?.let { id -> preparing = PrepTarget.Entity(t, id) } } },
+                        onOpenRow = { r -> if (r.entityType != null && r.entityId != null) onOpenContext(r.entityType, r.entityId) else onOpenAll(WorkTab.MINE) },
+                        onPlayChange = { l -> scope.launch { l.itemId?.let { work.evidenceOf(it) }?.let { (m, at) -> onOpenMeeting(m, at) } } },
+                        onPrepareEvent = { e -> preparing = PrepTarget.Event(e) },
+                        onRecordEvent = { e ->
+                            (todayItems.firstNotNullOfOrNull { (it.target as? DeepTarget.Event)?.event?.takeIf { ev -> ev.key == e.key } })
+                                ?.let { ev -> today.noteForEvent(ev) { id, type -> onRecordEvent(id, type, e.title, UpNext.speakerCount(ev)) } }
+                        },
+                        onAsk = { askOpen = true }, onRecord = onRecord, onTemplates = onOpenWork
+                    ),
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)
+                )
             }
 
             // Capture, one tap each.
@@ -256,7 +246,10 @@ fun ProfessionalHome(
             item { WorkSectionTitle("Schedule", if (schedule.isEmpty()) null else "${schedule.size}") }
             if (schedule.isEmpty()) item { EmptyLine("Nothing on the calendar today. Turn on your phone's calendar in the Today home to see meetings here, with prep and one-tap record.") }
             items(schedule.size, key = { "s-" + schedule[it].id }) { i ->
-                ScheduleRow(schedule[i], fmt, now, last = i == schedule.lastIndex) { open(schedule[i], today, onOpenNote, onOpenProcessing) }
+                ScheduleRow(
+                    schedule[i], fmt, now, last = i == schedule.lastIndex,
+                    onPrepare = (schedule[i].target as? DeepTarget.Event)?.event?.takeIf { it.end >= now }?.let { ev -> { preparing = PrepTarget.Event(pulseEventOf(ev)) } }
+                ) { open(schedule[i], today, onOpenNote, onOpenProcessing) }
             }
 
             // What you owe, and are owed.
@@ -328,7 +321,15 @@ fun ProfessionalHome(
     }
     nudging?.let { NudgeSheet(it, work) { nudging = null } }
     editing?.let { t -> WorkTaskSheet(t, work, onDismiss = { editing = null }, onOpenSource = t.meetingId?.let { m -> { editing = null; onOpenMeeting(m, t.startMs) } }) }
+    preparing?.let { PrepareSheet(it, work, onOpenMeeting, onDismiss = { preparing = null }) }
+    if (askOpen) {
+        val lib: com.craftflowtechnologies.meetingmind.feature.assistant.LibraryAssistantViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+        com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(lib.work, onOpenNote = { askOpen = false; onOpenNote(it) }, onOpenTasks = { askOpen = false; onOpenAll(WorkTab.MINE) }, onDismiss = { askOpen = false })
+    }
 }
+
+private fun pulseEventOf(e: com.craftflowtechnologies.meetingmind.core.calendar.CalendarEvent) =
+    PulseEvent(e.key, e.title, e.begin, e.end, e.otherPeople, e.attendees.filter { a -> !a.isSelf }.mapNotNull { a -> a.email })
 
 private fun open(item: TimelineItem, today: TodayViewModel, onOpenNote: (String) -> Unit, onOpenProcessing: (String) -> Unit) = when (val t = item.target) {
     is DeepTarget.Note -> onOpenNote(t.noteId)
@@ -363,7 +364,7 @@ private fun Metric(value: String, label: String, tint: Color, modifier: Modifier
 
 /** One entry in the day: a time column, a line with a dot, and the item. */
 @Composable
-private fun ScheduleRow(item: TimelineItem, fmt: java.text.DateFormat, now: Long, last: Boolean, onClick: () -> Unit) {
+private fun ScheduleRow(item: TimelineItem, fmt: java.text.DateFormat, now: Long, last: Boolean, onPrepare: (() -> Unit)? = null, onClick: () -> Unit) {
     val past = (item.end ?: item.start) < now
     val live = item.start <= now && (item.end ?: item.start) >= now
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp), verticalAlignment = Alignment.Top) {
@@ -380,6 +381,7 @@ private fun ScheduleRow(item: TimelineItem, fmt: java.text.DateFormat, now: Long
                 item.subtitle?.let { Text(it, fontSize = 12.sp, color = InkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             if (live) Text("NOW", fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold, color = LocalMMColors.current.recording)
+            else if (onPrepare != null) Text("Prepare", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Accent, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onPrepare).padding(horizontal = 8.dp, vertical = 4.dp))
         }
     }
 }

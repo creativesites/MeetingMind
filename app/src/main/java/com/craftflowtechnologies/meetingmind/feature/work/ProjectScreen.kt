@@ -62,7 +62,10 @@ fun ProjectScreen(
     onNavigateBack: () -> Unit,
     onOpenNote: (String) -> Unit,
     onOpenMeeting: (String, Long?) -> Unit,
-    onRecordInto: (noteId: String, type: RecordingType, title: String) -> Unit
+    onRecordInto: (noteId: String, type: RecordingType, title: String) -> Unit,
+    /** Sections a context page adds after the masthead and at the end. */
+    extraTop: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = null,
+    extraBottom: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = null
 ) {
     val project by remember(projectId) { viewModel.project(projectId) }.collectAsState(initial = null)
     val notes by remember(projectId) { viewModel.notesIn(projectId) }.collectAsState(initial = emptyList())
@@ -115,6 +118,7 @@ fun ProjectScreen(
                 }
             }
 
+            extraTop?.invoke(this)
             item { WorkSectionTitle("You owe", if (mine.isNotEmpty()) "${mine.size}" else null) }
             item {
                 OutlinedTextField(
@@ -156,6 +160,7 @@ fun ProjectScreen(
                     }
                 }
             }
+            extraBottom?.invoke(this)
         }
     }
 

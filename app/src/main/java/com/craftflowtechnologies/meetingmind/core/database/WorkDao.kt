@@ -154,6 +154,17 @@ interface WorkDao {
     @Query("SELECT * FROM tasks WHERE deletedAt IS NULL AND (personId = :personId OR personId IN (SELECT id FROM people WHERE orgId = :personId)) ORDER BY doneAt IS NOT NULL, dueAt IS NULL, dueAt")
     fun observeTasksWith(personId: String): Flow<List<TaskEntity>>
 
+    @Query("SELECT * FROM tasks WHERE deletedAt IS NULL AND doneAt IS NULL AND (space = 'WORK' OR meetingId IN (SELECT id FROM meetings WHERE recordingType IN (:types)))")
+    suspend fun openWorkTasks(types: List<String>): List<TaskEntity>
+
+    // Meetings around a person, organisation or project
+
+    @Query("SELECT m.* FROM meetings m JOIN note_people np ON np.noteId = m.noteId WHERE np.personId IN (:ids) ORDER BY m.createdAt DESC")
+    suspend fun meetingsWithPeople(ids: List<String>): List<MeetingEntity>
+
+    @Query("SELECT m.* FROM meetings m JOIN notes n ON n.id = m.noteId WHERE n.notebookId = :notebookId ORDER BY m.createdAt DESC")
+    suspend fun meetingsInProject(notebookId: String): List<MeetingEntity>
+
     // Projects and work notes
 
     @Query("SELECT * FROM notebooks WHERE deletedAt IS NULL AND archivedAt IS NULL AND (kind = 'PROJECT' OR space = 'WORK') ORDER BY kind = 'PROJECT' DESC, updatedAt DESC")

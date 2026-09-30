@@ -134,6 +134,7 @@ fun WorkSpaceScreen(
     onOpenSettings: () -> Unit,
     onSearch: () -> Unit
 ) {
+    var savedFilter by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.SavedFilter?>(null) }
     val settings by viewModel.settings.collectAsState()
     val myTasks by viewModel.myTasks.collectAsState()
     val waitingOn by viewModel.waitingOn.collectAsState()
@@ -187,6 +188,9 @@ fun WorkSpaceScreen(
                     Stat("${questions.size}", "Open", QuestionTint, Modifier.weight(1f)) { onOpenAll(WorkTab.QUESTIONS) }
                 }
             }
+
+            // Answers from the record, one tap each (D5.5).
+            item { SavedFilterRow { savedFilter = it } }
 
             // What needs you: findings to confirm, follow-ups to send.
             if (toReview.isNotEmpty()) {
@@ -344,6 +348,10 @@ fun WorkSpaceScreen(
     }
     if (newPerson) NewPersonSheet(terms.organisation, onDismiss = { newPerson = false }) { name, role, email, phone, org ->
         newPerson = false; viewModel.addPerson(name, role, email, phone, org, onOpenPerson)
+    }
+    savedFilter?.let { f ->
+        val answer by androidx.compose.runtime.produceState<com.craftflowtechnologies.meetingmind.core.work.SavedAnswer?>(null, f) { value = viewModel.savedViews.answer(f) }
+        SavedAnswerSheet(answer, f.label, viewModel, onOpenMeeting, onOpenPerson, onDismiss = { savedFilter = null })
     }
     nudging?.let { NudgeSheet(it, viewModel) { nudging = null } }
     editing?.let { t -> WorkTaskSheet(t, viewModel, onDismiss = { editing = null }, onOpenSource = { t.meetingId?.let { m -> editing = null; onOpenMeeting(m, t.startMs) } ?: t.noteId?.let { n -> editing = null; onOpenNote(n) } }) }
