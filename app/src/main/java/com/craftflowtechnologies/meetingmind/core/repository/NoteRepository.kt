@@ -579,10 +579,12 @@ class NoteRepository(
         name: String,
         space: NotebookSpace,
         colorHex: String? = null,
-        icon: String? = null
+        icon: String? = null,
+        isProject: Boolean = false,
+        propertiesJson: String = "{}"
     ): Notebook = withContext(Dispatchers.IO) {
         val now = clock()
-        val notebook = Notebook(newId("notebook"), name.trim(), space, colorHex, icon, now, now)
+        val notebook = Notebook(newId("notebook"), name.trim(), space, colorHex, icon, now, now, isProject = isProject, propertiesJson = propertiesJson)
         notebookDao.upsert(notebook.toEntity())
         notebook
     }

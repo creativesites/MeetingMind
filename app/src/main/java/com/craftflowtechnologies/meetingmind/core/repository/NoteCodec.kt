@@ -135,7 +135,9 @@ internal object NoteCodec {
         updatedAt = updatedAt,
         archivedAt = archivedAt,
         sortOrder = sortOrder,
-        deletedAt = deletedAt
+        deletedAt = deletedAt,
+        isProject = kind == "PROJECT",
+        propertiesJson = propertiesJson
     )
 
     fun Notebook.toEntity() = NotebookEntity(
@@ -148,7 +150,9 @@ internal object NoteCodec {
         updatedAt = updatedAt,
         archivedAt = archivedAt,
         sortOrder = sortOrder,
-        deletedAt = deletedAt
+        deletedAt = deletedAt,
+        kind = if (isProject) "PROJECT" else "NOTEBOOK",
+        propertiesJson = propertiesJson
     )
 
     fun AttachmentEntity.toDomain() = Attachment(

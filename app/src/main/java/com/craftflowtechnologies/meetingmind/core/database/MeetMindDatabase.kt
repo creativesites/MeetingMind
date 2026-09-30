@@ -46,6 +46,7 @@ import androidx.room.migration.Migration
 )
 abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun meetingDao(): MeetingDao
+    abstract fun workDao(): WorkDao
     abstract fun transcriptDao(): TranscriptDao
     abstract fun speakerDao(): SpeakerDao
     abstract fun actionItemDao(): ActionItemDao
@@ -434,6 +435,40 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Work (docs/PLAN_PROFESSIONAL.md §10): people gain organisations, contact details, aliases
+         * and privacy; tasks can be owed by someone else; speakers point at people; notebooks can
+         * be projects; recordings remember their Wrap-up. Columns only — nothing is rewritten.
+         */
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_16_17_SQL.forEach { db.execSQL(it) }
+                // Findings from before the Wrap-up existed don't ask to be reviewed.
+                db.execSQL("UPDATE meetings SET reviewedAt = updatedAt WHERE status = 'READY'")
+            }
+        }
+
+        internal val MIGRATION_16_17_SQL: List<String> = listOf(
+            "ALTER TABLE people ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'PERSON'",
+            "ALTER TABLE people ADD COLUMN `orgId` TEXT",
+            "ALTER TABLE people ADD COLUMN `emailsJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE people ADD COLUMN `phonesJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE people ADD COLUMN `aliasesJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE people ADD COLUMN `preferredChannel` TEXT",
+            "ALTER TABLE people ADD COLUMN `isSelf` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE people ADD COLUMN `confidential` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE people ADD COLUMN `lastSeenAt` INTEGER",
+            "ALTER TABLE people ADD COLUMN `space` TEXT",
+            "ALTER TABLE tasks ADD COLUMN `waitingOn` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE tasks ADD COLUMN `ownerSpeakerId` TEXT",
+            "ALTER TABLE tasks ADD COLUMN `sourceItemId` TEXT",
+            "ALTER TABLE tasks ADD COLUMN `space` TEXT",
+            "ALTER TABLE speakers ADD COLUMN `personId` TEXT",
+            "ALTER TABLE notebooks ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'NOTEBOOK'",
+            "ALTER TABLE notebooks ADD COLUMN `propertiesJson` TEXT NOT NULL DEFAULT '{}'",
+            "ALTER TABLE meetings ADD COLUMN `reviewedAt` INTEGER"
+        )
+
         internal val MIGRATION_15_16_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `people` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `relationship` TEXT, `notes` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `deletedAt` INTEGER, PRIMARY KEY(`id`))",
             "CREATE INDEX IF NOT EXISTS `index_people_name` ON `people` (`name`)",
@@ -508,7 +543,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 16
+        const val VERSION = 17
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {
@@ -526,7 +561,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .build()
                 INSTANCE = instance
                 instance

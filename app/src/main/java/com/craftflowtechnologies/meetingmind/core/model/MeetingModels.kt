@@ -9,6 +9,15 @@ package com.craftflowtechnologies.meetingmind.core.model
 enum class RecordingType(val displayName: String, val shortDescription: String) {
     MEETING("Meeting", "Track decisions and action items"),
     INTERVIEW("Interview", "Capture questions, answers, and notable quotes"),
+    // Professional workflows (docs/PLAN_PROFESSIONAL.md §5.3). Configuration, like every other type.
+    CLIENT_CALL("Client call", "What they need, what was agreed, what's next"),
+    ONE_ON_ONE("1:1", "Updates, blockers, feedback and agreed actions"),
+    STANDUP("Standup", "Yesterday, today and blockers, person by person"),
+    CONSULTATION("Consultation", "A patient or client consultation, recorded as said"),
+    // Written work notes: templates to think with, no recording needed.
+    PROJECT_BRIEF("Project brief", "Goal, scope, people, decisions and dates"),
+    DECISION_RECORD("Decision record", "What was decided, why, and what else was considered"),
+    WEEKLY_REVIEW("Weekly review", "Done, slipping, next week's priorities"),
     LECTURE("Lecture", "Capture key concepts and structure"),
     VOICE_MEMO("Voice Memo", "A quick personal note"),
     IDEA("Idea", "A single thought worth keeping"),
@@ -39,6 +48,11 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
     fun focusGuidance(): String = when (this) {
         MEETING -> "This is a meeting. Focus on decisions made, action items assigned, and who is responsible for what."
         INTERVIEW -> "This is an interview. Focus on the questions asked and the answers given, and note any particularly notable quotes or assessment-relevant statements."
+        CLIENT_CALL -> "This is a call with a client or customer. Focus on what the client needs, the decisions both sides agreed, who committed to do what and by when, and questions still open. Attribute every commitment to whoever made it."
+        ONE_ON_ONE -> "This is a one-to-one conversation between two colleagues. Focus on the updates each person gave, blockers raised, feedback exchanged, and actions each person agreed to."
+        STANDUP -> "This is a team standup. For each person, report what they said they did, what they will do next, and any blocker they raised. Keep each person's items separate."
+        PROJECT_BRIEF, DECISION_RECORD, WEEKLY_REVIEW -> "These are the person's own work notes. Summarize only what they wrote or said, in their terms."
+        CONSULTATION -> "This is a professional consultation (for example with a patient or a legal client). Record only what was actually said: the reason for the consultation, what was discussed, the plan or advice as the professional stated it, and agreed next steps. Never add a diagnosis, medication, dose, legal opinion or recommendation that was not spoken."
         LECTURE -> "This is a lecture or class. Focus on the key concepts taught, the structure of the material, and important facts stated — not on decisions or action items, which are unlikely to apply."
         VOICE_MEMO -> "This is a personal voice memo. Focus on the notes, reminders, or ideas the speaker recorded for themselves."
         IDEA -> "This is a single recorded idea. Focus on clearly capturing what the idea actually is."
@@ -75,6 +89,31 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
             extractDecisions = true, extractActionItems = true, extractQuestions = true, extractFollowUps = true,
             sectionTitle = "Meeting Intelligence", topicsLabel = "Key Topics",
             analyzingStageLabel = "Extracting decisions & action items..."
+        )
+        CLIENT_CALL -> IntelligenceProfile(
+            extractDecisions = true, extractActionItems = true, extractQuestions = true, extractFollowUps = true,
+            sectionTitle = "Call Notes", topicsLabel = "Key Topics",
+            analyzingStageLabel = "Finding what was agreed & what's next..."
+        )
+        ONE_ON_ONE -> IntelligenceProfile(
+            extractDecisions = true, extractActionItems = true, extractQuestions = true, extractFollowUps = true,
+            sectionTitle = "1:1 Notes", topicsLabel = "Topics",
+            analyzingStageLabel = "Gathering updates, blockers & actions..."
+        )
+        STANDUP -> IntelligenceProfile(
+            extractDecisions = false, extractActionItems = true, extractQuestions = true, extractFollowUps = false,
+            sectionTitle = "Standup Notes", topicsLabel = "Topics",
+            analyzingStageLabel = "Sorting updates person by person..."
+        )
+        PROJECT_BRIEF, DECISION_RECORD, WEEKLY_REVIEW -> IntelligenceProfile(
+            extractDecisions = true, extractActionItems = true, extractQuestions = true, extractFollowUps = false,
+            sectionTitle = "Work Notes", topicsLabel = "Topics",
+            analyzingStageLabel = "Organizing your notes..."
+        )
+        CONSULTATION -> IntelligenceProfile(
+            extractDecisions = true, extractActionItems = true, extractQuestions = true, extractFollowUps = true,
+            sectionTitle = "Consultation Notes", topicsLabel = "Topics",
+            analyzingStageLabel = "Recording the consultation as said..."
         )
         INTERVIEW -> IntelligenceProfile(
             extractDecisions = false, extractActionItems = false, extractQuestions = true, extractFollowUps = true,
@@ -165,7 +204,8 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
      * cleanup prompt itself is identical for every recording type and is never weakened here.
      */
     fun cleanupGuidance(): String = when (this) {
-        IDEA, VOICE_MEMO, JOURNAL, DICTATION, RESEARCH, DEVOTIONAL, PRAYER, PRAYER_REQUEST, GRATITUDE, REFLECTION, TESTIMONY ->
+        IDEA, VOICE_MEMO, JOURNAL, DICTATION, RESEARCH, DEVOTIONAL, PRAYER, PRAYER_REQUEST, GRATITUDE, REFLECTION, TESTIMONY,
+        PROJECT_BRIEF, DECISION_RECORD, WEEKLY_REVIEW ->
             "This is solo narration. Prioritize natural paragraphs and preserve the speaker's first-person voice; a pause within one thought is not a reason to break it into separate paragraphs."
         LECTURE ->
             "This is an explanatory monologue. Prioritize coherent paragraphs; preserve definitions and examples exactly as stated."
@@ -173,7 +213,7 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
             "This is a sermon: a long, coherent monologue. Prioritize long paragraphs; preserve scripture quotations and references (book, chapter, verse) exactly as spoken."
         BIBLE_STUDY ->
             "This is a group Bible study. Preserve each speaker's turn boundaries; preserve scripture quotations and references exactly as spoken."
-        MEETING ->
+        MEETING, CLIENT_CALL, ONE_ON_ONE, STANDUP, CONSULTATION ->
             "This is a multi-speaker meeting. Preserve each speaker's turn boundaries; only merge fragments within one person's own turn."
         INTERVIEW ->
             "This is an interview. Preserve the question/answer structure and each speaker's turn boundaries."
@@ -214,7 +254,8 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
     fun transcriptMergePolicy(): TranscriptMergePolicy = when (this) {
         // Solo narration/notes: natural thinking pauses are extremely common and must not read as
         // paragraph breaks — merge aggressively into long, natural paragraphs.
-        IDEA, VOICE_MEMO, JOURNAL, DICTATION, RESEARCH, DEVOTIONAL, PRAYER, PRAYER_REQUEST, GRATITUDE, REFLECTION, TESTIMONY -> TranscriptMergePolicy(
+        IDEA, VOICE_MEMO, JOURNAL, DICTATION, RESEARCH, DEVOTIONAL, PRAYER, PRAYER_REQUEST, GRATITUDE, REFLECTION, TESTIMONY,
+        PROJECT_BRIEF, DECISION_RECORD, WEEKLY_REVIEW -> TranscriptMergePolicy(
             maxGapMs = 3_000L, extendedGapMs = 7_000L,
             maxParagraphDurationMs = 90_000L, maxParagraphChars = 1_200
         )
@@ -228,7 +269,7 @@ enum class RecordingType(val displayName: String, val shortDescription: String) 
         // signal, so gap tolerance stays close to natural conversational pacing — merge the
         // fragments *within* one person's turn, but don't paper over genuinely separate turns with
         // an overly generous gap.
-        MEETING, CONVERSATION, BRAINSTORM, BIBLE_STUDY -> TranscriptMergePolicy(
+        MEETING, CLIENT_CALL, ONE_ON_ONE, STANDUP, CONSULTATION, CONVERSATION, BRAINSTORM, BIBLE_STUDY -> TranscriptMergePolicy(
             maxGapMs = 1_500L, extendedGapMs = 3_000L,
             maxParagraphDurationMs = 45_000L, maxParagraphChars = 700
         )

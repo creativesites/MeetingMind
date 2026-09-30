@@ -51,8 +51,17 @@ data class Notebook(
     val archivedAt: Long? = null,
     val sortOrder: Int = 0,
     /** When it was moved to the Trash; null for a notebook that isn't there. */
-    val deletedAt: Long? = null
-)
+    val deletedAt: Long? = null,
+    /** A work context: a client, a matter, a case (docs/PLAN_PROFESSIONAL.md §5.1). */
+    val isProject: Boolean = false,
+    /** A project's status, organisation and privacy, as JSON. */
+    val propertiesJson: String = "{}"
+) {
+    /** Work in a confidential project never goes to cloud AI (PLAN_PROFESSIONAL.md §6.4). */
+    val confidential: Boolean get() = runCatching { org.json.JSONObject(propertiesJson).optBoolean("confidential") }.getOrDefault(false)
+    val orgId: String? get() = runCatching { org.json.JSONObject(propertiesJson).optString("orgId").ifBlank { null } }.getOrNull()
+    val status: String get() = runCatching { org.json.JSONObject(propertiesJson).optString("status").ifBlank { "Active" } }.getOrDefault("Active")
+}
 
 enum class NoteBlockType {
     PARAGRAPH, HEADING_1, HEADING_2, HEADING_3,

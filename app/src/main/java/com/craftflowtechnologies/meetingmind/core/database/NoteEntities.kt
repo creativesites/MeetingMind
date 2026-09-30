@@ -26,7 +26,11 @@ data class NotebookEntity(
     val archivedAt: Long?,
     val sortOrder: Int,
     /** In the Trash since then (schema 15). Purged 30 days later. */
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    /** NOTEBOOK, or PROJECT for a work context: a client, a matter, a case (schema 17). */
+    @androidx.room.ColumnInfo(defaultValue = "NOTEBOOK") val kind: String = "NOTEBOOK",
+    /** A project's status, organisation and privacy, as JSON. */
+    @androidx.room.ColumnInfo(defaultValue = "{}") val propertiesJson: String = "{}"
 )
 
 @Entity(

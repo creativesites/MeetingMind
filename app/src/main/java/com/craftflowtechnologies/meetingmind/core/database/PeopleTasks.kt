@@ -28,7 +28,26 @@ data class PersonEntity(
     val notes: String,
     val createdAt: Long,
     val updatedAt: Long,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    // Schema 17: work (docs/PLAN_PROFESSIONAL.md §5.1). People are built from history — named
+    // speakers, calendar guests, names typed — never read from the phone's contacts.
+    /** PERSON, or ORG for an organisation (a client, a company). */
+    @ColumnInfo(defaultValue = "PERSON") val kind: String = "PERSON",
+    /** The organisation this person belongs to. */
+    val orgId: String? = null,
+    @ColumnInfo(defaultValue = "[]") val emailsJson: String = "[]",
+    @ColumnInfo(defaultValue = "[]") val phonesJson: String = "[]",
+    /** Earlier names, so "Sarah" and "Sarah Chen" stay one person. */
+    @ColumnInfo(defaultValue = "[]") val aliasesJson: String = "[]",
+    /** The channel a follow-up last went out on to them: WHATSAPP, EMAIL, SMS. */
+    val preferredChannel: String? = null,
+    /** The app's own user. At most one. */
+    @ColumnInfo(defaultValue = "0") val isSelf: Boolean = false,
+    /** Anything involving them stays on this phone. */
+    @ColumnInfo(defaultValue = "0") val confidential: Boolean = false,
+    val lastSeenAt: Long? = null,
+    /** WORK for people met at work; null for everyone else (prayer list, family). */
+    val space: String? = null
 )
 
 @Entity(
@@ -62,7 +81,16 @@ data class TaskEntity(
     val scripture: String?,
     val createdAt: Long,
     val updatedAt: Long,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    // Schema 17: work tasks (docs/PLAN_PROFESSIONAL.md §5.2).
+    /** Someone else owes this: [personId] (or [ownerSpeakerId]) is who. Listed under Waiting on. */
+    @ColumnInfo(defaultValue = "0") val waitingOn: Boolean = false,
+    /** The speaker who owes it, until they're named; their current name is always shown. */
+    val ownerSpeakerId: String? = null,
+    /** The finding in a recording this task was confirmed from, so it's never made twice. */
+    val sourceItemId: String? = null,
+    /** WORK for work tasks; null otherwise. */
+    val space: String? = null
 )
 
 @Entity(
