@@ -1,0 +1,64 @@
+diff --git a/app/src/main/java/com/craftflowtechnologies/meetingmind/feature/work/WorkViewModel.kt b/app/src/main/java/com/craftflowtechnologies/meetingmind/feature/work/WorkViewModel.kt
+index ee0c01b..4228deb 100644
+--- a/app/src/main/java/com/craftflowtechnologies/meetingmind/feature/work/WorkViewModel.kt
++++ b/app/src/main/java/com/craftflowtechnologies/meetingmind/feature/work/WorkViewModel.kt
+@@ -106,12 +106,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
+     /** Meeting titles, for the "from Acme review" line under a task. */
+     val titles: StateFlow<Map<String, String>> = database.meetingDao().getAllMeetings().map { l -> l.associate { it.id to it.title } }.state(emptyMap())
+ 
+-    init {
+-        viewModelScope.launch { _self.value = people.self(prefs.preferencesFlow.first().userName) }
+-        // What changed is measured from the last time the Pulse was read, fixed for this session.
+-        viewModelScope.launch { pulseSince.value = prefs.pulseSeenAt.first() ?: (System.currentTimeMillis() - 24 * 3_600_000L) }
+-    }
+-
+     // ---------------------------------------------------------------- tasks
+ 
+     fun toggle(t: WorkTask) = viewModelScope.launch { work.toggle(t.id) }
+@@ -299,6 +293,14 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
+     val introDismissed = MutableStateFlow(state.getBoolean(INTRO, false))
+     fun dismissIntro() { state.edit().putBoolean(INTRO, true).apply(); introDismissed.value = true }
+ 
++    // Last in the class on purpose: these coroutines can run before the constructor finishes, so
++    // every property they touch must exist by then.
++    init {
++        viewModelScope.launch { _self.value = people.self(prefs.preferencesFlow.first().userName) }
++        // What changed is measured from the last time the Pulse was read, fixed for this session.
++        viewModelScope.launch { pulseSince.value = prefs.pulseSeenAt.first() ?: (System.currentTimeMillis() - 24 * 3_600_000L) }
++    }
++
+     private companion object {
+         const val NOT_SAME = "not_same_people"
+         const val INTRO = "work_intro_dismissed"
+diff --git a/app/src/test/java/com/craftflowtechnologies/meetingmind/feature/work/WorkViewModelInitOrderTest.kt b/app/src/test/java/com/craftflowtechnologies/meetingmind/feature/work/WorkViewModelInitOrderTest.kt
+new file mode 100644
+index 0000000..7498284
+--- /dev/null
++++ b/app/src/test/java/com/craftflowtechnologies/meetingmind/feature/work/WorkViewModelInitOrderTest.kt
+@@ -0,0 +1,26 @@
++package com.craftflowtechnologies.meetingmind.feature.work
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++/**
++ * Kotlin builds a class's properties in the order they're written, and `init` blocks run in that
++ * same order. A start-up coroutine in an early `init` can therefore run before a property declared
++ * further down exists, and read it as null. That crashed a real phone right after unlock. The
++ * rule: in WorkViewModel the `init` block comes after every property.
++ */
++class WorkViewModelInitOrderTest {
++    @Test
++    fun `the init block comes after every property`() {
++        val file = File("src/main/java/com/craftflowtechnologies/meetingmind/feature/work/WorkViewModel.kt")
++        assertTrue("source not found from ${File(".").absolutePath}", file.isFile)
++        val lines = file.readLines()
++        val init = lines.indexOfFirst { it.startsWith("    init {") }
++        assertTrue("WorkViewModel has no init block", init >= 0)
++        val property = Regex("""^    (private |internal )?(val|var|lateinit var) \w+""")
++        val after = lines.drop(init + 1).mapIndexedNotNull { i, l -> if (property.containsMatchIn(l)) "line ${init + 2 + i}: ${l.trim()}" else null }
++        assertEquals("properties declared after init:\n" + after.joinToString("\n"), emptyList<String>(), after)
++    }
++}
