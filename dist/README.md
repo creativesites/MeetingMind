@@ -1,5 +1,9 @@
 # Installable builds
 
+**v38** (`MeetingMind-v38-arm64-v8a.apk`, `MeetingMind-v38-armeabi-v7a.apk`) is v37 plus a **crash reporter**:
+if the app closes unexpectedly, the next launch (after unlock) shows what went wrong, with a Copy button,
+before the app opens. Built from `84e1c17` plus commit `18437e1`. Same signing key, so it installs over v37.
+
 `MeetingMind-v37-arm64-v8a.apk` (most phones) and `MeetingMind-v37-armeabi-v7a.apk` (older 32-bit
 phones) — debug-signed test builds of **W7–W10**, built from branch `ccr-417dd2a6-v88ts6` at commit
 `84e1c17`. They are not built from this branch's source. v34 is the previous build.
