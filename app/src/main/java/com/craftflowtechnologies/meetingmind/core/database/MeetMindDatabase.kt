@@ -44,7 +44,8 @@ import androidx.room.migration.Migration
         ItemEvidenceEntity::class,
         ItemLinkEntity::class,
         ItemEventEntity::class,
-        ProjectMemberEntity::class
+        ProjectMemberEntity::class,
+        SegmentSignalEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
@@ -53,6 +54,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun meetingDao(): MeetingDao
     abstract fun workDao(): WorkDao
     abstract fun itemDao(): ItemDao
+    abstract fun signalDao(): SignalDao
     abstract fun transcriptDao(): TranscriptDao
     abstract fun speakerDao(): SpeakerDao
     abstract fun actionItemDao(): ActionItemDao
@@ -465,6 +467,20 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /** Signals with evidence, per paragraph (docs/PLAN_PROFESSIONAL.md D6). A new table and its indices only. */
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_18_19_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_18_19_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `segment_signals` (`id` TEXT NOT NULL, `segmentId` TEXT NOT NULL, `meetingId` TEXT NOT NULL, `kind` TEXT NOT NULL, `entityId` TEXT, `value` TEXT, `confidence` REAL NOT NULL, `text` TEXT NOT NULL DEFAULT '', `signalId` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_segment_signals_meetingId` ON `segment_signals` (`meetingId`)",
+            "CREATE INDEX IF NOT EXISTS `index_segment_signals_meetingId_kind` ON `segment_signals` (`meetingId`, `kind`)",
+            "CREATE INDEX IF NOT EXISTS `index_segment_signals_segmentId` ON `segment_signals` (`segmentId`)"
+        )
+
         internal val MIGRATION_17_18_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `items` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `status` TEXT NOT NULL, `text` TEXT NOT NULL, `value` TEXT, `ownerPersonId` TEXT, `ownerSpeakerId` TEXT, `counterpartyPersonId` TEXT, `projectId` TEXT, `orgId` TEXT, `meetingId` TEXT, `noteId` TEXT, `dueAt` INTEGER, `dueText` TEXT, `supersedesId` TEXT, `answerText` TEXT, `answeredAt` INTEGER, `answerItemId` TEXT, `taskId` TEXT, `reason` TEXT, `severity` TEXT, `direction` TEXT, `confidence` REAL, `reviewed` INTEGER NOT NULL DEFAULT 0, `source` TEXT NOT NULL DEFAULT 'AI', `sourceFindingId` TEXT, `space` TEXT NOT NULL DEFAULT 'WORK', `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `closedAt` INTEGER, `deletedAt` INTEGER, PRIMARY KEY(`id`))",
             "CREATE INDEX IF NOT EXISTS `index_items_kind_status` ON `items` (`kind`, `status`)",
@@ -584,7 +600,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 18
+        const val VERSION = 19
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {
@@ -602,7 +618,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                     .build()
                 INSTANCE = instance
                 instance

@@ -37,6 +37,7 @@ import com.craftflowtechnologies.meetingmind.core.work.DueDates
 import com.craftflowtechnologies.meetingmind.core.work.FindingKind
 import com.craftflowtechnologies.meetingmind.core.work.WorkTask
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
+import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
@@ -59,6 +60,7 @@ fun WorkAllScreen(
     var tab by rememberSaveable { mutableStateOf(initial) }
     val youOwe by viewModel.youOwe.collectAsState()
     val theyOwe by viewModel.theyOwe.collectAsState()
+    val unclear by viewModel.unclear.collectAsState()
     val decisions by viewModel.decisionLog.collectAsState()
     val questions by viewModel.openQuestions.collectAsState()
     val everyone by viewModel.everyone.collectAsState()
@@ -108,6 +110,20 @@ fun WorkAllScreen(
                                 TaskLine(t, t.meetingId?.let { titles[it] }, onToggle = { viewModel.toggle(t) }, onClick = { editing = t },
                                     onPlay = t.meetingId?.let { m -> { onOpenMeeting(m, t.startMs) } },
                                     action = if (tab == WorkTab.WAITING && !t.done) ({ TextButton(onClick = { nudging = t }) { Text("Nudge") } }) else null)
+                            }
+                        }
+                    }
+                    if (tab == WorkTab.MINE && unclear.isNotEmpty()) {
+                        item(key = "g-unclear") { WorkSectionTitle("Unclear", "${unclear.size}", top = 12.dp) }
+                        items(unclear, key = { "u-" + it.id }) { u ->
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                                Text(u.text, fontSize = 15.sp, color = Ink)
+                                Text("Not clear who owes this or when.", fontSize = 12.sp, color = InkMuted)
+                                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Chip("I owe it") { viewModel.settleUnclear(u, true) }
+                                    Chip("They owe it") { viewModel.settleUnclear(u, false) }
+                                    Chip("Dismiss") { viewModel.dismissUnclear(u) }
+                                }
                             }
                         }
                     }

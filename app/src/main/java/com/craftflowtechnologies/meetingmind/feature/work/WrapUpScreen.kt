@@ -95,6 +95,12 @@ fun WrapUpScreen(
     val settings by viewModel.settings.collectAsState()
     val with by viewModel.with.collectAsState()
     val self by viewModel.self.collectAsState()
+    val changes by viewModel.changes.collectAsState()
+    val extras by viewModel.extras.collectAsState()
+    val confirmed by viewModel.confirmedChanges.collectAsState()
+    val added by viewModel.added.collectAsState()
+    val settled by viewModel.settled.collectAsState()
+    var moreOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Finding?>(null) }
     var naming by remember { mutableStateOf(false) }
     var projectPicker by remember { mutableStateOf(false) }
@@ -193,10 +199,38 @@ fun WrapUpScreen(
                     }
                 }
             }
+            // Changes: what this recording replaces, to confirm with one tap (D6).
+            if (changes.isNotEmpty()) {
+                item(key = "h-changes") { WorkSectionTitle("Changes", "${changes.size}") }
+                items(changes, key = { "c-" + it.id }) { c ->
+                    ChangeCard(c, confirmed = c.id in confirmed, onConfirm = { viewModel.confirmChange(c) }, onUndo = { viewModel.undoChange(c) },
+                        onReject = { viewModel.rejectChange(c) }, onPlay = { onPlay(c.startMs) })
+                }
+            }
             section("Decisions", decisions, "d")
-            section("Your tasks", myTasks, "m")
-            section("Waiting on", theirs, "w")
+            section("You owe", myTasks, "m")
+            section("They owe", theirs, "w")
             section("Open questions", questions, "q")
+            // Unclear: a promise nobody could place. Settle it or dismiss it; left alone it is kept as unclear, never guessed.
+            val unclear = extras.unclear.filter { it.id !in settled }
+            if (unclear.isNotEmpty()) {
+                item(key = "h-unclear") { WorkSectionTitle("Unclear", "${unclear.size}") }
+                items(unclear, key = { "u-" + it.id }) { s ->
+                    UnclearRow(s, with, onMine = { viewModel.settle(s.id, com.craftflowtechnologies.meetingmind.core.work.Settlement(com.craftflowtechnologies.meetingmind.core.work.Direction.MINE)) },
+                        onTheirs = { p -> viewModel.settle(s.id, com.craftflowtechnologies.meetingmind.core.work.Settlement(com.craftflowtechnologies.meetingmind.core.work.Direction.THEIRS, p)) },
+                        onDismiss = { viewModel.dismissSignal(s.id) }, onPlay = { onPlay(s.startMs) })
+                }
+            }
+            if (extras.more.isNotEmpty()) {
+                item(key = "more-signals") {
+                    TextButton(onClick = { moreOpen = !moreOpen }, modifier = Modifier.padding(horizontal = 12.dp)) {
+                        Text(if (moreOpen) "Hide" else "+ ${extras.more.size} more found")
+                    }
+                }
+                if (moreOpen) items(extras.more, key = { "s-" + it.id }) { s ->
+                    ExtraSignalRow(s, added = s.id in added, onAdd = { viewModel.addSignal(s.id) }, onDismiss = { viewModel.dismissSignal(s.id) }, onPlay = { onPlay(s.startMs) })
+                }
+            }
             if (hidden > 0) item {
                 TextButton(onClick = { showAll = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("+ $hidden more found, less certain") }
             }
@@ -333,5 +367,53 @@ private fun FindingRow(f: Finding, onClick: () -> Unit, onPlay: () -> Unit) {
             if (bits.isNotEmpty()) Text(bits.joinToString("  ·  "), fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
         }
         f.startMs?.let { PlayChip(it, onPlay) }
+    }
+}
+
+/** "This replaces: Launch Oct 14?" with the words that say so, and one tap each way. */
+@Composable
+private fun ChangeCard(c: com.craftflowtechnologies.meetingmind.core.work.ChangeProposal, confirmed: Boolean, onConfirm: () -> Unit, onUndo: () -> Unit, onReject: () -> Unit, onPlay: () -> Unit) {
+    Surface(shape = RoundedCornerShape(16.dp), color = SurfaceSunk, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Text(if (confirmed) "Replaces: ${c.target.text}" else c.question, fontSize = 13.sp, color = InkMuted)
+            Text(c.newText, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Ink, modifier = Modifier.padding(top = 2.dp))
+            Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                c.startMs?.let { PlayChip(it, onPlay) }
+                if (confirmed) Chip("✓ Confirmed · Undo", true) { onUndo() }
+                else {
+                    Chip("Confirm", true) { onConfirm() }
+                    Chip("Not the same") { onReject() }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UnclearRow(s: com.craftflowtechnologies.meetingmind.core.work.SignalView, people: List<com.craftflowtechnologies.meetingmind.core.work.WorkPerson>, onMine: () -> Unit, onTheirs: (String?) -> Unit, onDismiss: () -> Unit, onPlay: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text(s.text, fontSize = 15.sp, color = Ink)
+        Text("Who owes this, and when? It wasn't clear.", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
+        FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            s.startMs?.let { PlayChip(it, onPlay) }
+            Chip("I owe it") { onMine() }
+            people.take(3).forEach { p -> Chip("${p.firstName} owes it") { onTheirs(p.id) } }
+            if (people.isEmpty()) Chip("They owe it") { onTheirs(null) }
+            Chip("Dismiss") { onDismiss() }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ExtraSignalRow(s: com.craftflowtechnologies.meetingmind.core.work.SignalView, added: Boolean, onAdd: () -> Unit, onDismiss: () -> Unit, onPlay: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
+        Text(s.kind.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }, fontSize = 11.sp, color = InkMuted, fontWeight = FontWeight.SemiBold)
+        Text(s.text, fontSize = 15.sp, color = Ink)
+        FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            s.startMs?.let { PlayChip(it, onPlay) }
+            if (added) Chip("✓ Added", true) {} else { Chip("Add") { onAdd() }; Chip("Dismiss") { onDismiss() } }
+        }
     }
 }

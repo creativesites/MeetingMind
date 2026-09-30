@@ -579,7 +579,9 @@ data class MeetingSummary(
     val decisions: List<Decision>,
     val actionItems: List<ActionItem>,
     val questions: List<Question>,
-    val followUps: List<FollowUp> = emptyList()
+    val followUps: List<FollowUp> = emptyList(),
+    /** Promises, decisions, risks and dates with evidence (schema 19); empty for older outputs. */
+    val signals: List<Signal> = emptyList()
 )
 
 data class ChatMessage(

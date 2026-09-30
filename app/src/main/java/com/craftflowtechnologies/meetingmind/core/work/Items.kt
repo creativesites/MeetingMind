@@ -91,6 +91,7 @@ class ItemRepository(
     }
 
     fun observeCommitments(direction: Direction): Flow<List<ItemEntity>> = dao.observeCommitments(direction.name)
+    fun observeUnclear(): Flow<List<ItemEntity>> = dao.observeUnclear()
     fun observeOpenQuestions(limit: Int = 200): Flow<List<ItemEntity>> = dao.observeOpenQuestions(limit)
     fun observeDecisions(limit: Int = 200): Flow<List<ItemEntity>> = dao.observeDecisions(limit)
 
@@ -156,6 +157,16 @@ class ItemRepository(
         after = { JSONObject().put("projectId", projectId ?: JSONObject.NULL).put("orgId", orgId ?: JSONObject.NULL) },
         unchanged = { it.projectId == projectId && it.orgId == orgId })
 
+    /** An unclear promise, settled: who owes it. It becomes an ordinary open commitment. */
+    suspend fun settle(id: String, direction: Direction, ownerPersonId: String?) {
+        edit(id, ItemEventType.OWNER_CHANGED,
+            before = { JSONObject().put("direction", it.direction ?: JSONObject.NULL).put("personId", it.ownerPersonId ?: JSONObject.NULL) },
+            change = { it.copy(direction = direction.name, ownerPersonId = if (direction == Direction.THEIRS) ownerPersonId else null) },
+            after = { JSONObject().put("direction", direction.name).put("personId", ownerPersonId ?: JSONObject.NULL) },
+            unchanged = { it.direction == direction.name && it.ownerPersonId == ownerPersonId })
+        setStatus(id, ItemStatus.OPEN)
+    }
+
     /** The person has looked at it (the Wrap-up, or opening it): AI items become part of the record. */
     suspend fun markReviewed(id: String) = edit(id, ItemEventType.STATUS,
         before = { JSONObject().put("reviewed", false) }, change = { it.copy(reviewed = true) },
@@ -199,6 +210,25 @@ class ItemRepository(
                 created
             }
         }
+
+    /**
+     * [newId], already an item (promoted from the same recording), replaces [oldId]: the old one is
+     * SUPERSEDED, the new one points back at it, and both the status and the link are logged.
+     */
+    suspend fun supersedeWith(oldId: String, newId: String, evidenceId: String? = null): Boolean = withContext(Dispatchers.IO) {
+        database.withTransaction {
+            val old = dao.getById(oldId) ?: return@withTransaction false
+            val new = dao.getById(newId) ?: return@withTransaction false
+            if (old.id == new.id || new.supersedesId == oldId) return@withTransaction false
+            val now = clock()
+            dao.update(new.copy(supersedesId = oldId, projectId = new.projectId ?: old.projectId, orgId = new.orgId ?: old.orgId, updatedAt = now))
+            dao.insertLink(ItemLinkEntity(newId, LinkType.ITEM, oldId, "SUPERSEDES"))
+            dao.update(old.copy(status = ItemStatus.SUPERSEDED.name, closedAt = now, updatedAt = now))
+            log(oldId, ItemEventType.SUPERSEDED, JSONObject().put("status", old.status).put("text", old.text),
+                JSONObject().put("status", ItemStatus.SUPERSEDED.name).put("by", newId).put("text", new.text), evidenceId)
+            true
+        }
+    }
 
     /** A question is answered, in words and optionally by the later item that answered it. */
     suspend fun answer(id: String, answerText: String?, answerItemId: String? = null, evidenceId: String? = null): ItemEntity? = withContext(Dispatchers.IO) {

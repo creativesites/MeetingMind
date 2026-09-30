@@ -1178,8 +1178,8 @@ fun MeetingDetailScreen(
                     onPlayFrom = { viewModel.jumpToTimestamp(it) },
                     jumpTo = overviewJumpTarget
                 )
-                RecordingDetailTab.TRANSCRIPT -> TranscriptTab(
-                    segments = transcript.segments,
+                RecordingDetailTab.TRANSCRIPT -> com.craftflowtechnologies.meetingmind.feature.work.SignalFilterHost(meeting?.id, transcript.segments) { shownSegments -> TranscriptTab(
+                    segments = shownSegments,
                     speakers = speakers,
                     onJumpToTimestamp = { viewModel.jumpToTimestamp(it) },
                     onRenameSpeaker = { id, name ->
@@ -1209,7 +1209,7 @@ fun MeetingDetailScreen(
                     isAudioPlaying = isThisRecordingActive && playbackState.isPlaying,
                     cleanFillerWords = cleanFillerWords,
                     scenes = remember(meeting?.audioFilePath, meeting?.status) { meeting?.audioFilePath?.let { com.craftflowtechnologies.meetingmind.ai.scene.SceneMap.load(java.io.File(it)) } }
-                )
+                ) }
                 RecordingDetailTab.ASK_AI -> com.craftflowtechnologies.meetingmind.feature.meetingdetail.components.AskAiPanel(
                     chatMessages = chatMessages,
                     allSegments = transcript.segments,

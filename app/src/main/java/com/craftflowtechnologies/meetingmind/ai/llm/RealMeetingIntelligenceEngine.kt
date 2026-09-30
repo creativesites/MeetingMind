@@ -9,6 +9,8 @@ import com.craftflowtechnologies.meetingmind.core.model.MeetingSummary
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.Transcript
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
+import com.craftflowtechnologies.meetingmind.core.work.SignalPrompts
+import com.craftflowtechnologies.meetingmind.core.work.signalKinds
 import java.util.UUID
 
 /**
@@ -61,12 +63,14 @@ class RealMeetingIntelligenceEngine(
         val actionItems = mutableListOf<com.craftflowtechnologies.meetingmind.core.model.ActionItem>()
         val questions = mutableListOf<com.craftflowtechnologies.meetingmind.core.model.Question>()
         val followUps = mutableListOf<com.craftflowtechnologies.meetingmind.core.model.FollowUp>()
+        val signals = mutableListOf<com.craftflowtechnologies.meetingmind.core.model.Signal>()
+        val signalKinds = recordingType.signalKinds().map { it.name }.toSet()
         val chunkSummaries = mutableListOf<String>()
         var anyChunkSucceeded = false
 
         for (chunk in chunks) {
             val validSegmentIds = chunk.segments.map { it.id }.toSet()
-            val prompt = buildExtractionPrompt(chunk.segments, focusGuidance, profile)
+            val prompt = buildExtractionPrompt(chunk.segments, focusGuidance, profile, recordingType)
             val result = languageModel.generate(prompt, maxOutputTokens = EXTRACTION_OUTPUT_TOKENS)
             val rawText = (result as? AiResult.Success)?.value ?: continue
             anyChunkSucceeded = true
@@ -85,6 +89,8 @@ class RealMeetingIntelligenceEngine(
             actionItems += extraction.actionItems
             questions += extraction.questions
             followUps += extraction.followUps
+            // Only the kinds this recording type looks for; a model that offers others is not trusted with them.
+            signals += extraction.signals.filter { it.kind in signalKinds }
             if (extraction.briefSummary.isNotBlank()) {
                 chunkSummaries += extraction.briefSummary
             } else {
@@ -126,7 +132,8 @@ class RealMeetingIntelligenceEngine(
                 decisions = decisions,
                 actionItems = actionItems,
                 questions = questions,
-                followUps = followUps
+                followUps = followUps,
+                signals = signals
             )
         )
     }
@@ -179,7 +186,7 @@ class RealMeetingIntelligenceEngine(
      * actually given is far more reliable than one asked to selectively ignore part of it). See
      * [MeetingIntelligenceGroundingTest] for the parsing side of this contract.
      */
-    private fun buildExtractionPrompt(segments: List<TranscriptSegment>, focusGuidance: String, profile: IntelligenceProfile): String {
+    private fun buildExtractionPrompt(segments: List<TranscriptSegment>, focusGuidance: String, profile: IntelligenceProfile, recordingType: RecordingType = RecordingType.GENERAL): String {
         val transcriptText = renderSegments(segments, includeIds = true)
         val focusLine = if (focusGuidance.isNotBlank()) "\n            $focusGuidance\n" else ""
 
@@ -188,6 +195,8 @@ class RealMeetingIntelligenceEngine(
         if (profile.extractActionItems) schemaFields += "\"actionItems\":[{\"task\":string,\"assigneeName\":string|null,\"deadline\":string|null,\"sourceSegmentIds\":[string]}]"
         if (profile.extractQuestions) schemaFields += "\"questions\":[{\"question\":string,\"askedBy\":string|null,\"sourceSegmentIds\":[string]}]"
         if (profile.extractFollowUps) schemaFields += "\"followUps\":[{\"description\":string,\"owner\":string|null,\"deadline\":string|null,\"sourceSegmentIds\":[string]}]"
+        val signalGuidance = SignalPrompts.section(recordingType)
+        if (signalGuidance.isNotEmpty()) schemaFields += SignalPrompts.FIELD
         val schema = "{${schemaFields.joinToString(",")}}"
 
         val listCategories = listOfNotNull(
@@ -220,7 +229,7 @@ class RealMeetingIntelligenceEngine(
             You are analyzing a real transcript excerpt. Extract ONLY information explicitly supported by the transcript below. Never invent names, dates, deadlines, decisions, or commitments that are not actually stated.
             $focusLine
             "briefSummary" is REQUIRED and must always be filled in: 2-3 plain sentences saying what this excerpt is actually about, in the speaker's own subject matter. Write it even when nothing was decided and nothing was assigned — a personal note, a passing idea, or a casual chat still has real content to describe. Never write that nothing was discussed.
-            $listsGuidance$decisionGuidance$sourceIdGuidance
+            $listsGuidance$decisionGuidance$sourceIdGuidance$signalGuidance
             Respond with ONLY a single JSON object, no markdown, no commentary, matching exactly this shape:
             $schema
 

@@ -154,6 +154,9 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE deletedAt IS NULL AND kind = 'QUESTION' AND status = 'OPEN' AND reviewed = 1 ORDER BY createdAt DESC LIMIT :limit")
     fun observeOpenQuestions(limit: Int): Flow<List<ItemEntity>>
 
+    @Query("SELECT * FROM items WHERE deletedAt IS NULL AND kind = 'COMMITMENT' AND status = 'UNCLEAR' ORDER BY createdAt DESC")
+    fun observeUnclear(): Flow<List<ItemEntity>>
+
     @Query("SELECT * FROM items WHERE deletedAt IS NULL AND kind = 'DECISION' ORDER BY createdAt DESC LIMIT :limit")
     fun observeDecisions(limit: Int): Flow<List<ItemEntity>>
 

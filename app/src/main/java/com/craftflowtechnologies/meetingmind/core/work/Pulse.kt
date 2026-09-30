@@ -240,9 +240,9 @@ object ChangeSentences {
     private val DAY_MONTH = Regex("""(?i)\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?$MONTH_NAMES\b""")
     private val FILLER = setOf("on", "to", "by", "for", "is", "was", "moved", "pushed", "until", "at", "the", "date", "now", "from", "in", "be", "will", "we", "go", "live")
 
-    private class Found(val range: IntRange, val label: String)
+    class Found(val range: IntRange, val label: String)
 
-    private fun findDate(text: String): Found? {
+    fun findDate(text: String): Found? {
         MONTH_DAY.find(text)?.let { m -> return Found(m.range, label(m.groupValues[1], m.groupValues[2])) }
         DAY_MONTH.find(text)?.let { m -> return Found(m.range, label(m.groupValues[2], m.groupValues[1])) }
         return null
@@ -254,7 +254,7 @@ object ChangeSentences {
     }
 
     /** "Launch on October 14" → "Launch": what the decision is about, without its date and filler. */
-    private fun subject(text: String, date: Found): String {
+    fun subject(text: String, date: Found): String {
         val words = text.removeRange(date.range).split(Regex("\\s+")).map { it.trim(' ', ',', '.', ';', ':', '-', '—') }.filter { it.isNotEmpty() }.toMutableList()
         while (words.isNotEmpty() && words.last().lowercase() in FILLER) words.removeAt(words.lastIndex)
         while (words.isNotEmpty() && words.first().lowercase() in FILLER) words.removeAt(0)

@@ -63,6 +63,50 @@ class WrapUpViewModel(application: Application, val meetingId: String) : Android
     private val _with = MutableStateFlow<List<WorkPerson>>(emptyList())
     val with: StateFlow<List<WorkPerson>> = _with
 
+    // ---------------------------------------------------------------- changes and extra signals (D6)
+
+    private val detector = com.craftflowtechnologies.meetingmind.core.work.ChangeDetector(
+        database,
+        com.craftflowtechnologies.meetingmind.core.work.DeviceChangeModels(
+            application, com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(application),
+            com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(application)
+        ) { prefs.preferencesFlow.first().processingProfile }
+    )
+    private val _changes = MutableStateFlow<List<com.craftflowtechnologies.meetingmind.core.work.ChangeProposal>>(emptyList())
+    /** What this recording changes, waiting for the person to confirm or turn down. */
+    val changes: StateFlow<List<com.craftflowtechnologies.meetingmind.core.work.ChangeProposal>> = _changes
+    private val _extras = MutableStateFlow(com.craftflowtechnologies.meetingmind.core.work.WrapUpExtras(emptyList(), emptyList()))
+    val extras: StateFlow<com.craftflowtechnologies.meetingmind.core.work.WrapUpExtras> = _extras
+    private val _confirmed = MutableStateFlow<Set<String>>(emptySet())
+    val confirmedChanges: StateFlow<Set<String>> = _confirmed
+    private val _added = MutableStateFlow<Set<String>>(emptySet())
+    val added: StateFlow<Set<String>> = _added
+    private val _settled = MutableStateFlow<Map<String, com.craftflowtechnologies.meetingmind.core.work.Settlement>>(emptyMap())
+    val settled: StateFlow<Map<String, com.craftflowtechnologies.meetingmind.core.work.Settlement>> = _settled
+
+    private fun dismissedIds() = com.craftflowtechnologies.meetingmind.core.work.WrapUpSignals.dismissed(getApplication(), meetingId)
+
+    private suspend fun refreshSignals() {
+        val dismissed = dismissedIds()
+        val proposals = detector.detect(meetingId, dismissed)
+        _changes.value = proposals
+        _extras.value = com.craftflowtechnologies.meetingmind.core.work.WrapUpSignals.extras(database, meetingId, work.findings(meetingId), proposals, dismissed)
+    }
+
+    fun confirmChange(p: com.craftflowtechnologies.meetingmind.core.work.ChangeProposal) { _confirmed.value = _confirmed.value + p.id }
+    fun undoChange(p: com.craftflowtechnologies.meetingmind.core.work.ChangeProposal) { _confirmed.value = _confirmed.value - p.id }
+    /** "Not the same": the proposal doesn't come back. */
+    fun rejectChange(p: com.craftflowtechnologies.meetingmind.core.work.ChangeProposal) = act {
+        com.craftflowtechnologies.meetingmind.core.work.WrapUpSignals.dismiss(getApplication(), meetingId, p.id)
+    }
+    fun addSignal(id: String) { _added.value = _added.value + id }
+    fun dismissSignal(id: String) = act { com.craftflowtechnologies.meetingmind.core.work.WrapUpSignals.dismiss(getApplication(), meetingId, id) }
+    fun settle(id: String, s: com.craftflowtechnologies.meetingmind.core.work.Settlement) { _settled.value = _settled.value + (id to s) }
+
+    private fun choices() = com.craftflowtechnologies.meetingmind.core.work.WrapUpChoices(
+        changes = _confirmed.value, add = _added.value, dismissed = dismissedIds(), settled = _settled.value
+    )
+
     init {
         viewModelScope.launch { _self.value = people.self(prefs.preferencesFlow.first().userName) }
         viewModelScope.launch { speakers.collect { refresh() } }
@@ -70,6 +114,7 @@ class WrapUpViewModel(application: Application, val meetingId: String) : Android
 
     fun refresh() = viewModelScope.launch {
         _findings.value = work.findings(meetingId)
+        runCatching { refreshSignals() }
         val noteId = database.meetingDao().getMeetingById(meetingId)?.noteId ?: return@launch
         _with.value = database.workDao().peopleIdsFor(noteId).mapNotNull { people.get(it) }.filter { !it.isSelf }.sortedBy { it.name }
     }
@@ -116,7 +161,7 @@ class WrapUpViewModel(application: Application, val meetingId: String) : Android
         meeting.value?.noteId?.let { work.setProject(it, nb.id) }
     }
 
-    fun done() = viewModelScope.launch { work.confirm(meetingId) }
+    fun done() = viewModelScope.launch { work.confirm(meetingId, choices()) }
 
     fun addContact(person: WorkPerson, email: String?, phone: String?) = act { people.addContact(person.id, email, phone) }
 
@@ -141,7 +186,7 @@ class WrapUpViewModel(application: Application, val meetingId: String) : Android
     }
 
     fun markSent(channel: Channel) = viewModelScope.launch {
-        work.confirm(meetingId)
+        work.confirm(meetingId, choices())
         work.markFollowUpSent(meetingId, channel)
         with.value.forEach { people.rememberChannel(it.id, channel) }
     }

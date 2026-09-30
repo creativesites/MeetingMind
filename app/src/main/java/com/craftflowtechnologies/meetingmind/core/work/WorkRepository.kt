@@ -187,7 +187,7 @@ class WorkRepository(private val database: MeetMindDatabase) {
      * waiting on from the person who owns it — filed with the recording's note, and the recording
      * stops asking to be reviewed. Decisions and questions stay with the recording, in the logs.
      */
-    suspend fun confirm(meetingId: String) = withContext(Dispatchers.IO) {
+    suspend fun confirm(meetingId: String, choices: WrapUpChoices = WrapUpChoices()) = withContext(Dispatchers.IO) {
         val meeting = database.meetingDao().getMeetingById(meetingId) ?: return@withContext
         val people = WorkPeople(database)
         val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId).associateBy { it.id }
@@ -205,6 +205,19 @@ class WorkRepository(private val database: MeetMindDatabase) {
         }
         work.setReviewed(meetingId, now)
         promoteToItems(meetingId, reviewed = true)
+        applyChoices(meetingId, choices)
+    }
+
+    /**
+     * The person's decisions about what the signals found (D6): confirmed changes supersede what they
+     * replace, chosen extras become items, and promises nobody could place are kept as unclear.
+     */
+    private suspend fun applyChoices(meetingId: String, choices: WrapUpChoices) {
+        val detector = ChangeDetector(database)
+        val proposals = detector.detect(meetingId, choices.dismissed, useModel = false)
+        proposals.filter { it.id in choices.changes }.forEach { detector.apply(it) }
+        val extras = WrapUpSignals.extras(database, meetingId, findings(meetingId), proposals, choices.dismissed)
+        SignalPromotion(database).promote(meetingId, choices, extras)
     }
 
     /** Who a finding belongs to: null for the app's own user (or nobody named), else a person. */

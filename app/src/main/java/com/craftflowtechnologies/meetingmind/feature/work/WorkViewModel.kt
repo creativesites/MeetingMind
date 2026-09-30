@@ -17,6 +17,7 @@ import com.craftflowtechnologies.meetingmind.core.work.Channel
 import com.craftflowtechnologies.meetingmind.core.work.ContextRepository
 import com.craftflowtechnologies.meetingmind.core.work.ContextType
 import com.craftflowtechnologies.meetingmind.core.work.DueDates
+import com.craftflowtechnologies.meetingmind.core.work.ItemRepository
 import com.craftflowtechnologies.meetingmind.core.work.ItemStatus
 import com.craftflowtechnologies.meetingmind.core.work.Prepare
 import com.craftflowtechnologies.meetingmind.core.work.Pulse
@@ -81,6 +82,10 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     val toReview: StateFlow<List<MeetingRow>> = work.observeToReview().state(emptyList())
     val followUps: StateFlow<List<MeetingRow>> = work.observeFollowUps().state(emptyList())
     val decisions: StateFlow<List<FindingRow>> = work.observeDecisions().state(emptyList())
+    /** Promises nobody could place, waiting to be settled or dismissed. */
+    val unclear: StateFlow<List<com.craftflowtechnologies.meetingmind.core.database.ItemEntity>> = ItemRepository(database).observeUnclear().state(emptyList())
+    fun settleUnclear(i: com.craftflowtechnologies.meetingmind.core.database.ItemEntity, mine: Boolean) = viewModelScope.launch { ItemRepository(database).settle(i.id, if (mine) Direction.MINE else Direction.THEIRS, null) }
+    fun dismissUnclear(i: com.craftflowtechnologies.meetingmind.core.database.ItemEntity) = viewModelScope.launch { ItemRepository(database).setStatus(i.id, ItemStatus.CANCELLED) }
     val decisionLog: StateFlow<List<FindingRow>> = work.observeDecisionLog().state(emptyList())
     val openQuestions: StateFlow<List<FindingRow>> = work.observeOpenQuestions().state(emptyList())
     val recent: StateFlow<List<MeetingRow>> = work.observeRecentWork(12).state(emptyList())
