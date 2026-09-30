@@ -39,6 +39,18 @@ object Routes {
     const val APPEARANCE = "appearance"
     const val PRAY = "pray?mode={mode}"
     const val SETUP = "setup"
+    // Work (docs/PLAN_PROFESSIONAL.md §6–7).
+    const val WORK = "work"
+    const val WORK_ALL = "work_all?tab={tab}"
+    const val WORK_PERSON = "work_person/{personId}"
+    const val PROJECT = "project/{projectId}"
+    const val WRAP_UP = "wrapup/{meetingId}?compose={compose}"
+    const val WORK_SETTINGS = "work_settings"
+    fun workAllRoute(tab: String) = "work_all?tab=$tab"
+    fun workPersonRoute(personId: String) = "work_person/$personId"
+    fun projectRoute(projectId: String) = "project/$projectId"
+    /** [compose] opens the follow-up composer straight away (Follow-ups to send). */
+    fun wrapUpRoute(meetingId: String, compose: Boolean = false) = "wrapup/$meetingId" + if (compose) "?compose=true" else ""
     fun prayRoute(mode: String? = null) = "pray" + (mode?.let { "?mode=$it" } ?: "")
 
     fun storiesRoute(start: String? = null) = "stories" + (start?.let { "?start=$it" } ?: "")

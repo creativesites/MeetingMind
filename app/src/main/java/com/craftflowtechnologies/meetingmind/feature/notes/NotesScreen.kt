@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Close
@@ -104,6 +105,8 @@ fun NotesScreen(
     onNavigateBottomNav: (BottomNavDestination) -> Unit,
     /** Opens the Faith space; shown on the library root. */
     onOpenFaith: (() -> Unit)? = null,
+    /** Opens the Work space; shown on the library root (docs/PLAN_PROFESSIONAL.md §7). */
+    onOpenWork: (() -> Unit)? = null,
     onOpenTrash: () -> Unit = {}
 ) {
     val notes by viewModel.visibleNotes.collectAsState()
@@ -263,6 +266,24 @@ fun NotesScreen(
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 22.dp), modifier = Modifier.padding(top = 18.dp)) {
                         item { Pill("All", space == null) { viewModel.space.value = null } }
                         items(NotebookSpace.entries.filter { it in appIdentity.spaces }) { s -> Pill(s.displayName, space == s) { viewModel.space.value = if (space == s) null else s } }
+                    }
+                }
+                if (onOpenWork != null && NotebookSpace.WORK in appIdentity.spaces && (space == null || space == NotebookSpace.WORK)) {
+                    item(key = "work") {
+                        Surface(
+                            onClick = onOpenWork, shape = RoundedCornerShape(18.dp), color = com.craftflowtechnologies.meetingmind.ui.theme.AccentWash,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, com.craftflowtechnologies.meetingmind.ui.theme.Accent.copy(alpha = 0.3f)),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 16.dp).testTag("notes_open_work")
+                        ) {
+                            Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Work, contentDescription = null, tint = com.craftflowtechnologies.meetingmind.ui.theme.Accent, modifier = Modifier.size(22.dp))
+                                Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                                    Text("Work", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                                    Text("Meetings, projects, people, tasks and follow-ups", fontSize = 12.5.sp, color = InkSecondary)
+                                }
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = InkSecondary, modifier = Modifier.size(18.dp))
+                            }
+                        }
                     }
                 }
                 if (onOpenFaith != null && appIdentity.showsFaith && (space == null || space == NotebookSpace.FAITH)) {

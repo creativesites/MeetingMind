@@ -640,8 +640,84 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 onNavigateBack = null,
                 onNavigateBottomNav = navigateToPrimary,
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
+                onOpenWork = { navController.navigate(Routes.WORK) },
                 onOpenTrash = { navController.navigate(Routes.NOTES_TRASH) }
             )
+        }
+
+        // WORK (docs/PLAN_PROFESSIONAL.md §6–7)
+        composable(Routes.WORK) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val today: com.craftflowtechnologies.meetingmind.feature.today.TodayViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.work.WorkSpaceScreen(
+                viewModel = vm, today = today,
+                onNavigateBack = { navController.popBackStack() },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onRecordType = { navController.navigate(Routes.recordTypeRoute(it)) },
+                onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
+                onOpenWrapUp = { id, compose -> navController.navigate(Routes.wrapUpRoute(id, compose)) },
+                onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
+                onOpenProject = { navController.navigate(Routes.projectRoute(it)) },
+                onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
+                onOpenSettings = { navController.navigate(Routes.WORK_SETTINGS) },
+                onSearch = { navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SEARCH) }
+            )
+        }
+        composable(Routes.WORK_ALL, arguments = listOf(navArgument("tab") { type = NavType.StringType; defaultValue = "MINE" })) { entry ->
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.craftflowtechnologies.meetingmind.feature.work.WorkAllScreen(
+                viewModel = vm,
+                initial = runCatching { com.craftflowtechnologies.meetingmind.feature.work.WorkTab.valueOf(entry.arguments?.getString("tab").orEmpty()) }.getOrDefault(com.craftflowtechnologies.meetingmind.feature.work.WorkTab.MINE),
+                onNavigateBack = { navController.popBackStack() },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) }
+            )
+        }
+        composable(Routes.WORK_PERSON, arguments = listOf(navArgument("personId") { type = NavType.StringType })) { entry ->
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.craftflowtechnologies.meetingmind.feature.work.WorkPersonScreen(
+                viewModel = vm, personId = entry.arguments?.getString("personId").orEmpty(),
+                onNavigateBack = { navController.popBackStack() },
+                onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) }
+            )
+        }
+        composable(Routes.PROJECT, arguments = listOf(navArgument("projectId") { type = NavType.StringType })) { entry ->
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.craftflowtechnologies.meetingmind.feature.work.ProjectScreen(
+                viewModel = vm, projectId = entry.arguments?.getString("projectId").orEmpty(),
+                onNavigateBack = { navController.popBackStack() },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
+                onRecordInto = { noteId, type, title -> navController.navigate(Routes.recordEventRoute(noteId, type, title, null)) }
+            )
+        }
+        composable(Routes.WRAP_UP, arguments = listOf(
+            navArgument("meetingId") { type = NavType.StringType },
+            navArgument("compose") { type = NavType.BoolType; defaultValue = false }
+        )) { entry ->
+            val meetingId = entry.arguments?.getString("meetingId").orEmpty()
+            val app = context.applicationContext as android.app.Application
+            val vm = remember(meetingId) { com.craftflowtechnologies.meetingmind.feature.work.WrapUpViewModel(app, meetingId) }
+            com.craftflowtechnologies.meetingmind.feature.work.WrapUpScreen(
+                viewModel = vm,
+                onNavigateBack = { navController.popBackStack() },
+                onDone = { noteId ->
+                    navController.navigate(noteId?.let { Routes.noteRoute(it) } ?: Routes.meetingDetailRoute(meetingId)) {
+                        popUpTo(Routes.WRAP_UP) { inclusive = true }
+                    }
+                },
+                onPlay = { at -> navController.navigate(Routes.meetingDetailRoute(meetingId, at)) },
+                onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
+                startComposing = entry.arguments?.getBoolean("compose") == true
+            )
+        }
+        composable(Routes.WORK_SETTINGS) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.craftflowtechnologies.meetingmind.feature.work.WorkSettingsScreen(vm, onNavigateBack = { navController.popBackStack() })
         }
         composable(Routes.DATA_BACKUP) {
             com.craftflowtechnologies.meetingmind.feature.settings.DataBackupScreen(
@@ -753,8 +829,13 @@ fun MeetMindApp(navController: NavHostController = rememberNavController()) {
                 durationMs = durationMs,
                 onNavigateBack = { navController.popBackStack() },
                 onProcessingComplete = { finishedMeetingId ->
-                    navController.navigate(Routes.meetingDetailRoute(finishedMeetingId)) {
-                        popUpTo(Routes.PROCESSING) { inclusive = true }
+                    // A work recording with findings opens its Wrap-up (PLAN_PROFESSIONAL.md §4.3);
+                    // anything else opens as before.
+                    recoveryScope.launch {
+                        val wrapUp = com.craftflowtechnologies.meetingmind.core.work.WorkRepository(MeetMindDatabase.getInstance(context)).wantsWrapUp(finishedMeetingId)
+                        navController.navigate(if (wrapUp) Routes.wrapUpRoute(finishedMeetingId) else Routes.meetingDetailRoute(finishedMeetingId)) {
+                            popUpTo(Routes.PROCESSING) { inclusive = true }
+                        }
                     }
                 },
                 onNavigateToModels = { navController.navigate(Routes.MODELS) }
