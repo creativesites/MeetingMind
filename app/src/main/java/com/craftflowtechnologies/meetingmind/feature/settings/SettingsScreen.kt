@@ -253,6 +253,7 @@ fun SettingsScreen(
     onOpenDataBackup: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
     onOpenWork: () -> Unit = {},
+    onOpenIntegrations: () -> Unit = {},
     onReplayTour: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -412,6 +413,14 @@ fun SettingsScreen(
                         subtitle = "Used to personalize your experience, like Ask AI addressing you by name.",
                         onClick = { showEditNameDialog = true },
                         modifier = Modifier.testTag("settings_name_row")
+                    )
+                }
+                settingsRow {
+                    SettingsNavRow(
+                        title = "Integrations",
+                        subtitle = "Calendar, storage, email & sharing",
+                        onClick = onOpenIntegrations,
+                        modifier = Modifier.testTag("settings_integrations_row")
                     )
                 }
             }

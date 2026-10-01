@@ -1033,12 +1033,22 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenDataBackup = { navController.navigate(Routes.DATA_BACKUP) },
                 onOpenAppearance = { navController.navigate(Routes.APPEARANCE) },
                 onOpenWork = { navController.navigate(Routes.WORK_SETTINGS) },
+                onOpenIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
                 onReplayTour = {
                     recoveryScope.launch {
                         com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context).setTourCompleted(false)
                         navigateToPrimary(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.HOME)
                     }
                 }
+            )
+        }
+
+        // INTEGRATIONS (W13)
+        composable(Routes.INTEGRATIONS) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.settings.IntegrationsViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.settings.IntegrationsScreen(
+                viewModel = vm,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
     }

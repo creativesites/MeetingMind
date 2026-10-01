@@ -18,6 +18,7 @@ object Routes {
     const val SEARCH = "search"
     const val MODELS = "models"
     const val SETTINGS = "settings"
+    const val INTEGRATIONS = "integrations"
     const val FAITH = "faith"
     const val FAITH_JOURNEY = "faith_journey"
     const val FAITH_SCRIPTURE = "faith_scripture"

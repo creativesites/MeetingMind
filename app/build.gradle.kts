@@ -42,6 +42,10 @@ android {
     buildConfigField("String", "DEEPSEEK_PROXY_URL", "\"${(System.getenv("DEEPSEEK_PROXY_URL") ?: "").replace("\"", "")}\"")
     buildConfigField("String", "SYSTEM_DEEPSEEK_API_KEY", "\"${(System.getenv("SYSTEM_DEEPSEEK_API_KEY") ?: "").replace("\"", "")}\"")
     buildConfigField("Boolean", "SYSTEM_GEMINI_MODE", "true")
+
+    // Integrations (W13): Gmail and Outlook are off by default per brief
+    val emailIntegrationsEnabled = (System.getenv("FEATURE_INTEGRATIONS_EMAIL") ?: "false").toBoolean()
+    buildConfigField("Boolean", "FEATURE_INTEGRATIONS_EMAIL", "$emailIntegrationsEnabled")
   }
 
   signingConfigs {
@@ -68,12 +72,20 @@ android {
       // Installs beside the tester/Play app, never over it: its own package, name and data.
       applicationIdSuffix = ".dev"
       versionNameSuffix = "-dev"
+      // Sign-in registrations for W13 (docs/INTEGRATION_CREDENTIALS.md)
+      buildConfigField("String", "GOOGLE_CLIENT_ID", "\"785434731634-p56sa9uf14ivlnfh2hubtn1j6nrhta7u.apps.googleusercontent.com\"")
+      buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"658f22a9-30c8-40e6-8400-992ace977d57\"")
+      buildConfigField("String", "MICROSOFT_REDIRECT_URI", "\"msauth://com.craftflowtechnologies.meetingmind.dev/5wWRPGuPtxCEmMlzxlXOVAoSszg%3D\"")
     }
     release {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
+      // Sign-in registrations for W13 (docs/INTEGRATION_CREDENTIALS.md)
+      buildConfigField("String", "GOOGLE_CLIENT_ID", "\"785434731634-k9t9e8c1altm4boq43j5f5t4p06ksdhk.apps.googleusercontent.com\"")
+      buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"658f22a9-30c8-40e6-8400-992ace977d57\"")
+      buildConfigField("String", "MICROSOFT_REDIRECT_URI", "\"msauth://com.craftflowtechnologies.meetingmind/FESXSvN0NJAEHo4M4ZnxNON6Mz0%3D\"")
     }
     // debug build type intentionally left unconfigured here so AGP falls back to its
     // built-in default debug signing config (auto-generated ~/.android/debug.keystore),
