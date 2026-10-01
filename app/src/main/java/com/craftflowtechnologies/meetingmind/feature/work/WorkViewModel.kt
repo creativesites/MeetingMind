@@ -324,4 +324,37 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         const val NOT_SAME = "not_same_people"
         const val INTRO = "work_intro_dismissed"
     }
+
+    // ---------------------------------------------------------------- views (W14)
+
+    val viewQueries = ViewQueries(database)
+    val xrayBuilder = XRayBuilder(database)
+
+    suspend fun loadProjectKanban(projectId: String): KanbanBoardData = viewQueries.projectKanban(projectId)
+    suspend fun loadProjectTimeline(projectId: String): List<TimelineSection> = viewQueries.projectTimeline(projectId)
+    suspend fun loadProjectXRay(projectId: String): XRayGraph = xrayBuilder.build(projectId)
+    suspend fun loadAllRisks(projectId: String? = null): List<RiskItem> = viewQueries.risks(projectId)
+
+    fun moveKanbanCard(card: KanbanCard, targetCol: KanbanColumnType) = viewModelScope.launch {
+        if (card.isTask) {
+            val shouldBeDone = (targetCol == KanbanColumnType.DONE)
+            val currentTask = workDao.allTasks().firstOrNull { it.id == card.id }
+            val isCurrentlyDone = currentTask?.doneAt != null
+            if (shouldBeDone != isCurrentlyDone) {
+                work.toggle(card.id)
+            }
+        } else {
+            val targetStatus = when (targetCol) {
+                KanbanColumnType.TO_DO -> ItemStatus.OPEN
+                KanbanColumnType.IN_PROGRESS -> if (card.itemKind == ItemKind.DECISION) ItemStatus.ACTIVE else ItemStatus.OPEN
+                KanbanColumnType.DONE -> when (card.itemKind) {
+                    ItemKind.QUESTION -> ItemStatus.ANSWERED
+                    ItemKind.DECISION -> ItemStatus.ACTIVE
+                    ItemKind.COMMITMENT -> ItemStatus.COMPLETED
+                    else -> ItemStatus.CLOSED
+                }
+            }
+            ItemRepository(database).setStatus(card.id, targetStatus)
+        }
+    }
 }

@@ -41,12 +41,19 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.draw.clip
+import com.craftflowtechnologies.meetingmind.core.work.RiskItem
+import com.craftflowtechnologies.meetingmind.ui.theme.Danger
 
-enum class WorkTab(val label: String) { MINE("You owe"), WAITING("They owe"), DECISIONS("Decisions"), QUESTIONS("Open questions"), PEOPLE("People") }
+enum class WorkTab(val label: String) { MINE("You owe"), WAITING("They owe"), DECISIONS("Decisions"), QUESTIONS("Open questions"), RISKS("Risks"), PEOPLE("People") }
 
 /**
- * Everything in Work, one list at a time (docs/PLAN_PROFESSIONAL.md §7.4): what you owe, what
- * you're owed, the decision log, open questions and the people you work with.
+ * Everything in Work, one list at a time (docs/PLAN_PROFESSIONAL.md §7.4, W14 Views): what you owe, what
+ * you're owed, the decision log, open questions, risks and the people you work with.
  */
 @Composable
 fun WorkAllScreen(
@@ -58,6 +65,7 @@ fun WorkAllScreen(
     onOpenPerson: (String) -> Unit
 ) {
     var tab by rememberSaveable { mutableStateOf(initial) }
+    var risks by remember { mutableStateOf<List<RiskItem>>(emptyList()) }
     val youOwe by viewModel.youOwe.collectAsState()
     val theyOwe by viewModel.theyOwe.collectAsState()
     val unclear by viewModel.unclear.collectAsState()
@@ -72,6 +80,12 @@ fun WorkAllScreen(
     var nudging by remember { mutableStateOf<WorkTask?>(null) }
     var newPerson by remember { mutableStateOf(false) }
     var showDone by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(tab) {
+        if (tab == WorkTab.RISKS) {
+            risks = viewModel.loadAllRisks()
+        }
+    }
 
     Scaffold(containerColor = SurfaceBase) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 40.dp)) {
@@ -141,6 +155,57 @@ fun WorkAllScreen(
                     items(questions, key = { it.id }) { q ->
                         FindingLine(FindingKind.QUESTION, q.text, "${q.meetingTitle} · ${dayLabel(q.createdAt)}", onClick = { onOpenMeeting(q.meetingId, null) },
                             trailing = { TextButton(onClick = { viewModel.resolveQuestion(q, null) }) { Text("Answered") } })
+                    }
+                }
+                WorkTab.RISKS -> {
+                    if (risks.isEmpty()) item { EmptyLine("No risks logged. Risks identified in your meetings and notes gather here by severity.") }
+                    items(risks, key = { it.id }) { r ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(androidx.compose.ui.graphics.Color.White)
+                                .border(1.dp, LineSoft, RoundedCornerShape(8.dp))
+                                .padding(12.dp)
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = r.title,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Ink,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(if (r.severity == "HIGH") Danger.copy(alpha = 0.15f) else LineSoft)
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = r.severity,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (r.severity == "HIGH") Danger else InkSecondary
+                                        )
+                                    }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    r.meetingTitle?.let { mt ->
+                                        Text(text = mt, fontSize = 12.sp, color = InkMuted)
+                                    }
+                                    r.counterparty?.let { cp ->
+                                        Text(text = "• $cp", fontSize = 12.sp, color = InkSecondary)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 WorkTab.PEOPLE -> {
