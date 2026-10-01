@@ -56,13 +56,24 @@ class KanbanMoveTest {
     fun movingLinkedItemToDoneUpdatesUnderlyingTask() = runBlocking {
         // 1. Create a task in DB
         val taskId = "task_sync_1"
-        f.db.taskDao().insertTask(
+        f.db.taskDao().upsert(
             TaskEntity(
                 id = taskId,
                 title = "Backend migration",
-                notebookId = "nb",
+                notes = "",
+                kind = "TASK",
                 dueAt = f.today + f.day,
-                createdAt = f.now
+                remindAt = null,
+                repeat = "NEVER",
+                doneAt = null,
+                personId = null,
+                noteId = "n1",
+                blockId = null,
+                meetingId = null,
+                startMs = null,
+                scripture = null,
+                createdAt = f.now,
+                updatedAt = f.now
             )
         )
 
@@ -73,13 +84,13 @@ class KanbanMoveTest {
         items.setStatus(item.id, ItemStatus.COMPLETED)
 
         // 4. Verify task doneAt is updated
-        val updatedTask = f.db.workDao().taskById(taskId)
+        val updatedTask = f.db.taskDao().getById(taskId)
         assertNotNull(updatedTask)
         assertNotNull(updatedTask!!.doneAt)
 
         // 5. Reopening item clears task doneAt
         items.setStatus(item.id, ItemStatus.OPEN)
-        val reopenedTask = f.db.workDao().taskById(taskId)
+        val reopenedTask = f.db.taskDao().getById(taskId)
         assertNotNull(reopenedTask)
         assertNull(reopenedTask!!.doneAt)
     }
@@ -90,23 +101,34 @@ class KanbanMoveTest {
         val task = TaskEntity(
             id = taskId,
             title = "Design review",
-            notebookId = "nb",
+            notes = "",
+            kind = "TASK",
             dueAt = f.today + 2 * f.day,
-            createdAt = f.now
+            remindAt = null,
+            repeat = "NEVER",
+            doneAt = null,
+            personId = null,
+            noteId = "n1",
+            blockId = null,
+            meetingId = null,
+            startMs = null,
+            scripture = null,
+            createdAt = f.now,
+            updatedAt = f.now
         )
-        f.db.taskDao().insertTask(task)
+        f.db.taskDao().upsert(task)
 
         // Simulate Kanban move to DONE for raw task card
         val doneTimestamp = f.now + 1_000L
-        f.db.workDao().updateTask(task.copy(doneAt = doneTimestamp))
+        f.db.taskDao().setDone(taskId, doneTimestamp, f.now + 1_000L)
 
-        val completedTask = f.db.workDao().taskById(taskId)
+        val completedTask = f.db.taskDao().getById(taskId)
         assertNotNull(completedTask)
         assertEquals(doneTimestamp, completedTask!!.doneAt)
 
         // Simulate move back to TO_DO
-        f.db.workDao().updateTask(completedTask.copy(doneAt = null))
-        val openTask = f.db.workDao().taskById(taskId)
+        f.db.taskDao().setDone(taskId, null, f.now + 2_000L)
+        val openTask = f.db.taskDao().getById(taskId)
         assertNotNull(openTask)
         assertNull(openTask!!.doneAt)
     }

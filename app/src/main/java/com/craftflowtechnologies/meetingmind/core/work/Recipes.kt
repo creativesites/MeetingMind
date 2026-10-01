@@ -103,7 +103,8 @@ sealed class ProposedAction(
         val actionId: String = UUID.randomUUID().toString(),
         val taskTitles: List<String>,
         val projectId: String?,
-        val dueAt: Long?
+        val dueAt: Long?,
+        val meetingId: String? = null
     ) : ProposedAction(actionId, "Create Tasks", "${taskTitles.size} tasks to create")
 
     data class UpdateProjectAction(
@@ -332,7 +333,8 @@ class RecipeEngine(
                         ProposedAction.CreateTasksAction(
                             taskTitles = titles,
                             projectId = context.projectId,
-                            dueAt = nextWeek
+                            dueAt = nextWeek,
+                            meetingId = context.meetingId
                         )
                     )
                 }
@@ -418,7 +420,7 @@ class RecipeEngine(
                                 personId = null,
                                 noteId = null,
                                 blockId = null,
-                                meetingId = null,
+                                meetingId = action.meetingId,
                                 startMs = null,
                                 scripture = null,
                                 createdAt = now,
@@ -427,8 +429,8 @@ class RecipeEngine(
                             )
                         )
                         createdTaskIds.add(taskId)
-                        executedCount++
                     }
+                    executedCount++
                 }
                 is ProposedAction.UpdateProjectAction -> {
                     // Project update execution

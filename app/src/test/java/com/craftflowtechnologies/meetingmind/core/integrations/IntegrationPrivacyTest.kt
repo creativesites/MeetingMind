@@ -59,7 +59,7 @@ class IntegrationPrivacyTest {
     @Test
     fun clientProfile_permitsEmailWithoutSpecialOptIn() {
         val googleProvider = GoogleEmailProvider(
-            workProfileProvider = { WorkProfile.CLIENT },
+            workProfileProvider = { WorkProfile.CLIENT_WORK },
             explicitOptInProvider = { false },
             enabledChecker = { true }
         )

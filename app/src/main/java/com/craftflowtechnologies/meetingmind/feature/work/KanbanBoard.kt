@@ -56,7 +56,9 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
+import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
+import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceTrack
 
 @Composable
 fun KanbanBoard(
@@ -126,7 +128,7 @@ private fun KanbanColumn(
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
-                    .background(LineSoft)
+                    .background(SurfaceTrack)
                     .padding(horizontal = 8.dp, vertical = 2.dp)
             ) {
                 Text(
@@ -178,11 +180,11 @@ private fun KanbanCardItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White)
-            .border(1.dp, LineSoft, RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .background(SurfaceBase)
+            .border(1.dp, LineSoft, RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(10.dp)
+            .padding(12.dp)
             .testTag("kanban_card_${card.id}")
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -216,11 +218,12 @@ private fun KanbanCardItem(
 
                     DropdownMenu(
                         expanded = menuOpen,
-                        onDismissRequest = { menuOpen = false }
+                        onDismissRequest = { menuOpen = false },
+                        modifier = Modifier.background(SurfaceRaised)
                     ) {
                         KanbanColumnType.entries.filter { it != currentColumn }.forEach { targetCol ->
                             DropdownMenuItem(
-                                text = { Text("Move to ${targetCol.label}") },
+                                text = { Text("Move to ${targetCol.label}", color = Ink, fontSize = 13.sp) },
                                 onClick = {
                                     menuOpen = false
                                     onMoveCard(card, targetCol)

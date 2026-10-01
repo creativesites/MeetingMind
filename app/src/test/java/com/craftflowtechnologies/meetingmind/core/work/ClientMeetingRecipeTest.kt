@@ -98,7 +98,7 @@ class ClientMeetingRecipeTest {
         assertTrue(reminderAction!!.text.contains("Acme review"))
 
         // Critical safety check: NOTHING has changed in Room before user approval
-        val tasksBeforeApproval = f.db.taskDao().allTasks()
+        val tasksBeforeApproval = f.db.taskDao().exportAll()
         assertTrue("No tasks should be created before explicit approval", tasksBeforeApproval.isEmpty())
 
         // 6. User Approves the actions
@@ -111,7 +111,7 @@ class ClientMeetingRecipeTest {
         assertEquals(2, executionResult.createdTaskIds.size)
 
         // Tasks are now successfully in Room
-        val tasksAfterApproval = f.db.taskDao().allTasks()
+        val tasksAfterApproval = f.db.taskDao().exportAll()
         assertEquals(2, tasksAfterApproval.size)
         val titles = tasksAfterApproval.map { it.title }.toSet()
         assertTrue(titles.contains("Send the finalized architecture diagram"))

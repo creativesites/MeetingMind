@@ -41,12 +41,15 @@ import com.craftflowtechnologies.meetingmind.core.work.XRayGraph
 import com.craftflowtechnologies.meetingmind.core.work.XRayNode
 import com.craftflowtechnologies.meetingmind.core.work.XRayNodeType
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
+import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
 import com.craftflowtechnologies.meetingmind.ui.theme.Danger
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkFaint
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
+import com.craftflowtechnologies.meetingmind.ui.theme.LineFaint
 import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
+import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 
 @Composable
@@ -67,8 +70,8 @@ fun XRayView(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .background(Accent.copy(alpha = 0.08f))
-                .border(1.dp, Accent.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                .background(AccentWash)
+                .border(1.dp, Accent.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
                 .padding(14.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -120,6 +123,7 @@ fun XRayView(
     selectedNode?.let { node ->
         AlertDialog(
             onDismissRequest = { selectedNode = null },
+            containerColor = SurfaceRaised,
             title = {
                 Text(
                     text = node.title,
@@ -139,6 +143,7 @@ fun XRayView(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(SurfaceSunk)
+                                .border(1.dp, LineFaint, RoundedCornerShape(8.dp))
                                 .padding(10.dp)
                         ) {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -160,7 +165,7 @@ fun XRayView(
             },
             confirmButton = {
                 TextButton(onClick = { selectedNode = null }) {
-                    Text("Close")
+                    Text("Close", color = Accent, fontWeight = FontWeight.SemiBold)
                 }
             }
         )
@@ -200,15 +205,15 @@ private fun XRayNodeChip(
     onClick: () -> Unit
 ) {
     val chipBorderColor = when (node.type) {
-        XRayNodeType.DECISION -> Accent.copy(alpha = 0.4f)
-        XRayNodeType.RISK -> Danger.copy(alpha = 0.4f)
+        XRayNodeType.DECISION -> Accent.copy(alpha = 0.45f)
+        XRayNodeType.RISK -> Danger.copy(alpha = 0.45f)
         else -> LineSoft
     }
 
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.White)
+            .background(SurfaceRaised)
             .border(1.dp, chipBorderColor, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp)

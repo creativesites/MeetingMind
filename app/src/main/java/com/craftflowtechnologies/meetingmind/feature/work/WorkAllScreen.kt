@@ -49,6 +49,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.clip
 import com.craftflowtechnologies.meetingmind.core.work.RiskItem
 import com.craftflowtechnologies.meetingmind.ui.theme.Danger
+import com.craftflowtechnologies.meetingmind.ui.theme.Warning
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.style.TextOverflow
 
 enum class WorkTab(val label: String) { MINE("You owe"), WAITING("They owe"), DECISIONS("Decisions"), QUESTIONS("Open questions"), RISKS("Risks"), PEOPLE("People") }
 
@@ -161,50 +166,54 @@ fun WorkAllScreen(
                 WorkTab.RISKS -> {
                     if (risks.isEmpty()) item { EmptyLine("No risks logged. Risks identified in your meetings and notes gather here by severity.") }
                     items(risks, key = { it.id }) { r ->
-                        Box(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(androidx.compose.ui.graphics.Color.White)
-                                .border(1.dp, LineSoft, RoundedCornerShape(8.dp))
-                                .padding(12.dp)
+                                .padding(start = 20.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = if (r.severity == "HIGH") Danger else Warning,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 16.dp, end = 10.dp)
+                            ) {
+                                Text(
+                                    text = r.title,
+                                    fontSize = 15.sp,
+                                    color = Ink,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val meta = listOfNotNull(r.meetingTitle, r.counterparty).joinToString("  ·  ")
+                                if (meta.isNotEmpty()) {
                                     Text(
-                                        text = r.title,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Ink,
-                                        modifier = Modifier.weight(1f)
+                                        text = meta,
+                                        fontSize = 12.sp,
+                                        color = InkMuted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 2.dp)
                                     )
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(if (r.severity == "HIGH") Danger.copy(alpha = 0.15f) else LineSoft)
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = r.severity,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (r.severity == "HIGH") Danger else InkSecondary
-                                        )
-                                    }
                                 }
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    r.meetingTitle?.let { mt ->
-                                        Text(text = mt, fontSize = 12.sp, color = InkMuted)
-                                    }
-                                    r.counterparty?.let { cp ->
-                                        Text(text = "• $cp", fontSize = 12.sp, color = InkSecondary)
-                                    }
-                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (r.severity == "HIGH") Danger.copy(alpha = 0.15f) else Warning.copy(alpha = 0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = r.severity,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (r.severity == "HIGH") Danger else Warning
+                                )
                             }
                         }
                     }

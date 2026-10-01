@@ -59,13 +59,24 @@ class ViewQueriesTest {
     @Test
     fun projectKanbanIncludesUnlinkedTasks() = runBlocking {
         // Insert a raw task in project "nb"
-        f.db.taskDao().insertTask(
+        f.db.taskDao().upsert(
             TaskEntity(
                 id = "task_raw_1",
                 title = "Raw project task",
-                notebookId = "nb",
+                notes = "",
+                kind = "TASK",
                 dueAt = f.today + f.day,
-                createdAt = f.now
+                remindAt = null,
+                repeat = "NEVER",
+                doneAt = null,
+                personId = null,
+                noteId = "n1",
+                blockId = null,
+                meetingId = null,
+                startMs = null,
+                scripture = null,
+                createdAt = f.now,
+                updatedAt = f.now
             )
         )
 

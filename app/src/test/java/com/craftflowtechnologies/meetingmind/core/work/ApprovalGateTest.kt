@@ -47,7 +47,7 @@ class ApprovalGateTest {
         assertEquals(2, card.actions.size)
 
         // Crucial test: No tasks exist in the database prior to approval
-        val tasksBefore = f.db.taskDao().allTasks()
+        val tasksBefore = f.db.taskDao().exportAll()
         assertTrue(tasksBefore.isEmpty())
     }
 
@@ -70,10 +70,10 @@ class ApprovalGateTest {
         assertTrue(result.createdTaskIds.isNotEmpty())
 
         // Tasks are now safely written to Room
-        val tasksAfter = f.db.taskDao().allTasks()
+        val tasksAfter = f.db.taskDao().exportAll()
         assertEquals(1, tasksAfter.size)
         assertEquals("Configure OAuth credentials", tasksAfter.first().title)
-        assertEquals("nb", tasksAfter.first().notebookId)
+        assertEquals("m1", tasksAfter.first().meetingId)
     }
 
     @Test
@@ -95,6 +95,6 @@ class ApprovalGateTest {
         // Attempting to approve rejected card must execute 0 actions
         val result = engine.approve(card)
         assertEquals(0, result.executedActionsCount)
-        assertTrue(f.db.taskDao().allTasks().isEmpty())
+        assertTrue(f.db.taskDao().exportAll().isEmpty())
     }
 }

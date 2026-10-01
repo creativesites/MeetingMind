@@ -20,7 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.BorderStroke
 import com.craftflowtechnologies.meetingmind.core.work.ApprovalCard
 import com.craftflowtechnologies.meetingmind.core.work.ProposedAction
 import com.craftflowtechnologies.meetingmind.core.work.Recipe
@@ -60,8 +61,13 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
+import com.craftflowtechnologies.meetingmind.ui.theme.LineFaint
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
+import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
+import com.craftflowtechnologies.meetingmind.ui.theme.OnAccent
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
+import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised
+import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,8 +162,8 @@ fun RecipeCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(LineSoft))
+        colors = CardDefaults.cardColors(containerColor = SurfaceRaised),
+        border = BorderStroke(1.dp, LineSoft)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -174,11 +180,11 @@ fun RecipeCard(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Accent.copy(alpha = 0.1f)),
+                            .background(AccentWash),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Default.AutoAwesome,
+                            Icons.Default.PlayArrow,
                             contentDescription = null,
                             tint = Accent,
                             modifier = Modifier.size(20.dp)
@@ -202,8 +208,10 @@ fun RecipeCard(
                     checked = recipe.isEnabled,
                     onCheckedChange = onToggleRecipe,
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Accent
+                        checkedThumbColor = OnAccent,
+                        checkedTrackColor = Accent,
+                        uncheckedThumbColor = InkMuted,
+                        uncheckedTrackColor = LineSoft
                     )
                 )
             }
@@ -251,7 +259,9 @@ fun RecipeCard(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(SurfaceBase, RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SurfaceSunk)
+                                .border(1.dp, LineFaint, RoundedCornerShape(8.dp))
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
@@ -275,8 +285,10 @@ fun RecipeCard(
                                 enabled = recipe.isEnabled,
                                 modifier = Modifier.size(36.dp),
                                 colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = Accent
+                                    checkedThumbColor = OnAccent,
+                                    checkedTrackColor = Accent,
+                                    uncheckedThumbColor = InkMuted,
+                                    uncheckedTrackColor = LineSoft
                                 )
                             )
                         }
@@ -296,8 +308,8 @@ fun ApprovalCardView(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Accent))
+        colors = CardDefaults.cardColors(containerColor = SurfaceRaised),
+        border = BorderStroke(1.dp, Accent.copy(alpha = 0.4f))
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
@@ -314,7 +326,7 @@ fun ApprovalCardView(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Accent.copy(alpha = 0.15f))
+                        .background(AccentWash)
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
                     Text(
@@ -336,7 +348,8 @@ fun ApprovalCardView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(SurfaceBase)
+                    .background(SurfaceSunk)
+                    .border(1.dp, LineFaint, RoundedCornerShape(8.dp))
                     .padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -376,6 +389,7 @@ fun ApprovalCardView(
                 OutlinedButton(
                     onClick = onReject,
                     modifier = Modifier.weight(1f),
+                    border = BorderStroke(1.dp, LineSoft),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = InkSecondary)
                 ) {
                     Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -385,7 +399,7 @@ fun ApprovalCardView(
                 Button(
                     onClick = onApprove,
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = OnAccent)
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.size(6.dp))

@@ -50,14 +50,18 @@ import com.craftflowtechnologies.meetingmind.core.integrations.IntegrationCatego
 import com.craftflowtechnologies.meetingmind.core.integrations.IntegrationProvider
 import com.craftflowtechnologies.meetingmind.core.integrations.ProviderStatus
 import com.craftflowtechnologies.meetingmind.core.work.WorkProfile
+import androidx.compose.foundation.BorderStroke
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.Danger
+import com.craftflowtechnologies.meetingmind.ui.theme.DangerWash
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkFaint
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
+import com.craftflowtechnologies.meetingmind.ui.theme.OnAccent
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
+import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -210,7 +214,7 @@ private fun IntegrationCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
+            .background(SurfaceRaised)
             .border(1.dp, LineSoft, RoundedCornerShape(12.dp))
             .padding(16.dp)
     ) {
@@ -240,7 +244,7 @@ private fun IntegrationCard(
                         checked = isEnabled,
                         onCheckedChange = onToggleEnabled,
                         colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
+                            checkedThumbColor = OnAccent,
                             checkedTrackColor = Accent,
                             uncheckedThumbColor = InkMuted,
                             uncheckedTrackColor = LineSoft
@@ -293,7 +297,7 @@ private fun ComingLaterCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
+            .background(SurfaceRaised)
             .border(1.dp, LineSoft, RoundedCornerShape(12.dp))
             .padding(16.dp)
     ) {
@@ -322,6 +326,7 @@ private fun ComingLaterCard(
                 OutlinedButton(
                     onClick = onToggleNotify,
                     shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, if (isNotified) Accent.copy(alpha = 0.4f) else LineSoft),
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = if (isNotified) Accent else InkSecondary
                     ),
@@ -370,8 +375,8 @@ private fun ConfidentialWarningCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Danger.copy(alpha = 0.06f))
-            .border(1.dp, Danger.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
+            .background(DangerWash)
+            .border(1.dp, Danger.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
             .padding(14.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -384,7 +389,7 @@ private fun ConfidentialWarningCard(
             Text(
                 text = "Email integration is restricted by default in your profile to prevent sensitive client or patient correspondence from being indexed. You may explicitly opt in below.",
                 fontSize = 12.sp,
-                color = Ink,
+                color = InkSecondary,
                 lineHeight = 16.sp
             )
             Row(
@@ -402,7 +407,7 @@ private fun ConfidentialWarningCard(
                     checked = optIn,
                     onCheckedChange = onOptInChanged,
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
+                        checkedThumbColor = OnAccent,
                         checkedTrackColor = Danger,
                         uncheckedThumbColor = InkMuted,
                         uncheckedTrackColor = LineSoft

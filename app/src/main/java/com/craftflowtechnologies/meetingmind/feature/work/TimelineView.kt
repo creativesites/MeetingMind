@@ -42,6 +42,8 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
+import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised
+import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceTrack
 
 @Composable
 fun TimelineView(
@@ -113,9 +115,9 @@ private fun TimelineRow(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White)
-            .border(1.dp, LineSoft, RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .background(SurfaceRaised)
+            .border(1.dp, LineSoft, RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
             .padding(12.dp)
     ) {
@@ -127,7 +129,7 @@ private fun TimelineRow(
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(iconTint.copy(alpha = 0.1f)),
+                    .background(iconTint.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -166,7 +168,7 @@ private fun TimelineRow(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(LineSoft)
+                        .background(SurfaceTrack)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(

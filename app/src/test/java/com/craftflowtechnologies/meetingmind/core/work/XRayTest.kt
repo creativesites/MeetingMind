@@ -49,14 +49,24 @@ class XRayTest {
         )
 
         // 3. Add Task assigned to Ana
-        f.db.taskDao().insertTask(
+        f.db.taskDao().upsert(
             TaskEntity(
                 id = "task_xray_1",
                 title = "Prepare launch checklist",
-                notebookId = "nb",
-                personId = "ana",
+                notes = "",
+                kind = "TASK",
                 dueAt = f.today + 3 * f.day,
-                createdAt = f.now
+                remindAt = null,
+                repeat = "NEVER",
+                doneAt = null,
+                personId = "ana",
+                noteId = "n1",
+                blockId = null,
+                meetingId = null,
+                startMs = null,
+                scripture = null,
+                createdAt = f.now,
+                updatedAt = f.now
             )
         )
 
