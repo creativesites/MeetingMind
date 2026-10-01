@@ -8,7 +8,7 @@ import com.craftflowtechnologies.meetingmind.core.work.WorkProfile
  * Uses public client ID from docs/INTEGRATION_CREDENTIALS.md.
  */
 class GoogleEmailProvider(
-    private val workProfileProvider: () -> WorkProfile = { WorkProfile.CLIENT },
+    private val workProfileProvider: () -> WorkProfile = { WorkProfile.CLIENT_WORK },
     private val explicitOptInProvider: () -> Boolean = { false },
     private val enabledChecker: () -> Boolean = { false },
     private val messageFetcher: suspend (Set<String>, Set<String>, Long) -> List<EmailMessage> = { _, _, _ -> emptyList() }

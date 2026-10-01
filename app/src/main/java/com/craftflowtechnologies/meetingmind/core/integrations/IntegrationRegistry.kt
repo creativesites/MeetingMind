@@ -4,6 +4,7 @@ import android.content.Context
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.work.WorkProfile
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 
 /**
@@ -28,7 +29,7 @@ class IntegrationRegistry(
 
     private val googleEmail = GoogleEmailProvider(
         workProfileProvider = {
-            runBlockingCatching { userPrefs.workSettings.firstOrNull()?.profile } ?: WorkProfile.CLIENT
+            runBlockingCatching { userPrefs.workSettings.firstOrNull()?.profile } ?: WorkProfile.CLIENT_WORK
         },
         explicitOptInProvider = {
             runBlockingCatching { preferences.state.firstOrNull()?.confidentialEmailOptIn } ?: false
@@ -40,7 +41,7 @@ class IntegrationRegistry(
 
     private val microsoftEmail = MicrosoftEmailProvider(
         workProfileProvider = {
-            runBlockingCatching { userPrefs.workSettings.firstOrNull()?.profile } ?: WorkProfile.CLIENT
+            runBlockingCatching { userPrefs.workSettings.firstOrNull()?.profile } ?: WorkProfile.CLIENT_WORK
         },
         explicitOptInProvider = {
             runBlockingCatching { preferences.state.firstOrNull()?.confidentialEmailOptIn } ?: false
@@ -107,7 +108,7 @@ class IntegrationRegistry(
 
     private suspend fun <T> Flow<T>.firstOrNull(): T? {
         return try {
-            kotlinx.coroutines.flow.first(this)
+            this.first()
         } catch (_: Exception) {
             null
         }

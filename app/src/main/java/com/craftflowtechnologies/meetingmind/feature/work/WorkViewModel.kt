@@ -19,11 +19,20 @@ import com.craftflowtechnologies.meetingmind.core.work.ContextType
 import com.craftflowtechnologies.meetingmind.core.work.DueDates
 import com.craftflowtechnologies.meetingmind.core.work.ItemRepository
 import com.craftflowtechnologies.meetingmind.core.work.ItemStatus
+import com.craftflowtechnologies.meetingmind.core.work.ItemKind
 import com.craftflowtechnologies.meetingmind.core.work.Prepare
 import com.craftflowtechnologies.meetingmind.core.work.Pulse
 import com.craftflowtechnologies.meetingmind.core.work.PulseEvent
 import com.craftflowtechnologies.meetingmind.core.work.SavedViews
 import com.craftflowtechnologies.meetingmind.core.work.itemStatus
+import com.craftflowtechnologies.meetingmind.core.work.ViewQueries
+import com.craftflowtechnologies.meetingmind.core.work.XRayBuilder
+import com.craftflowtechnologies.meetingmind.core.work.KanbanBoardData
+import com.craftflowtechnologies.meetingmind.core.work.TimelineSection
+import com.craftflowtechnologies.meetingmind.core.work.XRayGraph
+import com.craftflowtechnologies.meetingmind.core.work.RiskItem
+import com.craftflowtechnologies.meetingmind.core.work.KanbanCard
+import com.craftflowtechnologies.meetingmind.core.work.KanbanColumnType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.mapLatest
 import com.craftflowtechnologies.meetingmind.core.work.Direction
@@ -338,7 +347,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     fun moveKanbanCard(card: KanbanCard, targetCol: KanbanColumnType) = viewModelScope.launch {
         if (card.isTask) {
             val shouldBeDone = (targetCol == KanbanColumnType.DONE)
-            val currentTask = workDao.allTasks().firstOrNull { it.id == card.id }
+            val currentTask = database.taskDao().getById(card.id)
             val isCurrentlyDone = currentTask?.doneAt != null
             if (shouldBeDone != isCurrentlyDone) {
                 work.toggle(card.id)

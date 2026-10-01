@@ -1,17 +1,22 @@
 # Installable builds
 
-**v41** (`MeetingMind-v41-arm64-v8a.apk`, `MeetingMind-v41-armeabi-v7a.apk`) is the Professional work through **W12**
-with a redesigned Work screen. Same signing key, so it installs over the earlier test builds and keeps your data.
+**v41-dev** (`MeetingMind-v41-dev-arm64-v8a.apk`, `MeetingMind-v41-dev-armeabi-v7a.apk`) includes the full Professional vertical through **W15** (Integrations, Views & Automation). Same fixed dev signing key (`dev-debug.keystore`), installs alongside your release build as "MeetingMind Dev" (`.dev`) and keeps your data.
 
-- **Redesigned Work header:** the date, a large title with a live status line ("3 tasks · 1 waiting on"), round
-  search and settings buttons, and a new welcome card. The empty schedule is now one slim row.
-- **New list icons:** each recording, note and summary has its own tinted tile (recording, client call, 1:1,
-  decision record, action items, summary) instead of the same grey document.
-- **The crash screen is gone.** The unlock crash was fixed in v39 and v40.
-- **Play Store bundle:** built on GitHub from the `aab-*` tag workflow (`.github/workflows/release-aab.yml`), signed with
-  your upload key and carrying the built-in testing API keys. It goes to a draft release, never into git.
+- **W15 Automation & Recipes (P8):**
+  - **Recipes engine:** `AutomatedActionEngine` with trigger routing (`POST_MEETING_CONFIRMED`, `DUE_DATE_APPROACHING`, `NEW_RISK_DETECTED`).
+  - **Proposed actions & approval barrier:** Action items extracted to tasks, minutes exported, risk escalations, and nudges require explicit user confirmation via `ApprovalCard` before execution.
+  - **Settings → Recipes & Automation:** Toggle individual automations, configure auto-drafting vs manual review.
+- **W14 Work Views (P7):**
+  - **Kanban Board:** Multi-column board (To Do, In Progress, In Review, Blocked, Done) with drag-and-drop / column advancement.
+  - **Timeline View:** Chronological milestone & deadline visualization for project deliverables.
+  - **Risks Dashboard:** Comprehensive risk tracker with severity ratings, status filters, and mitigation planning.
+  - **Professional X-Ray Graph:** Visual relationship network showing connections between projects, people, meetings, and decisions.
+- **W13 Integrations & Integration Centre (P6):**
+  - **Provider architecture:** Extensible integration model with scoped email, calendar, and export capabilities.
+  - **Settings → Integration Centre:** Manage connected accounts, sync preferences, and export destinations.
+  - **Calendar Sync:** Seamless two-way integration with device calendar events.
 
-Built from this branch at the commit that added this file. The v40 build was removed.
+Built from this branch at the commit that added this file. Earlier standalone v41 builds were replaced.
 
 ## What's new in v37 (W7–W10)
 

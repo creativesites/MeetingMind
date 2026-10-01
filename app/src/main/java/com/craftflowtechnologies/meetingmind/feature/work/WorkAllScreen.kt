@@ -41,6 +41,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
+import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box

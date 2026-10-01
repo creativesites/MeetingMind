@@ -121,9 +121,9 @@ sealed class ProposedAction(
     data class ExportMinutesAction(
         val actionId: String = UUID.randomUUID().toString(),
         val meetingId: String,
-        val title: String,
+        val docTitle: String,
         val content: String
-    ) : ProposedAction(actionId, "Minutes Document", title)
+    ) : ProposedAction(actionId, "Minutes Document", docTitle)
 }
 
 enum class ApprovalStatus {
@@ -288,7 +288,7 @@ class RecipeEngine(
                     actions.add(
                         ProposedAction.ExportMinutesAction(
                             meetingId = context.meetingId ?: "unknown",
-                            title = "Minutes - $meetingTitle",
+                            docTitle = "Minutes - $meetingTitle",
                             content = minutesContent
                         )
                     )
@@ -402,15 +402,28 @@ class RecipeEngine(
         for (action in card.actions) {
             when (action) {
                 is ProposedAction.CreateTasksAction -> {
+                    val now = clock()
                     for (title in action.taskTitles) {
                         val taskId = UUID.randomUUID().toString()
-                        taskDao.insertTask(
+                        taskDao.upsert(
                             TaskEntity(
                                 id = taskId,
                                 title = title,
-                                notebookId = action.projectId,
+                                notes = "",
+                                kind = "TASK",
                                 dueAt = action.dueAt,
-                                createdAt = clock()
+                                remindAt = null,
+                                repeat = "NONE",
+                                doneAt = null,
+                                personId = null,
+                                noteId = null,
+                                blockId = null,
+                                meetingId = null,
+                                startMs = null,
+                                scripture = null,
+                                createdAt = now,
+                                updatedAt = now,
+                                space = "WORK"
                             )
                         )
                         createdTaskIds.add(taskId)

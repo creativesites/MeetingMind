@@ -420,16 +420,14 @@ fun SettingsScreen(
                     SettingsNavRow(
                         title = "Integrations",
                         subtitle = "Calendar, storage, email & sharing",
-                        onClick = onOpenIntegrations,
-                        modifier = Modifier.testTag("settings_integrations_row")
+                        onClick = onOpenIntegrations
                     )
                 }
                 settingsRow {
                     SettingsNavRow(
                         title = "Recipes & Automation",
                         subtitle = "Post-meeting actions, tasks & review triggers",
-                        onClick = onOpenRecipes,
-                        modifier = Modifier.testTag("settings_recipes_row")
+                        onClick = onOpenRecipes
                     )
                 }
             }

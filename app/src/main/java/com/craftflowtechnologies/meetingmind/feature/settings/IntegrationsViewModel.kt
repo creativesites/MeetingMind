@@ -20,7 +20,7 @@ data class IntegrationsUiState(
     val enabledProviderIds: Set<String> = emptySet(),
     val notifyMeProviderIds: Set<String> = emptySet(),
     val confidentialOptIn: Boolean = false,
-    val currentWorkProfile: WorkProfile = WorkProfile.CLIENT,
+    val currentWorkProfile: WorkProfile = WorkProfile.CLIENT_WORK,
     val isEmailFeatureEnabled: Boolean = BuildConfig.FEATURE_INTEGRATIONS_EMAIL
 )
 

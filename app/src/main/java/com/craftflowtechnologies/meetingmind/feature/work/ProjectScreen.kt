@@ -2,6 +2,7 @@ package com.craftflowtechnologies.meetingmind.feature.work
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -201,7 +202,8 @@ fun ProjectScreen(
                 }
                 ProjectViewTab.KANBAN -> {
                     item {
-                        kanbanData?.let { data ->
+                        val data = kanbanData
+                        if (data != null) {
                             KanbanBoard(
                                 boardData = data,
                                 onMoveCard = { card, targetCol ->
@@ -209,11 +211,13 @@ fun ProjectScreen(
                                     refreshKey++
                                 }
                             )
-                        } ?: Box(
-                            modifier = Modifier.fillMaxWidth().padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("Loading Kanban board...", fontSize = 13.sp, color = InkMuted)
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("Loading Kanban board...", fontSize = 13.sp, color = InkMuted)
+                            }
                         }
                     }
                 }
@@ -229,13 +233,16 @@ fun ProjectScreen(
                 }
                 ProjectViewTab.XRAY -> {
                     item {
-                        xrayGraph?.let { graph ->
+                        val graph = xrayGraph
+                        if (graph != null) {
                             XRayView(graph = graph)
-                        } ?: Box(
-                            modifier = Modifier.fillMaxWidth().padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("Assembling X-Ray entity graph...", fontSize = 13.sp, color = InkMuted)
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("Assembling X-Ray entity graph...", fontSize = 13.sp, color = InkMuted)
+                            }
                         }
                     }
                 }

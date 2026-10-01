@@ -60,7 +60,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
-import com.craftflowtechnologies.meetingmind.ui.theme.Primary
+import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -174,13 +174,13 @@ fun RecipeCard(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Primary.copy(alpha = 0.1f)),
+                            .background(Accent.copy(alpha = 0.1f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.Default.AutoAwesome,
                             contentDescription = null,
-                            tint = Primary,
+                            tint = Accent,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -203,7 +203,7 @@ fun RecipeCard(
                     onCheckedChange = onToggleRecipe,
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
-                        checkedTrackColor = Primary
+                        checkedTrackColor = Accent
                     )
                 )
             }
@@ -230,12 +230,12 @@ fun RecipeCard(
                     text = if (expanded) "Hide steps" else "Customize steps",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
-                    color = Primary
+                    color = Accent
                 )
                 Icon(
                     imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
-                    tint = Primary,
+                    tint = Accent,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -276,7 +276,7 @@ fun RecipeCard(
                                 modifier = Modifier.size(36.dp),
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
-                                    checkedTrackColor = Primary
+                                    checkedTrackColor = Accent
                                 )
                             )
                         }
@@ -297,7 +297,7 @@ fun ApprovalCardView(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Primary))
+        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Accent))
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
@@ -314,14 +314,14 @@ fun ApprovalCardView(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Primary.copy(alpha = 0.15f))
+                        .background(Accent.copy(alpha = 0.15f))
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
                     Text(
                         text = "Awaiting Approval",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Primary
+                        color = Accent
                     )
                 }
             }
@@ -350,7 +350,7 @@ fun ApprovalCardView(
                             text = "•",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Primary
+                            color = Accent
                         )
                         Column {
                             Text(
@@ -385,7 +385,7 @@ fun ApprovalCardView(
                 Button(
                     onClick = onApprove,
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent)
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.size(6.dp))

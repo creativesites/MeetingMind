@@ -91,7 +91,7 @@ class StubIntegrationProvider(
                 name = "HubSpot",
                 category = IntegrationCategory.CRM,
                 capabilities = setOf(
-                    Capability.OUTPUT_SHARE_TEXT
+                    Capability.OUTPUT_DIRECT_MESSAGE
                 ),
                 accountScope = "One-way contact & meeting note export"
             )
