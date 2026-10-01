@@ -254,6 +254,7 @@ fun SettingsScreen(
     onOpenAppearance: () -> Unit = {},
     onOpenWork: () -> Unit = {},
     onOpenIntegrations: () -> Unit = {},
+    onOpenRecipes: () -> Unit = {},
     onReplayTour: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -421,6 +422,14 @@ fun SettingsScreen(
                         subtitle = "Calendar, storage, email & sharing",
                         onClick = onOpenIntegrations,
                         modifier = Modifier.testTag("settings_integrations_row")
+                    )
+                }
+                settingsRow {
+                    SettingsNavRow(
+                        title = "Recipes & Automation",
+                        subtitle = "Post-meeting actions, tasks & review triggers",
+                        onClick = onOpenRecipes,
+                        modifier = Modifier.testTag("settings_recipes_row")
                     )
                 }
             }

@@ -1034,6 +1034,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenAppearance = { navController.navigate(Routes.APPEARANCE) },
                 onOpenWork = { navController.navigate(Routes.WORK_SETTINGS) },
                 onOpenIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
+                onOpenRecipes = { navController.navigate(Routes.RECIPES) },
                 onReplayTour = {
                     recoveryScope.launch {
                         com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context).setTourCompleted(false)
@@ -1047,6 +1048,15 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         composable(Routes.INTEGRATIONS) {
             val vm: com.craftflowtechnologies.meetingmind.feature.settings.IntegrationsViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.settings.IntegrationsScreen(
+                viewModel = vm,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        // RECIPES & AUTOMATIONS (W15)
+        composable(Routes.RECIPES) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.settings.RecipesViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.settings.RecipesScreen(
                 viewModel = vm,
                 onNavigateBack = { navController.popBackStack() }
             )
