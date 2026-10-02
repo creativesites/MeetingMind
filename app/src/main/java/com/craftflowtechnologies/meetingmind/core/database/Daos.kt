@@ -39,6 +39,9 @@ interface MeetingDao {
 
     @Query("SELECT * FROM meetings WHERE status = :status")
     suspend fun getMeetingsWithStatus(status: String): List<MeetingEntity>
+
+    @Query("SELECT * FROM meetings WHERE noteId = :noteId LIMIT 1")
+    suspend fun getMeetingByNoteId(noteId: String): MeetingEntity?
 }
 
 @Dao

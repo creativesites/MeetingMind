@@ -48,7 +48,12 @@ import androidx.room.migration.Migration
         SegmentSignalEntity::class,
         BriefEntity::class,
         MemoryStoryEntity::class,
-        InboxItemEntity::class
+        InboxItemEntity::class,
+        LearningSessionEntity::class,
+        LearningConceptEntity::class,
+        LearningActivityEntity::class,
+        ActivityAttemptEntity::class,
+        ReviewScheduleEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
@@ -83,6 +88,11 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun searchDao(): SearchDao
     abstract fun noteAiJobDao(): NoteAiJobDao
     abstract fun noteVersionDao(): NoteVersionDao
+    abstract fun learningSessionDao(): LearningSessionDao
+    abstract fun learningConceptDao(): LearningConceptDao
+    abstract fun learningActivityDao(): LearningActivityDao
+    abstract fun activityAttemptDao(): ActivityAttemptDao
+    abstract fun reviewScheduleDao(): ReviewScheduleDao
 
     companion object {
         @Volatile
@@ -494,6 +504,38 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /** Learning vertical: Release 1 (docs/PLAN_LEARNING.md). Sessions, concepts, activities, attempts, schedules. */
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_21_22_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_21_22_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `learning_sessions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `meetingId` TEXT, `title` TEXT NOT NULL, `courseName` TEXT, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `lastStudiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE INDEX IF NOT EXISTS `index_learning_sessions_noteId` ON `learning_sessions` (`noteId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_sessions_meetingId` ON `learning_sessions` (`meetingId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_sessions_status` ON `learning_sessions` (`status`)",
+            "CREATE TABLE IF NOT EXISTS `learning_concepts` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `name` TEXT NOT NULL, `definition` TEXT NOT NULL, `emphasis` TEXT, `relationshipsJson` TEXT NOT NULL DEFAULT '[]', `evidenceJson` TEXT NOT NULL DEFAULT '[]', `state` TEXT NOT NULL DEFAULT 'NEW', `isUserEdited` INTEGER NOT NULL DEFAULT 0, `isDismissed` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_learning_concepts_sessionId` ON `learning_concepts` (`sessionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_concepts_state` ON `learning_concepts` (`state`)",
+            "CREATE TABLE IF NOT EXISTS `learning_activities` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `conceptId` TEXT, `type` TEXT NOT NULL, `prompt` TEXT NOT NULL, `expectedAnswer` TEXT NOT NULL, `optionsJson` TEXT NOT NULL DEFAULT '[]', `difficulty` TEXT NOT NULL DEFAULT 'MEDIUM', `evidenceJson` TEXT NOT NULL DEFAULT '[]', `isDiagnostic` INTEGER NOT NULL DEFAULT 0, `isDismissed` INTEGER NOT NULL DEFAULT 0, `isStale` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`conceptId`) REFERENCES `learning_concepts`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE INDEX IF NOT EXISTS `index_learning_activities_sessionId` ON `learning_activities` (`sessionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_activities_conceptId` ON `learning_activities` (`conceptId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_activities_type` ON `learning_activities` (`type`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_activities_isDiagnostic` ON `learning_activities` (`isDiagnostic`)",
+            "CREATE TABLE IF NOT EXISTS `activity_attempts` (`id` TEXT NOT NULL, `activityId` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `conceptId` TEXT, `userResponse` TEXT NOT NULL, `isCorrect` INTEGER NOT NULL, `selfRating` TEXT, `feedback` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`activityId`) REFERENCES `learning_activities`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_activity_attempts_activityId` ON `activity_attempts` (`activityId`)",
+            "CREATE INDEX IF NOT EXISTS `index_activity_attempts_sessionId` ON `activity_attempts` (`sessionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_activity_attempts_conceptId` ON `activity_attempts` (`conceptId`)",
+            "CREATE INDEX IF NOT EXISTS `index_activity_attempts_createdAt` ON `activity_attempts` (`createdAt`)",
+            "CREATE TABLE IF NOT EXISTS `review_schedules` (`id` TEXT NOT NULL, `activityId` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `conceptId` TEXT, `dueAt` INTEGER NOT NULL, `intervalDays` INTEGER NOT NULL DEFAULT 0, `repetitionCount` INTEGER NOT NULL DEFAULT 0, `easeFactor` REAL NOT NULL DEFAULT 2.5, `isPaused` INTEGER NOT NULL DEFAULT 0, `snoozedUntil` INTEGER, `lastReviewedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`activityId`) REFERENCES `learning_activities`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_review_schedules_activityId` ON `review_schedules` (`activityId`)",
+            "CREATE INDEX IF NOT EXISTS `index_review_schedules_sessionId` ON `review_schedules` (`sessionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_review_schedules_dueAt` ON `review_schedules` (`dueAt`)",
+            "CREATE INDEX IF NOT EXISTS `index_review_schedules_isPaused` ON `review_schedules` (`isPaused`)"
+        )
+
         internal val MIGRATION_20_21_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `inbox_items` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `uri` TEXT, `text` TEXT, `title` TEXT, `status` TEXT NOT NULL, `proposedJson` TEXT, `createdAt` INTEGER NOT NULL, `processedAt` INTEGER, `resultRefJson` TEXT, PRIMARY KEY(`id`))",
             "CREATE INDEX IF NOT EXISTS `index_inbox_items_status` ON `inbox_items` (`status`)"
@@ -631,7 +673,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 21
+        const val VERSION = 22
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {
@@ -649,7 +691,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
                     .build()
                 INSTANCE = instance
                 instance

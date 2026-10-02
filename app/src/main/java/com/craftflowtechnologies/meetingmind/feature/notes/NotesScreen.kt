@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -107,6 +108,8 @@ fun NotesScreen(
     onOpenFaith: (() -> Unit)? = null,
     /** Opens the Work space; shown on the library root (docs/PLAN_PROFESSIONAL.md §7). */
     onOpenWork: (() -> Unit)? = null,
+    /** Opens the Learning space; shown on the library root (docs/PLAN_LEARNING.md §1.2). */
+    onOpenLearning: (() -> Unit)? = null,
     onOpenTrash: () -> Unit = {}
 ) {
     val notes by viewModel.visibleNotes.collectAsState()
@@ -298,6 +301,24 @@ fun NotesScreen(
                                 Column(Modifier.weight(1f).padding(start = 14.dp)) {
                                     Text("Faith", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif)
                                     Text("Bible, verse of the day, prayer and your journey", fontSize = 12.5.sp, color = InkSecondary)
+                                }
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = InkSecondary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+                if (onOpenLearning != null && NotebookSpace.LEARNING in appIdentity.spaces && (space == null || space == NotebookSpace.LEARNING)) {
+                    item(key = "learning") {
+                        Surface(
+                            onClick = onOpenLearning, shape = RoundedCornerShape(18.dp), color = com.craftflowtechnologies.meetingmind.feature.learning.LearningTealWash,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, com.craftflowtechnologies.meetingmind.feature.learning.LearningTeal.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 16.dp).testTag("notes_open_learning")
+                        ) {
+                            Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.School, contentDescription = null, tint = com.craftflowtechnologies.meetingmind.feature.learning.LearningTeal, modifier = Modifier.size(22.dp))
+                                Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                                    Text("Learning", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                                    Text("Lectures, cited study guides, daily recall & spaced practice", fontSize = 12.5.sp, color = InkSecondary)
                                 }
                                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = InkSecondary, modifier = Modifier.size(18.dp))
                             }
