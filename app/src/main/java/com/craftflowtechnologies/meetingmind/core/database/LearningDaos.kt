@@ -75,8 +75,11 @@ interface LearningActivityDao {
     @Query("SELECT * FROM learning_activities WHERE id = :id")
     suspend fun getById(id: String): LearningActivityEntity?
 
-    @Query("SELECT * FROM learning_activities WHERE sessionId = :sessionId AND isDismissed = 0 AND isStale = 0 ORDER BY createdAt ASC")
+    @Query("SELECT * FROM learning_activities WHERE sessionId = :sessionId AND isDismissed = 0 ORDER BY createdAt ASC")
     fun observeBySession(sessionId: String): Flow<List<LearningActivityEntity>>
+
+    @Query("SELECT * FROM learning_activities WHERE sessionId = :sessionId AND isDismissed = 0 ORDER BY createdAt ASC")
+    suspend fun getBySession(sessionId: String): List<LearningActivityEntity>
 
     @Query("SELECT * FROM learning_activities WHERE sessionId = :sessionId AND isDiagnostic = 1 AND isDismissed = 0")
     fun observeDiagnosticBySession(sessionId: String): Flow<List<LearningActivityEntity>>
@@ -92,9 +95,6 @@ interface LearningActivityDao {
 
     @Query("SELECT * FROM learning_activities ORDER BY createdAt ASC")
     fun observeAll(): Flow<List<LearningActivityEntity>>
-
-    @Query("SELECT * FROM learning_activities WHERE sessionId = :sessionId AND isDismissed = 0")
-    suspend fun getBySession(sessionId: String): List<LearningActivityEntity>
 
     @Query("DELETE FROM learning_activities WHERE id = :id")
     suspend fun delete(id: String)

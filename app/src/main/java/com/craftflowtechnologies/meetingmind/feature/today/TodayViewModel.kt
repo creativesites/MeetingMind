@@ -131,6 +131,24 @@ class TodayViewModel(application: Application) : AndroidViewModel(application) {
     fun finishTour() = viewModelScope.launch { prefs.setTourCompleted(true) }
     fun dismissGettingStarted() = viewModelScope.launch { prefs.setGettingStartedDismissed(true) }
 
+    val homeHeroDisplayMode: StateFlow<com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode> =
+        prefs.preferencesFlow.map { it.homeHeroDisplayMode }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_SCRIPTURE)
+
+    fun setHomeHeroDisplayMode(mode: com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode) = viewModelScope.launch {
+        prefs.setHomeHeroDisplayMode(mode)
+    }
+
+    fun cycleHomeHeroMode() = viewModelScope.launch {
+        val current = homeHeroDisplayMode.value
+        val next = when (current) {
+            com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_SCRIPTURE -> com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_QUOTE
+            com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_QUOTE -> com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.STATS
+            com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.STATS -> com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_SCRIPTURE
+        }
+        prefs.setHomeHeroDisplayMode(next)
+    }
+
     private val _focus = MutableStateFlow(TodayFocus.ALL)
     val focus: StateFlow<TodayFocus> = _focus.asStateFlow()
 

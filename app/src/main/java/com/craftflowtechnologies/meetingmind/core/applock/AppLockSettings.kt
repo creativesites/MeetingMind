@@ -32,6 +32,7 @@ class AppLockSettings(
         // Turning off with nothing to authenticate against (screen lock removed since) must not
         // trap the owner behind a lock they can no longer pass.
         if (!enable && availability.hasNoOwnerCredential) {
+            controller.onPreferenceLoaded(false)
             store.setEnabled(false)
             return AppLockChange.Changed
         }
@@ -47,6 +48,7 @@ class AppLockSettings(
                 throw e
             }
         } else {
+            controller.onPreferenceLoaded(false)
             store.setEnabled(false)
         }
         return AppLockChange.Changed

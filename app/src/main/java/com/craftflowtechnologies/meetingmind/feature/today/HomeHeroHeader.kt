@@ -41,6 +41,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.FormatQuote
+import com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Event
@@ -117,6 +119,31 @@ private val Hairline: Color @androidx.compose.runtime.Composable @androidx.compo
 /** What the floating tile under the hero shows. */
 data class HeroTile(val label: String, val title: String, val subtitle: String, val icon: ImageVector, val accent: Color, val onClick: () -> Unit)
 
+object DailyInspirations {
+    data class DailyVerse(val reference: String, val text: String)
+    data class DailyQuote(val text: String, val author: String)
+
+    val verses = listOf(
+        DailyVerse("Joshua 1:9", "Be strong and courageous. Do not be afraid; do not be discouraged, for the Lord your God is with you."),
+        DailyVerse("Philippians 4:13", "I can do all things through Christ who strengthens me."),
+        DailyVerse("Jeremiah 29:11", "For I know the plans I have for you, plans to give you hope and a future."),
+        DailyVerse("Proverbs 3:5-6", "Trust in the Lord with all your heart and lean not on your own understanding."),
+        DailyVerse("Isaiah 40:31", "Those who hope in the Lord will renew their strength. They will soar on wings like eagles."),
+        DailyVerse("Romans 8:28", "In all things God works for the good of those who love him."),
+        DailyVerse("Psalm 23:1", "The Lord is my shepherd, I lack nothing. He leads me beside quiet waters.")
+    )
+
+    val quotes = listOf(
+        DailyQuote("Faith does not eliminate questions. But faith knows where to take them.", "Elisabeth Elliot"),
+        DailyQuote("Never be afraid to trust an unknown future to a known God.", "Corrie ten Boom"),
+        DailyQuote("God never made a promise that was too good to be true.", "D.L. Moody"),
+        DailyQuote("Prayer does not fit us for the greater work; prayer is the greater work.", "Oswald Chambers"),
+        DailyQuote("Grace is not part of the way; grace is all of the way.", "C.S. Lewis"),
+        DailyQuote("When you cannot trace His hand, you can always trust His heart.", "Charles Spurgeon"),
+        DailyQuote("Let your life be shaped by the promises of God, not the problems of the day.", "A.W. Tozer")
+    )
+}
+
 /**
  * Home's immersive header (PLAN_V2 F1), after the design the user supplied.
  *
@@ -144,13 +171,36 @@ fun HomeHeroHeader(
     onInbox: () -> Unit,
     onSwitch: () -> Unit,
     modifier: Modifier = Modifier,
+    displayMode: HomeHeroDisplayMode = HomeHeroDisplayMode.DAILY_SCRIPTURE,
+    scriptureReference: String? = null,
+    scriptureText: String? = null,
+    quoteText: String? = null,
+    quoteAuthor: String? = null,
+    onToggleMode: () -> Unit = {},
+    onOpenDevotional: () -> Unit = {},
     /** Fixes the sky to a moment (previews and screenshots); null follows the clock. */
     at: Calendar? = null
 ) {
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         TopRow(identity, inboxCount, showSwitch, switchLabel, onAvatar, onSearch, onInbox, onSwitch)
         Spacer(Modifier.height(18.dp))
-        HeroStage(greeting, contextLine, streakLabel, weekLabel, identity, tile, listState, at)
+        HeroStage(
+            greeting = greeting,
+            contextLine = contextLine,
+            streakLabel = streakLabel,
+            weekLabel = weekLabel,
+            identity = identity,
+            tile = tile,
+            listState = listState,
+            at = at,
+            displayMode = displayMode,
+            scriptureReference = scriptureReference,
+            scriptureText = scriptureText,
+            quoteText = quoteText,
+            quoteAuthor = quoteAuthor,
+            onToggleMode = onToggleMode,
+            onOpenDevotional = onOpenDevotional
+        )
     }
 }
 
@@ -224,7 +274,14 @@ private fun HeroStage(
     identity: AppIdentity,
     tile: HeroTile,
     listState: LazyListState,
-    at: Calendar?
+    at: Calendar?,
+    displayMode: HomeHeroDisplayMode = HomeHeroDisplayMode.DAILY_SCRIPTURE,
+    scriptureReference: String? = null,
+    scriptureText: String? = null,
+    quoteText: String? = null,
+    quoteAuthor: String? = null,
+    onToggleMode: () -> Unit = {},
+    onOpenDevotional: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val look = LocalAppLook.current
@@ -317,9 +374,47 @@ private fun HeroStage(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 52.dp)) {
-                GlassChip(Icons.Outlined.LocalFireDepartment, streakLabel, Color(sky.orbBody))
-                GlassChip(if (identity.faithFirst) Icons.Outlined.AutoStories else Icons.Outlined.EditNote, weekLabel, Color(sky.orbBody))
+            val dayOfYear = remember { Calendar.getInstance().get(Calendar.DAY_OF_YEAR) }
+            val fallbackVerse = remember(dayOfYear) { DailyInspirations.verses[dayOfYear % DailyInspirations.verses.size] }
+            val fallbackQuote = remember(dayOfYear) { DailyInspirations.quotes[dayOfYear % DailyInspirations.quotes.size] }
+
+            val refToUse = scriptureReference?.ifBlank { null } ?: fallbackVerse.reference
+            val textToUse = scriptureText?.ifBlank { null } ?: fallbackVerse.text
+            val quoteToUse = quoteText?.ifBlank { null } ?: fallbackQuote.text
+            val authorToUse = quoteAuthor?.ifBlank { null } ?: fallbackQuote.author
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, bottom = 48.dp)
+            ) {
+                when (displayMode) {
+                    HomeHeroDisplayMode.DAILY_SCRIPTURE -> {
+                        HeroScriptureBanner(
+                            reference = refToUse,
+                            verseText = textToUse,
+                            accent = Color(sky.orbBody),
+                            onToggle = onToggleMode,
+                            onClick = onOpenDevotional
+                        )
+                    }
+                    HomeHeroDisplayMode.DAILY_QUOTE -> {
+                        HeroQuoteBanner(
+                            quote = quoteToUse,
+                            author = authorToUse,
+                            accent = Color(sky.orbBody),
+                            onToggle = onToggleMode,
+                            onClick = onOpenDevotional
+                        )
+                    }
+                    HomeHeroDisplayMode.STATS -> {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            GlassChip(Icons.Outlined.LocalFireDepartment, streakLabel, Color(sky.orbBody), onClick = onToggleMode)
+                            GlassChip(if (identity.faithFirst) Icons.Outlined.AutoStories else Icons.Outlined.EditNote, weekLabel, Color(sky.orbBody), onClick = onToggleMode)
+                        }
+                    }
+                }
             }
         }
 
@@ -356,11 +451,135 @@ private fun HeroStage(
 }
 
 @Composable
-private fun GlassChip(icon: ImageVector, label: String, tint: Color) {
+private fun HeroScriptureBanner(
+    reference: String,
+    verseText: String,
+    accent: Color,
+    onToggle: () -> Unit,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        color = SurfaceBase.copy(alpha = 0.16f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("hero_scripture_banner")
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                onClick = onToggle,
+                shape = CircleShape,
+                color = accent.copy(alpha = 0.25f),
+                modifier = Modifier.size(28.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Outlined.AutoStories,
+                        contentDescription = "Switch to quote or stats",
+                        tint = accent,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    reference,
+                    color = accent,
+                    fontSize = 11.5.sp,
+                    fontFamily = OutfitFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+                Text(
+                    verseText,
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontFamily = InterFamily,
+                    lineHeight = 16.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroQuoteBanner(
+    quote: String,
+    author: String?,
+    accent: Color,
+    onToggle: () -> Unit,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        color = SurfaceBase.copy(alpha = 0.16f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("hero_quote_banner")
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                onClick = onToggle,
+                shape = CircleShape,
+                color = accent.copy(alpha = 0.25f),
+                modifier = Modifier.size(28.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Outlined.FormatQuote,
+                        contentDescription = "Switch to scripture or stats",
+                        tint = accent,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                if (author != null) {
+                    Text(
+                        author,
+                        color = accent,
+                        fontSize = 11.5.sp,
+                        fontFamily = OutfitFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    "“$quote”",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontFamily = InterFamily,
+                    lineHeight = 16.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlassChip(icon: ImageVector, label: String, tint: Color, onClick: (() -> Unit)? = null) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.clip(CircleShape).background(SurfaceBase.copy(alpha = 0.12f))
-            .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape).padding(horizontal = 12.dp, vertical = 7.dp)
+            .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 12.dp, vertical = 7.dp)
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(6.dp))

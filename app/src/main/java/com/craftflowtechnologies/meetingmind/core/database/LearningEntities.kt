@@ -102,6 +102,7 @@ data class LearningConceptEntity(
     @ColumnInfo(defaultValue = "NEW") val state: String = "NEW",
     @ColumnInfo(defaultValue = "0") val isUserEdited: Boolean = false,
     @ColumnInfo(defaultValue = "0") val isDismissed: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val isStale: Boolean = false,
     val createdAt: Long,
     val updatedAt: Long
 ) {
@@ -119,6 +120,7 @@ data class LearningConceptEntity(
         state = runCatching { LearningMasteryState.valueOf(state) }.getOrDefault(LearningMasteryState.NEW),
         isUserEdited = isUserEdited,
         isDismissed = isDismissed,
+        isStale = isStale,
         createdAt = createdAt,
         updatedAt = updatedAt
     )
@@ -135,6 +137,7 @@ data class LearningConceptEntity(
             state = domain.state.name,
             isUserEdited = domain.isUserEdited,
             isDismissed = domain.isDismissed,
+            isStale = domain.isStale,
             createdAt = domain.createdAt,
             updatedAt = domain.updatedAt
         )

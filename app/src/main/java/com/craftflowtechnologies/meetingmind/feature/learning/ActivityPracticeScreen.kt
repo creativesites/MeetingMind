@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Snooze
 import androidx.compose.material3.Button
@@ -58,9 +59,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.craftflowtechnologies.meetingmind.core.model.DeterministicSpacedScheduler
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivity
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivityType
 import com.craftflowtechnologies.meetingmind.core.model.RecallRating
+import com.craftflowtechnologies.meetingmind.core.model.ReviewSchedule
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
@@ -85,6 +88,7 @@ fun ActivityPracticeScreen(
     onNavigateBack: () -> Unit
 ) {
     var queue by remember { mutableStateOf<List<LearningActivity>>(emptyList()) }
+    var schedulesByActivityId by remember { mutableStateOf<Map<String, ReviewSchedule>>(emptyMap()) }
     var currentIndex by remember { mutableIntStateOf(0) }
     var isLoading by remember { mutableStateOf(true) }
     var completedCount by remember { mutableIntStateOf(0) }
@@ -92,6 +96,9 @@ fun ActivityPracticeScreen(
 
     LaunchedEffect(sessionId, activityId) {
         isLoading = true
+        val dues = viewModel.dueReviews.first()
+        schedulesByActivityId = dues.associate { it.first.id to it.second }
+
         if (activityId != null) {
             val act = viewModel.repository.observeActivities(sessionId ?: "").first().find { it.id == activityId }
                 ?: viewModel.repository.observeAllSessions().first().let { sessions ->
@@ -113,7 +120,6 @@ fun ActivityPracticeScreen(
             queue = acts
         } else {
             // Due reviews across all sessions
-            val dues = viewModel.dueReviews.first()
             queue = dues.map { it.first }
         }
         isLoading = false
@@ -148,25 +154,42 @@ fun ActivityPracticeScreen(
                         color = Ink
                     )
 
-                    // Snooze current activity action
-                    if (queue.isNotEmpty() && currentIndex < queue.size) {
-                        IconButton(onClick = {
-                            val act = queue[currentIndex]
-                            viewModel.snoozeActivity(act.id, hours = 24)
-                            if (currentIndex + 1 < queue.size) {
-                                currentIndex++
-                            } else {
-                                currentIndex = queue.size
+                    // Snooze and Dismiss actions
+                    Row {
+                        if (queue.isNotEmpty() && currentIndex < queue.size) {
+                            IconButton(onClick = {
+                                val act = queue[currentIndex]
+                                viewModel.snoozeActivity(act.id, hours = 24)
+                                if (currentIndex + 1 < queue.size) {
+                                    currentIndex++
+                                } else {
+                                    currentIndex = queue.size
+                                }
+                            }) {
+                                Icon(
+                                    Icons.Filled.Snooze,
+                                    contentDescription = "Snooze 24 hours",
+                                    tint = InkMuted
+                                )
                             }
-                        }) {
-                            Icon(
-                                Icons.Filled.Snooze,
-                                contentDescription = "Snooze 24 hours",
-                                tint = InkMuted
-                            )
+                            IconButton(onClick = {
+                                val act = queue[currentIndex]
+                                viewModel.dismissActivity(act.id)
+                                if (currentIndex + 1 < queue.size) {
+                                    currentIndex++
+                                } else {
+                                    currentIndex = queue.size
+                                }
+                            }) {
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription = "Dismiss question",
+                                    tint = InkMuted
+                                )
+                            }
+                        } else {
+                            Spacer(Modifier.size(48.dp))
                         }
-                    } else {
-                        Spacer(Modifier.size(48.dp))
                     }
                 }
 
@@ -304,6 +327,7 @@ fun ActivityPracticeScreen(
                         LearningActivityType.RECALL -> {
                             RecallPracticeItem(
                                 activity = currentActivity,
+                                schedule = schedulesByActivityId[currentActivity.id],
                                 onRate = { rating ->
                                     scope.launch {
                                         val isCorrect = rating != RecallRating.AGAIN
@@ -342,6 +366,7 @@ fun ActivityPracticeScreen(
                         else -> {
                             RecallPracticeItem(
                                 activity = currentActivity,
+                                schedule = schedulesByActivityId[currentActivity.id],
                                 onRate = { rating ->
                                     scope.launch {
                                         val isCorrect = rating != RecallRating.AGAIN
@@ -367,9 +392,25 @@ fun ActivityPracticeScreen(
 @Composable
 fun RecallPracticeItem(
     activity: LearningActivity,
+    schedule: ReviewSchedule? = null,
     onRate: (RecallRating) -> Unit
 ) {
     var isRevealed by remember(activity.id) { mutableStateOf(false) }
+    val effectiveSchedule = remember(activity.id, schedule) {
+        schedule ?: DeterministicSpacedScheduler.initialSchedule(activity.id, activity.sessionId, activity.conceptId)
+    }
+    val previewAgain = remember(effectiveSchedule) {
+        DeterministicSpacedScheduler.previewInterval(effectiveSchedule, RecallRating.AGAIN)
+    }
+    val previewHard = remember(effectiveSchedule) {
+        DeterministicSpacedScheduler.previewInterval(effectiveSchedule, RecallRating.HARD)
+    }
+    val previewGood = remember(effectiveSchedule) {
+        DeterministicSpacedScheduler.previewInterval(effectiveSchedule, RecallRating.GOOD)
+    }
+    val previewEasy = remember(effectiveSchedule) {
+        DeterministicSpacedScheduler.previewInterval(effectiveSchedule, RecallRating.EASY)
+    }
 
     Column(
         Modifier
@@ -482,7 +523,7 @@ fun RecallPracticeItem(
                     // Again
                     RecallRatingButton(
                         label = "Again",
-                        sublabel = "<1d",
+                        sublabel = previewAgain,
                         color = IncorrectRed,
                         onClick = { onRate(RecallRating.AGAIN) },
                         modifier = Modifier.weight(1f)
@@ -490,7 +531,7 @@ fun RecallPracticeItem(
                     // Hard
                     RecallRatingButton(
                         label = "Hard",
-                        sublabel = "1d",
+                        sublabel = previewHard,
                         color = Color(0xFFD97706),
                         onClick = { onRate(RecallRating.HARD) },
                         modifier = Modifier.weight(1f)
@@ -498,7 +539,7 @@ fun RecallPracticeItem(
                     // Good
                     RecallRatingButton(
                         label = "Good",
-                        sublabel = "3d",
+                        sublabel = previewGood,
                         color = LearningTeal,
                         onClick = { onRate(RecallRating.GOOD) },
                         modifier = Modifier.weight(1f)
@@ -506,7 +547,7 @@ fun RecallPracticeItem(
                     // Easy
                     RecallRatingButton(
                         label = "Easy",
-                        sublabel = "7d",
+                        sublabel = previewEasy,
                         color = CorrectGreen,
                         onClick = { onRate(RecallRating.EASY) },
                         modifier = Modifier.weight(1f)

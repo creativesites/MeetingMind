@@ -8,6 +8,7 @@ import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivity
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivityType
 import com.craftflowtechnologies.meetingmind.core.model.LearningEvidence
+import com.craftflowtechnologies.meetingmind.core.model.LearningPassage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -30,7 +31,7 @@ class ScopedAskLearning(
         sessionId: String,
         question: String
     ): AiResult<LearningAnswer> = withContext(Dispatchers.IO) {
-        val passages = gatherSessionPassages(sessionId)
+        val passages = gatherLearningPassages(sessionId)
         if (passages.isEmpty()) {
             return@withContext AiResult.Success(
                 LearningAnswer(
@@ -42,7 +43,7 @@ class ScopedAskLearning(
         }
 
         val aliases = passages.mapIndexed { i, p -> "p${i + 1}" to p }.toMap()
-        val prompt = buildAskPrompt(question, aliases)
+        val prompt = buildAskPrompt(question, aliases.mapValues { it.value.toSourcePassage() })
 
         val response = when (val res = languageModel.generate(prompt, maxOutputTokens = 1024)) {
             is AiResult.Success -> res.value
@@ -56,7 +57,7 @@ class ScopedAskLearning(
         val found = json.optBoolean("found", true)
         val concept = json.optString("suggestedConcept").trim().takeIf { it.isNotBlank() }
         val sourcesArr = json.optJSONArray("sources")
-        val citedPassages = mutableListOf<SourcePassage>()
+        val citedPassages = mutableListOf<LearningPassage>()
 
         if (sourcesArr != null) {
             for (i in 0 until sourcesArr.length()) {
@@ -65,13 +66,7 @@ class ScopedAskLearning(
             }
         }
 
-        val evidenceList = citedPassages.map { p ->
-            LearningEvidence(
-                noteId = p.noteId,
-                segmentIds = listOf(p.id),
-                quote = p.text.take(150)
-            )
-        }
+        val evidenceList = citedPassages.map { it.toEvidence() }
 
         AiResult.Success(
             LearningAnswer(
@@ -128,6 +123,21 @@ class ScopedAskLearning(
             return@withContext AiResult.Failed("Invalid quiz format generated.")
         }
 
+        // Anti-leakage gate
+        if (LearningIntelligenceEngine.isAnswerLeaked(qPrompt, expected)) {
+            return@withContext AiResult.Failed("Question prompt leaked the expected answer.")
+        }
+
+        // Strict MCQ validation: exactly 4 unique non-blank options with 1 match for expectedAnswer
+        val uniqueOptions = options.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        if (uniqueOptions.size != 4) {
+            return@withContext AiResult.Failed("Quiz generation requires exactly 4 unique options.")
+        }
+
+        if (uniqueOptions.count { it.equals(expected, ignoreCase = true) } != 1) {
+            return@withContext AiResult.Failed("Quiz generation requires exactly 1 option matching expected answer.")
+        }
+
         val now = System.currentTimeMillis()
         val activity = LearningActivity(
             id = UUID.randomUUID().toString(),
@@ -136,7 +146,7 @@ class ScopedAskLearning(
             type = LearningActivityType.MULTIPLE_CHOICE,
             prompt = qPrompt,
             expectedAnswer = expected,
-            options = options.shuffled(),
+            options = uniqueOptions.shuffled(),
             difficulty = "MEDIUM",
             evidence = evidence,
             isDiagnostic = false,
@@ -147,21 +157,37 @@ class ScopedAskLearning(
         AiResult.Success(activity)
     }
 
-    suspend fun gatherSessionPassages(sessionId: String): List<SourcePassage> = withContext(Dispatchers.IO) {
+    suspend fun gatherLearningPassages(sessionId: String): List<LearningPassage> = withContext(Dispatchers.IO) {
         val session = database.learningSessionDao().getById(sessionId) ?: return@withContext emptyList()
-        val results = mutableListOf<SourcePassage>()
+        val results = mutableListOf<LearningPassage>()
 
         // 1. Note Blocks
         val blocks = database.noteDao().getBlocks(session.noteId)
-        blocks.filter { it.text.isNotBlank() }.forEach { b ->
-            results.add(
-                SourcePassage(
-                    id = b.id,
-                    text = b.text,
-                    label = b.sectionKey ?: "Note section",
-                    noteId = session.noteId
+        val validBlocks = blocks.filter { it.text.isNotBlank() }
+        if (validBlocks.isNotEmpty()) {
+            validBlocks.forEach { b ->
+                results.add(
+                    LearningPassage.NoteBlock(
+                        id = b.id,
+                        text = b.text,
+                        label = b.sectionKey ?: "Note section",
+                        noteId = session.noteId,
+                        blockId = b.id
+                    )
                 )
-            )
+            }
+        } else {
+            val note = database.noteDao().getById(session.noteId)
+            if (note != null && note.plainText.isNotBlank()) {
+                results.add(
+                    LearningPassage.NoteText(
+                        id = session.noteId,
+                        text = note.plainText,
+                        label = "Note content",
+                        noteId = session.noteId
+                    )
+                )
+            }
         }
 
         // 2. Transcript segments (if linked to a lecture recording)
@@ -169,11 +195,15 @@ class ScopedAskLearning(
             val segments = database.transcriptDao().getSegmentsForMeetingDirect(session.meetingId)
             segments.filter { it.text.isNotBlank() }.take(50).forEach { seg ->
                 results.add(
-                    SourcePassage(
+                    LearningPassage.TranscriptSegment(
                         id = seg.id,
                         text = seg.cleanedText ?: seg.text,
                         label = "Lecture @ ${seg.startMs / 1000}s",
-                        noteId = session.noteId
+                        noteId = session.noteId,
+                        meetingId = session.meetingId,
+                        segmentId = seg.id,
+                        startMs = seg.startMs,
+                        endMs = seg.endMs
                     )
                 )
             }
@@ -181,6 +211,9 @@ class ScopedAskLearning(
 
         results
     }
+
+    suspend fun gatherSessionPassages(sessionId: String): List<SourcePassage> =
+        gatherLearningPassages(sessionId).map { it.toSourcePassage() }
 
     private fun buildAskPrompt(question: String, aliases: Map<String, SourcePassage>): String = buildString {
         appendLine("You are an expert tutor answering a student's question based strictly on their lecture.")

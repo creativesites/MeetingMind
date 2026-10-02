@@ -178,6 +178,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { userPrefs.setFaithLockEnabled(enabled) }
     }
 
+    fun setHomeHeroDisplayMode(mode: com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode) {
+        viewModelScope.launch { userPrefs.setHomeHeroDisplayMode(mode) }
+    }
+
     fun toggleWifiOnly(enabled: Boolean) {
         viewModelScope.launch {
             userPrefs.setWifiOnlyDownload(enabled)
@@ -505,6 +509,52 @@ fun SettingsScreen(
                             testTag = "settings_theme_${mode.name.lowercase()}"
                         )
                     }
+                }
+                item {
+                    Text(
+                        "Home hero card display",
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = InkSecondary,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp)
+                    )
+                }
+                val heroMode = prefs.homeHeroDisplayMode
+                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.entries.forEach { mode ->
+                    settingsRow {
+                        SettingsRadioRow(
+                            title = when (mode) {
+                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_SCRIPTURE -> "Daily scripture"
+                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_QUOTE -> "Daily quote"
+                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.STATS -> "Progress stats & streak"
+                            },
+                            subtitle = when (mode) {
+                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_SCRIPTURE -> "Display an inspiring scripture banner in the Home sky card"
+                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_QUOTE -> "Display a wisdom and faith quote in the Home sky card"
+                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.STATS -> "Display days streak and notes count"
+                            },
+                            selected = heroMode == mode,
+                            onClick = { viewModel.setHomeHeroDisplayMode(mode) },
+                            testTag = "settings_hero_${mode.name.lowercase()}"
+                        )
+                    }
+                }
+            }
+
+            settingsSection(title = "Share & Community") {
+                settingsRow {
+                    SettingsNavRow(
+                        title = "Share MeetingMind",
+                        subtitle = "Invite friends, colleagues, or study partners to try MeetingMind",
+                        onClick = {
+                            val sendIntent = android.content.Intent().apply {
+                                action = android.content.Intent.ACTION_SEND
+                                putExtra(android.content.Intent.EXTRA_TEXT, "Hey! I'm testing MeetingMind — the intelligent offline-first app for faith, work meetings, and learning. Check it out here: https://github.com/creativesites/MeetingMind/releases")
+                                type = "text/plain"
+                            }
+                            context.startActivity(android.content.Intent.createChooser(sendIntent, "Share MeetingMind"))
+                        }
+                    )
                 }
             }
 

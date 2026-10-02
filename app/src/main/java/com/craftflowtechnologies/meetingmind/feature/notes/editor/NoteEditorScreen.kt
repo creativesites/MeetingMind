@@ -339,9 +339,23 @@ fun NoteEditorScreen(
                                 val body = n.plainText.lineSequence().map { it.trim() }
                                     .filter { it.isNotEmpty() && it != n.title.trim() && it !in com.craftflowtechnologies.meetingmind.core.model.Workflows.template(n.workflow).sections.map { s -> s.title } }
                                     .joinToString(" ").take(300).ifBlank { n.title }
+                                val eyebrow = when (n.workflow) {
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.TESTIMONY -> "TESTIMONY"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.PRAYER_REQUEST -> "PRAYER REQUEST"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.PRAYER -> "PRAYER"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON -> "SERMON NOTE"
+                                    else -> n.workflow.displayName
+                                }
+                                val theme = when (n.workflow) {
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.TESTIMONY -> "praise report, celebration and answered prayer: ${n.title.ifBlank { body.take(120) }}"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.PRAYER_REQUEST -> "prayer request, hope, faith and trust: ${n.title.ifBlank { body.take(120) }}"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.PRAYER -> "prayer, quiet reflection and peace: ${n.title.ifBlank { body.take(120) }}"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON -> "sermon, reverence, scripture and worship: ${n.title.ifBlank { body.take(120) }}"
+                                    else -> n.title.ifBlank { body.take(120) }
+                                }
                                 onShareCard(com.craftflowtechnologies.meetingmind.feature.share.ShareRequest(
-                                    com.craftflowtechnologies.meetingmind.core.share.ShareCardContent(n.workflow.displayName, body, n.title.takeIf { it.isNotBlank() && it != body }, null, quoted = false),
-                                    theme = n.title.ifBlank { body.take(120) }
+                                    com.craftflowtechnologies.meetingmind.core.share.ShareCardContent(eyebrow, body, n.title.takeIf { it.isNotBlank() && it != body }, null, quoted = false),
+                                    theme = theme
                                 ))
                             }
                         })
@@ -696,6 +710,7 @@ fun NoteEditorScreen(
     )
     if (showAiMenu) com.craftflowtechnologies.meetingmind.feature.notes.ai.NoteAiMenu(
         forNotebook = false,
+        isFaithOrSermon = note?.let { it.workflow in com.craftflowtechnologies.meetingmind.core.model.Workflows.faith } == true,
         onPick = { tool ->
             showAiMenu = false
             if (tool == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.ASK) showAsk = true else { viewModel.runAi(tool); aiSheetOpen = true }

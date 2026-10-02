@@ -20,6 +20,7 @@ import com.craftflowtechnologies.meetingmind.core.model.ActivityAttempt
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivity
 import com.craftflowtechnologies.meetingmind.core.model.LearningConcept
 import com.craftflowtechnologies.meetingmind.core.model.LearningEvidence
+import com.craftflowtechnologies.meetingmind.core.model.LearningPassage
 import com.craftflowtechnologies.meetingmind.core.model.LearningSession
 import com.craftflowtechnologies.meetingmind.core.model.ModelCapability
 import com.craftflowtechnologies.meetingmind.core.model.ModelTier
@@ -81,16 +82,16 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             _isGenerating.value = true
             _statusMessage.value = "Extracting key concepts & study guide..."
             try {
-                val scopedAsk = ScopedAskLearning(database, resolveLanguageModel())
-                val passages = scopedAsk.gatherSessionPassages(sessionId)
+                val passages = repository.gatherSessionPassages(sessionId)
                 if (passages.isEmpty()) {
                     _statusMessage.value = "No note or transcript text found to extract from."
                     _isGenerating.value = false
                     return@launch
                 }
 
+                val passagesById = passages.associateBy { it.id }
                 val engine = LearningIntelligenceEngine(resolveLanguageModel())
-                val guideResult = engine.extractStudyGuide(passages)
+                val guideResult = engine.extractStudyGuide(passages.map { it.toSourcePassage() })
                 if (guideResult is AiResult.Success) {
                     val concepts = guideResult.value.map { gc ->
                         LearningConcept(
@@ -100,9 +101,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                             definition = gc.definition,
                             emphasis = gc.emphasis,
                             relationships = gc.relationships,
-                            evidence = gc.evidenceIds.map { eid ->
-                                LearningEvidence(noteId = sessionId, segmentIds = listOf(eid))
-                            },
+                            evidence = gc.evidenceIds.mapNotNull { eid -> passagesById[eid]?.toEvidence() },
                             createdAt = System.currentTimeMillis(),
                             updatedAt = System.currentTimeMillis()
                         )
@@ -110,10 +109,11 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     repository.saveConcepts(concepts)
 
                     _statusMessage.value = "Generating diagnostic quiz..."
-                    val diagResult = engine.generateDiagnostic(guideResult.value, passages)
+                    val diagResult = engine.generateDiagnostic(guideResult.value, passages.map { it.toSourcePassage() })
                     if (diagResult is AiResult.Success) {
                         val activities = diagResult.value.map { ga ->
-                            val matchedConcept = concepts.find { it.name.equals(ga.conceptName, ignoreCase = true) }
+                            val activityEvidence = ga.evidenceIds.mapNotNull { eid -> passagesById[eid]?.toEvidence() }
+                            val matchedConcept = resolveConceptForActivity(ga, concepts, activityEvidence)
                             LearningActivity(
                                 id = UUID.randomUUID().toString(),
                                 sessionId = sessionId,
@@ -123,9 +123,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                                 expectedAnswer = ga.expectedAnswer,
                                 options = ga.options,
                                 difficulty = ga.difficulty,
-                                evidence = ga.evidenceIds.map { eid ->
-                                    LearningEvidence(noteId = sessionId, segmentIds = listOf(eid))
-                                },
+                                evidence = activityEvidence,
                                 isDiagnostic = true,
                                 createdAt = System.currentTimeMillis(),
                                 updatedAt = System.currentTimeMillis()
@@ -133,9 +131,11 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                         }
                         repository.saveActivities(activities)
                         _statusMessage.value = "Study guide and diagnostic ready!"
+                    } else {
+                        _statusMessage.value = (diagResult as? AiResult.Failed)?.message ?: "Diagnostic generation failed."
                     }
                 } else {
-                    _statusMessage.value = "Study guide extraction was not available."
+                    _statusMessage.value = (guideResult as? AiResult.Failed)?.message ?: "Study guide extraction was not available."
                 }
             } catch (e: Exception) {
                 _statusMessage.value = "Failed: ${e.localizedMessage}"
@@ -143,6 +143,150 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 _isGenerating.value = false
                 onDone()
             }
+        }
+    }
+
+    /**
+     * Session Regeneration: Replaces unedited auto-generated concepts and activities
+     * while preserving user edits and immutable attempt history.
+     */
+    fun regenerateSession(sessionId: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            _isGenerating.value = true
+            _statusMessage.value = "Regenerating study guide & diagnostic..."
+            try {
+                val passages = repository.gatherSessionPassages(sessionId)
+                if (passages.isEmpty()) {
+                    _statusMessage.value = "No note or transcript text found to extract from."
+                    _isGenerating.value = false
+                    return@launch
+                }
+
+                val passagesById = passages.associateBy { it.id }
+                val engine = LearningIntelligenceEngine(resolveLanguageModel())
+                val guideResult = engine.extractStudyGuide(passages.map { it.toSourcePassage() })
+                if (guideResult is AiResult.Success) {
+                    val newConcepts = guideResult.value.map { gc ->
+                        LearningConcept(
+                            id = UUID.randomUUID().toString(),
+                            sessionId = sessionId,
+                            name = gc.name,
+                            definition = gc.definition,
+                            emphasis = gc.emphasis,
+                            relationships = gc.relationships,
+                            evidence = gc.evidenceIds.mapNotNull { eid -> passagesById[eid]?.toEvidence() },
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    }
+
+                    _statusMessage.value = "Regenerating diagnostic quiz..."
+                    val diagResult = engine.generateDiagnostic(guideResult.value, passages.map { it.toSourcePassage() })
+                    if (diagResult is AiResult.Success) {
+                        val newActivities = diagResult.value.map { ga ->
+                            val activityEvidence = ga.evidenceIds.mapNotNull { eid -> passagesById[eid]?.toEvidence() }
+                            val matchedConcept = resolveConceptForActivity(ga, newConcepts, activityEvidence)
+                            LearningActivity(
+                                id = UUID.randomUUID().toString(),
+                                sessionId = sessionId,
+                                conceptId = matchedConcept?.id,
+                                type = ga.type,
+                                prompt = ga.prompt,
+                                expectedAnswer = ga.expectedAnswer,
+                                options = ga.options,
+                                difficulty = ga.difficulty,
+                                evidence = activityEvidence,
+                                isDiagnostic = true,
+                                createdAt = System.currentTimeMillis(),
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        }
+
+                        repository.regenerateSession(sessionId, newConcepts, newActivities)
+                        _statusMessage.value = "Session regenerated successfully!"
+                    } else {
+                        _statusMessage.value = (diagResult as? AiResult.Failed)?.message ?: "Diagnostic generation failed."
+                    }
+                } else {
+                    _statusMessage.value = (guideResult as? AiResult.Failed)?.message ?: "Study guide extraction failed."
+                }
+            } catch (e: Exception) {
+                _statusMessage.value = "Regeneration failed: ${e.localizedMessage}"
+            } finally {
+                _isGenerating.value = false
+                onDone()
+            }
+        }
+    }
+
+    /**
+     * Resolves diagnostic activity to an existing concept using exact name match,
+     * substring match, or evidence overlap.
+     */
+    private fun resolveConceptForActivity(
+        ga: GeneratedActivity,
+        concepts: List<LearningConcept>,
+        activityEvidence: List<LearningEvidence>
+    ): LearningConcept? {
+        if (concepts.isEmpty()) return null
+
+        // 1. Exact name match (case-insensitive)
+        val nameMatch = concepts.find { it.name.trim().equals(ga.conceptName?.trim(), ignoreCase = true) }
+        if (nameMatch != null) return nameMatch
+
+        // 2. Substring match
+        if (!ga.conceptName.isNullOrBlank()) {
+            val query = ga.conceptName.trim()
+            val subMatch = concepts.find {
+                it.name.contains(query, ignoreCase = true) || query.contains(it.name, ignoreCase = true)
+            }
+            if (subMatch != null) return subMatch
+        }
+
+        // 3. Evidence overlap (shares blockId or segmentId)
+        val actBlockIds = activityEvidence.mapNotNull { it.blockId }.toSet()
+        val actSegmentIds = activityEvidence.flatMap { it.segmentIds }.toSet()
+        if (actBlockIds.isNotEmpty() || actSegmentIds.isNotEmpty()) {
+            val evidenceMatch = concepts.find { c ->
+                c.evidence.any { cev ->
+                    (cev.blockId != null && cev.blockId in actBlockIds) ||
+                    (cev.segmentIds.any { it in actSegmentIds })
+                }
+            }
+            if (evidenceMatch != null) return evidenceMatch
+        }
+
+        // 4. Fallback to first concept if only 1 concept exists
+        return if (concepts.size == 1) concepts.first() else null
+    }
+
+    fun addCustomConcept(sessionId: String, name: String, definition: String, emphasis: String? = null) {
+        viewModelScope.launch {
+            repository.addCustomConcept(sessionId, name, definition, emphasis)
+        }
+    }
+
+    fun updateConcept(concept: LearningConcept) {
+        viewModelScope.launch {
+            repository.updateConcept(concept)
+        }
+    }
+
+    fun dismissConcept(conceptId: String) {
+        viewModelScope.launch {
+            repository.dismissConcept(conceptId)
+        }
+    }
+
+    fun dismissActivity(activityId: String) {
+        viewModelScope.launch {
+            repository.dismissActivity(activityId)
+        }
+    }
+
+    fun checkAndMarkStale(sessionId: String) {
+        viewModelScope.launch {
+            repository.checkAndMarkStaleEntities(sessionId)
         }
     }
 

@@ -23,11 +23,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -42,6 +43,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
@@ -96,18 +98,24 @@ fun LearningSessionScreen(
     onNavigateBack: () -> Unit,
     onStartPractice: (sessionId: String?, activityId: String?) -> Unit,
     onStartDiagnostic: (sessionId: String) -> Unit,
-    onOpenNote: (noteId: String) -> Unit
+    onOpenNote: (noteId: String) -> Unit,
+    onOpenMeeting: (meetingId: String, startAtMs: Long?) -> Unit = { _, _ -> }
 ) {
     val scope = rememberCoroutineScope()
     var session by remember { mutableStateOf<LearningSession?>(null) }
     var concepts by remember { mutableStateOf<List<LearningConcept>>(emptyList()) }
     var activities by remember { mutableStateOf<List<LearningActivity>>(emptyList()) }
     var attempts by remember { mutableStateOf<List<ActivityAttempt>>(emptyList()) }
-    var isGenerating by remember { mutableStateOf(false) }
-    var statusMessage by remember { mutableStateOf<String?>(null) }
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Understand, 1: Practise, 2: Source, 3: Mastery
     var showTutorSheet by remember { mutableStateOf(false) }
     var selectedCitationToView by remember { mutableStateOf<LearningEvidence?>(null) }
+    var editingConcept by remember { mutableStateOf<LearningConcept?>(null) }
+    var showAddConceptDialog by remember { mutableStateOf(false) }
+    var showRegenerateConfirmDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(sessionId) {
+        viewModel.checkAndMarkStale(sessionId)
+    }
 
     LaunchedEffect(sessionId) {
         viewModel.repository.observeSession(sessionId).collect { s ->
@@ -290,7 +298,10 @@ fun LearningSessionScreen(
                     concepts = concepts,
                     isGenerating = vmIsGenerating,
                     onGenerate = { viewModel.generateStudyGuideAndDiagnostic(sessionId) },
-                    onDismissConcept = { cid -> scope.launch { viewModel.repository.dismissConcept(cid) } },
+                    onRegenerate = { showRegenerateConfirmDialog = true },
+                    onAddConcept = { showAddConceptDialog = true },
+                    onEditConcept = { editingConcept = it },
+                    onDismissConcept = { cid -> viewModel.dismissConcept(cid) },
                     onViewCitation = { selectedCitationToView = it }
                 )
                 1 -> PractiseSection(
@@ -298,7 +309,8 @@ fun LearningSessionScreen(
                     activities = activities,
                     onStartPractice = onStartPractice,
                     onStartDiagnostic = { onStartDiagnostic(sessionId) },
-                    onAskTutor = { showTutorSheet = true }
+                    onAskTutor = { showTutorSheet = true },
+                    onDismissActivity = { aid -> viewModel.dismissActivity(aid) }
                 )
                 2 -> SourceSection(
                     session = session,
@@ -350,8 +362,178 @@ fun LearningSessionScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { selectedCitationToView = null }) {
-                    Text("Close", color = LearningTeal)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { selectedCitationToView = null }) {
+                        Text("Close")
+                    }
+                    if (citation.meetingId != null) {
+                        Button(
+                            onClick = {
+                                val mId = citation.meetingId
+                                val startMs = citation.startMs
+                                selectedCitationToView = null
+                                onOpenMeeting(mId, startMs)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = LearningTeal)
+                        ) {
+                            Text("Open Lecture")
+                        }
+                    } else if (citation.noteId != null) {
+                        Button(
+                            onClick = {
+                                val nId = citation.noteId
+                                selectedCitationToView = null
+                                onOpenNote(nId)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = LearningTeal)
+                        ) {
+                            Text("Open Note")
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    // Edit Concept Dialog
+    editingConcept?.let { c ->
+        var editName by remember(c.id) { mutableStateOf(c.name) }
+        var editDef by remember(c.id) { mutableStateOf(c.definition) }
+        var editEmp by remember(c.id) { mutableStateOf(c.emphasis ?: "") }
+
+        AlertDialog(
+            onDismissRequest = { editingConcept = null },
+            title = { Text("Edit Concept", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = editName,
+                        onValueChange = { editName = it },
+                        label = { Text("Concept Name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editDef,
+                        onValueChange = { editDef = it },
+                        label = { Text("Definition") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3
+                    )
+                    OutlinedTextField(
+                        value = editEmp,
+                        onValueChange = { editEmp = it },
+                        label = { Text("Emphasis (Optional, e.g. HIGH, MEDIUM)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.updateConcept(
+                            c.copy(
+                                name = editName.trim(),
+                                definition = editDef.trim(),
+                                emphasis = editEmp.trim().takeIf { it.isNotBlank() }
+                            )
+                        )
+                        editingConcept = null
+                    },
+                    enabled = editName.isNotBlank() && editDef.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = LearningTeal)
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingConcept = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Add Concept Dialog
+    if (showAddConceptDialog) {
+        var newName by remember { mutableStateOf("") }
+        var newDef by remember { mutableStateOf("") }
+        var newEmp by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showAddConceptDialog = false },
+            title = { Text("Add Custom Concept", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text("Concept Name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = newDef,
+                        onValueChange = { newDef = it },
+                        label = { Text("Definition") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3
+                    )
+                    OutlinedTextField(
+                        value = newEmp,
+                        onValueChange = { newEmp = it },
+                        label = { Text("Emphasis (Optional)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newName.isNotBlank() && newDef.isNotBlank()) {
+                            viewModel.addCustomConcept(sessionId, newName, newDef, newEmp)
+                            showAddConceptDialog = false
+                        }
+                    },
+                    enabled = newName.isNotBlank() && newDef.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = LearningTeal)
+                ) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddConceptDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Regenerate Confirmation Dialog
+    if (showRegenerateConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showRegenerateConfirmDialog = false },
+            title = { Text("Regenerate Session?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "This will re-extract study guide concepts and regenerate diagnostic questions from the lecture source.\n\n" +
+                    "Your edited concepts and previous recall practice history will be strictly preserved.",
+                    fontSize = 14.sp,
+                    color = Ink
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showRegenerateConfirmDialog = false
+                        viewModel.regenerateSession(sessionId)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = LearningTeal)
+                ) {
+                    Text("Regenerate")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRegenerateConfirmDialog = false }) {
+                    Text("Cancel")
                 }
             }
         )
@@ -364,6 +546,9 @@ fun UnderstandSection(
     concepts: List<LearningConcept>,
     isGenerating: Boolean,
     onGenerate: () -> Unit,
+    onRegenerate: () -> Unit,
+    onAddConcept: () -> Unit,
+    onEditConcept: (LearningConcept) -> Unit,
     onDismissConcept: (String) -> Unit,
     onViewCitation: (LearningEvidence) -> Unit
 ) {
@@ -382,7 +567,7 @@ fun UnderstandSection(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Filled.AutoAwesome,
+                    Icons.Filled.Lightbulb,
                     contentDescription = "AI Study Guide",
                     tint = LearningTeal,
                     modifier = Modifier.size(32.dp)
@@ -399,9 +584,9 @@ fun UnderstandSection(
             Text(
                 "Extract key concepts, definitions, emphasis levels, and source citations directly from your lecture note and audio transcript.",
                 fontSize = 14.sp,
+                lineHeight = 20.sp,
                 color = InkMuted,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                lineHeight = 20.sp
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
             Spacer(Modifier.height(24.dp))
             Button(
@@ -410,9 +595,18 @@ fun UnderstandSection(
                 colors = ButtonDefaults.buttonColors(containerColor = LearningTeal),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.Lightbulb, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Extract Study Guide & Diagnostic")
+            }
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = onAddConcept,
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, tint = LearningTeal, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Add Custom Concept", color = LearningTeal)
             }
         }
     } else {
@@ -434,10 +628,18 @@ fun UnderstandSection(
                         fontWeight = FontWeight.Bold,
                         color = InkSecondary
                     )
-                    TextButton(onClick = onGenerate, enabled = !isGenerating) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Regenerate", tint = LearningTeal, modifier = Modifier.size(14.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = onAddConcept) {
+                            Icon(Icons.Filled.Add, contentDescription = "Add Concept", tint = LearningTeal, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Add Concept", fontSize = 12.sp, color = LearningTeal)
+                        }
                         Spacer(Modifier.width(4.dp))
-                        Text("Regenerate", fontSize = 12.sp, color = LearningTeal)
+                        TextButton(onClick = onRegenerate, enabled = !isGenerating) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Regenerate", tint = LearningTeal, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Regenerate", fontSize = 12.sp, color = LearningTeal)
+                        }
                     }
                 }
             }
@@ -457,13 +659,37 @@ fun UnderstandSection(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Top
                         ) {
-                            Text(
-                                text = concept.name,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Ink,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = concept.name,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Ink
+                                )
+                                if (concept.isStale || concept.isUserEdited) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        if (concept.isUserEdited) {
+                                            Box(
+                                                Modifier
+                                                    .background(Color(0xFF2563EB).copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text("EDITED", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                                            }
+                                        }
+                                        if (concept.isStale) {
+                                            Box(
+                                                Modifier
+                                                    .background(Color(0xFFEA580C).copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text("STALE CITATION", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEA580C))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             // Emphasis pill
                             val emphasisColor = when (concept.emphasis?.uppercase()) {
                                 "HIGH" -> Color(0xFFDC2626)
@@ -524,9 +750,15 @@ fun UnderstandSection(
                             }
                         }
 
-                        // Dismiss action
+                        // Edit / Dismiss actions
                         Spacer(Modifier.height(8.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { onEditConcept(concept) }) {
+                                Icon(Icons.Filled.Edit, contentDescription = "Edit concept", tint = InkSecondary, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Edit", fontSize = 11.sp, color = InkSecondary)
+                            }
+                            Spacer(Modifier.width(8.dp))
                             TextButton(onClick = { onDismissConcept(concept.id) }) {
                                 Icon(Icons.Filled.Delete, contentDescription = "Dismiss concept", tint = InkMuted, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
@@ -546,7 +778,8 @@ fun PractiseSection(
     activities: List<LearningActivity>,
     onStartPractice: (sessionId: String?, activityId: String?) -> Unit,
     onStartDiagnostic: () -> Unit,
-    onAskTutor: () -> Unit
+    onAskTutor: () -> Unit,
+    onDismissActivity: (String) -> Unit
 ) {
     val diagnosticActivities = activities.filter { it.isDiagnostic }
     val practiceActivities = activities.filter { !it.isDiagnostic }
@@ -665,14 +898,32 @@ fun PractiseSection(
                                     Spacer(Modifier.width(8.dp))
                                     Text("• Diagnostic", fontSize = 11.sp, color = InkMuted)
                                 }
+                                if (act.isStale) {
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("• Stale citation", fontSize = 11.sp, color = Color(0xFFEA580C), fontWeight = FontWeight.SemiBold)
+                                }
                             }
                         }
-                        Icon(
-                            Icons.Filled.PlayArrow,
-                            contentDescription = "Practice this question",
-                            tint = LearningTeal,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { onDismissActivity(act.id) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription = "Dismiss activity",
+                                    tint = InkMuted,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                Icons.Filled.PlayArrow,
+                                contentDescription = "Practice this question",
+                                tint = LearningTeal,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }

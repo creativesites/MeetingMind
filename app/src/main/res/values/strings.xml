@@ -20,6 +20,7 @@
     <string name="app_lock_title">MeetingMind is locked</string>
     <string name="app_lock_body">Your notes and recordings are protected. Unlock with your fingerprint, face or screen lock.</string>
     <string name="app_lock_unlock">Unlock MeetingMind</string>
+    <string name="app_lock_unlock_with_pin">Unlock with phone PIN or screen lock</string>
     <string name="app_lock_open_security_settings">Set up a screen lock</string>
     <string name="app_lock_turn_off">Turn off App Lock</string>
     <string name="app_lock_prompt_unlock_title">Unlock MeetingMind</string>

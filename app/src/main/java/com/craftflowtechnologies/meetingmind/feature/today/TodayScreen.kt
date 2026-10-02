@@ -48,11 +48,15 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FormatQuote
-import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.Church
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Work
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -121,6 +125,12 @@ fun TodayScreen(
     onNavigateBottomNav: (com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit,
     onOpenDevotional: () -> Unit = {},
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit = {},
+    onOpenFaith: () -> Unit = {},
+    onOpenWork: () -> Unit = {},
+    onOpenLearning: () -> Unit = {},
+    onOpenPrayer: () -> Unit = {},
+    onOpenWord: () -> Unit = {},
+    onOpenTestimonies: () -> Unit = {},
     onNewNote: () -> Unit = {},
     onImport: () -> Unit = {},
     /** Offline setup; null hides the card (tests, or before it's known). */
@@ -134,6 +144,7 @@ fun TodayScreen(
 ) {
     val coachTargets = remember { com.craftflowtechnologies.meetingmind.core.ui.CoachTargets() }
     val tourDone by viewModel.tourCompleted.collectAsState()
+    val heroMode by viewModel.homeHeroDisplayMode.collectAsState()
     val start by viewModel.gettingStarted.collectAsState()
     val storyKinds by viewModel.stories.collectAsState()
     val devotional by viewModel.devotional.collectAsState()
@@ -223,6 +234,8 @@ fun TodayScreen(
     ) { padding ->
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 28.dp)) {
             item(key = "hero") {
+                val devData = devotional?.devotional
+                val scripture = devData?.scripture?.firstOrNull()
                 HomeHeroHeader(
                     identity = identity,
                     greeting = remember(identity, now / 3_600_000) { Greetings.pick(identity) },
@@ -237,7 +250,26 @@ fun TodayScreen(
                     onAvatar = { avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     onSearch = onSearch,
                     onInbox = { showInbox = true },
-                    onSwitch = { viewModel.setFocus(switchTo) }
+                    onSwitch = { viewModel.setFocus(switchTo) },
+                    displayMode = heroMode,
+                    scriptureReference = scripture?.display(),
+                    scriptureText = devData?.keyText ?: devData?.reflection?.firstOrNull(),
+                    quoteText = devData?.insight?.text,
+                    quoteAuthor = devData?.insight?.author,
+                    onToggleMode = { viewModel.cycleHomeHeroMode() },
+                    onOpenDevotional = onOpenDevotional
+                )
+            }
+            item(key = "quick_access") {
+                HomeQuickAccessRow(
+                    onOpenFaith = onOpenFaith,
+                    onOpenWork = onOpenWork,
+                    onOpenLearning = onOpenLearning,
+                    onOpenDevotional = onOpenDevotional,
+                    onOpenPrayer = onOpenPrayer,
+                    onOpenWord = onOpenWord,
+                    onOpenTestimonies = onOpenTestimonies,
+                    modifier = Modifier.padding(top = 8.dp)
                 )
             }
             if (focus != TodayFocus.ALL) item(key = "focus") {
@@ -300,6 +332,13 @@ fun TodayScreen(
                         onDismiss = { viewModel.dismissCalendarPrompt() }) {
                         calendarPermission.launch(android.Manifest.permission.READ_CALENDAR)
                     }
+                }
+                if (focus != TodayFocus.FAITH) add {
+                    ForYouCard(
+                        Icons.Filled.Work, Color(0xFF6366F1).forTheme(), "Work & Projects",
+                        "Executive pulse & tasks",
+                        "Tap to open your professional workspace"
+                    ) { onOpenWork() }
                 }
             }
             if (forYou.isNotEmpty() && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.FOR_YOU)) item(key = "foryou") {

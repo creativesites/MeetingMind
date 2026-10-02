@@ -518,3 +518,23 @@ update (a new `docs/PLAN_V2.md` recording these decisions), commit and push.
   the card (clear of the greeting) and a moon with stars at night, interpolating colours through
   the day. It honours the system's reduced-motion setting.
 - *F1, fonts.* Inter and Outfit (OFL) are bundled as static latin subsets, about 270 KB in total.
+
+---
+
+## F8. Communities & Fellowship (Tier 1 & Tier 2)
+
+### Tier 1: Shareable Fellowship (Implemented, Zero-Backend)
+- **Small-Group Discussion Guide Generator:** Note AI action (`NoteAiTool.STUDY_GUIDE`) producing 6 structured sections: Scripture Focus, Main Message, Icebreaker, Discussion Questions, Life Application, and Prayer Points. Includes 1-tap WhatsApp-formatted export (`StudyGuideFormatter`) and note insertion.
+- **Prayer & Testimony Card Studio:** Quick share from `PrayerListScreen` and faith notes (`TESTIMONY`, `PRAYER_REQUEST`, `PRAYER`, `SERMON`) to `ShareStudio` with tailored cards, typography, and attribution.
+- **AI Image Generation & Regeneration:** Fast card backgrounds via `gemini-3.1-flash-lite-image` with 1-tap "Regenerate" and editable theme prompts.
+
+### Tier 2: Private Circles (Planned, E2EE Relay)
+- **Scope:** 5–15 member invite-only small groups (Bible studies, prayer teams, men's/women's fellowship).
+- **Zero-Knowledge E2EE:** Shared symmetric keys exchanged via invite link/QR code. Relay server stores only encrypted blobs and handles silent push notifications via FCM.
+- **Shared Prayer Wall & Testimonies:**
+  - Active prayer requests with non-intrusive "Prayed for this" counter and peaceful notifications.
+  - Prayer status lifecycle: `Active` → `Updates` → `Answered / Testimony`.
+  - Full testimony sharing: when God answers a prayer (or as a standalone praise report), members can post the testimony to the circle, triggering uplifting notifications to encourage the group.
+- **Shared Sermon Workspace:** Leader distributes transcript, scripture references, and discussion guide while private member notes and journals remain local and sealed.
+- **Air-Gap Privacy Boundary:** Personal journals, confessions, and daily devotionals remain 100% on-device and can never be shared to a circle.
+

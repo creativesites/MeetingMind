@@ -5,6 +5,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Danger
 import com.craftflowtechnologies.meetingmind.ui.theme.forTheme
 import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
+import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Church
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.StarBorder
@@ -114,6 +116,7 @@ fun DevotionalScreen(
         if (playOnOpen == "prayer") viewModel.listen(com.craftflowtechnologies.meetingmind.ai.voice.VoiceSection.PRAYER, only = true)
     }
     var showAsk by rememberSaveable { mutableStateOf(false) }
+    var showSermonStudio by rememberSaveable { mutableStateOf(false) }
     state.today?.let { t -> LaunchedEffect(t.note.id) { viewModel.opened(t) } }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     DevotionalContent(
@@ -132,9 +135,17 @@ fun DevotionalScreen(
         onListenFrom = { section, only -> viewModel.listen(section, only) },
         onLive = onLive,
         onShare = { t -> onShare(shareRequest(t, viewModel.audioPath(t), viewModel.coverPath(t))) },
+        onOpenSermonStudio = { showSermonStudio = true },
         onArchive = onArchive,
         onFavourite = viewModel::toggleFavourite,
         onExamen = viewModel::writeExamen
+    )
+    if (showSermonStudio) com.craftflowtechnologies.meetingmind.feature.faith.SermonStudioSheet(
+        onDismiss = { showSermonStudio = false },
+        onShareStory = { req ->
+            showSermonStudio = false
+            onShare(req)
+        }
     )
     if (showAsk) AskDevotionalSheet(
         profile = state.profile,
@@ -170,7 +181,8 @@ fun DevotionalContent(
     liveScripture: Boolean = true,
     onArchive: () -> Unit = {},
     onFavourite: (DailyDevotional) -> Unit = {},
-    onExamen: () -> Unit = {}
+    onExamen: () -> Unit = {},
+    onOpenSermonStudio: () -> Unit = {}
 ) {
     val today = state.today
     LazyColumn(Modifier.fillMaxSize().background(Paper).testTag("devotional_screen")) {
@@ -272,7 +284,7 @@ fun DevotionalContent(
                     d.origin != DevotionalOrigin.CARE && today.note.metadata[com.craftflowtechnologies.meetingmind.core.devotional.DevotionalNotes.META_EVENING] != "1") item {
                     ExamenCard(state.writing, onExamen)
                 }
-                item { Footer(today, onOpenNote, onRewrite, onShare, past = state.past) }
+                item { Footer(today, onOpenNote, onRewrite, onShare, onOpenSermonStudio = onOpenSermonStudio, past = state.past) }
             }
         }
         item { Spacer(Modifier.height(40.dp)) }
@@ -664,17 +676,38 @@ private fun ExamenCard(writing: Boolean, onExamen: () -> Unit) {
 }
 
 @Composable
-private fun Footer(today: DailyDevotional, onOpenNote: (String) -> Unit, onRewrite: () -> Unit, onShare: (DailyDevotional) -> Unit, past: Boolean = false) {
+private fun Footer(
+    today: DailyDevotional,
+    onOpenNote: (String) -> Unit,
+    onRewrite: () -> Unit,
+    onShare: (DailyDevotional) -> Unit,
+    onOpenSermonStudio: () -> Unit = {},
+    past: Boolean = false
+) {
     val d = today.devotional
     Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
         if (d.origin == DevotionalOrigin.CLASSIC) Text(d.label, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted)
         today.note.metadata["devotionalFallback"]?.let {
             Text(it, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted, fontStyle = FontStyle.Italic, modifier = Modifier.padding(top = 6.dp))
         }
-        Surface(onClick = { onShare(today) }, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.padding(top = 14.dp).testTag("devotional_share")) {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Share, contentDescription = null, tint = OnInk, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(8.dp))
-                Text("Share to WhatsApp, Instagram…", fontSize = 14.sp, color = OnInk, fontWeight = FontWeight.SemiBold)
+        Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Surface(onClick = { onShare(today) }, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.testTag("devotional_share")) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Share, contentDescription = null, tint = OnInk, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(8.dp))
+                    Text("Share", fontSize = 14.sp, color = OnInk, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            Surface(
+                onClick = onOpenSermonStudio,
+                shape = RoundedCornerShape(50),
+                color = SurfaceRaised,
+                border = BorderStroke(1.dp, Line),
+                modifier = Modifier.testTag("devotional_sermon_studio")
+            ) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Church, contentDescription = null, tint = Gold, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(8.dp))
+                    Text("Motivational Sermon", fontSize = 14.sp, color = Ink, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
         Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

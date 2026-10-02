@@ -112,4 +112,44 @@ class DeterministicSpacedSchedulerTest {
         assertFalse(paused.isDue(baseTime))
         assertFalse(paused.isDue(baseTime + 10000))
     }
+
+    @Test
+    fun `previewInterval returns deterministic preview strings for null schedule`() {
+        assertEquals("<1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.AGAIN, baseTime))
+        assertEquals("1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.HARD, baseTime))
+        assertEquals("1d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.GOOD, baseTime))
+        assertEquals("3d", DeterministicSpacedScheduler.previewInterval(null, RecallRating.EASY, baseTime))
+    }
+
+    @Test
+    fun `previewInterval returns 1d for AGAIN regardless of repetition history`() {
+        val matureSchedule = ReviewSchedule(
+            id = "s1",
+            activityId = "act_1",
+            sessionId = "sess_1",
+            dueAt = baseTime,
+            intervalDays = 21,
+            repetitionCount = 5,
+            easeFactor = 2.6,
+            createdAt = baseTime,
+            updatedAt = baseTime
+        )
+
+        assertEquals("1d", DeterministicSpacedScheduler.previewInterval(matureSchedule, RecallRating.AGAIN, baseTime))
+    }
+
+    @Test
+    fun `previewInterval returns ladder intervals for sequential ratings`() {
+        val initialSchedule = DeterministicSpacedScheduler.initialSchedule("act_1", "sess_1", "c_1", baseTime)
+        assertEquals("1d", DeterministicSpacedScheduler.previewInterval(initialSchedule, RecallRating.GOOD, baseTime))
+
+        val rep1 = initialSchedule.copy(repetitionCount = 1, intervalDays = 1)
+        assertEquals("3d", DeterministicSpacedScheduler.previewInterval(rep1, RecallRating.GOOD, baseTime))
+
+        val rep2 = rep1.copy(repetitionCount = 2, intervalDays = 3)
+        assertEquals("7d", DeterministicSpacedScheduler.previewInterval(rep2, RecallRating.GOOD, baseTime))
+
+        val rep3 = rep2.copy(repetitionCount = 3, intervalDays = 7)
+        assertEquals("14d", DeterministicSpacedScheduler.previewInterval(rep3, RecallRating.GOOD, baseTime))
+    }
 }

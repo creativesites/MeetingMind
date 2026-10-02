@@ -117,4 +117,46 @@ class ScopedAskLearningTest {
         assertEquals(4, activity.options.size)
         assertTrue(activity.options.contains("Activation energy"))
     }
+
+    @Test
+    fun `createQuizMeActivity rejects questions that leak the answer in prompt`() = runBlocking {
+        val session = repository.createTypedSession("Enzyme Lecture")
+        fakeLlm.response = """
+        {
+          "prompt": "How does activation energy affect reaction speed?",
+          "expectedAnswer": "Activation energy",
+          "options": ["Activation energy", "Thermal energy", "Kinetic energy", "Potential energy"]
+        }
+        """
+
+        val result = scopedAsk.createQuizMeActivity(
+            sessionId = session.id,
+            conceptName = "Activation Energy",
+            answerText = "Activation energy is the barrier.",
+            evidence = listOf(LearningEvidence(noteId = session.noteId, quote = "lower activation energy"))
+        )
+
+        assertTrue("Leaked answer in prompt must be rejected", result is AiResult.Failed)
+    }
+
+    @Test
+    fun `createQuizMeActivity rejects quiz with invalid option count or duplicate options`() = runBlocking {
+        val session = repository.createTypedSession("Enzyme Lecture")
+        fakeLlm.response = """
+        {
+          "prompt": "What barrier do enzymes lower?",
+          "expectedAnswer": "Activation energy",
+          "options": ["Activation energy", "Thermal energy", "Activation energy", "Bond energy"]
+        }
+        """
+
+        val result = scopedAsk.createQuizMeActivity(
+            sessionId = session.id,
+            conceptName = "Activation Energy",
+            answerText = "Enzymes lower the activation energy barrier.",
+            evidence = listOf(LearningEvidence(noteId = session.noteId, quote = "lower activation energy"))
+        )
+
+        assertTrue("Duplicate options must be rejected", result is AiResult.Failed)
+    }
 }

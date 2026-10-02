@@ -83,8 +83,16 @@ data class AppPreferencesState(
     /** The first-run guided tour of Home has been shown (finished or skipped). */
     val tourCompleted: Boolean = false,
     /** The "Getting started" checklist on Home was closed. */
-    val gettingStartedDismissed: Boolean = false
+    val gettingStartedDismissed: Boolean = false,
+    /** What to display on the Home Hero card: daily scripture, daily quote, or counting stats. */
+    val homeHeroDisplayMode: HomeHeroDisplayMode = HomeHeroDisplayMode.DAILY_SCRIPTURE
 )
+
+enum class HomeHeroDisplayMode {
+    DAILY_SCRIPTURE,
+    DAILY_QUOTE,
+    STATS
+}
 
 class UserPreferencesManager(private val context: Context) {
     /** Every setting, for a backup (docs/PRD_M0.md §4.3). */
@@ -139,6 +147,7 @@ class UserPreferencesManager(private val context: Context) {
     private val SETUP_SNOOZED_UNTIL = androidx.datastore.preferences.core.longPreferencesKey("setup_snoozed_until")
     private val TOUR_COMPLETED = booleanPreferencesKey("tour_completed")
     private val GETTING_STARTED_DISMISSED = booleanPreferencesKey("getting_started_dismissed")
+    private val HOME_HERO_DISPLAY_MODE = stringPreferencesKey("home_hero_display_mode")
     private val WORK_SETTINGS = stringPreferencesKey("work_settings")
     private val PULSE_SEEN_AT = androidx.datastore.preferences.core.longPreferencesKey("pulse_seen_at")
 
@@ -246,7 +255,10 @@ class UserPreferencesManager(private val context: Context) {
             timelineView = prefs[TIMELINE_VIEW] ?: "AGENDA",
             setupSnoozedUntil = prefs[SETUP_SNOOZED_UNTIL] ?: 0L,
             tourCompleted = prefs[TOUR_COMPLETED] ?: false,
-            gettingStartedDismissed = prefs[GETTING_STARTED_DISMISSED] ?: false
+            gettingStartedDismissed = prefs[GETTING_STARTED_DISMISSED] ?: false,
+            homeHeroDisplayMode = prefs[HOME_HERO_DISPLAY_MODE]?.let {
+                runCatching { HomeHeroDisplayMode.valueOf(it) }.getOrNull()
+            } ?: HomeHeroDisplayMode.DAILY_SCRIPTURE
         )
     }
 
@@ -366,5 +378,9 @@ class UserPreferencesManager(private val context: Context) {
             val trimmed = name.trim()
             if (trimmed.isEmpty()) it.remove(USER_NAME) else it[USER_NAME] = trimmed
         }
+    }
+
+    suspend fun setHomeHeroDisplayMode(mode: HomeHeroDisplayMode) {
+        context.dataStore.edit { it[HOME_HERO_DISPLAY_MODE] = mode.name }
     }
 }

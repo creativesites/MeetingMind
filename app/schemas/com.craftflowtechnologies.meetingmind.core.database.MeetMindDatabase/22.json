@@ -3658,7 +3658,7 @@
       },
       {
         "tableName": "learning_concepts",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `name` TEXT NOT NULL, `definition` TEXT NOT NULL, `emphasis` TEXT, `relationshipsJson` TEXT NOT NULL DEFAULT '[]', `evidenceJson` TEXT NOT NULL DEFAULT '[]', `state` TEXT NOT NULL DEFAULT 'NEW', `isUserEdited` INTEGER NOT NULL DEFAULT 0, `isDismissed` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `name` TEXT NOT NULL, `definition` TEXT NOT NULL, `emphasis` TEXT, `relationshipsJson` TEXT NOT NULL DEFAULT '[]', `evidenceJson` TEXT NOT NULL DEFAULT '[]', `state` TEXT NOT NULL DEFAULT 'NEW', `isUserEdited` INTEGER NOT NULL DEFAULT 0, `isDismissed` INTEGER NOT NULL DEFAULT 0, `isStale` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "id",
@@ -3720,6 +3720,13 @@
           {
             "fieldPath": "isDismissed",
             "columnName": "isDismissed",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "isStale",
+            "columnName": "isStale",
             "affinity": "INTEGER",
             "notNull": true,
             "defaultValue": "0"

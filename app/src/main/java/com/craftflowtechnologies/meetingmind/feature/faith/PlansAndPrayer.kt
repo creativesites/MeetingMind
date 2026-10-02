@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -252,7 +253,11 @@ fun ReadingPlansScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit, onR
 }
 
 @Composable
-fun PrayerListScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit) {
+fun PrayerListScreen(
+    vm: FaithExtrasViewModel,
+    onNavigateBack: () -> Unit,
+    onShareCard: (com.craftflowtechnologies.meetingmind.feature.share.ShareRequest) -> Unit = {}
+) {
     val people by vm.people.collectAsState()
     val days by vm.prayedDays.collectAsState()
     var adding by remember { mutableStateOf(false) }
@@ -288,6 +293,22 @@ fun PrayerListScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit) {
                         Text(p.name + if (p in today) "  · today" else "", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                         Text(listOfNotNull(p.note.takeIf { it.isNotBlank() }, if (p.prayedCount == 0) "Not yet prayed for" else "Prayed ${p.prayedCount}×").joinToString(" · "), fontSize = 12.5.sp, color = InkSecondary)
                     }
+                    IconButton(onClick = {
+                        val text = if (p.note.isNotBlank()) "${p.name}\n${p.note}" else p.name
+                        val theme = "prayer for ${p.name}: ${p.note.ifBlank { "healing, strength, peace and grace" }}"
+                        onShareCard(
+                            com.craftflowtechnologies.meetingmind.feature.share.ShareRequest(
+                                com.craftflowtechnologies.meetingmind.core.share.ShareCardContent(
+                                    eyebrow = "PRAYER REQUEST",
+                                    text = text,
+                                    reference = null,
+                                    attribution = null,
+                                    quoted = false
+                                ),
+                                theme = theme
+                            )
+                        )
+                    }) { Icon(Icons.Filled.Share, contentDescription = "Share prayer card", tint = InkMuted) }
                     IconButton(onClick = { vm.removePerson(p) }) { Icon(Icons.Filled.DeleteOutline, contentDescription = "Remove", tint = InkMuted) }
                 }
             }

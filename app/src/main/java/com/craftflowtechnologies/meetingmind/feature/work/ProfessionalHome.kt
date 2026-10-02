@@ -81,6 +81,22 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.lerp
+import com.craftflowtechnologies.meetingmind.core.timeline.Greetings
+import com.craftflowtechnologies.meetingmind.core.timeline.TimeOfDaySky
+import com.craftflowtechnologies.meetingmind.feature.today.HomeQuickAccessRow
+import java.util.Calendar
+
 /** The briefing card's own palette: a deep executive ink, the same in light and dark. */
 private val BriefTop = Briefing.Top
 private val BriefBottom = Briefing.Bottom
@@ -108,6 +124,11 @@ fun ProfessionalHome(
     onOpenDevotional: () -> Unit,
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit,
     onOpenWork: () -> Unit,
+    onOpenFaith: () -> Unit = {},
+    onOpenLearning: () -> Unit = {},
+    onOpenPrayer: () -> Unit = {},
+    onOpenWord: () -> Unit = {},
+    onOpenTestimonies: () -> Unit = {},
     onOpenAll: (WorkTab) -> Unit,
     onOpenWrapUp: (String, Boolean) -> Unit,
     onOpenProject: (String) -> Unit,
@@ -161,19 +182,34 @@ fun ProfessionalHome(
         }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("professional_home"), contentPadding = PaddingValues(bottom = 36.dp)) {
-            // Masthead: date, a plain greeting, search and customize.
+            // Masthead: executive sky header following time of day
             item {
-                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 8.dp, top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Date(now)).uppercase(), fontSize = 11.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = InkMuted)
-                        Text(
-                            remember(identity, now / 3_600_000) { com.craftflowtechnologies.meetingmind.core.timeline.Greetings.plain(identity) },
-                            fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-0.6).sp, modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, "Search", tint = Ink) }
-                    IconButton(onClick = onCustomize, modifier = Modifier.testTag("professional_customize")) { Icon(Icons.Filled.Tune, "Customize home", tint = InkSecondary) }
-                }
+                ProfessionalSkyHeader(
+                    identity = identity,
+                    now = now,
+                    meetingsToday = meetingsToday,
+                    dueTodayCount = dueToday.size,
+                    onSearch = onSearch,
+                    onCustomize = onCustomize,
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 10.dp)
+                )
+            }
+
+            // Quick Access icons for Faith, Work, Learning, Devotional, Prayer, Word, Testimonies
+            item {
+                HomeQuickAccessRow(
+                    onOpenFaith = onOpenFaith,
+                    onOpenWork = onOpenWork,
+                    onOpenLearning = onOpenLearning,
+                    onOpenDevotional = onOpenDevotional,
+                    onOpenPrayer = onOpenPrayer,
+                    onOpenWord = onOpenWord,
+                    onOpenTestimonies = onOpenTestimonies,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
             }
 
             // The Work Pulse: what needs you, what changed, and today with what's still open (D5.1).
@@ -384,3 +420,127 @@ private fun ScheduleRow(item: TimelineItem, fmt: java.text.DateFormat, now: Long
         }
     }
 }
+
+@Composable
+private fun ProfessionalSkyHeader(
+    identity: com.craftflowtechnologies.meetingmind.core.identity.AppIdentity,
+    now: Long,
+    meetingsToday: Int,
+    dueTodayCount: Int,
+    onSearch: () -> Unit,
+    onCustomize: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cal = remember(now / 60_000) { Calendar.getInstance().apply { timeInMillis = now } }
+    val sky = remember(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE) / 5) {
+        TimeOfDaySky.at(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+    }
+    val idle = rememberInfiniteTransition(label = "prof_idle")
+    val float = idle.animateFloat(
+        -1f, 1f, infiniteRepeatable(tween(3800, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "prof_orb_float"
+    )
+    val twinkle = idle.animateFloat(0f, 1f, infiniteRepeatable(tween(5200, easing = LinearEasing), RepeatMode.Restart), label = "prof_twinkle")
+    val stars = remember { List(20) { kotlin.Triple(kotlin.random.Random(it * 17 + 5).nextFloat(), kotlin.random.Random(it * 11 + 3).nextFloat() * 0.7f, kotlin.random.Random(it).nextFloat()) } }
+
+    val top = Color(sky.skyTop)
+    val bottom = Color(sky.skyBottom)
+    val cardShape = RoundedCornerShape(28.dp)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(148.dp)
+            .shadow(16.dp, cardShape, ambientColor = bottom.copy(alpha = 0.25f), spotColor = bottom.copy(alpha = 0.4f))
+            .clip(cardShape)
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.White.copy(alpha = 0.08f))), cardShape)
+    ) {
+        // Sky Canvas background
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawRect(Brush.linearGradient(listOf(top, lerp(top, bottom, 0.6f), bottom), start = Offset.Zero, end = Offset(size.width * 0.6f, size.height)))
+            if (sky.stars > 0f) {
+                stars.forEach { (x, y, phase) ->
+                    val t = ((twinkle.value + phase) % 1f)
+                    val a = sky.stars * (0.35f + 0.65f * kotlin.math.abs(t * 2f - 1f))
+                    drawCircle(Color.White.copy(alpha = a.coerceIn(0f, 1f)), radius = (0.8f + phase * 1.2f).dp.toPx(), center = Offset(x * size.width, y * size.height))
+                }
+            }
+            // Glow and celestial orb on the right
+            val orbX = size.width * 0.82f
+            val orbY = size.height * (0.38f + float.value * 0.06f)
+            val orbCenter = Offset(orbX, orbY)
+            val orbRadius = size.height * 0.22f
+            drawCircle(
+                Brush.radialGradient(listOf(Color(sky.glow).copy(alpha = if (sky.isMoon) 0.25f else 0.45f), Color.Transparent), center = orbCenter, radius = orbRadius * 2.5f),
+                radius = orbRadius * 2.5f,
+                center = orbCenter
+            )
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(Color(sky.orbLight), Color(sky.orbBody), Color(sky.orbDeep)),
+                    center = Offset(orbCenter.x - orbRadius * 0.25f, orbCenter.y - orbRadius * 0.25f),
+                    radius = orbRadius
+                ),
+                radius = orbRadius,
+                center = orbCenter
+            )
+        }
+
+        // Executive translucent gradient overlay for high contrast and executive polish
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Brush.horizontalGradient(listOf(SurfaceRaised.copy(alpha = 0.90f), SurfaceRaised.copy(alpha = 0.45f))))
+        )
+
+        // Content
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Date(now)).uppercase(),
+                    fontSize = 10.5.sp,
+                    letterSpacing = 1.2.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = InkMuted
+                )
+                Row {
+                    IconButton(onClick = onSearch, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.Search, "Search", tint = Ink, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    IconButton(onClick = onCustomize, modifier = Modifier.size(32.dp).testTag("professional_customize")) {
+                        Icon(Icons.Filled.Tune, "Customize home", tint = InkSecondary, modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+
+            Column {
+                Text(
+                    text = Greetings.pick(identity),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Ink,
+                    letterSpacing = (-0.4).sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "Executive Briefing · $meetingsToday ${if (meetingsToday == 1) "meeting" else "meetings"} · $dueTodayCount due",
+                    fontSize = 12.sp,
+                    color = InkMuted,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+    }
+}
+

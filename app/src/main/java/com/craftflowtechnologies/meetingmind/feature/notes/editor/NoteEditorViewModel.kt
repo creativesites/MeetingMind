@@ -1189,9 +1189,16 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     }
 
     fun applyOrganized(jobId: String, result: com.craftflowtechnologies.meetingmind.ai.notes.NoteAiOutcome.Sections) {
-        snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, "Organise")
-        update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.organized(_blocks.value, noteId, result))
-        dismissAi(jobId); _message.value = "Organised — Undo puts it back as it was"
+        val job = aiJobs.value.firstOrNull { it.id == jobId }
+        if (job?.tool == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.STUDY_GUIDE) {
+            snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, "Discussion guide")
+            update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.withStudyGuide(_blocks.value, noteId, result))
+            dismissAi(jobId); _message.value = "Discussion guide added"
+        } else {
+            snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, "Organise")
+            update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.organized(_blocks.value, noteId, result))
+            dismissAi(jobId); _message.value = "Organised — Undo puts it back as it was"
+        }
     }
 
     /** Puts the caret in [blockId] at [cursor]. */

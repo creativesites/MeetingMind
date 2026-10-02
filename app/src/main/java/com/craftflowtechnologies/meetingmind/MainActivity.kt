@@ -414,6 +414,11 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenFaith = { navController.navigate(Routes.FAITH) },
+                onOpenLearning = { navController.navigate(Routes.LEARN) },
+                onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
+                onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
+                onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
                 onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
                 onOpenWrapUp = { id, compose -> navController.navigate(Routes.wrapUpRoute(id, compose)) },
                 onOpenProject = { navController.navigate(Routes.projectRoute(it)) },
@@ -446,6 +451,12 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onNavigateBottomNav = navigateToPrimary,
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
+                onOpenFaith = { navController.navigate(Routes.FAITH) },
+                onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenLearning = { navController.navigate(Routes.LEARN) },
+                onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
+                onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
+                onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
                 onNewNote = { openNewNote(false) },
                 onImport = { navController.navigate(Routes.IMPORT) },
                 setup = setupState,
@@ -519,7 +530,48 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onPrayWithMe = { navController.navigate(Routes.prayRoute()) },
                     onOpenPlans = { navController.navigate(Routes.PLANS) },
                     onOpenPrayerList = { navController.navigate(Routes.PRAYER_LIST) },
-                    onOpenTasks = { navController.navigate(Routes.TASKS) }
+                    onOpenTasks = { navController.navigate(Routes.TASKS) },
+                    onOpenCircles = { navController.navigate(Routes.CIRCLES) },
+                    onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) }
+                )
+            }
+        }
+        composable(Routes.TESTIMONIES) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.faith.FaithViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.craftflowtechnologies.meetingmind.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
+                com.craftflowtechnologies.meetingmind.feature.faith.TestimoniesFeedScreen(
+                    viewModel = vm,
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpenNote = { id -> navController.navigate(Routes.noteRoute(id)) },
+                    onNewTestimony = { navController.navigate(Routes.recordTypeRoute(RecordingType.TESTIMONY)) },
+                    onShare = { req ->
+                        com.craftflowtechnologies.meetingmind.feature.share.ShareRequests.pending = req
+                        navController.navigate(Routes.SHARE)
+                    }
+                )
+            }
+        }
+        composable(Routes.CIRCLES) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.faith.circles.CirclesViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
+                com.craftflowtechnologies.meetingmind.feature.faith.circles.CirclesScreen(
+                    viewModel = vm,
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpenCircle = { circleId -> navController.navigate(Routes.circleDetailRoute(circleId)) }
+                )
+            }
+        }
+        composable(
+            Routes.CIRCLE_DETAIL,
+            arguments = listOf(navArgument("circleId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val circleId = backStackEntry.arguments?.getString("circleId").orEmpty()
+            val vm: com.craftflowtechnologies.meetingmind.feature.faith.circles.CirclesViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
+                com.craftflowtechnologies.meetingmind.feature.faith.circles.CircleDetailScreen(
+                    circleId = circleId,
+                    viewModel = vm,
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
         }
@@ -584,7 +636,14 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         composable(Routes.PRAYER_LIST) {
             val vm: com.craftflowtechnologies.meetingmind.feature.faith.FaithExtrasViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
             com.craftflowtechnologies.meetingmind.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
-                com.craftflowtechnologies.meetingmind.feature.faith.PrayerListScreen(vm, onNavigateBack = { navController.popBackStack() })
+                com.craftflowtechnologies.meetingmind.feature.faith.PrayerListScreen(
+                    vm,
+                    onNavigateBack = { navController.popBackStack() },
+                    onShareCard = { req ->
+                        com.craftflowtechnologies.meetingmind.feature.share.ShareRequests.pending = req
+                        navController.navigate(Routes.SHARE)
+                    }
+                )
             }
         }
         composable(Routes.SHARE) {
@@ -1086,7 +1145,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onNavigateBack = { navController.popBackStack() },
                 onStartPractice = { sId, actId -> navController.navigate(Routes.learningPracticeRoute(sId, actId)) },
                 onStartDiagnostic = { sId -> navController.navigate(Routes.learningDiagnosticRoute(sId)) },
-                onOpenNote = { noteId -> navController.navigate(Routes.noteRoute(noteId)) }
+                onOpenNote = { noteId -> navController.navigate(Routes.noteRoute(noteId)) },
+                onOpenMeeting = { meetingId, startAtMs -> navController.navigate(Routes.meetingDetailRoute(meetingId, startAtMs)) }
             )
         }
 

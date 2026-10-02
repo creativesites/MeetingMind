@@ -36,18 +36,23 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatAlignCenter
 import androidx.compose.material.icons.filled.FormatAlignLeft
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -122,8 +127,31 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
     var showLibrary by remember { mutableStateOf(false) }
     var generating by remember { mutableStateOf(false) }
     var showStyles by remember { mutableStateOf(false) }
+    var lastStyle by remember { mutableStateOf(ImageStyle.LANDSCAPE) }
+    var currentTheme by remember { mutableStateOf(request.theme) }
+    var showThemeEdit by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
+
+    fun generatePicture(styleToUse: ImageStyle) {
+        if (generating) return
+        lastStyle = styleToUse
+        showStyles = false
+        generating = true
+        message = null
+        scope.launch {
+            when (val r = ImageBackgrounds(context).generate(currentTheme, styleToUse, style.format)) {
+                is AiResult.Success -> {
+                    generated.add(0, r.value.path)
+                    style = style.copy(background = BackgroundSpec.Photo(r.value.path, generated = true))
+                }
+                is AiResult.ModelUnavailable -> message = r.message
+                is AiResult.Failed -> message = "Couldn't make a picture: ${r.message}"
+                else -> message = "Couldn't make a picture."
+            }
+            generating = false
+        }
+    }
 
     // A photo added here joins the library, so it's there next time too.
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -151,6 +179,42 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
         onDismiss = { showLibrary = false; libraryVersion++ },
         onPick = { img -> showLibrary = false; libraryVersion++; style = style.copy(background = BackgroundSpec.Photo(img.file.path)) }
     )
+    if (showThemeEdit) {
+        var editTheme by remember(currentTheme) { mutableStateOf(currentTheme) }
+        AlertDialog(
+            onDismissRequest = { showThemeEdit = false },
+            containerColor = com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase,
+            title = { Text("Image theme / prompt", color = Ink) },
+            text = {
+                Column {
+                    Text(
+                        "Describe what scene to create for the card background. Words and faces will not appear:",
+                        fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    OutlinedTextField(
+                        value = editTheme,
+                        onValueChange = { editTheme = it },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = editTheme.isNotBlank(),
+                    onClick = {
+                        currentTheme = editTheme.trim()
+                        showThemeEdit = false
+                        generatePicture(lastStyle)
+                    }
+                ) { Text("Generate", color = Gold, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showThemeEdit = false }) { Text("Cancel", color = InkSecondary) }
+            }
+        )
+    }
     Column(Modifier.fillMaxSize().background(Color(0xFF0E0B18)).statusBarsPadding().testTag("share_studio")) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White) }
@@ -173,6 +237,10 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
                 }
                 LazyRow(Modifier.padding(top = 12.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     item { ActionTile(Icons.Filled.Star, if (generating) "Making…" else "New picture", Gold, busy = generating) { showStyles = !showStyles } }
+                    if ((style.background as? BackgroundSpec.Photo)?.generated == true || generated.isNotEmpty()) {
+                        item { ActionTile(Icons.Filled.Refresh, if (generating) "Making…" else "Regenerate", Gold, busy = generating) { generatePicture(lastStyle) } }
+                    }
+                    item { ActionTile(Icons.Filled.Edit, "Prompt", Color(0xFF475569)) { showThemeEdit = true } }
                     item { ActionTile(Icons.Filled.AddPhotoAlternate, "Add photo", Color(0xFF475569)) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } }
                     item { ActionTile(Icons.Filled.GridView, "All", Color(0xFF475569)) { showLibrary = true } }
                     items(generated) { path -> PhotoTile(path, (style.background as? BackgroundSpec.Photo)?.path == path) { style = style.copy(background = BackgroundSpec.Photo(path)) } }
@@ -181,17 +249,8 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
                 }
                 if (showStyles) Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ImageStyle.entries.forEach { s ->
-                        Chip(s.label, false) {
-                            showStyles = false; generating = true; message = null
-                            scope.launch {
-                                when (val r = ImageBackgrounds(context).generate(request.theme, s, style.format)) {
-                                    is AiResult.Success -> { generated.add(0, r.value.path); style = style.copy(background = BackgroundSpec.Photo(r.value.path, generated = true)) }
-                                    is AiResult.ModelUnavailable -> message = r.message
-                                    is AiResult.Failed -> message = "Couldn't make a picture: ${r.message}"
-                                    else -> message = "Couldn't make a picture."
-                                }
-                                generating = false
-                            }
+                        Chip(s.label, lastStyle == s) {
+                            generatePicture(s)
                         }
                     }
                 }

@@ -84,12 +84,14 @@ class LearningIntelligenceEngine(
             ?: return AiResult.Failed("Malformed model response for diagnostic.")
 
         val activities = parseActivities(json, aliases, isDiagnostic = true)
-        if (activities.isEmpty()) {
-            return AiResult.Failed("Model could not generate grounded diagnostic questions.")
+        // Diagnostic requirement: 5-8 valid activities.
+        // Reject and do not persist partial diagnostics (< 5 questions)
+        if (activities.size < 5) {
+            return AiResult.Failed("Diagnostic generation yielded fewer than 5 valid questions (${activities.size} generated).")
         }
 
         // Bounded to 5-8 questions (PLAN_LEARNING §2)
-        val bounded = activities.take(8).let { if (it.size >= 5) it else activities }
+        val bounded = activities.take(8)
         return AiResult.Success(bounded)
     }
 
@@ -178,19 +180,31 @@ class LearningIntelligenceEngine(
             // Anti-leakage gate: The prompt must NOT reveal the expected answer
             if (isAnswerLeaked(prompt, expectedAnswer)) continue
 
-            val typeStr = obj.optString("type", "MULTIPLE_CHOICE")
-            val type = when (typeStr.uppercase()) {
+            val typeStr = obj.optString("type", "MULTIPLE_CHOICE").trim().uppercase()
+            // Reject APPLICATION in R1 generation (do not silently reclassify)
+            if (typeStr == "APPLICATION") continue
+
+            val type = when (typeStr) {
                 "RECALL" -> LearningActivityType.RECALL
-                "APPLICATION" -> LearningActivityType.APPLICATION
-                else -> LearningActivityType.MULTIPLE_CHOICE
+                "MULTIPLE_CHOICE" -> LearningActivityType.MULTIPLE_CHOICE
+                else -> continue // Reject unrecognized types
             }
 
             val options = mutableListOf<String>()
-            obj.optJSONArray("options")?.let { optArr ->
-                for (j in 0 until optArr.length()) {
-                    val opt = optArr.optString(j).trim()
-                    if (opt.isNotBlank()) options.add(opt)
+            if (type == LearningActivityType.MULTIPLE_CHOICE) {
+                obj.optJSONArray("options")?.let { optArr ->
+                    for (j in 0 until optArr.length()) {
+                        val opt = optArr.optString(j).trim()
+                        if (opt.isNotBlank()) options.add(opt)
+                    }
                 }
+                val uniqueOptions = options.distinct()
+                // Multiple choice: exactly 4 normalized unique non-blank options
+                if (uniqueOptions.size != 4) continue
+
+                // Multiple choice: exactly 1 match for expectedAnswer
+                val matchCount = uniqueOptions.count { it.equals(expectedAnswer, ignoreCase = true) }
+                if (matchCount != 1) continue
             }
 
             val difficulty = obj.optString("difficulty", "MEDIUM")
@@ -202,7 +216,7 @@ class LearningIntelligenceEngine(
                     GeneratedActivity(
                         prompt = prompt,
                         expectedAnswer = expectedAnswer,
-                        options = options,
+                        options = if (type == LearningActivityType.MULTIPLE_CHOICE) options.distinct() else emptyList(),
                         type = type,
                         difficulty = difficulty,
                         conceptName = conceptName,
@@ -214,14 +228,19 @@ class LearningIntelligenceEngine(
         return results
     }
 
-    internal fun isAnswerLeaked(prompt: String, expectedAnswer: String): Boolean {
-        if (prompt.equals(expectedAnswer, ignoreCase = true)) return true
-        val cleanAnswer = expectedAnswer.trim().lowercase()
-        // If expected answer is a significant multi-word phrase or specific technical term, ensure it's not simply in the prompt
-        if (cleanAnswer.length > 3 && prompt.lowercase().contains(cleanAnswer)) {
-            return true
+    internal fun isAnswerLeaked(prompt: String, expectedAnswer: String): Boolean =
+        Companion.isAnswerLeaked(prompt, expectedAnswer)
+
+    companion object {
+        fun isAnswerLeaked(prompt: String, expectedAnswer: String): Boolean {
+            if (prompt.equals(expectedAnswer, ignoreCase = true)) return true
+            val cleanAnswer = expectedAnswer.trim().lowercase()
+            // If expected answer is a significant multi-word phrase or specific technical term, ensure it's not simply in the prompt
+            if (cleanAnswer.length > 3 && prompt.lowercase().contains(cleanAnswer)) {
+                return true
+            }
+            return false
         }
-        return false
     }
 
     private fun parseSourceIds(

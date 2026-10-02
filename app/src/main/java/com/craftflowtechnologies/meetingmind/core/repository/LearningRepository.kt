@@ -14,6 +14,7 @@ import com.craftflowtechnologies.meetingmind.core.model.LearningActivity
 import com.craftflowtechnologies.meetingmind.core.model.LearningConcept
 import com.craftflowtechnologies.meetingmind.core.model.LearningEvidence
 import com.craftflowtechnologies.meetingmind.core.model.LearningMasteryState
+import com.craftflowtechnologies.meetingmind.core.model.LearningPassage
 import com.craftflowtechnologies.meetingmind.core.model.LearningSession
 import com.craftflowtechnologies.meetingmind.core.model.MasteryCalculator
 import com.craftflowtechnologies.meetingmind.core.model.NoteStatus
@@ -133,9 +134,39 @@ class LearningRepository(
         conceptDao.upsertAll(concepts.map { LearningConceptEntity.fromDomain(it) })
     }
 
-    suspend fun updateConcept(concept: LearningConcept) = withContext(Dispatchers.IO) {
-        val updated = concept.copy(updatedAt = System.currentTimeMillis())
+    suspend fun addCustomConcept(
+        sessionId: String,
+        name: String,
+        definition: String,
+        emphasis: String? = null
+    ): LearningConcept = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val concept = LearningConcept(
+            id = UUID.randomUUID().toString(),
+            sessionId = sessionId,
+            name = name.trim(),
+            definition = definition.trim(),
+            emphasis = emphasis?.trim()?.takeIf { it.isNotBlank() },
+            relationships = emptyList(),
+            evidence = emptyList(),
+            state = LearningMasteryState.NEW,
+            isUserEdited = true,
+            isDismissed = false,
+            isStale = false,
+            createdAt = now,
+            updatedAt = now
+        )
+        conceptDao.upsert(LearningConceptEntity.fromDomain(concept))
+        concept
+    }
+
+    suspend fun updateConcept(concept: LearningConcept): LearningConcept = withContext(Dispatchers.IO) {
+        val updated = concept.copy(
+            isUserEdited = true,
+            updatedAt = System.currentTimeMillis()
+        )
         conceptDao.update(LearningConceptEntity.fromDomain(updated))
+        updated
     }
 
     suspend fun dismissConcept(conceptId: String) = withContext(Dispatchers.IO) {
@@ -148,6 +179,10 @@ class LearningRepository(
 
     fun observeDiagnosticActivities(sessionId: String): Flow<List<LearningActivity>> =
         activityDao.observeDiagnosticBySession(sessionId).map { list -> list.map { it.toDomain() } }
+
+    suspend fun getActivities(sessionId: String): List<LearningActivity> = withContext(Dispatchers.IO) {
+        activityDao.getBySession(sessionId).map { it.toDomain() }
+    }
 
     suspend fun getDiagnosticActivities(sessionId: String): List<LearningActivity> = withContext(Dispatchers.IO) {
         activityDao.getDiagnosticBySession(sessionId).map { it.toDomain() }
@@ -179,6 +214,61 @@ class LearningRepository(
     suspend fun dismissActivity(activityId: String) = withContext(Dispatchers.IO) {
         val activity = activityDao.getById(activityId) ?: return@withContext
         activityDao.update(activity.copy(isDismissed = true, updatedAt = System.currentTimeMillis()))
+        scheduleDao.deleteByActivity(activityId)
+    }
+
+    /**
+     * Session regeneration: replaces unedited auto-generated concepts and activities
+     * without duplicating active items or review schedules.
+     * Preserves:
+     * - User-edited concepts (isUserEdited == true)
+     * - All previous ActivityAttempts as immutable history.
+     */
+    suspend fun regenerateSession(
+        sessionId: String,
+        newConcepts: List<LearningConcept>,
+        newActivities: List<LearningActivity>
+    ) = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val currentConcepts = conceptDao.getBySession(sessionId)
+        val currentActivities = activityDao.getBySession(sessionId)
+
+        // 1. Process existing activities:
+        // If an activity has attempts, mark isDismissed = true and delete its review schedule so it's not scheduled again.
+        // If an activity has NO attempts, delete it completely along with its schedule.
+        for (act in currentActivities) {
+            val attempts = attemptDao.getByActivity(act.id)
+            if (attempts.isNotEmpty()) {
+                activityDao.update(act.copy(isDismissed = true, updatedAt = now))
+                scheduleDao.deleteByActivity(act.id)
+            } else {
+                scheduleDao.deleteByActivity(act.id)
+                activityDao.delete(act.id)
+            }
+        }
+
+        // 2. Process existing concepts:
+        // Preserve user-edited concepts (isUserEdited == true).
+        // For unedited concepts: if any activities with attempts reference them, mark isDismissed = true.
+        // Otherwise, delete the unedited concept.
+        for (c in currentConcepts) {
+            if (!c.isUserEdited) {
+                val referencingActivities = activityDao.getBySession(sessionId).filter { it.conceptId == c.id }
+                if (referencingActivities.isNotEmpty()) {
+                    conceptDao.update(c.copy(isDismissed = true, updatedAt = now))
+                } else {
+                    conceptDao.delete(c.id)
+                }
+            }
+        }
+
+        // 3. Insert new concepts (excluding any whose names match existing user-edited concepts)
+        val userEditedConceptNames = currentConcepts.filter { it.isUserEdited }.map { it.name.trim().lowercase() }.toSet()
+        val conceptsToSave = newConcepts.filter { it.name.trim().lowercase() !in userEditedConceptNames }
+        conceptDao.upsertAll(conceptsToSave.map { LearningConceptEntity.fromDomain(it) })
+
+        // 4. Save new activities and initialize their review schedules
+        saveActivities(newActivities)
     }
 
     suspend fun recordAttempt(
@@ -241,6 +331,10 @@ class LearningRepository(
     fun observeAttempts(sessionId: String): Flow<List<ActivityAttempt>> =
         attemptDao.observeBySession(sessionId).map { list -> list.map { it.toDomain() } }
 
+    suspend fun getAttemptsForSession(sessionId: String): List<ActivityAttempt> = withContext(Dispatchers.IO) {
+        attemptDao.getBySession(sessionId).map { it.toDomain() }
+    }
+
     suspend fun snoozeActivity(activityId: String, untilMs: Long) = withContext(Dispatchers.IO) {
         val schedule = scheduleDao.getByActivity(activityId) ?: return@withContext
         scheduleDao.update(schedule.copy(snoozedUntil = untilMs, updatedAt = System.currentTimeMillis()))
@@ -276,11 +370,15 @@ class LearningRepository(
             val boundedDue = dueList.take(10)
             val estMinutes = (boundedDue.size * 1.5).toInt().coerceAtLeast(if (boundedDue.isNotEmpty()) 2 else 0)
 
-            // Weak concept recommendation: look for concepts in NEEDS_REVIEW or with failed attempts
+            // Weak concept recommendation: look for concepts in NEEDS_REVIEW or with failed attempts (withhold dismissed/stale)
             val weakCandidate = allConcepts
                 .map { it.toDomain() }
+                .filter { !it.isDismissed && !it.isStale }
                 .firstOrNull { it.state == LearningMasteryState.NEEDS_REVIEW }
-                ?: allConcepts.map { it.toDomain() }.firstOrNull { it.state == LearningMasteryState.LEARNING }
+                ?: allConcepts
+                    .map { it.toDomain() }
+                    .filter { !it.isDismissed && !it.isStale }
+                    .firstOrNull { it.state == LearningMasteryState.LEARNING }
 
             val weakConcept = weakCandidate?.let { c ->
                 val reason = when (c.state) {
@@ -306,23 +404,105 @@ class LearningRepository(
         }
     }
 
-    suspend fun checkAndMarkStaleActivities(sessionId: String) = withContext(Dispatchers.IO) {
+    /**
+     * Canonical gathering of source passages for a LearningSession.
+     * Preserves authentic noteId, blockId, meetingId, segmentId, and timestamps.
+     */
+    suspend fun gatherSessionPassages(sessionId: String): List<LearningPassage> = withContext(Dispatchers.IO) {
+        val session = sessionDao.getById(sessionId) ?: return@withContext emptyList()
+        val results = mutableListOf<LearningPassage>()
+
+        // 1. Note Blocks
+        val blocks = database.noteDao().getBlocks(session.noteId)
+        val validBlocks = blocks.filter { it.text.isNotBlank() }
+        if (validBlocks.isNotEmpty()) {
+            validBlocks.forEach { b ->
+                results.add(
+                    LearningPassage.NoteBlock(
+                        id = b.id,
+                        text = b.text,
+                        label = b.sectionKey ?: "Note section",
+                        noteId = session.noteId,
+                        blockId = b.id
+                    )
+                )
+            }
+        } else {
+            val note = database.noteDao().getById(session.noteId)
+            if (note != null && note.plainText.isNotBlank()) {
+                results.add(
+                    LearningPassage.NoteText(
+                        id = session.noteId,
+                        text = note.plainText,
+                        label = "Note content",
+                        noteId = session.noteId
+                    )
+                )
+            }
+        }
+
+        // 2. Transcript segments (if linked to a lecture recording)
+        val meetingId = session.meetingId ?: database.meetingDao().getMeetingByNoteId(session.noteId)?.id
+        if (meetingId != null) {
+            val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId)
+            segments.filter { it.text.isNotBlank() }.take(50).forEach { seg ->
+                results.add(
+                    LearningPassage.TranscriptSegment(
+                        id = seg.id,
+                        text = seg.cleanedText ?: seg.text,
+                        label = "Lecture @ ${seg.startMs / 1000}s",
+                        noteId = session.noteId,
+                        meetingId = meetingId,
+                        segmentId = seg.id,
+                        startMs = seg.startMs,
+                        endMs = seg.endMs
+                    )
+                )
+            }
+        }
+
+        results
+    }
+
+    /**
+     * Checks both concepts and activities in a session and flags them as stale (isStale = true)
+     * if their cited source blocks/segments have been deleted.
+     */
+    suspend fun checkAndMarkStaleEntities(sessionId: String) = withContext(Dispatchers.IO) {
         val session = sessionDao.getById(sessionId) ?: return@withContext
         val activities = activityDao.getBySession(sessionId)
+        val concepts = conceptDao.getBySession(sessionId)
+        val note = database.noteDao().getById(session.noteId)
         val validBlocks = database.noteDao().getBlocks(session.noteId).map { it.id }.toSet()
         val validSegments = if (session.meetingId != null) {
             database.transcriptDao().getSegmentsForMeetingDirect(session.meetingId).map { it.id }.toSet()
         } else emptySet()
 
+        fun isEvidenceStale(evidenceList: List<LearningEvidence>): Boolean {
+            if (evidenceList.isEmpty()) return false
+            val hasValidCitation = evidenceList.any { ev ->
+                (ev.blockId != null && ev.blockId in validBlocks) ||
+                (ev.segmentIds.isNotEmpty() && ev.segmentIds.any { it in validSegments }) ||
+                (ev.blockId == null && ev.segmentIds.isEmpty() && ev.noteId == session.noteId && note != null)
+            }
+            return !hasValidCitation
+        }
+
+        val now = System.currentTimeMillis()
         for (actEntity in activities) {
             val evidenceList = LearningEvidence.parseList(actEntity.evidenceJson)
-            val hasValidEvidence = evidenceList.any { ev ->
-                (ev.blockId != null && ev.blockId in validBlocks) ||
-                (ev.segmentIds.any { it in validSegments })
+            if (isEvidenceStale(evidenceList) && !actEntity.isStale) {
+                activityDao.update(actEntity.copy(isStale = true, updatedAt = now))
             }
-            if (evidenceList.isNotEmpty() && !hasValidEvidence && !actEntity.isStale) {
-                activityDao.update(actEntity.copy(isStale = true, updatedAt = System.currentTimeMillis()))
+        }
+
+        for (conceptEntity in concepts) {
+            val evidenceList = LearningEvidence.parseList(conceptEntity.evidenceJson)
+            if (isEvidenceStale(evidenceList) && !conceptEntity.isStale) {
+                conceptDao.update(conceptEntity.copy(isStale = true, updatedAt = now))
             }
         }
     }
+
+    suspend fun checkAndMarkStaleActivities(sessionId: String) = checkAndMarkStaleEntities(sessionId)
 }

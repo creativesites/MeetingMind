@@ -53,7 +53,12 @@ import androidx.room.migration.Migration
         LearningConceptEntity::class,
         LearningActivityEntity::class,
         ActivityAttemptEntity::class,
-        ReviewScheduleEntity::class
+        ReviewScheduleEntity::class,
+        CircleEntity::class,
+        CircleMemberEntity::class,
+        CirclePrayerEntity::class,
+        CircleTestimonyEntity::class,
+        CircleSermonEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
@@ -93,6 +98,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun learningActivityDao(): LearningActivityDao
     abstract fun activityAttemptDao(): ActivityAttemptDao
     abstract fun reviewScheduleDao(): ReviewScheduleDao
+    abstract fun circleDao(): CircleDao
 
     companion object {
         @Volatile
@@ -504,6 +510,32 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /** Fellowship Circles: Tier 2 (docs/PLAN_V2.md §F8). Circles, members, prayers, testimonies, sermons. */
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_22_23_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_22_23_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `circles` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL DEFAULT '', `avatarEmoji` TEXT NOT NULL DEFAULT '🕊️', `inviteCode` TEXT NOT NULL, `encryptionKeyBase64` TEXT NOT NULL, `createdByMemberId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `memberCount` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_circles_createdAt` ON `circles` (`createdAt`)",
+            "CREATE TABLE IF NOT EXISTS `circle_members` (`id` TEXT NOT NULL, `circleId` TEXT NOT NULL, `displayName` TEXT NOT NULL, `role` TEXT NOT NULL DEFAULT 'MEMBER', `joinedAt` INTEGER NOT NULL, `isSelf` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`), FOREIGN KEY(`circleId`) REFERENCES `circles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_circle_members_circleId` ON `circle_members` (`circleId`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_members_isSelf` ON `circle_members` (`isSelf`)",
+            "CREATE TABLE IF NOT EXISTS `circle_prayers` (`id` TEXT NOT NULL, `circleId` TEXT NOT NULL, `authorName` TEXT NOT NULL, `authorId` TEXT NOT NULL, `requestText` TEXT NOT NULL, `isUrgent` INTEGER NOT NULL DEFAULT 0, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `prayerCount` INTEGER NOT NULL DEFAULT 0, `prayedByMe` INTEGER NOT NULL DEFAULT 0, `answeredAt` INTEGER, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`circleId`) REFERENCES `circles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_circle_prayers_circleId` ON `circle_prayers` (`circleId`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_prayers_status` ON `circle_prayers` (`status`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_prayers_createdAt` ON `circle_prayers` (`createdAt`)",
+            "CREATE TABLE IF NOT EXISTS `circle_testimonies` (`id` TEXT NOT NULL, `circleId` TEXT NOT NULL, `authorName` TEXT NOT NULL, `authorId` TEXT NOT NULL, `title` TEXT NOT NULL, `storyText` TEXT NOT NULL, `scriptureRef` TEXT, `prayerRequestId` TEXT, `praiseCount` INTEGER NOT NULL DEFAULT 0, `praisedByMe` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`circleId`) REFERENCES `circles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_circle_testimonies_circleId` ON `circle_testimonies` (`circleId`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_testimonies_createdAt` ON `circle_testimonies` (`createdAt`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_testimonies_prayerRequestId` ON `circle_testimonies` (`prayerRequestId`)",
+            "CREATE TABLE IF NOT EXISTS `circle_sermons` (`id` TEXT NOT NULL, `circleId` TEXT NOT NULL, `title` TEXT NOT NULL, `preacher` TEXT, `scripturePassage` TEXT, `sermonDate` TEXT, `discussionGuideJson` TEXT NOT NULL DEFAULT '', `transcriptSummary` TEXT NOT NULL DEFAULT '', `audioDurationSec` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`circleId`) REFERENCES `circles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_circle_sermons_circleId` ON `circle_sermons` (`circleId`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_sermons_createdAt` ON `circle_sermons` (`createdAt`)"
+        )
+
         /** Learning vertical: Release 1 (docs/PLAN_LEARNING.md). Sessions, concepts, activities, attempts, schedules. */
         val MIGRATION_21_22 = object : Migration(21, 22) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -516,7 +548,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_learning_sessions_noteId` ON `learning_sessions` (`noteId`)",
             "CREATE INDEX IF NOT EXISTS `index_learning_sessions_meetingId` ON `learning_sessions` (`meetingId`)",
             "CREATE INDEX IF NOT EXISTS `index_learning_sessions_status` ON `learning_sessions` (`status`)",
-            "CREATE TABLE IF NOT EXISTS `learning_concepts` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `name` TEXT NOT NULL, `definition` TEXT NOT NULL, `emphasis` TEXT, `relationshipsJson` TEXT NOT NULL DEFAULT '[]', `evidenceJson` TEXT NOT NULL DEFAULT '[]', `state` TEXT NOT NULL DEFAULT 'NEW', `isUserEdited` INTEGER NOT NULL DEFAULT 0, `isDismissed` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE TABLE IF NOT EXISTS `learning_concepts` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `name` TEXT NOT NULL, `definition` TEXT NOT NULL, `emphasis` TEXT, `relationshipsJson` TEXT NOT NULL DEFAULT '[]', `evidenceJson` TEXT NOT NULL DEFAULT '[]', `state` TEXT NOT NULL DEFAULT 'NEW', `isUserEdited` INTEGER NOT NULL DEFAULT 0, `isDismissed` INTEGER NOT NULL DEFAULT 0, `isStale` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
             "CREATE INDEX IF NOT EXISTS `index_learning_concepts_sessionId` ON `learning_concepts` (`sessionId`)",
             "CREATE INDEX IF NOT EXISTS `index_learning_concepts_state` ON `learning_concepts` (`state`)",
             "CREATE TABLE IF NOT EXISTS `learning_activities` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `conceptId` TEXT, `type` TEXT NOT NULL, `prompt` TEXT NOT NULL, `expectedAnswer` TEXT NOT NULL, `optionsJson` TEXT NOT NULL DEFAULT '[]', `difficulty` TEXT NOT NULL DEFAULT 'MEDIUM', `evidenceJson` TEXT NOT NULL DEFAULT '[]', `isDiagnostic` INTEGER NOT NULL DEFAULT 0, `isDismissed` INTEGER NOT NULL DEFAULT 0, `isStale` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`conceptId`) REFERENCES `learning_concepts`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
@@ -673,7 +705,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 22
+        const val VERSION = 23
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {
@@ -691,7 +723,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
                     .build()
                 INSTANCE = instance
                 instance

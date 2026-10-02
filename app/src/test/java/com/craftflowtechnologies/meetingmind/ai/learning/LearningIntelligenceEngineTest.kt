@@ -121,4 +121,106 @@ class LearningIntelligenceEngineTest {
         assertTrue(feedback.misconception.contains("Allosteric inhibitors"))
         assertEquals(listOf("block_2"), feedback.evidenceIds)
     }
+
+    @Test
+    fun `parseActivities rejects APPLICATION activity type in Release 1`() {
+        val engine = LearningIntelligenceEngine(FakeLanguageModel("{}"))
+        val json = JSONObject("""
+        {
+          "activities": [
+            {
+              "prompt": "Apply enzyme kinetics to calculate Vmax given initial velocities.",
+              "expectedAnswer": "Vmax is 50",
+              "type": "APPLICATION",
+              "sources": ["p1"]
+            }
+          ]
+        }
+        """)
+
+        val result = engine.parseActivities(json, aliases, isDiagnostic = true)
+        assertTrue("APPLICATION activities must be rejected in Release 1", result.isEmpty())
+    }
+
+    @Test
+    fun `parseActivities enforces exactly 4 unique options with 1 matching expectedAnswer for MCQ`() {
+        val engine = LearningIntelligenceEngine(FakeLanguageModel("{}"))
+        val json = JSONObject("""
+        {
+          "activities": [
+            {
+              "prompt": "Valid MCQ question?",
+              "expectedAnswer": "Opt A",
+              "options": ["Opt A", "Opt B", "Opt C", "Opt D"],
+              "type": "MULTIPLE_CHOICE",
+              "sources": ["p1"]
+            },
+            {
+              "prompt": "Too few options?",
+              "expectedAnswer": "Opt A",
+              "options": ["Opt A", "Opt B", "Opt C"],
+              "type": "MULTIPLE_CHOICE",
+              "sources": ["p1"]
+            },
+            {
+              "prompt": "Duplicate options?",
+              "expectedAnswer": "Opt A",
+              "options": ["Opt A", "Opt B", "Opt C", "Opt B"],
+              "type": "MULTIPLE_CHOICE",
+              "sources": ["p1"]
+            },
+            {
+              "prompt": "Expected answer not in options?",
+              "expectedAnswer": "Opt X",
+              "options": ["Opt A", "Opt B", "Opt C", "Opt D"],
+              "type": "MULTIPLE_CHOICE",
+              "sources": ["p1"]
+            }
+          ]
+        }
+        """)
+
+        val result = engine.parseActivities(json, aliases, isDiagnostic = true)
+        assertEquals(1, result.size)
+        assertEquals("Valid MCQ question?", result.first().prompt)
+        assertEquals(4, result.first().options.size)
+    }
+
+    @Test
+    fun `generateDiagnostic rejects and fails if fewer than 5 valid questions are generated`() = runBlocking {
+        // Model only returns 3 valid questions
+        val mockResponse = """
+        {
+          "activities": [
+            { "prompt": "Q1?", "expectedAnswer": "A1", "options": ["A1", "B1", "C1", "D1"], "type": "MULTIPLE_CHOICE", "sources": ["p1"] },
+            { "prompt": "Q2?", "expectedAnswer": "A2", "options": ["A2", "B2", "C2", "D2"], "type": "MULTIPLE_CHOICE", "sources": ["p1"] },
+            { "prompt": "Q3?", "expectedAnswer": "A3", "options": ["A3", "B3", "C3", "D3"], "type": "MULTIPLE_CHOICE", "sources": ["p1"] }
+          ]
+        }
+        """
+        val engine = LearningIntelligenceEngine(FakeLanguageModel(mockResponse))
+        val result = engine.generateDiagnostic(emptyList(), aliases.values.toList())
+        assertTrue("Diagnostic with < 5 questions must fail", result is AiResult.Failed)
+    }
+
+    @Test
+    fun `generateDiagnostic succeeds when 5 to 8 valid questions are generated`() = runBlocking {
+        val mockResponse = """
+        {
+          "activities": [
+            { "prompt": "Q1?", "expectedAnswer": "A1", "options": ["A1", "B1", "C1", "D1"], "type": "MULTIPLE_CHOICE", "sources": ["p1"] },
+            { "prompt": "Q2?", "expectedAnswer": "A2", "options": ["A2", "B2", "C2", "D2"], "type": "MULTIPLE_CHOICE", "sources": ["p1"] },
+            { "prompt": "Q3?", "expectedAnswer": "A3", "options": ["A3", "B3", "C3", "D3"], "type": "MULTIPLE_CHOICE", "sources": ["p1"] },
+            { "prompt": "Q4?", "expectedAnswer": "A4", "options": ["A4", "B4", "C4", "D4"], "type": "MULTIPLE_CHOICE", "sources": ["p1"] },
+            { "prompt": "Q5?", "expectedAnswer": "A5", "options": ["A5", "B5", "C5", "D5"], "type": "MULTIPLE_CHOICE", "sources": ["p1"] },
+            { "prompt": "Q6?", "expectedAnswer": "A6", "options": ["A6", "B6", "C6", "D6"], "type": "MULTIPLE_CHOICE", "sources": ["p1"] }
+          ]
+        }
+        """
+        val engine = LearningIntelligenceEngine(FakeLanguageModel(mockResponse))
+        val result = engine.generateDiagnostic(emptyList(), aliases.values.toList())
+        assertTrue(result is AiResult.Success)
+        val activities = (result as AiResult.Success).value
+        assertEquals(6, activities.size)
+    }
 }

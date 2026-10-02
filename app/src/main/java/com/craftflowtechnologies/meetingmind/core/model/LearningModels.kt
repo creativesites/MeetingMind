@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.core.model
 
+import com.craftflowtechnologies.meetingmind.ai.notes.SourcePassage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -93,6 +94,83 @@ data class LearningEvidence(
     }
 }
 
+/**
+ * Canonical Learning source passage abstraction.
+ * Unifies NoteBlocks, TranscriptSegments, and NoteText so that evidence extraction
+ * preserves authentic source provenance (noteId, blockId, meetingId, segmentId, timestamps, quotes).
+ */
+sealed class LearningPassage {
+    abstract val id: String
+    abstract val text: String
+    abstract val label: String
+    abstract val noteId: String
+
+    abstract fun toEvidence(): LearningEvidence
+
+    fun toSourcePassage(): SourcePassage = SourcePassage(
+        id = id,
+        text = text,
+        label = label,
+        noteId = noteId
+    )
+
+    data class NoteBlock(
+        override val id: String,
+        override val text: String,
+        override val label: String,
+        override val noteId: String,
+        val blockId: String
+    ) : LearningPassage() {
+        override fun toEvidence(): LearningEvidence = LearningEvidence(
+            noteId = noteId,
+            blockId = blockId,
+            meetingId = null,
+            segmentIds = emptyList(),
+            startMs = null,
+            endMs = null,
+            quote = text.take(200)
+        )
+    }
+
+    data class TranscriptSegment(
+        override val id: String,
+        override val text: String,
+        override val label: String,
+        override val noteId: String,
+        val meetingId: String,
+        val segmentId: String,
+        val startMs: Long?,
+        val endMs: Long?
+    ) : LearningPassage() {
+        override fun toEvidence(): LearningEvidence = LearningEvidence(
+            noteId = noteId,
+            blockId = null,
+            meetingId = meetingId,
+            segmentIds = listOf(segmentId),
+            startMs = startMs,
+            endMs = endMs,
+            quote = text.take(200)
+        )
+    }
+
+    data class NoteText(
+        override val id: String,
+        override val text: String,
+        override val label: String,
+        override val noteId: String
+    ) : LearningPassage() {
+        override fun toEvidence(): LearningEvidence = LearningEvidence(
+            noteId = noteId,
+            blockId = null,
+            meetingId = null,
+            segmentIds = emptyList(),
+            startMs = null,
+            endMs = null,
+            quote = text.take(200)
+        )
+    }
+}
+
 /** A durable Learning Session scoped view over a Note (PLAN_LEARNING §0). */
 data class LearningSession(
     val id: String,
@@ -120,6 +198,7 @@ data class LearningConcept(
     val state: LearningMasteryState = LearningMasteryState.NEW,
     val isUserEdited: Boolean = false,
     val isDismissed: Boolean = false,
+    val isStale: Boolean = false,
     val createdAt: Long,
     val updatedAt: Long
 )
@@ -248,6 +327,43 @@ object DeterministicSpacedScheduler {
             createdAt = now,
             updatedAt = now
         )
+    }
+
+    /**
+     * Dynamically computes the preview string for the next review interval
+     * for a given rating. Respects current repetition count, ease factor, and
+     * explicitly resets to 1d on AGAIN.
+     */
+    fun previewInterval(
+        current: ReviewSchedule?,
+        rating: RecallRating,
+        now: Long = System.currentTimeMillis()
+    ): String {
+        if (current == null) {
+            return when (rating) {
+                RecallRating.AGAIN -> "<1d"
+                RecallRating.HARD -> "1d"
+                RecallRating.GOOD -> "1d"
+                RecallRating.EASY -> "3d"
+            }
+        }
+        val next = calculateNextSchedule(
+            current = current,
+            isCorrect = rating != RecallRating.AGAIN,
+            rating = rating,
+            now = now
+        )
+        return formatIntervalDays(next.intervalDays)
+    }
+
+    fun formatIntervalDays(days: Int): String {
+        return when {
+            days <= 0 -> "<1d"
+            days == 1 -> "1d"
+            days < 30 -> "${days}d"
+            days < 365 -> "${days / 30}mo"
+            else -> "${days / 365}y"
+        }
     }
 }
 

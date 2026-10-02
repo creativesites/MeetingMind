@@ -29,7 +29,8 @@ enum class NoteAiTool(val label: String) {
     SUMMARIZE("Summarize"),
     ORGANIZE("Organize into sections"),
     EXTRACT_ACTIONS("Find action items"),
-    ASK("Ask")
+    ASK("Ask"),
+    STUDY_GUIDE("Create discussion guide")
 }
 
 /** One thing a tool produced, with the passages it came from. */
@@ -119,9 +120,31 @@ class NoteAiEngine(
             val used = drafts.flatMap { d -> d.items.flatMap { it.sourceIds } }.toSet()
             NoteAiOutcome.Sections(drafts, aliases.values.map { it.id }.filterNot { it in used })
         }
+        NoteAiTool.STUDY_GUIDE -> {
+            val array = json.optJSONArray("sections")
+            val defaultTitles = mapOf(
+                "scripture" to "Scripture Focus",
+                "main_idea" to "Main Message",
+                "icebreaker" to "Icebreaker",
+                "questions" to "Discussion Questions",
+                "application" to "Life Application",
+                "prayer" to "Prayer Points"
+            )
+            val drafts = buildList {
+                for (i in 0 until (array?.length() ?: 0)) {
+                    val o = array!!.optJSONObject(i) ?: continue
+                    val key = o.optString("key").trim().lowercase()
+                    val title = o.optString("title").takeIf { it.isNotBlank() } ?: defaultTitles[key] ?: key.replace('_', ' ').replaceFirstChar { it.uppercase() }
+                    val list = items(o.optJSONArray("items"), aliases, verbatim = false, checkNumbers = false)
+                    if (list.isNotEmpty()) add(SectionDraft(key, title, list))
+                }
+            }
+            val used = drafts.flatMap { d -> d.items.flatMap { it.sourceIds } }.toSet()
+            NoteAiOutcome.Sections(drafts, aliases.values.map { it.id }.filterNot { it in used })
+        }
     }
 
-    private fun items(array: JSONArray?, aliases: Map<String, SourcePassage>, verbatim: Boolean): List<CitedItem> = buildList {
+    private fun items(array: JSONArray?, aliases: Map<String, SourcePassage>, verbatim: Boolean, checkNumbers: Boolean = true): List<CitedItem> = buildList {
         for (i in 0 until (array?.length() ?: 0)) {
             val o = array!!.optJSONObject(i) ?: continue
             val text = o.optString("text").trim()
@@ -129,7 +152,7 @@ class NoteAiEngine(
             val cited = ids(o.optJSONArray("sources"), aliases)
             if (cited.isEmpty()) continue
             val sourceTexts = cited.map { aliases.getValue(it).text }
-            if (!numbersSupported(text, sourceTexts)) continue
+            if (checkNumbers && !numbersSupported(text, sourceTexts)) continue
             if (verbatim && !ownWords(text, sourceTexts)) continue
             val detail = o.optString("detail").trim().takeIf { it.isNotEmpty() && it != "null" }
                 ?.takeIf { d -> sourceTexts.any { it.contains(d, ignoreCase = true) } }
@@ -241,12 +264,21 @@ You MUST:
             "Sort what the person wrote into these sections. Move their sentences; do not rewrite them beyond small trims. " +
                 "Leave a section out when nothing belongs in it. Sections:\n" +
                 sections.joinToString("\n") { "- ${it.key}: ${it.title}" + (it.hint?.let { h -> " ($h)" } ?: "") }
+        NoteAiTool.STUDY_GUIDE ->
+            "Turn this sermon or faith teaching into a small-group discussion guide with these 6 sections: " +
+                "1. scripture (Scripture Focus: passages mentioned or referenced), " +
+                "2. main_idea (Main Message: 1-2 sentence core message), " +
+                "3. icebreaker (Icebreaker: 1 warm conversational opening question based on the sermon's theme), " +
+                "4. questions (Discussion Questions: 3-5 questions exploring the message and its meaning), " +
+                "5. application (Life Application: 1-2 practical ways to apply this truth during the week), " +
+                "6. prayer (Prayer Points: 2-3 specific prayer prompts for the group). " +
+                "For every item cite the source passage id (e.g. p1). Use the speaker's own concepts and vocabulary."
     }
 
     private fun schema(tool: NoteAiTool): String = when (tool) {
         NoteAiTool.SUMMARIZE -> """{"points":[{"text":"…","sources":["p1"]}]}"""
         NoteAiTool.EXTRACT_ACTIONS -> """{"actions":[{"text":"…","detail":"who or when, or empty","sources":["p2"]}]}"""
         NoteAiTool.ASK -> """{"found":true,"answer":"…","sources":["p1","p3"]}"""
-        NoteAiTool.ORGANIZE -> """{"sections":[{"key":"section_key","items":[{"text":"…","sources":["p1"]}]}]}"""
+        NoteAiTool.ORGANIZE, NoteAiTool.STUDY_GUIDE -> """{"sections":[{"key":"section_key","items":[{"text":"…","sources":["p1"]}]}]}"""
     }
 }

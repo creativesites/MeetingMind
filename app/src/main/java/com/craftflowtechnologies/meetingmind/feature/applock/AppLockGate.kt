@@ -1,10 +1,14 @@
 package com.craftflowtechnologies.meetingmind.feature.applock
 
+import android.app.Activity
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -102,17 +106,36 @@ private fun AppLockScreen(viewModel: AppLockViewModel) {
     val context = LocalContext.current
     val activity = remember(context) { context.findFragmentActivity() }
     val authenticator = remember(activity) { activity?.let { BiometricPromptAuthenticator(it) } }
+    val keyguard = remember(context) { context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager }
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val controller = viewModel.controller
 
     var availability by remember { mutableStateOf(authenticator?.availability() ?: AppLockAvailability.Unsupported) }
     var lastResult by remember { mutableStateOf<AuthResult?>(null) }
-    // Offer the prompt once per lock episode without being asked. Set only when a prompt actually
-    // resolved, so a rotation that dismissed it re-asks in the new activity instead of stranding
-    // the person on a lock screen.
-    var autoPrompted by rememberSaveable { mutableStateOf(false) }
+    // Reset per lock episode so returning to the app offers the prompt again without being trapped.
+    var autoPrompted by remember { mutableStateOf(false) }
     val prompt = remember { viewModel.unlockPrompt() }
+
+    val credentialLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            controller.onUnlockSucceeded()
+        } else {
+            controller.onUnlockFailed()
+        }
+    }
+
+    fun attemptDeviceCredential() {
+        @Suppress("DEPRECATION")
+        val intent = keyguard?.createConfirmDeviceCredentialIntent(
+            context.getString(R.string.app_lock_title),
+            context.getString(R.string.app_lock_prompt_unlock_subtitle)
+        )
+        if (intent != null) {
+            controller.beginUnlock()
+            credentialLauncher.launch(intent)
+        }
+    }
 
     suspend fun attempt() {
         if (authenticator == null) return
@@ -134,7 +157,8 @@ private fun AppLockScreen(viewModel: AppLockViewModel) {
         lastResult = lastResult,
         onUnlock = { scope.launch { attempt() } },
         onOpenSecuritySettings = { context.openSecuritySettings() },
-        onTurnOff = { viewModel.turnOffWithoutAuthentication(availability) }
+        onTurnOff = { viewModel.turnOffWithoutAuthentication(availability) },
+        onUnlockWithDeviceCredential = if (keyguard?.isDeviceSecure == true) { { attemptDeviceCredential() } } else null
     )
 }
 
@@ -145,7 +169,8 @@ fun AppLockContent(
     lastResult: AuthResult?,
     onUnlock: () -> Unit,
     onOpenSecuritySettings: () -> Unit,
-    onTurnOff: () -> Unit
+    onTurnOff: () -> Unit,
+    onUnlockWithDeviceCredential: (() -> Unit)? = null
 ) {
     val noCredential = availability.hasNoOwnerCredential
     Box(
@@ -182,6 +207,14 @@ fun AppLockContent(
 
             if (!noCredential) {
                 UnlockButton(onUnlock)
+                if (onUnlockWithDeviceCredential != null && lastResult != null) {
+                    TextButton(
+                        onClick = onUnlockWithDeviceCredential,
+                        modifier = Modifier.padding(top = 10.dp).heightIn(min = 48.dp).testTag("app_lock_unlock_pin")
+                    ) {
+                        Text(stringResource(R.string.app_lock_unlock_with_pin), color = Brand.Cyan, fontSize = 15.sp)
+                    }
+                }
             } else {
                 // The phone can no longer verify its owner (screen lock removed), so App Lock cannot
                 // protect anything and must not trap the person out of their own notes.

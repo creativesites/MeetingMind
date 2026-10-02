@@ -145,6 +145,14 @@ class FaithViewModel(application: Application) : AndroidViewModel(application) {
         it.title.contains(theme, ignoreCase = true) || it.plainText.contains(theme, ignoreCase = true)
     }
 
+    fun trashNote(id: String) = viewModelScope.launch {
+        notes.archiveNote(id)
+    }
+
+    fun deleteNoteForever(id: String) = viewModelScope.launch {
+        notes.deleteNote(id)
+    }
+
     companion object {
         fun journeyOf(list: List<Note>): List<JourneyMonth> {
             val fmt = java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale.getDefault())

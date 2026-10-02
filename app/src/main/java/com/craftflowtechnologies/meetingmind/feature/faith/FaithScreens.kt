@@ -50,6 +50,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.DeleteOutline
+import com.craftflowtechnologies.meetingmind.ui.theme.Danger
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -125,10 +127,23 @@ fun FaithScreen(
     onPrayWithMe: () -> Unit = {},
     onOpenPlans: () -> Unit = {},
     onOpenPrayerList: () -> Unit = {},
-    onOpenTasks: () -> Unit = {}
+    onOpenTasks: () -> Unit = {},
+    onOpenTestimonies: () -> Unit = {},
+    onOpenCircles: () -> Unit = {}
 ) {
     var studyPicker by remember { mutableStateOf(false) }
     var assistantOpen by remember { mutableStateOf(false) }
+    var sermonStudioOpen by remember { mutableStateOf(false) }
+    var noteToDelete by remember { mutableStateOf<Note?>(null) }
+    if (sermonStudioOpen) {
+        SermonStudioSheet(
+            onDismiss = { sermonStudioOpen = false },
+            onShareStory = { req ->
+                sermonStudioOpen = false
+                onShare(req)
+            }
+        )
+    }
     if (assistantOpen) {
         val lib: com.craftflowtechnologies.meetingmind.feature.assistant.LibraryAssistantViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
         com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(lib.faith, onOpenNote = { assistantOpen = false; onOpenNote(it) }, onOpenTasks = { assistantOpen = false; onOpenTasks() }, onDismiss = { assistantOpen = false })
@@ -168,9 +183,13 @@ fun FaithScreen(
             // Today's devotional, written for the day (PLAN_V2 F2).
             item { TodayDevotionalCard(devotional?.devotional, onOpenDevotional) }
 
+            // Motivational sermon & shareable stories generator
+            item { MotivationalSermonCard(onClick = { sermonStudioOpen = true }) }
+
             // The daily rhythm: today's reading and who to pray for.
             item { Spacer(Modifier.height(14.dp)); ReadingPlanCard(extras, onOpenPlans, onRead = onReadPassage) }
             item { Spacer(Modifier.height(10.dp)); PrayingForCard(extras, onOpenPrayerList) }
+            item { Spacer(Modifier.height(10.dp)); FellowshipCirclesCard(onOpenCircles) }
             // What you said you'd do: "Apply this" points, prayers, people to follow up.
             item { Spacer(Modifier.height(10.dp)); com.craftflowtechnologies.meetingmind.feature.tasks.TasksPeekCard("To live out", setOf(com.craftflowtechnologies.meetingmind.core.tasks.TaskKind.APPLY, com.craftflowtechnologies.meetingmind.core.tasks.TaskKind.PRAYER, com.craftflowtechnologies.meetingmind.core.tasks.TaskKind.FOLLOW_UP), onOpenTasks) }
 
@@ -233,6 +252,28 @@ fun FaithScreen(
                                 } }
                             }
                         }
+                    }
+                }
+            }
+
+            // Testimonies and praise reports
+            item {
+                Surface(
+                    onClick = onOpenTestimonies,
+                    shape = RoundedCornerShape(18.dp),
+                    color = SurfaceSunk,
+                    border = BorderStroke(1.dp, Line),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp)
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(40.dp).clip(CircleShape).background(GoldWash), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Star, contentDescription = null, tint = Gold, modifier = Modifier.size(20.dp))
+                        }
+                        Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                            Text("Testimonies & Praise", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                            Text("Stories of answered prayer and God's goodness", fontSize = 12.sp, color = InkSecondary)
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = InkFaint, modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -328,8 +369,30 @@ fun FaithScreen(
                     )
                 }
             }
-            items(notes.take(12), key = { "recent-" + it.id }) { n -> FaithNoteRow(n) { onOpenNote(n.id) } }
+            items(notes.take(12), key = { "recent-" + it.id }) { n ->
+                FaithNoteRow(n, onDelete = { noteToDelete = n }) { onOpenNote(n.id) }
+            }
         }
+    }
+
+    noteToDelete?.let { note ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { noteToDelete = null },
+            containerColor = SurfaceBase,
+            title = { Text("Delete ${note.workflow.displayName}?") },
+            text = { Text("“${note.title.ifBlank { note.workflow.displayName }}” will be moved to Trash. You can restore it anytime.", color = InkSecondary) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        viewModel.trashNote(note.id)
+                        noteToDelete = null
+                    }
+                ) { Text("Move to Trash", color = Danger, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { noteToDelete = null }) { Text("Cancel", color = InkSecondary) }
+            }
+        )
     }
 
     verseSheet?.let { VerseSheet(reference = it, onDismiss = { verseSheet = null }) }
@@ -378,6 +441,59 @@ private fun TodayDevotionalCard(today: com.craftflowtechnologies.meetingmind.cor
                     Icon(Icons.Filled.WbSunny, contentDescription = null, tint = Color(0xFFF6D365).forTheme(), modifier = Modifier.size(15.dp))
                     Text(if (today != null) "  Read today's" else "  Begin", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = OnInk)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MotivationalSermonCard(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(22.dp),
+        color = com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised,
+        border = BorderStroke(1.dp, Line),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(GoldWash),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.Church, contentDescription = null, tint = Gold, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Motivational Sermon & Stories",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Ink
+                )
+                Text(
+                    text = "Generate inspiring mini-sermons & 9:16 vertical stories",
+                    fontSize = 12.sp,
+                    color = InkMuted
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Ink,
+                modifier = Modifier.clip(RoundedCornerShape(20.dp))
+            ) {
+                Text(
+                    text = "Inspire",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = OnInk,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                )
             }
         }
     }
@@ -542,7 +658,7 @@ private fun PrayerRequestRow(note: Note, onOpen: () -> Unit, onAnswered: () -> U
 }
 
 @Composable
-private fun FaithNoteRow(note: Note, showYear: Boolean = false, onClick: () -> Unit) {
+private fun FaithNoteRow(note: Note, showYear: Boolean = false, onDelete: (() -> Unit)? = null, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(34.dp).clip(CircleShape).background(GoldWash), contentAlignment = Alignment.Center) {
             Icon(faithIcon(note.workflow), contentDescription = null, tint = Gold, modifier = Modifier.size(17.dp))
@@ -555,6 +671,12 @@ private fun FaithNoteRow(note: Note, showYear: Boolean = false, onClick: () -> U
                 note.workflow.displayName + " · " + if (showYear) java.text.SimpleDateFormat("yyyy", java.util.Locale.getDefault()).format(java.util.Date(date)) else Formatters.formatDateRelative(date),
                 fontSize = 12.sp, color = InkMuted
             )
+        }
+        if (onDelete != null) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Filled.DeleteOutline, contentDescription = "Delete", tint = InkMuted, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(4.dp))
         }
         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = InkFaint, modifier = Modifier.size(16.dp))
     }
@@ -784,3 +906,56 @@ private fun MemoryVerseCard(memory: Pair<VerseOfTheDay, Int>?, onRead: () -> Uni
         }
     }
 }
+
+@Composable
+private fun FellowshipCirclesCard(onOpen: () -> Unit) {
+    Surface(
+        onClick = onOpen,
+        shape = RoundedCornerShape(16.dp),
+        color = SurfaceBase.forTheme(),
+        border = BorderStroke(1.dp, com.craftflowtechnologies.meetingmind.ui.theme.Line.forTheme()),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = com.craftflowtechnologies.meetingmind.ui.theme.FaithGoldInk.copy(alpha = 0.14f),
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(text = "🕊️", fontSize = 20.sp)
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Fellowship Circles", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = OnInk.forTheme())
+                    Spacer(Modifier.width(6.dp))
+                    Surface(
+                        color = com.craftflowtechnologies.meetingmind.ui.theme.FaithGoldInk.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "E2EE",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = com.craftflowtechnologies.meetingmind.ui.theme.FaithGoldInk,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                Text("Encrypted prayer wall & sermon studies", fontSize = 12.sp, color = OnInk.forTheme().copy(alpha = 0.65f))
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = OnInk.forTheme().copy(alpha = 0.4f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
