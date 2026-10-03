@@ -91,6 +91,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkFaint
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
+import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 import java.io.File
 
@@ -129,7 +130,7 @@ fun FaithScreen(
     onOpenPrayerList: () -> Unit = {},
     onOpenTasks: () -> Unit = {},
     onOpenTestimonies: () -> Unit = {},
-    onOpenCircles: () -> Unit = {}
+    onOpenFellowship: () -> Unit = {}
 ) {
     var studyPicker by remember { mutableStateOf(false) }
     var assistantOpen by remember { mutableStateOf(false) }
@@ -189,7 +190,14 @@ fun FaithScreen(
             // The daily rhythm: today's reading and who to pray for.
             item { Spacer(Modifier.height(14.dp)); ReadingPlanCard(extras, onOpenPlans, onRead = onReadPassage) }
             item { Spacer(Modifier.height(10.dp)); PrayingForCard(extras, onOpenPrayerList) }
-            item { Spacer(Modifier.height(10.dp)); FellowshipCirclesCard(onOpenCircles) }
+            item {
+                Spacer(Modifier.height(14.dp))
+                com.craftflowtechnologies.meetingmind.feature.fellowship.FellowshipEntryCard(onOpenFellowship)
+            }
+            item {
+                Spacer(Modifier.height(10.dp))
+                FellowshipCirclesCard(onOpenFellowship)
+            }
             // What you said you'd do: "Apply this" points, prayers, people to follow up.
             item { Spacer(Modifier.height(10.dp)); com.craftflowtechnologies.meetingmind.feature.tasks.TasksPeekCard("To live out", setOf(com.craftflowtechnologies.meetingmind.core.tasks.TaskKind.APPLY, com.craftflowtechnologies.meetingmind.core.tasks.TaskKind.PRAYER, com.craftflowtechnologies.meetingmind.core.tasks.TaskKind.FOLLOW_UP), onOpenTasks) }
 
@@ -277,8 +285,6 @@ fun FaithScreen(
                     }
                 }
             }
-
-            // What you're praying for.
             if (requests.isNotEmpty() || answered > 0) {
                 item {
                     SectionTitle("Praying for", trailing = if (answered > 0) "$answered answered" else null, top = 28.dp)
@@ -911,51 +917,29 @@ private fun MemoryVerseCard(memory: Pair<VerseOfTheDay, Int>?, onRead: () -> Uni
 private fun FellowshipCirclesCard(onOpen: () -> Unit) {
     Surface(
         onClick = onOpen,
-        shape = RoundedCornerShape(16.dp),
-        color = SurfaceBase.forTheme(),
-        border = BorderStroke(1.dp, com.craftflowtechnologies.meetingmind.ui.theme.Line.forTheme()),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+        shape = RoundedCornerShape(22.dp),
+        color = SurfaceRaised,
+        border = BorderStroke(1.dp, Line),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = com.craftflowtechnologies.meetingmind.ui.theme.FaithGoldInk.copy(alpha = 0.14f),
-                modifier = Modifier.size(40.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(text = "🕊️", fontSize = 20.sp)
-                }
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = GoldWash, modifier = Modifier.size(44.dp)) {
+                Box(contentAlignment = Alignment.Center) { Text(text = "🕊️", fontSize = 20.sp) }
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Fellowship Circles", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = OnInk.forTheme())
+                    Text("Fellowship Circles", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                     Spacer(Modifier.width(6.dp))
-                    Surface(
-                        color = com.craftflowtechnologies.meetingmind.ui.theme.FaithGoldInk.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = "E2EE",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = com.craftflowtechnologies.meetingmind.ui.theme.FaithGoldInk,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                    Surface(color = GoldWash, shape = RoundedCornerShape(8.dp)) {
+                        Text("E2EE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Gold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                     }
                 }
-                Text("Encrypted prayer wall & sermon studies", fontSize = 12.sp, color = OnInk.forTheme().copy(alpha = 0.65f))
+                Text("Encrypted group prayer wall & sermon studies", fontSize = 12.sp, color = InkSecondary)
             }
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                tint = OnInk.forTheme().copy(alpha = 0.4f),
-                modifier = Modifier.size(18.dp)
-            )
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = InkFaint, modifier = Modifier.size(16.dp))
         }
     }
 }
+
 

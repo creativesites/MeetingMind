@@ -26,6 +26,9 @@ interface CircleDao {
     @Update
     suspend fun updateCircle(circle: CircleEntity)
 
+    @Query("UPDATE circles SET memberCount = :count WHERE id = :id")
+    suspend fun updateMemberCount(id: String, count: Int)
+
     @Query("DELETE FROM circles WHERE id = :id")
     suspend fun deleteCircleById(id: String)
 

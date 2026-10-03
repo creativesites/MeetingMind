@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.School
@@ -53,64 +54,94 @@ data class QuickAccessItem(
 fun HomeQuickAccessRow(
     onOpenFaith: () -> Unit,
     onOpenWork: () -> Unit,
-    onOpenLearning: () -> Unit,
     onOpenDevotional: () -> Unit,
     onOpenPrayer: () -> Unit,
     onOpenWord: () -> Unit,
-    onOpenTestimonies: () -> Unit,
+    onOpenNotes: (() -> Unit)? = null,
+    onOpenLearning: (() -> Unit)? = null,
+    onOpenTestimonies: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val items = listOf(
-        QuickAccessItem(
-            id = "faith",
-            label = "Faith",
-            icon = Icons.AutoMirrored.Filled.MenuBook,
-            gradientColors = listOf(Color(0xFFF59E0B), Color(0xFFD97706)),
-            onClick = onOpenFaith
-        ),
-        QuickAccessItem(
-            id = "work",
-            label = "Work",
-            icon = Icons.Filled.Work,
-            gradientColors = listOf(Color(0xFF6366F1), Color(0xFF4F46E5)),
-            onClick = onOpenWork
-        ),
-        QuickAccessItem(
-            id = "learning",
-            label = "Learning",
-            icon = Icons.Filled.School,
-            gradientColors = listOf(Color(0xFF10B981), Color(0xFF059669)),
-            onClick = onOpenLearning
-        ),
-        QuickAccessItem(
-            id = "devotional",
-            label = "Devotional",
-            icon = Icons.Filled.WbSunny,
-            gradientColors = listOf(Color(0xFFF97316), Color(0xFFEA580C)),
-            onClick = onOpenDevotional
-        ),
-        QuickAccessItem(
-            id = "prayer",
-            label = "Prayer",
-            icon = Icons.Filled.Favorite,
-            gradientColors = listOf(Color(0xFFF43F5E), Color(0xFFBE123C)),
-            onClick = onOpenPrayer
-        ),
-        QuickAccessItem(
-            id = "word",
-            label = "Word",
-            icon = Icons.AutoMirrored.Filled.MenuBook,
-            gradientColors = listOf(Color(0xFF06B6D4), Color(0xFF0284C7)),
-            onClick = onOpenWord
-        ),
-        QuickAccessItem(
-            id = "testimonies",
-            label = "Testimonies",
-            icon = Icons.Filled.Celebration,
-            gradientColors = listOf(Color(0xFFA855F7), Color(0xFF7E22CE)),
-            onClick = onOpenTestimonies
+    val items = buildList {
+        add(
+            QuickAccessItem(
+                id = "faith",
+                label = "Faith",
+                icon = Icons.AutoMirrored.Filled.MenuBook,
+                gradientColors = listOf(Color(0xFFF59E0B), Color(0xFFD97706)),
+                onClick = onOpenFaith
+            )
         )
-    )
+        add(
+            QuickAccessItem(
+                id = "work",
+                label = "Work",
+                icon = Icons.Filled.Work,
+                gradientColors = listOf(Color(0xFF6366F1), Color(0xFF4F46E5)),
+                onClick = onOpenWork
+            )
+        )
+        if (onOpenLearning != null) {
+            add(
+                QuickAccessItem(
+                    id = "learning",
+                    label = "Learning",
+                    icon = Icons.Filled.School,
+                    gradientColors = listOf(Color(0xFF10B981), Color(0xFF059669)),
+                    onClick = onOpenLearning
+                )
+            )
+        }
+        add(
+            QuickAccessItem(
+                id = "devotional",
+                label = "Devotional",
+                icon = Icons.Filled.WbSunny,
+                gradientColors = listOf(Color(0xFFF97316), Color(0xFFEA580C)),
+                onClick = onOpenDevotional
+            )
+        )
+        add(
+            QuickAccessItem(
+                id = "prayer",
+                label = "Prayer",
+                icon = Icons.Filled.Favorite,
+                gradientColors = listOf(Color(0xFFF43F5E), Color(0xFFBE123C)),
+                onClick = onOpenPrayer
+            )
+        )
+        add(
+            QuickAccessItem(
+                id = "word",
+                label = "Word",
+                icon = Icons.AutoMirrored.Filled.MenuBook,
+                gradientColors = listOf(Color(0xFF06B6D4), Color(0xFF0284C7)),
+                onClick = onOpenWord
+            )
+        )
+        if (onOpenTestimonies != null) {
+            add(
+                QuickAccessItem(
+                    id = "testimonies",
+                    label = "Testimonies",
+                    icon = Icons.Filled.Celebration,
+                    gradientColors = listOf(Color(0xFFA855F7), Color(0xFF7E22CE)),
+                    onClick = onOpenTestimonies
+                )
+            )
+        }
+        if (onOpenNotes != null) {
+            add(
+                QuickAccessItem(
+                    id = "notes",
+                    label = "Notes",
+                    icon = Icons.AutoMirrored.Filled.Notes,
+                    gradientColors = listOf(Color(0xFF10B981), Color(0xFF059669)),
+                    onClick = onOpenNotes
+                )
+            )
+        }
+    }
 
     LazyRow(
         modifier = modifier,

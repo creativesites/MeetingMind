@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Private Fellowship Circles: End-to-End Encrypted Event Log (docs/FELLOWSHIP_SETUP.md)
+    // Server only ever receives {uid, ts, iv, ciphertext}.
+    match /circles/{circleId} {
+      // Authenticated users with the unguessable circle ID can read metadata or create a circle.
+      // Listing all circles is strictly forbidden to prevent circle enumeration.
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+
+      match /events/{eventId} {
+        // Authenticated users can read the circle's encrypted event log.
+        allow read: if request.auth != null;
+
+        // Append-only events: author UID must match, payload restricted to 4 fields with size limits.
+        allow create: if request.auth != null
+                      && request.resource.data.uid == request.auth.uid
+                      && request.resource.data.keys().hasOnly(['uid', 'ts', 'iv', 'ciphertext'])
+                      && request.resource.data.ciphertext is string
+                      && request.resource.data.ciphertext.size() < 100000;
+
+        // Events are immutable and append-only: cannot be edited or deleted by anyone.
+        allow update, delete: if false;
+      }
+    }
+
+    // Default deny for unmanaged collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

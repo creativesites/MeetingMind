@@ -269,6 +269,7 @@ fun TodayScreen(
                     onOpenPrayer = onOpenPrayer,
                     onOpenWord = onOpenWord,
                     onOpenTestimonies = onOpenTestimonies,
+                    onOpenNotes = { onNavigateBottomNav(com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.NOTES) },
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
