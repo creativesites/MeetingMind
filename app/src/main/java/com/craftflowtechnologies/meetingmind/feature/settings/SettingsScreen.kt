@@ -269,6 +269,7 @@ fun SettingsScreen(
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showSpaces by remember { mutableStateOf(false) }
     var showCrashReport by remember { mutableStateOf(false) }
+    var crashReport by remember { mutableStateOf(com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.pending(context)) }
     var showLook by remember { mutableStateOf(false) }
     val avatarPicker = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
@@ -567,23 +568,12 @@ fun SettingsScreen(
                         onClick = onOpenDataBackup
                     )
                 }
-                var crashReport by remember { mutableStateOf(com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.pending(context)) }
-                crashReport?.let { report ->
+                if (crashReport != null) {
                     settingsRow {
                         SettingsNavRow(
                             title = "Last crash report",
                             subtitle = "The app closed unexpectedly. Copy this and send it to whoever is fixing it",
                             onClick = { showCrashReport = true }
-                        )
-                    }
-                    if (showCrashReport) {
-                        com.craftflowtechnologies.meetingmind.feature.settings.CrashReportDialog(
-                            report = report,
-                            onClear = {
-                                com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.clear(context)
-                                crashReport = null; showCrashReport = false
-                            },
-                            onClose = { showCrashReport = false }
                         )
                     }
                 }
@@ -803,6 +793,18 @@ fun SettingsScreen(
         )
     }
 
+    crashReport?.let { report ->
+        if (showCrashReport) {
+            CrashReportDialog(
+                report = report,
+                onClear = {
+                    com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.clear(context)
+                    crashReport = null; showCrashReport = false
+                },
+                onClose = { showCrashReport = false }
+            )
+        }
+    }
     if (showClearDataDialog) {
         AlertDialog(
             onDismissRequest = { showClearDataDialog = false },
