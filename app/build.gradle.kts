@@ -17,8 +17,8 @@ android {
     applicationId = "com.craftflowtechnologies.meetingmind"
     minSdk = 24
     targetSdk = 36
-    versionCode = 41
-    versionName = "1.0-v41"
+    versionCode = 42
+    versionName = "1.0-v42"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

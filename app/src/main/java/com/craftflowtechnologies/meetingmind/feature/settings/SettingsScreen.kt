@@ -268,6 +268,7 @@ fun SettingsScreen(
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showSpaces by remember { mutableStateOf(false) }
+    var showCrashReport by remember { mutableStateOf(false) }
     var showLook by remember { mutableStateOf(false) }
     val avatarPicker = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
@@ -565,6 +566,26 @@ fun SettingsScreen(
                         subtitle = "Back up, restore, export everything as Markdown, and the Trash",
                         onClick = onOpenDataBackup
                     )
+                }
+                var crashReport by remember { mutableStateOf(com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.pending(context)) }
+                crashReport?.let { report ->
+                    settingsRow {
+                        SettingsNavRow(
+                            title = "Last crash report",
+                            subtitle = "The app closed unexpectedly. Copy this and send it to whoever is fixing it",
+                            onClick = { showCrashReport = true }
+                        )
+                    }
+                    if (showCrashReport) {
+                        com.craftflowtechnologies.meetingmind.feature.settings.CrashReportDialog(
+                            report = report,
+                            onClear = {
+                                com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.clear(context)
+                                crashReport = null; showCrashReport = false
+                            },
+                            onClose = { showCrashReport = false }
+                        )
+                    }
                 }
             }
 

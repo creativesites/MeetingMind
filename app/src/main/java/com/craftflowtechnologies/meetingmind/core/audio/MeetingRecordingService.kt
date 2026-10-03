@@ -185,7 +185,13 @@ class MeetingRecordingService : Service() {
         recordingStartTimeMs = System.currentTimeMillis()
         outputFile = file
         acquireWakeLock()
-        startForegroundWithProperType()
+        // Android can refuse to promote the service (started from the background, or a revoked
+        // permission). Recording carries on while the app is open instead of crashing the app.
+        try {
+            startForegroundWithProperType()
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Could not start the recording notification: ${e.message}", e)
+        }
         _state.value = RecordingState.RECORDING
         writeJournal()
         startMaintenanceLoop()

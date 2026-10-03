@@ -93,6 +93,8 @@ class TaskReminderReceiver : BroadcastReceiver() {
                     )
                     TaskReminders.sync(context)
                 }
+            } catch (e: Exception) {
+                android.util.Log.w("TaskReminder", "Reminder could not be handled: ${e.message}", e)
             } finally {
                 pending.finish()
             }

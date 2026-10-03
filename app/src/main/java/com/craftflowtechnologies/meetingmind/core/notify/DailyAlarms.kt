@@ -104,6 +104,8 @@ class DailyAlarmResync : BroadcastReceiver() {
                 ReminderScheduler.sync(context.applicationContext, prefs.reminderSettings.first())
                 runCatching { com.craftflowtechnologies.meetingmind.core.tasks.TaskReminders.sync(context.applicationContext) }
                 runCatching { com.craftflowtechnologies.meetingmind.core.work.WorkRhythmScheduler.sync(context.applicationContext, prefs.workSettings.first(), prefs.usesWork()) }
+            } catch (e: Exception) {
+                android.util.Log.w("DailyAlarmResync", "Alarms could not be reset: ${e.message}", e)
             } finally {
                 pending.finish()
             }
