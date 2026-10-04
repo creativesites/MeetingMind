@@ -134,13 +134,15 @@ fun FaithScreen(
 ) {
     var studyPicker by remember { mutableStateOf(false) }
     var assistantOpen by remember { mutableStateOf(false) }
-    var sermonStudioOpen by remember { mutableStateOf(false) }
+    var sparkStudioOpen by remember { mutableStateOf(false) }
+    var sparkInitialVibe by remember { mutableStateOf(com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.DEEP) }
     var noteToDelete by remember { mutableStateOf<Note?>(null) }
-    if (sermonStudioOpen) {
-        SermonStudioSheet(
-            onDismiss = { sermonStudioOpen = false },
+    if (sparkStudioOpen) {
+        SparkStudioSheet(
+            initialVibe = sparkInitialVibe,
+            onDismiss = { sparkStudioOpen = false },
             onShareStory = { req ->
-                sermonStudioOpen = false
+                sparkStudioOpen = false
                 onShare(req)
             }
         )
@@ -184,8 +186,15 @@ fun FaithScreen(
             // Today's devotional, written for the day (PLAN_V2 F2).
             item { TodayDevotionalCard(devotional?.devotional, onOpenDevotional) }
 
-            // Motivational sermon & shareable stories generator
-            item { MotivationalSermonCard(onClick = { sermonStudioOpen = true }) }
+            // Spark: shareable thoughts, humor, deep perspective & stories
+            item {
+                SparkCard(
+                    onOpen = { vibe ->
+                        sparkInitialVibe = vibe
+                        sparkStudioOpen = true
+                    }
+                )
+            }
 
             // The daily rhythm: today's reading and who to pray for.
             item { Spacer(Modifier.height(14.dp)); ReadingPlanCard(extras, onOpenPlans, onRead = onReadPassage) }
@@ -193,10 +202,6 @@ fun FaithScreen(
             item {
                 Spacer(Modifier.height(14.dp))
                 com.craftflowtechnologies.meetingmind.feature.fellowship.FellowshipEntryCard(onOpenFellowship)
-            }
-            item {
-                Spacer(Modifier.height(10.dp))
-                FellowshipCirclesCard(onOpenFellowship)
             }
             // What you said you'd do: "Apply this" points, prayers, people to follow up.
             item { Spacer(Modifier.height(10.dp)); com.craftflowtechnologies.meetingmind.feature.tasks.TasksPeekCard("To live out", setOf(com.craftflowtechnologies.meetingmind.core.tasks.TaskKind.APPLY, com.craftflowtechnologies.meetingmind.core.tasks.TaskKind.PRAYER, com.craftflowtechnologies.meetingmind.core.tasks.TaskKind.FOLLOW_UP), onOpenTasks) }
@@ -453,53 +458,111 @@ private fun TodayDevotionalCard(today: com.craftflowtechnologies.meetingmind.cor
 }
 
 @Composable
-private fun MotivationalSermonCard(onClick: () -> Unit) {
+private fun SparkCard(onOpen: (com.craftflowtechnologies.meetingmind.core.faith.SparkVibe) -> Unit) {
     Surface(
-        onClick = onClick,
+        onClick = { onOpen(com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.DEEP) },
         shape = RoundedCornerShape(22.dp),
         color = com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised,
         border = BorderStroke(1.dp, Line),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(GoldWash),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Filled.Church, contentDescription = null, tint = Gold, modifier = Modifier.size(22.dp))
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFFF59E0B), Color(0xFFEF4444))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("⚡", fontSize = 20.sp)
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Spark",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Serif,
+                            color = Ink
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
+                        ) {
+                            Text(
+                                text = "Stories & Status",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Deep, witty, fire & authentic thoughts to share",
+                        fontSize = 12.sp,
+                        color = InkMuted
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                ) {
+                    Text(
+                        text = "Open",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = com.craftflowtechnologies.meetingmind.ui.theme.OnAccent,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                }
             }
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Motivational Sermon & Stories",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Ink
-                )
-                Text(
-                    text = "Generate inspiring mini-sermons & 9:16 vertical stories",
-                    fontSize = 12.sp,
-                    color = InkMuted
-                )
-            }
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Ink,
-                modifier = Modifier.clip(RoundedCornerShape(20.dp))
+
+            Spacer(Modifier.height(12.dp))
+
+            // Quick vibe launch chips
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "Inspire",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = OnInk,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                )
+                listOf(
+                    com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.DEEP,
+                    com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.FUNNY,
+                    com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.FIRE,
+                    com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.REAL
+                ).forEach { vibe ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk,
+                        border = BorderStroke(1.dp, com.craftflowtechnologies.meetingmind.ui.theme.LineFaint),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onOpen(vibe) }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(vibe.emoji, fontSize = 12.sp)
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = vibe.label,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = InkSecondary
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -909,35 +972,6 @@ private fun MemoryVerseCard(memory: Pair<VerseOfTheDay, Int>?, onRead: () -> Uni
             Text(if (level < 3) "Hide more" else "Start again", fontSize = 13.5.sp, color = com.craftflowtechnologies.meetingmind.ui.theme.Accent, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.clickable { level = if (level < 3) level + 1 else 0 })
             if (level > 0) Text("Show all", fontSize = 13.5.sp, color = InkSecondary, modifier = Modifier.clickable { level = 0 })
-        }
-    }
-}
-
-@Composable
-private fun FellowshipCirclesCard(onOpen: () -> Unit) {
-    Surface(
-        onClick = onOpen,
-        shape = RoundedCornerShape(22.dp),
-        color = SurfaceRaised,
-        border = BorderStroke(1.dp, Line),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
-    ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = GoldWash, modifier = Modifier.size(44.dp)) {
-                Box(contentAlignment = Alignment.Center) { Text(text = "🕊️", fontSize = 20.sp) }
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Fellowship Circles", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                    Spacer(Modifier.width(6.dp))
-                    Surface(color = GoldWash, shape = RoundedCornerShape(8.dp)) {
-                        Text("E2EE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Gold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                    }
-                }
-                Text("Encrypted group prayer wall & sermon studies", fontSize = 12.sp, color = InkSecondary)
-            }
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = InkFaint, modifier = Modifier.size(16.dp))
         }
     }
 }

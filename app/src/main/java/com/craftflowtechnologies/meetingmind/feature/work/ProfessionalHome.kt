@@ -136,8 +136,19 @@ fun ProfessionalHome(
     onCustomize: () -> Unit,
     onOpenContext: (com.craftflowtechnologies.meetingmind.core.work.ContextType, String) -> Unit = { _, _ -> },
     onOpenInbox: () -> Unit = {},
+    onShare: (com.craftflowtechnologies.meetingmind.feature.share.ShareRequest) -> Unit = {},
     onNavigateBottomNav: (com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit
 ) {
+    var showSparkStudio by remember { mutableStateOf(false) }
+    if (showSparkStudio) {
+        com.craftflowtechnologies.meetingmind.feature.faith.SparkStudioSheet(
+            onDismiss = { showSparkStudio = false },
+            onShareStory = { req ->
+                showSparkStudio = false
+                onShare(req)
+            }
+        )
+    }
     val identity by today.identity.collectAsState()
     val upNext by today.upNext.collectAsState()
     val now by today.now.collectAsState()
@@ -208,6 +219,7 @@ fun ProfessionalHome(
                     onOpenPrayer = onOpenPrayer,
                     onOpenWord = onOpenWord,
                     onOpenTestimonies = onOpenTestimonies,
+                    onOpenSpark = { showSparkStudio = true },
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }

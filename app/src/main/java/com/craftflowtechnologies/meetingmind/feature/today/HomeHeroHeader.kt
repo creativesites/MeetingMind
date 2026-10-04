@@ -216,23 +216,20 @@ private fun TopRow(
     onSwitch: () -> Unit
 ) {
     val look = LocalAppLook.current
-    val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-    val plain = when { hour < 12 -> "Good morning"; hour < 17 -> "Good afternoon"; else -> "Good evening" }
     val dateLabel = remember { SimpleDateFormat("EEEE, d MMM", Locale.getDefault()).format(Date()) }
 
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(top = 8.dp)) {
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier.size(50.dp)
-                .border(1.5.dp, Brush.sweepGradient(listOf(look.warm, Color.White, look.accent, look.warm)), CircleShape)
+                .border(1.dp, Hairline, CircleShape)
                 .padding(3.dp)
         ) {
             Avatar(identity, 44.dp, Modifier.testTag("home_avatar"), onClick = onAvatar)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(plain + (identity.firstName?.let { ", $it" } ?: ""), color = Slate, fontFamily = InterFamily, fontSize = 12.sp, maxLines = 1)
-            Text(dateLabel, color = InkNavy, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(dateLabel, color = InkNavy, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(8.dp))
         Surface(
@@ -404,7 +401,6 @@ private fun HeroStage(
                             quote = quoteToUse,
                             author = authorToUse,
                             accent = Color(sky.orbBody),
-                            onToggle = onToggleMode,
                             onClick = onOpenDevotional
                         )
                     }
@@ -515,60 +511,25 @@ private fun HeroQuoteBanner(
     quote: String,
     author: String?,
     accent: Color,
-    onToggle: () -> Unit,
     onClick: () -> Unit
 ) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
-        color = SurfaceBase.copy(alpha = 0.16f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("hero_quote_banner")
+    // The quote belongs to the sky, not inside another card. Its entire surface remains tappable
+    // while the visual treatment stays intentionally typographic and quiet.
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick)
+            .padding(horizontal = 2.dp, vertical = 4.dp).testTag("hero_quote_banner")
     ) {
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                onClick = onToggle,
-                shape = CircleShape,
-                color = accent.copy(alpha = 0.25f),
-                modifier = Modifier.size(28.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Outlined.FormatQuote,
-                        contentDescription = "Switch to scripture or stats",
-                        tint = accent,
-                        modifier = Modifier.size(15.dp)
-                    )
-                }
-            }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                if (author != null) {
-                    Text(
-                        author,
-                        color = accent,
-                        fontSize = 11.5.sp,
-                        fontFamily = OutfitFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
-                    )
-                }
-                Text(
-                    "“$quote”",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontFamily = InterFamily,
-                    lineHeight = 16.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+        if (author != null) {
+            Text(
+                author.uppercase(), color = accent, fontSize = 10.5.sp, letterSpacing = 0.7.sp,
+                fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, maxLines = 1
+            )
         }
+        Text(
+            "“$quote”", color = Color.White, fontSize = 14.sp, fontFamily = InterFamily,
+            fontWeight = FontWeight.Medium, lineHeight = 19.sp, maxLines = 2,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = if (author == null) 0.dp else 3.dp)
+        )
     }
 }
 

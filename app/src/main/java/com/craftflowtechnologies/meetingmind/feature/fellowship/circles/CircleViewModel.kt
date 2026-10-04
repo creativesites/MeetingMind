@@ -17,7 +17,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class CircleViewModel(
+/**
+ * `@JvmOverloads` is required: Compose's `viewModel()` uses the default AndroidViewModelFactory,
+ * which reflects on a constructor taking only [Application]. Without it, opening Fellowship
+ * crashes with "Cannot create an instance of class CircleViewModel".
+ */
+class CircleViewModel @JvmOverloads constructor(
     application: Application,
     private val repository: CircleRepository = CircleRepository(application)
 ) : AndroidViewModel(application) {

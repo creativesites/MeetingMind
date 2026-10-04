@@ -101,11 +101,11 @@ fun CircleScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val circle by viewModel.circle(circleId).collectAsState()
-    val members by viewModel.members(circleId).collectAsState()
-    val prayers by viewModel.prayers(circleId).collectAsState()
-    val testimonies by viewModel.testimonies(circleId).collectAsState()
-    val sermons by viewModel.sermons(circleId).collectAsState()
+    val circle by androidx.compose.runtime.remember(circleId) { viewModel.circle(circleId) }.collectAsState()
+    val members by androidx.compose.runtime.remember(circleId) { viewModel.members(circleId) }.collectAsState()
+    val prayers by androidx.compose.runtime.remember(circleId) { viewModel.prayers(circleId) }.collectAsState()
+    val testimonies by androidx.compose.runtime.remember(circleId) { viewModel.testimonies(circleId) }.collectAsState()
+    val sermons by androidx.compose.runtime.remember(circleId) { viewModel.sermons(circleId) }.collectAsState()
     val cachedName by viewModel.cachedDisplayName.collectAsState()
 
     var showPostPrayer by remember { mutableStateOf(false) }

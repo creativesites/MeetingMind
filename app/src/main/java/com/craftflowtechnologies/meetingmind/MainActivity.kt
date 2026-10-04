@@ -434,6 +434,10 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onCustomize = { navController.navigate(Routes.APPEARANCE) },
                 onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
                 onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
+                onShare = { req ->
+                    com.craftflowtechnologies.meetingmind.feature.share.ShareRequests.pending = req
+                    navController.navigate(Routes.SHARE)
+                },
                 onNavigateBottomNav = navigateToPrimary
             ) else if (homeStyle != com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) com.craftflowtechnologies.meetingmind.feature.today.FocusHome(
                 rich = homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM,
@@ -465,6 +469,10 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
+                onShare = { req ->
+                    com.craftflowtechnologies.meetingmind.feature.share.ShareRequests.pending = req
+                    navController.navigate(Routes.SHARE)
+                },
                 onNewNote = { openNewNote(false) },
                 onImport = { navController.navigate(Routes.IMPORT) },
                 setup = setupState,

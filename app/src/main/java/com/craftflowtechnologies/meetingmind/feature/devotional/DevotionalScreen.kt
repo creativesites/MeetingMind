@@ -140,7 +140,7 @@ fun DevotionalScreen(
         onFavourite = viewModel::toggleFavourite,
         onExamen = viewModel::writeExamen
     )
-    if (showSermonStudio) com.craftflowtechnologies.meetingmind.feature.faith.SermonStudioSheet(
+    if (showSermonStudio) com.craftflowtechnologies.meetingmind.feature.faith.SparkStudioSheet(
         onDismiss = { showSermonStudio = false },
         onShareStory = { req ->
             showSermonStudio = false

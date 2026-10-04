@@ -11,5 +11,10 @@ class MeetingMindApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashLog.install(this, BuildConfig.VERSION_NAME)
+        runCatching {
+            if (com.google.firebase.FirebaseApp.getApps(this).isEmpty()) {
+                com.google.firebase.FirebaseApp.initializeApp(this)
+            }
+        }
     }
 }

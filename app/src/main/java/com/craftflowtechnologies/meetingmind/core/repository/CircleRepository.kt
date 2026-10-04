@@ -39,7 +39,7 @@ import java.util.concurrent.ConcurrentHashMap
 class CircleRepository(
     private val context: Context,
     private val database: MeetMindDatabase = MeetMindDatabase.getInstance(context),
-    val transport: CircleTransport = FirestoreCircleTransport()
+    val transport: CircleTransport = FirestoreCircleTransport(context)
 ) {
     private val circleDao: CircleDao = database.circleDao()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
