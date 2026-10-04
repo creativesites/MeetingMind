@@ -92,23 +92,23 @@ val PaperColors = MMColors(
     scrim = Color(0x66000000)
 )
 
-/** Graphite: near-black with a whisper of warmth, never navy. The default. */
+/** Midnight Graphite: a layered blue-black that feels calm in a dim room, rather than flat black. */
 val GraphiteColors = MMColors(
     isDark = true,
-    background = Color(0xFF111113),
-    surface = Color(0xFF18181B),
-    surfaceRaised = Color(0xFF212124),
-    surfaceSunk = Color(0xFF0C0C0E),
-    canvas = Color(0xFF111113),
-    track = Color(0xFF26262A),
-    ink = Color(0xFFEDEDEF),
-    inkSecondary = Color(0xFFB4B4BB),
-    inkMuted = Color(0xFF85858D),
-    inkFaint = Color(0xFF52525A),
-    onInk = Color(0xFF111113),
-    line = Color(0xFF2C2C31),
-    lineSoft = Color(0xFF232327),
-    lineFaint = Color(0xFF1D1D20),
+    background = Color(0xFF0C111B),
+    surface = Color(0xFF121A27),
+    surfaceRaised = Color(0xFF192434),
+    surfaceSunk = Color(0xFF080D15),
+    canvas = Color(0xFF0F1622),
+    track = Color(0xFF202C3C),
+    ink = Color(0xFFF0F3F8),
+    inkSecondary = Color(0xFFB7C0CF),
+    inkMuted = Color(0xFF8995A8),
+    inkFaint = Color(0xFF536176),
+    onInk = Color(0xFF0C111B),
+    line = Color(0xFF2A3749),
+    lineSoft = Color(0xFF202C3A),
+    lineFaint = Color(0xFF172231),
     accent = Color(0xFF9B9CF6),
     accentWash = Color(0x269B9CF6),
     onAccent = Color(0xFF111113),

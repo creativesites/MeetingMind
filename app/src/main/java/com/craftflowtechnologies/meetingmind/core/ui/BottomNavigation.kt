@@ -5,7 +5,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -40,7 +39,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -50,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
+import com.craftflowtechnologies.meetingmind.ui.theme.OnAccent
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
@@ -154,15 +153,15 @@ fun AppBottomNavigationBar(
 
 @Composable
 private fun NewAction(onClick: () -> Unit) {
-    // The one action on every screen, in the brand's colours so it's the first thing you find.
+    // The one action on every screen reflects the person's chosen accent without competing with
+    // the selected destination chip.
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(percent = 50),
-        color = Color.Transparent,
+        color = Accent,
         modifier = Modifier
             .height(44.dp)
             .coachTarget("new")
-            .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.craftflowtechnologies.meetingmind.ui.theme.Brand.Blue, com.craftflowtechnologies.meetingmind.ui.theme.Brand.Indigo, com.craftflowtechnologies.meetingmind.ui.theme.Brand.Violet)), RoundedCornerShape(percent = 50))
             .testTag("bottom_nav_new")
             .semantics { contentDescription = "Create: record, write a note, add photos or import" }
     ) {
@@ -173,7 +172,7 @@ private fun NewAction(onClick: () -> Unit) {
             Icon(
                 imageVector = Icons.Filled.Add,
                 contentDescription = null,
-                tint = Color.White,
+                tint = OnAccent,
                 modifier = Modifier.size(19.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
@@ -182,7 +181,7 @@ private fun NewAction(onClick: () -> Unit) {
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = (-0.1).sp,
-                color = Color.White
+                color = OnAccent
             )
         }
     }

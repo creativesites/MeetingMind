@@ -133,9 +133,15 @@ class MainActivity : FragmentActivity() {
                 val identity by remember { UserPreferencesManager(identityContext).preferencesFlow }
                     .collectAsState(initial = null)
                 val current = identity?.identity ?: com.craftflowtechnologies.meetingmind.core.identity.AppIdentity()
+                val colors = com.craftflowtechnologies.meetingmind.ui.theme.LocalMMColors.current
                 androidx.compose.runtime.CompositionLocalProvider(
                     com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity provides current,
-                    com.craftflowtechnologies.meetingmind.core.identity.LocalAppLook provides com.craftflowtechnologies.meetingmind.core.identity.AppLook.of(current.look)
+                    // The identity look controls the character of the hero and typography. The
+                    // chosen Appearance accent is the one colour that carries through actions.
+                    com.craftflowtechnologies.meetingmind.core.identity.LocalAppLook provides com.craftflowtechnologies.meetingmind.core.identity.AppLook.of(current.look).copy(
+                        accent = colors.accent,
+                        accentSoft = colors.accentWash
+                    )
                 ) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),

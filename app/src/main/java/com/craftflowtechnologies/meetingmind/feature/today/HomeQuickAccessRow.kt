@@ -14,7 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.AutoStories
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material.icons.filled.Church
@@ -60,7 +60,7 @@ fun HomeQuickAccessRow(
         if (showWork) add(QuickAccessItem("work", "Work", Icons.Filled.Work, onOpenWork))
         onOpenLearning?.let { add(QuickAccessItem("learning", "Learning", Icons.Filled.School, it)) }
         add(QuickAccessItem("prayer", "Prayer", Icons.Filled.Favorite, onOpenPrayer))
-        add(QuickAccessItem("word", "Word", Icons.AutoMirrored.Filled.AutoStories, onOpenWord))
+        add(QuickAccessItem("word", "Word", Icons.AutoMirrored.Filled.MenuBook, onOpenWord))
         onOpenTestimonies?.let { add(QuickAccessItem("testimonies", "Stories", Icons.Filled.Celebration, it)) }
     }
     LazyRow(
