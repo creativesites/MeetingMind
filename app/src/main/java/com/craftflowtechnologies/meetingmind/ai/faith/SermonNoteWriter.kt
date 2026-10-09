@@ -27,18 +27,37 @@ object SermonNoteBuilder {
 
     const val KEY_ALL_SCRIPTURE = "scripture_refs"
 
+    /** The section that says why the sermon notes are missing. Replaced on every run, so a retry clears it. */
+    const val KEY_STATUS = "sermon_status"
+
+    /**
+     * The one plain line shown at the top of a sermon note whose AI notes could not be written.
+     * [reason] is a short, user-facing cause, e.g. "no AI model is available on this phone".
+     */
+    fun unavailableMessage(reason: String): String =
+        "Sermon notes couldn't be generated ($reason). The transcript and scripture are below. " +
+            "Use Retry sermon notes in the recording menu to try again."
+
     fun build(
         noteId: String,
         meetingId: String,
         segments: List<TranscriptSegment>,
         extraction: SermonExtraction?,
         detections: List<DetectedScripture>,
-        now: Long = System.currentTimeMillis()
+        now: Long = System.currentTimeMillis(),
+        /** Why there is no extraction, when the sermon notes could not be written. Null when they were. */
+        unavailableReason: String? = null
     ): GeneratedSections {
         val bySegment = segments.associateBy { it.id }
         val blocks = mutableListOf<NoteBlock>()
         val refs = mutableListOf<ScriptureRef>()
         val titles = Workflows.template(com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON).sections.associate { it.key to it.title }
+
+        // Not AI output, so no AI attribution: the line is about the recording, not written by a model.
+        unavailableReason?.let { reason ->
+            blocks += NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.PARAGRAPH, RichText.plain(unavailableMessage(reason)),
+                source = BlockSource.TRANSCRIPT, sectionKey = KEY_STATUS)
+        }
 
         fun heading(key: String, title: String = titles[key] ?: key) {
             blocks += NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.HEADING_2, RichText.plain(title), source = BlockSource.AI, sectionKey = key)
@@ -123,7 +142,7 @@ object SermonNoteBuilder {
         }
 
         val keys = Workflows.template(com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON).sections
-            .filter { it.source == com.craftflowtechnologies.meetingmind.core.model.SectionSource.AI }.map { it.key }.toSet() + KEY_ALL_SCRIPTURE
+            .filter { it.source == com.craftflowtechnologies.meetingmind.core.model.SectionSource.AI }.map { it.key }.toSet() + KEY_ALL_SCRIPTURE + KEY_STATUS
         return GeneratedSections(blocks, refs, keys)
     }
 

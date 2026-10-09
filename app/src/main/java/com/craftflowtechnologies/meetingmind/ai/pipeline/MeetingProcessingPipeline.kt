@@ -1021,8 +1021,23 @@ class MeetingProcessingPipeline(
     }
 
     /**
+     * Re-runs the sermon notes for an already-processed recording from its stored transcript,
+     * without transcribing again. Backs the "Retry sermon notes" action; replaces only the AI
+     * sections that the user has not edited.
+     */
+    suspend fun regenerateFaithNotes(
+        meetingId: String,
+        recordingType: com.craftflowtechnologies.meetingmind.core.model.RecordingType,
+        segments: List<TranscriptSegment>,
+        processingProfile: ProcessingProfile
+    ) = withContext(Dispatchers.Default) {
+        writeFaithNotes(meetingId, recordingType, segments, processingProfile) { _, _ -> }
+    }
+
+    /**
      * Detects scripture in the transcript and, for a sermon, writes its notes — with Gemini in
      * Internet mode, the on-device model otherwise, and detection alone when there is no model.
+     * When the sermon notes cannot be written, the note says why at the top.
      */
     private suspend fun writeFaithNotes(
         meetingId: String,
@@ -1049,20 +1064,34 @@ class MeetingProcessingPipeline(
         }?.ifEmpty { null } ?: segments
         progress("Finding scripture references...", 94)
         val detections = com.craftflowtechnologies.meetingmind.core.scripture.ScriptureDetector.detect(spoken)
-        val extraction = if (recordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON) {
+        val isSermon = recordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON
+        val outcome: AiResult<com.craftflowtechnologies.meetingmind.ai.faith.SermonExtraction>? = if (isSermon) {
             val resolved = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS)
             resolved?.let { model ->
                 progress(if (model.isCloud) "Writing sermon notes with Google's AI..." else "Writing sermon notes...", 96)
                 try {
-                    (com.craftflowtechnologies.meetingmind.ai.faith.SermonExtractionEngine(model.languageModel, model.contextLengthTokens)
+                    com.craftflowtechnologies.meetingmind.ai.faith.SermonExtractionEngine(model.languageModel, model.contextLengthTokens)
                         .extract(spoken) { part, parts -> if (parts > 1) Log.d(PERF_TAG, "Sermon notes part $part of $parts") }
-                        as? AiResult.Success)?.value
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    AiResult.Failed(t.message ?: "the AI model failed", t)
                 } finally {
                     if (!model.isCloud) LlmEngineManager.release()
                 }
             }
         } else null
-        val generated = com.craftflowtechnologies.meetingmind.ai.faith.SermonNoteBuilder.build(noteId, meetingId, segments, extraction, detections)
+        val extraction = (outcome as? AiResult.Success)?.value
+        // Why the AI notes are missing, if they are: never a silent, scripture-only note.
+        val unavailableReason = if (!isSermon) null else when (outcome) {
+            null -> "no AI model is available on this phone"
+            is AiResult.Success -> if (outcome.value.isEmpty) "the AI model found no sermon content to write up" else null
+            else -> outcome.describeFailure() ?: "the AI model failed"
+        }
+        if (unavailableReason != null) Log.w(PERF_TAG, "Sermon notes unavailable: $unavailableReason")
+        val generated = com.craftflowtechnologies.meetingmind.ai.faith.SermonNoteBuilder.build(
+            noteId, meetingId, segments, extraction, detections, unavailableReason = unavailableReason
+        )
         com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database)
             .applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys)
     }

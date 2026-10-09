@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.padding
 
 import androidx.compose.foundation.layout.navigationBarsPadding
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -16,10 +14,8 @@ import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavHostController
 import com.craftflowtechnologies.meetingmind.core.applock.AppLockViewModel
 import com.craftflowtechnologies.meetingmind.feature.applock.AppLockGate
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
@@ -37,7 +33,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.craftflowtechnologies.meetingmind.core.audio.PlaybackController
 import com.craftflowtechnologies.meetingmind.core.audio.RecordingJournalEntry
@@ -240,23 +235,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     val prefsManager = remember { UserPreferencesManager(context) }
     val prefsState by prefsManager.preferencesFlow.collectAsState(initial = null)
 
-    // Request Audio & Notification permissions
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { _ -> }
-
-    LaunchedEffect(Unit) {
-        val permissionsToRequest = mutableListOf(Manifest.permission.RECORD_AUDIO)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        val needed = permissionsToRequest.filter {
-            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (needed.isNotEmpty()) {
-            permissionLauncher.launch(needed.toTypedArray())
-        }
-    }
+    // Permissions are asked in context, never at launch: onboarding's permission step asks once,
+    // and the recording screen asks for the microphone when the user starts recording.
 
     if (prefsState == null) return
 

@@ -204,6 +204,29 @@ class MeetingDetailViewModel(
         ReprocessTranscriptCleanupUseCase(pipeline, meetingRepository, transcriptRepository)
     }
 
+    /** Re-runs the sermon notes from the stored transcript (no re-transcription). The note's own
+     * line says whether the AI notes are there now, so [onDone] only reports that the run finished. */
+    fun retrySermonNotes(onDone: (message: String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val prefsNow = userPrefs.preferencesFlow.first()
+                val recordingType = meetingRepository.getMeetingByIdDirect(meetingId)?.recordingType ?: return@launch
+                val segments = transcriptRepository.getTranscriptDirect(meetingId).segments
+                if (segments.isEmpty()) {
+                    onDone("There is no transcript to write sermon notes from")
+                    return@launch
+                }
+                pipeline.regenerateFaithNotes(
+                    meetingId, recordingType, segments,
+                    processingProfile = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile)
+                )
+                onDone("Sermon notes updated")
+            } catch (e: Exception) {
+                onDone("Sermon notes failed: ${e.message ?: "unknown error"}")
+            }
+        }
+    }
+
     private val _isReprocessingCleanup = MutableStateFlow(false)
     val isReprocessingCleanup: StateFlow<Boolean> = _isReprocessingCleanup.asStateFlow()
 
@@ -1256,6 +1279,13 @@ fun MeetingDetailScreen(
                 }
             },
             reCleanEnabled = !isReprocessingCleanup,
+            onRetrySermonNotes = if (meeting?.recordingType == RecordingType.SERMON && meeting?.status == MeetingStatus.READY) {
+                {
+                    viewModel.retrySermonNotes { message ->
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else null,
             onCopyMarkdownSummary = {
                 val md = viewModel.generateMarkdownExport()
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

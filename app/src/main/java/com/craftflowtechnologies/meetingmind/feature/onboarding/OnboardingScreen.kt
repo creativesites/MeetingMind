@@ -3,7 +3,12 @@ package com.craftflowtechnologies.meetingmind.feature.onboarding
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import android.Manifest
 import android.app.Application
+import android.app.Activity
+import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -80,6 +85,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -136,7 +142,7 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     val workProfile: StateFlow<com.craftflowtechnologies.meetingmind.core.work.WorkProfile?> = _workProfile.asStateFlow()
     fun setWorkProfile(profile: com.craftflowtechnologies.meetingmind.core.work.WorkProfile) { _workProfile.value = profile }
 
-    /** The offline pack by default: most people want it to just work, privately. */
+    /** Internet mode (Gemini) by default; the offline pack is the on-device alternative (decision D2). */
     private val _setup = MutableStateFlow(SetupChoice.INTERNET)
     val setup: StateFlow<SetupChoice> = _setup.asStateFlow()
     fun setSetup(choice: SetupChoice) { _setup.value = choice }
@@ -206,7 +212,7 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
 private const val STEPS = 7
 
 /**
- * First run: a warm welcome in the brand's navy, then five short steps — what it does, your name,
+ * First run: a warm welcome in the brand's navy, then seven short steps — what it does, your name,
  * what it's for, how the AI runs (the offline pack is explained as three jobs so nobody stops at
  * one model), and the two permissions that matter. Everything can be changed later.
  */
@@ -290,12 +296,12 @@ private fun Welcome() {
         }
         Text("MeetingMind", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp, modifier = Modifier.padding(top = 18.dp))
         Text(
-            "Remember every conversation.\nPrivately, on your phone.",
+            "Remember every conversation.\nFast, accurate notes with Gemini — or keep everything on your phone.",
             color = Color.White.copy(alpha = 0.72f), fontSize = 18.sp, lineHeight = 26.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp)
         )
         Row(Modifier.padding(top = 36.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(Icons.Filled.Lock, "Private")
-            Pill(Icons.Filled.PhoneAndroid, "Works offline")
+            Pill(Icons.Filled.Lock, "Private by choice")
+            Pill(Icons.Filled.PhoneAndroid, "Offline option")
             Pill(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, "AI notes")
         }
     }
@@ -391,7 +397,7 @@ private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (S
     ChoiceCard(
         selected = choice == SetupChoice.INTERNET, onClick = { onChoice(SetupChoice.INTERNET) },
         icon = Icons.Filled.Cloud, title = "Internet mode", badge = "Recommended",
-        line = "Best quality, nothing big to download — Google's Gemini does the work. Needs a connection; recordings are sent to Google.",
+        line = "Fast, accurate notes with Google's Gemini. Needs a connection: recordings are sent to Google Gemini for processing.",
         tag = "setup_choice_internet"
     ) {
         if (choice == SetupChoice.INTERNET) {
@@ -417,7 +423,7 @@ private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (S
     ChoiceCard(
         selected = choice == SetupChoice.OFFLINE_PACK, onClick = { onChoice(SetupChoice.OFFLINE_PACK) },
         icon = Icons.Filled.PhoneAndroid, title = "Offline pack", badge = "Most private",
-        line = "Private and free. Three pieces, one download (${SetupGuide.formatBytes(vm.packBytes)}) that keeps going in the background.",
+        line = "Everything stays on the phone. Three pieces, one download (${SetupGuide.formatBytes(vm.packBytes)}) that keeps going in the background.",
         tag = "setup_choice_offline"
     ) {
         Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -535,14 +541,25 @@ private fun PermissionsStep() {
     var mic by remember { mutableStateOf(granted(Manifest.permission.RECORD_AUDIO)) }
     val needsNotify = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     var notify by remember { mutableStateOf(!needsNotify || granted(Manifest.permission.POST_NOTIFICATIONS)) }
-    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { mic = it }
-    val notifyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notify = it }
+    // Android reports "don't ask again" only as "no rationale to show" right after a refusal, so a
+    // refusal with no rationale means the system will not show the dialog again: send them to settings.
+    var micDenied by remember { mutableStateOf(false) }
+    var notifyDenied by remember { mutableStateOf(false) }
+    val activity = context.findActivity()
+    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        mic = it
+        micDenied = !it && activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO)
+    }
+    val notifyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        notify = it
+        notifyDenied = !it && activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.POST_NOTIFICATIONS)
+    }
 
     StepTitle("Two quick permissions", "So recording and reminders work when you need them. You can change these in Android settings.")
-    PermissionRow(Icons.Filled.Mic, "Microphone", "To record. Audio stays on this phone unless you choose Internet mode.", mic, "perm_mic") {
+    PermissionRow(Icons.Filled.Mic, "Microphone", "To record. In Internet mode, recordings are sent to Google Gemini; the offline pack keeps audio on this phone.", mic, "perm_mic", micDenied) {
         micLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
-    PermissionRow(Icons.Filled.Notifications, "Notifications", "To tell you when a transcript is ready, setup has finished, or your devotional arrives.", notify, "perm_notify") {
+    PermissionRow(Icons.Filled.Notifications, "Notifications", "To tell you when a transcript is ready, setup has finished, or your devotional arrives.", notify, "perm_notify", notifyDenied) {
         if (needsNotify) notifyLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
     Text(
@@ -551,8 +568,14 @@ private fun PermissionsStep() {
     )
 }
 
+private tailrec fun android.content.Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @Composable
-private fun PermissionRow(icon: ImageVector, title: String, line: String, granted: Boolean, tag: String, onAllow: () -> Unit) {
+private fun PermissionRow(icon: ImageVector, title: String, line: String, granted: Boolean, tag: String, permanentlyDenied: Boolean, onAllow: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Brand.Blue, Brand.Violet))), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
@@ -565,6 +588,18 @@ private fun PermissionRow(icon: ImageVector, title: String, line: String, grante
         Spacer(Modifier.width(8.dp))
         if (granted) Box(Modifier.size(30.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
             Icon(Icons.Filled.Check, contentDescription = "Allowed", tint = Color.White, modifier = Modifier.size(18.dp))
-        } else Text("Allow", color = Brand.Cyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(50)).border(1.dp, Brand.Cyan.copy(alpha = 0.6f), RoundedCornerShape(50)).clickable(onClick = onAllow).padding(horizontal = 14.dp, vertical = 7.dp).testTag(tag))
+        } else {
+            val context = LocalContext.current
+            // Once permanently denied, Allow would do nothing: open this app's settings page instead.
+            val label = if (permanentlyDenied) "Open settings" else "Allow"
+            val action: () -> Unit = if (permanentlyDenied) {
+                {
+                    runCatching {
+                        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+                    }
+                }
+            } else onAllow
+            Text(label, color = Brand.Cyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(50)).border(1.dp, Brand.Cyan.copy(alpha = 0.6f), RoundedCornerShape(50)).clickable(onClick = action).padding(horizontal = 14.dp, vertical = 7.dp).testTag(tag))
+        }
     }
 }
