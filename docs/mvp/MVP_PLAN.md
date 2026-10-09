@@ -188,6 +188,7 @@ The model column is who executes. ★ = blocks launch.
 | P-4 | **"Make it yours" checklist** starting at 2/5: first recording, first note edited, Bible chosen (Faith), calendar connected (Work), offline pack | Haiku | Progress persists; it dismisses itself when done |
 | P-5 ★ | **Peak moments**: first-recording celebration, "Your note is ready" with the companion, streak/rhythm moments that are calm, not gamified | Sonnet | Shown once per milestone; skippable |
 | A-1 ★ | **Ask Zuri**, the assistant: grounded answers with source chips that jump to the audio; an honest "couldn't find it in your notes"; on-device and online modes; a tier-gate flag (ZURI_EXPERIENCE §8, task Z-17) | Sonnet | Every factual answer has a source or the not-found line |
+| A-2 | **Live whisper experiment** (ZURI_EXPERIENCE Z-25): flagged, dev builds only, consent safeguards; the founder decides after testing | Sonnet | Founder decision after a device test |
 | P-6 | **Labor-illusion processing screen**: the companion is "thinking" plus narrated real stages from S-2 | Haiku | Copy is driven by real stage events |
 
 ### Phase 4: Vertical rebuilds
@@ -237,8 +238,12 @@ prototype is https://claude.ai/artifact/CwsiqKq3ff7wCt4hjC2bB3.
 - Z-9 needs the F-2 `HomeHeader` and `EmptyState` slots.
 - Z-11 needs the F-6 personalization model.
 
-**Open decisions** (spec §12, each a one-line switch): the Nas name, the launch roster (recommended: Zuri + Nas),
-whether Ask Zuri is gated by tier, and live whisper (out of the MVP).
+**Decisions (founder, spec §12):**
+
+- Nas stays.
+- Zuri + Nas launch first.
+- Ask Zuri: on-device on Free, online on Pro.
+- Live whisper gets built as a flagged experiment (Z-25 / A-2), and the founder decides after testing.
 
 ## 7. Execution order (what runs in parallel)
 

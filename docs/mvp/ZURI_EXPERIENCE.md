@@ -1091,7 +1091,11 @@ These have no task IDs until specced:
 - Seasonal touches
 - The sleeping widget
 
-Live whisper is **not in any phase** until §12.4 is approved.
+Live whisper is approved as an **experiment** (§12.4).
+
+| ID | Title | Model | Size | Maps to | Depends | Acceptance criteria | Screenshot tests |
+|---|---|---|---|---|---|---|---|
+| **Z-25** | **Live whisper experiment.** During a recording, the companion surfaces short, glanceable prompts from the user's own notes: "Last time with Acme: you promised a revised quote", or an open action item when a name is heard. **Safeguards:** opt-in per recording; a visible "Zuri is listening for prompts" chip; a one-time consent explainer ("Make sure everyone present has agreed to be recorded"); on-screen only, with a headphones-only voice option; on-device retrieval by default; off for sermons; no prompts sourced from other people's private notes. | Sonnet | M | **New (A-2)** | Z-8, A-1 (Z-17) | Behind `CompanionFlags.liveWhisper` (on in dev builds only); prompts always cite their source note; a battery/latency trace on a mid-range phone over a 30-min recording is reported; the founder tests it and decides | Recording with a whisper chip and a prompt card × Paper/Graphite |
 
 **Order:**
 
@@ -1102,9 +1106,16 @@ Live whisper is **not in any phase** until §12.4 is approved.
 
 ---
 
-## 12. Open decisions (founder)
+## 12. Decisions (founder, 2026-10-09)
 
-**Not yet answered. Nothing blocks on them.** Each has a recommendation and a one-line switch.
+| # | Decision |
+|---|---|
+| 12.1 ☑ | **"Nas" stays.** He is named after the founder's own dog. |
+| 12.2 ☑ | **Zuri + Nas at launch**, with Wren and Page as fast follows (`COMPANION_FORMS = "ZURI,NAS"`). |
+| 12.3 ☑ | **`FREE_LOCAL_PRO_ONLINE`**: Free gets Ask on-device; online Ask is Pro. |
+| 12.4 ☑ | **Live whisper: build it as an experiment, test it, then decide** whether to hide it or keep it. It ships only behind `CompanionFlags.liveWhisper`, which is off by default in release, with the safeguards in task Z-25. |
+
+The original analysis follows for reference.
 
 ### 12.1 The name "Nas"
 
