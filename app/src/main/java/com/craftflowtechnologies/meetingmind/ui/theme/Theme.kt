@@ -8,6 +8,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
@@ -54,9 +55,18 @@ fun MeetMindTheme(
     darkTheme: Boolean = true,
     dynamicColor: Boolean = false,
     appearance: Appearance = Appearance(),
+    /** When set, overrides the appearance accent with a design-system accent. */
+    accent: MMAccent? = null,
+    spaceDensity: MMDensity = MMDensity.Comfortable,
+    /** One of [MMTextScale.steps]; multiplies every type token. */
+    textScale: Float = MMTextScale.Default,
     content: @Composable () -> Unit
 ) {
-    val palette = appearance.accent.on(if (darkTheme) GraphiteColors else PaperColors)
+    val base = if (darkTheme) GraphiteColors else PaperColors
+    val palette = accent?.on(base) ?: appearance.accent.on(base)
+    val mmType = remember(textScale) { mmTypography(textScale) }
+    val animScale = rememberSystemAnimationScale()
+    val motion = remember(animScale) { MMMotion(animScale) }
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
@@ -68,11 +78,15 @@ fun MeetMindTheme(
     androidx.compose.runtime.CompositionLocalProvider(
         LocalMMColors provides palette,
         LocalAppearance provides appearance,
+        LocalMMTextScale provides textScale,
+        LocalMMTypography provides mmType,
+        LocalMMSpace provides spaceDensity.space,
+        LocalMMMotion provides motion,
         androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, density.fontScale * appearance.textSize.scale)
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = Typography,
+            typography = materialTypographyFor(mmType),
             content = content
         )
     }

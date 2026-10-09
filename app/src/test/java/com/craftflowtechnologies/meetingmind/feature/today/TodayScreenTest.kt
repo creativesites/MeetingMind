@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
@@ -63,6 +64,12 @@ class TodayScreenTest {
         }
     }
 
+    /** The view chips are a LazyRow: with Inter's wider glyphs the later ones start off-screen. */
+    private fun scrollToView(tag: String) {
+        compose.onNode(androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange) and androidx.compose.ui.test.hasScrollToNodeAction() and androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasTestTag("view_day")))
+            .performScrollToNode(androidx.compose.ui.test.hasTestTag(tag))
+    }
+
     @Test
     fun `today lists the day and opens a card`() {
         val opened = mutableListOf<String>()
@@ -81,10 +88,12 @@ class TodayScreenTest {
         settle { vm.view.value == CalendarView.DAY && vm.items.value.isNotEmpty() }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/today_day.png")
 
+        scrollToView("view_month")
         compose.onNodeWithTag("view_month").performClick()
         settle { vm.view.value == CalendarView.MONTH }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/today_month.png")
+        scrollToView("view_river")
         compose.onNodeWithTag("view_river").performClick()
         settle { vm.view.value == CalendarView.RIVER && vm.items.value.isNotEmpty() }
         compose.waitForIdle()
