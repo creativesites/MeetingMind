@@ -146,7 +146,44 @@ It is built on the F-2 design system, after F-2 merges.
 | D-2 | Sermon → 5-day devotional | Sonnet | D-1 |
 | V-0a | Create studio + Faith home Create row (§5) | Sonnet | F-2, Z-22 |
 
-## 7. Questions for the founder
+## 7. Founder answers (2026-10-09)
+
+1. **Study methods:** start with **SOAP** and **verse by verse**.
+2. **Personalisation is very important, and it must be opt-in.**
+   - Devotionals must be **generic by default**, a surprise each day like a devotional someone else wrote.
+   - The current app fixates on the user's profile until it becomes repetitive and annoying, and it ignores the
+     settings the user types.
+   - Personal context (about me, topics, season, sermons, prayer list) is used only when the user turns it on, and
+     only within limits. See §8.
+3. **Read-aloud voice:** on-device for Free, the Gemini voice for Pro.
+
+## 8. Fix: generic by default, personal by invitation
+
+**Root cause (verified in code):**
+
+- `DevotionalContract.kt:115–119` *always* puts the user's topics, life season and "about me" text into the prompt.
+- `DevotionalEngine.kt:218–227` picks the day's passage from the user's topics (+ more-of).
+- Quotes are picked by topics (`:261`, `:290`).
+
+So every devotional is steered toward the user.
+
+**Fix:**
+
+- A **"Personal touch"** setting:
+  - **Off** (default for everyone, existing users included): profile text is never sent.
+  - **Now and then:** about one day in seven, never two days running.
+  - **Always.**
+- With Off, the passage comes from a broad rotation across the whole canon:
+  - the liturgical calendar when the user follows one
+  - otherwise a curated, diverse reading cycle
+  - with the existing 30-day no-repeat rule
+- Topics, "more of" and "less of" become gentle *weights* inside that rotation. "Less of" is always honoured; it is
+  never ignored.
+- A per-day custom request ("Write one about…") is always personal for that one devotional only.
+- The same rule applies app-wide to the verse of the day, Create suggestions, prayers, Ask and Zuri lines, enforced
+  by tests that check the prompt builders never include profile fields when personal is off.
+
+## 9. Questions for the founder (original)
 
 1. **Which study methods matter most to your testers?** SOAP and verse-by-verse are the most common.
 2. **The personal thread** (using sermons and prayer list in devotionals): default on, or ask first? I recommend asking

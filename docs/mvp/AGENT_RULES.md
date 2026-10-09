@@ -35,6 +35,14 @@ Paste this at the top of every sub-agent prompt. The task-specific part comes af
 - No feature inventory posing as UI.
 - An empty section renders nothing, not a placeholder card.
 
+**Generic by default, personal by invitation** (founder, 2026-10-09):
+
+- Faith content (devotionals, verse of the day, Spark/Create suggestions, prayers, Zuri lines) is written for anyone by
+  default, like a devotional someone else wrote: varied and surprising.
+- The user's profile, "about me", topics, life season, sermons and prayer list must never steer daily content unless
+  the user explicitly turned on a personal setting, or asked in that moment.
+- Style settings (tradition, length, tone, reading level, language) are not "personal" and always apply.
+
 **Honesty:**
 
 - Never fail silently. Every fallback (no model, AI failed, offline) shows one plain line and a Retry where possible.
