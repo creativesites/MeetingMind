@@ -1,0 +1,20 @@
+name = "meetingmind-circles"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+# Your Firebase project id (Firebase console > Project settings). Not secret.
+FIREBASE_PROJECT_ID = "REPLACE_WITH_FIREBASE_PROJECT_ID"
+# Max push sends per event. Free Workers plan allows 50 outbound calls per request; raise on the paid plan.
+NOTIFY_MAX = "30"
+
+# Create with: npx wrangler kv namespace create RATE  -- then paste its id here.
+[[kv_namespaces]]
+binding = "RATE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Daily prayer digest, 18:00 UTC.
+[triggers]
+crons = ["0 18 * * *"]
+
+# Secret (never in git):  npx wrangler secret put SERVICE_ACCOUNT_JSON

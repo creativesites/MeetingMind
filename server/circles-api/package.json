@@ -1,0 +1,13 @@
+{
+  "name": "meetingmind-circles-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/unit/*.test.js\"",
+    "test:rules": "cd test/rules && npm test",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

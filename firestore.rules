@@ -1,34 +1,141 @@
 rules_version = '2';
+
+// Circles v2 (docs/mvp/FAITH_V2.md section 2.4). Anything privileged (create circle, join, roles, posts,
+// approval, counters, invites, anonymous authorship) goes through the Cloudflare Worker in
+// server/circles-api, whose service account bypasses these rules. Clients only get:
+//   - read access for circle members
+//   - their own comments / reactions
+//   - their own profile
+// Default deny.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Private Fellowship Circles: End-to-End Encrypted Event Log (docs/FELLOWSHIP_SETUP.md)
-    // Server only ever receives {uid, ts, iv, ciphertext}.
+    function signedIn() { return request.auth != null; }
+    function memberDoc(circleId) {
+      return /databases/$(database)/documents/circles/$(circleId)/members/$(request.auth.uid);
+    }
+    function isMember(circleId) { return signedIn() && exists(memberDoc(circleId)); }
+    function isAdmin(circleId) {
+      return isMember(circleId) && get(memberDoc(circleId)).data.role in ['owner', 'admin'];
+    }
+    function postPath(circleId, postId) {
+      return /databases/$(database)/documents/circles/$(circleId)/posts/$(postId);
+    }
+    function liveOpenPost(circleId, postId) {
+      return exists(postPath(circleId, postId)) && get(postPath(circleId, postId)).data.deleted == false;
+    }
+
     match /circles/{circleId} {
-      // Authenticated users with the unguessable circle ID can read metadata or create a circle.
-      // Listing all circles is strictly forbidden to prevent circle enumeration.
-      allow get: if request.auth != null;
-      allow list: if false;
-      allow create: if request.auth != null;
-      allow update, delete: if false;
+      // No listing/enumeration: clients must know the circle id AND be a member.
+      allow get: if isMember(circleId);
+      allow list, create, update, delete: if false;
 
-      match /events/{eventId} {
-        // Authenticated users can read the circle's encrypted event log.
-        allow read: if request.auth != null;
+      // Member directory (role, displayName, joinedAt, muted). Written only by the Worker.
+      match /members/{uid} {
+        allow get: if isMember(circleId);
+        allow list: if isMember(circleId);
+        allow write: if false;
+      }
 
-        // Append-only events: author UID must match, payload restricted to 4 fields with size limits.
-        allow create: if request.auth != null
-                      && request.resource.data.uid == request.auth.uid
-                      && request.resource.data.keys().hasOnly(['uid', 'ts', 'iv', 'ciphertext'])
-                      && request.resource.data.ciphertext is string
-                      && request.resource.data.ciphertext.size() < 100000;
+      match /posts/{postId} {
+        allow get, list: if isMember(circleId);
+        allow write: if false;
 
-        // Events are immutable and append-only: cannot be edited or deleted by anyone.
-        allow update, delete: if false;
+        match /comments/{commentId} {
+          allow get, list: if isMember(circleId);
+          allow create: if isMember(circleId)
+            && liveOpenPost(circleId, postId)
+            && request.resource.data.keys().hasOnly(['authorUid', 'displayName', 'body', 'parentId', 'createdAt'])
+            && request.resource.data.keys().hasAll(['authorUid', 'body', 'createdAt'])
+            && request.resource.data.authorUid == request.auth.uid
+            && request.resource.data.body is string
+            && request.resource.data.body.size() > 0
+            && request.resource.data.body.size() <= 2000
+            && request.resource.data.createdAt == request.time
+            && (!('displayName' in request.resource.data)
+                || (request.resource.data.displayName is string && request.resource.data.displayName.size() <= 40))
+            && (!('parentId' in request.resource.data)
+                || request.resource.data.parentId == null
+                || (request.resource.data.parentId is string
+                    && exists(/databases/$(database)/documents/circles/$(circleId)/posts/$(postId)/comments/$(request.resource.data.parentId))
+                    && get(/databases/$(database)/documents/circles/$(circleId)/posts/$(postId)/comments/$(request.resource.data.parentId)).data.get('parentId', null) == null));
+          // Edit own comment's text only; authorship and time are immutable.
+          allow update: if isMember(circleId)
+            && resource.data.authorUid == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['body'])
+            && request.resource.data.body is string
+            && request.resource.data.body.size() > 0
+            && request.resource.data.body.size() <= 2000;
+          allow delete: if isMember(circleId)
+            && (resource.data.authorUid == request.auth.uid || isAdmin(circleId));
+        }
+
+        // One reaction per user, doc id == uid. (The Worker's syncCounts keeps counters honest.)
+        match /reactions/{uid} {
+          allow get: if isMember(circleId) && uid == request.auth.uid;
+          allow list: if false;
+          allow create: if isMember(circleId)
+            && uid == request.auth.uid
+            && liveOpenPost(circleId, postId)
+            && request.resource.data.keys().hasOnly(['authorUid', 'kind', 'createdAt'])
+            && request.resource.data.authorUid == request.auth.uid
+            && request.resource.data.kind in ['praying', 'amen', 'heart', 'celebrate']
+            && request.resource.data.createdAt == request.time;
+          allow update: if isMember(circleId)
+            && uid == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['kind'])
+            && request.resource.data.kind in ['praying', 'amen', 'heart', 'celebrate'];
+          allow delete: if isMember(circleId) && uid == request.auth.uid;
+        }
+
+        // "I prayed" markers: a member can see only their own, never who else prayed.
+        match /prayers/{uid} {
+          allow get: if isMember(circleId) && uid == request.auth.uid;
+          allow list, write: if false;
+        }
+
+        match /updates/{updateId} {
+          allow get, list: if isMember(circleId);
+          allow write: if false;
+        }
+      }
+
+      // Prayer requests awaiting approval. Admins only; the doc carries no author information.
+      match /pending/{postId} {
+        allow get, list: if isAdmin(circleId);
+        allow write: if false;
+      }
+
+      // Real authorship of every post (anonymity!). Never client-readable or writable.
+      match /postAuthors/{postId} {
+        allow read, write: if false;
+      }
+
+      // Reports (reporter stored only as a keyed hash in the id).
+      match /reports/{reportId} {
+        allow get, list: if isAdmin(circleId);
+        allow write: if false;
       }
     }
 
-    // Default deny for unmanaged collections
+    // Profile: readable and editable by its owner only. fcmTokens and anything else is Worker-only.
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list: if false;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['displayName', 'photoUrl'])
+        && validProfile(request.resource.data);
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoUrl'])
+        && validProfile(request.resource.data);
+      allow delete: if false;
+    }
+    function validProfile(d) {
+      return (!('displayName' in d) || (d.displayName is string && d.displayName.size() <= 40))
+          && (!('photoUrl' in d) || d.photoUrl == null || (d.photoUrl is string && d.photoUrl.size() <= 500));
+    }
+
+    // invites, userMeta, prayerTally, reports etc. are Worker-only via the catch-all.
     match /{document=**} {
       allow read, write: if false;
     }
