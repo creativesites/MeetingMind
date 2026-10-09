@@ -104,7 +104,7 @@ object ProcessingScheduler {
     suspend fun resumeInterrupted(context: Context): List<String> {
         val database = MeetMindDatabase.getInstance(context)
         val stuck = database.meetingDao().getMeetingsWithStatus(MeetingStatus.PROCESSING.name)
-        return stuck.mapNotNull { meeting ->
+        val resumed = stuck.mapNotNull { meeting ->
             if (activeWork(context, meeting.id) != null) return@mapNotNull null
             if (meeting.audioFilePath == null || !File(meeting.audioFilePath).exists()) {
                 database.meetingDao().updateMeeting(meeting.copy(status = MeetingStatus.ERROR.name))
@@ -112,6 +112,22 @@ object ProcessingScheduler {
             }
             enqueue(context, meeting.id)?.let { meeting.id }
         }
+        failOrphanedJobs(context, database)
+        return resumed
+    }
+
+    /**
+     * After re-queueing, any job row still unfinished whose recording has no queued or running
+     * work can never advance; fail it so the user sees "tap to retry" instead of a frozen bar.
+     */
+    private suspend fun failOrphanedJobs(context: Context, database: MeetMindDatabase) {
+        val dao = database.processingJobDao()
+        val unfinished = dao.getUnfinishedJobs()
+        if (unfinished.isEmpty()) return
+        val withWork = unfinished.map { it.meetingId }.distinct()
+            .filter { activeWork(context, it) != null }
+            .toSet()
+        orphanedJobs(unfinished, withWork).forEach { dao.insertOrUpdateJob(it.asInterrupted()) }
     }
 
     fun cancel(context: Context, meetingId: String) {

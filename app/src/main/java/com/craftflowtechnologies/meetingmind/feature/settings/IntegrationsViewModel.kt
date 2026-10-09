@@ -46,6 +46,11 @@ class IntegrationsViewModel(application: Application) : AndroidViewModel(applica
         IntegrationsUiState(providers = registry.allProviders())
     )
 
+    override fun onCleared() {
+        registry.close()
+        super.onCleared()
+    }
+
     fun toggleProvider(providerId: String, enabled: Boolean) {
         viewModelScope.launch {
             preferences.setProviderEnabled(providerId, enabled)

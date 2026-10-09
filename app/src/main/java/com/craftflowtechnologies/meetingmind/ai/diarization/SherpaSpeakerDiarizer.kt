@@ -14,6 +14,11 @@ import com.k2fsa.sherpa.onnx.OfflineSpeakerSegmentationModelConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeakerSegmentationPyannoteModelConfig
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 
 /**
  * Real offline speaker diarization via sherpa-onnx's [com.k2fsa.sherpa.onnx.OfflineSpeakerDiarization]:
@@ -35,6 +40,16 @@ class SherpaSpeakerDiarizer(
         meetingId: String,
         knownSpeakers: List<Speaker>,
         expectedSpeakerCount: Int?
+    ): AiResult<List<DiarizationTurn>> =
+        diarizeWithProgress(audioFile, totalDurationMs, meetingId, knownSpeakers, expectedSpeakerCount) { }
+
+    override suspend fun diarizeWithProgress(
+        audioFile: File,
+        totalDurationMs: Long,
+        meetingId: String,
+        knownSpeakers: List<Speaker>,
+        expectedSpeakerCount: Int?,
+        onProgress: (Float) -> Unit
     ): AiResult<List<DiarizationTurn>> {
         if (!modelStorage.isInstalled(modelId)) {
             return AiResult.ModelUnavailable(modelId, "No local speaker diarization model is installed on this device.")
@@ -48,11 +63,6 @@ class SherpaSpeakerDiarizer(
         }
 
         return try {
-            val decoded = AudioFormatConverter.decodeToMono16k(audioFile)
-            if (decoded.samples.isEmpty()) {
-                return AiResult.Success(emptyList())
-            }
-
             val config = OfflineSpeakerDiarizationConfig(
                 segmentation = OfflineSpeakerSegmentationModelConfig(
                     pyannote = OfflineSpeakerSegmentationPyannoteModelConfig(model = segmentationFile.absolutePath),
@@ -69,20 +79,57 @@ class SherpaSpeakerDiarizer(
                 minDurationOff = MIN_DURATION_OFF_SEC
             )
 
-            val diarizer = SherpaEngineManager.getOrCreateDiarizer(modelId, config)
-            // The segmentation/embedding models stay loaded across calls; only clustering (the
-            // one thing that legitimately varies per meeting, e.g. a user-picked speaker count)
-            // needs re-applying on a reused instance — the sherpa-onnx API documents setConfig()
-            // as reading only config.clustering, never reloading the underlying models.
-            diarizer.setConfig(config)
-
-            val rawSegments = diarizer.process(decoded.samples).map {
-                RawSpeakerSegment(
-                    startMs = (it.start * 1000f).toLong(),
-                    endMs = (it.end * 1000f).toLong(),
-                    speakerIndex = it.speaker
-                )
+            // The native call is one blocking, uncancellable call over the whole file. It runs on
+            // its own thread and is awaited, so the caller's timeout/cancellation can fire. The
+            // file is deliberately NOT chunked: the Kotlin API exposes no embeddings, so speakers
+            // could not be matched across chunks.
+            val abandoned = AtomicBoolean(false)
+            val executor = Executors.newSingleThreadExecutor { r -> Thread(r, "diarization-native").apply { isDaemon = true } }
+            val holder = AtomicReference<com.k2fsa.sherpa.onnx.OfflineSpeakerDiarization?>(null)
+            val work = CompletableDeferred<List<RawSpeakerSegment>?>()
+            executor.execute {
+                var checkedOut: com.k2fsa.sherpa.onnx.OfflineSpeakerDiarization? = null
+                try {
+                    val decoded = AudioFormatConverter.decodeToMono16k(audioFile)
+                    if (decoded.samples.isEmpty() || abandoned.get()) {
+                        work.complete(if (decoded.samples.isEmpty()) emptyList() else null)
+                        return@execute
+                    }
+                    val d = SherpaEngineManager.checkoutDiarizer(modelId, config)
+                    checkedOut = d
+                    holder.set(d)
+                    if (abandoned.get()) { SherpaEngineManager.detachDiarizer(d); work.complete(null); return@execute }
+                    val segments = d.processWithCallback(decoded.samples, { processed, total, _ ->
+                        if (total > 0) onProgress((processed.toFloat() / total).coerceIn(0f, 1f))
+                        // Best effort: a non-zero return asks sherpa-onnx to stop early.
+                        if (abandoned.get()) 1 else 0
+                    }, 0L)
+                    work.complete(
+                        segments.map {
+                            RawSpeakerSegment(
+                                startMs = (it.start * 1000f).toLong(),
+                                endMs = (it.end * 1000f).toLong(),
+                                speakerIndex = it.speaker
+                            )
+                        }
+                    )
+                } catch (t: Throwable) {
+                    work.completeExceptionally(t)
+                } finally {
+                    // Frees the instance if it was detached after a timeout; otherwise returns it to the pool.
+                    checkedOut?.let { SherpaEngineManager.checkinDiarizer(it) }
+                    executor.shutdown()
+                }
             }
+            val rawSegments = try {
+                work.await()
+            } catch (e: CancellationException) {
+                abandoned.set(true)
+                holder.get()?.let { SherpaEngineManager.detachDiarizer(it) }
+                throw e
+            }
+            if (rawSegments == null) return AiResult.Failed("Speaker diarization was abandoned.")
+            if (rawSegments.isEmpty()) return AiResult.Success(emptyList())
             // Sub-second segments sandwiched between two same-speaker segments are almost always
             // segmentation/clustering noise (a breath, overlap bleed, a misclassified word) rather
             // than a real third speaker — see mergeShortSandwichedFragments doc for the reasoning.
@@ -116,6 +163,8 @@ class SherpaSpeakerDiarizer(
                         )
                     }
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             AiResult.Failed(e.message ?: "Speaker diarization failed.", e)
         }

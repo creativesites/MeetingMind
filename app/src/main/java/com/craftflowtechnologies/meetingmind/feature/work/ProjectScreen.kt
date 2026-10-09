@@ -145,12 +145,17 @@ fun ProjectScreen(
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     Fig("${notes.size}", "notes"); Fig("${mine.size}", "you owe"); Fig("${theirs.size}", "owed to you"); Fig("${decisions.size}", "decided")
                 }
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(ProjectViewTab.entries) { v ->
-                        Chip(v.label, currentView == v, Ink) { currentView = v }
+                // Kanban, Timeline and X-Ray stay hidden until FEATURE_PROJECT_VIEWS is on (MVP, S-5).
+                // With only Overview left there is nothing to switch between, so the tab row is hidden too.
+                val visibleTabs = ProjectViewTab.entries.filter { it == ProjectViewTab.OVERVIEW || com.craftflowtechnologies.meetingmind.BuildConfig.FEATURE_PROJECT_VIEWS }
+                if (visibleTabs.size > 1) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(visibleTabs) { v ->
+                            Chip(v.label, currentView == v, Ink) { currentView = v }
+                        }
                     }
                 }
             }

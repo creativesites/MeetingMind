@@ -240,6 +240,9 @@ interface ProcessingJobDao {
     @Query("SELECT * FROM processing_jobs WHERE isCompleted = 0 AND isFailed = 0")
     fun getActiveJobs(): Flow<List<ProcessingJobEntity>>
 
+    @Query("SELECT * FROM processing_jobs WHERE isCompleted = 0 AND isFailed = 0")
+    suspend fun getUnfinishedJobs(): List<ProcessingJobEntity>
+
     @Query("SELECT * FROM processing_jobs WHERE meetingId = :meetingId")
     fun getJobForMeeting(meetingId: String): Flow<ProcessingJobEntity?>
 

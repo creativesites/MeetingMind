@@ -1,57 +1,87 @@
 package com.craftflowtechnologies.meetingmind.core.integrations
 
 import android.content.Context
+import com.craftflowtechnologies.meetingmind.BuildConfig
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.work.WorkProfile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 
 /**
  * Registry of all integration providers in MeetingMind.
  * Provides access to available providers, their status, and their capabilities.
+ *
+ * The preferences the providers consult are collected once into [snapshot] and read from memory,
+ * so the getters never block on DataStore, which keeps them safe to call from the UI thread.
  */
 class IntegrationRegistry(
     private val context: Context,
     private val preferences: IntegrationPreferences = IntegrationPreferences(context),
     private val userPrefs: UserPreferencesManager = UserPreferencesManager(context)
 ) {
+    /** The values the registry reads, cached from DataStore. Defaults match the stored defaults. */
+    private data class Snapshot(
+        val enabledProviderIds: Set<String>,
+        val confidentialOptIn: Boolean,
+        val profile: WorkProfile
+    )
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private val snapshot: StateFlow<Snapshot> = combine(
+        preferences.state,
+        userPrefs.workSettings
+    ) { prefsState, workSettings ->
+        Snapshot(
+            enabledProviderIds = prefsState.enabledProviderIds,
+            confidentialOptIn = prefsState.confidentialEmailOptIn,
+            profile = workSettings.profile
+        )
+    }
+        // On a read error the last good value stays in place.
+        .catch { }
+        .stateIn(
+            scope,
+            SharingStarted.Eagerly,
+            Snapshot(
+                enabledProviderIds = IntegrationPreferencesState().enabledProviderIds,
+                confidentialOptIn = false,
+                profile = WorkProfile.CLIENT_WORK
+            )
+        )
+
     private val deviceCalendar = DeviceCalendarProvider(
         context = context,
-        enabledChecker = {
-            // Default on, respects integration preferences
-            runBlockingCatching { preferences.isProviderEnabled(DeviceCalendarProvider.ID) } ?: true
-        }
+        // Default on, respects integration preferences
+        enabledChecker = { DeviceCalendarProvider.ID in snapshot.value.enabledProviderIds }
     )
 
     private val shareSheet = ShareSheetOutputChannel()
     private val safStorage = SafStorageProvider()
 
     private val googleEmail = GoogleEmailProvider(
-        workProfileProvider = {
-            runBlockingCatching { userPrefs.workSettings.firstOrNull()?.profile } ?: WorkProfile.CLIENT_WORK
-        },
-        explicitOptInProvider = {
-            runBlockingCatching { preferences.state.firstOrNull()?.confidentialEmailOptIn } ?: false
-        },
-        enabledChecker = {
-            runBlockingCatching { preferences.isProviderEnabled(GoogleEmailProvider.ID) } ?: false
-        }
+        workProfileProvider = { snapshot.value.profile },
+        explicitOptInProvider = { snapshot.value.confidentialOptIn },
+        enabledChecker = { GoogleEmailProvider.ID in snapshot.value.enabledProviderIds }
     )
 
     private val microsoftEmail = MicrosoftEmailProvider(
-        workProfileProvider = {
-            runBlockingCatching { userPrefs.workSettings.firstOrNull()?.profile } ?: WorkProfile.CLIENT_WORK
-        },
-        explicitOptInProvider = {
-            runBlockingCatching { preferences.state.firstOrNull()?.confidentialEmailOptIn } ?: false
-        },
-        enabledChecker = {
-            runBlockingCatching { preferences.isProviderEnabled(MicrosoftEmailProvider.ID) } ?: false
-        }
+        workProfileProvider = { snapshot.value.profile },
+        explicitOptInProvider = { snapshot.value.confidentialOptIn },
+        enabledChecker = { MicrosoftEmailProvider.ID in snapshot.value.enabledProviderIds }
     )
 
-    private val comingLater = StubIntegrationProvider.comingLaterProviders()
+    // Hidden for MVP unless FEATURE_STUB_INTEGRATIONS is on (S-5).
+    private val comingLater: List<StubIntegrationProvider> =
+        if (BuildConfig.FEATURE_STUB_INTEGRATIONS) StubIntegrationProvider.comingLaterProviders() else emptyList()
 
     /** Primary active calendar provider. */
     val calendarProvider: CalendarProvider get() = deviceCalendar
@@ -72,7 +102,7 @@ class IntegrationRegistry(
             shareSheet,
             safStorage
         )
-        if (com.craftflowtechnologies.meetingmind.BuildConfig.FEATURE_INTEGRATIONS_EMAIL) {
+        if (BuildConfig.FEATURE_INTEGRATIONS_EMAIL) {
             list.add(googleEmail)
             list.add(microsoftEmail)
         }
@@ -94,23 +124,12 @@ class IntegrationRegistry(
     val providersFlow: Flow<List<IntegrationProvider>> = combine(
         preferences.state,
         userPrefs.workSettings
-    ) { prefsState, workSettings ->
+    ) { _, _ ->
         allProviders()
     }
 
-    private fun <T> runBlockingCatching(block: suspend () -> T): T? {
-        return try {
-            kotlinx.coroutines.runBlocking { block() }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private suspend fun <T> Flow<T>.firstOrNull(): T? {
-        return try {
-            this.first()
-        } catch (_: Exception) {
-            null
-        }
+    /** Stops the background collection of preferences. Call when the owner is cleared. */
+    fun close() {
+        scope.cancel()
     }
 }

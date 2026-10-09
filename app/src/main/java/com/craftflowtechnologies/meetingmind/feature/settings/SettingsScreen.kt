@@ -429,12 +429,14 @@ fun SettingsScreen(
                         onClick = onOpenIntegrations
                     )
                 }
-                settingsRow {
-                    SettingsNavRow(
-                        title = "Recipes & Automation",
-                        subtitle = "Post-meeting actions, tasks & review triggers",
-                        onClick = onOpenRecipes
-                    )
+                if (com.craftflowtechnologies.meetingmind.BuildConfig.FEATURE_RECIPES) {
+                    settingsRow {
+                        SettingsNavRow(
+                            title = "Recipes & Automation",
+                            subtitle = "Post-meeting actions, tasks & review triggers",
+                            onClick = onOpenRecipes
+                        )
+                    }
                 }
             }
 
@@ -551,7 +553,7 @@ fun SettingsScreen(
                         onClick = {
                             val sendIntent = android.content.Intent().apply {
                                 action = android.content.Intent.ACTION_SEND
-                                putExtra(android.content.Intent.EXTRA_TEXT, "Hey! I'm testing MeetingMind — the intelligent offline-first app for faith, work meetings, and learning. Check it out here: https://github.com/creativesites/MeetingMind/releases")
+                                putExtra(android.content.Intent.EXTRA_TEXT, "Hey! I'm testing MeetingMind — the intelligent offline-first app for faith and work meetings. Check it out here: https://github.com/creativesites/MeetingMind/releases")
                                 type = "text/plain"
                             }
                             context.startActivity(android.content.Intent.createChooser(sendIntent, "Share MeetingMind"))

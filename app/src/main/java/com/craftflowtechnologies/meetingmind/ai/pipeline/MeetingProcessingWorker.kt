@@ -17,6 +17,8 @@ import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingStage
 import java.io.File
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /**
  * Runs [MeetingProcessingPipeline] as background work that survives the app being minimized,
@@ -121,13 +123,35 @@ class MeetingProcessingWorker(
             )
         } catch (e: java.util.concurrent.CancellationException) {
             // Stopped on purpose (or by the system): the pipeline has already cleaned up.
-            if (isStopped && stopReasonIsSystem()) throw e // let WorkManager reschedule it
+            if (isStopped && stopReasonIsSystem()) {
+                // Never leave a frozen percentage: say it was interrupted. WorkManager re-runs the
+                // job (resuming from the ASR checkpoint), and the re-run overwrites this row.
+                markJobInterrupted(database, meetingId, overrideFailed = true)
+                throw e
+            }
             Result.failure(workDataOf(KEY_ERROR to "Cancelled"))
-        } catch (e: Exception) {
-            AppNotifications.processingFinished(applicationContext, meetingId, recordingTitle, AppNotifications.Outcome.FAILED, e.message)
-            Result.failure(workDataOf(KEY_ERROR to (e.message ?: "Unknown processing error")))
+        } catch (t: Throwable) {
+            // Includes OutOfMemoryError and other Errors the pipeline's own handler may not have seen.
+            markJobInterrupted(database, meetingId)
+            AppNotifications.processingFinished(applicationContext, meetingId, recordingTitle, AppNotifications.Outcome.FAILED, t.message)
+            Result.failure(workDataOf(KEY_ERROR to (t.message ?: "Unknown processing error")))
         } finally {
             runCatching { if (wakeLock.isHeld) wakeLock.release() }
+        }
+    }
+
+    /** Fails this recording's job row (if it is still unfinished) so the UI stops showing progress. */
+    private suspend fun markJobInterrupted(database: MeetMindDatabase, meetingId: String, overrideFailed: Boolean = false) {
+        withContext(NonCancellable) {
+            runCatching {
+                val dao = database.processingJobDao()
+                val job = dao.getJobForMeeting(meetingId).first()
+                // A real failure the pipeline already recorded keeps its own message; only the
+                // system-stop path replaces the pipeline's generic "cancelled" row.
+                if (job != null && !job.isCompleted && (overrideFailed || !job.isFailed)) {
+                    dao.insertOrUpdateJob(job.asInterrupted())
+                }
+            }
         }
     }
 

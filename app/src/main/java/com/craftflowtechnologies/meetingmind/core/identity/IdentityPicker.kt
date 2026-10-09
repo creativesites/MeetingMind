@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
+import com.craftflowtechnologies.meetingmind.core.model.OfferedNotebookSpaces
 
 private data class SpaceTile(val space: NotebookSpace, val title: String, val line: String, val icon: ImageVector, val tint: Color)
 
@@ -52,7 +53,8 @@ private val tiles = listOf(
 @Composable
 fun SpacesPicker(selected: Set<NotebookSpace>, onChange: (Set<NotebookSpace>) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        tiles.chunked(2).forEach { row ->
+        // LEARNING is hidden until the Learning vertical is rebuilt (MVP S-7); see OfferedNotebookSpaces.
+        tiles.filter { it.space in OfferedNotebookSpaces }.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { t ->
                     val on = t.space in selected

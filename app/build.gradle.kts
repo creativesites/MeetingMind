@@ -46,6 +46,17 @@ android {
     // Integrations (W13): Gmail and Outlook are off by default per brief
     val emailIntegrationsEnabled = (System.getenv("FEATURE_INTEGRATIONS_EMAIL") ?: "false").toBoolean()
     buildConfigField("Boolean", "FEATURE_INTEGRATIONS_EMAIL", "$emailIntegrationsEnabled")
+
+    // MVP (S-5): unfinished Work features stay hidden at the UI entry point until they earn their place.
+    // The code stays in the tree; these flags only control what is shown. Default off.
+    val recipesEnabled = (System.getenv("FEATURE_RECIPES") ?: "false").toBoolean()
+    buildConfigField("Boolean", "FEATURE_RECIPES", "$recipesEnabled")
+    val projectViewsEnabled = (System.getenv("FEATURE_PROJECT_VIEWS") ?: "false").toBoolean()
+    buildConfigField("Boolean", "FEATURE_PROJECT_VIEWS", "$projectViewsEnabled")
+    val savedViewsEnabled = (System.getenv("FEATURE_SAVED_VIEWS") ?: "false").toBoolean()
+    buildConfigField("Boolean", "FEATURE_SAVED_VIEWS", "$savedViewsEnabled")
+    val stubIntegrationsEnabled = (System.getenv("FEATURE_STUB_INTEGRATIONS") ?: "false").toBoolean()
+    buildConfigField("Boolean", "FEATURE_STUB_INTEGRATIONS", "$stubIntegrationsEnabled")
   }
 
   signingConfigs {

@@ -125,7 +125,6 @@ fun ProfessionalHome(
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit,
     onOpenWork: () -> Unit,
     onOpenFaith: () -> Unit = {},
-    onOpenLearning: () -> Unit = {},
     onOpenPrayer: () -> Unit = {},
     onOpenWord: () -> Unit = {},
     onOpenTestimonies: () -> Unit = {},
@@ -209,12 +208,11 @@ fun ProfessionalHome(
                 )
             }
 
-            // Quick Access icons for Faith, Work, Learning, Devotional, Prayer, Word, Testimonies
+            // Quick Access icons for Faith, Work, Devotional, Prayer, Word, Testimonies
             item {
                 HomeQuickAccessRow(
                     onOpenFaith = onOpenFaith,
                     onOpenWork = onOpenWork,
-                    onOpenLearning = onOpenLearning,
                     onOpenDevotional = onOpenDevotional,
                     onOpenPrayer = onOpenPrayer,
                     onOpenWord = onOpenWord,

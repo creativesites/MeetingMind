@@ -30,6 +30,20 @@ interface SpeakerDiarizer {
         /** Null (or omitted) lets the clustering algorithm auto-detect the speaker count; a positive value forces exactly that many speakers. */
         expectedSpeakerCount: Int? = null
     ): AiResult<List<DiarizationTurn>>
+
+    /**
+     * [diarize] plus a progress callback (0..1, invoked from a background thread, so it must be
+     * cheap and non-blocking). Implementations without real progress just run [diarize].
+     */
+    suspend fun diarizeWithProgress(
+        audioFile: File,
+        totalDurationMs: Long,
+        meetingId: String,
+        knownSpeakers: List<Speaker> = emptyList(),
+        expectedSpeakerCount: Int? = null,
+        onProgress: (Float) -> Unit
+    ): AiResult<List<DiarizationTurn>> =
+        diarize(audioFile, totalDurationMs, meetingId, knownSpeakers, expectedSpeakerCount)
 }
 
 /** The project-wide speaker id convention, unchanged: `spk_<meetingId>_<clusterIndex>`. */
