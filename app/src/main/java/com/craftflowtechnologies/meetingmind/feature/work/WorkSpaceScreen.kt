@@ -385,7 +385,7 @@ fun WorkSpaceScreen(
             // Everything recent in Work.
             item { WorkSectionTitle("Recent") }
             if (recent.isEmpty() && workNotes.isEmpty()) item {
-                EmptyLine("Your meetings and work notes will gather here. Start with a template above — nothing leaves your phone unless you turn on Internet mode.")
+                EmptyLine("Your meetings and work notes will gather here. Start with a template above.")
             }
             val merged = (recent.map { Triple(it.at, it.title, { onOpenMeeting(it.meetingId, null) } as () -> Unit) to it.type } +
                 workNotes.filter { n -> recent.none { it.noteId == n.id } }.map { n -> Triple(n.eventDate ?: n.updatedAt, n.title.ifBlank { n.workflow.displayName }, { onOpenNote(n.id) } as () -> Unit) to n.workflow })
@@ -523,7 +523,7 @@ internal fun IntroCard(profile: WorkProfile, onTry: () -> Unit, onRecord: () -> 
         Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Lock, null, tint = Briefing.OnBrief.copy(alpha = 0.5f), modifier = Modifier.size(13.dp))
             Text(
-                if (profile.sensitive) "Your work stays on this phone." else "Private by default. Nothing leaves your phone unless you turn on Internet mode.",
+                if (profile.sensitive) "Your work stays on this phone." else "Processed with Gemini in Internet mode, or entirely on this phone with the offline pack.",
                 fontSize = 11.5.sp, lineHeight = 16.sp, color = Briefing.OnBrief.copy(alpha = 0.5f), modifier = Modifier.padding(start = 6.dp)
             )
         }

@@ -547,7 +547,7 @@ private fun LiveRecordingSurface(
                         Icon(Icons.Default.Mic, contentDescription = null, tint = accent, modifier = Modifier.size(38.dp))
                     }
                     Text("MeetingMind needs your microphone", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 20.dp))
-                    Text("Recordings are saved on your phone. Nothing is sent anywhere unless you turn on Internet mode.", fontSize = 14.sp, lineHeight = 20.sp, color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+                    Text("Recordings are saved on your phone. In Internet mode they're sent to Google Gemini for processing; the offline pack keeps them here.", fontSize = 14.sp, lineHeight = 20.sp, color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
                     Button(onClick = onRequestPermission, shape = RoundedCornerShape(50), colors = ButtonDefaults.buttonColors(containerColor = Color.White), modifier = Modifier.padding(top = 22.dp).height(50.dp)) {
                         Text("Allow microphone & start", color = Color(0xFF0F172A), fontWeight = FontWeight.SemiBold)
                     }
