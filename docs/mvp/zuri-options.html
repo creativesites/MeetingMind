@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Meet Zuri</title>
-<meta name="description" content="Zuri, MeetingMind's companion, v2: four selectable forms (Zuri, Wren, Page, Nas), six live states, Spark modes, a 3D look, the assistant role and wild ideas.">
+<meta name="description" content="Zuri, MeetingMind's companion, v2: four selectable forms (Zuri, Wren, Page, Nas), six live states, Create modes, a 3D look, the assistant role and wild ideas.">
 <style>
 :root{
   --bg:#FAFAF9; --surface:#FFFFFF; --sunk:#F5F5F4; --track:#EDEDEB;
   --ink:#18181B; --ink2:#52525B; --muted:#8B8B93; --faint:#C8C8CD;
   --line:#E5E5E3;
-  --accent:#6366F1; --wash:rgba(99,102,241,.10); --onAccent:#FFFFFF;
+  --accent:#5B5BD6; --wash:rgba(91,91,214,.10); --onAccent:#FFFFFF;
   --success:#16A34A; --danger:#DC2626; --gold:#B7791F; --rec:#E5484D;
   --shadow:0 8px 24px rgba(24,24,27,.08);
   --phone:#18181B; --scrim:rgba(0,0,0,.32);
@@ -321,7 +321,7 @@ footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px soli
   <div class="wrap">
     <p class="eyebrow">MeetingMind · Companion · v2, still brainstorming</p>
     <h1>Meet Zuri, and friends.</h1>
-    <p class="lede"><b>Zuri</b> means "beautiful, good" in Swahili. It is MeetingMind's companion and the brand name of the whole family. People choose a form (Zuri, Wren, Page or Nas the puppy) during onboarding or later in Settings, and can rename it. All four forms run on one shared rig and state machine and are drawn from simple primitives, so Compose can build them. They take any accent and work on Paper and Graphite. Below the forms: Spark modes, a "3D look", Zuri as an assistant, and some wild ideas. Anything marked <span class="idea">Idea</span> is a brainstorm, not a commitment.</p>
+    <p class="lede"><b>Zuri</b> means "beautiful, good" in Swahili. It is MeetingMind's companion and the brand name of the whole family. People choose a form (Zuri, Wren, Page or Nas the puppy) during onboarding or later in Settings, and can rename it. All four forms run on one shared rig and state machine and are drawn from simple primitives, so Compose can build them. They take any accent and work on Paper and Graphite. Below the forms: Create modes, a "3D look", Zuri as an assistant, and some wild ideas. Anything marked <span class="idea">Idea</span> is a brainstorm, not a commitment.</p>
   </div>
 </header>
 
@@ -359,7 +359,7 @@ footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px soli
         <li><b>Zuri (the Orb) is pre-selected.</b> It shares the brand's name, it belongs to the record button's family, and it is the most readable at 24&nbsp;dp and the most faith-neutral.</li>
         <li><b>Record button stays plain</b> by default. "Zuri on the record button" is an Advanced toggle.</li>
         <li><b>Quiet during sermons</b> by default, adjustable in Advanced settings and on the recording screen.</li>
-        <li><b>Spark:</b> users can choose to add Zuri to a card. AI suggests a mode and the user can change it. Faith rules apply.</li>
+        <li><b>Create</b> (formerly Spark): users can choose to add Zuri to a card. AI suggests a mode and the user can change it. Faith rules apply.</li>
         <li><b>One rig for every form,</b> and notifications use one neutral Zuri glyph, so the brand stays consistent whichever form people pick.</li>
       </ul>
     </div>
@@ -436,7 +436,7 @@ footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px soli
             <div class="wave" id="wave" aria-hidden="true"></div>
             <div class="rec-zuri"><div class="stage" id="recZ" data-mount data-char="orb" data-state="peaceful" data-size="56" data-bound></div></div>
             <button class="local-chip" id="sermonChip" aria-pressed="true">Quiet during sermon · tap to change</button>
-            <p class="later" id="sermonLine">Default for Faith recordings. Change in Settings → Advanced → Zuri.</p>
+            <p class="later" id="sermonLine">Default for Faith recordings. Change in Settings → Companion → Advanced.</p>
             <div class="stopbar"><button class="round-ic" aria-label="Bookmark"></button><button class="stop" aria-label="Stop"><i></i></button><button class="round-ic" aria-label="Pause"></button></div>
           </div>
         </div>
@@ -444,23 +444,23 @@ footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px soli
     </div>
 
     <div class="card settings" style="max-width:520px;margin:36px auto 0" aria-label="Mock: Advanced settings for Zuri">
-      <p class="eyebrow" style="margin-bottom:4px">Settings → Advanced → Zuri</p>
+      <p class="eyebrow" style="margin-bottom:4px">Settings → Companion → Advanced</p>
       <div class="row" style="border-top:0"><span>Zuri on the record button<small>Off by default. The button stays a plain button.</small></span><button class="switch" id="onBtnToggle" role="switch" aria-checked="false" aria-label="Zuri on the record button"><span class="knob"></span></button></div>
       <div class="bbar" aria-label="Bottom bar preview"><span>Home</span><span>Notes</span><div class="stage" id="bbarBtn" data-mount data-char="orb" data-state="idle" data-size="56"><span class="badge-mini" id="bbarBadge" hidden><span data-mount data-char="orb" data-state="idle" data-size="24" data-bound id="bbarMini"></span></span></div><span>Spaces</span><span>Search</span></div>
       <p class="note" style="margin:8px 0 4px">With Wren, Page or Nas, the orb keeps its shape and wears a small badge of your form, so the button never stops looking like a button.</p>
       <div class="row"><span>Quiet during sermons<small>Small and still while a sermon records. On by default for Faith.</small></span><button class="switch" id="sermonToggle" role="switch" aria-checked="true" aria-label="Quiet during sermons"><span class="knob"></span></button></div>
-      <div class="row"><span>Spark: suggest Zuri on cards<small>Off by default. The AI suggests a mode; you choose.</small></span><button class="switch" role="switch" aria-checked="false" aria-label="Suggest Zuri on Spark cards" data-simple><span class="knob"></span></button></div>
+      <div class="row"><span>Create: suggest Zuri on cards<small>Off by default. The AI suggests a mode; you choose.</small></span><button class="switch" role="switch" aria-checked="false" aria-label="Suggest Zuri on Create cards" data-simple><span class="knob"></span></button></div>
     </div>
   </section>
 
   <section aria-labelledby="sp-h">
-    <p class="eyebrow">Spark sharing</p>
-    <h2 id="sp-h" style="margin-bottom:8px">Spark modes: six poses for shared cards</h2>
-    <p class="sublede">Spark modes live outside the six app states and appear only when the user adds the companion to a card. The AI suggests a mode based on what the card says, and the user can change it. The faith rules hold: <b>Prayerful</b> means paws or hands folded, eyes closed and still. On a prayer request, Joyful and Celebratory are switched off. The companion never prays <i>for</i> anyone. It sits quietly beside the user's own words.</p>
+    <p class="eyebrow">Create studio (Spark v2)</p>
+    <h2 id="sp-h" style="margin-bottom:8px">Create modes: six poses for shared cards</h2>
+    <p class="sublede">Create modes live outside the six app states and appear only when the user adds the companion to a card. The AI suggests a mode based on what the card says, and the user can change it. The faith rules hold: <b>Prayerful</b> means paws or hands folded, eyes closed and still. On a prayer request only Prayerful and Peaceful are offered, and on scripture or sermon quotes Joyful and Celebratory are switched off. The companion never prays <i>for</i> anyone. It sits quietly beside the user's own words.</p>
     <div class="phones">
       <div class="phone-col">
-        <h3>Spark editor</h3>
-        <div class="phone" aria-label="Phone mock: Spark card editor">
+        <h3>Create: design step</h3>
+        <div class="phone" aria-label="Phone mock: Create card editor">
           <div class="screen">
             <div class="sbar"><span>9:41</span><span>5G <i></i></span></div>
             <div class="seg" role="radiogroup" aria-label="Card content" id="sparkType" style="margin-bottom:12px">
@@ -475,7 +475,7 @@ footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px soli
               <div class="zslot" id="sparkZ" data-mount data-char="orb" data-state="peaceful" data-size="64" data-bound data-force="dark"></div>
               <span class="brand">MeetingMind</span>
             </div>
-            <div class="row" style="border-top:0;min-height:40px"><span>Include your companion</span><button class="switch" id="sparkInclude" role="switch" aria-checked="true" aria-label="Include your companion on the card"><span class="knob"></span></button></div>
+            <div class="row" style="border-top:0;min-height:40px"><span>Include your companion<small style="display:block;color:var(--muted);font-size:12px">Off by default. Try it.</small></span><button class="switch" id="sparkInclude" role="switch" aria-checked="false" aria-label="Include your companion on the card"><span class="knob"></span></button></div>
             <p class="ai-line" id="sparkAI"></p>
             <div class="chips" role="radiogroup" aria-label="Companion mode" id="sparkModes"></div>
             <button class="btn" style="margin-top:14px">Share</button>
@@ -483,11 +483,11 @@ footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px soli
         </div>
       </div>
       <div class="phone-col">
-        <h3>All six Spark modes, on your current form</h3>
+        <h3>All six Create modes, on your current form</h3>
         <p>When the AI suggests a mode, it is choosing between poses, not writing anything. It never adds words to the card. Each mode below has a static version for reduced motion and for the exported image.</p>
         <div class="modes" id="modeTiles" role="list" style="margin-top:16px"></div>
         <ul style="margin-top:18px">
-          <li><b>Quote from a sermon</b> → Peaceful or Reflective</li>
+          <li><b>Quote from a sermon or scripture</b> → Peaceful or Reflective. Never Joyful or Celebratory.</li>
           <li><b>Prayer request</b> → Prayerful only (Peaceful allowed). Never Joyful or Celebratory.</li>
           <li><b>Answered prayer or testimony</b> → Grateful</li>
           <li><b>Study win</b> → Celebratory or Joyful</li>
@@ -509,7 +509,7 @@ footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px soli
       </div>
       <div>
         <h3>My recommendation: tiered, cheapest first</h3>
-        <p><b>Ship Compose pseudo-3D now</b> (what the 3D toggle shows) for every form and every size. <b>Evaluate Rive</b> only for hero moments, after P-2 ships and once we can measure it. Use <b>pre-rendered 3D</b> only for store art and Spark export stills. <b>No real-time 3D in the app.</b> The WebGL hero is a reference for the feel, not a plan to ship it.</p>
+        <p><b>Ship Compose pseudo-3D now</b> (what the 3D toggle shows) for every form and every size. <b>Evaluate Rive</b> only for hero moments, after P-2 ships and once we can measure it. Use <b>pre-rendered 3D</b> only for store art and Create export stills. <b>No real-time 3D in the app.</b> The WebGL hero is a reference for the feel, not a plan to ship it.</p>
         <div class="tiers">
           <div class="card tier"><span class="tag">Tier 0 · 24–40 dp</span><b>Flat vector, still</b><p>Rows, chips, the long-press target and the 24 dp glyph. It changes only on state changes, with a 150 ms crossfade and no idle animation.</p></div>
           <div class="card tier"><span class="tag">Tier 1 · 56–120 dp</span><b>Compose pseudo-3D</b><p>Home greeting, recording, processing, empty states. Layered radial gradients, rim, specular and contact AO. Parallax comes from scroll and touch; gyro only on screen and at about 30 Hz.</p></div>
@@ -523,7 +523,7 @@ footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px soli
         <tbody>
           <tr><td>Compose pseudo-3D</td><td>+0</td><td>Yes. A single Canvas per character, well under 1 ms a frame (est.)</td><td>Draws only while visible and only for the state's motion</td><td>Yes / yes, natively</td><td>Kotlin only, poses as data</td><td><b>Ship now (Tier 0–1)</b></td></tr>
           <tr><td>Rive</td><td>Native runtime, roughly 2–4 MB per ABI after splits. <i>Check the current release.</i> Files are tens of KB.</td><td>Yes (API 21+). Keep it to one live instance on screen.</td><td>Frame-driven, so it must be paused when hidden</td><td>Number inputs drive the mic; colours via runtime properties</td><td>Rive editor plus a motion designer</td><td><b>Evaluate for Tier 2</b></td></tr>
-          <tr><td>Pre-rendered 3D (Blender → Lottie, sprite sheets, video)</td><td>Lottie library about 0.4 MB; each clip 50–500 KB × forms × states</td><td>Decoding is cheap but memory-heavy for sprites. Video alpha is unreliable on Android.</td><td>Fine for short clips</td><td>No live mic (only scrubbing). Accent needs mask layers.</td><td>3D artist plus a render farm, re-rendered for every change</td><td><b>Marketing and Spark stills only</b></td></tr>
+          <tr><td>Pre-rendered 3D (Blender → Lottie, sprite sheets, video)</td><td>Lottie library about 0.4 MB; each clip 50–500 KB × forms × states</td><td>Decoding is cheap but memory-heavy for sprites. Video alpha is unreliable on Android.</td><td>Fine for short clips</td><td>No live mic (only scrubbing). Accent needs mask layers.</td><td>3D artist plus a render farm, re-rendered for every change</td><td><b>Marketing and Create stills only</b></td></tr>
           <tr><td>Real-time 3D (Filament / SceneView, glTF)</td><td>About 4–8 MB or more (renderer, gltfio, materials)</td><td>Needs GLES 3; shader warm-up hitches and thermals on low-end</td><td>Continuous GPU use, the worst of the four</td><td>Yes / yes</td><td>3D modelling, rigging and glTF</td><td><b>No.</b> Too heavy for a companion.</td></tr>
         </tbody>
       </table>
@@ -585,7 +585,7 @@ footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px soli
       <div class="card cap"><b>One rig, one state machine</b><p>Every form takes the same <code>Pose</code> (offset, squash, tilt, eyes, look, mouth, brows, hop) from one function. Each form is only a drawing plus a few parameters. This page runs all four forms on one pose engine.</p></div>
       <div class="card cap"><b>One brand family</b><p>"Zuri and friends." Copy says your companion's name; the system, the store and marketing say Zuri. Each form keeps Zuri's eyes and cheeks, so they read as one family.</p></div>
       <div class="card cap"><b>A neutral glyph outside the app</b><p>Notifications, the widget and the launcher shortcut use the three-bar Zuri sprout glyph whatever form is chosen, so the brand stays consistent where it's seen most.</p></div>
-      <div class="card cap"><b>Golden tests, bounded</b><p>Per form: 6 states + 6 Spark modes × 2 themes × (full, 24&nbsp;dp) = 48 golden images. Four forms make 192. They are generated from one parameterised test, so adding a form adds data, not test code.</p></div>
+      <div class="card cap"><b>Golden tests, bounded</b><p>Per form: 6 states + 6 Create modes × 2 themes × (full, 24&nbsp;dp) = 48 golden images. Four forms make 192. They are generated from one parameterised test, so adding a form adds data, not test code.</p></div>
       <div class="card cap"><b>Build order</b><p>Zuri first (P-2, about 6–8 days). Each further form is about 3–5 days on the shared rig. Ship Zuri and Nas at launch and add Wren and Page as fast follows if the schedule is tight.</p></div>
       <div class="card cap"><b>Smart default</b><p>Zuri is pre-selected for every space. A user who skips the choice gets the brand, the record-button family and the most faith-neutral form.</p></div>
     </div>
@@ -602,26 +602,26 @@ footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px soli
       <li><b>What counts as a sermon?</b> Should "Quiet during sermons" apply to recordings typed Sermon only, or to every Faith-space recording?</li>
       <li><b>Ask Zuri on Free:</b> is on-device only (slower, shorter answers) acceptable, or is Ask a Pro feature?</li>
       <li><b>Live in-meeting whisper:</b> is it on the roadmap at all, given recording-consent laws and how it would feel to the other people in the room?</li>
-      <li><b>Spark:</b> should the companion ever be suggested by default on a card type (for example study wins), or always start off?</li>
+      <li><b>Create:</b> should the companion ever be suggested by default on a card type (for example study wins), or always start off?</li>
       <li><b>Circles:</b> can members see each other's companions (for example on a shared prayer list), or does the companion stay private to each person?</li>
     </ol></div>
   </section>
 
-  <footer>Zuri v2 directions. Everything is drawn live from primitives and runs on one shared pose engine, the same shape a Compose <code>Companion(form, state, size, accent)</code> would take. Items marked Idea are brainstorms. MIMI_EXPERIENCE.md becomes ZURI_EXPERIENCE.md in Phase 2.</footer>
+  <footer>Zuri v2 directions. Everything is drawn live from primitives and runs on one shared pose engine, the same shape a Compose <code>Companion(form, state, size, accent)</code> would take. Items marked Idea are brainstorms. The build spec is docs/mvp/ZURI_EXPERIENCE.md.</footer>
 </main>
 
 <script>
 (function(){
 "use strict";
 /* ---------- data ---------- */
+/* The design system's 6 accents (DESIGN_SYSTEM.md §2). */
 var ACC=[
-  {k:'indigo',n:'Indigo',l:'#6366F1',d:'#9B9CF6'},
-  {k:'gold',n:'Faith gold',l:'#B7791F',d:'#E0B25A'},
-  {k:'teal',n:'Teal',l:'#0F766E',d:'#4FD1C5'},
-  {k:'rose',n:'Rose',l:'#BE185D',d:'#F472B6'},
-  {k:'emerald',n:'Emerald',l:'#047857',d:'#34D399'},
-  {k:'amber',n:'Amber',l:'#B45309',d:'#F2B447'},
-  {k:'slate',n:'Slate blue',l:'#4F6D9A',d:'#9DB4D9'}
+  {k:'indigo',n:'Indigo',l:'#5B5BD6',d:'#9B9CF6'},
+  {k:'ocean',n:'Ocean',l:'#0E7490',d:'#5CC8DD'},
+  {k:'forest',n:'Forest',l:'#15803D',d:'#5FD08A'},
+  {k:'gold',n:'Gold (Faith)',l:'#B7791F',d:'#E0B25A'},
+  {k:'rose',n:'Rose',l:'#BE185D',d:'#F27AAE'},
+  {k:'graphite',n:'Graphite',l:'#3F3F46',d:'#C9CDD6'}
 ];
 var STATES=[
   {k:'idle',n:'Idle',d:'Home greeting'},
@@ -647,7 +647,7 @@ var CHARS=[
        '<b>Perfect at 24 dp.</b> A circle, two eyes and a three-bar sprout read at any size.',
        '<b>The easiest "Off".</b> The face sleeps and the orb remains a plain button.'],
   risks:['<b>The "AI blob" trope.</b> Many assistants are glowing orbs. The sprout silhouette and motion personality are what make it ours.',
-         '<b>No limbs.</b> Emotion comes from eyes, squash and the sprout. For Spark "Prayerful", two small folded hands appear only in that mode.',
+         '<b>No limbs.</b> Emotion comes from eyes, squash and the sprout. For the Create mode "Prayerful", two small folded hands appear only in that mode.',
          '<b>Least cuddly</b> of the four, which is exactly why the other forms exist.'],
   faith:'Neutral, with no symbolic baggage. Glow sits behind and below Zuri, never as a ring above the head (no halo). Prayerful: small folded hands, closed eyes, sprout bowed.',
   compose:'Easiest of the four: circles, rounded rects and arcs, reusing RecordOrb\'s gradient. Est. 6–8 days, including the shared rig.'},
@@ -1185,7 +1185,7 @@ function applySermon(){
   recZ.node.style.transform=quiet?'scale(1)':'scale(1.6)';
   sermonChip.setAttribute('aria-pressed',quiet);
   sermonChip.textContent=quiet?'Quiet during sermon · tap to change':'Around for this recording · tap to quiet';
-  sermonLine.textContent=quiet?'Default for Faith recordings. Change in Settings → Advanced → Zuri.':'Only for this recording. Next sermon starts quiet again.';
+  sermonLine.textContent=quiet?'Default for Faith recordings. Change in Settings → Companion → Advanced.':'Only for this recording. Next sermon starts quiet again.';
 }
 sermonChip.addEventListener('click',function(){localQuiet=!localQuiet;applySermon();});
 var wave=document.getElementById('wave');for(var wi=0;wi<34;wi++){var bar=document.createElement('i');bar.style.height='8px';wave.appendChild(bar);}
@@ -1202,12 +1202,12 @@ updateBbar();applySermon();
 
 /* Spark mock */
 var SPARK={
-  quote:{q:'"Be still, and know that I am God."',src:'Psalm 46:10 · Sunday sermon, Grace Chapel',ai:'peaceful',bg:'gold',block:[]},
+  quote:{q:'"Be still, and know that I am God."',src:'Psalm 46:10 · Sunday sermon, Grace Chapel',ai:'peaceful',bg:'gold',block:['joyful','celebratory']},
   request:{q:'Please pray for my mum\'s surgery on Thursday.',src:'Prayer request · Grace Circle',ai:'prayerful',bg:'gold',block:['joyful','celebratory','grateful','reflective']},
   answered:{q:'Mum\'s surgery went well. Thank you for praying with us.',src:'Answered prayer · Grace Circle',ai:'grateful',bg:'gold',block:[]},
   study:{q:'All 120 Organic Chemistry flashcards done.',src:'Study · Revise today',ai:'celebratory',bg:'accent',block:[]}
 };
-var sparkT='quote',sparkMode='peaceful',sparkOn=true;
+var sparkT='quote',sparkMode='peaceful',sparkOn=false;
 var sparkZ=document.getElementById('sparkZ')._m,sparkCard=document.getElementById('sparkCard'),sparkModesEl=document.getElementById('sparkModes');
 sparkModesEl.innerHTML=MODES.map(function(md){return '<button class="chip" role="radio" data-m="'+md.k+'" aria-checked="false" aria-pressed="false">'+md.n+'</button>';}).join('');
 function renderSpark(){
@@ -1216,9 +1216,9 @@ function renderSpark(){
   var dark=true,a=S.accent.l;
   sparkCard.style.background=d.bg==='gold'?'linear-gradient(160deg,#8A5A16 0%,#3B2A12 55%,#1A140C 100%)':'linear-gradient(160deg,'+mix(a,'#0C111B',.15)+' 0%,'+mix(a,'#0C111B',.6)+' 60%,#0C111B 100%)';
   Array.prototype.forEach.call(sparkModesEl.querySelectorAll('.chip'),function(c){var k=c.getAttribute('data-m'),blocked=d.block.indexOf(k)>=0;
-    c.setAttribute('aria-disabled',blocked);c.title=blocked?'Not available on a prayer request':'';c.setAttribute('aria-pressed',k===sparkMode);c.setAttribute('aria-checked',k===sparkMode);});
+    c.setAttribute('aria-disabled',blocked);c.title=blocked?'Not offered for this kind of card':'';c.setAttribute('aria-pressed',k===sparkMode);c.setAttribute('aria-checked',k===sparkMode);});
   var modeName=MODES.filter(function(x){return x.k===sparkMode;})[0].n;
-  document.getElementById('sparkAI').textContent=sparkOn?('AI suggests: '+MODES.filter(function(x){return x.k===d.ai;})[0].n+(sparkMode!==d.ai?' · you chose '+modeName:'')+(d.block.length?' · on prayer requests, only Prayerful or Peaceful':'')):'Your companion is not on this card.';
+  document.getElementById('sparkAI').textContent=sparkOn?('AI suggests: '+MODES.filter(function(x){return x.k===d.ai;})[0].n+(sparkMode!==d.ai?' · you chose '+modeName:'')+(d.block.length?' · '+(sparkT==='request'?'on prayer requests, only Prayerful or Peaceful':'no Joyful or Celebratory on scripture'):'')):'Your companion is not on this card. Switch it on to see the suggested mode.';
   sparkZ.state=sparkMode;sparkZ.dirty=true;sparkZ.node.style.visibility=sparkOn?'visible':'hidden';
   sparkModesEl.style.opacity=sparkOn?1:.4;
 }
