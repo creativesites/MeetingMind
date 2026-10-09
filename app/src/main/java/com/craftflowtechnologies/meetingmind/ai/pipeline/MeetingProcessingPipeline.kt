@@ -11,6 +11,15 @@ import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
 import com.craftflowtechnologies.meetingmind.ai.diarization.SherpaSpeakerDiarizer
 import com.craftflowtechnologies.meetingmind.ai.diarization.SpeakerDiarizer
+import com.craftflowtechnologies.meetingmind.ai.diarization.DiarizationOutcome
+import com.craftflowtechnologies.meetingmind.ai.diarization.SPEAKERS_NOT_SEPARATED_MESSAGE
+import com.craftflowtechnologies.meetingmind.ai.diarization.cleanupBudgetMs
+import com.craftflowtechnologies.meetingmind.ai.diarization.diarizationBudgetMs
+import com.craftflowtechnologies.meetingmind.ai.diarization.reconciliationBudgetMs
+import com.craftflowtechnologies.meetingmind.ai.diarization.runDiarizationWithBudget
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import com.craftflowtechnologies.meetingmind.ai.embeddings.EmbeddingEngine
 import com.craftflowtechnologies.meetingmind.ai.embeddings.LocalEmbeddingEngine
 import com.craftflowtechnologies.meetingmind.ai.llm.MediaPipeLanguageModel
@@ -212,23 +221,30 @@ class MeetingProcessingPipeline(
 
         val jobId = "job_$meetingId"
         val jobStartedAt = System.currentTimeMillis()
+        val monotonic = MonotonicProgress()
+        // Set when speaker separation is abandoned; stays on the job row (as a non-failed note)
+        // so the later stages' status lines don't hide it.
+        var speakerNote: String? = null
         suspend fun updateJob(step: String, percent: Int, stage: ProcessingStage, failed: Boolean = false, completed: Boolean = false, error: String? = null) {
+            val terminal = failed || completed
+            val shown = if (terminal) percent else monotonic.next(percent)
             jobDao.insertOrUpdateJob(
                 ProcessingJobEntity(
                     id = jobId,
                     meetingId = meetingId,
                     meetingTitle = existingMeeting.title,
                     currentStep = step,
-                    progressPercent = percent,
+                    progressPercent = shown,
                     isCompleted = completed,
                     isFailed = failed,
-                    errorMessage = error,
+                    errorMessage = error ?: speakerNote.takeIf { !terminal },
                     startedAt = jobStartedAt,
                     stage = stage.name
                 )
             )
-            onProgress(step, percent, stage)
+            onProgress(step, shown, stage)
         }
+        fun emit(step: String, rawPercent: Int, stage: ProcessingStage) = onProgress(step, monotonic.next(rawPercent), stage)
 
         try {
             updateJob("Preparing audio...", 10, ProcessingStage.PREPARING_AUDIO)
@@ -287,7 +303,7 @@ class MeetingProcessingPipeline(
                                 audioFile = audioFile, totalDurationMs = totalDurationMs, meetingId = meetingId,
                                 speechRegions = restricted,
                                 options = TranscriptionOptions(modelId = modelId, vocabularyHints = vocabularyHints, onWindowDone = onRegion),
-                                onProgress = { prog, status -> onProg(prog, status); onProgress(status, (35 + prog * 20).toInt(), ProcessingStage.TRANSCRIBING) }
+                                onProgress = { prog, status -> onProg(prog, status); emit(status, ProcessingProgress.asr(prog.toFloat()), ProcessingStage.TRANSCRIBING) }
                             )
                         }
                     }
@@ -296,7 +312,7 @@ class MeetingProcessingPipeline(
                     runner.run(
                         meetingId = meetingId, audioFile = audioFile, totalMs = measuredMs ?: totalDurationMs,
                         start = com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionRoute.GEMINI, vocabularyHints = vocabularyHints,
-                        onProgress = { progress, status -> onProgress(status, (25 + progress * 30).toInt(), ProcessingStage.TRANSCRIBING) },
+                        onProgress = { progress, status -> emit(status, ProcessingProgress.cloudAsr(progress.toFloat()), ProcessingStage.TRANSCRIBING) },
                         // Finished parts are readable at once: saved as provisional segments, replaced
                         // by the full transcript when it's done.
                         onPartial = { words, done, total ->
@@ -317,7 +333,7 @@ class MeetingProcessingPipeline(
                                     startMs = seg.startMs, endMs = seg.endMs, text = seg.text, confidence = seg.confidence
                                 )
                             })
-                            updateJob("Transcribed $done of $total parts — you can start reading", (25 + done * 30 / total), ProcessingStage.TRANSCRIBING)
+                            updateJob("Transcribed $done of $total parts — you can start reading", ProcessingProgress.cloudAsr(done.toFloat() / total), ProcessingStage.TRANSCRIBING)
                         }
                     )
                 } finally {
@@ -372,8 +388,7 @@ class MeetingProcessingPipeline(
                     speechRegions = speechRegions,
                     options = TranscriptionOptions(modelId = modelId, vocabularyHints = vocabularyHints),
                     onProgress = { prog, status ->
-                        val overall = (35 + (prog * 20)).toInt()
-                        onProgress(status, overall, ProcessingStage.TRANSCRIBING)
+                        emit(status, ProcessingProgress.asr(prog.toFloat()), ProcessingStage.TRANSCRIBING)
                     }
                 )
             }
@@ -438,15 +453,50 @@ class MeetingProcessingPipeline(
                 // real evidence with a second opinion derived from nothing.
                 emptyList()
             } else if (singleSpeakerMode) {
-                updateJob("Single speaker confirmed — skipping speaker detection...", 55, ProcessingStage.DIARIZING)
+                updateJob("Single speaker confirmed — skipping speaker detection...", ProcessingProgress.SPEAKERS_START, ProcessingStage.DIARIZING)
                 listOf(DiarizationTurn(speakerId = SOLO_SPEAKER_ID, startMs = 0L, endMs = maxOf(totalDurationMs, rawWords.lastOrNull()?.endMs ?: 0L)))
             } else {
-                updateJob("Identifying distinct speakers...", 55, ProcessingStage.DIARIZING)
-                when (val diarizeResult = diarizer.diarize(audioFile, totalDurationMs, meetingId, expectedSpeakerCount = expectedSpeakerCount)) {
-                    is AiResult.Success -> diarizeResult.value
+                updateJob("Identifying speakers...", ProcessingProgress.SPEAKERS_START, ProcessingStage.DIARIZING)
+                // Native diarization reports progress from its own thread; a ticker turns that
+                // into a status line every few seconds so the bar visibly moves.
+                val speakerFraction = java.util.concurrent.atomic.AtomicInteger(0)
+                val outcome = kotlinx.coroutines.coroutineScope {
+                    val ticker = launch {
+                        var shown = -1
+                        while (true) {
+                            delay(PROGRESS_TICK_MS)
+                            val pct = speakerFraction.get()
+                            if (pct != shown) {
+                                shown = pct
+                                updateJob("Identifying speakers · $pct%", ProcessingProgress.speakers(pct / 100f), ProcessingStage.DIARIZING)
+                            }
+                        }
+                    }
+                    try {
+                        runDiarizationWithBudget(diarizationBudgetMs(totalDurationMs)) {
+                            diarizer.diarizeWithProgress(
+                                audioFile, totalDurationMs, meetingId,
+                                expectedSpeakerCount = expectedSpeakerCount,
+                                onProgress = { speakerFraction.set((it * 100).toInt().coerceIn(0, 99)) }
+                            )
+                        }
+                    } finally {
+                        ticker.cancel()
+                    }
+                }
+                when (outcome) {
+                    is DiarizationOutcome.Separated -> outcome.turns
                     // No diarization model installed: every word stays honestly unattributed
                     // rather than being handed a fabricated identity.
-                    else -> emptyList()
+                    is DiarizationOutcome.Unavailable -> emptyList()
+                    // Timed out or crashed: same honest no-labels path (NOT the single-speaker
+                    // path, which would label everyone as one person), and say so.
+                    is DiarizationOutcome.Degraded -> {
+                        Log.w(PERF_TAG, "Diarization degraded: ${outcome.reason}")
+                        speakerNote = SPEAKERS_NOT_SEPARATED_MESSAGE
+                        updateJob(SPEAKERS_NOT_SEPARATED_MESSAGE, ProcessingProgress.SPEAKERS_END, ProcessingStage.DIARIZING)
+                        emptyList()
+                    }
                 }
             }
             val diarizationDurationMs = System.currentTimeMillis() - diarizationStart
@@ -495,8 +545,8 @@ class MeetingProcessingPipeline(
                 val projected = CanonicalTranscriptAssembler.projectToSegments(canonical)
                 val footprints = com.craftflowtechnologies.meetingmind.ai.diarization.computeSpeakerTranscriptFootprints(projected)
                 if (com.craftflowtechnologies.meetingmind.ai.diarization.shouldAttemptAiReconciliation(footprints, diarizationStrategy)) {
-                    updateJob("Refining speaker labels...", 57, ProcessingStage.DIARIZING)
-                    val merges = resolveSpeakerMerges(projected, processingProfile)
+                    updateJob("Refining speaker labels...", ProcessingProgress.RECONCILE_START, ProcessingStage.DIARIZING)
+                    val merges = resolveSpeakerMerges(projected, processingProfile, totalDurationMs)
                     if (merges.isNotEmpty()) {
                         canonical = CanonicalTranscriptAssembler.assemble(
                             meetingId = meetingId,
@@ -540,8 +590,9 @@ class MeetingProcessingPipeline(
                 recordingType = recordingType,
                 cleanupMode = cleanupMode,
                 singleSpeakerMode = expectedSpeakerCount == 1,
-                onStatus = { step -> updateJob(step, if (step.startsWith("Refining")) 60 else 58, ProcessingStage.CLEANING_TRANSCRIPT) },
-                processingProfile = processingProfile
+                onStatus = { step -> updateJob(step, if (step.startsWith("Refining")) ProcessingProgress.cleanup(0.5f) else ProcessingProgress.CLEANUP_START, ProcessingStage.CLEANING_TRANSCRIPT) },
+                processingProfile = processingProfile,
+                audioDurationMs = totalDurationMs
             )
 
             // STEP 4: Meeting Intelligence (best-effort — unavailable leaves summary/insights empty)
@@ -732,7 +783,7 @@ class MeetingProcessingPipeline(
                 meetingDao.updateMeeting(existingMeeting.copy(status = MeetingStatus.ERROR.name))
             }
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             withContext(kotlinx.coroutines.NonCancellable) {
                 SherpaEngineManager.releaseAll()
                 LlmEngineManager.release()
@@ -769,7 +820,9 @@ class MeetingProcessingPipeline(
         onEngineUsed: (String) -> Unit = {},
         /** Which profile the refinement pass may use. Defaults to the private one: a caller that
          * wants cloud refinement must ask for it. */
-        processingProfile: ProcessingProfile = ProcessingProfile.OFFLINE
+        processingProfile: ProcessingProfile = ProcessingProfile.OFFLINE,
+        /** Sizes the AI pass's time budget; 0 (unknown) gets the minimum budget. */
+        audioDurationMs: Long = 0L
     ): List<TranscriptSegment> = withContext(Dispatchers.Default) {
         val profile = recordingType.transcriptCleanupProfile(cleanupMode)
 
@@ -802,7 +855,17 @@ class MeetingProcessingPipeline(
             languageModel = resolvedCleanupModel.languageModel,
             contextLengthTokens = resolvedCleanupModel.contextLengthTokens
         )
-        val aiResult = aiCleanupEngine.clean(ruleCleanedSegments, profile, singleSpeakerMode)
+        // Budgeted: a hung or very slow model must not hold the whole job. On timeout (or a
+        // thrown error) the rule-based result below is used, exactly as for an AiResult failure.
+        val aiResult: AiResult<TranscriptAiCleanupResult> = try {
+            withTimeoutOrNull(cleanupBudgetMs(audioDurationMs)) {
+                aiCleanupEngine.clean(ruleCleanedSegments, profile, singleSpeakerMode)
+            } ?: AiResult.Failed("AI cleanup exceeded its time budget")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            AiResult.Failed(t.message ?: "AI cleanup failed", t)
+        }
         // Free the cleanup model before the (possibly different) intelligence model loads — at
         // most one LLM allocation resident at a time, same discipline as every other stage.
         LlmEngineManager.release()
@@ -1006,7 +1069,8 @@ class MeetingProcessingPipeline(
 
     private suspend fun resolveSpeakerMerges(
         segments: List<TranscriptSegment>,
-        processingProfile: ProcessingProfile
+        processingProfile: ProcessingProfile,
+        audioDurationMs: Long
     ): Map<String, String> {
         val resolved = languageModelFactory.resolve(
             profile = processingProfile,
@@ -1018,7 +1082,14 @@ class MeetingProcessingPipeline(
             return emptyMap()
         }
         val engine = com.craftflowtechnologies.meetingmind.ai.diarization.RealDiarizationReconciliationEngine(resolved.languageModel)
-        val result = engine.reconcile(segments)
+        val result: AiResult<com.craftflowtechnologies.meetingmind.ai.diarization.DiarizationReconciliationResult> = try {
+            withTimeoutOrNull(reconciliationBudgetMs(audioDurationMs)) { engine.reconcile(segments) }
+                ?: AiResult.Failed("Speaker reconciliation exceeded its time budget")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            AiResult.Failed(t.message ?: "Speaker reconciliation failed", t)
+        }
         LlmEngineManager.release()
         if (result !is AiResult.Success) {
             Log.d(PERF_TAG, "Diarization reconciliation: unavailable (${result.describeFailure() ?: "no reason given"}) — keeping deterministic result")
@@ -1046,6 +1117,7 @@ class MeetingProcessingPipeline(
 
     private companion object {
         const val PERF_TAG = "MeetMindPerf"
+        const val PROGRESS_TICK_MS = 2_000L
         const val QUALITY_TAG = "MeetMindTranscriptQuality"
         /** Speaker id used when the user confirmed the recording is solo — no clustering ran. */
         const val SOLO_SPEAKER_ID = "speaker_0"
