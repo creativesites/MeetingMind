@@ -187,6 +187,7 @@ The model column is who executes. ★ = blocks launch.
 | P-3 ★ | **Onboarding v2**, 5 steps with a progress bar from step 1: Meet the companion → "What do you want to remember?" (choose spaces; the home preview updates live) → name ("What should I call you?") → AI choice with smart default → a 10-second "say hello" test recording that produces a mini note (reciprocity + first peak) | Sonnet | Done in under 90 s; the home reflects the choices; permissions asked in context |
 | P-4 | **"Make it yours" checklist** starting at 2/5: first recording, first note edited, Bible chosen (Faith), calendar connected (Work), offline pack | Haiku | Progress persists; it dismisses itself when done |
 | P-5 ★ | **Peak moments**: first-recording celebration, "Your note is ready" with the companion, streak/rhythm moments that are calm, not gamified | Sonnet | Shown once per milestone; skippable |
+| A-1 ★ | **Ask Zuri**, the assistant: grounded answers with source chips that jump to the audio; an honest "couldn't find it in your notes"; on-device and online modes; a tier-gate flag (ZURI_EXPERIENCE §8, task Z-17) | Sonnet | Every factual answer has a source or the not-found line |
 | P-6 | **Labor-illusion processing screen**: the companion is "thinking" plus narrated real stages from S-2 | Haiku | Copy is driven by real stage events |
 
 ### Phase 4: Vertical rebuilds
@@ -213,33 +214,31 @@ The model column is who executes. ★ = blocks launch.
 
 ---
 
-## 6. Companion: superseded by Zuri (D6) and ZURI_EXPERIENCE.md
+## 6. Companion: Zuri and friends
 
-The founder chose **Mimi**. A dedicated Opus agent is planning the full Mimi experience from
-`docs/mvp/MIMI_AGENT_PROMPT.md`. Its output (`docs/mvp/MIMI_EXPERIENCE.md`) replaces this section. The CTO's
-original sketch is kept below for reference.
+**`docs/mvp/ZURI_EXPERIENCE.md` is the spec** (P-1). It covers character, states, the journey, voice, personalization,
+Ask Zuri, Compose implementation and the build plan. The options page is `docs/mvp/zuri-options.html`, and the live
+prototype is https://claude.ai/artifact/CwsiqKq3ff7wCt4hjC2bB3.
 
-A small, soft **listening creature** grown out of the existing `RecordOrb`, so the brand mark and the character are
-the same object.
+**Build tasks:**
 
-**Shape.** A rounded drop, with two dot eyes and a small "sound-wave" crest that moves with the voice.
+- **Phase A (MVP):** Z-1 to Z-18 in spec §11. These replace P-2, P-5 and P-6, and fold into P-3 (onboarding step 1)
+  and U-1 (homes).
+- **Phase B:** Z-19 to Z-24. This includes the Rive spike and the Wren and Page drawers.
+- **Order:**
+  1. Z-1 → Z-3 and Z-4 → Z-5
+  2. Z-6, Z-7, Z-8, Z-9, Z-11 and Z-18 in parallel
+  3. Z-10, Z-12, Z-13 and Z-14
+  4. Z-15, Z-16 and Z-17
 
-**States:**
+**Dependencies on this plan:**
 
-| State | When | Motion |
-|---|---|---|
-| Idle | Home | Slow breathing |
-| Listening | Recording | The crest pulses with mic amplitude; eyes half-closed and attentive |
-| Thinking | Processing | Eyes look up; dots orbit |
-| Celebrating | Note ready / first recording | Hop, then sparkles |
-| Sleepy | Offline models missing / idle late at night | Closed eyes, "z" |
-| Worried | A job failed | Small droop; paired with a Retry action, never alone |
+- Z-3 adds the companion tokens to the F-2 design system.
+- Z-9 needs the F-2 `HomeHeader` and `EmptyState` slots.
+- Z-11 needs the F-6 personalization model.
 
-**Where it appears:** the greeting, onboarding, recording, processing, the success moments and empty states.
-
-**Where it never appears:** inside notes, Settings, or on top of content.
-
----
+**Open decisions** (spec §12, each a one-line switch): the Nas name, the launch roster (recommended: Zuri + Nas),
+whether Ask Zuri is gated by tier, and live whisper (out of the MVP).
 
 ## 7. Execution order (what runs in parallel)
 
