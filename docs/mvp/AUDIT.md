@@ -288,3 +288,16 @@ input before any value is delivered.
 - **There is no first-recording success moment.**
 - **There are no animation libraries and no illustrations.** No Lottie, no Rive, no mascot. Animation is pure Compose.
   The fonts are Inter and Outfit.
+
+## 10. Baseline build and tests (2026-10-09, `e6564d1`)
+
+- **`compileDebugKotlin`:** green, with 0 warnings.
+- **`testDebugUnitTest`:** 1,463 tests, **3 failing before any MVP change**:
+  1. `ExampleRobolectricTest`: environmental. It could not download the Robolectric `android-all` jar in the sandbox.
+  2. `TodayScreenTest` "today lists the day and opens a card": looks for the `view_river` tag, which the latest Home
+     commit no longer renders. Fixed by U-1, which rewrites Home.
+  3. `ColorLiteralGuardTest`: the latest Fellowship/Spark commits added colour literals (`SparkStudioSheet.kt` has 8,
+     and `TestimoniesFeedScreen.kt` has some too). Fixed by S-8 and F-4.
+- **Build gate for merges:** no *new* failures beyond these three until they are fixed.
+- **Sandbox note:** Maven Central rate-limits this sandbox (HTTP 429). A local, uncommitted init script at
+  `~/.gradle/init.d/central-mirror.gradle` routes it through Google's mirror.
