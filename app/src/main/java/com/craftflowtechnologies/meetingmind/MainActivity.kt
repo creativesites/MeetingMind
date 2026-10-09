@@ -871,7 +871,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
 
         // WORK (docs/PLAN_PROFESSIONAL.md §6–7)
         composable(Routes.WORK) {
-            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
             val today: com.craftflowtechnologies.meetingmind.feature.today.TodayViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.work.WorkSpaceScreen(
                 viewModel = vm, today = today,
@@ -893,7 +893,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
         composable(Routes.WEEKLY_REVIEW) {
-            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
             com.craftflowtechnologies.meetingmind.feature.work.WeeklyReviewScreen(
                 viewModel = vm, onNavigateBack = { navController.popBackStack() },
                 onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
@@ -901,7 +901,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
         composable(Routes.WORK_INBOX) {
-            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
             com.craftflowtechnologies.meetingmind.feature.work.InboxScreen(
                 viewModel = vm, onNavigateBack = { navController.popBackStack() },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
@@ -920,7 +920,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
         composable(Routes.WORK_ALL, arguments = listOf(navArgument("tab") { type = NavType.StringType; defaultValue = "MINE" })) { entry ->
-            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
             com.craftflowtechnologies.meetingmind.feature.work.WorkAllScreen(
                 viewModel = vm,
                 initial = runCatching { com.craftflowtechnologies.meetingmind.feature.work.WorkTab.valueOf(entry.arguments?.getString("tab").orEmpty()) }.getOrDefault(com.craftflowtechnologies.meetingmind.feature.work.WorkTab.MINE),
@@ -931,7 +931,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
         composable(Routes.WORK_PERSON, arguments = listOf(navArgument("personId") { type = NavType.StringType })) { entry ->
-            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
             // A person or an organisation: the context page picks up whichever it is.
             com.craftflowtechnologies.meetingmind.feature.work.PersonContextScreen(
                 viewModel = vm, personId = entry.arguments?.getString("personId").orEmpty(),
@@ -943,7 +943,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
         composable(Routes.PROJECT, arguments = listOf(navArgument("projectId") { type = NavType.StringType })) { entry ->
-            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
             com.craftflowtechnologies.meetingmind.feature.work.ContextScreen(
                 type = com.craftflowtechnologies.meetingmind.core.work.ContextType.PROJECT, id = entry.arguments?.getString("projectId").orEmpty(), viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
@@ -955,7 +955,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
         composable(Routes.BRIEF, arguments = listOf(navArgument("kind") { type = NavType.StringType }, navArgument("id") { type = NavType.StringType })) { entry ->
-            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
             val kind = runCatching { com.craftflowtechnologies.meetingmind.core.work.BriefKind.valueOf(entry.arguments?.getString("kind").orEmpty()) }.getOrDefault(com.craftflowtechnologies.meetingmind.core.work.BriefKind.WEEKLY)
             com.craftflowtechnologies.meetingmind.feature.work.BriefScreen(
                 target = com.craftflowtechnologies.meetingmind.core.work.BriefTarget.of(kind, entry.arguments?.getString("id").orEmpty()), viewModel = vm,
@@ -964,7 +964,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
         composable(Routes.CONTEXT, arguments = listOf(navArgument("type") { type = NavType.StringType }, navArgument("id") { type = NavType.StringType })) { entry ->
-            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
             val type = runCatching { com.craftflowtechnologies.meetingmind.core.work.ContextType.valueOf(entry.arguments?.getString("type").orEmpty()) }
                 .getOrDefault(com.craftflowtechnologies.meetingmind.core.work.ContextType.PERSON)
             com.craftflowtechnologies.meetingmind.feature.work.ContextScreen(
@@ -982,8 +982,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             navArgument("compose") { type = NavType.BoolType; defaultValue = false }
         )) { entry ->
             val meetingId = entry.arguments?.getString("meetingId").orEmpty()
-            val app = context.applicationContext as android.app.Application
-            val vm = remember(meetingId) { com.craftflowtechnologies.meetingmind.feature.work.WrapUpViewModel(app, meetingId) }
+            val vm: com.craftflowtechnologies.meetingmind.feature.work.WrapUpViewModel = viewModel(factory = com.craftflowtechnologies.meetingmind.feature.work.WrapUpViewModel.Factory)
             com.craftflowtechnologies.meetingmind.feature.work.WrapUpScreen(
                 viewModel = vm,
                 onNavigateBack = { navController.popBackStack() },
@@ -998,7 +997,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
         composable(Routes.WORK_SETTINGS) {
-            val vm: com.craftflowtechnologies.meetingmind.feature.work.WorkViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
             com.craftflowtechnologies.meetingmind.feature.work.WorkSettingsScreen(vm, onNavigateBack = { navController.popBackStack() })
         }
         composable(Routes.DATA_BACKUP) {

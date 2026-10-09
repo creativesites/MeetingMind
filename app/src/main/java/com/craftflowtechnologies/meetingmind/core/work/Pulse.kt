@@ -122,7 +122,7 @@ class Pulse(
 
     private suspend fun quiet(now: Long, quietDays: Int, names: Map<String, String>): List<AttentionRow> {
         val open = dao.openItems()
-        val people = database.workDao().allPeople().filter { !it.isSelf }
+        val people = database.workDao().otherPeople()
         val orgIdsWithItems = open.mapNotNull { it.orgId }.toSet()
         val rows = mutableListOf<Pair<Long, AttentionRow>>()
         val orgsShown = mutableSetOf<String>()
@@ -206,7 +206,7 @@ class Pulse(
 
     // ---------------------------------------------------------------- helpers
 
-    private suspend fun names(): Map<String, String> = database.workDao().allPeople().associate { it.id to it.name }
+    private suspend fun names(): Map<String, String> = database.workDao().peopleNames().associate { it.id to it.name }
 
     private suspend fun speakerName(id: String): String? = database.workDao().speaker(id)?.let { it.customName.ifBlank { it.originalLabel } }
 

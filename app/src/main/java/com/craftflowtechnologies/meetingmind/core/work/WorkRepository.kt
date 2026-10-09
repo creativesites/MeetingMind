@@ -47,6 +47,9 @@ data class WorkTask(
  * recording's action items, follow-ups, decisions and questions; confirming them in the Wrap-up
  * turns actions into the app's own tasks, owned by you or by someone you're waiting on.
  */
+/** Home and the Work space never show more than a few open tasks; this bounds what they observe. */
+const val OPEN_TASK_LIMIT = 200
+
 class WorkRepository(private val database: MeetMindDatabase) {
     private val work = database.workDao()
 
@@ -251,6 +254,18 @@ class WorkRepository(private val database: MeetMindDatabase) {
         val names = people.associate { it.id to it.name }
         withContext(Dispatchers.IO) { tasks.map { it.toWork(names) } }
     }
+
+    /** Open work tasks only, soonest due first and capped at [limit]: for Home and the Work space, which show a handful. */
+    fun observeOpenTasks(limit: Int = OPEN_TASK_LIMIT): Flow<List<WorkTask>> = combine(
+        work.observeOpenWorkTasks(WorkTypeNames, limit),
+        database.peopleDao().observeWithCounts()
+    ) { tasks, people ->
+        val names = people.associate { it.id to it.name }
+        withContext(Dispatchers.IO) { tasks.map { it.toWork(names) } }
+    }
+
+    /** How many open tasks are yours (not waiting on someone), uncapped. */
+    fun observeOpenMyTaskCount(): Flow<Int> = work.observeOpenMyWorkTaskCount(WorkTypeNames)
 
     fun observeTasksWith(personId: String): Flow<List<WorkTask>> = combine(work.observeTasksWith(personId), database.peopleDao().observeWithCounts()) { t, p ->
         val names = p.associate { it.id to it.name }; withContext(Dispatchers.IO) { t.map { it.toWork(names) } }

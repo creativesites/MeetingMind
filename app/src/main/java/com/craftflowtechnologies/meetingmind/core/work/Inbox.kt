@@ -138,7 +138,7 @@ class InboxProposer(
     suspend fun candidates(): List<FilingCandidate> = withContext(Dispatchers.IO) {
         val projects = database.notebookDao().getAll().filter { it.kind == "PROJECT" && it.deletedAt == null && it.archivedAt == null }
             .map { FilingCandidate(FilingTarget.PROJECT, it.id, it.name, runCatching { JSONObject(it.propertiesJson).optBoolean("confidential") }.getOrDefault(false)) }
-        val people = database.workDao().allPeople().filter { !it.isSelf }
+        val people = database.workDao().otherPeople()
             .map { FilingCandidate(if (it.kind == PersonKind.ORG.name) FilingTarget.ORG else FilingTarget.PERSON, it.id, it.name, it.confidential) }
         projects + people.filter { it.target == FilingTarget.ORG } + people.filter { it.target == FilingTarget.PERSON }
     }

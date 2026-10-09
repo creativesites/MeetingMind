@@ -266,7 +266,7 @@ class ViewQueries(
             it.itemKind == ItemKind.RISK && (projectId == null || it.projectId == projectId)
         }
         val peopleMap = workDao.allPeople().associate { it.id to it.name }
-        val meetings = workDao.allMeetings().associate { it.id to it.title }
+        val meetings = workDao.riskMeetingTitles().associate { it.id to it.title }
 
         items.map { item ->
             val counterparty = listOfNotNull(item.counterpartyPersonId, item.ownerPersonId)

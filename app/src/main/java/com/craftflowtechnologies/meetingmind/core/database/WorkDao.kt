@@ -20,6 +20,12 @@ data class FindingRow(
     val recordingType: String
 )
 
+/** A meeting's id and title only, for lines like "from Acme review". */
+data class MeetingTitle(val id: String, val title: String)
+
+/** A person's id and name only. */
+data class PersonName(val id: String, val name: String)
+
 /**
  * The queries the Work space needs across recordings, people, tasks and projects
  * (docs/PLAN_PROFESSIONAL.md §5). Kept apart from the per-table DAOs so those stay as they were.
@@ -30,6 +36,18 @@ interface WorkDao {
 
     @Query("SELECT * FROM meetings ORDER BY createdAt DESC")
     suspend fun allMeetings(): List<MeetingEntity>
+
+    /** Finished recordings made in [from]..[to], newest first; the caller narrows to work types. */
+    @Query("SELECT * FROM meetings WHERE status = 'READY' AND createdAt BETWEEN :from AND :to ORDER BY createdAt DESC")
+    suspend fun readyMeetingsBetween(from: Long, to: Long): List<MeetingEntity>
+
+    /** Titles of the meetings that a live task or an item points at: all a task line needs. */
+    @Query("SELECT id, title FROM meetings WHERE id IN (SELECT meetingId FROM tasks WHERE deletedAt IS NULL AND meetingId IS NOT NULL) OR id IN (SELECT meetingId FROM items WHERE meetingId IS NOT NULL)")
+    fun observeReferencedMeetingTitles(): Flow<List<MeetingTitle>>
+
+    /** Titles of the meetings that recorded risks came from. */
+    @Query("SELECT id, title FROM meetings WHERE id IN (SELECT meetingId FROM items WHERE kind = 'RISK' AND meetingId IS NOT NULL)")
+    suspend fun riskMeetingTitles(): List<MeetingTitle>
 
     /** Finished recordings whose findings haven't been through a Wrap-up. */
     @Query("SELECT * FROM meetings WHERE status = 'READY' AND reviewedAt IS NULL ORDER BY createdAt DESC")
@@ -116,6 +134,13 @@ interface WorkDao {
     @Query("SELECT * FROM people WHERE deletedAt IS NULL")
     suspend fun allPeople(): List<PersonEntity>
 
+    /** Everyone but the app's own user. */
+    @Query("SELECT * FROM people WHERE deletedAt IS NULL AND isSelf = 0")
+    suspend fun otherPeople(): List<PersonEntity>
+
+    @Query("SELECT id, name FROM people WHERE deletedAt IS NULL")
+    suspend fun peopleNames(): List<PersonName>
+
     @Query("SELECT * FROM people WHERE deletedAt IS NULL AND isSelf = 1 LIMIT 1")
     suspend fun self(): PersonEntity?
 
@@ -144,6 +169,13 @@ interface WorkDao {
 
     @Query("SELECT * FROM tasks WHERE deletedAt IS NULL AND (space = 'WORK' OR meetingId IN (SELECT id FROM meetings WHERE recordingType IN (:types))) ORDER BY doneAt IS NOT NULL, dueAt IS NULL, dueAt, createdAt DESC")
     fun observeWorkTasks(types: List<String>): Flow<List<TaskEntity>>
+
+    /** The most pressing open work tasks (soonest due first), capped: Home and the Work space show a handful. */
+    @Query("SELECT * FROM tasks WHERE deletedAt IS NULL AND doneAt IS NULL AND (space = 'WORK' OR meetingId IN (SELECT id FROM meetings WHERE recordingType IN (:types))) ORDER BY dueAt IS NULL, dueAt, createdAt DESC LIMIT :limit")
+    fun observeOpenWorkTasks(types: List<String>, limit: Int): Flow<List<TaskEntity>>
+
+    @Query("SELECT COUNT(*) FROM tasks WHERE deletedAt IS NULL AND doneAt IS NULL AND waitingOn = 0 AND (space = 'WORK' OR meetingId IN (SELECT id FROM meetings WHERE recordingType IN (:types)))")
+    fun observeOpenMyWorkTaskCount(types: List<String>): Flow<Int>
 
     @Query("SELECT * FROM tasks WHERE deletedAt IS NULL AND meetingId = :meetingId")
     suspend fun tasksForMeeting(meetingId: String): List<TaskEntity>
@@ -184,4 +216,8 @@ interface WorkDao {
 
     @Query("SELECT COUNT(*) FROM notes WHERE deletedAt IS NULL AND notebookId = :notebookId")
     fun observeNoteCount(notebookId: String): Flow<Int>
+
+    /** Every notebook's note count in one query (was one query per project). */
+    @Query("SELECT notebookId AS notebookId, COUNT(*) AS count FROM notes WHERE deletedAt IS NULL AND notebookId IS NOT NULL GROUP BY notebookId")
+    fun observeNoteCountsByNotebook(): Flow<List<NotebookNoteCount>>
 }

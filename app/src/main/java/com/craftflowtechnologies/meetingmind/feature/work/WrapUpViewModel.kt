@@ -2,6 +2,14 @@ package com.craftflowtechnologies.meetingmind.feature.work
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.createSavedStateHandle
+import com.craftflowtechnologies.meetingmind.core.work.Direction
+import com.craftflowtechnologies.meetingmind.core.work.Settlement
+import org.json.JSONObject
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.database.MeetingEntity
@@ -41,7 +49,41 @@ import kotlinx.coroutines.launch
  * summary, the findings and the note at once.
  */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-class WrapUpViewModel(application: Application, val meetingId: String) : AndroidViewModel(application) {
+class WrapUpViewModel(
+    application: Application,
+    val meetingId: String,
+    /** Holds the person's unsaved choices, so a rotation or the system killing the process doesn't lose them. */
+    private val savedState: SavedStateHandle = SavedStateHandle()
+) : AndroidViewModel(application) {
+    companion object {
+        const val MEETING_ID = "meetingId"
+        internal const val KEY_CONFIRMED = "wrapup_confirmed"
+        internal const val KEY_ADDED = "wrapup_added"
+        internal const val KEY_SETTLED = "wrapup_settled"
+
+        /** The route's `meetingId` argument arrives in the [SavedStateHandle]. */
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val handle = createSavedStateHandle()
+                WrapUpViewModel(this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as Application, handle.get<String>(MEETING_ID).orEmpty(), handle)
+            }
+        }
+
+        internal fun encodeSettled(m: Map<String, Settlement>): String = JSONObject().also { o ->
+            m.forEach { (id, s) ->
+                o.put(id, JSONObject().put("d", s.direction.name).put("p", s.personId ?: JSONObject.NULL).put("t", s.dueText ?: JSONObject.NULL))
+            }
+        }.toString()
+
+        internal fun decodeSettled(json: String?): Map<String, Settlement> = runCatching {
+            val o = JSONObject(json ?: return emptyMap())
+            o.keys().asSequence().associateWith { id ->
+                val e = o.getJSONObject(id)
+                Settlement(Direction.valueOf(e.getString("d")), e.optString("p").takeIf { !e.isNull("p") && it.isNotEmpty() }, e.optString("t").takeIf { !e.isNull("t") && it.isNotEmpty() })
+            }
+        }.getOrDefault(emptyMap())
+    }
+
     private val database = MeetMindDatabase.getInstance(application)
     private val prefs = UserPreferencesManager(application)
     private val transcripts = TranscriptRepository(database)
@@ -52,7 +94,7 @@ class WrapUpViewModel(application: Application, val meetingId: String) : Android
     val meeting: StateFlow<MeetingEntity?> = database.meetingDao().getMeetingByIdFlow(meetingId).stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val speakers: StateFlow<List<Speaker>> = transcripts.getSpeakers(meetingId).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val note: StateFlow<Note?> = meeting.flatMapLatest { m -> m?.noteId?.let { notesRepo.observeNote(it) } ?: flowOf(null) }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
-    val projects: StateFlow<List<Notebook>> = database.workDao().observeProjects().map { l -> l.map { with(NoteCodec) { it.toDomain() } } }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val projects: StateFlow<List<Notebook>> = database.workDao().observeProjects().map { l -> l.map { with(NoteCodec) { it.toDomain() } } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val settings: StateFlow<WorkSettings> = prefs.workSettings.stateIn(viewModelScope, SharingStarted.Eagerly, WorkSettings())
 
     private val _findings = MutableStateFlow<List<Finding>>(emptyList())
@@ -77,11 +119,11 @@ class WrapUpViewModel(application: Application, val meetingId: String) : Android
     val changes: StateFlow<List<com.craftflowtechnologies.meetingmind.core.work.ChangeProposal>> = _changes
     private val _extras = MutableStateFlow(com.craftflowtechnologies.meetingmind.core.work.WrapUpExtras(emptyList(), emptyList()))
     val extras: StateFlow<com.craftflowtechnologies.meetingmind.core.work.WrapUpExtras> = _extras
-    private val _confirmed = MutableStateFlow<Set<String>>(emptySet())
+    private val _confirmed = MutableStateFlow<Set<String>>(savedState.get<ArrayList<String>>(KEY_CONFIRMED).orEmpty().toSet())
     val confirmedChanges: StateFlow<Set<String>> = _confirmed
-    private val _added = MutableStateFlow<Set<String>>(emptySet())
+    private val _added = MutableStateFlow<Set<String>>(savedState.get<ArrayList<String>>(KEY_ADDED).orEmpty().toSet())
     val added: StateFlow<Set<String>> = _added
-    private val _settled = MutableStateFlow<Map<String, com.craftflowtechnologies.meetingmind.core.work.Settlement>>(emptyMap())
+    private val _settled = MutableStateFlow<Map<String, Settlement>>(decodeSettled(savedState.get<String>(KEY_SETTLED)))
     val settled: StateFlow<Map<String, com.craftflowtechnologies.meetingmind.core.work.Settlement>> = _settled
 
     private fun dismissedIds() = com.craftflowtechnologies.meetingmind.core.work.WrapUpSignals.dismissed(getApplication(), meetingId)
@@ -93,15 +135,15 @@ class WrapUpViewModel(application: Application, val meetingId: String) : Android
         _extras.value = com.craftflowtechnologies.meetingmind.core.work.WrapUpSignals.extras(database, meetingId, work.findings(meetingId), proposals, dismissed)
     }
 
-    fun confirmChange(p: com.craftflowtechnologies.meetingmind.core.work.ChangeProposal) { _confirmed.value = _confirmed.value + p.id }
-    fun undoChange(p: com.craftflowtechnologies.meetingmind.core.work.ChangeProposal) { _confirmed.value = _confirmed.value - p.id }
+    fun confirmChange(p: com.craftflowtechnologies.meetingmind.core.work.ChangeProposal) { _confirmed.value = _confirmed.value + p.id; savedState[KEY_CONFIRMED] = ArrayList(_confirmed.value) }
+    fun undoChange(p: com.craftflowtechnologies.meetingmind.core.work.ChangeProposal) { _confirmed.value = _confirmed.value - p.id; savedState[KEY_CONFIRMED] = ArrayList(_confirmed.value) }
     /** "Not the same": the proposal doesn't come back. */
     fun rejectChange(p: com.craftflowtechnologies.meetingmind.core.work.ChangeProposal) = act {
         com.craftflowtechnologies.meetingmind.core.work.WrapUpSignals.dismiss(getApplication(), meetingId, p.id)
     }
-    fun addSignal(id: String) { _added.value = _added.value + id }
+    fun addSignal(id: String) { _added.value = _added.value + id; savedState[KEY_ADDED] = ArrayList(_added.value) }
     fun dismissSignal(id: String) = act { com.craftflowtechnologies.meetingmind.core.work.WrapUpSignals.dismiss(getApplication(), meetingId, id) }
-    fun settle(id: String, s: com.craftflowtechnologies.meetingmind.core.work.Settlement) { _settled.value = _settled.value + (id to s) }
+    fun settle(id: String, s: com.craftflowtechnologies.meetingmind.core.work.Settlement) { _settled.value = _settled.value + (id to s); savedState[KEY_SETTLED] = encodeSettled(_settled.value) }
 
     private fun choices() = com.craftflowtechnologies.meetingmind.core.work.WrapUpChoices(
         changes = _confirmed.value, add = _added.value, dismissed = dismissedIds(), settled = _settled.value

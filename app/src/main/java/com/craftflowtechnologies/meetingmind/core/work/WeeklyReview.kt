@@ -63,7 +63,7 @@ class WeeklyReviews(
         val questions = open.filter { it.kind == ItemKind.QUESTION.name && it.id !in slippedIds }
         val finished = live.filter { it.kind == ItemKind.COMMITMENT.name && it.itemStatus == ItemStatus.COMPLETED && (it.closedAt ?: it.updatedAt) in from..now }
             .sortedByDescending { it.closedAt ?: it.updatedAt }
-        val meetings = database.workDao().allMeetings().filter { it.createdAt in from..now && it.status == "READY" && (work.isWork(it.recordingType) || it.recordingType == "GENERAL") }
+        val meetings = database.workDao().readyMeetingsBetween(from, now).filter { (work.isWork(it.recordingType) || it.recordingType == "GENERAL") }
         val week = WeekReview(
             recordings = meetings.size, notes = 0, faith = 0, answered = live.count { it.kind == ItemKind.QUESTION.name && it.itemStatus == ItemStatus.ANSWERED && (it.answeredAt ?: 0) in from..now },
             minutesRecorded = (meetings.sumOf { it.durationMs } / 60_000).toInt(),

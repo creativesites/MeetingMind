@@ -40,6 +40,7 @@ import com.craftflowtechnologies.meetingmind.core.work.FollowUpLine
 import com.craftflowtechnologies.meetingmind.core.work.MeetingRow
 import com.craftflowtechnologies.meetingmind.core.work.WorkPeople
 import com.craftflowtechnologies.meetingmind.core.work.WorkPerson
+import com.craftflowtechnologies.meetingmind.core.work.OPEN_TASK_LIMIT
 import com.craftflowtechnologies.meetingmind.core.work.WorkRepository
 import com.craftflowtechnologies.meetingmind.core.work.WorkSettings
 import com.craftflowtechnologies.meetingmind.core.work.WorkTask
@@ -49,6 +50,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -79,7 +81,10 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     val self: StateFlow<WorkPerson?> = _self
 
     val tasks: StateFlow<List<WorkTask>> = work.observeTasks().state(emptyList())
-    val myTasks: StateFlow<List<WorkTask>> = tasks.map { l -> l.filter { !it.done && !it.waitingOn } }.state(emptyList())
+    /** Your open tasks, soonest first. Capped (see [OPEN_TASK_LIMIT]); the "All tasks" screen reads [youOwe] for the full list. */
+    val myTasks: StateFlow<List<WorkTask>> = work.observeOpenTasks().map { l -> l.filter { !it.waitingOn } }.state(emptyList())
+    /** The true number of your open tasks, however many [myTasks] holds. */
+    val myTaskCount: StateFlow<Int> = work.observeOpenMyTaskCount().state(0)
     /** What people owe you: their open commitments (D4.2). */
     val theyOwe: StateFlow<List<WorkTask>> = work.observeCommitments(Direction.THEIRS).state(emptyList())
     val waitingOn: StateFlow<List<WorkTask>> = theyOwe.map { l -> l.filter { !it.done } }.state(emptyList())
@@ -103,17 +108,18 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     val workNotes: StateFlow<List<Note>> = work.observeWorkNotes(30).map { l -> l.map { with(NoteCodec) { it.toDomain() } } }.state(emptyList())
 
     val projects: StateFlow<List<ProjectCard>> = combine(
-        database.workDao().observeProjects(), tasks, organisations
-    ) { nbs, t, orgs ->
-        val nbList = nbs.map { with(NoteCodec) { it.toDomain() } }
-        nbList.map { nb ->
-            val count = database.workDao().observeNoteCount(nb.id).first()
-            ProjectCard(nb, count, 0, orgs.firstOrNull { it.id == nb.orgId }?.name)
+        database.workDao().observeProjects(), database.workDao().observeNoteCountsByNotebook(), organisations
+    ) { nbs, counts, orgs ->
+        val byNotebook = counts.associate { it.notebookId to it.count }
+        val orgNames = orgs.associate { it.id to it.name }
+        nbs.map { with(NoteCodec) { it.toDomain() } }.map { nb ->
+            ProjectCard(nb, byNotebook[nb.id] ?: 0, 0, nb.orgId?.let { orgNames[it] })
         }
     }.state(emptyList())
 
     /** Meeting titles, for the "from Acme review" line under a task. */
-    val titles: StateFlow<Map<String, String>> = database.meetingDao().getAllMeetings().map { l -> l.associate { it.id to it.title } }.state(emptyMap())
+    val titles: StateFlow<Map<String, String>> = database.workDao().observeReferencedMeetingTitles()
+        .map { l -> l.associate { it.id to it.title } }.distinctUntilChanged().state(emptyMap())
 
     // Declared before the init block below, which sets it: property initialisers run in source order.
     private val pulseSince = MutableStateFlow<Long?>(null)
