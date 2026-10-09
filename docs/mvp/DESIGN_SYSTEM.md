@@ -33,7 +33,7 @@ palette. Each accent swatch defines a light value and a dark value. Washes are d
 | Indigo (default) | `#5B5BD6` | `#9B9CF6` | current |
 | Ocean | `#0E7490` | `#5CC8DD` | |
 | Forest | `#15803D` | `#5FD08A` | |
-| Gold | `#B7791F` | `#E0B25A` | Faith default |
+| Gold | `#996515` | `#E0B25A` | Faith default (light value darkened from #B7791F to meet 4.5:1 on Paper) |
 | Rose | `#BE185D` | `#F27AAE` | |
 | Graphite | `#3F3F46` | `#C9CDD6` | monochrome |
 
@@ -174,3 +174,23 @@ list of section components. They differ in **content and hero treatment**, never
 3. It looks right in light and dark, with all 6 accents, at text size 1.3, and with a 200% font scale.
 4. Every text block of user content is selectable (F-7).
 5. It has no idle animation. Reduced motion is respected.
+
+## 11. Implementation notes (F-2, merged)
+
+**Access.** Read everything through the `MM` object: `MM.type`, `MM.space`, `MM.radius`, `MM.elevation`,
+`MM.motion`, `MM.colors` and `MM.size`. The KDoc is in `ui/theme/DesignSystem.kt`.
+
+**Theme parameters.** `MeetMindTheme` takes `accent`, `spaceDensity` and `textScale`.
+
+**Additions beyond the spec:**
+
+- `MMSize`: the 48 dp touch target, icon sizes and the hairline.
+- `MM.radius.sheet`.
+
+**Components** live in `core/ui/mm/`: `MMSurfaces`, `MMButtons`, `MMHeaders`, `MMRows`, `MMChoice`, `MMFeedback` and
+`HomeScaffold`. Screenshots are in `app/src/test/screenshots/mm/`, recorded with `-Proborazzi.test.record=true`.
+
+**Known follow-ups:**
+
+- The legacy `AccentChoice`/`Appearance` accent still exists. F-6 merges it into `MMAccent`.
+- `ProcessingPill` and `SelectableBody` (F-7) are not yet wired.
