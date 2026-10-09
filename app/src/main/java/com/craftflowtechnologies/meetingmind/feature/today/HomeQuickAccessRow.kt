@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material.icons.filled.Church
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -46,7 +45,6 @@ fun HomeQuickAccessRow(
     onOpenDevotional: () -> Unit,
     onOpenPrayer: () -> Unit,
     onOpenWord: () -> Unit,
-    onOpenLearning: (() -> Unit)? = null,
     onOpenTestimonies: (() -> Unit)? = null,
     onOpenSpark: (() -> Unit)? = null,
     showWork: Boolean = true,
@@ -58,7 +56,6 @@ fun HomeQuickAccessRow(
         add(QuickAccessItem("faith", "Faith", Icons.Filled.Church, onOpenFaith))
         onOpenSpark?.let { add(QuickAccessItem("spark", "Spark", Icons.Filled.Bolt, it)) }
         if (showWork) add(QuickAccessItem("work", "Work", Icons.Filled.Work, onOpenWork))
-        onOpenLearning?.let { add(QuickAccessItem("learning", "Learning", Icons.Filled.School, it)) }
         add(QuickAccessItem("prayer", "Prayer", Icons.Filled.Favorite, onOpenPrayer))
         add(QuickAccessItem("word", "Word", Icons.AutoMirrored.Filled.MenuBook, onOpenWord))
         onOpenTestimonies?.let { add(QuickAccessItem("testimonies", "Stories", Icons.Filled.Celebration, it)) }

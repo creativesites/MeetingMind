@@ -429,7 +429,6 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
-                onOpenLearning = { navController.navigate(Routes.LEARN) },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
@@ -471,7 +470,6 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
-                onOpenLearning = { navController.navigate(Routes.LEARN) },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
@@ -867,7 +865,6 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onNavigateBottomNav = navigateToPrimary,
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
-                onOpenLearning = { navController.navigate(Routes.LEARN) },
                 onOpenTrash = { navController.navigate(Routes.NOTES_TRASH) }
             )
         }
@@ -1222,68 +1219,6 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         composable(Routes.RECIPES) {
             val vm: com.craftflowtechnologies.meetingmind.feature.settings.RecipesViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.settings.RecipesScreen(
-                viewModel = vm,
-                onNavigateBack = { navController.popBackStack() }
-            )
-        }
-
-        // LEARNING (docs/PLAN_LEARNING.md)
-        composable(Routes.LEARN) {
-            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearningViewModel = viewModel()
-            com.craftflowtechnologies.meetingmind.feature.learning.LearnHomeScreen(
-                viewModel = vm,
-                onNavigateBack = { navController.popBackStack() },
-                onOpenSession = { sessionId -> navController.navigate(Routes.learningSessionRoute(sessionId)) },
-                onStartPractice = { sessionId, activityId -> navController.navigate(Routes.learningPracticeRoute(sessionId, activityId)) }
-            )
-        }
-
-        composable(
-            Routes.LEARNING_SESSION,
-            arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
-        ) { entry ->
-            val sessionId = entry.arguments?.getString("sessionId").orEmpty()
-            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearningViewModel = viewModel()
-            com.craftflowtechnologies.meetingmind.feature.learning.LearningSessionScreen(
-                sessionId = sessionId,
-                viewModel = vm,
-                onNavigateBack = { navController.popBackStack() },
-                onStartPractice = { sId, actId -> navController.navigate(Routes.learningPracticeRoute(sId, actId)) },
-                onStartDiagnostic = { sId -> navController.navigate(Routes.learningDiagnosticRoute(sId)) },
-                onOpenNote = { noteId -> navController.navigate(Routes.noteRoute(noteId)) },
-                onOpenMeeting = { meetingId, startAtMs -> navController.navigate(Routes.meetingDetailRoute(meetingId, startAtMs)) }
-            )
-        }
-
-        composable(
-            Routes.LEARNING_DIAGNOSTIC,
-            arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
-        ) { entry ->
-            val sessionId = entry.arguments?.getString("sessionId").orEmpty()
-            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearningViewModel = viewModel()
-            com.craftflowtechnologies.meetingmind.feature.learning.ActivityPracticeScreen(
-                sessionId = sessionId,
-                activityId = null,
-                isDiagnosticOnly = true,
-                viewModel = vm,
-                onNavigateBack = { navController.popBackStack() }
-            )
-        }
-
-        composable(
-            Routes.LEARNING_PRACTICE,
-            arguments = listOf(
-                navArgument("sessionId") { type = NavType.StringType; nullable = true; defaultValue = null },
-                navArgument("activityId") { type = NavType.StringType; nullable = true; defaultValue = null }
-            )
-        ) { entry ->
-            val sessionId = entry.arguments?.getString("sessionId")
-            val activityId = entry.arguments?.getString("activityId")
-            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearningViewModel = viewModel()
-            com.craftflowtechnologies.meetingmind.feature.learning.ActivityPracticeScreen(
-                sessionId = sessionId,
-                activityId = activityId,
-                isDiagnosticOnly = false,
                 viewModel = vm,
                 onNavigateBack = { navController.popBackStack() }
             )

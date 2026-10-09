@@ -45,6 +45,8 @@ fun RecordingTypeGrid(
             .filter { it != RecordingType.GENERAL && com.craftflowtechnologies.meetingmind.core.model.Workflows.isRecordable(it) }
             // Only the spaces this person uses (Settings → Personalize); the selected type always shows.
             .filter { identity.allows(it) || it == selected }
+            // Learning is hidden until it is rebuilt (MVP S-7); its types stay only while selected.
+            .filter { com.craftflowtechnologies.meetingmind.core.model.Workflows.space(it) in com.craftflowtechnologies.meetingmind.core.model.OfferedNotebookSpaces || it == selected }
             .groupBy { com.craftflowtechnologies.meetingmind.core.model.Workflows.space(it) }
         com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.entries.forEach { space ->
             val types = bySpace[space].orEmpty()

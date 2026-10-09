@@ -128,7 +128,6 @@ fun TodayScreen(
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit = {},
     onOpenFaith: () -> Unit = {},
     onOpenWork: () -> Unit = {},
-    onOpenLearning: () -> Unit = {},
     onOpenPrayer: () -> Unit = {},
     onOpenWord: () -> Unit = {},
     onOpenTestimonies: () -> Unit = {},
@@ -350,7 +349,6 @@ fun TodayScreen(
                 HomeQuickAccessRow(
                     onOpenFaith = onOpenFaith,
                     onOpenWork = onOpenWork,
-                    onOpenLearning = onOpenLearning,
                     onOpenDevotional = onOpenDevotional,
                     onOpenPrayer = onOpenPrayer,
                     onOpenWord = onOpenWord,

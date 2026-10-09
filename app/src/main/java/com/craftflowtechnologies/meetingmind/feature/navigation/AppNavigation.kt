@@ -79,18 +79,6 @@ object Routes {
 
     fun storiesRoute(start: String? = null) = "stories" + (start?.let { "?start=$it" } ?: "")
 
-    // Learning (docs/PLAN_LEARNING.md §1.2)
-    const val LEARN = "learn"
-    const val LEARNING_SESSION = "learning_session/{sessionId}"
-    const val LEARNING_DIAGNOSTIC = "learning_diagnostic/{sessionId}"
-    const val LEARNING_PRACTICE = "learning_practice?sessionId={sessionId}&activityId={activityId}"
-    fun learningSessionRoute(sessionId: String) = "learning_session/$sessionId"
-    fun learningDiagnosticRoute(sessionId: String) = "learning_diagnostic/$sessionId"
-    fun learningPracticeRoute(sessionId: String? = null, activityId: String? = null): String {
-        val params = listOfNotNull(sessionId?.let { "sessionId=$it" }, activityId?.let { "activityId=$it" })
-        return if (params.isNotEmpty()) "learning_practice?" + params.joinToString("&") else "learning_practice"
-    }
-
     /** Sentinel used when [MEETING_DETAIL]'s optional startAtMs query arg is absent — NavType.LongType has no nullable variant. */
     const val NO_START_AT_MS = -1L
 

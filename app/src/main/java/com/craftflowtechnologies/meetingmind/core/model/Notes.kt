@@ -40,6 +40,12 @@ enum class NotebookSpace(val displayName: String) {
     PERSONAL("Personal")
 }
 
+/**
+ * Spaces the UI offers (filters, pickers, onboarding). LEARNING stays in the enum because stored notes and the
+ * database still reference it; it is hidden until the Learning vertical is rebuilt (MVP S-7).
+ */
+val OfferedNotebookSpaces: List<NotebookSpace> = NotebookSpace.entries.filter { it != NotebookSpace.LEARNING }
+
 data class Notebook(
     val id: String,
     val name: String,

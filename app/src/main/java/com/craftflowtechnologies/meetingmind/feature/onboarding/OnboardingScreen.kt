@@ -116,7 +116,7 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     fun setUserName(name: String) { _userName.value = name }
 
     /** What the app is for, and how it feels (PLAN_V2 F0). Everything on by default. */
-    private val _spaces = MutableStateFlow(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.entries.toSet())
+    private val _spaces = MutableStateFlow(com.craftflowtechnologies.meetingmind.core.model.OfferedNotebookSpaces.toSet())
     val spaces: StateFlow<Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>> = _spaces.asStateFlow()
     private val _look = MutableStateFlow(com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel.PROFESSIONAL)
     val look: StateFlow<com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel> = _look.asStateFlow()
