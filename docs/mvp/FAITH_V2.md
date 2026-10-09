@@ -1,6 +1,6 @@
 # Faith v2: Fellowship, Circles, Spark and guided practices (V-0)
 
-Status: **draft for founder review.** Builds on `MVP_PLAN.md` decisions D4, D5 and D8, and on the founder's answers
+Status: **decisions confirmed (§6); backend design in §7.** Builds on `MVP_PLAN.md` decisions D4, D5 and D8, and on the founder's answers
 of 2026-10-09:
 
 - Anyone can create a circle.
@@ -58,7 +58,7 @@ Different traditions call these groups different things and run them differently
 
 | Post type | What it does | Why it matters |
 |---|---|---|
-| **Prayer request** | Text (and optional verse). "Share anonymously within the circle" option. Others tap **🙏 I prayed**, which counts and can notify the requester once a day. The author posts **updates**, then marks it **Answered 🎉**, which offers to turn it into a Testimony. | The core loop: request → support → update → answered → testimony. |
+| **Prayer request** | Text (and optional verse). Visible to all members. **"Post anonymously"**: nobody, the admin included, sees who asked. Admin approval is on by default, and auto-approve can be turned on. Others tap **🙏 I prayed**, which counts and can notify the requester once a day. The author posts **updates**, then marks it **Answered 🎉**, which offers to turn it into a Testimony. | The core loop: request → support → update → answered → testimony. |
 | **Testimony** | A story of what God did. Can start from an answered prayer or from the existing Testimonies feed. | The founder's priority. Gives the group its emotional peak. |
 | **Achievement** | A **suggested** share when the app sees a milestone: finished a reading plan, a 30-day devotional streak, first sermon notes, a memorised verse. Nothing is ever auto-posted. | Celebration, encouragement, and a reason to come back. |
 | **Study / sermon share** | Share a sermon note excerpt, a study guide or a question for discussion. Others can comment. | Ties Circles to the app's core (notes). |
@@ -112,22 +112,18 @@ reports/{reportId}                 circleId, postId, reporterUid, reason
 
 - **Read.** A user reads a circle, its posts and comments only if `members/{auth.uid}` exists.
 - **Join.** A user creates their own `members/{uid}` doc only with a valid, unexpired invite, and only with
-  `role == member`. This is done by a Cloud Function `joinCircle(code)` so uses and caps are counted atomically.
+  `role == member`. This is done by the Worker's `join(code)` (§7) so uses and caps are counted atomically.
 - **Roles.** Only the owner or an admin changes roles or removes members.
 - **Posts.**
   - Authors create posts with `authorUid == auth.uid`.
   - Only the author edits a post or marks it Answered.
   - Admins can soft-delete any post.
-- **Anonymous posts.** The author is stored but hidden by the client. Admins can see who posted, and the UI says so
-  at posting time. This keeps abuse traceable.
-- **Caps.** 50 members on the free tier. The church tier raises the cap.
+- **Anonymous posts.** The author is never stored on the post (§7). Abuse is handled by approval, rejection, reports and per-user rate limits.
+- **Caps.** 50 members per circle and 10 circles per user on the free tier. The church tier raises both.
 
 ### 2.5 Notifications
 
-This needs **Firebase Cloud Messaging plus Cloud Functions**, which means the Firebase **Blaze** pay-as-you-go plan.
-The cost is negligible at this scale.
-
-**Functions:**
+FCM is sent from the Cloudflare Worker (§7), so no Blaze plan is needed. **Worker jobs:**
 
 - `joinCircle`
 - `onPostCreated` (notify members, respecting mute and quiet hours)
@@ -177,8 +173,7 @@ circles, and higher caps. MVP data carries an optional `orgId` on circles, so no
    verse or attribution line.
 5. **Share:** to WhatsApp or Instagram directly, or the system share sheet, or save to the gallery.
 
-**Watermark:** a small "Made with MeetingMind" mark, on by default and removable. Whether removing it is a Pro
-feature is the founder's call.
+**Watermark:** a small "Made with MeetingMind" mark, **off by default**, opt-in for now. Later it will be on for free users and off for Pro.
 
 **Rules:**
 
@@ -212,7 +207,7 @@ Methods and labels are neutral across traditions. Users can hide guides they don
 
 | Task | Model | Notes |
 |---|---|---|
-| V-0b1 | Firebase project setup: Blaze plan, FCM, the Functions project in `server/functions`, rules plus the emulator test suite | Founder (console) + Sonnet. Rules are tested with the Firestore emulator before any UI work |
+| V-0b1 | Backend setup: `server/circles-api` Cloudflare Worker (token verification, join, posts, approval, counters, FCM), Firestore rules plus the emulator test suite, FCM in the app | Founder (console, about 20 min) + Sonnet. Rules and Worker are tested before any UI work |
 | V-0b2 | Data layer: repositories, Room cache for offline reading, the invite/join flow with result types | Sonnet |
 | V-0b3 | Circles UI: list, circle home (feed by post type), composer per type, the prayer loop, comments, settings, invites with QR | Sonnet, on the design system |
 | V-0b4 | Notifications and digests | Sonnet |
@@ -221,13 +216,55 @@ Methods and labels are neutral across traditions. Users can hide guides they don
 | V-0a | Create studio (Spark v2) with persistence and its own sub-tasks | Sonnet; Haiku for templates and backgrounds |
 | V-0c | Guided Prayer and Bible study, and the sermon → devotional action | Sonnet |
 
-## 6. Open questions for the founder
+## 6. Decisions (founder, 2026-10-09)
 
-1. **E2EE.** Is the recommendation to drop custom end-to-end encryption in favour of member-only Firestore rules (plus
-   honest copy) acceptable? It is what makes moderation and church admin possible.
-2. **Blaze plan.** Can the Firebase project move to Blaze for Cloud Functions and push notifications?
-3. **Anonymous posting.** Is "anonymous to members, visible to admins" right?
-4. **Free cap.** 50 members per circle, and how many circles per user (e.g. 5) on free?
-5. **Watermark.** Is removing "Made with MeetingMind" a Pro feature?
-6. **Existing testers' circles.** Can the old circles be retired, with testers asked to recreate them? Migrating
-   end-to-end-encrypted data isn't possible server-side.
+| # | Decision |
+|---|---|
+| 1 ☑ | **Drop the custom E2EE.** Member-only access rules plus honest copy. |
+| 2 ☑ | **Start free: Firebase Spark (free plan) + a Cloudflare Worker**, not Blaze and not Supabase (§7). |
+| 3 ☑ | **Anonymous means anonymous to everyone, the admin included.** Prayer requests are visible to all members. Every circle has **admin approval of prayer requests on by default**, with an **auto-approve** option. |
+| 4 ☑ | Up to **50 members per circle** and **10 circles per user** on free. |
+| 5 ☑ | **Watermark off by default** with an opt-in toggle. Later: on for free users, off for Pro. |
+| 6 ☑ | The old circles existed only on dev APKs, so **retire them with no migration**. Delete the old tables with a Room migration in V-0b6. |
+
+## 7. Backend: start free
+
+**Recommendation:** keep Firebase on the **free Spark plan** for Auth (anonymous, already set up), Firestore and FCM
+(FCM itself is free). Put every *trusted* operation in a small **Cloudflare Worker**, `server/circles-api`, which is
+free up to 100k requests/day. This is the same pattern as the existing `server/deepseek-proxy`. The total cost is $0,
+and no card is needed.
+
+**What the Worker does.** It verifies the caller's Firebase ID token, checking it against Google's public keys. Then,
+with a service account, it writes to Firestore and sends FCM pushes through the REST APIs. It handles:
+
+- **`join(code)`:** validates the invite, applies caps (50 members, 10 circles), creates the membership atomically.
+- **`createPost`:** stores the post. For an **anonymous** post, the author's uid is **not written to the post**. It
+  goes to `circles/{id}/postAuthors/{postId}` instead, a collection whose rules deny all client reads. Only the Worker
+  reads it, to let the real author edit, post updates or mark the request answered. This makes anonymity real:
+  Firestore can't hide one field of a readable document, so the field must not be there at all.
+- **Prayer approval:**
+  - When approval is on, a new prayer request goes to `pending/{postId}`, which admins can read but which carries no
+    author.
+  - The admin taps Approve or Reject. The Worker publishes or deletes the request and notifies the author privately.
+  - Auto-approve publishes immediately.
+- **Counters** ("12 prayed"), **notifications** and the **daily prayer digest**. The digest runs on a Cloudflare Cron
+  Trigger, which is free.
+- **Rate limits** per user (anti-spam), stored in Workers KV.
+
+**What the client does directly** under the Firestore rules: read circles it belongs to, write non-anonymous comments
+and reactions on its own behalf, and update its own profile.
+
+**Why not Supabase:**
+
+- Postgres row-level security is excellent for roles. But moving would mean re-doing auth (anonymous users already
+  exist in Firebase) and giving up Firestore's offline cache.
+- The free tier **pauses a project after 7 days of inactivity** and has no backups. That's a real risk for a
+  community feature people rely on.
+- Revisit it when the church tier needs relational reporting.
+
+**Why not Blaze now:** Blaze includes a free quota, so it would likely cost $0, but it needs a card and you asked to
+start free. The Worker design is portable: the same endpoints could later move to Cloud Functions or Supabase Edge
+Functions without client changes.
+
+**Founder actions** (about 20 minutes, guided when we get there): create a Firebase service account key, put it in a
+Worker secret, add the Firebase Android app's FCM setup, and deploy the Worker with `wrangler`.
