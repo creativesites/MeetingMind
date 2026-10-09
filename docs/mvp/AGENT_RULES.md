@@ -43,6 +43,10 @@ Paste this at the top of every sub-agent prompt. The task-specific part comes af
 
 ## Engineering rules
 
+**Base check (first command).** Worktrees can be created from an old commit. Run
+`git log --oneline -1 claude/meetingmind-mvp-planning-7dgowm` and `git merge-base --is-ancestor claude/meetingmind-mvp-planning-7dgowm HEAD`.
+If HEAD is not on top of that branch, run `git reset --hard claude/meetingmind-mvp-planning-7dgowm` before making any change.
+
 **Layout.** The code is in `app/src/main/java/com/craftflowtechnologies/meetingmind/`. Read `docs/mvp/MVP_PLAN.md`
 for your task ID and `docs/mvp/AUDIT.md` for context.
 
