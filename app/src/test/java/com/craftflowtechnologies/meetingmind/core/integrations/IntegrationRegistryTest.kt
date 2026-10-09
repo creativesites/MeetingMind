@@ -53,14 +53,25 @@ class IntegrationRegistryTest {
     }
 
     @Test
-    fun stubProviders_areIncludedInComingLater() {
-        val drive = registry.findProvider("storage.drive")
-        assertNotNull(drive)
-        assertEquals(ProviderStatus.COMING_LATER, drive!!.status)
+    fun stubProviders_areHiddenByDefault() {
+        // FEATURE_STUB_INTEGRATIONS is off for MVP, so "Notify me" stubs are not registered.
+        assertNull(registry.findProvider("storage.drive"))
+        assertNull(registry.findProvider("meeting.zoom"))
+        assertTrue(registry.allProviders().none { it.status == ProviderStatus.COMING_LATER })
+    }
 
-        val zoom = registry.findProvider("meeting.zoom")
-        assertNotNull(zoom)
-        assertEquals(ProviderStatus.COMING_LATER, zoom!!.status)
+    @Test
+    fun stubProviders_stillDefined() {
+        // The feature code stays in the tree behind its flag.
+        val stubs = StubIntegrationProvider.comingLaterProviders()
+        assertEquals(8, stubs.size)
+        assertTrue(stubs.all { it.status == ProviderStatus.COMING_LATER })
+    }
+
+    @Test
+    fun emailProviders_hiddenByDefault() {
+        assertNull(registry.findProvider(GoogleEmailProvider.ID))
+        assertNull(registry.findProvider(MicrosoftEmailProvider.ID))
     }
 
     @Test

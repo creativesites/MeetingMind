@@ -94,7 +94,9 @@ fun ContextScreen(
     val top: LazyListScope.() -> Unit = {
         state?.let { st ->
             contextHeaderItems(st, onPrepare = { preparing = true }, onBrief = { onOpenBrief(briefTarget(type, id)) }, onAsk = { asking = true })
-            item { SavedFilterRow { chip = it } }
+            if (com.craftflowtechnologies.meetingmind.BuildConfig.FEATURE_SAVED_VIEWS) {
+                item { SavedFilterRow { chip = it } }
+            }
             when (type) {
                 ContextType.ORG -> orgItems(st, onEdit = { editing = true }, onOpenProject = { onOpenContext(ContextType.PROJECT, it) })
                 ContextType.PROJECT -> projectItems(st, onEdit = { editing = true }, onAddMember = { addingMember = true },

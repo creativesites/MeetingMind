@@ -250,7 +250,9 @@ fun WorkSpaceScreen(
                 }
             }
             // Answers from the record, one tap each (D5.5).
-            item { SavedFilterRow { savedFilter = it } }
+            if (com.craftflowtechnologies.meetingmind.BuildConfig.FEATURE_SAVED_VIEWS) {
+                item { SavedFilterRow { savedFilter = it } }
+            }
             item {
                 Row(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Pill("Weekly review", onClick = onOpenWeeklyReview, modifier = Modifier.testTag("work_weekly_review"))

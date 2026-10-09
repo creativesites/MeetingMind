@@ -429,12 +429,14 @@ fun SettingsScreen(
                         onClick = onOpenIntegrations
                     )
                 }
-                settingsRow {
-                    SettingsNavRow(
-                        title = "Recipes & Automation",
-                        subtitle = "Post-meeting actions, tasks & review triggers",
-                        onClick = onOpenRecipes
-                    )
+                if (com.craftflowtechnologies.meetingmind.BuildConfig.FEATURE_RECIPES) {
+                    settingsRow {
+                        SettingsNavRow(
+                            title = "Recipes & Automation",
+                            subtitle = "Post-meeting actions, tasks & review triggers",
+                            onClick = onOpenRecipes
+                        )
+                    }
                 }
             }
 
