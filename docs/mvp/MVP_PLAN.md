@@ -108,7 +108,7 @@ Unchanged from the polish plan: Recording → Processing → Intelligence → Wo
 | D3 ☑ | **Learning:** remove the current implementation (UI now, tables kept) and rebuild as a **study companion** (V-1). |
 | D4 ☑ | **Fellowship and Circles are MVP-critical.** They will be fully re-planned and rebuilt, including a backend design that can support a **church enterprise tier**. The current build crashes when a Circle code is pasted, and its security model is broken. Faith is the most important vertical: existing testers come from it, and it's underserved. |
 | D5 ☑ | **Spark is MVP-critical:** users generate beautiful shareable content at any moment (devotional, verse, sermon point, prayer, testimony, study insight) that keeps them in the app. Re-plan and rebuild it. |
-| D6 ☑ | **Companion = "Mimi"** (the name may change). The founder is commissioning a dedicated Opus agent to plan the Mimi experience (`docs/mvp/MIMI_AGENT_PROMPT.md`); its output becomes the P-1 spec. Implementation stays native Compose unless that spec argues otherwise. |
+| D6 ☑ | **Companion = "Zuri and friends"** (replaces Mimi): Zuri, the orb and the default, plus Wren, Page and Nas the puppy. Prototype: https://claude.ai/artifact/CwsiqKq3ff7wCt4hjC2bB3 (branch `ccr-5dc13c30-a5eqgv`). **Choosing a companion:** in onboarding and Settings. **Long-press quick sheet:** change companion, presence level, rename, hide until tomorrow. **Record button:** plain, with Zuri on it only as an Advanced toggle. **Sermons:** Zuri is quiet by default, with a per-recording chip to change it. **Spark:** six moods (Prayerful, Peaceful, Grateful, Joyful, Reflective, Celebratory); AI suggests one and the user can change it; prayer requests allow only Prayerful or Peaceful; the companion is off on cards by default. **Rendering is tiered:** a flat drawing at 24–40 dp, Compose pseudo-3D at 56–120 dp, Rive for hero moments at 160 dp+ only if it earns its place (about 2–4 MB, still to verify); real-time 3D is ruled out. **Each screen has a mood:** Home greets, Faith is slower and softer, Work is crisper, Study is curious. The full spec is coming as `docs/mvp/ZURI_EXPERIENCE.md` from the Zuri design session. **Candidates from its 12 ideas:** Ask Zuri, the assistant (grounded answers with sources, pre-meeting briefs, follow-ups, "what did I commit to", a Friday review); sermon → 5-day devotional; drive-home debrief; a sleeping widget; an NFC plush. |
 | D7 ☑ | **No rush. Quality over speed.** Launch scope: Faith (excellent) + Work + Study v1. Faith gets the deepest investment. |
 | D8 ☑ | **Faith template buttons must be real.** Highly visible actions such as Devotional and Prayer on the Faith and Work pages must lead to real guided experiences, not blank note templates. **Proper Bible study** in-app is a goal. |
 
@@ -213,7 +213,7 @@ The model column is who executes. ★ = blocks launch.
 
 ---
 
-## 6. Mimi: starting concept (superseded by the dedicated Mimi spec)
+## 6. Companion: superseded by Zuri (D6) and ZURI_EXPERIENCE.md
 
 The founder chose **Mimi**. A dedicated Opus agent is planning the full Mimi experience from
 `docs/mvp/MIMI_AGENT_PROMPT.md`. Its output (`docs/mvp/MIMI_EXPERIENCE.md`) replaces this section. The CTO's
