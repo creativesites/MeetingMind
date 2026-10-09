@@ -1048,7 +1048,7 @@ quick sheet, onboarding step 1, the recording screen (normal and Quiet), and pro
 
 | ID | Title | Model | Size | Maps to | Depends | Acceptance criteria | Screenshot tests |
 |---|---|---|---|---|---|---|---|
-| **Z-0** | This spec + founder sign-off | Opus + founder | — | **P-1** | — | Founder signs off; MVP_PLAN §6 points here | — |
+| **Z-0** | This spec + founder sign-off | Spec author + founder | — | **P-1** | — | Founder signs off; MVP_PLAN §6 points here | — |
 | **Z-1** | `core/companion` model, events, pure reducer, presence filter, roster + flags | Sonnet | M | **P-2** | — | All §3.3 rules, the presence table and the WORRIED ⇒ fix invariant are unit-tested; no Android deps in the reducer | — (unit tests) |
 | **Z-2** | `MomentLedger` (DataStore caps) + `CreateModePolicy` | Haiku | S | **P-2** / P-5 | Z-1 | Caps from §5 are enforced with tests; the policy matrix of §3.2 is tested row by row (prayer request → {PRAYERFUL, PEACEFUL}) | — |
 | **Z-3** | Companion tokens + palette: `companionInk`, `companionBlush`, `companionPalette(MMColors)` in `ui/theme` | Haiku | S | **P-2** | F-2 contract | Formulas from §2.2; contrast unit test for 6 accents × 2 themes passes; `ColorLiteralGuardTest` green | — |
