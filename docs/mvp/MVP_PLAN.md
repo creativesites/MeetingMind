@@ -57,24 +57,41 @@ Apply it to every page, section, card, button, icon, label and interaction:
 
 ```
 Bottom bar:   Home  ·  Notes  ·  ( ● Record )  ·  Spaces
-              Header on every top-level screen: [context switch] ... [search] [avatar → Settings]
+              Header on every top-level screen: [space switch] ... [search] [avatar → Settings]
 
-HOME (one screen, adapts to the active space: All / Faith / Work / Learning)
-  1. Greeting line ("Good morning, Ama") + companion + one context line
-  2. NEXT: the one hero card. Next meeting (Work) · Today's Word (Faith) · next session (Learning)
-  3. NEEDS YOU: at most 4 items (wrap up, send follow-up, tasks due, prayers)
-  4. RECENT NOTES: always present, 5 rows, "All notes →"
-  5. TODAY: compact agenda (other calendar views live in Notes/Calendar)
+HOME: one home system, four home designs, all built from the same design system and components
+  ├─ Everyday (NEW default)  general-purpose: greeting + Mimi, Next, Needs you, Recent notes, Today
+  ├─ Faith                   the current "Today" home, rebuilt: daily word/devotional, scripture or quote hero,
+  │                          stories, prayer and reading rhythm, sermons, recent notes. Same sections, coherent and beautiful.
+  ├─ Work                    the current ProfessionalHome, rebuilt: Pulse (next meeting), Needs you, Today, Tasks, Decisions
+  └─ Study                   new: next class, revise today (due flashcards/quiz), courses (notebooks), recent lecture notes
+  The user picks their home in onboarding (smart default from the spaces they chose) and can switch any time.
+  Recent notes are on every home.
+
+PERSONALIZATION SYSTEM (one coherent system, replacing the scattered homeStyle / HomeSection / look / card-style /
+  hero-mode settings)
+  Basic:    home (Everyday/Faith/Work/Study) · accent colour (curated palette) · light/dark/system · name
+  Advanced: hero content (scripture/quote/progress) · home sections on/off and order · text size · density
+            · per-space accents
+  Every option renders through design-system tokens, so no combination can look broken.
 
 NOTES (the library)
   search field at top → filter chips (Space · Type · Has recording · Has tasks) → Pinned → Recent (date-grouped)
-  Notebooks and tags live behind a "Folders" toggle, not above the list
+  Notebooks (= courses / projects / sermon series) and tags live behind a "Folders" toggle, not above the list
   Each row: title · 2-line preview · icons (recording, transcript status, N tasks, attachments) · space dot · time
 
-RECORD  one global button; the sheet pre-selects the type from the active space; Note and Import live in the sheet
+RECORD  one global button; the sheet pre-selects the type from the active home or space; Note and Import live in the sheet
 
-SPACES  Faith · Work · Learning, each with its own hub (its extras: Bible, Prayer, Projects, People, Inbox…)
-        Spaces the user didn't choose in onboarding are hidden, not disabled
+SPACES  Faith · Work · Study, each with its own hub of extras (Bible, Prayer, Fellowship, Projects, People, Courses…)
+
+CROSS-CUTTING, everywhere the user sees their own content
+  • Select & copy:  any text (transcript, summary, note, AI answer, devotional, verse, quiz explanation) is
+                    selectable and copyable, down to a single sentence.
+  • Read aloud:     notes, devotionals, scripture, summaries and study material can be read aloud
+                    (on-device TTS, Gemini voice when online).
+  • Share:          anything worth sharing can become a beautiful card (the Spark engine) or a document.
+  • No empty promises: a prominent action (e.g. "Devotional", "Prayer") must lead to real functionality,
+                    never just a blank template.
 ```
 
 Unchanged from the polish plan: Recording → Processing → Intelligence → Workspace (Note) → Outputs. Source data
@@ -82,22 +99,18 @@ Unchanged from the polish plan: Recording → Processing → Intelligence → Wo
 
 ---
 
-## 3. Decisions
+## 3. Decisions (founder, 2026-10-09)
 
-All rows are **pending founder confirmation**. These are the CTO's recommendations; the founder's answer overrides any
-one of them. Mark a row ☑ when confirmed.
-
-| # | Question | Recommendation |
-|---|---|---|
-| D1 | Navigation | `Home · Notes · Record · Spaces`; Settings under the avatar; Search in the header |
-| D2 | Default AI mode in onboarding | **On-device** when the phone qualifies, with Gemini offered as "Faster, uses the internet". Fixes the privacy promise. |
-| D3 | Learning | Remove the UI now, keeping the tables (no schema bump). Re-spec from scratch (§5, phase 4). Drop the tables in a later release. |
-| D4 | Fellowship + Circles | **Remove from the MVP build** (hidden, with the code deleted once the replacement spec is approved). Rebuild after launch on a proper backend design, because the current security model is broken. |
-| D5 | Spark | Remove now. Re-spec as "Share a sermon moment": cards generated *from the user's own sermon notes* under the faith contract. |
-| D6 | Companion character | Build it native in Compose (Canvas + vector paths, state-driven, no new dependency) so it ships with the app and themes with it. Rive can come later if a designer joins. |
-| D7 | Launch scope | MVP = Faith + Work + **Learning v1 (lecture → study note → flashcards/quiz)**. If Learning v1 slips, launch with Learning shown as "Coming soon" in Spaces. |
-
----
+| # | Decision |
+|---|---|
+| D1 ☑ | **Navigation:** `Home · Notes · Record · Spaces`, with Settings under the avatar and Search in the header. **Four home designs** (Everyday = new default, Faith = rebuilt Today, Work, Study) on one design system, plus a proper **personalization system** with basic and advanced options. |
+| D2 ☑ | **Default AI mode is Internet (Gemini).** It is faster and gives better results, and most users are online. Local-only will become the free tier and Internet mode Pro; tier definition comes later. **Onboarding copy must be honest** about what happens online versus on-device (the Welcome screen can't say "on your phone" while the default sends audio to Google). |
+| D3 ☑ | **Learning:** remove the current implementation (UI now, tables kept) and rebuild as a **study companion** (V-1). |
+| D4 ☑ | **Fellowship and Circles are MVP-critical.** They will be fully re-planned and rebuilt, including a backend design that can support a **church enterprise tier**. The current build crashes when a Circle code is pasted, and its security model is broken. Faith is the most important vertical: existing testers come from it, and it's underserved. |
+| D5 ☑ | **Spark is MVP-critical:** users generate beautiful shareable content at any moment (devotional, verse, sermon point, prayer, testimony, study insight) that keeps them in the app. Re-plan and rebuild it. |
+| D6 ☑ | **Companion = "Mimi"** (the name may change). The founder is commissioning a dedicated Opus agent to plan the Mimi experience (`docs/mvp/MIMI_AGENT_PROMPT.md`); its output becomes the P-1 spec. Implementation stays native Compose unless that spec argues otherwise. |
+| D7 ☑ | **No rush. Quality over speed.** Launch scope: Faith (excellent) + Work + Study v1. Faith gets the deepest investment. |
+| D8 ☑ | **Faith template buttons must be real.** Highly visible actions such as Devotional and Prayer on the Faith and Work pages must lead to real guided experiences, not blank note templates. **Proper Bible study** in-app is a goal. |
 
 ## 4. The team
 
@@ -135,8 +148,8 @@ The model column is who executes. ★ = blocks launch.
 | S-5 | Flag off for MVP: Recipes, Kanban, Timeline, X-Ray, Saved views, email providers, the 8 stub integrations | Haiku | `BuildConfig` flags default false; no entry point visible |
 | S-6 | `WorkViewModel`: projection query for titles, LIMIT on tasks, a grouped count for projects; NavGraph scope instead of Activity; `WrapUpViewModel` via `viewModel()` + `SavedStateHandle` | Sonnet | Unit tests for the DAO queries; the draft survives process death |
 | S-7 ★ | Learning removal, steps 1–4 of AUDIT §7 (UI, routes, entry points; tables kept) | Haiku | Build green; no "Learn" anywhere in the UI; app opens on a v42 DB |
-| S-8 ★ | Fellowship/Circles/Spark: remove entry points and routes; drop the `mindcircle` intent filter; leave the code compiled but unreachable | Haiku | No entry point; deep link inert |
-| S-9 | Onboarding copy and defaults hotfix (D2): default to on-device when the phone qualifies; permissions asked once, in context | Haiku | Welcome copy matches the default; no permission dialog at launch |
+| S-8 ⊘ | ~~Hide Fellowship/Circles/Spark~~. Cut: they are MVP-critical (D4/D5) and get rebuilt in Phase 4 instead. Until then they stay as they are in tester builds. | — | — |
+| S-9 | Onboarding honesty hotfix (D2): keep Internet as the default, but rewrite the Welcome and AI-step copy so it is truthful ("Fast, accurate results with Gemini · Switch to on-device any time"); permissions asked once, in context | Haiku | No privacy claim the default contradicts; no permission dialog at launch |
 
 ### Phase 1: Foundations (design system + navigation)
 
@@ -146,16 +159,21 @@ The model column is who executes. ★ = blocks launch.
 | F-2 ★ | `core/ui` components: `ScreenHeader`, `SectionHeader`, `MMCard`, `HeroCard`, `InsetPanel`, `ListRow`, `PrimaryAction`, `FilterChip`, `EmptyState`, `ProcessingPill`, `NoteRow` | Sonnet | Screenshot tests for each in light and dark |
 | F-3 ★ | Navigation per D1: the new bar, the space switcher, nested graphs `faith/*` `work/*` `learn/*`; delete `HomeStyle` and the `HomeSection` toggles; Settings moves to the avatar | Sonnet | One home route; every top-level screen has the bar; back stack verified |
 | F-4 | Literal sweep, one file per task: `fontSize`/`Color(0x…)`/`RoundedCornerShape` → tokens, starting from the worst offenders in AUDIT §3 | Haiku ×N | Each file's grep for literals is down to 0 (scripture serif excepted) |
+| F-6 ★ | **Personalization system spec + engine**: one `Personalization` model (home, accent, theme, name; advanced: hero content, section order, text size, density, per-space accents) replacing `homeStyle`, `HomeSection`, look, card style and hero mode, with a migration of existing prefs | Opus spec → Sonnet | Old prefs map 1:1; every combination passes a screenshot matrix |
+| F-7 ★ | **Select & copy everywhere** (shared `SelectableText` patterns) and **Read aloud** service (one `ReadAloud` controller used by notes, devotional, scripture, summaries, study) | Sonnet | Every user-content surface in the audit list supports both |
 | F-5 | Remove legacy palettes (`CleanMac*`, `Dark*`), the duplicate `Slate`s and the three section-title copies | Haiku | Grep clean; build green |
 
 ### Phase 2: Surfaces
 
 | ID | Task | Model | Acceptance |
 |---|---|---|---|
-| U-1 ★ | **One adaptive Home** (§2): greeting + companion, Next, Needs you, Recent notes, Today. Delete the sky hero, QuickAccessRow, focus chip, Work card and StoryRings on Home | Sonnet | Passes the four questions per space; ≤5 sections; no infinite animation at idle |
+| U-1 ★ | **Home system**: a shared home scaffold + section components; then **Everyday** (new default: greeting + Mimi, Next, Needs you, Recent notes, Today) | Sonnet | Passes the four questions; Recent notes visible without scrolling |
+| U-1F ★ | **Faith home** = today's Today home rebuilt on the system: keep its sections (scripture/quote hero, devotional, stories, quick access, rhythm, timeline) but with one palette, one type scale and one card language; remove duplicates (AUDIT §2) | Sonnet | Founder review: "beautiful and coherent" |
+| U-1W ★ | **Work home** = ProfessionalHome rebuilt (merges `WorkSpaceScreen`; Pulse is the only hero; AUDIT §5 cuts) | Sonnet | One Work home; an empty section renders nothing |
+| U-1S | **Study home** (after V-1): next class, revise today, courses, recent lecture notes | Sonnet | Golden path on device |
 | U-2 ★ | **Notes library**: search first, multi-select chips, rich `NoteRow`, folders behind a toggle; library search goes through FTS and excludes private text | Sonnet | First note visible without scrolling on a 6" phone; search is ranked |
-| U-3 ★ | **Work hub**: one screen (Pulse as the only hero → Needs you → Today → Tasks Mine/Waiting → Decisions); delete `WorkSpaceScreen`, metric tiles, shortcut pills and the template grid; extras go behind "⋯" | Sonnet | One Work hub; an empty section renders nothing |
-| U-4 ★ | **Faith hub**: Today's Word, Daily rhythm, Record sermon, Recent sermons, Explore list; delete the stat cards and Backgrounds | Sonnet | ≤6 sections; serif only for scripture |
+| U-3 ★ | **Work hub** (the Work *space*; shares components with U-1W): one screen (Pulse as the only hero → Needs you → Today → Tasks Mine/Waiting → Decisions); delete `WorkSpaceScreen`, metric tiles, shortcut pills and the template grid; extras go behind "⋯" | Sonnet | One Work hub; an empty section renders nothing |
+| U-4 ★ | **Faith hub** (the Faith *space*): Today's Word, Daily rhythm, Record sermon, Bible study, Fellowship, Create (Spark), Recent sermons; delete the stat cards and Backgrounds | Sonnet | ≤7 sections; serif only for scripture |
 | U-5 ★ | **Settings IA**: 8 groups (Account · Recording · AI & offline models · Spaces · Appearance · Privacy & security · Storage & backup · About) + Advanced; dedupe the duplicated settings; remove dead prefs and dev copy; one Notifications screen | Haiku (spec from AUDIT §8) | 8 groups; each setting has exactly one place |
 | U-6 | **Meeting detail as a workflow**: participants → summary → decisions → actions → follow-up/brief → export, as one thread | Sonnet | Every step reachable in ≤1 tap from the detail |
 | U-7 | **Model management + offline readiness**: "● Ready to record offline" on the Record sheet; Process locally / with Gemini; recommended pack | Sonnet | The Record sheet shows the true readiness state |
@@ -175,12 +193,14 @@ The model column is who executes. ★ = blocks launch.
 
 | ID | Task | Model | Acceptance |
 |---|---|---|---|
-| V-1 ★ | **Learning v1 spec** (`docs/mvp/LEARNING_V1.md`), built on note + transcript, not a parallel pipeline: record lecture → study note (overview, key concepts, definitions, examples) → flashcards + quiz (reusing the spaced scheduler) → "Teach me this" on a selected concept | **Opus** + founder | Founder sign-off |
+| V-0 ★ | **Faith re-plan** (`docs/mvp/FAITH_V2.md`): Fellowship + Circles (church/enterprise-ready backend, roles enforced server-side, invites that can't crash, moderation, member caps, honest privacy), Spark (shareable content from anywhere: devotional, verse, sermon point, prayer, testimony, with a real design studio), real Devotional / Prayer / Bible-study experiences behind every prominent button (D8), and sermon → devotional | **Opus** + founder | Founder sign-off |
+| V-0a ★ | Faith v2 build: Spark studio | Sonnet | Shareable cards from 5+ sources; faith contract enforced |
+| V-0b ★ | Faith v2 build: Fellowship + Circles (backend + app) | Sonnet (+ Opus review of security) | Security review passes; invite paste/scan never crashes |
+| V-0c ★ | Faith v2 build: guided Devotional / Prayer / Bible study replacing blank templates | Sonnet | Every Faith button leads to a guided flow |
+| V-1 ★ | **Study v1 spec** (`docs/mvp/STUDY_V1.md`): a study companion built on note + transcript, not a parallel pipeline. Record lecture → formatted study note → notebooks per course → AI tools (go deeper, expand, explain, generated diagrams/images and a few built-in components) → multiple-choice tests and flashcards (reusing the spaced scheduler) → personalised explanations that adapt over time → surfaces what the lecturer emphasised and what's likely in the exam → read aloud throughout | **Opus** + founder | Founder sign-off |
 | V-2 ★ | Learning v1 build | Sonnet (+ Haiku for tests) | Golden path on device |
-| V-3 | Learning table drop: `MIGRATION_23_24` (+ remap `LEARNING` notebooks); delete `filesDir/teach_back` | Haiku | Migration test from 21, 22 and 23 |
-| V-4 | **Sermon → share moments** (Spark replacement), spec then build: cards from the note's own quotes and scripture, under the faith contract | Opus spec → Sonnet | No AI text without a source in the note |
+| V-3 | Old Learning table drop (unless the V-1 spec reuses them): `MIGRATION_23_24` (+ remap `LEARNING` notebooks); delete `filesDir/teach_back` | Haiku | Migration test from 21, 22 and 23 |
 | V-5 | **Sermon → devotional** action; one faith-contract source of truth (assets only); retry on truncated extraction chunks | Sonnet | Unit tests for the chunk retry |
-| V-6 | **Fellowship v2 spec** (post-MVP): server-assigned roles, member caps, key in the Keystore, honest copy | Opus | Spec only for MVP |
 
 ### Phase 5: Quality and release
 
@@ -193,12 +213,14 @@ The model column is who executes. ★ = blocks launch.
 
 ---
 
-## 6. Companion: starting concept for P-1
+## 6. Mimi: starting concept (superseded by the dedicated Mimi spec)
+
+The founder chose **Mimi**. A dedicated Opus agent is planning the full Mimi experience from
+`docs/mvp/MIMI_AGENT_PROMPT.md`. Its output (`docs/mvp/MIMI_EXPERIENCE.md`) replaces this section. The CTO's
+original sketch is kept below for reference.
 
 A small, soft **listening creature** grown out of the existing `RecordOrb`, so the brand mark and the character are
 the same object.
-
-**Working names:** *Echo*, *Hush*, *Pip* or *Mimi*. The founder picks one.
 
 **Shape.** A rounded drop, with two dot eyes and a small "sound-wave" crest that moves with the voice.
 
@@ -223,8 +245,8 @@ the same object.
 
 | Wave | Tasks |
 |---|---|
-| 1 | S-1/S-2 (Sonnet) ∥ S-4, S-5, S-7, S-8, S-9 (Haiku, disjoint files) ∥ F-1 (Opus) |
-| 2 | F-2 (Sonnet) ∥ S-6 (Sonnet) ∥ S-3 (Haiku) ∥ P-1, V-1 specs (Opus + founder) |
-| 3 | F-3 navigation (Sonnet, alone on the hot files) → then U-1 ∥ U-2 ∥ U-3 ∥ U-4 (Sonnet) ∥ F-4 sweeps (Haiku, on files not in flight) |
-| 4 | U-5, U-6, U-7 ∥ P-2 → P-3, P-5 ∥ V-2 |
-| 5 | V-3, V-4, V-5 ∥ Q-2, Q-3 → Q-1 → Q-4 |
+| 1 (running) | S-1/S-2 (Sonnet) ∥ S-4 + S-5 (Haiku) ∥ S-7 (Haiku) ∥ F-1 design system (Opus) ∥ Mimi spec (founder's Opus agent) |
+| 2 | F-2 components (Sonnet) ∥ S-6 (Sonnet) ∥ S-3, S-9 (Haiku) ∥ specs: F-6 personalization, V-0 Faith v2, V-1 Study v1 (Opus + founder) |
+| 3 | F-3 navigation (Sonnet, alone on the hot files) → then U-1 Everyday ∥ U-1F Faith home ∥ U-1W Work home ∥ U-2 Notes (Sonnet) ∥ F-4 sweeps (Haiku, on files not in flight) |
+| 4 | F-6 engine, F-7 select/copy + read aloud ∥ U-3, U-4, U-5, U-6, U-7 ∥ P-2 Mimi → P-3, P-5 ∥ V-0a/b/c Faith v2 |
+| 5 | V-2 Study v1 → U-1S ∥ V-3, V-5 ∥ Q-2, Q-3 → Q-1 → Q-4 |
