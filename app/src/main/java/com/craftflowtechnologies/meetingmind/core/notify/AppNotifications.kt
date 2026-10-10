@@ -12,6 +12,7 @@ import com.craftflowtechnologies.meetingmind.MainActivity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /** Where a notification tap should land. */
 sealed interface DeepLink {
@@ -124,6 +125,8 @@ object AppNotifications {
     const val CHANNEL_DONE = "meetmind_finished"
     const val CHANNEL_DEVOTIONAL = "meetmind_devotional"
     private const val ID_DEVOTIONAL = 5001
+    const val ID_DEVOTIONAL_WORK = 5002
+    const val CHANNEL_DEVOTIONAL_WORK = "meetmind_devotional_work"
 
     const val ID_PROCESSING = 2001
     private const val ID_DOWNLOAD_BASE = 3000
@@ -147,6 +150,12 @@ object AppNotifications {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_DEVOTIONAL, "Daily devotional", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Tells you when today's devotional is ready"
+            }
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_DEVOTIONAL_WORK, "Writing the devotional", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Shows briefly while today's devotional is being written"
+                setShowBadge(false)
             }
         )
         manager.createNotificationChannel(
@@ -175,6 +184,61 @@ object AppNotifications {
                 .build()
         )
     }
+
+    /**
+     * Delivery time came and there is no devotional. Says so, says why, and offers the two things
+     * that help: write it now, or read a classic. Replaced by [devotionalReady] if one arrives.
+     */
+    fun devotionalNotReady(context: Context, reason: com.craftflowtechnologies.meetingmind.core.devotional.NotReadyReason) {
+        post(
+            context, ID_DEVOTIONAL,
+            NotificationCompat.Builder(context, CHANNEL_DEVOTIONAL)
+                .setSmallIcon(android.R.drawable.ic_menu_day)
+                .setContentTitle(NOT_READY_TITLE)
+                .setContentText(reason.line)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(reason.line))
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Devotional))
+                .addAction(android.R.drawable.ic_popup_sync, ACTION_WRITE_NOW, devotionalAction(context, DevotionalActionReceiver.WRITE_NOW))
+                .addAction(android.R.drawable.ic_menu_view, ACTION_CLASSIC, devotionalAction(context, DevotionalActionReceiver.CLASSIC))
+                .build()
+        )
+    }
+
+    /** Shown in place of the "isn't ready" notice while a write that was asked for runs. */
+    fun devotionalWritingNow(context: Context) {
+        post(context, ID_DEVOTIONAL, devotionalWriting(context))
+    }
+
+    /** "Writing today's devotional…" — also the foreground notification of the write itself. */
+    fun devotionalWriting(context: Context): android.app.Notification {
+        ensureChannels(context)
+        return NotificationCompat.Builder(context, CHANNEL_DEVOTIONAL_WORK)
+            .setSmallIcon(android.R.drawable.ic_menu_day)
+            .setContentTitle("Writing today's devotional…")
+            .setProgress(0, 0, true)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Devotional))
+            .build()
+    }
+
+    /** Clears the devotional notification (it was opened, or is no longer true). */
+    fun clearDevotional(context: Context) {
+        runCatching { NotificationManagerCompat.from(context).cancel(ID_DEVOTIONAL) }
+    }
+
+    private fun devotionalAction(context: Context, action: String): PendingIntent =
+        PendingIntent.getBroadcast(
+            context, action.hashCode(),
+            Intent(context, DevotionalActionReceiver::class.java).setAction(action),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+    const val NOT_READY_TITLE = "Today's devotional isn't ready yet"
+    const val ACTION_WRITE_NOW = "Write it now"
+    const val ACTION_CLASSIC = "Read a classic instead"
 
     const val CHANNEL_REMINDERS = "meetmind_reminders"
     const val CHANNEL_WORK_RHYTHM = "meetmind_work_rhythm"
@@ -362,4 +426,46 @@ object AppNotifications {
     }
 
     private fun mb(bytes: Long) = if (bytes >= 1_000_000_000) "%.1f GB".format(bytes / 1e9) else "${bytes / 1_000_000} MB"
+}
+
+/**
+ * The two buttons on the "isn't ready yet" notification. Neither opens a screen from here (Android
+ * forbids that from a broadcast); both do their work, then replace the notification with the
+ * result, which opens the devotional when tapped.
+ */
+class DevotionalActionReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val app = context.applicationContext
+        when (intent.action) {
+            WRITE_NOW -> {
+                AppNotifications.devotionalWritingNow(app)
+                com.craftflowtechnologies.meetingmind.core.devotional.DevotionalScheduler.writeNow(app, fromNotice = true)
+            }
+            CLASSIC -> {
+                AppNotifications.devotionalWritingNow(app)
+                val pending = goAsync()
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {
+                    try {
+                        val repo = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalRepository(app)
+                        val classic = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk(writer = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter.CLASSIC)
+                        val daily = repo.ensure(java.time.LocalDate.now(), ask = classic)
+                        if (daily != null) {
+                            com.craftflowtechnologies.meetingmind.core.widget.Widgets.refresh(app)
+                            com.craftflowtechnologies.meetingmind.core.devotional.DevotionalScheduler.announce(app, daily)
+                        } else AppNotifications.devotionalNotReady(app, com.craftflowtechnologies.meetingmind.core.devotional.NotReadyReason.AI_UNAVAILABLE)
+                    } catch (e: Exception) {
+                        android.util.Log.w("DevotionalAction", "Classic could not be put out: ${e.message}", e)
+                        AppNotifications.devotionalNotReady(app, com.craftflowtechnologies.meetingmind.core.devotional.NotReadyReason.AI_UNAVAILABLE)
+                    } finally {
+                        pending.finish()
+                    }
+                }
+            }
+        }
+    }
+
+    companion object {
+        const val WRITE_NOW = "com.craftflowtechnologies.meetingmind.DEVOTIONAL_WRITE_NOW"
+        const val CLASSIC = "com.craftflowtechnologies.meetingmind.DEVOTIONAL_CLASSIC"
+    }
 }

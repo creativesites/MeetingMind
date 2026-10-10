@@ -100,7 +100,11 @@ fun ScriptureCard(
     modifier: Modifier = Modifier,
     /** Text the person typed for this passage; shown instead of fetching. */
     userText: String? = null,
-    userLabel: String? = null
+    userLabel: String? = null,
+    /** Extra controls in the card's header (copy and share, say), given the passage once it has loaded. */
+    trailing: (@Composable (com.craftflowtechnologies.meetingmind.core.scripture.Passage?) -> Unit)? = null,
+    /** Lets the text be long-pressed and selected. */
+    selectable: Boolean = false
 ) {
     val result = if (userText.isNullOrBlank()) rememberPassage(reference)
         else PassageResult.Found(com.craftflowtechnologies.meetingmind.core.scripture.Passage(reference, userText, 0, userLabel ?: "Your text", "Typed by you"))
@@ -117,6 +121,7 @@ fun ScriptureCard(
             Spacer(Modifier.width(8.dp))
             Text(reference.display(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
             (result as? PassageResult.Found)?.let { Text(it.passage.versionAbbreviation, fontSize = 11.sp, color = InkMuted, fontWeight = FontWeight.Medium) }
+            trailing?.invoke((result as? PassageResult.Found)?.passage)
             if (onPlay != null && heardAtMs != null) {
                 Spacer(Modifier.width(8.dp))
                 Surface(onClick = onPlay, shape = RoundedCornerShape(50), color = AccentWash) {
@@ -133,10 +138,13 @@ fun ScriptureCard(
                 // Long passages open in place: no need to leave the note to read them all.
                 var open by remember(reference) { mutableStateOf(false) }
                 val long = result.passage.text.length > 420
-                Text(
-                    result.passage.text, fontSize = 15.sp, lineHeight = 23.sp, color = InkSecondary, fontFamily = FontFamily.Serif,
-                    maxLines = if (open || !long) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp)
-                )
+                val body: @Composable () -> Unit = {
+                    Text(
+                        result.passage.text, fontSize = 15.sp, lineHeight = 23.sp, color = InkSecondary, fontFamily = FontFamily.Serif,
+                        maxLines = if (open || !long) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                if (selectable) androidx.compose.foundation.text.selection.SelectionContainer { body() } else body()
                 if (long) Text(
                     if (open) "Show less" else "Read the whole passage", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(vertical = 4.dp)

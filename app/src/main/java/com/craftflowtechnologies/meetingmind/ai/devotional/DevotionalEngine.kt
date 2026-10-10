@@ -45,13 +45,19 @@ data class DevotionalAsk(
     val variant: Int = 0,
     val writer: DevotionalWriter = DevotionalWriter.AUTO,
     /** The hour it's asked for (it'll be read now); null for the scheduled morning one. */
-    val hour: Int? = null
+    val hour: Int? = null,
+    /**
+     * The timetable's own writes: if AI models are set up but all fail (offline, quota, a bad
+     * answer), say so instead of quietly filing a classic as today's devotional. With no AI set
+     * up at all, the usual classic still stands in.
+     */
+    val keepToAi: Boolean = false
 ) {
     val custom get() = !about.isNullOrBlank() || !passage.isNullOrBlank() || topics.isNotEmpty() || tone != null || minutes != null
 
     fun toJson(): String = org.json.JSONObject().apply {
         about?.let { put("about", it) }; passage?.let { put("passage", it) }; put("topics", org.json.JSONArray(topics.toList()))
-        tone?.let { put("tone", it.name) }; minutes?.let { put("minutes", it) }; put("variant", variant); put("writer", writer.name); hour?.let { put("hour", it) }
+        tone?.let { put("tone", it.name) }; minutes?.let { put("minutes", it) }; put("variant", variant); put("writer", writer.name); hour?.let { put("hour", it) }; if (keepToAi) put("keepToAi", true)
     }.toString()
 
     companion object {
@@ -65,7 +71,8 @@ data class DevotionalAsk(
                 tone = runCatching { com.craftflowtechnologies.meetingmind.core.devotional.DevotionalTone.valueOf(o.getString("tone")) }.getOrNull(),
                 minutes = o.optInt("minutes", 0).takeIf { it > 0 }, variant = o.optInt("variant", 0),
                 writer = runCatching { DevotionalWriter.valueOf(o.getString("writer")) }.getOrDefault(DevotionalWriter.AUTO),
-                hour = if (o.has("hour")) o.optInt("hour") else null
+                hour = if (o.has("hour")) o.optInt("hour") else null,
+                keepToAi = o.optBoolean("keepToAi", false)
             )
         }
     }
@@ -200,6 +207,7 @@ class DevotionalEngine(
         if (writer == DevotionalWriter.DEVICE || writer == DevotionalWriter.GEMINI) {
             throw DevotionalUnavailable(lastFallbackReason ?: "The AI couldn't write one just now.")
         }
+        if (pool.isNotEmpty() && ask?.keepToAi == true) throw DevotionalUnavailable(lastFallbackReason ?: "The AI couldn't write one just now.")
         if (lastFallbackReason == null) lastFallbackReason = "No AI model is set up, so today's reading is a classic."
         return anyClassic(date, false, profile, variant) ?: mine(date, profile)
     }

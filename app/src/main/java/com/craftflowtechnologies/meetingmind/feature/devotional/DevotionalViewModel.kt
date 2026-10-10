@@ -217,6 +217,9 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
         DevotionalScheduler.writeNow(getApplication(), replace = true, ask = ask)
     }
 
+    /** Today's reading from the classics, for when the AI can't write one. */
+    fun readClassic() = rewrite(com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk(writer = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter.CLASSIC))
+
     /** Shows one of the day's devotionals. */
     fun select(daily: DailyDevotional) { selected.value = daily.note.id }
 
@@ -229,6 +232,8 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
 
     fun opened(daily: DailyDevotional) = viewModelScope.launch {
         runCatching { repo.markOpened(daily) }
+        // Reading it: any "isn't ready yet" notice is out of date.
+        runCatching { com.craftflowtechnologies.meetingmind.core.notify.AppNotifications.clearDevotional(getApplication()) }
         // Written offline earlier? Paint the picture now that we may be online.
         val profile = state.value.profile
         if (profile.autoImage && daily.devotional.origin != com.craftflowtechnologies.meetingmind.core.devotional.DevotionalOrigin.CARE) runCatching { repo.paint(daily, profile) }

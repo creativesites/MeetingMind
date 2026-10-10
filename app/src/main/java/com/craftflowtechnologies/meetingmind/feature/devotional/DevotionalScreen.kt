@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Tune
@@ -58,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -77,7 +79,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.devotional.DailyDevotional
 import com.craftflowtechnologies.meetingmind.core.devotional.Devotional
+import com.craftflowtechnologies.meetingmind.core.devotional.DevotionalBlock
 import com.craftflowtechnologies.meetingmind.core.devotional.DevotionalNotes
+import com.craftflowtechnologies.meetingmind.core.devotional.DevotionalStatus
+import com.craftflowtechnologies.meetingmind.core.devotional.DevotionalText
+import androidx.compose.foundation.text.selection.SelectionContainer
 import com.craftflowtechnologies.meetingmind.core.devotional.DevotionalOrigin
 import com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile
 import com.craftflowtechnologies.meetingmind.core.devotional.LiturgicalDay
@@ -138,7 +144,8 @@ fun DevotionalScreen(
         onOpenSermonStudio = { showSermonStudio = true },
         onArchive = onArchive,
         onFavourite = viewModel::toggleFavourite,
-        onExamen = viewModel::writeExamen
+        onExamen = viewModel::writeExamen,
+        onClassic = viewModel::readClassic
     )
     if (showSermonStudio) com.craftflowtechnologies.meetingmind.feature.faith.SparkStudioSheet(
         onDismiss = { showSermonStudio = false },
@@ -182,9 +189,22 @@ fun DevotionalContent(
     onArchive: () -> Unit = {},
     onFavourite: (DailyDevotional) -> Unit = {},
     onExamen: () -> Unit = {},
-    onOpenSermonStudio: () -> Unit = {}
+    onOpenSermonStudio: () -> Unit = {},
+    onClassic: () -> Unit = {}
 ) {
     val today = state.today
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // The whole devotional as text; verses carry their own words and version when they can be fetched.
+    fun wholeText(t: DailyDevotional, then: (String) -> Unit) {
+        scope.launch {
+            val service = com.craftflowtechnologies.meetingmind.core.scripture.ScriptureService(context)
+            val passages = if (liveScripture) t.devotional.scripture.mapNotNull { ref ->
+                (runCatching { service.passage(ref) }.getOrNull() as? com.craftflowtechnologies.meetingmind.core.scripture.PassageResult.Found)?.let { ref.display() to it.passage }
+            }.toMap() else emptyMap()
+            then(DevotionalText.all(t.devotional, t.devotional.day.date.format(DATE), passages))
+        }
+    }
     LazyColumn(Modifier.fillMaxSize().background(Paper).testTag("devotional_screen")) {
         item {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -231,7 +251,7 @@ fun DevotionalContent(
         when {
             today == null && state.writing -> item { Writing() }
             today == null && state.writeError != null -> item {
-                Callout("Couldn't write today's devotional", "${state.writeError}", "Try again") { onRewrite() }
+                Callout("Couldn't write today's devotional", "${state.writeError}", "Try again", secondary = "Read a classic instead", onSecondary = onClassic) { onRewrite() }
             }
             today == null -> item {
                 Intro(enabled = state.profile.enabled, onSettings = onSettings, onRewrite = onRewrite)
@@ -242,26 +262,31 @@ fun DevotionalContent(
             else -> {
                 val d = today.devotional
                 if (d.origin == DevotionalOrigin.CARE) item { CareCard(d) }
-                item { Section("Scripture") }
+                item { Section("Scripture", DevotionalText.block(d, DevotionalBlock.SCRIPTURE)) }
                 d.keyText?.let { k -> item { KeyText(k) } }
                 d.scripture.forEach { ref ->
                     item {
-                        if (liveScripture) ScriptureCard(reference = ref, heardAtMs = null, onOpen = { onReadPassage(ref) }, onPlay = null, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+                        if (liveScripture) ScriptureCard(
+                            reference = ref, heardAtMs = null, onOpen = { onReadPassage(ref) }, onPlay = null, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                            selectable = true,
+                            // Copies carry the reference and the version's attribution, once the verse has loaded.
+                            trailing = { passage -> BlockActions(ref.display(), DevotionalText.scripture(ref, passage)) }
+                        )
                         else StaticReference(ref)
                     }
                 }
                 if (d.origin != DevotionalOrigin.CARE && d.reflection.isNotEmpty()) {
-                    item { Section("Reflection") }
+                    item { Section("Reflection", DevotionalText.block(d, DevotionalBlock.REFLECTION)) }
                     d.reflection.forEach { p -> item { Paragraph(p) } }
                 }
                 if (d.application.isNotEmpty()) {
-                    item { Section("Today I will") }
+                    item { Section("Today I will", DevotionalText.block(d, DevotionalBlock.APPLICATION)) }
                     val checks = today.document.blocks.filter { it.sectionKey == DevotionalNotes.S_APPLICATION && it.type == NoteBlockType.CHECKLIST }.sortedBy { it.position }
                     d.application.forEachIndexed { i, a -> item { CheckRow(a, checks.getOrNull(i)?.checked == true) } }
                 }
-                d.prayer?.let { p -> item { PrayerCard(p, praying = state.voice.current == com.craftflowtechnologies.meetingmind.ai.voice.VoiceSection.PRAYER && state.voice.playing, onPrayWithMe = { onLive(com.craftflowtechnologies.meetingmind.core.prayer.PrayMode.TOGETHER) }) { onListenFrom(com.craftflowtechnologies.meetingmind.ai.voice.VoiceSection.PRAYER, true) } } }
+                d.prayer?.let { p -> item { PrayerCard(p, DevotionalText.block(d, DevotionalBlock.PRAYER), praying = state.voice.current == com.craftflowtechnologies.meetingmind.ai.voice.VoiceSection.PRAYER && state.voice.playing, onPrayWithMe = { onLive(com.craftflowtechnologies.meetingmind.core.prayer.PrayMode.TOGETHER) }) { onListenFrom(com.craftflowtechnologies.meetingmind.ai.voice.VoiceSection.PRAYER, true) } } }
                 d.motivation?.let { m -> item { WordForToday(m) } }
-                d.insight?.let { q -> item { QuoteCard(q.text, listOf(q.author, q.source).filter { it.isNotBlank() }.joinToString(", ")) } }
+                d.insight?.let { q -> item { QuoteCard(q.text, listOf(q.author, q.source).filter { it.isNotBlank() }.joinToString(", "), DevotionalText.block(d, DevotionalBlock.QUOTE)) } }
                 d.question?.let { q -> item { QuestionCard(q) } }
                 if (d.origin != DevotionalOrigin.CARE) {
                     item { Response(today, onSaveResponse) }
@@ -284,7 +309,13 @@ fun DevotionalContent(
                     d.origin != DevotionalOrigin.CARE && today.note.metadata[com.craftflowtechnologies.meetingmind.core.devotional.DevotionalNotes.META_EVENING] != "1") item {
                     ExamenCard(state.writing, onExamen)
                 }
-                item { Footer(today, onOpenNote, onRewrite, onShare, onOpenSermonStudio = onOpenSermonStudio, past = state.past) }
+                item {
+                    Footer(
+                        today, onOpenNote, onRewrite, onShare, onOpenSermonStudio = onOpenSermonStudio, past = state.past,
+                        onCopyAll = { wholeText(today) { copyToClipboard(context, today.devotional.title, it) } },
+                        onShareText = { wholeText(today) { shareAsText(context, today.devotional.title, it) } }
+                    )
+                }
             }
         }
         item { Spacer(Modifier.height(40.dp)) }
@@ -458,27 +489,35 @@ internal fun PillButton(label: String, filled: Boolean, modifier: Modifier = Mod
 }
 
 @Composable
-private fun Section(title: String) {
-    Text(title.uppercase(), fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold,
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 22.dp, bottom = 8.dp))
+private fun Section(title: String, copyText: String? = null) {
+    Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title.uppercase(), fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold, modifier = Modifier.weight(1f))
+        BlockActions(title, copyText)
+    }
 }
 
 @Composable
 private fun KeyText(text: String) {
-    Text(text, fontSize = 19.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, color = Ink,
-        modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
+    SelectionContainer {
+        Text(text, fontSize = 19.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, color = Ink,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
+    }
 }
 
 @Composable
 private fun StaticReference(ref: ScriptureReference) {
-    Text(ref.display(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(SurfaceBase).padding(14.dp))
+    Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(SurfaceBase).padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        SelectionContainer(Modifier.weight(1f)) { Text(ref.display(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink) }
+        BlockActions(ref.display(), ref.display())
+    }
 }
 
 @Composable
 private fun Paragraph(text: String) {
-    Text(text, fontSize = 17.sp, lineHeight = 28.sp, fontFamily = FontFamily.Serif, color = Ink,
-        modifier = Modifier.padding(horizontal = 24.dp, vertical = 7.dp))
+    SelectionContainer {
+        Text(text, fontSize = 17.sp, lineHeight = 28.sp, fontFamily = FontFamily.Serif, color = Ink,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 7.dp))
+    }
 }
 
 @Composable
@@ -486,18 +525,20 @@ private fun CheckRow(text: String, checked: Boolean) {
     Row(Modifier.padding(horizontal = 22.dp, vertical = 4.dp), verticalAlignment = Alignment.Top) {
         Icon(if (checked) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank, contentDescription = null, tint = Gold, modifier = Modifier.size(20.dp).padding(top = 2.dp))
         Spacer(Modifier.width(10.dp))
-        Text(text, fontSize = 15.5.sp, lineHeight = 22.sp, color = Ink)
+        SelectionContainer { Text(text, fontSize = 15.5.sp, lineHeight = 22.sp, color = Ink) }
     }
 }
 
 @Composable
-private fun PrayerCard(text: String, praying: Boolean = false, onPrayWithMe: () -> Unit = {}, onPray: () -> Unit = {}) {
+private fun PrayerCard(text: String, shareText: String?, praying: Boolean = false, onPrayWithMe: () -> Unit = {}, onPray: () -> Unit = {}) {
     Column(
         Modifier.padding(horizontal = 16.dp, vertical = 18.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
             .background(Brush.verticalGradient(listOf(Color(0xFFFFF4DC).forTheme(), Color(0xFFFFFBF2).forTheme()))).padding(22.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("PRAYER", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold, modifier = Modifier.weight(1f))
+            BlockActions("Prayer", shareText)
+            Spacer(Modifier.width(4.dp))
             Surface(onClick = onPray, shape = RoundedCornerShape(50), color = if (praying) Gold else SurfaceBase, modifier = Modifier.testTag("pray_aloud")) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (praying) Icons.Filled.GraphicEq else Icons.Filled.PlayArrow, contentDescription = null, tint = if (praying) Color.White else Gold, modifier = Modifier.size(15.dp))
@@ -513,7 +554,7 @@ private fun PrayerCard(text: String, praying: Boolean = false, onPrayWithMe: () 
                 Text("Pray with me", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
             }
         }
-        Text(text, fontSize = 17.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, color = Ink, modifier = Modifier.padding(top = 10.dp))
+        SelectionContainer { Text(text, fontSize = 17.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic, color = Ink, modifier = Modifier.padding(top = 10.dp)) }
     }
 }
 
@@ -523,25 +564,39 @@ private fun WordForToday(text: String) {
         Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
             .background(Brush.linearGradient(listOf(Color(0xFF4F46E5).forTheme(), Color(0xFF7C3AED).forTheme()))).padding(22.dp)
     ) {
-        Text("A WORD FOR TODAY", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.75f))
-        Text(text, fontSize = 19.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold, color = Color.White, modifier = Modifier.padding(top = 8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("A WORD FOR TODAY", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.75f), modifier = Modifier.weight(1f))
+            BlockActions("A word for today", text, tint = Color.White.copy(alpha = 0.8f))
+        }
+        SelectionContainer { Text(text, fontSize = 19.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold, color = Color.White, modifier = Modifier.padding(top = 8.dp)) }
     }
 }
 
 @Composable
-private fun QuoteCard(text: String, by: String) {
+private fun QuoteCard(text: String, by: String, shareText: String?) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(SurfaceBase).padding(22.dp)) {
-        Icon(Icons.Filled.FormatQuote, contentDescription = null, tint = Gold, modifier = Modifier.size(30.dp))
-        Text(text, fontSize = 18.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, color = Ink, modifier = Modifier.padding(top = 4.dp))
-        if (by.isNotBlank()) Text("— $by", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.FormatQuote, contentDescription = null, tint = Gold, modifier = Modifier.size(30.dp))
+            Spacer(Modifier.weight(1f))
+            BlockActions("Quote", shareText)
+        }
+        SelectionContainer {
+            Column {
+                Text(text, fontSize = 18.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, color = Ink, modifier = Modifier.padding(top = 4.dp))
+                if (by.isNotBlank()) Text("— $by", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 10.dp))
+            }
+        }
     }
 }
 
 @Composable
 private fun QuestionCard(text: String) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFFEFF6F1).forTheme()).padding(22.dp)) {
-        Text("A QUESTION TO SIT WITH", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-        Text(text, fontSize = 18.sp, lineHeight = 26.sp, fontFamily = FontFamily.Serif, color = Ink, modifier = Modifier.padding(top = 8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("A QUESTION TO SIT WITH", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
+            BlockActions("A question", text)
+        }
+        SelectionContainer { Text(text, fontSize = 18.sp, lineHeight = 26.sp, fontFamily = FontFamily.Serif, color = Ink, modifier = Modifier.padding(top = 8.dp)) }
     }
 }
 
@@ -549,16 +604,19 @@ private fun QuestionCard(text: String) {
 private fun CareCard(d: Devotional) {
     Column(Modifier.padding(16.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFFFFF1F2).forTheme()).padding(22.dp)) {
         Text("You're not alone", fontSize = 20.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
-        d.reflection.forEach { Text(it, fontSize = 15.sp, lineHeight = 22.sp, color = Ink, modifier = Modifier.padding(top = 10.dp)) }
+        SelectionContainer { Column { d.reflection.forEach { Text(it, fontSize = 15.sp, lineHeight = 22.sp, color = Ink, modifier = Modifier.padding(top = 10.dp)) } } }
     }
 }
 
 @Composable
-private fun Callout(title: String, body: String, action: String, onClick: () -> Unit) {
+private fun Callout(title: String, body: String, action: String, secondary: String? = null, onSecondary: () -> Unit = {}, onClick: () -> Unit) {
     Column(Modifier.padding(16.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(SurfaceBase).padding(22.dp)) {
         Text(title, fontSize = 19.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
         Text(body, fontSize = 14.sp, lineHeight = 20.sp, color = InkSecondary, modifier = Modifier.padding(top = 6.dp, bottom = 14.dp))
-        PillButton(action, filled = true, onClick = onClick)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton(action, filled = true, onClick = onClick)
+            secondary?.let { PillButton(it, filled = false, onClick = onSecondary) }
+        }
     }
 }
 
@@ -682,10 +740,16 @@ private fun Footer(
     onRewrite: () -> Unit,
     onShare: (DailyDevotional) -> Unit,
     onOpenSermonStudio: () -> Unit = {},
-    past: Boolean = false
+    past: Boolean = false,
+    onCopyAll: () -> Unit = {},
+    onShareText: () -> Unit = {}
 ) {
     val d = today.devotional
     Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
+        // Truthful provenance: when it was written and by whom.
+        DevotionalStatus.writtenLine(d.origin, d.engine, today.note.createdAt)?.let {
+            Text(it, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted, modifier = Modifier.testTag("devotional_written_line"))
+        }
         if (d.origin == DevotionalOrigin.CLASSIC) Text(d.label, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted)
         today.note.metadata["devotionalFallback"]?.let {
             Text(it, fontSize = 12.sp, lineHeight = 17.sp, color = InkMuted, fontStyle = FontStyle.Italic, modifier = Modifier.padding(top = 6.dp))
@@ -707,6 +771,20 @@ private fun Footer(
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Church, contentDescription = null, tint = Gold, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(8.dp))
                     Text("Motivational Sermon", fontSize = 14.sp, color = Ink, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        if (d.origin != DevotionalOrigin.MINE) Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Surface(onClick = onCopyAll, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("devotional_copy_all")) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.ContentCopy, contentDescription = null, tint = Ink, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
+                    Text("Copy all", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
+                }
+            }
+            Surface(onClick = onShareText, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("devotional_share_text")) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Share, contentDescription = null, tint = Ink, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
+                    Text("Share devotional", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
                 }
             }
         }
