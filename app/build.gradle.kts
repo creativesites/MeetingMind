@@ -57,6 +57,10 @@ android {
     buildConfigField("Boolean", "FEATURE_SAVED_VIEWS", "$savedViewsEnabled")
     val stubIntegrationsEnabled = (System.getenv("FEATURE_STUB_INTEGRATIONS") ?: "false").toBoolean()
     buildConfigField("Boolean", "FEATURE_STUB_INTEGRATIONS", "$stubIntegrationsEnabled")
+
+    // The companion roster (docs/mvp/ZURI_EXPERIENCE.md §10.7): which forms are offered, in display
+    // order. The founder's switch; all four forms at launch.
+    buildConfigField("String", "COMPANION_FORMS", "\"ZURI,NAS,WREN,PAGE\"")
   }
 
   signingConfigs {
@@ -83,6 +87,8 @@ android {
       // Installs beside the tester/Play app, never over it: its own package, name and data.
       applicationIdSuffix = ".dev"
       versionNameSuffix = "-dev"
+      // Live whisper (Z-25) is an experiment: testable in dev builds only.
+      buildConfigField("Boolean", "COMPANION_LIVE_WHISPER", "true")
       // Sign-in registrations for W13 (docs/INTEGRATION_CREDENTIALS.md)
       buildConfigField("String", "GOOGLE_CLIENT_ID", "\"785434731634-p56sa9uf14ivlnfh2hubtn1j6nrhta7u.apps.googleusercontent.com\"")
       buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"658f22a9-30c8-40e6-8400-992ace977d57\"")
@@ -93,6 +99,7 @@ android {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
+      buildConfigField("Boolean", "COMPANION_LIVE_WHISPER", "false")
       // Sign-in registrations for W13 (docs/INTEGRATION_CREDENTIALS.md)
       buildConfigField("String", "GOOGLE_CLIENT_ID", "\"785434731634-k9t9e8c1altm4boq43j5f5t4p06ksdhk.apps.googleusercontent.com\"")
       buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"658f22a9-30c8-40e6-8400-992ace977d57\"")
