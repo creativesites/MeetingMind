@@ -78,7 +78,7 @@ fun CompanionPickStep(
 
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-            stringResource(R.string.companion_onboarding_step1_title), style = MM.type.title, color = Color.White,
+            stringResource(R.string.companion_onboarding_step1_title), style = MM.type.title, color = com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite,
             textAlign = TextAlign.Center, modifier = Modifier.padding(top = MM.space.m).testTag("onboarding_companion_title")
         )
         Text(
@@ -103,7 +103,7 @@ fun CompanionPickStep(
             }
         }
         Text(
-            stringResource(lineFor(selected)), style = MM.type.bodyStrong, color = Color.White,
+            stringResource(lineFor(selected)), style = MM.type.bodyStrong, color = com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite,
             textAlign = TextAlign.Center, modifier = Modifier.padding(top = MM.space.m).testTag("onboarding_companion_line")
         )
 
@@ -152,7 +152,7 @@ private fun Pick(
         Column(Modifier.padding(vertical = MM.space.s, horizontal = MM.space.xs), horizontalAlignment = Alignment.CenterHorizontally) {
             face()
             Text(
-                label, style = MM.type.caption, color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
+                label, style = MM.type.caption, color = if (selected) com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite else Color.White.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center, maxLines = 2, modifier = Modifier.padding(top = MM.space.xs)
             )
         }
