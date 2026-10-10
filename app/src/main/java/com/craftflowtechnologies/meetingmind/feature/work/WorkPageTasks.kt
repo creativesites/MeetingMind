@@ -38,6 +38,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import com.craftflowtechnologies.meetingmind.core.notes.PagedState
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SegmentedControl
@@ -91,6 +93,7 @@ internal fun TasksContent(
                     }
                     state.items.isEmpty() -> item(key = "empty") {
                         EmptyState(
+                            illustration = { ZuriSlot(CompanionPage.EMPTY, EmptyCompanionSize) },
                             title = if (waiting) "Nobody owes you anything" else "Nothing on your plate",
                             body = if (waiting) "When someone promises you something in a meeting, it shows here until it arrives."
                             else "Tasks you add, and ones you agree to in meetings, land here with the day they're due."

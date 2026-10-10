@@ -30,7 +30,7 @@ class TodayScreenshotTest {
 
     private fun hero(identity: AppIdentity, greeting: String, file: String, hour: Int? = null) {
         compose.setContent {
-            MeetMindTheme {
+            MeetMindTheme { androidx.compose.runtime.CompositionLocalProvider(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true, com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion provides true) {
                 CompositionLocalProvider(LocalAppLook provides AppLook.of(identity.look)) {
                     Column {
                         HomeHeroHeader(
@@ -43,7 +43,7 @@ class TodayScreenshotTest {
                         )
                     }
                 }
-            }
+            }}
         }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$file.png")
     }
@@ -74,9 +74,9 @@ class DayViewScreenshotTest {
             item("e", 15, 30, "Interview: backend", com.craftflowtechnologies.meetingmind.core.timeline.TimelineLayer.RECORDINGS, "Strong on systems design; follow up on references", 60)
         )
         compose.setContent {
-            MeetMindTheme {
+            MeetMindTheme { androidx.compose.runtime.CompositionLocalProvider(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true, com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion provides true) {
                 androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.androidx_background()) { DayView(items, day, {}, {}) }
-            }
+            }}
         }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/day_view.png")
     }

@@ -49,6 +49,8 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import com.craftflowtechnologies.meetingmind.core.notes.PagedState
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.FilterChipRow
 import com.craftflowtechnologies.meetingmind.core.ui.mm.NoteRow
@@ -148,6 +150,7 @@ internal fun NotesContent(
                             )
                         } else {
                             EmptyState(
+                                illustration = { ZuriSlot(CompanionPage.EMPTY, EmptyCompanionSize) },
                                 title = "Your meeting notes live here",
                                 body = "Record a meeting or write a note — we'll keep decisions and tasks linked to what was said.",
                                 action = {

@@ -674,7 +674,12 @@ private fun NoteRow(note: Note, notebook: Notebook?, showNotebook: Boolean, onCl
 @Composable
 private fun EmptyNotes(filtered: Boolean, archive: Boolean, onCreate: () -> Unit, trash: Boolean = false) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(shape = CircleShape, color = AccentWash, modifier = Modifier.size(64.dp)) {
+        // The companion sits in the illustration slot of the plain "no notes yet" screen (§5.5). Filtered, archive and trash stay plain.
+        val companionShown = !filtered && !archive && !trash &&
+            com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible(com.craftflowtechnologies.meetingmind.core.companion.CompanionPage.EMPTY)
+        if (companionShown) {
+            com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot(com.craftflowtechnologies.meetingmind.core.companion.CompanionPage.EMPTY, 96.dp)
+        } else Surface(shape = CircleShape, color = AccentWash, modifier = Modifier.size(64.dp)) {
             Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.EditNote, contentDescription = null, tint = Accent, modifier = Modifier.size(30.dp)) }
         }
         Text(

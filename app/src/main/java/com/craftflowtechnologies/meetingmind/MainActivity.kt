@@ -367,6 +367,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     val routesWithNav = setOf(Routes.HOME, Routes.NOTES, Routes.SEARCH, Routes.SETTINGS)
     val onProcessingScreen = currentRoute == Routes.PROCESSING
 
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionOpenSettings provides { navController.navigate(com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsRoute) }
+    ) {
     Box(modifier = Modifier.fillMaxSize()) {
     NavHost(
         navController = navController,
@@ -703,6 +706,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         composable(Routes.PLANS) {
             val vm: com.craftflowtechnologies.meetingmind.feature.faith.FaithExtrasViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
             com.craftflowtechnologies.meetingmind.feature.faith.ReadingPlansScreen(vm, onNavigateBack = { navController.popBackStack() }, onRead = { navController.navigate(Routes.bibleRoute(it.passageId())) })
+        }
+        composable(com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsRoute) {
+            com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsScreen(onNavigateBack = { navController.popBackStack() })
         }
         composable(Routes.APPEARANCE) {
             val vm: com.craftflowtechnologies.meetingmind.feature.settings.AppearanceViewModel = viewModel()
@@ -1178,6 +1184,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenWork = { navController.navigate(Routes.WORK_SETTINGS) },
                 onOpenIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
                 onOpenRecipes = { navController.navigate(Routes.RECIPES) },
+                onOpenCompanion = { navController.navigate(com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsRoute) },
                 onReplayTour = {
                     recoveryScope.launch {
                         com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context).setTourCompleted(false)
@@ -1297,6 +1304,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 }) { Text("Delete") }
             }
         )
+    }
     }
     }
 }

@@ -259,6 +259,7 @@ fun SettingsScreen(
     onOpenWork: () -> Unit = {},
     onOpenIntegrations: () -> Unit = {},
     onOpenRecipes: () -> Unit = {},
+    onOpenCompanion: () -> Unit = {},
     onReplayTour: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -496,6 +497,24 @@ fun SettingsScreen(
                         title = "Look and home",
                         subtitle = "Colour, text size, and Today or Focus as your home",
                         onClick = onOpenAppearance
+                    )
+                }
+                settingsRow {
+                    val companion by com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings()
+                    val companionForm = companion.form
+                    SettingsNavRow(
+                        title = stringResource(R.string.companion_settings_title),
+                        subtitle = if (companionForm == null) stringResource(R.string.companion_settings_row_subtitle_none)
+                        else stringResource(
+                            R.string.companion_settings_row_subtitle,
+                            companion.name ?: stringResource(com.craftflowtechnologies.meetingmind.core.companion.CompanionRoster.displayName(companionForm)),
+                            stringResource(when (companion.presence) {
+                                com.craftflowtechnologies.meetingmind.core.companion.Presence.AROUND -> R.string.companion_presence_around
+                                com.craftflowtechnologies.meetingmind.core.companion.Presence.MOMENTS -> R.string.companion_presence_moments_long
+                                com.craftflowtechnologies.meetingmind.core.companion.Presence.OFF -> R.string.companion_presence_off
+                            })
+                        ),
+                        onClick = onOpenCompanion
                     )
                 }
                 val current = runCatching { com.craftflowtechnologies.meetingmind.ui.theme.ThemeMode.valueOf(prefs.themeMode) }.getOrDefault(com.craftflowtechnologies.meetingmind.ui.theme.ThemeMode.DARK)
