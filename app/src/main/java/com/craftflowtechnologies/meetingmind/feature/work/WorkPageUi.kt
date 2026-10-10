@@ -43,7 +43,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.notes.PagedState
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
@@ -57,6 +61,12 @@ internal data class WorkMenuAction(val label: String, val badge: Int = 0, val on
  * The Work header (WORK_UX §2): "Work", one context line, and Search, ＋, ⋯. Plain surface, no gradient.
  * The ⋯ icon carries the Inbox count only when it is above 0.
  */
+/** The Work header companion: small and crisp (T0). */
+private val WorkCompanionSize = 40.dp
+
+/** The companion in a Work empty state (§5.5: 96 dp). */
+internal val EmptyCompanionSize = 96.dp
+
 @Composable
 internal fun WorkPageHeader(
     contextLine: String,
@@ -68,10 +78,15 @@ internal fun WorkPageHeader(
 ) {
     val inbox = moreActions.sumOf { it.badge }
     Column(modifier) {
+        // A small companion leads the title (40 dp, §5.3); nothing is reserved while it is filtered out.
+        val companionShown = rememberCompanionVisible(CompanionPage.HOME)
         ScreenHeader(
             "Work",
-            leading = onBack?.let { back -> {
-                IconButton(onClick = back) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.ink) }
+            leading = if (onBack == null && !companionShown) null else { {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.ink) }
+                    ZuriSlot(CompanionPage.HOME, WorkCompanionSize)
+                }
             } },
             actions = {
                 IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search Work", tint = MM.colors.inkSecondary) }

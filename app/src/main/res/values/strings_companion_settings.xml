@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Settings -> Companion and the long-press quick sheet (docs/mvp/ZURI_EXPERIENCE.md sections 7.1 and 7.3).
+  Placeholders are positional. %1$s is the companion's name unless a comment says otherwise.
+-->
+<resources>
+    <string name="companion_settings_title">Companion</string>
+    <string name="companion_settings_back">Back</string>
+    <!-- %1$s: companion name. %2$s: presence label. -->
+    <string name="companion_settings_row_subtitle">%1$s · %2$s</string>
+    <string name="companion_settings_row_subtitle_none">No companion</string>
+
+    <string name="companion_settings_basic">Who keeps you company</string>
+    <string name="companion_settings_tap_hint">Tap a face to see how it moves.</string>
+    <string name="companion_settings_choose">Choose</string>
+    <string name="companion_settings_chosen">Chosen</string>
+    <!-- %1$s: form name. %2$s: the pose now showing. -->
+    <string name="companion_settings_preview_description">%1$s, %2$s. Tap to see the next pose.</string>
+    <string name="companion_settings_none_title">No companion</string>
+    <string name="companion_settings_none_body">Nobody appears anywhere. You can bring one back any time.</string>
+
+    <string name="companion_pose_idle">Idle</string>
+    <string name="companion_pose_listening">Listening</string>
+    <string name="companion_pose_thinking">Thinking</string>
+    <string name="companion_pose_celebrating">Celebrating</string>
+    <string name="companion_pose_sleepy">Sleepy</string>
+    <string name="companion_pose_worried">Worried</string>
+    <string name="companion_pose_other">Other</string>
+
+    <string name="companion_name_label">Name</string>
+    <string name="companion_name_supporting">Up to 14 characters. Leave it empty to use the original name.</string>
+
+    <string name="companion_presence_label">How often they show up</string>
+    <string name="companion_presence_around">Around</string>
+    <string name="companion_presence_moments_long">Big moments</string>
+    <string name="companion_presence_moments">Moments</string>
+    <string name="companion_presence_off">Off</string>
+    <string name="companion_presence_around_body">On Home and empty screens, and while you record and wait for a note.</string>
+    <string name="companion_presence_moments_body">Only while recording, waiting for a note, and for big moments.</string>
+    <string name="companion_presence_off_body">Hidden everywhere.</string>
+
+    <string name="companion_advanced">Advanced</string>
+    <!-- %1$s: companion name. -->
+    <string name="companion_advanced_record_button">%1$s on the record button</string>
+    <string name="companion_advanced_record_button_body">Saved now. The record button will show it in an upcoming update.</string>
+    <string name="companion_advanced_record_button_disabled">Choose a companion first.</string>
+    <string name="companion_advanced_quiet_sermons">Quiet during sermons</string>
+    <string name="companion_advanced_quiet_sermons_body">Stays calm and still while you record a sermon.</string>
+    <!-- %1$s: companion name. -->
+    <string name="companion_advanced_create_suggest">Suggest %1$s on Create cards</string>
+    <string name="companion_advanced_create_suggest_body">Offers a companion pose when you make a card. Never on prayer lists.</string>
+
+    <!-- Quick sheet. %1$s: companion name. -->
+    <string name="companion_quick_options">%1$s options</string>
+    <string name="companion_quick_options_action">Open %1$s options</string>
+    <string name="companion_quick_form_label">Companion</string>
+    <string name="companion_quick_hide">Hide until tomorrow</string>
+    <string name="companion_quick_more">More in Settings → Companion</string>
+    <string name="companion_quick_close">Done</string>
+    <!-- %1$s: companion name. Shown on Home after "Hide until tomorrow". -->
+    <string name="companion_quick_show">Show %1$s</string>
+</resources>

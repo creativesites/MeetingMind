@@ -75,10 +75,10 @@ class TodayScreenTest {
         val opened = mutableListOf<String>()
         val vm = TodayViewModel(ApplicationProvider.getApplicationContext())
         compose.setContent {
-            MeetMindTheme {
+            MeetMindTheme { androidx.compose.runtime.CompositionLocalProvider(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true, com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion provides true) {
                 TodayScreen(vm, onOpenNote = { opened += it }, onOpenProcessing = {}, onRecord = {}, onRecordType = {},
                     onRecordEvent = { _, _, _, _ -> }, onSearch = {}, onNavigateBottomNav = {})
-            }
+            }}
         }
         settle { vm.items.value.size == 4 }
         compose.waitForIdle()

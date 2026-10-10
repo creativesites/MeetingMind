@@ -45,7 +45,7 @@ class WorkPageScreenshotTest {
 
     private fun shoot(name: String, dark: Boolean, segment: WorkSegment, content: @Composable () -> Unit) {
         rule.setContent {
-            MMPreviewFrame(dark) {
+            MMPreviewFrame(dark) { androidx.compose.runtime.CompositionLocalProvider(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true, com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion provides true) {
                 Column(Modifier.fillMaxSize().background(MM.colors.background)) {
                     Column(Modifier.padding(horizontal = MM.space.l)) {
                         WorkPageHeader(
@@ -58,7 +58,7 @@ class WorkPageScreenshotTest {
                     }
                     Box(Modifier.weight(1f)) { content() }
                 }
-            }
+            }}
         }
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/work/${name}_${if (dark) "dark" else "light"}.png")
     }
