@@ -86,8 +86,27 @@ object PrayerCompanion {
         - After singing, let a moment of quiet pass, then gently move into prayer.
     """.trimIndent()
 
-    fun systemInstruction(s: PraySetup): String = buildString {
+    /** Morning, afternoon, evening or night, from the local hour. */
+    fun partOfDay(hour: Int): String = when (hour) {
+        in 5..11 -> "morning"
+        in 12..16 -> "afternoon"
+        in 17..20 -> "evening"
+        else -> "night"
+    }
+
+    /** The local day and time, so greetings and prayers fit the hour (it is not always morning). */
+    fun timeContext(now: java.time.LocalDateTime): String {
+        val day = now.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH)
+        val time = now.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.ENGLISH))
+        val part = partOfDay(now.hour)
+        return "It is $day, $time — $part where they are. Greet and pray for the $part (e.g. a night prayer for rest, not \"this morning\"). " +
+            "If today's devotional speaks of the morning, don't assume it is morning now."
+    }
+
+    fun systemInstruction(s: PraySetup, now: java.time.LocalDateTime = java.time.LocalDateTime.now()): String = buildString {
         appendLine(BOUNDARIES)
+        appendLine()
+        appendLine(timeContext(now))
         appendLine()
         appendLine(SINGING)
         appendLine()
@@ -106,7 +125,7 @@ object PrayerCompanion {
 
     /** The first thing sent, so the companion speaks first. */
     fun opening(s: PraySetup): String = s.worship?.let { worshipOpening(it) } ?: when (s.mode) {
-        PrayMode.TALK_IT_THROUGH -> "Please greet me briefly and ask me one question about today's devotional."
+        PrayMode.TALK_IT_THROUGH -> "Please greet me briefly, right for this time of day, and ask me one question about today's devotional."
         PrayMode.LISTEN -> "Please greet me in one short sentence and invite me to pray whenever I'm ready."
         PrayMode.ONE_AT_A_TIME -> if (s.requests.isEmpty() && s.about.isBlank()) "Please greet me briefly and ask what I'd like to pray about, one thing at a time." else "Please greet me briefly and begin with the first thing on my list."
         else -> if (s.requests.isEmpty() && s.about.isBlank()) "Please greet me briefly and ask what's on my heart today." else "Please greet me briefly and begin."
