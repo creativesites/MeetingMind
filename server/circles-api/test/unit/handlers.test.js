@@ -163,3 +163,68 @@ test("path injection and rate limit on posts", async () => {
   for (let i = 0; i < 10; i++) await W.call("owner", "createPost", { circleId: id, type: "prayer", body: "x", anonymous: false });
   assert.equal((await W.err("owner", "createPost", { circleId: id, type: "prayer", body: "x", anonymous: false })).code, "rate_limited");
 });
+
+test("polls: shape validated, message created, only creator/admin closes, rate limited", async () => {
+  const W = world();
+  const id = await circle(W);
+  await joinAs(W, "ann", id, "Ann"); await joinAs(W, "bob", id, "Bob");
+  const bad = (o) => W.err("ann", "createPoll", { circleId: id, ...o });
+  assert.equal((await bad({ question: "Q?", options: ["only one"] })).code, "bad_request");
+  assert.equal((await bad({ question: "Q?", options: ["a", "A"] })).code, "bad_request");
+  assert.equal((await bad({ question: "Q?", options: ["1", "2", "3", "4", "5", "6", "7"] })).code, "bad_request");
+  assert.equal((await bad({ question: "", options: ["a", "b"] })).code, "bad_request");
+  assert.equal((await W.err("stranger", "createPoll", { circleId: id, question: "Q?", options: ["a", "b"] })).code, "not_a_member");
+  const { pollId, messageId } = await W.call("ann", "createPoll", { circleId: id, question: "Which night?", options: ["Tue", "Thu"], multi: true });
+  const poll = W.db.dump(`circles/${id}/polls/${pollId}`);
+  assert.deepEqual(poll.optionIds, ["o0", "o1"]); assert.equal(poll.multi, true); assert.equal(poll.closed, false);
+  const msg = W.db.dump(`circles/${id}/messages/${messageId}`);
+  assert.equal(msg.kind, "poll"); assert.equal(msg.pollId, pollId); assert.equal(msg.authorUid, "ann"); assert.equal(msg.deleted, false);
+  assert.equal((await W.err("bob", "closePoll", { circleId: id, pollId })).code, "forbidden");
+  await W.call("ann", "closePoll", { circleId: id, pollId });
+  assert.equal(W.db.dump(`circles/${id}/polls/${pollId}`).closed, true);
+  await W.call("owner", "closePoll", { circleId: id, pollId }); // idempotent, admin allowed
+  assert.equal((await W.err("ann", "closePoll", { circleId: id, pollId: "nope" })).code, "not_found");
+  for (let i = 0; i < 9; i++) await W.call("ann", "createPoll", { circleId: id, question: "Q" + i, options: ["a", "b"] });
+  assert.equal((await W.err("ann", "createPoll", { circleId: id, question: "x", options: ["a", "b"] })).code, "rate_limited");
+});
+
+test("prayer chain: 24h window, needs prayer type, linked post must be a live prayer, rate limited", async () => {
+  const W = world();
+  const id = await circle(W, { prayerApproval: false });
+  await joinAs(W, "ann", id, "Ann");
+  const { postId } = await W.call("ann", "createPost", { circleId: id, type: "prayer", body: "p", anonymous: true });
+  const r = await W.call("ann", "startChain", { circleId: id, title: "For Sam's surgery", postId });
+  const chain = W.db.dump(`circles/${id}/chains/${r.chainId}`);
+  assert.equal(chain.endsAt.getTime() - chain.startsAt.getTime(), 24 * 3_600_000);
+  assert.equal(W.db.dump(`circles/${id}/messages/${r.messageId}`).kind, "chain");
+  // anonymity: a chain on an anonymous request must not carry the starter's link to the author in the post
+  assert.equal(W.db.dump(`circles/${id}/posts/${postId}`).authorUid, undefined);
+  assert.equal((await W.err("ann", "startChain", { circleId: id, title: "x", postId: "missing" })).code, "not_found");
+  assert.equal((await W.err("stranger", "startChain", { circleId: id, title: "x" })).code, "not_a_member");
+  await W.call("ann", "startChain", { circleId: id, title: "two" });
+  await W.call("ann", "startChain", { circleId: id, title: "three" });
+  assert.equal((await W.err("ann", "startChain", { circleId: id, title: "four" })).code, "rate_limited");
+  const W2 = world();
+  const id2 = await circle(W2, { allowedTypes: ["study"] });
+  assert.equal((await W2.err("owner", "startChain", { circleId: id2, title: "x" })).code, "type_not_allowed");
+});
+
+test("celebrate: self only; answered needs a named, answered request you wrote; never unmasks anonymous", async () => {
+  const W = world();
+  const id = await circle(W, { prayerApproval: false });
+  await joinAs(W, "ann", id, "Ann"); await joinAs(W, "bob", id, "Bob");
+  const b = await W.call("bob", "celebrate", { circleId: id, kind: "birthday", text: "Turning 30!", companion: "zuri" });
+  const m = W.db.dump(`circles/${id}/messages/${b.messageId}`);
+  assert.equal(m.kind, "celebration"); assert.equal(m.authorUid, "bob"); assert.equal(m.companion, "zuri"); assert.equal(m.celebration, "birthday");
+  assert.equal((await W.err("bob", "celebrate", { circleId: id, kind: "party" })).code, "bad_request");
+  assert.equal((await W.err("bob", "celebrate", { circleId: id, kind: "streak", companion: "dragon" })).code, "bad_request");
+  const anon = (await W.call("ann", "createPost", { circleId: id, type: "prayer", body: "p", anonymous: true })).postId;
+  await W.call("ann", "markAnswered", { circleId: id, postId: anon });
+  assert.equal((await W.err("ann", "celebrate", { circleId: id, kind: "answered", postId: anon })).code, "bad_request");
+  const named = (await W.call("ann", "createPost", { circleId: id, type: "prayer", body: "p2", anonymous: false })).postId;
+  assert.equal((await W.err("ann", "celebrate", { circleId: id, kind: "answered", postId: named })).code, "not_answered");
+  assert.equal((await W.err("bob", "celebrate", { circleId: id, kind: "answered", postId: named })).code, "forbidden");
+  await W.call("ann", "markAnswered", { circleId: id, postId: named });
+  await W.call("ann", "celebrate", { circleId: id, kind: "answered", postId: named });
+  assert.equal((await W.err("stranger", "celebrate", { circleId: id, kind: "birthday" })).code, "not_a_member");
+});

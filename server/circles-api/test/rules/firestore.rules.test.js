@@ -25,6 +25,14 @@ beforeEach(async () => {
     await setDoc(doc(db, `circles/${C}/pending/pp`), { type: "prayer", body: "wait", anonymous: true });
     await setDoc(doc(db, `circles/${C}/posts/${P}/prayers/member`), { createdAt: new Date() });
     await setDoc(doc(db, `circles/${C}/posts/${P}/prayers/other`), { createdAt: new Date() });
+    await setDoc(doc(db, `circles/${C}/messages/m1`), { authorUid: "member", displayName: "M", kind: "text", text: "hello", createdAt: new Date(), deleted: false });
+    await setDoc(doc(db, `circles/${C}/messages/mp`), { authorUid: "admin", kind: "poll", text: "Night?", pollId: "pl1", createdAt: new Date(), deleted: false });
+    await setDoc(doc(db, `circles/${C}/polls/pl1`), { question: "Night?", options: [{ id: "o0", text: "Tue" }, { id: "o1", text: "Thu" }, { id: "o2", text: "Sat" }], optionIds: ["o0", "o1", "o2"], multi: false, closed: false });
+    await setDoc(doc(db, `circles/${C}/polls/plm`), { question: "Pick", options: [], optionIds: ["o0", "o1", "o2"], multi: true, closed: false });
+    await setDoc(doc(db, `circles/${C}/polls/plc`), { question: "Done", optionIds: ["o0", "o1"], multi: false, closed: true });
+    await setDoc(doc(db, `circles/${C}/chains/ch1`), { title: "Sam", hours: 24, endsAt: new Date(Date.now() + 3_600_000) });
+    await setDoc(doc(db, `circles/${C}/chains/old`), { title: "Old", hours: 24, endsAt: new Date(Date.now() - 3_600_000) });
+    await setDoc(doc(db, `circles/${C}/chains/ch1/slots/5`), { authorUid: "admin", displayName: "A", createdAt: new Date() });
     await setDoc(doc(db, `invites/GRACE-7K2Q`), { circleId: C });
     await setDoc(doc(db, `userMeta/member`), { circleCount: 1 });
     await setDoc(doc(db, `users/member`), { displayName: "M", fcmTokens: ["t"] });
@@ -133,4 +141,116 @@ test("reports readable by admins only; old encrypted events path is denied; defa
   await assertFails(getDoc(doc(as("member"), `circles/${C}/reports/r1`)));
   await assertFails(setDoc(doc(as("member"), `circles/${C}/events/e1`), { uid: "member", ts: 1, iv: "a", ciphertext: "b" }));
   await assertFails(getDoc(doc(as("member"), "anything/else")));
+});
+
+const M = (id) => `circles/${C}/messages/${id}`;
+const msg = (over = {}) => ({ authorUid: "member", displayName: "M", kind: "text", text: "hi", createdAt: serverTimestamp(), deleted: false, ...over });
+
+test("chat: members only read; only members write; author == uid; time and size checked", async () => {
+  await assertSucceeds(getDocs(collection(as("member"), `circles/${C}/messages`)));
+  await assertFails(getDocs(collection(as("stranger"), `circles/${C}/messages`)));
+  await assertFails(getDoc(doc(anon(), M("m1"))));
+  await assertSucceeds(setDoc(doc(as("member"), M("n1")), msg()));
+  await assertFails(setDoc(doc(as("stranger"), M("n2")), msg({ authorUid: "stranger" })));
+  await assertFails(setDoc(doc(as("member"), M("n3")), msg({ authorUid: "admin" })));
+  await assertFails(setDoc(doc(as("member"), M("n4")), msg({ createdAt: new Date("2020-01-01") })));
+  await assertFails(setDoc(doc(as("member"), M("n5")), msg({ text: "" })));
+  await assertFails(setDoc(doc(as("member"), M("n6")), msg({ text: "x".repeat(2001) })));
+  await assertSucceeds(setDoc(doc(as("member"), M("n7")), msg({ text: "x".repeat(2000) })));
+  await assertFails(setDoc(doc(as("member"), M("n8")), msg({ role: "admin" })));
+  await assertFails(setDoc(doc(as("member"), M("n9")), msg({ deleted: true })));
+  await assertFails(setDoc(doc(as("member"), M("n10")), msg({ displayName: "x".repeat(41) })));
+});
+
+test("chat: Worker-only kinds (poll, celebration, chain) cannot be forged by clients", async () => {
+  for (const kind of ["poll", "celebration", "chain", "system"]) {
+    await assertFails(setDoc(doc(as("member"), M("f" + kind)), msg({ kind, pollId: "pl1" })));
+  }
+  await assertFails(setDoc(doc(as("owner"), M("fowner")), msg({ authorUid: "owner", kind: "poll" })));
+});
+
+test("chat: replies must point at an existing message; cards must be well-formed", async () => {
+  await assertSucceeds(setDoc(doc(as("member"), M("r1")), msg({ kind: "reply", replyTo: "m1" })));
+  await assertFails(setDoc(doc(as("member"), M("r2")), msg({ kind: "reply", replyTo: "ghost" })));
+  await assertFails(setDoc(doc(as("member"), M("r3")), msg({ kind: "reply" })));
+  await assertFails(setDoc(doc(as("member"), M("r4")), msg({ replyTo: "m1" }))); // replyTo only on kind reply
+  const card = { templateId: "dawn", text: "Be still", mood: "calm" };
+  await assertSucceeds(setDoc(doc(as("member"), M("c1")), msg({ kind: "card", text: "", card })));
+  await assertFails(setDoc(doc(as("member"), M("c2")), msg({ kind: "card", text: "" })));
+  await assertFails(setDoc(doc(as("member"), M("c3")), msg({ kind: "card", text: "", card: { ...card, extra: 1 } })));
+  await assertFails(setDoc(doc(as("member"), M("c4")), msg({ kind: "card", text: "", card: { templateId: "dawn", text: "x".repeat(601) } })));
+  await assertFails(setDoc(doc(as("member"), M("c5")), msg({ card }))); // card on a text message
+});
+
+test("chat: edit own text only; soft-delete own; admins soft-delete any; no hard delete", async () => {
+  await assertSucceeds(updateDoc(doc(as("member"), M("m1")), { text: "edited", editedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(as("member"), M("m1")), { text: "edited" })); // editedAt required
+  await assertFails(updateDoc(doc(as("member"), M("m1")), { text: "", editedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(as("member"), M("m1")), { authorUid: "admin", text: "x", editedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(as("admin"), M("m1")), { text: "admin edit", editedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(as("stranger"), M("m1")), { deleted: true, text: "" }));
+  await assertFails(updateDoc(doc(as("member"), M("mp")), { deleted: true, text: "" })); // not theirs
+  await assertFails(updateDoc(doc(as("member"), M("m1")), { deleted: true, text: "still here" }));
+  await assertSucceeds(updateDoc(doc(as("admin"), M("m1")), { deleted: true, text: "" }));
+  await assertFails(updateDoc(doc(as("member"), M("m1")), { text: "zombie", editedAt: serverTimestamp() })); // deleted: no edits
+  await assertSucceeds(updateDoc(doc(as("owner"), M("mp")), { deleted: true, text: "" }));
+  await assertFails(deleteDoc(doc(as("owner"), M("mp"))));
+  await assertFails(deleteDoc(doc(as("member"), M("m1"))));
+});
+
+test("chat reactions: one per member (doc id == uid), allowed emoji, readable by members", async () => {
+  const r = (id, uid) => doc(as(id), `${M("m1")}/reactions/${uid}`);
+  await assertSucceeds(setDoc(r("member", "member"), { authorUid: "member", emoji: "🙏", createdAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(r("member", "member"), { emoji: "❤️" }));
+  await assertFails(setDoc(r("member", "admin"), { authorUid: "admin", emoji: "🙏", createdAt: serverTimestamp() }));
+  await assertFails(setDoc(r("admin", "admin"), { authorUid: "member", emoji: "🙏", createdAt: serverTimestamp() }));
+  await assertFails(setDoc(r("admin", "admin"), { authorUid: "admin", emoji: "💩", createdAt: serverTimestamp() }));
+  await assertFails(setDoc(r("stranger", "stranger"), { authorUid: "stranger", emoji: "🙏", createdAt: serverTimestamp() }));
+  await assertSucceeds(getDocs(collection(as("owner"), `${M("m1")}/reactions`)));
+  await assertFails(getDocs(collection(as("stranger"), `${M("m1")}/reactions`)));
+  await assertFails(deleteDoc(r("admin", "member")));
+  await assertSucceeds(deleteDoc(r("member", "member")));
+  await env.withSecurityRulesDisabled((c) => updateDoc(doc(c.firestore(), M("m1")), { deleted: true, text: "" }));
+  await assertFails(setDoc(r("admin", "admin"), { authorUid: "admin", emoji: "🙏", createdAt: serverTimestamp() })); // deleted message
+});
+
+test("poll votes: doc id == uid, open polls only, valid options, single vs multi, no forged polls", async () => {
+  const v = (poll, uid, as_ = uid) => doc(as(as_), `circles/${C}/polls/${poll}/votes/${uid}`);
+  const vote = (choices, uid = "member") => ({ authorUid: uid, choices, updatedAt: serverTimestamp() });
+  await assertSucceeds(setDoc(v("pl1", "member"), vote(["o1"])));
+  await assertSucceeds(setDoc(v("pl1", "member"), vote(["o2"]))); // change vote
+  await assertFails(setDoc(v("pl1", "member"), vote(["o0", "o1"]))); // single choice
+  await assertFails(setDoc(v("pl1", "admin", "member"), vote(["o0"], "admin"))); // someone else's doc
+  await assertFails(setDoc(v("pl1", "admin"), vote(["o0"], "member"))); // spoofed authorUid
+  await assertFails(setDoc(v("pl1", "admin"), vote(["o9"], "admin"))); // not an option
+  await assertFails(setDoc(v("pl1", "admin"), vote([], "admin")));
+  await assertFails(setDoc(v("pl1", "stranger"), vote(["o0"], "stranger")));
+  await assertFails(setDoc(v("plc", "member"), vote(["o0"]))); // closed
+  await assertFails(setDoc(v("nope", "member"), vote(["o0"]))); // no such poll
+  await assertSucceeds(setDoc(v("plm", "member"), vote(["o0", "o2"]))); // multi
+  await assertFails(setDoc(v("plm", "admin"), vote(["o0", "o0"], "admin"))); // duplicate choices
+  await assertFails(setDoc(v("plm", "owner"), { ...vote(["o0"], "owner"), extra: 1 }));
+  await assertSucceeds(getDocs(collection(as("owner"), `circles/${C}/polls/plm/votes`)));
+  await assertFails(getDocs(collection(as("stranger"), `circles/${C}/polls/plm/votes`)));
+  await assertFails(setDoc(doc(as("admin"), `circles/${C}/polls/new`), { question: "x", optionIds: ["o0"], closed: false })); // polls are Worker-made
+  await assertFails(updateDoc(doc(as("owner"), `circles/${C}/polls/pl1`), { closed: true }));
+});
+
+test("prayer chain slots: valid hour, open chain, claim once, release own, Worker-only chains", async () => {
+  const s = (chain, hour, uid) => doc(as(uid), `circles/${C}/chains/${chain}/slots/${hour}`);
+  const claim = (uid) => ({ authorUid: uid, displayName: uid, createdAt: serverTimestamp() });
+  await assertSucceeds(setDoc(s("ch1", "6", "member"), claim("member")));
+  await assertFails(setDoc(s("ch1", "6", "owner"), claim("owner"))); // already claimed (update denied)
+  await assertFails(setDoc(s("ch1", "5", "member"), claim("member"))); // taken by admin
+  await assertFails(setDoc(s("ch1", "24", "member"), claim("member"))); // bad hour
+  await assertFails(setDoc(s("ch1", "07", "member"), claim("member")));
+  await assertFails(setDoc(s("ch1", "8", "member"), claim("owner"))); // spoof
+  await assertFails(setDoc(s("ch1", "9", "stranger"), claim("stranger")));
+  await assertFails(setDoc(s("old", "1", "member"), claim("member"))); // chain ended
+  await assertSucceeds(getDocs(collection(as("member"), `circles/${C}/chains/ch1/slots`)));
+  await assertFails(getDocs(collection(as("stranger"), `circles/${C}/chains/ch1/slots`)));
+  await assertFails(deleteDoc(s("ch1", "5", "member"))); // someone else's
+  await assertSucceeds(deleteDoc(s("ch1", "6", "member")));
+  await assertSucceeds(deleteDoc(s("ch1", "5", "owner"))); // admin clears
+  await assertFails(setDoc(doc(as("owner"), `circles/${C}/chains/mine`), { title: "x", endsAt: new Date() }));
 });
