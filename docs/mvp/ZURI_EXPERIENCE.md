@@ -452,7 +452,19 @@ information.
 |---|---|---|---|
 | **T0** | < 48 dp | Flat vector. No idle animation; state changes crossfade only (150 ms). | MVP |
 | **T1** | 48–143 dp | Flat + a **volume layer**, clipped to the silhouette: a radial shading field (white 26% → clear → black 28% at the far edge), a soft specular oval, a rim stroke (`rim`, bottom-right), and contact AO (a second, tighter shadow). Parallax from touch and scroll offset (±1.2 units). | MVP (the volume layer is behind `companion.volume` in Phase A and on by default after the perf check, Z-14) |
-| **T2** | ≥ 144 dp, hero moments only | T1 + gyro parallax (`TYPE_GAME_ROTATION_VECTOR`, about 30 Hz, registered only while the hero is visible). **Rive is an evaluation spike only** (Z-19): it is adopted only if it beats T1 on feel *and* fits the size budget. | T1 fallback is the default |
+| **T2** | ≥ 144 dp, hero moments only | T1 + gyro parallax (`TYPE_GAME_ROTATION_VECTOR`, about 30 Hz, registered only while the hero is visible). | T1 fallback is the default |
+
+**Renderer: Rive for the living character, Canvas for everything else (founder decision, 2026-10-09).**
+The tiers above describe the *look*. Which engine draws it is chosen per slot by `Companion()`:
+
+| Renderer | When | Status |
+|---|---|---|
+| **Rive** (`app.rive:rive-android`) | **All** of: slot ≥ 48 dp (T1/T2); animator duration scale > 0; the form's `.riv` bundled in `assets/companion/`; a free slot in the screen's live-Rive budget (`LocalCompanionRiveBudget`, default 2); `CompanionFlags.rive` on; the file passes the contract check. | Integrated (Z-19). Switches on per form as each `.riv` lands; until then every form uses Canvas. |
+| **Canvas** (Compose) | T0 glyphs under 48 dp; reduced-motion static poses; screenshot tests; Create card export to a bitmap; any form without a `.riv`; any file that fails the contract. | Built for all four forms (Z-5, Z-7, Z-23, Z-24). |
+
+The contract (artboards, the "Companion" state machine, inputs, the `CompanionTheme` view model for the
+accent) and the authoring brief are in `docs/mvp/ZURI_RIVE_BRIEF.md`. A missing or broken file always falls back
+to Canvas, never to a crash or a blank slot.
 
 **Not adopted:** pre-rendered 3D in the app (store art and marketing only), and real-time 3D (Filament/SceneView) at
 any tier. The reasons are in `zuri-options.html` §3D: APK size, shader warm-up and battery.
@@ -817,27 +829,33 @@ held to these rules.** It is not a new pipeline.
 ### 10.1 Where it lives
 
 ```
-ui/theme/CompanionColors.kt             companionInk, companionBlush, companionPalette(MMColors)  (Z-3)
+ui/theme/CompanionColors.kt             companionInk, companionBlush, companionPalette(MMColors | MMAccent)  (Z-3)
 core/companion/                          pure Kotlin, unit-tested, no Compose
     CompanionModel.kt                    CompanionForm, CompanionState, CreateMode, Presence, CompanionPage
     CompanionEvent.kt                    the events of §3.3
     CompanionMachine.kt                  reducer + presence filter + MomentLedger hooks
     CompanionRoster.kt                   which forms ship (flag), display names
     CompanionFlags.kt                    askGate, liveWhisper, volumeLayer, rive
-    MomentLedger.kt                      frequency caps (DataStore)
+    MomentLedger.kt, MomentLedgerStore.kt  frequency caps (pure) + DataStore persistence
     CreateModePolicy.kt                  suggestion + allowed modes
 core/ui/mm/companion/                    Compose
-    Companion.kt                         the composable (§10.2)
-    Pose.kt, PoseMath.kt                 Pose data + lerp
-    MotionSpec.kt, ZuriMotion.kt         motion as data
-    forms/OrbDrawer.kt, NasDrawer.kt, WrenDrawer.kt, PageDrawer.kt
-    VolumeLayer.kt                       T1 shading
+    Companion.kt                         the composable (§10.2), Canvas renderer, renderCompanionBitmap()
+    Pose.kt                              Pose data + lerp
+    CompanionMotion.kt                   MotionSpec/Timing/Track, ZuriMotion, CompanionPoses (static + animated)
+    CompanionClock.kt                    frame clock, clock gate, LevelSmoother, on-screen tracker
+    forms/OrbDrawer.kt, NasDrawer.kt, WrenDrawer.kt, PageDrawer.kt, CompanionDrawKit.kt
+    rive/CompanionRiveContract.kt        the typed Rive contract (names, inputs, colours)
+    rive/CompanionRenderer.kt            renderer selection (pure) + live-Rive budget
+    rive/RiveCompanion.kt, CompanionAssets.kt   the Rive renderer + bundled-file check
+    VolumeLayer.kt                       T1 shading (Z-14)
     CompanionQuickSheet.kt
     ZuriSlot.kt                          presence-aware wrapper for app screens
 feature/settings/companion/              Settings → Companion (+ Advanced section)
+src/debug/…/feature/companionlab/        Companion Lab (Z-6), debug builds only, own launcher entry
+assets/companion/                        zuri.riv, nas.riv, wren.riv, page.riv (when delivered)
 ```
 
-This plan writes against the **F-2 contract** (branch `mvp/f2-design-system`, not yet pushed):
+This plan writes against the **F-2 contract** (merged on the planning branch):
 
 - the `MM` token access object (`MM.colors`, `MM.type`, `MM.space`, `MM.radius`, `MM.motion`)
 - `HomeHeader(greeting, subtitle, leading = { … }, actions)`
@@ -856,10 +874,13 @@ fun Companion(
     size: Dp,
     modifier: Modifier = Modifier,
     level: () -> Float = { 0f },           // mic or TTS amplitude, read in the draw phase only
+    mode: CreateMode? = null,              // when set, overrides state (Create cards)
     variant: CompanionVariant = CompanionVariant.Normal, // Normal | Quiet | Nod
     tier: CompanionTier = CompanionTier.forSize(size),
     contentDescription: String? = null,    // null = decorative (clearAndSetSemantics)
-)
+    palette: CompanionPalette = companionPalette(MM.colors),
+    onRenderer: ((RendererChoice) -> Unit)? = null,  // Rive or Canvas, and why (Companion Lab)
+)   // picks the Rive or Canvas renderer per §4.2
 
 /** App screens use this: it reads settings + machine, applies presence, and handles long-press. */
 @Composable
@@ -953,9 +974,15 @@ sliders over `ZuriMotion`, so motion can change without code archaeology.
 
 ### 10.6 Drawing
 
-- **One `Canvas` per instance.** Drawers implement `fun DrawScope.draw(form: Pose, p: CompanionPalette, lod: Lod)`.
-- **Paths are pre-allocated** in a `remember`ed holder and reset each frame. There are **zero allocations per
-  frame** (a test asserts this via an allocation counter in Companion Lab, and it is reviewed).
+- **Two renderers, one API (§4.2).** `CompanionRendererSelector` is a pure function of size, duration scale,
+  bundled asset, budget slot, flag and failure state, and is unit-tested. Rive slots pause their view when off
+  screen or not RESUMED; `Rive.init` runs lazily on the first Rive slot, so builds without `.riv` files never load
+  the native library.
+- **Canvas: one `Canvas` per instance.** Drawers implement
+  `fun DrawScope.draw(kit: CompanionDrawKit, f: CompanionFrame, p: CompanionPalette)` in the 100-unit box.
+- **Paths are pre-allocated** in `CompanionDrawKit` and reset each frame; brushes are rebuilt only when the
+  palette changes and strokes are cached. One small `Pose` is still allocated per frame; the allocation counter
+  in Companion Lab is not built yet.
 - **Animation clock:** `withFrameNanos` in a `LaunchedEffect`. It runs only when the active `MotionSpec` needs time
   (Loop, OneShot or Driven) **and** the slot is visible. Visibility means the lifecycle is ≥ STARTED and the slot is
   on screen (`onGloballyPositioned` + window bounds).
@@ -979,9 +1006,10 @@ object CompanionRoster {
     fun displayName(f: CompanionForm): Int = when (f) { ZURI -> R.string.form_zuri; NAS -> R.string.form_nas; WREN -> R.string.form_wren; PAGE -> R.string.form_page }
 }
 object CompanionFlags {
-    val askGate: AskZuriGate = AskZuriGate.FREE_LOCAL_PRO_ONLINE   // §12.3
-    const val liveWhisper = false                                   // §12.4: no code ships behind it in MVP
-    val volumeLayer = true; val riveHero = false
+    val askGate: AskGate = AskGate.NONE                 // §12: no tiers while testing; FREE_LOCAL_PRO_ONLINE kept for later
+    val liveWhisper = BuildConfig.COMPANION_LIVE_WHISPER // true in debug/dev builds, false in release (Z-25 experiment)
+    const val volumeLayer = false                        // on after the Z-14 perf check
+    const val rive = true                                // kill switch: false = Canvas everywhere
 }
 ```
 
@@ -999,7 +1027,8 @@ object CompanionFlags {
 | Listening | 60 fps; Thinking and Reading at 30 fps (frame-skip clock) |
 | Home idle | Clock stops after about 3 s |
 | Off-screen | No clock, no sensor listeners |
-| APK size | +0 KB (no libraries) unless the Rive spike is approved |
+| Live Rive instances per screen | ≤ 2 (`LocalCompanionRiveBudget`); extra slots draw on Canvas |
+| APK size (Rive 11.12.1) | Measured debug split APKs vs the pre-Rive build: **arm64-v8a +8.19 MB**, **armeabi-v7a +7.54 MB** (of which native `librive-android.so` + `libc++_shared.so`, stored uncompressed: 6.63 / 5.96 MB; the rest is dex for Rive, volley, relinker and the companion code). Play download size is smaller because native libs compress for delivery. `.riv` files: ≤ 60 KB each target |
 
 ### 10.9 Accessibility
 
@@ -1017,7 +1046,8 @@ object CompanionFlags {
 
 > roster forms × (6 MVP states + 6 Create modes) × {Paper, Graphite} × {24 dp, 96 dp}
 
-using static poses and the Indigo accent. That is **48 images per form**, plus 6 accents × 2 themes on the Idle pose
+using static poses and the Indigo accent, always on the Canvas renderer (Rive does not render under Robolectric;
+renderer selection is unit-tested instead). That is **48 images per form**, plus 6 accents × 2 themes on the Idle pose
 at 64 dp (12 per form). Phase B adds Curious, Proud and Reading (+12 per form).
 
 **Unit tests:**
@@ -1046,6 +1076,10 @@ quick sheet, onboarding step 1, the recording screen (normal and Quiet), and pro
 
 ### Phase A: MVP (Zuri + Nas, 6 states, placements)
 
+**Built (2026-10-10):** Z-1 to Z-7, Z-23 (Wren), Z-24 (Page) and the code half of Z-19 (Rive integration), with
+240 Canvas goldens (4 forms) in `app/src/test/screenshots/companion/`. Z-19 moved up from Phase B: Rive is the
+renderer for the living character (§4.2); only the `.riv` files remain (`ZURI_RIVE_BRIEF.md`).
+
 | ID | Title | Model | Size | Maps to | Depends | Acceptance criteria | Screenshot tests |
 |---|---|---|---|---|---|---|---|
 | **Z-0** | This spec + founder sign-off | Spec author + founder | — | **P-1** | — | Founder signs off; MVP_PLAN §6 points here | — |
@@ -1072,7 +1106,7 @@ quick sheet, onboarding step 1, the recording screen (normal and Quiet), and pro
 
 | ID | Title | Model | Size | Maps to | Depends | Acceptance criteria | Screenshot tests |
 |---|---|---|---|---|---|---|---|
-| **Z-19** | **Rive evaluation spike** (Tier 2 hero only): rebuild Zuri's Celebrating in Rive with inputs (state, level), measure APK delta per ABI, cold-start, frame time, battery over 2 min | Sonnet | S (time-boxed) | P-2 | Z-14 | **Report only**, no merge to main: a recommendation with numbers | — |
+| **Z-19** | **Rive integration + authoring brief.** Code half (done): `rive-android` dependency, the typed contract, renderer selection with Canvas fallback, the live budget, lifecycle pausing, accent through view-model data binding, Companion Lab indicator, `ZURI_RIVE_BRIEF.md`. Design half (to do): `zuri.riv`, `nas.riv`, `wren.riv`, `page.riv` built to the brief | Sonnet + designer | M | P-2 | Z-5 | Each file passes the brief's §9 checklist in Companion Lab (renderer reads RIVE_READY); APK delta per ABI recorded in §10.8; frame time at 160 dp holds 60 fps on a mid-range phone | Goldens stay Canvas; none new |
 | **Z-20** | States Curious, Proud and Reading + motion data + drawer support (Zuri, Nas) | Sonnet | M | **P-3 / P-5** | Z-7 | Triggers per §3.1; caps for Proud | 3 states × 2 forms × Paper/Graphite × 24/96 (24) |
 | **Z-21** | Calm rhythms: devotional/study weekly counts on Faith and Study homes + Proud milestones | Sonnet | S | **P-5** | Z-20 | No resetting counters anywhere (test); Proud once per milestone | Faith home rhythm line, Study home × Paper/Graphite |
 | **Z-22** | Create integration: "Include {companion}" (off by default), suggestion chips, `CreateModePolicy` enforcement, export draw into the card bitmap | Sonnet | M | **V-0a / P-5** | Z-2, V-0a | Prayer request offers only Prayerful/Peaceful; text never altered; export at 9:16, 1:1 and 4:5 | Create Design step: quote, prayer request, achievement × Paper/Graphite |

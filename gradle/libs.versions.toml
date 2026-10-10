@@ -43,6 +43,7 @@ media3 = "1.11.0"
 workRuntimeKtx = "2.11.2"
 javaDiffUtils = "4.12"
 biometric = "1.1.0"
+rive = "11.12.1"
 
 
 [libraries]
@@ -104,6 +105,7 @@ androidx-biometric = { group = "androidx.biometric", name = "biometric", version
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntimeKtx" }
 androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "workRuntimeKtx" }
 java-diff-utils = { group = "io.github.java-diff-utils", name = "java-diff-utils", version.ref = "javaDiffUtils" }
+rive-android = { group = "app.rive", name = "rive-android", version.ref = "rive" }
 
 
 [plugins]
