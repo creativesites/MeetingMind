@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Companion Lab (debug builds only). Not user-facing copy: the companion strings live in
+     res/values/strings_companion.xml (Z-18). -->
+<resources>
+    <string name="companion_lab_title">Companion Lab</string>
+    <string name="companion_lab_form">Form</string>
+    <string name="companion_lab_state">State</string>
+    <string name="companion_lab_mode">Create mode</string>
+    <string name="companion_lab_mode_none">None</string>
+    <string name="companion_lab_variant">Variant</string>
+    <string name="companion_lab_level">Mic level %1$d%%</string>
+    <string name="companion_lab_level_wobble">Simulate speech</string>
+    <string name="companion_lab_accent">Accent</string>
+    <string name="companion_lab_theme_light">Light</string>
+    <string name="companion_lab_theme_dark">Dark</string>
+    <string name="companion_lab_reduced">Reduced motion (static poses)</string>
+    <string name="companion_lab_replay">Replay</string>
+    <string name="companion_lab_ladder">Size ladder</string>
+    <string name="companion_lab_renderer">Renderer: %1$s (%2$s)</string>
+    <string name="companion_lab_size_renderer">%1$d dp · %2$s</string>
+    <string name="companion_lab_assets">Bundled .riv files</string>
+    <string name="companion_lab_assets_none">None yet: every form draws on Canvas. Drop zuri.riv, nas.riv, wren.riv or page.riv into app/src/main/assets/companion/.</string>
+    <string name="companion_lab_contract">Contract: artboard \"%1$s\", state machine \"%2$s\", view model \"%3$s\"</string>
+</resources>

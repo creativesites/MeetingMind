@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: Companion Lab (docs/mvp/ZURI_EXPERIENCE.md Z-6) has its own launcher entry,
+     so it never touches the app's navigation and cannot exist in a release build. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="com.craftflowtechnologies.meetingmind.feature.companionlab.CompanionLabActivity"
+            android:exported="true"
+            android:label="@string/companion_lab_title"
+            android:taskAffinity="${applicationId}.companionlab"
+            android:theme="@style/Theme.MyApplication">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
