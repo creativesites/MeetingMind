@@ -122,7 +122,7 @@ class MainActivity : FragmentActivity() {
                     navigationBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(transparent) else androidx.activity.SystemBarStyle.light(transparent, transparent)
                 )
             }
-            MeetMindTheme(darkTheme = dark, appearance = themePrefs?.appearance ?: com.craftflowtechnologies.meetingmind.ui.theme.Appearance()) {
+            MeetMindTheme(darkTheme = dark, appearance = themePrefs?.appearance ?: com.craftflowtechnologies.meetingmind.ui.theme.Appearance(homeStyle = com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY)) {
                 // Who the app is for — spaces, look, name, avatar — available to every screen.
                 val identityContext = androidx.compose.ui.platform.LocalContext.current
                 val identity by remember { UserPreferencesManager(identityContext).preferencesFlow }
@@ -404,7 +404,17 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val setupState by setupVm.state.collectAsState()
             val setupSnoozedUntil by setupVm.snoozedUntil.collectAsState()
             val homeStyle = com.craftflowtechnologies.meetingmind.ui.theme.LocalAppearance.current.homeStyle
-            if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.PROFESSIONAL) com.craftflowtechnologies.meetingmind.feature.work.ProfessionalHome(
+            if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.EVERYDAY) com.craftflowtechnologies.meetingmind.feature.today.EverydayHome(
+                viewModel = vm,
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenProcessing = openProcessing,
+                onRecord = { navController.navigate(Routes.RECORDING) },
+                onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
+                onSearch = openSearch,
+                onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
+                onOpenTasks = { navController.navigate(Routes.TASKS) },
+                onNavigateBottomNav = navigateToPrimary
+            ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.PROFESSIONAL) com.craftflowtechnologies.meetingmind.feature.work.ProfessionalHome(
                 today = vm,
                 work = viewModel(viewModelStoreOwner = context as ComponentActivity),
                 onRecord = { navController.navigate(Routes.RECORDING) },

@@ -38,6 +38,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
+/** One more than the five rows Home shows, so the hero can borrow the newest without leaving the list short. */
+private const val RECENT_NOTES_LIMIT = 6
+
 enum class CalendarView(val label: String) { AGENDA("Agenda"), DAY("Day"), WEEK("Week"), MONTH("Month"), RIVER("Timeline") }
 
 /** A quick lens on Today, separate from the person's settings: everything, or one space. */
@@ -100,6 +103,12 @@ class TodayViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     val activeJobs: StateFlow<List<ProcessingJobEntity>> = database.processingJobDao().getActiveJobs()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** The latest notes, newest first, for the Everyday home's "Recent notes". */
+    val recentNotes: StateFlow<List<Note>> = database.noteDao().observeRecent(RECENT_NOTES_LIMIT)
+        .map { list -> list.map { it.toDomain() } }
+        .catch { emit(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Today's devotional, once written (PLAN_V2 F2). */

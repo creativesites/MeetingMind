@@ -57,6 +57,10 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
     fun observeActive(): Flow<List<NoteEntity>>
 
+    /** The latest [limit] notes by last edit, for Home's "Recent notes" (the daily devotional has its own place). */
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND workflow != 'DEVOTIONAL' ORDER BY updatedAt DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<NoteEntity>>
+
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND notebookId = :notebookId ORDER BY pinned DESC, updatedAt DESC")
     fun observeInNotebook(notebookId: String): Flow<List<NoteEntity>>
 

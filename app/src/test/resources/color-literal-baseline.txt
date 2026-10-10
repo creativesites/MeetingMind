@@ -31,7 +31,6 @@ com/craftflowtechnologies/meetingmind/feature/setup/SetupUi.kt 12
 com/craftflowtechnologies/meetingmind/feature/share/BackgroundsSheet.kt 7
 com/craftflowtechnologies/meetingmind/feature/share/ShareStudio.kt 16
 com/craftflowtechnologies/meetingmind/feature/stories/StoriesScreen.kt 15
-com/craftflowtechnologies/meetingmind/feature/today/HomeHeroHeader.kt 6
 com/craftflowtechnologies/meetingmind/feature/today/HomeStart.kt 5
 com/craftflowtechnologies/meetingmind/feature/today/TimelineViews.kt 7
 com/craftflowtechnologies/meetingmind/feature/today/TodayScreen.kt 0

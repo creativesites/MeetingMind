@@ -30,6 +30,19 @@ class AppearanceTest {
         assertEquals(setOf(HomeSection.STORIES), partial.hidden)
     }
 
+    @Test fun existingInstallsKeepTodayAndNewInstallsGetEveryday() {
+        // Nothing stored for the home: an install that finished onboarding earlier keeps Today.
+        assertEquals(HomeStyle.TODAY, Appearance.decode(null, existingInstall = true).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode("TEAL|DEFAULT||", existingInstall = true).homeStyle)
+        assertEquals(HomeStyle.EVERYDAY, Appearance.decode(null, existingInstall = false).homeStyle)
+        assertEquals(HomeStyle.EVERYDAY, Appearance.decode(null).homeStyle)
+        // A stored choice always wins, in both cases.
+        val stored = Appearance(homeStyle = HomeStyle.FOCUS).encode()
+        assertEquals(HomeStyle.FOCUS, Appearance.decode(stored, existingInstall = true).homeStyle)
+        assertEquals(HomeStyle.FOCUS, Appearance.decode(stored, existingInstall = false).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.TODAY).encode()).homeStyle)
+    }
+
     @Test fun accentRecolorsBothPalettesAndKeepsTheRest() {
         AccentChoice.entries.forEach { c ->
             val dark = c.on(GraphiteColors)
@@ -42,9 +55,9 @@ class AppearanceTest {
         assertNotEquals(AccentChoice.ROSE.on(GraphiteColors).accent, AccentChoice.INDIGO.on(GraphiteColors).accent)
     }
 
-    @Test fun defaultIsTodayWithEverythingShown() {
+    @Test fun defaultIsEverydayWithEverythingShown() {
         val a = Appearance()
-        assertEquals(HomeStyle.TODAY, a.homeStyle)
+        assertEquals(HomeStyle.EVERYDAY, a.homeStyle)
         assertTrue(HomeSection.entries.all { a.shows(it) })
         assertFalse(a.copy(hidden = setOf(HomeSection.TIMELINE)).shows(HomeSection.TIMELINE))
     }

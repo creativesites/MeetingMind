@@ -175,3 +175,6 @@ val FaithGoldWash: Color @Composable @ReadOnlyComposable get() = LocalMMColors.c
 val FaithGoldInk: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.goldInk
 val Recording: Color @Composable @ReadOnlyComposable get() = LocalMMColors.current.recording
 val IsDarkTheme: Boolean @Composable @ReadOnlyComposable get() = LocalMMColors.current.isDark
+
+/** Text and glyphs drawn over the Today sky header: white in both themes, because the sky is always a dark gradient. */
+val OnSky: Color = Color.White
