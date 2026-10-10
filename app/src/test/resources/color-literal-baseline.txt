@@ -23,7 +23,7 @@ com/craftflowtechnologies/meetingmind/feature/notes/NotesScreen.kt 1
 com/craftflowtechnologies/meetingmind/feature/notes/editor/NoteBlocks.kt 4
 com/craftflowtechnologies/meetingmind/feature/notes/editor/NoteEditorScreen.kt 3
 com/craftflowtechnologies/meetingmind/feature/onboarding/OnboardingScreen.kt 16
-com/craftflowtechnologies/meetingmind/feature/prayer/PraySession.kt 20
+com/craftflowtechnologies/meetingmind/feature/prayer/PraySession.kt 0
 com/craftflowtechnologies/meetingmind/feature/prayer/PrayWithMeScreen.kt 13
 com/craftflowtechnologies/meetingmind/feature/processing/ProcessingScreen.kt 1
 com/craftflowtechnologies/meetingmind/feature/recording/RecordingScreen.kt 32

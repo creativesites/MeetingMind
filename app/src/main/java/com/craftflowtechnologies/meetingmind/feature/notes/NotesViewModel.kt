@@ -8,6 +8,7 @@ import com.craftflowtechnologies.meetingmind.core.model.Note
 import com.craftflowtechnologies.meetingmind.core.model.Notebook
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.Tag
+import com.craftflowtechnologies.meetingmind.core.model.Workflows
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class NoteSort(val label: String) { UPDATED("Last edited"), CREATED("Date"), TITLE("Title") }
+
+/**
+ * The space a note is filtered under. A Work workflow (meeting, interview, decision...) is always Work, even when
+ * the note sits in "My Notes" because it had no project notebook; anything else follows its notebook's space.
+ */
+internal fun spaceOf(note: Note, notebookSpace: NotebookSpace?): NotebookSpace? =
+    if (Workflows.space(note.workflow) == NotebookSpace.WORK) NotebookSpace.WORK else notebookSpace
 
 /** Which notes the library is showing. */
 sealed interface NotesScope {
@@ -73,10 +81,10 @@ class NotesViewModel(application: Application, val scope: NotesScope = NotesScop
 
     val visibleNotes: StateFlow<List<Note>> = combine(tagged, notebooks, space, query, sort) { list, books, space, q, sort ->
         _loaded.value = true
-        val spaceOf = books.associate { it.id to it.space }
+        val spaceOfNotebook = books.associate { it.id to it.space }
         list.asSequence()
             .filter { scope !is NotesScope.InNotebook || it.notebookId == scope.notebookId }
-            .filter { space == null || spaceOf[it.notebookId] == space }
+            .filter { space == null || spaceOf(it, spaceOfNotebook[it.notebookId]) == space }
             .filter { n -> q.isBlank() || n.title.contains(q, ignoreCase = true) || n.plainText.contains(q, ignoreCase = true) }
             .let { seq ->
                 when (sort) {
