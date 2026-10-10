@@ -23,4 +23,15 @@ class DesignSystemGuardTest {
         }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
     }
+
+    @Test
+    fun `Work page files contain no style literals`() {
+        val root = File("src/main/java/com/craftflowtechnologies/meetingmind/feature/work")
+        val files = root.listFiles { f -> f.extension == "kt" && (f.name.startsWith("WorkPage") || f.name == "WorkSheets.kt") }.orEmpty().toList()
+        assertTrue("no Work page files found", files.size >= 7)
+        val problems = files.flatMap { f ->
+            literals.filter { it.containsMatchIn(f.readText()) }.map { "${f.name} matches ${it.pattern}" }
+        }
+        assertTrue(problems.joinToString("\n"), problems.isEmpty())
+    }
 }

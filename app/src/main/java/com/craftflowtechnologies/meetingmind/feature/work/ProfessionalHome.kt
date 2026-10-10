@@ -358,8 +358,8 @@ fun ProfessionalHome(
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 22.dp).clip(RoundedCornerShape(18.dp)).background(AccentWash).clickable(onClick = onOpenWork).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Work, null, tint = Accent)
                     Column(Modifier.padding(start = 12.dp).weight(1f)) {
-                        Text("Open the Work space", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                        Text("Templates, projects, people, decisions and more", fontSize = 12.sp, color = InkSecondary)
+                        Text("Open Work", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                        Text("Notes, tasks, projects and decisions", fontSize = 12.sp, color = InkSecondary)
                     }
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Accent)
                 }

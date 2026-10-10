@@ -5,6 +5,22 @@ import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * The Work notes list's scope and optional filters (W-1), shared by the keyset queries below. Same scope as
+ * [WorkDao.observeWorkNotes]. A filter is off when its flag is 0 / its id null / its bound 0:
+ * kindMode 0 = any, 1 = workflow IN kindTypes ("Meetings"), 2 = NOT IN ("My notes").
+ */
+private const val WORK_NOTE_SCOPE = """n.deletedAt IS NULL AND n.isDraft = 0 AND n.archivedAt IS NULL
+    AND (n.workflow IN (:types) OR n.notebookId IN (SELECT id FROM notebooks WHERE kind = 'PROJECT' OR space = 'WORK'))"""
+private const val WORK_NOTE_FILTERS = """AND (:kindMode = 0 OR (:kindMode = 1 AND n.workflow IN (:kindTypes)) OR (:kindMode = 2 AND n.workflow NOT IN (:kindTypes)))
+    AND (:notebookId IS NULL OR n.notebookId = :notebookId)
+    AND n.createdAt >= :createdSince
+    AND (:hasTasks = 0 OR EXISTS (SELECT 1 FROM tasks t WHERE t.deletedAt IS NULL AND t.doneAt IS NULL AND t.noteId = n.id)
+         OR EXISTS (SELECT 1 FROM tasks t JOIN meetings tm ON tm.id = t.meetingId WHERE t.deletedAt IS NULL AND t.doneAt IS NULL AND tm.noteId = n.id))
+    AND (:hasRecording = 0 OR EXISTS (SELECT 1 FROM meetings rm WHERE rm.noteId = n.id))"""
+private const val WORK_OPEN_TASK_SCOPE = """t.deletedAt IS NULL AND t.doneAt IS NULL
+    AND (t.space = 'WORK' OR t.meetingId IN (SELECT id FROM meetings WHERE recordingType IN (:types)))"""
+
 /** A decision or question with the recording it came from, for the logs across all work. */
 data class FindingRow(
     val id: String,
@@ -220,4 +236,80 @@ interface WorkDao {
     /** Every notebook's note count in one query (was one query per project). */
     @Query("SELECT notebookId AS notebookId, COUNT(*) AS count FROM notes WHERE deletedAt IS NULL AND notebookId IS NOT NULL GROUP BY notebookId")
     fun observeNoteCountsByNotebook(): Flow<List<NotebookNoteCount>>
+
+    /** Open tasks per project (tasks on notes filed in it), for the Work page's project cards. */
+    @Query("SELECT n.notebookId AS notebookId, COUNT(*) AS count FROM tasks t JOIN notes n ON n.id = t.noteId WHERE t.deletedAt IS NULL AND t.doneAt IS NULL AND n.notebookId IS NOT NULL GROUP BY n.notebookId")
+    fun observeOpenTaskCountsByNotebook(): Flow<List<NotebookNoteCount>>
+
+    /** Last edit per notebook, in one grouped query. */
+    @Query("SELECT notebookId AS notebookId, MAX(updatedAt) AS lastAt FROM notes WHERE deletedAt IS NULL AND notebookId IS NOT NULL GROUP BY notebookId")
+    fun observeNotebookActivity(): Flow<List<NotebookActivity>>
+
+    // ---- Indicators for one page of notes (bounded by the page's ids).
+
+    @Query("SELECT noteId AS noteId, status AS status FROM meetings WHERE noteId IN (:ids)")
+    suspend fun meetingStatusesForNotes(ids: List<String>): List<NoteMeetingStatus>
+
+    @Query("SELECT noteId AS noteId, COUNT(*) AS count FROM tasks WHERE deletedAt IS NULL AND doneAt IS NULL AND noteId IN (:ids) GROUP BY noteId")
+    suspend fun openTaskCountsForNotes(ids: List<String>): List<NoteTaskCount>
+
+    @Query("""SELECT m.noteId AS noteId, COUNT(*) AS count FROM tasks t JOIN meetings m ON m.id = t.meetingId
+        WHERE t.deletedAt IS NULL AND t.doneAt IS NULL AND (t.noteId IS NULL OR t.noteId != m.noteId) AND m.noteId IN (:ids) GROUP BY m.noteId""")
+    suspend fun openMeetingTaskCountsForNotes(ids: List<String>): List<NoteTaskCount>
+
+    // ---- Keyset pages (W-1). Each is a bounded LIMIT query; pass the last row's key + id as the cursor, or
+    // ---- Long.MAX_VALUE / "\uFFFF" (dates, updatedAt) for the first page. Ties on the key fall back to id.
+
+    /** Work notes, most recently edited first: ORDER BY updatedAt DESC, id DESC. Uses the notes(updatedAt) index. */
+    @Query("""SELECT n.* FROM notes n WHERE $WORK_NOTE_SCOPE $WORK_NOTE_FILTERS
+        AND (n.updatedAt < :sortKey OR (n.updatedAt = :sortKey AND n.id < :id))
+        ORDER BY n.updatedAt DESC, n.id DESC LIMIT :limit""")
+    suspend fun workNotesByUpdated(
+        types: List<String>, kindMode: Int, kindTypes: List<String>, notebookId: String?, createdSince: Long,
+        hasTasks: Int, hasRecording: Int, sortKey: Long, id: String, limit: Int
+    ): List<NoteEntity>
+
+    /** By meeting date, newest first; notes with no event date sort last (key 0): ORDER BY COALESCE(eventDate, 0) DESC, id DESC. */
+    @Query("""SELECT n.* FROM notes n WHERE $WORK_NOTE_SCOPE $WORK_NOTE_FILTERS
+        AND (COALESCE(n.eventDate, 0) < :sortKey OR (COALESCE(n.eventDate, 0) = :sortKey AND n.id < :id))
+        ORDER BY COALESCE(n.eventDate, 0) DESC, n.id DESC LIMIT :limit""")
+    suspend fun workNotesByEventDate(
+        types: List<String>, kindMode: Int, kindTypes: List<String>, notebookId: String?, createdSince: Long,
+        hasTasks: Int, hasRecording: Int, sortKey: Long, id: String, limit: Int
+    ): List<NoteEntity>
+
+    /** By title A-Z, case-insensitive: ORDER BY title COLLATE NOCASE, id. [hasCursor] 0 = first page. The cursor key is the raw title. */
+    @Query("""SELECT n.* FROM notes n WHERE $WORK_NOTE_SCOPE $WORK_NOTE_FILTERS
+        AND (:hasCursor = 0 OR n.title COLLATE NOCASE > :sortKey COLLATE NOCASE
+             OR (n.title COLLATE NOCASE = :sortKey COLLATE NOCASE AND n.id > :id))
+        ORDER BY n.title COLLATE NOCASE ASC, n.id ASC LIMIT :limit""")
+    suspend fun workNotesByTitle(
+        types: List<String>, kindMode: Int, kindTypes: List<String>, notebookId: String?, createdSince: Long,
+        hasTasks: Int, hasRecording: Int, hasCursor: Int, sortKey: String, id: String, limit: Int
+    ): List<NoteEntity>
+
+    /**
+     * Open work tasks, soonest due first, undated last: ORDER BY COALESCE(dueAt, Long.MAX), id. [waiting] 0 = mine,
+     * 1 = waiting on someone (tasks.waitingOn). First page: sortKey Long.MIN_VALUE, id "".
+     */
+    @Query("""SELECT t.* FROM tasks t WHERE $WORK_OPEN_TASK_SCOPE AND t.waitingOn = :waiting
+        AND (COALESCE(t.dueAt, 9223372036854775807) > :sortKey OR (COALESCE(t.dueAt, 9223372036854775807) = :sortKey AND t.id > :id))
+        ORDER BY COALESCE(t.dueAt, 9223372036854775807), t.id LIMIT :limit""")
+    suspend fun openWorkTasksPage(types: List<String>, waiting: Int, sortKey: Long, id: String, limit: Int): List<TaskEntity>
+
+    /**
+     * Work-scoped full-text search over notes_fts (the table the global search uses). Title hits rank first, then
+     * most recently edited. FTS4 has no stable keyset-able rank, so this alone pages by OFFSET: results are a
+     * bounded, short, query-dependent list (the repository caps offset + limit), not the browsable library.
+     */
+    @Query("""SELECT n.* FROM notes_fts JOIN notes n ON n.rowid = notes_fts.rowid
+        WHERE notes_fts MATCH :match AND $WORK_NOTE_SCOPE
+        ORDER BY CASE WHEN n.rowid IN (SELECT docid FROM notes_fts WHERE title MATCH :match) THEN 0 ELSE 1 END,
+                 n.updatedAt DESC, n.id DESC
+        LIMIT :limit OFFSET :offset""")
+    suspend fun searchWorkNotes(types: List<String>, match: String, limit: Int, offset: Int): List<NoteEntity>
 }
+
+data class NotebookActivity(val notebookId: String, val lastAt: Long)
+data class NoteMeetingStatus(val noteId: String, val status: String)
+data class NoteTaskCount(val noteId: String, val count: Int)

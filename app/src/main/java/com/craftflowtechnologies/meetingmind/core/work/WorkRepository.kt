@@ -12,6 +12,8 @@ import com.craftflowtechnologies.meetingmind.core.database.TaskEntity
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.Workflows
+import com.craftflowtechnologies.meetingmind.core.notes.Cursor
+import com.craftflowtechnologies.meetingmind.core.scripture.BibleStore
 import com.craftflowtechnologies.meetingmind.core.tasks.TaskKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +25,21 @@ import java.util.UUID
 
 /** A recording waiting for its Wrap-up, or for its follow-up to be sent. */
 data class MeetingRow(val meetingId: String, val noteId: String?, val title: String, val at: Long, val durationMs: Long, val type: RecordingType)
+
+/** Work notes list order (WORK_UX §2.2). */
+enum class WorkNoteSort { RECENT, MEETING_DATE, TITLE }
+
+/** "Meetings" = notes made from a work recording type; "My notes" = everything else in the Work scope. */
+enum class WorkNoteKind { ANY, MEETINGS, MY_NOTES }
+
+/** Optional filters for [WorkRepository.workNotesPage]; defaults mean "no filter". [createdSince] is e.g. start of this week. */
+data class WorkNoteFilters(
+    val kind: WorkNoteKind = WorkNoteKind.ANY,
+    val hasOpenTasks: Boolean = false,
+    val hasRecording: Boolean = false,
+    val notebookId: String? = null,
+    val createdSince: Long? = null
+)
 
 /** A work task, with its owner's name as it is now. */
 data class WorkTask(
@@ -49,6 +66,12 @@ data class WorkTask(
  */
 /** Home and the Work space never show more than a few open tasks; this bounds what they observe. */
 const val OPEN_TASK_LIMIT = 200
+
+/** Beside a note in the Work list: [transcript] is "READY", "PROCESSING" or "ERROR" (null with no recording). */
+data class NoteIndicators(val hasRecording: Boolean, val transcript: String?, val openTasks: Int)
+
+const val SEARCH_MAX_RESULTS = 200
+private const val HIGH_ID = "\uFFFF"
 
 class WorkRepository(private val database: MeetMindDatabase) {
     private val work = database.workDao()
@@ -361,6 +384,47 @@ class WorkRepository(private val database: MeetMindDatabase) {
     }
     fun observeWorkNotes(limit: Int = 30): Flow<List<NoteEntity>> = work.observeWorkNotes(WorkTypeNames, limit)
 
+    // ---------------------------------------------------------------- keyset pages (W-1)
+
+    /** The cursor a [workNotesPage] row yields for [sort]; pair with [com.craftflowtechnologies.meetingmind.core.notes.KeysetPager]. */
+    fun workNoteCursor(note: NoteEntity, sort: WorkNoteSort): Cursor = when (sort) {
+        WorkNoteSort.RECENT -> Cursor(note.updatedAt, note.id)
+        WorkNoteSort.MEETING_DATE -> Cursor(note.eventDate ?: 0L, note.id)
+        WorkNoteSort.TITLE -> Cursor(note.title, note.id)
+    }
+
+    /** One bounded page of Work notes after [after] (null = first page), in [sort] order, with [filters]. */
+    suspend fun workNotesPage(after: Cursor?, limit: Int, sort: WorkNoteSort = WorkNoteSort.RECENT, filters: WorkNoteFilters = WorkNoteFilters()): List<NoteEntity> =
+        withContext(Dispatchers.IO) {
+            val mode = when (filters.kind) { WorkNoteKind.ANY -> 0; WorkNoteKind.MEETINGS -> 1; WorkNoteKind.MY_NOTES -> 2 }
+            val tasks = if (filters.hasOpenTasks) 1 else 0
+            val rec = if (filters.hasRecording) 1 else 0
+            val since = filters.createdSince ?: 0L
+            when (sort) {
+                WorkNoteSort.RECENT -> work.workNotesByUpdated(WorkTypeNames, mode, WorkTypeNames, filters.notebookId, since, tasks, rec, after?.longKey ?: Long.MAX_VALUE, after?.id ?: HIGH_ID, limit)
+                WorkNoteSort.MEETING_DATE -> work.workNotesByEventDate(WorkTypeNames, mode, WorkTypeNames, filters.notebookId, since, tasks, rec, after?.longKey ?: Long.MAX_VALUE, after?.id ?: HIGH_ID, limit)
+                WorkNoteSort.TITLE -> work.workNotesByTitle(WorkTypeNames, mode, WorkTypeNames, filters.notebookId, since, tasks, rec, if (after == null) 0 else 1, after?.textKey ?: "", after?.id ?: "", limit)
+            }
+        }
+
+    fun workTaskCursor(task: TaskEntity): Cursor = Cursor(task.dueAt ?: Long.MAX_VALUE, task.id)
+
+    /** One page of open Work tasks, soonest due first, undated last. [waitingOn] false = mine, true = waiting on someone. */
+    suspend fun workTasksPage(after: Cursor?, limit: Int, waitingOn: Boolean = false): List<TaskEntity> = withContext(Dispatchers.IO) {
+        work.openWorkTasksPage(WorkTypeNames, if (waitingOn) 1 else 0, after?.longKey ?: Long.MIN_VALUE, after?.id ?: "", limit)
+    }
+
+    /**
+     * Ranked full-text search over Work notes. Pages by [offset] (not a keyset): FTS rank has no stable sortable key,
+     * and search is a short, query-bound list. [offset] + [limit] is capped at [SEARCH_MAX_RESULTS]. Blank or
+     * symbol-only queries return nothing.
+     */
+    suspend fun searchWorkNotes(query: String, limit: Int = 30, offset: Int = 0): List<NoteEntity> = withContext(Dispatchers.IO) {
+        val match = BibleStore.ftsQuery(query) ?: return@withContext emptyList()
+        val capped = minOf(limit, SEARCH_MAX_RESULTS - offset)
+        if (capped <= 0) emptyList() else work.searchWorkNotes(WorkTypeNames, match, capped, offset)
+    }
+
     suspend fun resolveQuestion(id: String, meetingId: String, answer: String?) = withContext(Dispatchers.IO) {
         // From the Work lists the id is the item's; the recording's own question is kept in step.
         database.itemDao().getById(id)?.let { item ->
@@ -428,5 +492,29 @@ class WorkRepository(private val database: MeetMindDatabase) {
 
         fun followUpSentAt(metadataJson: String): Long? =
             runCatching { JSONObject(metadataJson).optString(FOLLOW_UP_SENT).toLongOrNull() }.getOrNull()
+    }
+
+    /** What a page of notes shows beside each title: a recording, its transcript state, open tasks. One bounded query set per page. */
+    suspend fun noteIndicators(ids: List<String>): Map<String, NoteIndicators> = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext emptyMap()
+        val statuses = work.meetingStatusesForNotes(ids).groupBy({ it.noteId }, { it.status })
+        val tasks = HashMap<String, Int>()
+        (work.openTaskCountsForNotes(ids) + work.openMeetingTaskCountsForNotes(ids)).forEach { tasks[it.noteId] = (tasks[it.noteId] ?: 0) + it.count }
+        ids.associateWith { id ->
+            val st = statuses[id].orEmpty()
+            NoteIndicators(hasRecording = st.isNotEmpty(), transcript = when {
+                st.isEmpty() -> null
+                st.any { it == "ERROR" } -> "ERROR"
+                st.any { it == "PROCESSING" || it == "RECORDING" } -> "PROCESSING"
+                else -> "READY"
+            }, openTasks = tasks[id] ?: 0)
+        }
+    }
+
+    /** A page of [workTasksPage] as [WorkTask]s, with their owners' names. */
+    suspend fun toWorkTasks(list: List<TaskEntity>): List<WorkTask> = withContext(Dispatchers.IO) {
+        if (list.isEmpty()) return@withContext emptyList()
+        val names = work.peopleNames().associate { it.id to it.name }
+        list.map { it.toWork(names) }
     }
 }

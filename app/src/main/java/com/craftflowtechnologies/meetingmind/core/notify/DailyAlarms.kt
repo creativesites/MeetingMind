@@ -39,12 +39,14 @@ object DailyAlarms {
     /** Sets [key] to fire at [minuteOfDay] every day, replacing any earlier time for it. */
     fun schedule(context: Context, key: String, minuteOfDay: Int, now: LocalDateTime = LocalDateTime.now()) {
         val am = context.getSystemService(AlarmManager::class.java) ?: return
-        val at = nextTrigger(now, minuteOfDay).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val zone = ZoneId.systemDefault()
+        val at = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalDelivery.nextAlarmMillis(now.atZone(zone).toInstant().toEpochMilli(), minuteOfDay, zone)
         val pi = pendingIntent(context, key, minuteOfDay, create = true) ?: return
-        runCatching {
-            if (canBeExact(am)) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
-            else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
-        }
+        // Exact when the person allows it; otherwise (the default on Android 14+) inexact but still
+        // fires in Doze. If the exact grant is withdrawn between the check and the call, fall back
+        // rather than lose the alarm.
+        val exactSet = canBeExact(am) && runCatching { am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi) }.isSuccess
+        if (!exactSet) runCatching { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi) }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(key, minuteOfDay).apply()
     }
 

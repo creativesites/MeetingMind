@@ -100,16 +100,6 @@ internal fun WorkSectionTitle(text: String, trailing: String? = null, top: Dp = 
     }
 }
 
-/** A raised, softly outlined card, the Work space's one container. */
-@Composable
-internal fun WorkCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
-    Column(
-        modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(20.dp)).background(SurfaceRaised)
-            .border(1.dp, LineSoft, RoundedCornerShape(20.dp))
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-    ) { content() }
-}
-
 @Composable
 internal fun Avatar(initials: String, size: Dp = 36.dp, tint: Color = Accent) {
     Box(Modifier.size(size).clip(CircleShape).background(tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
@@ -129,19 +119,6 @@ internal fun Chip(label: String, selected: Boolean = false, color: Color = Accen
     ) {
         Text(label, fontSize = 13.sp, color = if (selected) (if (color == Accent) OnAccent else OnInk) else Ink, fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
-    }
-}
-
-/** A tinted tile: an icon, a title and a line. Used for the ways to begin. */
-@Composable
-internal fun StartTile(icon: ImageVector, title: String, line: String, tint: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Column(
-        modifier.clip(RoundedCornerShape(18.dp)).background(tint.copy(alpha = if (LocalMMColors.current.isDark) 0.16f else 0.09f))
-            .clickable(onClick = onClick).padding(14.dp)
-    ) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
-        Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(line, fontSize = 12.sp, color = InkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 16.sp)
     }
 }
 

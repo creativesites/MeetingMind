@@ -97,12 +97,14 @@ object Quotes {
     }
 
     /**
-     * One quote for the day: from the person's topics when any match, otherwise from all of them,
+     * One quote for the day: from the given topics when any match, otherwise from all of them,
      * rotating by date so it changes daily but is stable within a day.
      */
-    fun pick(quotes: List<Quote>, topics: Collection<String>, date: LocalDate): Quote? {
+    fun pick(quotes: List<Quote>, topics: Collection<String>, date: LocalDate, less: Collection<String> = emptySet()): Quote? {
         if (quotes.isEmpty()) return null
-        val matching = quotes.filter { q -> q.topics.any { it in topics } }.ifEmpty { quotes }
+        // "Less of" is always honoured; [topics] are only weights, passed by the caller when allowed.
+        val allowed = quotes.filter { q -> q.topics.none { it in less } }.ifEmpty { quotes }
+        val matching = allowed.filter { q -> q.topics.any { it in topics } }.ifEmpty { allowed }
         return matching[(date.toEpochDay() % matching.size).toInt().let { if (it < 0) it + matching.size else it }]
     }
 }
@@ -159,6 +161,7 @@ object TopicPassages {
         val pool = when {
             seasonal != null && (day.feast != null || date.dayOfWeek == java.time.DayOfWeek.SUNDAY || topics.isEmpty()) -> seasonal
             else -> topics.filter { it !in less }.flatMap { byTopic[it].orEmpty() }
+                .filter { r -> less.isEmpty() || topicsOf(ScriptureReferenceParser.parse(r) ?: return@filter true).none { it in less } }
         }
         if (pool.isEmpty()) return null
         val index = Math.floorMod(date.toEpochDay(), pool.size.toLong()).toInt()

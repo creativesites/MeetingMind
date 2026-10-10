@@ -58,7 +58,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /** A project hub's figures, for its card. */
-data class ProjectCard(val notebook: Notebook, val notes: Int, val openTasks: Int, val org: String?)
+data class ProjectCard(val notebook: Notebook, val notes: Int, val openTasks: Int, val org: String?, val lastActivity: Long? = null)
 
 /**
  * The Work space, project hubs, person pages and the professional home all read from here
@@ -108,12 +108,15 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     val workNotes: StateFlow<List<Note>> = work.observeWorkNotes(30).map { l -> l.map { with(NoteCodec) { it.toDomain() } } }.state(emptyList())
 
     val projects: StateFlow<List<ProjectCard>> = combine(
-        database.workDao().observeProjects(), database.workDao().observeNoteCountsByNotebook(), organisations
-    ) { nbs, counts, orgs ->
+        database.workDao().observeProjects(), database.workDao().observeNoteCountsByNotebook(), organisations,
+        database.workDao().observeOpenTaskCountsByNotebook(), database.workDao().observeNotebookActivity()
+    ) { nbs, counts, orgs, openTasks, activity ->
         val byNotebook = counts.associate { it.notebookId to it.count }
+        val tasksBy = openTasks.associate { it.notebookId to it.count }
+        val activityBy = activity.associate { it.notebookId to it.lastAt }
         val orgNames = orgs.associate { it.id to it.name }
         nbs.map { with(NoteCodec) { it.toDomain() } }.map { nb ->
-            ProjectCard(nb, byNotebook[nb.id] ?: 0, 0, nb.orgId?.let { orgNames[it] })
+            ProjectCard(nb, byNotebook[nb.id] ?: 0, tasksBy[nb.id] ?: 0, nb.orgId?.let { orgNames[it] }, activityBy[nb.id])
         }
     }.state(emptyList())
 
@@ -331,13 +334,8 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateSettings(change: (WorkSettings) -> WorkSettings) = viewModelScope.launch { prefs.updateWorkSettings(change) }
 
-    /** The "How it works" card goes once the person has closed it, or has done the loop once. */
-    val introDismissed = MutableStateFlow(state.getBoolean(INTRO, false))
-    fun dismissIntro() { state.edit().putBoolean(INTRO, true).apply(); introDismissed.value = true }
-
     private companion object {
         const val NOT_SAME = "not_same_people"
-        const val INTRO = "work_intro_dismissed"
     }
 
     // ---------------------------------------------------------------- views (W14)

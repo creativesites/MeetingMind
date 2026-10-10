@@ -66,8 +66,24 @@ data class PrayUi(
     val singing: Boolean = false,
     val mode: PrayMode = PrayMode.TOGETHER,
     /** The hymn picked at the start, offered again by "Sing". */
-    val song: String? = null
+    val song: String? = null,
+    /** Whether the person's voice cuts the companion off: on with a headset, "Calm" on the loudspeaker, unless chosen. */
+    val voiceInterrupt: Boolean = false,
+    val headset: Boolean = false
 )
+
+/** "Interrupt by voice": saved once the person chooses; until then it follows the audio route. */
+internal object InterruptPref {
+    private const val FILE = "live_voice"
+    private const val KEY = "interrupt_by_voice"
+    fun load(context: android.content.Context): Boolean? = runCatching {
+        val p = context.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
+        if (p.contains(KEY)) p.getBoolean(KEY, false) else null
+    }.getOrNull()
+    fun save(context: android.content.Context, value: Boolean) {
+        runCatching { context.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE).edit().putBoolean(KEY, value).apply() }
+    }
+}
 
 class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
     private val _ui = MutableStateFlow(PrayUi())
@@ -111,11 +127,13 @@ class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
             current = full
             val live = GeminiLiveVoice(key, GeminiLiveVoice.setupMessage(PrayerCompanion.systemInstruction(full), voice), getApplication())
             session = live
+            live.setVoiceInterrupt(InterruptPref.load(getApplication()))
             _ui.value = _ui.value.copy(started = true, lines = emptyList(), error = null, savedNoteId = null, startedAt = System.currentTimeMillis(),
                 mode = full.mode, song = full.worship, singing = full.worship != null)
             jobs += launch { live.level.collect { _level.value = it } }
             jobs += launch { live.userLevel.collect { _userLevel.value = it } }
             jobs += launch { live.state.collect { s -> _ui.value = _ui.value.copy(state = s) } }
+            jobs += launch { live.headset.collect { h -> _ui.value = _ui.value.copy(headset = h, voiceInterrupt = live.voiceInterruptEnabled()) } }
             jobs += launch { live.stage.collect { s -> _ui.value = _ui.value.copy(stage = s) } }
             jobs += launch {
                 live.events.collect { e ->
@@ -153,6 +171,17 @@ class PrayWithMeViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The quick asks under the conversation. */
     fun ask(prompt: String) { session?.say(prompt) }
+
+    /** The "Interrupt by voice" switch; saved so it stays as chosen. */
+    fun toggleVoiceInterrupt() {
+        val on = !_ui.value.voiceInterrupt
+        InterruptPref.save(getApplication(), on)
+        session?.setVoiceInterrupt(on)
+        _ui.value = _ui.value.copy(voiceInterrupt = on)
+    }
+
+    /** Tap on the orb while the companion speaks: take the floor now. */
+    fun interrupt() { session?.interrupt() }
 
     fun toggleMute() {
         val m = !_ui.value.muted

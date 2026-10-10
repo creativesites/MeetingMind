@@ -9,6 +9,8 @@ import com.craftflowtechnologies.meetingmind.core.devotional.DevotionalOrigin
 import com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile
 import com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource
 import com.craftflowtechnologies.meetingmind.core.devotional.LiturgicalCalendar
+import com.craftflowtechnologies.meetingmind.core.devotional.PassageRotation
+import com.craftflowtechnologies.meetingmind.core.devotional.Tradition
 import com.craftflowtechnologies.meetingmind.core.devotional.LocalDay
 import com.craftflowtechnologies.meetingmind.core.devotional.Quote
 import com.craftflowtechnologies.meetingmind.core.devotional.Quotes
@@ -45,13 +47,19 @@ data class DevotionalAsk(
     val variant: Int = 0,
     val writer: DevotionalWriter = DevotionalWriter.AUTO,
     /** The hour it's asked for (it'll be read now); null for the scheduled morning one. */
-    val hour: Int? = null
+    val hour: Int? = null,
+    /**
+     * The timetable's own writes: if AI models are set up but all fail (offline, quota, a bad
+     * answer), say so instead of quietly filing a classic as today's devotional. With no AI set
+     * up at all, the usual classic still stands in.
+     */
+    val keepToAi: Boolean = false
 ) {
     val custom get() = !about.isNullOrBlank() || !passage.isNullOrBlank() || topics.isNotEmpty() || tone != null || minutes != null
 
     fun toJson(): String = org.json.JSONObject().apply {
         about?.let { put("about", it) }; passage?.let { put("passage", it) }; put("topics", org.json.JSONArray(topics.toList()))
-        tone?.let { put("tone", it.name) }; minutes?.let { put("minutes", it) }; put("variant", variant); put("writer", writer.name); hour?.let { put("hour", it) }
+        tone?.let { put("tone", it.name) }; minutes?.let { put("minutes", it) }; put("variant", variant); put("writer", writer.name); hour?.let { put("hour", it) }; if (keepToAi) put("keepToAi", true)
     }.toString()
 
     companion object {
@@ -65,7 +73,8 @@ data class DevotionalAsk(
                 tone = runCatching { com.craftflowtechnologies.meetingmind.core.devotional.DevotionalTone.valueOf(o.getString("tone")) }.getOrNull(),
                 minutes = o.optInt("minutes", 0).takeIf { it > 0 }, variant = o.optInt("variant", 0),
                 writer = runCatching { DevotionalWriter.valueOf(o.getString("writer")) }.getOrDefault(DevotionalWriter.AUTO),
-                hour = if (o.has("hour")) o.optInt("hour") else null
+                hour = if (o.has("hour")) o.optInt("hour") else null,
+                keepToAi = o.optBoolean("keepToAi", false)
             )
         }
     }
@@ -120,10 +129,10 @@ class DevotionalEngine(
         morning: Devotional? = null
     ): Devotional {
         lastFallbackReason = null
-        val profile = if (ask == null) profile else profile.copy(
-            tone = ask.tone ?: profile.tone, minutes = ask.minutes ?: profile.minutes,
-            topics = if (ask.topics.isNotEmpty()) ask.topics else profile.topics
-        )
+        // A one-off request (tone, length, topics) applies to this devotional only; the topics it names
+        // are typed in the moment, so they steer it whatever the Personal touch setting says.
+        val profile = if (ask == null) profile else profile.copy(tone = ask.tone ?: profile.tone, minutes = ask.minutes ?: profile.minutes)
+        val askTopics = ask?.topics.orEmpty()
         val variant = ask?.variant ?: 0
         val day = LiturgicalCalendar.dayOf(date, profile.tradition)
         val source = if (ask?.custom == true) DevotionalSource.AI else when (profile.source) {
@@ -147,7 +156,7 @@ class DevotionalEngine(
         val passage = ask?.passage?.let { ScriptureReferenceParser.parse(it) }
             ?: seriesPassage
             ?: (if (evening) morning?.scripture?.firstOrNull() else null)
-            ?: freshPassage(date, profile, variant, memory)
+            ?: freshPassage(date, profile, variant, memory, askTopics)
         val format = when {
             evening -> com.craftflowtechnologies.meetingmind.core.devotional.DevotionalFormat.DAILY_EXAMEN
             !profile.rotateFormats -> profile.fixedFormat ?: profile.formats.firstOrNull() ?: com.craftflowtechnologies.meetingmind.core.devotional.DevotionalFormat.REFLECTION
@@ -170,6 +179,7 @@ class DevotionalEngine(
             // On demand, it's read now — say so; the scheduled one comes out in the morning but stays time-neutral.
             val brief = DevotionalBrief(
                 passage, text, profile, day, weekday, shared, name, ask?.about, hour = ask?.hour,
+                date = date, askTopics = askTopics,
                 recent = recentLines, dayIndex = date.toEpochDay() + variant * 5L,
                 format = format, series = seriesLine, seriesSoFar = seriesSoFar, morning = morningLine
             )
@@ -184,7 +194,7 @@ class DevotionalEngine(
                 if (raw == null) { lastFallbackReason = (result as? AiResult.Failed)?.message ?: "The AI model wasn't available."; return null }
                 val answer = DevotionalContract.parse(raw)
                 if (answer == null) { lastFallbackReason = "The AI answer couldn't be read."; return null }
-                return check(answer, passage, profile, date) ?: run { lastFallbackReason = "The AI answer didn't pass the devotional checks."; null }
+                return check(answer, passage, profile, date, askTopics) ?: run { lastFallbackReason = "The AI answer didn't pass the devotional checks."; null }
             }
             var checked = attempt(brief) ?: continue
             // The novelty check: one rewrite if it repeats a recent devotional; a second repeat is kept.
@@ -200,38 +210,61 @@ class DevotionalEngine(
         if (writer == DevotionalWriter.DEVICE || writer == DevotionalWriter.GEMINI) {
             throw DevotionalUnavailable(lastFallbackReason ?: "The AI couldn't write one just now.")
         }
+        if (pool.isNotEmpty() && ask?.keepToAi == true) throw DevotionalUnavailable(lastFallbackReason ?: "The AI couldn't write one just now.")
         if (lastFallbackReason == null) lastFallbackReason = "No AI model is set up, so today's reading is a classic."
         return anyClassic(date, false, profile, variant) ?: mine(date, profile)
     }
 
-    /** A passage outside the exclusion window, stepping through the candidates until one is fresh. */
-    suspend fun freshPassage(date: LocalDate, profile: DevotionalProfile, variant: Int, memory: com.craftflowtechnologies.meetingmind.core.devotional.DevotionalMemory): ScriptureReference {
-        var first: ScriptureReference? = null
-        for (step in 0 until 24) {
-            val candidate = passageFor(date, profile, variant + step)
-            if (first == null) first = candidate
-            if (!memory.usedRecently(candidate, date, profile.passageExclusionDays)) return candidate
-        }
-        return first ?: passageFor(date, profile, variant)
+    /**
+     * Topics and "more of" as gentle weights for the day's passage or quote: nothing when the Personal
+     * touch is off, a light nudge on some days when it's on, plus whatever the person typed in the moment.
+     */
+    private fun quoteWeights(profile: DevotionalProfile, date: LocalDate, askTopics: Set<String> = emptySet()): Set<String> =
+        askTopics + if (profile.personalTouch.weightsOn(date)) profile.topics + profile.moreOf else emptySet()
+
+    /**
+     * A passage outside the exclusion window, stepping through the candidates until one is fresh. It also
+     * prefers a Bible book other than the last few days' (variety, not continuity).
+     */
+    suspend fun freshPassage(
+        date: LocalDate, profile: DevotionalProfile, variant: Int,
+        memory: com.craftflowtechnologies.meetingmind.core.devotional.DevotionalMemory,
+        askTopics: Set<String> = emptySet()
+    ): ScriptureReference {
+        val candidates = (0 until 24).map { passageFor(date, profile, variant + it, askTopics) }
+        val fresh = candidates.filter { !memory.usedRecently(it, date, profile.passageExclusionDays) }
+        val books = memory.recentBooks(4, date)
+        return fresh.firstOrNull { it.usfm !in books } ?: fresh.firstOrNull() ?: candidates.first()
     }
 
-    /** Today's passage: the season's or the person's topics, then the Verse of the Day, then the classic's. */
-    suspend fun passageFor(date: LocalDate, profile: DevotionalProfile, variant: Int = 0): ScriptureReference {
-        val follows = profile.tradition != com.craftflowtechnologies.meetingmind.core.devotional.Tradition.NON_DENOMINATIONAL || profile.topics.isEmpty()
-        val day = if (follows && variant == 0) LiturgicalCalendar.dayOf(date, profile.tradition).takeIf { it.season != com.craftflowtechnologies.meetingmind.core.devotional.LiturgicalSeason.ORDINARY } else null
-        // A different one: step through the topic lists, or through the classic's key verses.
-        if (variant > 0) {
-            TopicPassages.pick(date.plusDays(variant * 37L), profile.topics + profile.moreOf, profile.lessOf, null)?.let { return it }
-            classics.forDate(date.minusDays(variant * 11L), evening = variant % 2 == 1)?.reference?.let { return it }
+    /** Traditions that keep the church year, so its seasons choose the reading on Sundays and feasts. */
+    private val followsChurchYear = setOf(Tradition.CATHOLIC, Tradition.ORTHODOX, Tradition.ANGLICAN, Tradition.METHODIST)
+
+    /**
+     * Today's passage. The season's reading on a feast (and on Sundays and in Holy Week for traditions that
+     * keep the church year); otherwise the next passage in [PassageRotation], a cycle across the whole canon
+     * that knows nothing about the reader. Topics and "more of" only weigh in (about one day in four at most)
+     * when the person has turned on a Personal touch; "less of" is always honoured.
+     */
+    suspend fun passageFor(date: LocalDate, profile: DevotionalProfile, variant: Int = 0, askTopics: Set<String> = emptySet()): ScriptureReference {
+        val less = profile.lessOf
+        if (variant == 0) {
+            val day = LiturgicalCalendar.dayOf(date, profile.tradition)
+            val follows = profile.tradition in followsChurchYear
+            val seasonal = day.season != com.craftflowtechnologies.meetingmind.core.devotional.LiturgicalSeason.ORDINARY &&
+                (day.feast != null || follows && (date.dayOfWeek == DayOfWeek.SUNDAY || day.season == com.craftflowtechnologies.meetingmind.core.devotional.LiturgicalSeason.HOLY_WEEK))
+            if (seasonal) TopicPassages.pick(date, emptyList(), less, day)?.let { return it }
         }
-        return TopicPassages.pick(date, profile.topics + profile.moreOf, profile.lessOf, day)
+        val weights = quoteWeights(profile, date, askTopics)
+        if (weights.isNotEmpty()) TopicPassages.pick(date.plusDays(variant * 37L), weights, less, null)?.let { return it }
+        return PassageRotation.next(PassageRotation.indexFor(date, variant), less)
             ?: runCatching { verseOfTheDay(date) }.getOrNull()
             ?: classics.forDate(date)?.reference
             ?: ScriptureReferenceParser.parse("John 15:5")!!
     }
 
     /** Applies the labelled-AI rules to an answer; null when too little survives to be worth reading. */
-    private suspend fun check(answer: DevotionalAnswer, passage: ScriptureReference, profile: DevotionalProfile, date: LocalDate): Devotional? {
+    private suspend fun check(answer: DevotionalAnswer, passage: ScriptureReference, profile: DevotionalProfile, date: LocalDate, askTopics: Set<String> = emptySet()): Devotional? {
         var removed = 0
         suspend fun clean(s: String?): String? {
             if (s == null) return null
@@ -258,7 +291,7 @@ class DevotionalEngine(
             application = answer.application.mapNotNull { whole(it) },
             prayer = if (profile.includePrayer) whole(answer.prayer) else null,
             motivation = if (profile.includeMotivation) whole(answer.motivation) else null,
-            insight = if (profile.includeInsight) Quotes.pick(quotes, profile.topics + profile.moreOf, date) else null,
+            insight = if (profile.includeInsight) Quotes.pick(quotes, quoteWeights(profile, date, askTopics), date, profile.lessOf) else null,
             question = if (profile.includeQuestion) whole(answer.question) else null,
             label = DevotionalLabels.CLOUD
         )
@@ -287,7 +320,7 @@ class DevotionalEngine(
             scripture = listOfNotNull(r.reference),
             keyText = r.keyText.takeIf { it.isNotBlank() },
             reflection = r.paragraphs,
-            insight = if (profile.includeInsight) Quotes.pick(quotes, profile.topics, date) else null,
+            insight = if (profile.includeInsight) Quotes.pick(quotes, quoteWeights(profile, date), date, profile.lessOf) else null,
             label = classics.attribution,
             engine = "${classics.author}, ${classics.title}${if (evening) " (evening)" else ""}",
             season = LiturgicalCalendar.dayOf(date, profile.tradition)

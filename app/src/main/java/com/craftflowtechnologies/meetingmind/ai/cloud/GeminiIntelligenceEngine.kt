@@ -178,8 +178,11 @@ class GeminiIntelligenceEngine(
         passages: List<TranscriptSegment>,
         personalization: AskPersonalizationContext
     ): String = buildString {
-        personalization.userName?.takeIf { it.isNotBlank() }?.let {
-            appendLine("The person asking is called $it.")
+        // Faith answers stay about the recording: the person's name is only added for non-faith recordings.
+        if (!com.craftflowtechnologies.meetingmind.ai.faith.AskSermon.isFaith(personalization.recordingType)) {
+            personalization.userName?.takeIf { it.isNotBlank() }?.let {
+                appendLine("The person asking is called $it.")
+            }
         }
         if (personalization.relevantVocabulary.isNotEmpty()) {
             appendLine("Terms this person uses: ${personalization.relevantVocabulary.joinToString(", ")}")

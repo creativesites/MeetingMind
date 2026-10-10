@@ -268,3 +268,15 @@ Functions without client changes.
 
 **Founder actions** (about 20 minutes, guided when we get there): create a Firebase service account key, put it in a
 Worker secret, add the Firebase Android app's FCM setup, and deploy the Worker with `wrangler`.
+
+### Devotional delivery
+
+How a devotional gets to the phone on time, and what is said when it doesn't.
+
+1. **Write ahead.** An alarm 90 minutes before the chosen time (`DailyAlarms`, exact when the person allows it, otherwise inexact allow-while-idle; the lead absorbs Doze) starts an expedited `DevotionalWorker`. It needs a network, retries with exponential backoff (30s, doubling) until 30 minutes after delivery time, and never files a classic in place of a failed AI: if AI writers are set up and all fail, it retries. With no AI set up at all, the labelled classic still stands in.
+2. **Re-armed.** Each alarm sets the next day's before it works. Boot, app update, clock and time-zone changes, exact-alarm permission changes and every app start set them again.
+3. **Delivery time.** The notify alarm checks. Ready: the "ready" notification. Missing: one last try right then (no network requirement, so the phone's own model can serve), then either "ready" or an honest "Today's devotional isn't ready yet" with the reason (offline, AI unavailable, still writing) and two buttons: "Write it now" (expedited write; the notification is replaced with the result) and "Read a classic instead". A late write-ahead that succeeds replaces the notice with "ready".
+4. **On the page.** A quiet line says when it was written and by what (Gemini, DeepSeek, on this phone, or a classic). A failed write shows its reason with Try again and Read a classic instead.
+
+**Optional future: cloud pre-generation.** The existing Cloudflare Worker could write the day's devotional before the phone wakes and send it by an FCM data push, which wakes the app even when its alarms were lost. Not built. Privacy trade-off: the server would need the person's devotional profile and, to personalise, some of what the phone now keeps to itself (prayer requests, journal lines). It should therefore use only the profile (tradition, tone, topics) and general signals, never private lines, be opt-in, store nothing after delivery, and the phone must still fall back to on-device writing when no push arrives.
+

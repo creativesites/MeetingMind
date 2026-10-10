@@ -105,6 +105,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
         <receiver android:name="com.craftflowtechnologies.meetingmind.core.notify.DailyAlarmReceiver" android:exported="false" />
+        <receiver android:name="com.craftflowtechnologies.meetingmind.core.notify.DevotionalActionReceiver" android:exported="false" />
         <receiver android:name="com.craftflowtechnologies.meetingmind.core.tasks.TaskReminderReceiver" android:exported="false" />
         <receiver android:name="com.craftflowtechnologies.meetingmind.core.notify.DailyAlarmResync" android:exported="true">
             <intent-filter>
