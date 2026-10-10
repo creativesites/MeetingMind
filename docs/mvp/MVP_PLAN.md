@@ -254,3 +254,17 @@ prototype is https://claude.ai/artifact/CwsiqKq3ff7wCt4hjC2bB3.
 | 3 | F-3 navigation (Sonnet, alone on the hot files) → then U-1 Everyday ∥ U-1F Faith home ∥ U-1W Work home ∥ U-2 Notes (Sonnet) ∥ F-4 sweeps (Haiku, on files not in flight) |
 | 4 | F-6 engine, F-7 select/copy + read aloud ∥ U-3, U-4, U-5, U-6, U-7 ∥ P-2 Mimi → P-3, P-5 ∥ V-0a/b/c Faith v2 |
 | 5 | V-2 Study v1 → U-1S ∥ V-3, V-5 ∥ Q-2, Q-3 → Q-1 → Q-4 |
+
+---
+
+## 8. Founder backlog (2026-10-10, start after the usage limit resets)
+
+| ID | Item | Notes |
+|---|---|---|
+| N-1 | **Insert summary and transcript into a note** as new blocks (a note action "Insert summary" / "Insert transcript") | Use the existing SUMMARY/TRANSCRIPT-excerpt block types, properly formatted (speakers, paragraphs, timestamps that jump to the audio) |
+| N-2 | **Sermons auto-insert the transcript** as properly formatted transcript block(s) in the Faith Note | Paragraphs by speaker/turn, not one wall of text; source stays linked to the audio |
+| R-1 | **Recording screen redesign** to match the rest of the app's high-end UI, with **dynamic buttons** per recording type | Sermon first: highlight a key moment, add a quick note, mark scripture, all timestamped into the note. Then meetings: mark decision, action item, question. The companion is already on this screen (Z-8) |
+| W-3 | **Return Work notes to the Notes library** | Work notes must also appear in Notes (with a Work filter), not only on the Work page |
+| H-1 | **Today page.** Founder: "the current version of Today looks awesome — restore it, and make the polished Today you made a new home page the user can also choose, and the default home" | Needs clarification of which version is "current" (see conversation 2026-10-10). Fits the home-system plan: several home designs on one scaffold |
+| C-1 | Circles follow-ups | Connect the Create studio to chat card sharing (needs a result callback on `CreateController`); register FCM tokens in the app for pushes; typing indicators; hide or route the anonymous author's own comments via the Worker; remove the old encrypted circle tables (Room migration 24→25) |
+| D-1 | Remove the old `HomeHeroHeader`/`PraySession` colour literals so `ColorLiteralGuardTest` goes green | Haiku task |
