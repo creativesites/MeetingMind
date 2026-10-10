@@ -451,6 +451,7 @@ fun ProcessingScreen(
         state = state,
         profile = profile,
         rows = com.craftflowtechnologies.meetingmind.core.model.Workflows.processingStageRows(recordingType, selectedSpeakerCount),
+        space = com.craftflowtechnologies.meetingmind.core.model.Workflows.space(recordingType),
         onMinimise = onNavigateBack,
         onStop = { viewModel.cancelPipeline(); onNavigateBack() },
         onRetry = { viewModel.retry(audioPath, durationMs, selectedSpeakerCount) { finishedId -> onProcessingComplete(finishedId) } },
@@ -474,7 +475,9 @@ internal fun ProcessingRunning(
     firstWords: List<String> = emptyList(),
     /** Which engine is transcribing right now, and whether the other can take over. */
     route: com.craftflowtechnologies.meetingmind.ai.transcription.RouteInfo? = null,
-    onSwitchRoute: (com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionRoute) -> Unit = {}
+    onSwitchRoute: (com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionRoute) -> Unit = {},
+    /** The recording's space, for the companion's per-space stage captions. */
+    space: com.craftflowtechnologies.meetingmind.core.model.NotebookSpace? = null
 ) {
     var confirmStop by remember { mutableStateOf(false) }
     val failed = state.error != null || state.modelRequired
@@ -511,7 +514,9 @@ internal fun ProcessingRunning(
                 }
             }
 
-            Spacer(Modifier.weight(0.6f))
+            Spacer(Modifier.weight(0.3f))
+            ProcessingCompanionBlock(state = state, space = space, onRetry = onRetry, onGetModel = onGetModel)
+            Spacer(Modifier.weight(0.3f))
 
             // The one number that matters, in a ring.
             ProgressRing(

@@ -28,7 +28,12 @@ class ProcessingScreenshotTest {
 
     private fun capture(state: ProcessingUiState, name: String) {
         compose.setContent {
-            MeetMindTheme { ProcessingRunning(state, ProcessingProfile.INTERNET, rows, {}, {}, {}, {}, {}) }
+            MeetMindTheme {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion provides true,
+                    com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true
+                ) { ProcessingRunning(state, ProcessingProfile.INTERNET, rows, {}, {}, {}, {}, {}) }
+            }
         }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")

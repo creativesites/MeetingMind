@@ -281,7 +281,8 @@ fun RecordingScreen(
     }
 
     val state by viewModel.state.collectAsState()
-    val amplitude by viewModel.amplitude.collectAsState()
+    val amplitudeState = viewModel.amplitude.collectAsState()
+    val amplitude = amplitudeState.value
     val durationMs by viewModel.durationMs.collectAsState()
     var showDiscardDialog by remember { mutableStateOf(false) }
     var hasStarted by remember { mutableStateOf(false) }
@@ -338,6 +339,7 @@ fun RecordingScreen(
         hasPermission = hasAudioPermission,
         state = state,
         amplitude = amplitude,
+        companionLevel = { amplitudeState.value },
         durationMs = durationMs,
         capacityWarning = capacityWarning,
         onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
@@ -487,12 +489,14 @@ private fun liveColors(type: RecordingType): List<Color> = when (type) {
  * the last seconds flowing past as a waveform, and three big controls within thumb's reach.
  */
 @Composable
-private fun LiveRecordingSurface(
+internal fun LiveRecordingSurface(
     type: RecordingType,
     title: String,
     hasPermission: Boolean,
     state: RecordingState,
     amplitude: Float,
+    /** Live mic level for the companion, read in the draw phase only (no recomposition per frame). */
+    companionLevel: () -> Float = { amplitude },
     durationMs: Long,
     capacityWarning: String?,
     onRequestPermission: () -> Unit,
@@ -557,6 +561,7 @@ private fun LiveRecordingSurface(
             }
 
             Spacer(Modifier.weight(0.7f))
+            RecordingCompanion(type = type, recording = recording, level = companionLevel)
             Text(title, fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center, maxLines = 2, modifier = Modifier.padding(horizontal = 32.dp))
             Text(
                 Formatters.formatDurationHms(durationMs), fontSize = 64.sp, fontWeight = FontWeight.Light, color = Color.White,
