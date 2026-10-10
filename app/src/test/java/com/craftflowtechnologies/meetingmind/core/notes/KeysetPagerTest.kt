@@ -157,4 +157,17 @@ class KeysetPagerTest {
         p.retry(); advanceUntilIdle()
         assertNull(p.state.value.error); assertEquals(30, p.state.value.items.size); assertNull(src.cursors.last())
     }
+
+    @Test
+    fun update_edits_rows_on_screen_without_reloading_and_paging_carries_on() = runTest {
+        val src = Source(items(80)); val p = pager(src)
+        p.loadMore(); advanceUntilIdle()
+        val calls = src.calls
+        val gone = p.state.value.items[3]
+        p.update { l -> l.filter { it.id != gone.id } }
+        assertEquals(29, p.state.value.items.size); assertEquals(calls, src.calls)
+        p.loadMore(); advanceUntilIdle()
+        assertEquals(59, p.state.value.items.size)
+        assertEquals(p.state.value.items.map { it.id }.toSet().size, p.state.value.items.size)
+    }
 }

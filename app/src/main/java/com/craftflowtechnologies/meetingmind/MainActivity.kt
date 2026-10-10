@@ -853,8 +853,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         composable(Routes.WORK) {
             val vm = com.craftflowtechnologies.meetingmind.feature.work.workViewModel(navController)
             val today: com.craftflowtechnologies.meetingmind.feature.today.TodayViewModel = viewModel()
-            com.craftflowtechnologies.meetingmind.feature.work.WorkSpaceScreen(
-                viewModel = vm, today = today,
+            val page: com.craftflowtechnologies.meetingmind.feature.work.WorkPageViewModel = viewModel(factory = com.craftflowtechnologies.meetingmind.feature.work.WorkPageViewModel.Factory)
+            com.craftflowtechnologies.meetingmind.feature.work.WorkPageScreen(
+                viewModel = vm, page = page, today = today,
                 onNavigateBack = { navController.popBackStack() },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
@@ -866,6 +867,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
                 onOpenSettings = { navController.navigate(Routes.WORK_SETTINGS) },
                 onSearch = openSearch,
+                onImport = { navController.navigate(Routes.IMPORT) },
                 onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
                 onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) },
                 onOpenWeeklyReview = { navController.navigate(Routes.WEEKLY_REVIEW) },

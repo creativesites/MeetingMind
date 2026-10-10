@@ -67,6 +67,9 @@ data class WorkTask(
 /** Home and the Work space never show more than a few open tasks; this bounds what they observe. */
 const val OPEN_TASK_LIMIT = 200
 
+/** Beside a note in the Work list: [transcript] is "READY", "PROCESSING" or "ERROR" (null with no recording). */
+data class NoteIndicators(val hasRecording: Boolean, val transcript: String?, val openTasks: Int)
+
 const val SEARCH_MAX_RESULTS = 200
 private const val HIGH_ID = "\uFFFF"
 
@@ -489,5 +492,29 @@ class WorkRepository(private val database: MeetMindDatabase) {
 
         fun followUpSentAt(metadataJson: String): Long? =
             runCatching { JSONObject(metadataJson).optString(FOLLOW_UP_SENT).toLongOrNull() }.getOrNull()
+    }
+
+    /** What a page of notes shows beside each title: a recording, its transcript state, open tasks. One bounded query set per page. */
+    suspend fun noteIndicators(ids: List<String>): Map<String, NoteIndicators> = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext emptyMap()
+        val statuses = work.meetingStatusesForNotes(ids).groupBy({ it.noteId }, { it.status })
+        val tasks = HashMap<String, Int>()
+        (work.openTaskCountsForNotes(ids) + work.openMeetingTaskCountsForNotes(ids)).forEach { tasks[it.noteId] = (tasks[it.noteId] ?: 0) + it.count }
+        ids.associateWith { id ->
+            val st = statuses[id].orEmpty()
+            NoteIndicators(hasRecording = st.isNotEmpty(), transcript = when {
+                st.isEmpty() -> null
+                st.any { it == "ERROR" } -> "ERROR"
+                st.any { it == "PROCESSING" || it == "RECORDING" } -> "PROCESSING"
+                else -> "READY"
+            }, openTasks = tasks[id] ?: 0)
+        }
+    }
+
+    /** A page of [workTasksPage] as [WorkTask]s, with their owners' names. */
+    suspend fun toWorkTasks(list: List<TaskEntity>): List<WorkTask> = withContext(Dispatchers.IO) {
+        if (list.isEmpty()) return@withContext emptyList()
+        val names = work.peopleNames().associate { it.id to it.name }
+        list.map { it.toWork(names) }
     }
 }

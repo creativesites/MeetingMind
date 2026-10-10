@@ -79,6 +79,16 @@ class KeysetPager<T>(
         start(reset = failedWasReset)
     } }
 
+    /**
+     * Changes the rows already on screen (a pin, a delete, an undo) without reloading: the cursor and the
+     * de-dup set are untouched, so paging carries on from where it was. Rows a transform adds are marked seen.
+     */
+    fun update(transform: (List<T>) -> List<T>) { synchronized(lock) {
+        val next = transform(_state.value.items)
+        next.forEach { seen.add(cursorOf(it).id) }
+        _state.value = _state.value.copy(items = next)
+    } }
+
     private fun start(reset: Boolean) {
         val gen = generation
         val after = if (reset) null else last

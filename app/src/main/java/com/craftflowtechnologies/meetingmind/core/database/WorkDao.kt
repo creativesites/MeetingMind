@@ -237,6 +237,26 @@ interface WorkDao {
     @Query("SELECT notebookId AS notebookId, COUNT(*) AS count FROM notes WHERE deletedAt IS NULL AND notebookId IS NOT NULL GROUP BY notebookId")
     fun observeNoteCountsByNotebook(): Flow<List<NotebookNoteCount>>
 
+    /** Open tasks per project (tasks on notes filed in it), for the Work page's project cards. */
+    @Query("SELECT n.notebookId AS notebookId, COUNT(*) AS count FROM tasks t JOIN notes n ON n.id = t.noteId WHERE t.deletedAt IS NULL AND t.doneAt IS NULL AND n.notebookId IS NOT NULL GROUP BY n.notebookId")
+    fun observeOpenTaskCountsByNotebook(): Flow<List<NotebookNoteCount>>
+
+    /** Last edit per notebook, in one grouped query. */
+    @Query("SELECT notebookId AS notebookId, MAX(updatedAt) AS lastAt FROM notes WHERE deletedAt IS NULL AND notebookId IS NOT NULL GROUP BY notebookId")
+    fun observeNotebookActivity(): Flow<List<NotebookActivity>>
+
+    // ---- Indicators for one page of notes (bounded by the page's ids).
+
+    @Query("SELECT noteId AS noteId, status AS status FROM meetings WHERE noteId IN (:ids)")
+    suspend fun meetingStatusesForNotes(ids: List<String>): List<NoteMeetingStatus>
+
+    @Query("SELECT noteId AS noteId, COUNT(*) AS count FROM tasks WHERE deletedAt IS NULL AND doneAt IS NULL AND noteId IN (:ids) GROUP BY noteId")
+    suspend fun openTaskCountsForNotes(ids: List<String>): List<NoteTaskCount>
+
+    @Query("""SELECT m.noteId AS noteId, COUNT(*) AS count FROM tasks t JOIN meetings m ON m.id = t.meetingId
+        WHERE t.deletedAt IS NULL AND t.doneAt IS NULL AND (t.noteId IS NULL OR t.noteId != m.noteId) AND m.noteId IN (:ids) GROUP BY m.noteId""")
+    suspend fun openMeetingTaskCountsForNotes(ids: List<String>): List<NoteTaskCount>
+
     // ---- Keyset pages (W-1). Each is a bounded LIMIT query; pass the last row's key + id as the cursor, or
     // ---- Long.MAX_VALUE / "\uFFFF" (dates, updatedAt) for the first page. Ties on the key fall back to id.
 
@@ -289,3 +309,7 @@ interface WorkDao {
         LIMIT :limit OFFSET :offset""")
     suspend fun searchWorkNotes(types: List<String>, match: String, limit: Int, offset: Int): List<NoteEntity>
 }
+
+data class NotebookActivity(val notebookId: String, val lastAt: Long)
+data class NoteMeetingStatus(val noteId: String, val status: String)
+data class NoteTaskCount(val noteId: String, val count: Int)
