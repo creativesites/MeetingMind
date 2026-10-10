@@ -451,6 +451,7 @@ fun ProcessingScreen(
         state = state,
         profile = profile,
         rows = com.craftflowtechnologies.meetingmind.core.model.Workflows.processingStageRows(recordingType, selectedSpeakerCount),
+        space = com.craftflowtechnologies.meetingmind.core.model.Workflows.space(recordingType),
         onMinimise = onNavigateBack,
         onStop = { viewModel.cancelPipeline(); onNavigateBack() },
         onRetry = { viewModel.retry(audioPath, durationMs, selectedSpeakerCount) { finishedId -> onProcessingComplete(finishedId) } },
@@ -474,9 +475,13 @@ internal fun ProcessingRunning(
     firstWords: List<String> = emptyList(),
     /** Which engine is transcribing right now, and whether the other can take over. */
     route: com.craftflowtechnologies.meetingmind.ai.transcription.RouteInfo? = null,
-    onSwitchRoute: (com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionRoute) -> Unit = {}
+    onSwitchRoute: (com.craftflowtechnologies.meetingmind.ai.transcription.TranscriptionRoute) -> Unit = {},
+    /** The recording's space, for the companion's per-space stage captions. */
+    space: com.craftflowtechnologies.meetingmind.core.model.NotebookSpace? = null
 ) {
     var confirmStop by remember { mutableStateOf(false) }
+    // One primary action: when the companion's StatusLine carries the fix, the card keeps only its info and secondary.
+    val companionFix = rememberProcessingCompanionShown()
     val failed = state.error != null || state.modelRequired
     // Elapsed time on this screen, so a long run visibly moves even between progress steps.
     var elapsedMs by remember { mutableStateOf(0L) }
@@ -511,7 +516,9 @@ internal fun ProcessingRunning(
                 }
             }
 
-            Spacer(Modifier.weight(0.6f))
+            Spacer(Modifier.weight(0.3f))
+            ProcessingCompanionBlock(state = state, space = space, onRetry = onRetry, onGetModel = onGetModel)
+            Spacer(Modifier.weight(0.3f))
 
             // The one number that matters, in a ring.
             ProgressRing(
@@ -600,13 +607,13 @@ internal fun ProcessingRunning(
                 state.modelRequired -> OutcomeCard(
                     title = "The recording is saved",
                     message = state.modelRequiredMessage ?: "Transcribing on this phone needs the offline speech model. Download it, or switch to Internet mode in Settings.",
-                    primary = "Get the model" to onGetModel,
+                    primary = ("Get the model" to onGetModel).takeUnless { companionFix },
                     secondary = "View recording" to onViewRecording
                 )
                 state.error != null -> OutcomeCard(
                     title = "The recording is saved",
                     message = state.error ?: "Something went wrong.",
-                    primary = "Try again" to onRetry,
+                    primary = ("Try again" to onRetry).takeUnless { companionFix },
                     secondary = "View recording" to onViewRecording
                 )
                 !state.isComplete -> {
@@ -717,14 +724,14 @@ private fun TimelineRow(label: String, detail: String?, done: Boolean, active: B
 }
 
 @Composable
-private fun OutcomeCard(title: String, message: String, primary: Pair<String, () -> Unit>, secondary: Pair<String, () -> Unit>) {
+private fun OutcomeCard(title: String, message: String, primary: Pair<String, () -> Unit>?, secondary: Pair<String, () -> Unit>) {
     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = secondary.second, shape = RoundedCornerShape(50), modifier = Modifier.weight(1f)) { Text(secondary.first, maxLines = 1) }
-                Button(onClick = primary.second, shape = RoundedCornerShape(50), modifier = Modifier.weight(1f)) { Text(primary.first, maxLines = 1) }
+                if (primary != null) Button(onClick = primary.second, shape = RoundedCornerShape(50), modifier = Modifier.weight(1f)) { Text(primary.first, maxLines = 1) }
             }
         }
     }

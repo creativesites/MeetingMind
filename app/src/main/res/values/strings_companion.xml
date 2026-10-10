@@ -100,6 +100,10 @@
         <item>Listening for who\'s speaking… %1$s voices so far</item>
     </string-array>
 
+    <!-- Transcribing and diarizing without a known number: the spec drops the clause rather than invent one. -->
+    <string name="companion_processing_transcribing_plain">Writing down every word…</string>
+    <string name="companion_processing_diarizing_plain">Listening for who\'s speaking…</string>
+
     <string name="companion_processing_cleaning_transcript">Tidying the transcript…</string>
 
     <!-- Index 0 Everyday, 1 Faith, 2 Work, 3 Study. -->
