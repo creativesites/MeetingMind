@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.core.companion
 
+import com.craftflowtechnologies.meetingmind.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -20,6 +21,13 @@ class CompanionRosterTest {
         assertEquals(CompanionForm.ZURI, CompanionRoster.resolve(CompanionForm.WREN, roster))
         assertEquals(CompanionForm.NAS, CompanionRoster.resolve(CompanionForm.NAS, roster))
         assertNull(CompanionRoster.resolve(null, roster))
+    }
+
+    @Test fun `display names come from the form strings`() {
+        assertEquals(
+            listOf(R.string.form_zuri, R.string.form_nas, R.string.form_wren, R.string.form_page),
+            CompanionForm.entries.map(CompanionRoster::displayName)
+        )
     }
 
     @Test fun `testing flags`() {

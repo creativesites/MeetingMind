@@ -114,7 +114,7 @@ fun CompanionLabScreen() {
                 }
 
                 SectionHeader(stringResource(R.string.companion_lab_form))
-                ChipRow(roster.map { CompanionRoster.defaultName(it) }, formIndex) { formIndex = it }
+                ChipRow(roster.map { stringResource(CompanionRoster.displayName(it)) }, formIndex) { formIndex = it }
 
                 SectionHeader(stringResource(R.string.companion_lab_state))
                 ChipRow(CompanionState.entries.map { it.name.lowercase() }, if (mode == null) stateIndex else -1) { stateIndex = it; modeIndex = -1 }

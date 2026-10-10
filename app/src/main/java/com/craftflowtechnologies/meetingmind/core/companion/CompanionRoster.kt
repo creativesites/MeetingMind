@@ -1,6 +1,8 @@
 package com.craftflowtechnologies.meetingmind.core.companion
 
+import androidx.annotation.StringRes
 import com.craftflowtechnologies.meetingmind.BuildConfig
+import com.craftflowtechnologies.meetingmind.R
 
 /**
  * Which forms ship (§10.7). The founder's switch is `COMPANION_FORMS` in `app/build.gradle.kts`
@@ -27,14 +29,12 @@ object CompanionRoster {
         else -> CompanionForm.ZURI
     }
 
-    /**
-     * The form's proper name, used until the companion strings land (Z-18 adds `form_*` string
-     * resources; these are names, not copy).
-     */
-    fun defaultName(form: CompanionForm): String = when (form) {
-        CompanionForm.ZURI -> "Zuri"
-        CompanionForm.NAS -> "Nas"
-        CompanionForm.WREN -> "Wren"
-        CompanionForm.PAGE -> "Page"
+    /** The form's display name (`form_*` in strings_companion.xml). Stored data uses the enum, never the name. */
+    @StringRes
+    fun displayName(form: CompanionForm): Int = when (form) {
+        CompanionForm.ZURI -> R.string.form_zuri
+        CompanionForm.NAS -> R.string.form_nas
+        CompanionForm.WREN -> R.string.form_wren
+        CompanionForm.PAGE -> R.string.form_page
     }
 }
