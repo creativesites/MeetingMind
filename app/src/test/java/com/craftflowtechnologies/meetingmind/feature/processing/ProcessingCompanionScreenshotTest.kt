@@ -12,6 +12,8 @@ import com.craftflowtechnologies.meetingmind.core.model.ProcessingStage
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.Workflows
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionSettingsSource
+import com.craftflowtechnologies.meetingmind.feature.settings.companion.FakeCompanionSettings
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion
 import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -38,7 +40,7 @@ class ProcessingCompanionScreenshotTest(private val dark: Boolean) {
     private fun capture(state: ProcessingUiState, space: NotebookSpace?, name: String, onRetry: () -> Unit = {}) {
         compose.setContent {
             MeetMindTheme(darkTheme = dark) {
-                CompositionLocalProvider(LocalCompanionReducedMotion provides true, LocalCompanionForceCanvas provides true) {
+                CompositionLocalProvider(LocalCompanionSettingsSource provides FakeCompanionSettings(), LocalCompanionReducedMotion provides true, LocalCompanionForceCanvas provides true) {
                     ProcessingRunning(state, ProcessingProfile.INTERNET, rows, {}, {}, onRetry, {}, {}, space = space)
                 }
             }

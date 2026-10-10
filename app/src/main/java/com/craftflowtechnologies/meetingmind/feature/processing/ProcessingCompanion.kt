@@ -24,10 +24,8 @@ import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.core.companion.CaptionKey
 import com.craftflowtechnologies.meetingmind.core.companion.CaptionSpec
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
-import com.craftflowtechnologies.meetingmind.core.companion.CompanionPresence
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionRoster
 import com.craftflowtechnologies.meetingmind.core.companion.FixAction
-import com.craftflowtechnologies.meetingmind.core.companion.LocalClock
 import com.craftflowtechnologies.meetingmind.core.companion.OneShotKind
 import com.craftflowtechnologies.meetingmind.core.companion.ProcessingCaptions
 import com.craftflowtechnologies.meetingmind.core.companion.ProcessingCompanion
@@ -35,17 +33,17 @@ import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.Companion
-import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionSettings
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.displayName
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 
 /** Whether the companion (and so its StatusLine fix) shows on the processing screen. */
 @Composable
 internal fun rememberProcessingCompanionShown(): Boolean {
-    val settings = LocalCompanionSettings.current
-    return remember(settings) {
-        CompanionRoster.resolve(settings.form) != null &&
-            CompanionPresence.visibleOn(CompanionPage.PROCESSING, settings, LocalClock(System.currentTimeMillis()))
-    }
+    val settings by rememberCompanionSettings()
+    val visible = rememberCompanionVisible(CompanionPage.PROCESSING)
+    return visible && CompanionRoster.resolve(settings.form) != null
 }
 
 /** Resolves a [CaptionSpec] to text. The caption is a pure function of the stage event. */
@@ -72,10 +70,9 @@ internal fun ProcessingCompanionBlock(
     onRetry: () -> Unit,
     onGetModel: () -> Unit
 ) {
-    val settings = LocalCompanionSettings.current
-    val form = CompanionRoster.resolve(settings.form) ?: return
-    val visible = remember(settings) { CompanionPresence.visibleOn(CompanionPage.PROCESSING, settings, LocalClock(System.currentTimeMillis())) }
-    if (!visible) return
+    val settings by rememberCompanionSettings()
+    val form = CompanionRoster.resolve(settings.form)
+    if (form == null || !rememberProcessingCompanionShown()) return
 
     // Once per job: this block lives as long as the job's screen, so the hop plays once and then rests.
     var celebrated by remember { mutableStateOf(false) }
@@ -112,7 +109,7 @@ internal fun ProcessingCompanionBlock(
             )
             FixAction.DOWNLOAD_MODELS -> StatusLine(
                 StatusKind.Warning,
-                stringResource(R.string.companion_error_models_missing, settings.name ?: stringResource(CompanionRoster.displayName(form))),
+                stringResource(R.string.companion_error_models_missing, settings.displayName(form)),
                 actionLabel = stringResource(R.string.companion_action_download_models), onAction = onGetModel
             )
             else -> Unit

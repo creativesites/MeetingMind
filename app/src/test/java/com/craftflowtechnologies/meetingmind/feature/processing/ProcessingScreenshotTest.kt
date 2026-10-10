@@ -30,6 +30,7 @@ class ProcessingScreenshotTest {
         compose.setContent {
             MeetMindTheme {
                 androidx.compose.runtime.CompositionLocalProvider(
+                    com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionSettingsSource provides com.craftflowtechnologies.meetingmind.feature.settings.companion.FakeCompanionSettings(),
                     com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion provides true,
                     com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true
                 ) { ProcessingRunning(state, ProcessingProfile.INTERNET, rows, {}, {}, {}, {}, {}) }

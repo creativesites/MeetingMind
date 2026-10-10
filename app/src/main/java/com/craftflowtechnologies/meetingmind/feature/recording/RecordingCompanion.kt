@@ -17,14 +17,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
-import com.craftflowtechnologies.meetingmind.core.companion.CompanionPresence
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionRoster
-import com.craftflowtechnologies.meetingmind.core.companion.LocalClock
 import com.craftflowtechnologies.meetingmind.core.companion.RecordingCompanionPolicy
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.Companion
-import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionSettings
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.displayName
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
 
 /**
  * The companion on the recording screen (Z-8, §5.4): Listening above the timer, driven by the
@@ -35,15 +35,15 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanion
  */
 @Composable
 internal fun RecordingCompanion(type: RecordingType, recording: Boolean, level: () -> Float) {
-    val settings = LocalCompanionSettings.current
-    val form = CompanionRoster.resolve(settings.form) ?: return
-    val visible = remember(settings) { CompanionPresence.visibleOn(CompanionPage.RECORDING, settings, LocalClock(System.currentTimeMillis())) }
-    if (!visible) return
+    val settings by rememberCompanionSettings()
+    val visible = rememberCompanionVisible(CompanionPage.RECORDING)
+    val form = CompanionRoster.resolve(settings.form)
+    if (form == null || !visible) return
 
     // Per recording: a new recording is a new composition, so the next sermon starts Quiet again.
-    var quiet by remember(type) { mutableStateOf(RecordingCompanionPolicy.startsQuiet(type, settings)) }
+    var quiet by remember(type, settings.quietSermons) { mutableStateOf(RecordingCompanionPolicy.startsQuiet(type, settings)) }
     val pose = RecordingCompanionPolicy.pose(recording, quiet, LocalConfiguration.current.screenHeightDp)
-    val name = settings.name ?: stringResource(CompanionRoster.displayName(form))
+    val name = settings.displayName(form)
 
     Column(
         Modifier.heightIn(min = pose.sizeDp.dp).testTag("record_companion"),

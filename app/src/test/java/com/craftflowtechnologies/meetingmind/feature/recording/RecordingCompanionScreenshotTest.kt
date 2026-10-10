@@ -11,7 +11,8 @@ import com.craftflowtechnologies.meetingmind.core.companion.Presence
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion
-import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionSettings
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionSettingsSource
+import com.craftflowtechnologies.meetingmind.feature.settings.companion.FakeCompanionSettings
 import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
@@ -37,7 +38,7 @@ class RecordingCompanionScreenshotTest(private val dark: Boolean) {
         compose.setContent {
             MeetMindTheme(darkTheme = dark) {
                 CompositionLocalProvider(
-                    LocalCompanionSettings provides settings,
+                    LocalCompanionSettingsSource provides FakeCompanionSettings(settings),
                     LocalCompanionReducedMotion provides true,
                     LocalCompanionForceCanvas provides true
                 ) {
@@ -66,7 +67,7 @@ class RecordingCompanionScreenshotTest(private val dark: Boolean) {
     @Test fun presenceOffDrawsNothing() {
         compose.setContent {
             MeetMindTheme(darkTheme = dark) {
-                CompositionLocalProvider(LocalCompanionSettings provides CompanionSettings(presence = Presence.OFF)) {
+                CompositionLocalProvider(LocalCompanionSettingsSource provides FakeCompanionSettings(CompanionSettings(presence = Presence.OFF))) {
                     LiveRecordingSurface(
                         type = RecordingType.SERMON, title = "Sermon", hasPermission = true, state = RecordingState.RECORDING,
                         amplitude = 0f, durationMs = 0, capacityWarning = null,
