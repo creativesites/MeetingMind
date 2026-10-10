@@ -138,16 +138,8 @@ fun ProfessionalHome(
     onShare: (com.craftflowtechnologies.meetingmind.feature.share.ShareRequest) -> Unit = {},
     onNavigateBottomNav: (com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit
 ) {
-    var showSparkStudio by remember { mutableStateOf(false) }
-    if (showSparkStudio) {
-        com.craftflowtechnologies.meetingmind.feature.faith.SparkStudioSheet(
-            onDismiss = { showSparkStudio = false },
-            onShareStory = { req ->
-                showSparkStudio = false
-                onShare(req)
-            }
-        )
-    }
+    val create = com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController()
+    com.craftflowtechnologies.meetingmind.feature.create.CreateHost(create)
     val identity by today.identity.collectAsState()
     val upNext by today.upNext.collectAsState()
     val now by today.now.collectAsState()
@@ -217,7 +209,7 @@ fun ProfessionalHome(
                     onOpenPrayer = onOpenPrayer,
                     onOpenWord = onOpenWord,
                     onOpenTestimonies = onOpenTestimonies,
-                    onOpenSpark = { showSparkStudio = true },
+                    onOpenCreate = { create.open() },
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }

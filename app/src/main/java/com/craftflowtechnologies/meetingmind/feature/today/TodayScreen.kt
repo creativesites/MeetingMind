@@ -143,16 +143,8 @@ fun TodayScreen(
     /** Runs the first-run tour when it hasn't been seen. */
     tourEnabled: Boolean = false
 ) {
-    var showSparkStudio by remember { mutableStateOf(false) }
-    if (showSparkStudio) {
-        com.craftflowtechnologies.meetingmind.feature.faith.SparkStudioSheet(
-            onDismiss = { showSparkStudio = false },
-            onShareStory = { req ->
-                showSparkStudio = false
-                onShare(req)
-            }
-        )
-    }
+    val create = com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController()
+    com.craftflowtechnologies.meetingmind.feature.create.CreateHost(create)
     val coachTargets = remember { com.craftflowtechnologies.meetingmind.core.ui.CoachTargets() }
     val tourDone by viewModel.tourCompleted.collectAsState()
     val heroMode by viewModel.homeHeroDisplayMode.collectAsState()
@@ -353,7 +345,7 @@ fun TodayScreen(
                     onOpenPrayer = onOpenPrayer,
                     onOpenWord = onOpenWord,
                     onOpenTestimonies = onOpenTestimonies,
-                    onOpenSpark = { showSparkStudio = true },
+                    onOpenCreate = { create.open() },
                     showWork = false,
                     modifier = Modifier.padding(top = 20.dp)
                 )

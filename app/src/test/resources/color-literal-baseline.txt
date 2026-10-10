@@ -12,7 +12,7 @@ com/craftflowtechnologies/meetingmind/feature/bible/BibleScreen.kt 10
 com/craftflowtechnologies/meetingmind/feature/devotional/AskDevotionalSheet.kt 1
 com/craftflowtechnologies/meetingmind/feature/devotional/DevotionalScreen.kt 12
 com/craftflowtechnologies/meetingmind/feature/devotional/DevotionalSettingsSheet.kt 1
-com/craftflowtechnologies/meetingmind/feature/faith/FaithScreens.kt 18
+com/craftflowtechnologies/meetingmind/feature/faith/FaithScreens.kt 16
 com/craftflowtechnologies/meetingmind/feature/faith/PlansAndPrayer.kt 2
 com/craftflowtechnologies/meetingmind/feature/meetingdetail/MeetingDetailScreen.kt 2
 com/craftflowtechnologies/meetingmind/feature/meetingdetail/components/FloatingSelectionBar.kt 1
@@ -35,6 +35,6 @@ com/craftflowtechnologies/meetingmind/feature/stories/StoriesScreen.kt 15
 com/craftflowtechnologies/meetingmind/feature/today/HomeHeroHeader.kt 6
 com/craftflowtechnologies/meetingmind/feature/today/HomeStart.kt 5
 com/craftflowtechnologies/meetingmind/feature/today/TimelineViews.kt 7
-com/craftflowtechnologies/meetingmind/feature/today/TodayScreen.kt 1
+com/craftflowtechnologies/meetingmind/feature/today/TodayScreen.kt 0
 com/craftflowtechnologies/meetingmind/feature/fellowship/FellowshipUi.kt 7
 com/craftflowtechnologies/meetingmind/feature/today/HomeQuickAccessRow.kt 12
