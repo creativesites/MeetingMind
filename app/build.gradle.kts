@@ -34,12 +34,13 @@ android {
     }
     // Circles (docs/mvp/FAITH_V2.md section 7): base URL of the deployed Worker in server/circles-api, e.g.
     // https://circles-api.<account>.workers.dev. From local.properties (circles.apiUrl=...) or the
-    // CIRCLES_API_URL environment variable. Empty (the default) makes the app show "Circles isn't connected yet".
+    // CIRCLES_API_URL environment variable, else the deployed production Worker (not a secret: every call is
+    // authenticated with the user's Firebase ID token). An empty override shows "Circles isn't connected yet".
     val circlesApiUrl = run {
       val props = Properties()
       val local = rootProject.file("local.properties")
       if (local.exists()) local.inputStream().use { props.load(it) }
-      System.getenv("CIRCLES_API_URL") ?: props.getProperty("circles.apiUrl") ?: ""
+      System.getenv("CIRCLES_API_URL") ?: props.getProperty("circles.apiUrl") ?: "https://meetingmind-circles.meetingmind.workers.dev"
     }
     buildConfigField("String", "CIRCLES_API_URL", "\"${circlesApiUrl.trim().replace("\"", "")}\"")
     buildConfigField("String", "YOUVERSION_APP_KEY", "\"${youVersionKey.replace("\"", "")}\"")
