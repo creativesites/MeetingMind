@@ -239,3 +239,16 @@ test("myCircles lists the caller's circles and forgets left ones", async () => {
   assert.deepEqual((await W.call("ann", "myCircles", {})).circleIds, []);
   assert.deepEqual((await W.call("stranger", "myCircles", {})).circleIds, []);
 });
+
+test("reportMessage: members only, idempotent, reporter unattributed", async () => {
+  const W = world();
+  const id = await circle(W);
+  await joinAs(W, "ann", id, "Ann");
+  W.db.seed(`circles/${id}/messages/mm1`, { authorUid: "ann", kind: "text", text: "rude", deleted: false });
+  await W.call("owner", "reportMessage", { circleId: id, messageId: "mm1", reason: "rude" });
+  await W.call("owner", "reportMessage", { circleId: id, messageId: "mm1", reason: "rude" });
+  const rep = [...W.db.docs].filter(([p]) => p.includes("/reports/m_"));
+  assert.equal(rep.length, 1); assert.doesNotMatch(JSON.stringify(rep), /owner/);
+  assert.equal((await W.err("owner", "reportMessage", { circleId: id, messageId: "nope" })).code, "not_found");
+  assert.equal((await W.err("stranger", "reportMessage", { circleId: id, messageId: "mm1" })).code, "not_a_member");
+});

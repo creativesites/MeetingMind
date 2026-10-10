@@ -485,6 +485,23 @@ async function celebrate(ctx) {
   return { messageId };
 }
 
+/** Report a chat message. Like post reports, the reporter is stored only as a keyed hash. */
+async function reportMessage(ctx) {
+  const circleId = str(ctx.body, "circleId"); const messageId = str(ctx.body, "messageId");
+  await load(ctx, circleId);
+  const m = await ctx.db.get(`${C(circleId)}/messages/${messageId}`);
+  if (!m || m.data.deleted) throw notFound("That message");
+  const reason = cleanText(ctx.body.reason, "reason", { min: 0, max: 500, optional: true }) ?? "";
+  await hit(ctx.kv, `rl:report:${ctx.uid}`, RATE.report);
+  const h = (await hmacHex(parseServiceAccount(ctx.env).private_key, `${ctx.uid}:${messageId}`)).slice(0, 24);
+  try {
+    await ctx.db.commit([w.create(`${C(circleId)}/reports/m_${messageId}_${h}`, { messageId, reason, createdAt: ctx.now })]);
+  } catch (e) {
+    if (!(e instanceof FirestoreError && e.code === "ALREADY_EXISTS")) throw e;
+  }
+  return {};
+}
+
 // ---------- devices ----------
 function token(b) {
   const t = b.token;
@@ -509,6 +526,6 @@ export const HANDLERS = {
   createCircle, updateCircle, createInvite, revokeInvite, join, leave, removeMember, setRole, setMute,
   createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, deletePost,
   prayed, react, syncCounts, report, registerToken, unregisterToken,
-  createPoll, closePoll, startChain, celebrate, myCircles,
+  createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
 };
 export { POST_TYPES };

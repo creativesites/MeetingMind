@@ -27,6 +27,7 @@ object Routes {
     const val FELLOWSHIP_GUIDE = "fellowship_guide/{noteId}"
     const val FELLOWSHIP_DRAFT = "fellowship_draft/{kind}/{noteId}"
     const val CIRCLE_DETAIL = "fellowship_circle/{circleId}"
+    const val CIRCLE_CREATE = "circle_create"
     fun fellowshipPickRoute(kind: String) = "fellowship_pick/$kind"
     fun fellowshipGuideRoute(noteId: String) = "fellowship_guide/$noteId"
     fun fellowshipDraftRoute(kind: String, noteId: String) = "fellowship_draft/$kind/$noteId"

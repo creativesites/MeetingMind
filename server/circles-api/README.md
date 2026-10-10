@@ -48,6 +48,7 @@ Success: `{"ok":true,...}`. Failure: `{"ok":false,"error":{"code","message"}}` w
 | `syncCounts` | member | recomputes comment/reaction counters after client-side comment writes (idempotent, 20 s debounce) |
 | `report` | member | `circleId, postId, reason?` |
 | `myCircles` | any signed-in | `circleIds` the caller is still a member of |
+| `reportMessage` | member | `circleId, messageId, reason?`; reporter stored as a keyed hash |
 | `createPoll` | member | `circleId, question, options[2-6], multi?` -> `pollId, messageId` (10/h). Votes are written by clients under rules (doc id = uid, open polls only) |
 | `closePoll` | poll creator or admin | `circleId, pollId` |
 | `startChain` | member | `circleId, title, postId?` -> 24-hour prayer chain (3/day). Members claim hour slots `0..23` under rules |
