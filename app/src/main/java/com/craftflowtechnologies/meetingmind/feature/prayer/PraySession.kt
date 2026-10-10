@@ -103,11 +103,13 @@ private val Violet = Color(0xFFA78BFA)
 private val Rose = Color(0xFFF472B6)
 
 /** What the room feels like right now: who has the floor, and whether we're singing. */
-private enum class Mood { CONNECTING, LISTENING, SPEAKING, SINGING, PAUSED, ENDED }
+private enum class Mood { CONNECTING, LISTENING, THINKING, SPEAKING, SINGING, PAUSED, RECONNECTING, ENDED }
 
 private fun moodOf(ui: PrayUi) = when {
     ui.state == LiveVoiceState.ENDED || ui.state == LiveVoiceState.FAILED -> Mood.ENDED
     ui.state == LiveVoiceState.CONNECTING -> Mood.CONNECTING
+    ui.state == LiveVoiceState.RECONNECTING -> Mood.RECONNECTING
+    ui.state == LiveVoiceState.THINKING -> Mood.THINKING
     ui.singing && ui.state == LiveVoiceState.SPEAKING -> Mood.SINGING
     ui.state == LiveVoiceState.SPEAKING -> Mood.SPEAKING
     ui.state == LiveVoiceState.PAUSED -> Mood.PAUSED
@@ -119,7 +121,8 @@ private fun palette(m: Mood): List<Color> = when (m) {
     Mood.LISTENING -> listOf(Cyan, Indigo, Color(0xFF0EA5E9))
     Mood.SPEAKING -> listOf(Gold, Amber, Rose)
     Mood.SINGING -> listOf(Violet, Gold, Rose)
-    Mood.PAUSED -> listOf(Color(0xFF64748B), Color(0xFF334155), Indigo)
+    Mood.PAUSED, Mood.RECONNECTING -> listOf(Color(0xFF64748B), Color(0xFF334155), Indigo)
+    Mood.THINKING -> listOf(Violet, Indigo, Color(0xFF1E1B4B))
     Mood.ENDED -> listOf(Gold, Violet, Color(0xFF1E1B4B))
 }
 
@@ -137,6 +140,12 @@ internal fun PraySessionContent(viewModel: PrayWithMeViewModel, ui: PrayUi, onCl
     var captions by rememberSaveable { mutableStateOf(true) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(ended) { while (!ended) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(1000) } }
+    // The screen stays awake for the whole conversation, and is let go when it ends.
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(ended) {
+        view.keepScreenOn = !ended
+        onDispose { view.keepScreenOn = false }
+    }
     val elapsed = if (ui.startedAt > 0) ((now - ui.startedAt) / 1000).coerceAtLeast(0) else 0
 
     Box(Modifier.fillMaxSize().background(Ink).testTag("pray_session")) {
@@ -166,12 +175,24 @@ internal fun PraySessionContent(viewModel: PrayWithMeViewModel, ui: PrayUi, onCl
             val compact = captions && ui.lines.size > 1
             val orbSize by animateFloatAsState(if (compact) 150f else 230f, spring(dampingRatio = 0.8f, stiffness = 120f), label = "orb")
             Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
-                LivingOrb(mood, ai, you, Modifier.size(orbSize.dp))
+                LivingOrb(mood, ai, you, Modifier.size(orbSize.dp).then(
+                    if (mood == Mood.SPEAKING || mood == Mood.SINGING) Modifier.clip(CircleShape).clickable(onClickLabel = "Interrupt", onClick = viewModel::interrupt) else Modifier))
                 if (mood == Mood.SINGING) Notes(Modifier.size((orbSize + 60).dp))
             }
             AnimatedContent(targetState = statusLine(mood, ui), transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(200)) }, label = "status",
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) { line ->
                 Text(line, color = Color.White, fontSize = 21.sp, fontFamily = FontFamily.Serif, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().testTag("pray_status"))
+            }
+            if (!ended && ui.state != LiveVoiceState.CONNECTING) {
+                val hint = if ((mood == Mood.SPEAKING || mood == Mood.SINGING) && !ui.voiceInterrupt) "Tap the circle to interrupt" else null
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Interrupt by voice · ${if (ui.voiceInterrupt) "On" else "Off"}", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
+                            .clickable(onClickLabel = "Change whether your voice interrupts", onClick = viewModel::toggleVoiceInterrupt).padding(horizontal = 12.dp, vertical = 6.dp).testTag("pray_interrupt_toggle")
+                    )
+                }
+                if (hint != null) Text(hint, color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
             }
             if (ui.state == LiveVoiceState.CONNECTING && ui.stage.isNotBlank()) Text(ui.stage, fontSize = 13.sp, color = Color.White.copy(alpha = 0.55f), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("pray_stage"))
             ui.error?.let { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFFFCA5A5), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 6.dp)) }
@@ -198,6 +219,8 @@ private fun statusLine(m: Mood, ui: PrayUi): String = when (m) {
     Mood.SPEAKING -> if (ui.mode == PrayMode.TALK_IT_THROUGH) "Speaking…" else "Praying…"
     Mood.SINGING -> "Singing…"
     Mood.PAUSED -> "Microphone off"
+    Mood.THINKING -> "Thinking…"
+    Mood.RECONNECTING -> "Reconnecting…"
     Mood.ENDED -> if (ui.state == LiveVoiceState.FAILED) "The connection stopped" else "Amen"
 }
 
