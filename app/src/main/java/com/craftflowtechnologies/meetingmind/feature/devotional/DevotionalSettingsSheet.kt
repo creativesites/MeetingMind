@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -62,7 +63,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 /** The pages of devotional settings. */
 private enum class SettingsPage(val title: String) {
     TRADITION("Tradition"), DELIVERY("When it arrives"), STYLE("Style & format"), SERIES("Series"),
-    FOCUS("Focus"), INCLUDED("What's included"), VOICE("Read aloud"), PICTURE("Picture"), PRIVACY("Privacy")
+    PERSONAL("Personal touch"), VARIETY("Passage variety"), INCLUDED("What's included"), VOICE("Read aloud"), PICTURE("Picture"), PRIVACY("Privacy")
 }
 
 /**
@@ -108,7 +109,8 @@ fun DevotionalSettingsContent(profile: DevotionalProfile, onSave: (DevotionalPro
                     SettingsPage.DELIVERY -> DeliveryPage(p) { p = it }
                     SettingsPage.STYLE -> StylePage(p) { p = it }
                     SettingsPage.SERIES -> SeriesPage(p) { p = it }
-                    SettingsPage.FOCUS -> FocusPage(p) { p = it }
+                    SettingsPage.PERSONAL -> PersonalPage(p) { p = it }
+                    SettingsPage.VARIETY -> VarietyPage(p) { p = it }
                     SettingsPage.INCLUDED -> IncludedPage(p) { p = it }
                     SettingsPage.VOICE -> VoiceSection(p.voice) { p = p.copy(voice = it) }
                     SettingsPage.PICTURE -> {
@@ -143,7 +145,8 @@ private fun Overview(p: DevotionalProfile, open: (SettingsPage) -> Unit) {
     SectionRow(SettingsPage.DELIVERY.title, if (p.enabled) "Every morning at %d:%02d".format(p.deliveryMinutes / 60, p.deliveryMinutes % 60) + if (p.eveningExamen) " · evening Examen" else "" else "When you open it", open, SettingsPage.DELIVERY)
     SectionRow(SettingsPage.STYLE.title, "${p.source.label} · $formats · ${p.minutes} min · ${p.tone.label}", open, SettingsPage.STYLE)
     SectionRow(SettingsPage.SERIES.title, p.series?.let { s -> "${s.title} · day ${(s.dayIndex(java.time.LocalDate.now().toEpochDay()) + 1).coerceAtMost(s.passages.size)} of ${s.passages.size}" } ?: "None — a new passage each day", open, SettingsPage.SERIES)
-    SectionRow(SettingsPage.FOCUS.title, listOfNotNull(p.topics.take(3).joinToString(", ").ifBlank { null }, p.season, "no passage twice in ${p.passageExclusionDays} days").joinToString(" · "), open, SettingsPage.FOCUS)
+    SectionRow(SettingsPage.PERSONAL.title, p.personalTouch.let { "${it.label} · ${it.description}" }, open, SettingsPage.PERSONAL)
+    SectionRow(SettingsPage.VARIETY.title, "no passage twice in ${p.passageExclusionDays} days", open, SettingsPage.VARIETY)
     SectionRow(SettingsPage.INCLUDED.title, listOfNotNull("prayer".takeIf { p.includePrayer }, "a word for today".takeIf { p.includeMotivation }, "quote".takeIf { p.includeInsight }, "question".takeIf { p.includeQuestion }).joinToString(", ").ifBlank { "Just the reflection" }, open, SettingsPage.INCLUDED)
     SectionRow(SettingsPage.VOICE.title, "${p.voice.style.label} · ${p.voice.gender.label}", open, SettingsPage.VOICE)
     SectionRow(SettingsPage.PICTURE.title, if (p.autoImage) "A picture each day" else "Off", open, SettingsPage.PICTURE)
@@ -279,19 +282,34 @@ private fun SeriesPage(p: DevotionalProfile, set: (DevotionalProfile) -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FocusPage(p: DevotionalProfile, set: (DevotionalProfile) -> Unit) {
-    Label("What you'd like to grow in")
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        DevotionalTopics.all.forEach { t -> Chip(t, t in p.topics) { set(p.copy(topics = if (t in p.topics) p.topics - t else p.topics + t)) } }
+private fun PersonalPage(p: DevotionalProfile, set: (DevotionalProfile) -> Unit) {
+    Text("Devotionals are written for anyone by default, so each day is a surprise. Turn this on if you'd like them to draw on what you've shared below.", fontSize = 13.sp, lineHeight = 19.sp, color = InkSecondary, modifier = Modifier.padding(top = 8.dp, bottom = 10.dp))
+    com.craftflowtechnologies.meetingmind.core.devotional.PersonalTouch.entries.forEach { t ->
+        OptionCard(t.label, t.description, p.personalTouch == t, Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("personal_touch_${t.name.lowercase()}")) { set(p.copy(personalTouch = t)) }
     }
-    Label("Where life is right now (optional)")
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        DevotionalTopics.seasons.forEach { s -> Chip(s, p.season == s) { set(p.copy(season = if (p.season == s) null else s)) } }
+    val on = p.personalTouch != com.craftflowtechnologies.meetingmind.core.devotional.PersonalTouch.OFF
+    Label("Used only when Personal touch is on")
+    Text(if (on) "These shape your devotionals ${if (p.personalTouch == com.craftflowtechnologies.meetingmind.core.devotional.PersonalTouch.ALWAYS) "every day" else "now and then"}." else "Saved, but not used while Personal touch is Off.", fontSize = 12.5.sp, color = InkSecondary, modifier = Modifier.padding(bottom = 8.dp))
+    Column(Modifier.alpha(if (on) 1f else 0.55f)) {
+        Label("What you'd like to grow in")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DevotionalTopics.all.forEach { t -> Chip(t, t in p.topics) { set(p.copy(topics = if (t in p.topics) p.topics - t else p.topics + t)) } }
+        }
+        Label("Where life is right now (optional)")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DevotionalTopics.seasons.forEach { s -> Chip(s, p.season == s) { set(p.copy(season = if (p.season == s) null else s)) } }
+        }
+        Label("About you (optional)")
+        OutlinedTextField(value = p.aboutMe, onValueChange = { set(p.copy(aboutMe = it.take(400))) }, minLines = 2,
+            placeholder = { Text("e.g. Nurse on night shifts, mum of two, learning to rest") }, modifier = Modifier.fillMaxWidth())
+        Text("Background only, used lightly — never the subject of the day, and never repeated back to you.", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 6.dp))
     }
-    Label("About you (optional)")
-    OutlinedTextField(value = p.aboutMe, onValueChange = { set(p.copy(aboutMe = it.take(400))) }, minLines = 2,
-        placeholder = { Text("e.g. Nurse on night shifts, mum of two, learning to rest") }, modifier = Modifier.fillMaxWidth())
-    Text("Used quietly in the background — it shapes what's chosen, but won't be repeated back to you.", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 6.dp))
+    Label("Always applies, whatever Personal touch is set to")
+    Text("Tradition, tone, length, reading level, audience, formats and what's included. \"Less like this\" themes are always left out, and a devotional you ask for with \"Write one about…\" is about exactly that, for that one day.", fontSize = 12.5.sp, lineHeight = 18.sp, color = InkSecondary)
+}
+
+@Composable
+private fun VarietyPage(p: DevotionalProfile, set: (DevotionalProfile) -> Unit) {
     Label("Passage variety")
     Text("A passage won't come back within…", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(bottom = 8.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(14, 30, 60, 90).forEach { d -> Chip("$d days", p.passageExclusionDays == d) { set(p.copy(passageExclusionDays = d)) } } }

@@ -33,7 +33,11 @@ data class DevotionalBrief(
     /** For the evening Examen: this morning's devotional (title, passage, what it asked). */
     val morning: String? = null,
     /** Set on a second attempt: what the first repeated. */
-    val retryNote: String? = null
+    val retryNote: String? = null,
+    /** The day it is written for; decides whether a "Now and then" Personal touch applies. */
+    val date: java.time.LocalDate? = null,
+    /** Topics typed for this one devotional ("Ask"); they apply to it whatever the Personal touch is. */
+    val askTopics: Set<String> = emptySet()
 )
 
 /** The model's answer, before checking. */
@@ -100,6 +104,8 @@ object DevotionalContract {
             if (p.includeMotivation) add("\"motivation\": one or two encouraging sentences to carry into the day")
             if (p.includeQuestion) add("\"question\": one reflective question to sit with")
         }
+        // Personal context (about me, topics, life season, name, sermons, prayer list) only on invitation.
+        val personal = p.personalTouch.appliesOn(brief.date)
         return buildString {
             appendLine(CONTRACT)
             appendLine()
@@ -112,15 +118,14 @@ object DevotionalContract {
             appendLine(timeLine(brief.hour))
             appendLine("Passage: ${brief.passage.display()}")
             brief.passageText?.let { appendLine("Passage text (for your understanding; do not copy it out): ${it.take(1500)}") }
-            if (p.topics.isNotEmpty()) appendLine("They'd like to grow in: ${p.topics.joinToString(", ")}.")
-            if (p.moreOf.isNotEmpty()) appendLine("They've enjoyed: ${p.moreOf.joinToString(", ")}.")
-            if (p.lessOf.isNotEmpty()) appendLine("Go lighter on: ${p.lessOf.joinToString(", ")}.")
-            p.season?.let { appendLine("Life season: $it.") }
-            p.aboutMe.trim().takeIf { it.isNotEmpty() }?.let { appendLine("Background about them, in their words (for your understanding only — see rule 7): ${it.take(400)}") }
+            if (brief.askTopics.isNotEmpty()) appendLine("For this devotional they asked to focus on: ${brief.askTopics.joinToString(", ")}.")
+            // "Less of" is a style choice, not personal context: always honoured.
+            if (p.lessOf.isNotEmpty()) appendLine("Go lighter on these themes (don't build the devotional around them): ${p.lessOf.joinToString(", ")}.")
+            if (!personal) appendLine("Audience: a general reader. You know nothing about them; do not guess or mention their job, family, health, mood, location or circumstances. Write something that could be read by anyone, and make it surprising.")
             appendLine("Today's angle: ${angleFor(brief.dayIndex)}")
             appendLine("Opening: ${openingFor(brief.dayIndex)}")
             if (brief.recent.isNotEmpty()) {
-                appendLine("Their recent devotionals (don't repeat their titles, openings, images or ideas):")
+                appendLine("Recent devotionals in this app (don't repeat their titles, openings, images or ideas, and choose a different theme and a different part of the Bible):")
                 brief.recent.take(14).forEach { appendLine("- ${it.take(220)}") }
             }
             brief.series?.let { sr ->
@@ -129,18 +134,36 @@ object DevotionalContract {
             }
             brief.morning?.let { appendLine("This evening Examen follows this morning's devotional: $it. Invite them to look back on it gently — the passage, what it asked, what the day held — without judging.") }
             brief.retryNote?.let { appendLine("Your previous draft was rejected because $it. Write something clearly different.") }
-            brief.name?.takeIf { it.isNotBlank() }?.let { appendLine("Their first name: $it (use it at most once).") }
             brief.request?.trim()?.takeIf { it.isNotEmpty() }?.let {
-                appendLine("They asked for a devotional about this, in their words — let it shape everything, gently: ${it.take(600)}")
+                appendLine("This one was asked for in the moment, in their words — it applies to this devotional only; let it shape it, gently: ${it.take(600)}")
             }
-            if (brief.signals.isNotEmpty()) {
-                appendLine("What's been happening (use gently, never quote it back verbatim):")
-                brief.signals.take(8).forEach { appendLine("- ${it.take(160)}") }
-            }
+            if (personal) appendPersonal(brief)
             appendLine()
             appendLine("Return a JSON object with:")
             sections.forEach { appendLine("- $it") }
         }
+    }
+
+    /** The shared personal context, framed so it stays background and never becomes the daily subject. */
+    private fun StringBuilder.appendPersonal(brief: DevotionalBrief) {
+        val p = brief.profile
+        val lines = buildList {
+            brief.name?.takeIf { it.isNotBlank() }?.let { add("Their first name: $it (use it at most once, or not at all).") }
+            if (p.topics.isNotEmpty()) add("They'd like to grow in: ${p.topics.joinToString(", ")}.")
+            if (p.moreOf.isNotEmpty()) add("They've enjoyed: ${p.moreOf.joinToString(", ")}.")
+            p.season?.let { add("Life season: $it.") }
+            p.aboutMe.trim().takeIf { it.isNotEmpty() }?.let { add("About them, in their words: ${it.take(400)}") }
+            brief.signals.take(8).forEach { add("Lately: ${it.take(160)} (never quote it back verbatim)") }
+        }
+        if (lines.isEmpty()) return
+        appendLine()
+        if (p.personalTouch == com.craftflowtechnologies.meetingmind.core.devotional.PersonalTouch.NOW_AND_THEN) {
+            appendLine("Personal background — the reader invited a personal touch about once a week, and today is one of those days. Keep it gentle background: the passage and its message are the subject, never their situation. Mention it in at most one short place, lightly, or just let it quietly colour one example.")
+        } else {
+            appendLine("Personal background — the reader asked for every devotional to consider this. It may inform AT MOST ONE paragraph, lightly. The passage, theme, angle and imagery must still be fresh and different from recent days; do not make their situation the subject, and do not repeat the same personal point from day to day.")
+        }
+        lines.forEach { appendLine("- $it") }
+        appendLine()
     }
 
     /**

@@ -53,16 +53,16 @@ class DevotionalEngineTest {
         classics = classics, quotes = quotes, locale = Locale.UK
     )
 
-    private val profile = DevotionalProfile(topics = setOf("Rest"))
+    private val profile = DevotionalProfile(topics = setOf("Rest"), personalTouch = com.craftflowtechnologies.meetingmind.core.devotional.PersonalTouch.ALWAYS)
 
     @Test fun `a good cloud answer becomes a labelled AI devotional on a real passage`() = runBlocking {
         val model = FakeModel(good)
-        val d = engine(model to true).write(thursday, profile)
+        val d = engine(model to true).write(thursday, profile, ask = DevotionalAsk(topics = setOf("Rest")))
         assertEquals(DevotionalOrigin.CLOUD_AI, d.origin)
         assertEquals(DevotionalLabels.CLOUD, d.label)
         assertEquals("gemini-test", d.engine)
         assertEquals("Rest for the weary", d.title)
-        // The passage is chosen on the phone (a Rest passage); the model's bad reference is dropped.
+        // The passage is chosen on the phone (the asked-for topic, Rest); the model's bad reference is dropped.
         assertTrue(com.craftflowtechnologies.meetingmind.core.devotional.TopicPassages.topicsOf(d.scripture.first()).contains("Rest"))
         assertFalse(d.scripture.any { it.display().startsWith("Nowhere") })
         assertEquals("Julian of Norwich", d.insight?.author)
@@ -160,7 +160,7 @@ class DevotionalEngineTest {
 
     @Test fun `the prompt carries the passage, tradition, voice and requested parts only`() {
         val brief = DevotionalBrief(
-            ScriptureReferenceParser.parse("Psalm 23")!!, "The Lord is my shepherd", profile.copy(includePrayer = false, tradition = com.craftflowtechnologies.meetingmind.core.devotional.Tradition.CATHOLIC),
+            ScriptureReferenceParser.parse("Psalm 23")!!, "The Lord is my shepherd", profile.copy(personalTouch = com.craftflowtechnologies.meetingmind.core.devotional.PersonalTouch.OFF, includePrayer = false, tradition = com.craftflowtechnologies.meetingmind.core.devotional.Tradition.CATHOLIC),
             null, "Thursday", emptyList(), "Ana"
         )
         val p = DevotionalContract.prompt(brief)
@@ -168,20 +168,23 @@ class DevotionalEngineTest {
         assertTrue(p.contains("Catholic"))
         assertTrue(p.contains("warm, unhurried pastor"))
         assertFalse(p.contains("\"prayer\""))
-        assertTrue(p.contains("Ana"))
+        // The Personal touch is off by default, so the name is not sent.
+        assertFalse(p.contains("Their first name"))
+        assertTrue(DevotionalContract.prompt(brief.copy(profile = brief.profile.copy(personalTouch = com.craftflowtechnologies.meetingmind.core.devotional.PersonalTouch.ALWAYS))).contains("Their first name: Ana"))
         listOf("Do not quote Bible verses", "Never claim to speak for God", "no medical, legal, financial", "Output only JSON").forEach { assertTrue(it, p.contains(it)) }
     }
 
     @Test fun `each day has its own angle, personal details stay in the background, recent ones aren't repeated`() {
         val base = DevotionalBrief(
-            ScriptureReferenceParser.parse("Psalm 23")!!, null, profile.copy(aboutMe = "Software engineer in Lusaka"),
+            ScriptureReferenceParser.parse("Psalm 23")!!, null, profile.copy(aboutMe = "Software engineer in Lusaka", personalTouch = com.craftflowtechnologies.meetingmind.core.devotional.PersonalTouch.OFF),
             null, "Tuesday", emptyList(), null, recent = listOf("From your room in Lusaka — the city hums…"), dayIndex = 100
         )
         val p = DevotionalContract.prompt(base)
-        assertTrue(p.contains("never mention their city or country"))
+        assertTrue(p.contains("You know nothing about this reader"))
+        assertFalse(p.contains("Software engineer"))
         assertTrue(p.contains("Don't assume they are struggling"))
         assertTrue(p.contains("From your room in Lusaka"))
-        assertTrue(p.contains("don't repeat their titles"))
+        assertTrue(p.contains("don't repeat their titles") && p.contains("a different part of the Bible"))
         // A week of days gives a week of different angles.
         assertEquals(7, (100L until 107L).map { DevotionalContract.angleFor(it) }.toSet().size)
         assertFalse(DevotionalContract.prompt(base.copy(dayIndex = 101)).substringAfter("Today's angle:").substringBefore('\n') ==

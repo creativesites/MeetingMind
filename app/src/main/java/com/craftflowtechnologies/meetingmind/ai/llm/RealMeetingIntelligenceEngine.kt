@@ -327,7 +327,8 @@ class RealMeetingIntelligenceEngine(
         // Both lines are conditional — an empty personalization context adds nothing to the
         // prompt at all. The vocabulary line lists only what's already judged relevant to this
         // question (see AskPersonalizationContext's own doc), never the whole learned table.
-        val nameLine = personalization.userName?.takeIf { it.isNotBlank() }?.let {
+        // Faith recordings stay generic: the name is only added for meetings and other non-faith recordings.
+        val nameLine = personalization.userName?.takeIf { it.isNotBlank() && !com.craftflowtechnologies.meetingmind.ai.faith.AskSermon.isFaith(personalization.recordingType) }?.let {
             "\nYou are answering for $it. Address them by name only if it reads naturally — never force it into every sentence.\n"
         } ?: ""
         val vocabularyLine = personalization.relevantVocabulary.takeIf { it.isNotEmpty() }?.let { entries ->

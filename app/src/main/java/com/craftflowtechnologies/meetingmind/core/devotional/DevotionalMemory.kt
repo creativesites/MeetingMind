@@ -35,6 +35,12 @@ data class DevotionalMemory(val entries: List<MemoryEntry> = emptyList()) {
         }
     }
 
+    /** The Bible books of the last [n] morning devotionals, so the next one can come from elsewhere. */
+    fun recentBooks(n: Int = 4, today: java.time.LocalDate? = null, withinDays: Int = 14): Set<String> = entries.filter { !it.evening }
+        .filter { e -> today == null || runCatching { java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.parse(e.day), today) <= withinDays }.getOrDefault(false) }
+        .take(n)
+        .mapNotNull { e -> e.passage?.let { ScriptureReferenceParser.parse(it)?.usfm } }.toSet()
+
     /** Lines for the prompt: what not to repeat. */
     fun promptLines(max: Int = 14): List<String> = entries.take(max).map { e ->
         listOfNotNull(

@@ -95,7 +95,10 @@ object PrayerCompanion {
         s.persona?.let { appendLine("Your voice and manner: $it. Keep that manner in how you speak and pray.") }
         appendLine("Style: ${s.style.instruction}")
         appendLine("Their tradition: ${s.tradition.label}.")
-        s.name?.takeIf { it.isNotBlank() }?.let { appendLine("Their first name is $it; use it sparingly.") }
+        // The name is personal context: only given when they chose to bring something personal to this prayer.
+        val personal = s.about.isNotBlank() || s.requests.isNotEmpty()
+        s.name?.takeIf { it.isNotBlank() && personal }?.let { appendLine("Their first name is $it; use it sparingly.") }
+        if (!personal) appendLine("You know nothing about them beyond what they say here; don't guess at their circumstances. Pray in words that fit anyone.")
         if (s.about.isNotBlank()) appendLine("What they want to bring, in their words: ${s.about.trim().take(800)}")
         if (s.requests.isNotEmpty()) appendLine("From their prayer list: " + s.requests.joinToString("; ") { it.take(120) })
         s.devotional?.let { appendLine("Today's devotional, for context: ${it.take(1500)}") }
