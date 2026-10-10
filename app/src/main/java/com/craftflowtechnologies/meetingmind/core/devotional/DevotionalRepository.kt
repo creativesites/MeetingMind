@@ -215,8 +215,12 @@ class DevotionalRepository(
             com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter.DEVICE -> listOfNotNull(local())
             com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter.GEMINI -> listOfNotNull(cloud())
             com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter.CLASSIC -> emptyList()
+            // Gemini first whenever a key is set, whatever the recording profile: a devotional carries
+            // no recording, and personal context is gated separately (personal touch, sharePrivateWithCloud).
+            // The stored processing profile defaults to OFFLINE for anyone who never chose, which used to
+            // turn every scheduled devotional into a classic despite a working key.
             com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter.AUTO -> {
-                val first = runCatching { factory.resolve(processing, ModelCapability.SUMMARIZATION) }.getOrNull()
+                val first = cloud() ?: runCatching { factory.resolve(processing, ModelCapability.SUMMARIZATION) }.getOrNull()
                 listOfNotNull(first, if (first?.isCloud == true) local() else null)
             }
         }
