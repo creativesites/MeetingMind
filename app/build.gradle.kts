@@ -227,10 +227,17 @@ dependencies {
   // phase 6) — per docs/recording-page-implementation.md §4, a real diff library, not a
   // hand-rolled one.
   implementation(libs.java.diff.utils)
-  // Rive: the renderer for the living companion (docs/mvp/ZURI_RIVE_BRIEF.md). Its runtime
-  // metadata also imports a newer Compose BOM; that is excluded so the app's Compose stays on its
-  // own BOM. Native code: about 6.6 MB uncompressed per ABI (librive-android.so + libc++_shared.so).
-  implementation(libs.rive.android) { exclude(group = "androidx.compose", module = "compose-bom") }
+  // Rive: the renderer for the living companion (docs/mvp/ZURI_RIVE_BRIEF.md). The app uses only
+  // its View-based RiveAnimationView, not its Compose API, so Rive's Compose BOM, Compose and
+  // lifecycle-compose dependencies are excluded: left in, they would move the whole app from
+  // Compose 1.7 to 1.9 and lifecycle 2.8 to 2.9. The app's own versions satisfy the View path.
+  // APK cost per ABI: see docs/mvp/ZURI_RIVE_BRIEF.md §11.
+  implementation(libs.rive.android) {
+    exclude(group = "androidx.compose")
+    exclude(group = "androidx.compose.runtime")
+    exclude(group = "androidx.compose.ui")
+    exclude(group = "androidx.lifecycle")
+  }
   testImplementation(libs.androidx.work.testing)
   testImplementation(libs.okhttp.mockwebserver)
   testImplementation(libs.androidx.compose.ui.test.junit4)

@@ -148,11 +148,11 @@ Indigo light defaults:
 | Property | Hex | Property | Hex |
 |---|---|---|---|
 | `accent` | `#5B5BD6` | `eye` | `#151827` |
-| `bodyTop` | `#ADADEB` | `blush` | `#F4728A` at 34% |
+| `bodyTop` | `#ADADEA` | `blush` | `#F4728A` at 34% |
 | `bodyBottom` | `#6F6FDB` | `sparkle` | `#5B5BD6` |
 | `deep` | `#4A4AA7` | `gold` | `#B7791F` |
 | `light` | `#DEDEF7` | `shadow` | `#18181B` at 9% |
-| `paper` | `#FAFAFE` | `lines` | `#8484E0` |
+| `paper` | `#F7F7FD` | `lines` | `#8484E0` |
 
 **Why data binding.** The pinned runtime (rive-android 11.12.1) supports view-model data binding:
 `ViewModelInstance.getColorProperty(name).value = argb` with auto-binding. That gives the designer
@@ -361,9 +361,13 @@ app builds arm64-v8a and armeabi-v7a splits.
 
 | | arm64-v8a | armeabi-v7a |
 |---|---|---|
-| `librive-android.so` (uncompressed) | 5.34 MB | 5.09 MB |
-| `libc++_shared.so` (uncompressed; no other library in the app ships it) | 1.29 MB | 0.87 MB |
-| **Debug APK delta, measured** | see `ZURI_EXPERIENCE.md` §10.8 | |
+| `librive-android.so` (stored uncompressed in the APK) | 5.34 MB | 5.09 MB |
+| `libc++_shared.so` (no other library in the app ships it) | 1.29 MB | 0.87 MB |
+| **Split APK delta, measured** (debug build, this branch vs the commit before Rive; includes the companion code) | **+8.19 MB** | **+7.54 MB** |
+
+Only the View-based `RiveAnimationView` is used. Rive's own Compose and lifecycle-compose dependencies are
+excluded in `app/build.gradle.kts`, so adding Rive does not move the app off its Compose 1.7 / lifecycle 2.8
+versions. The only transitive additions are volley, relinker, `customview` 1.1.0 and `startup-runtime` 1.2.0.
 
 The library is loaded lazily: `Rive.init` runs only the first time a Rive companion is drawn, so
 builds and sessions without `.riv` files never load the native code.
