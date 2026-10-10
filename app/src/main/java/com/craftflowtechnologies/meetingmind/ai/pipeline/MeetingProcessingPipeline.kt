@@ -1090,10 +1090,14 @@ class MeetingProcessingPipeline(
         }
         if (unavailableReason != null) Log.w(PERF_TAG, "Sermon notes unavailable: $unavailableReason")
         val generated = com.craftflowtechnologies.meetingmind.ai.faith.SermonNoteBuilder.build(
-            noteId, meetingId, segments, extraction, detections, unavailableReason = unavailableReason
+            noteId, meetingId, segments, extraction, detections, unavailableReason = unavailableReason,
+            spoken = if (isSermon) spoken else emptyList(),
+            speakers = if (isSermon) database.speakerDao().getSpeakersForMeetingDirect(meetingId).map {
+                com.craftflowtechnologies.meetingmind.core.model.Speaker(it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence)
+            } else emptyList()
         )
         com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database)
-            .applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys)
+            .applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys, generated.endKeys)
     }
 
     private suspend fun resolveSpeakerMerges(

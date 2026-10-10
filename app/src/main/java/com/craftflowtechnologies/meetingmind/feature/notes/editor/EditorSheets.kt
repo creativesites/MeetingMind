@@ -30,6 +30,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.Summarize
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
@@ -106,6 +108,8 @@ internal enum class InsertAction(val label: String, val icon: ImageVector) {
     SCRIPTURE("Bible verse", Icons.Outlined.Book),
     RECORD("Record here", Icons.Filled.Mic),
     EXCERPT("Quote the recording", Icons.Filled.RecordVoiceOver),
+    SUMMARY("Insert summary", Icons.Filled.Summarize),
+    TRANSCRIPT("Insert transcript", Icons.Filled.Subtitles),
     NOTE_LINK("Link a note", Icons.Filled.Link)
 }
 
@@ -126,9 +130,26 @@ internal fun InsertSheet(hasRecordings: Boolean, onPick: (InsertAction) -> Unit,
                     add(InsertAction.SCRIPTURE)
                     add(InsertAction.PHOTO); add(InsertAction.CAMERA); add(InsertAction.VIDEO); add(InsertAction.AUDIO)
                     add(InsertAction.RECORD)
-                    if (hasRecordings) add(InsertAction.EXCERPT)
+                    if (hasRecordings) { add(InsertAction.EXCERPT); add(InsertAction.SUMMARY); add(InsertAction.TRANSCRIPT) }
                     add(InsertAction.NOTE_LINK)
                 }.forEach { InsertTile(it) { onPick(it) } }
+            }
+        }
+    }
+}
+
+/** Pick which of the note's recordings to insert from, when there is more than one. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun RecordingPickerSheet(title: String, recordings: List<RecordingCard>, onPick: (RecordingCard) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SurfaceBase) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
+            SheetTitle(title)
+            recordings.forEach { r ->
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onPick(r) }.padding(vertical = 12.dp, horizontal = 6.dp)) {
+                    Text(r.title.ifBlank { "Recording" }, fontSize = 15.sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(Formatters.formatDurationHms(r.durationMs), fontSize = 12.sp, color = InkMuted)
+                }
             }
         }
     }

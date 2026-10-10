@@ -365,7 +365,9 @@ class NoteRepository(
         noteId: String,
         generated: List<NoteBlock>,
         refs: List<ScriptureRef>,
-        keys: Set<String>
+        keys: Set<String>,
+        /** Sections in [keys] that belong at the end of the note (the sermon transcript). */
+        endKeys: Set<String> = emptySet()
     ) = withContext(Dispatchers.IO) {
         val current = noteDao.getBlocks(noteId).map { it.toDomain() }
         if (noteDao.getById(noteId) == null) return@withContext
@@ -374,7 +376,8 @@ class NoteRepository(
         val kept = current.filterNot { it.sectionKey in keys && it.sectionKey !in editedKeys }
         val fresh = generated.filter { it.sectionKey !in editedKeys }
         val insertAt = kept.indexOfLast { it.type == NoteBlockType.RECORDING }.let { if (it < 0) 0 else it + 1 }
-        val merged = kept.toMutableList().apply { addAll(insertAt, fresh) }
+        val (freshAtEnd, freshAfterRecording) = fresh.partition { it.sectionKey in endKeys }
+        val merged = kept.toMutableList().apply { addAll(insertAt, freshAfterRecording); addAll(freshAtEnd) }
         val keptRefIds = kept.mapNotNull { it.payload[NoteBlock.PAYLOAD_SCRIPTURE_REF_ID] }.toSet()
         val freshBlockIds = fresh.map { it.id }.toSet()
         database.withTransaction {
