@@ -51,6 +51,23 @@ class CirclesApiTest {
         assertEquals("https://circles.example.workers.dev/v1/createPost", c.request?.url.toString())
     }
 
+    @Test fun `commentAsAuthor sends no uid or name, and token calls hit their endpoints`() = runBlocking {
+        val c = Canned(body = """{"ok":true,"commentId":"x"}""")
+        assertTrue(api(c).commentAsAuthor("c1", "p1", "Thanks", "cm1") is CirclesResult.Ok)
+        val json = JSONObject(c.sent)
+        assertEquals(setOf("circleId", "postId", "body", "parentId"), json.keys().asSequence().toSet())
+        assertFalse(c.sent.contains("uid", ignoreCase = true))
+        assertFalse(c.sent.contains("displayName"))
+        assertEquals("https://circles.example.workers.dev/v1/commentAsAuthor", c.request?.url.toString())
+        api(c).commentAsAuthor("c1", "p1", "Thanks", null)
+        assertFalse(JSONObject(c.sent).has("parentId"))
+        api(c).registerToken("tok-1-aaaaaaaaaaaaaaaaaaaa")
+        assertEquals("https://circles.example.workers.dev/v1/registerToken", c.request?.url.toString())
+        api(c).unregisterToken("tok-1-aaaaaaaaaaaaaaaaaaaa")
+        assertEquals("https://circles.example.workers.dev/v1/unregisterToken", c.request?.url.toString())
+        assertEquals("tok-1-aaaaaaaaaaaaaaaaaaaa", JSONObject(c.sent).getString("token"))
+    }
+
     @Test fun `no base url means not connected and no request`() = runBlocking {
         val c = Canned()
         val r = api(c, url = "").join("GRACE-7K2Q", "Ann")

@@ -37,7 +37,11 @@ fun CircleSettingsContent(
     onBack: () -> Unit,
     onSave: (name: String, vocab: String, CircleSettings) -> Unit,
     onMute: (Boolean) -> Unit,
-    onLeave: () -> Unit
+    onLeave: () -> Unit,
+    account: AccountUiState? = null,
+    onLink: (android.content.Context) -> Unit = {},
+    onSwitch: () -> Unit = {},
+    onDismissConflict: () -> Unit = {}
 ) {
     val admin = me?.role?.isAdmin == true
     var name by rememberSaveable(circle.id, circle.name) { mutableStateOf(circle.name) }
@@ -85,6 +89,10 @@ fun CircleSettingsContent(
             }
             SectionHeader("For you")
             ToggleRow("Mute this circle", "No notifications from ${circle.name}.", me?.muted == true, onMute)
+            if (account != null) {
+                SectionHeader("Your account")
+                AccountSection(account, onLink, onSwitch, onDismissConflict)
+            }
             TextAction("Leave this ${circle.groupWord.lowercase()}", { confirmLeave = true })
             Spacer(Modifier.height(MM.space.xl))
         }

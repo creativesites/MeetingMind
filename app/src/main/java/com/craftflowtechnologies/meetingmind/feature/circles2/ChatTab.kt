@@ -135,7 +135,7 @@ private fun MessageItem(m: ChatMessage, state: ChatUiState, now: Long, actions: 
                         }
                     }
                     when (m.kind) {
-                        MessageKind.Card -> m.card?.let { SharedCard(it) }
+                        MessageKind.Card -> m.card?.let { ChatCard(it) }
                         MessageKind.Poll -> m.pollId?.let { PollCard(m, actions) } ?: Text(m.text, style = MM.type.body, color = c.ink)
                         MessageKind.Chain -> m.chainId?.let { ChainCard(m, actions) } ?: Text(m.text, style = MM.type.body, color = c.ink)
                         else -> Text(m.text, style = MM.type.body, color = c.ink)

@@ -122,7 +122,17 @@ data class PendingPost(val id: String, val type: PostType, val body: String, val
 data class PostUpdate(val id: String, val body: String, val createdAt: Long)
 
 @Immutable
-data class Comment(val id: String, val authorUid: String, val authorName: String, val body: String, val parentId: String?, val createdAt: Long)
+data class Comment(
+    val id: String,
+    /** Null for a comment by the hidden author of an anonymous request: the Worker wrote it and never stored a uid. */
+    val authorUid: String?,
+    val authorName: String,
+    val body: String,
+    val parentId: String?,
+    val createdAt: Long,
+    /** True when the anonymous request's author wrote this (shown as "Requester"). */
+    val byRequester: Boolean = false
+)
 
 enum class MessageKind { Text, Card, Reply, Poll, Celebration, Chain, Unknown;
     companion object {
@@ -135,7 +145,14 @@ enum class MessageKind { Text, Card, Reply, Poll, Celebration, Chain, Unknown;
 
 /** A Create card shared into chat: template id + text + mood, rendered on each phone (no image upload). */
 @Immutable
-data class CardPayload(val templateId: String, val text: String, val mood: String? = null)
+data class CardPayload(
+    val templateId: String,
+    val text: String,
+    val mood: String? = null,
+    /** Reference of a verse on the card ("John 3:16 · NIV"), and its words. Only cards made in the Create studio carry them. */
+    val verseRef: String? = null,
+    val verseText: String? = null
+)
 
 @Immutable
 data class ChatMessage(

@@ -171,7 +171,7 @@ class FirestoreCirclesData(private val context: Context) : CirclesData {
             is MessageDraft.Card -> {
                 data["kind"] = "card"; data["text"] = ""
                 data["card"] = hashMapOf<String, Any?>("templateId" to draft.card.templateId, "text" to draft.card.text)
-                    .apply { draft.card.mood?.let { put("mood", it) } }
+                    .apply { draft.card.mood?.let { put("mood", it) }; draft.card.verseRef?.let { put("verseRef", it.take(64)) }; draft.card.verseText?.let { put("verseText", it.take(600)) } }
             }
         }
         ref(d, circleId).collection("messages").document().set(data).await()

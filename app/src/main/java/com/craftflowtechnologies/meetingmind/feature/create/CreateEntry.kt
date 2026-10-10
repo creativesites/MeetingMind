@@ -90,12 +90,23 @@ import java.io.File
 @Stable
 class CreateController {
     internal var seed by mutableStateOf<CreateSeed?>(null)
+    /** Set when the studio was opened to make a card for somewhere else (a circle's chat): it shows a "send" button. */
+    internal var sendTarget by mutableStateOf<SendTarget?>(null)
     internal var reopen by mutableStateOf<CreateCard?>(null)
     internal var galleryOpen by mutableStateOf(false)
     internal var openId by mutableIntStateOf(0)
 
     /** Opens the studio. A blank [CreateSeed] opens an empty studio. */
-    fun open(seed: CreateSeed = CreateSeed()) { reopen = null; this.seed = seed; openId++ }
+    fun open(seed: CreateSeed = CreateSeed()) { reopen = null; sendTarget = null; this.seed = seed; openId++ }
+
+    /**
+     * Opens the studio to make a card for [label] (for example "Tuesday Night"). The share step then leads with a
+     * "Send to [label]" button; tapping it calls [onShare] with the finished card and closes the studio. The card is
+     * still kept in My creations, and the usual share buttons remain below.
+     */
+    fun open(seed: CreateSeed = CreateSeed(), label: String, onShare: (CreateShareResult) -> Unit) {
+        reopen = null; sendTarget = SendTarget(label, onShare); this.seed = seed; openId++
+    }
 
     /** Reopens a saved creation to edit or share again. */
     fun edit(card: CreateCard) { reopen = card; seed = CreateSeed(card.source, card.sourceText, card.sourceRef); openId++ }
@@ -103,8 +114,13 @@ class CreateController {
     /** Opens "My creations". */
     fun openGallery() { galleryOpen = true }
 
-    internal fun closeStudio() { seed = null; reopen = null }
+    internal fun closeStudio() { seed = null; reopen = null; sendTarget = null }
 }
+
+/** A finished studio card handed to [CreateController.open]'s `onShare`: the card plus the verse text it shows, if any. */
+data class CreateShareResult(val card: CreateCard, val scripture: ResolvedScripture?)
+
+class SendTarget(val label: String, val onShare: (CreateShareResult) -> Unit)
 
 @Composable
 fun rememberCreateController(): CreateController = remember { CreateController() }
@@ -116,6 +132,7 @@ fun CreateHost(controller: CreateController) {
         CreateStudioDialog(
             seed = seed, reopen = controller.reopen, openId = controller.openId,
             onDismiss = controller::closeStudio,
+            sendTarget = controller.sendTarget,
             onOpenGallery = { controller.closeStudio(); controller.galleryOpen = true }
         )
     }

@@ -105,7 +105,10 @@ data class CreateActions(
     val onBackground: (CreateBackground) -> Unit = {},
     val onPickPhoto: () -> Unit = {},
     val onShare: (ShareTarget) -> Unit = {},
-    val onCopy: () -> Unit = {}
+    val onCopy: () -> Unit = {},
+    /** Set when the card is being made for somewhere else (a circle's chat): the share step leads with this. */
+    val sendLabel: String? = null,
+    val onSend: (() -> Unit)? = null
 ) { companion object { val None = CreateActions() } }
 
 /** The companion offered on the card: its name, and the pose its mood maps to. Null hides the switch. */
@@ -324,13 +327,20 @@ private fun PackTile(id: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun ShareStep(ui: CreateUi, hasCompanion: Boolean, a: CreateActions) {
     val d = ui.card.design
-    if (ui.installed.whatsapp) PrimaryButton("WhatsApp status", onClick = { a.onShare(ShareTarget.WHATSAPP) }, enabled = ui.canWrite, modifier = Modifier.fillMaxWidth(), leadingIcon = Icons.Rounded.Share)
+    // One primary button: "Send to <circle>" when the card is for a circle's chat, otherwise the first share app.
+    val send = a.onSend
+    val primaryTaken = send != null
+    if (send != null) PrimaryButton("Send to ${a.sendLabel ?: "the chat"}", onClick = send, enabled = ui.canWrite, modifier = Modifier.fillMaxWidth())
+    if (ui.installed.whatsapp) {
+        if (primaryTaken) SecondaryButton("WhatsApp status", onClick = { a.onShare(ShareTarget.WHATSAPP) }, enabled = ui.canWrite, modifier = Modifier.fillMaxWidth())
+        else PrimaryButton("WhatsApp status", onClick = { a.onShare(ShareTarget.WHATSAPP) }, enabled = ui.canWrite, modifier = Modifier.fillMaxWidth(), leadingIcon = Icons.Rounded.Share)
+    }
     if (ui.installed.instagram) {
         val mod = Modifier.fillMaxWidth()
-        if (ui.installed.whatsapp) SecondaryButton("Instagram story", onClick = { a.onShare(ShareTarget.INSTAGRAM_STORY) }, enabled = ui.canWrite, modifier = mod)
+        if (ui.installed.whatsapp || primaryTaken) SecondaryButton("Instagram story", onClick = { a.onShare(ShareTarget.INSTAGRAM_STORY) }, enabled = ui.canWrite, modifier = mod)
         else PrimaryButton("Instagram story", onClick = { a.onShare(ShareTarget.INSTAGRAM_STORY) }, enabled = ui.canWrite, modifier = mod)
     }
-    val anyDirect = ui.installed.whatsapp || ui.installed.instagram
+    val anyDirect = ui.installed.whatsapp || ui.installed.instagram || primaryTaken
     if (anyDirect) SecondaryButton("Share elsewhere…", onClick = { a.onShare(ShareTarget.ANY) }, enabled = ui.canWrite, modifier = Modifier.fillMaxWidth())
     else PrimaryButton("Share…", onClick = { a.onShare(ShareTarget.ANY) }, enabled = ui.canWrite, modifier = Modifier.fillMaxWidth(), leadingIcon = Icons.Rounded.Share)
     Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {

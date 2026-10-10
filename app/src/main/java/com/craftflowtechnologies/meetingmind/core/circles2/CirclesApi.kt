@@ -59,7 +59,11 @@ interface CirclesApi {
     suspend fun startChain(circleId: String, title: String, postId: String?): CirclesResult<Unit>
     suspend fun celebrate(circleId: String, kind: CelebrationKind, text: String, companion: String?, postId: String? = null): CirclesResult<Unit>
 
+    /** A comment by the hidden author of my own anonymous request. The Worker writes it with no uid. */
+    suspend fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?): CirclesResult<Unit>
+
     suspend fun registerToken(token: String): CirclesResult<Unit>
+    suspend fun unregisterToken(token: String): CirclesResult<Unit>
 }
 
 /** Used when CIRCLES_API_URL is empty. Every call says so plainly. */
@@ -92,7 +96,9 @@ object NotConfiguredCirclesApi : CirclesApi {
     override suspend fun closePoll(circleId: String, pollId: String) = no<Unit>()
     override suspend fun startChain(circleId: String, title: String, postId: String?) = no<Unit>()
     override suspend fun celebrate(circleId: String, kind: CelebrationKind, text: String, companion: String?, postId: String?) = no<Unit>()
+    override suspend fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?) = no<Unit>()
     override suspend fun registerToken(token: String) = no<Unit>()
+    override suspend fun unregisterToken(token: String) = no<Unit>()
 }
 
 /** JSON bodies, kept pure so tests can assert exactly what leaves the phone. */
@@ -108,6 +114,10 @@ object CirclesJson {
         .put("circleId", r.circleId).put("type", r.type.wire).put("body", r.body)
         .put("anonymous", r.anonymous)
         .apply { if (!r.verseRef.isNullOrBlank()) put("verseRef", r.verseRef) }
+
+    fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?): JSONObject = JSONObject()
+        .put("circleId", circleId).put("postId", postId).put("body", body.take(2000))
+        .apply { if (parentId != null) put("parentId", parentId) }
 
     fun createCircle(r: CreateCircleRequest): JSONObject = JSONObject()
         .put("name", r.name).put("template", r.template).put("vocab", r.vocab)
@@ -237,7 +247,10 @@ class HttpCirclesApi(
     override suspend fun celebrate(circleId: String, kind: CelebrationKind, text: String, companion: String?, postId: String?) =
         unit("celebrate", JSONObject().put("circleId", circleId).put("kind", kind.wire).put("text", text)
             .apply { if (companion != null) put("companion", companion); if (postId != null) put("postId", postId) })
+    override suspend fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?) =
+        unit("commentAsAuthor", CirclesJson.commentAsAuthor(circleId, postId, body, parentId))
     override suspend fun registerToken(token: String) = unit("registerToken", JSONObject().put("token", token))
+    override suspend fun unregisterToken(token: String) = unit("unregisterToken", JSONObject().put("token", token))
 
     private fun post(circleId: String, postId: String) = JSONObject().put("circleId", circleId).put("postId", postId)
     private fun str(o: JSONObject, key: String): CirclesResult<String> =

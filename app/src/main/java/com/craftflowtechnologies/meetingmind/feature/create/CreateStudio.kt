@@ -42,7 +42,7 @@ import kotlinx.coroutines.withContext
 
 /** The studio as a full-screen dialog: owns the view model, the preview, the photo picker and the companion export. */
 @Composable
-fun CreateStudioDialog(seed: CreateSeed, reopen: CreateCard? = null, openId: Int = 0, onDismiss: () -> Unit, onOpenGallery: () -> Unit = {}) {
+fun CreateStudioDialog(seed: CreateSeed, reopen: CreateCard? = null, openId: Int = 0, onDismiss: () -> Unit, onOpenGallery: () -> Unit = {}, sendTarget: SendTarget? = null) {
     val context = LocalContext.current
     val vm: CreateViewModel = viewModel()
     remember(openId) { vm.start(seed, reopen); openId }
@@ -86,6 +86,8 @@ fun CreateStudioDialog(seed: CreateSeed, reopen: CreateCard? = null, openId: Int
                 onBackground = { b -> vm.setDesign({ it.copy(background = b) }, userChoseBackground = true) },
                 onPickPhoto = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 onShare = { t -> vm.share(t, companionBitmap) },
+                sendLabel = sendTarget?.label,
+                onSend = sendTarget?.let { target -> { target.onShare(CreateShareResult(ui.card, ui.scripture)); close() } },
                 onCopy = { copy(context, vm.plainText()); vm.dismissMessage() }
             )
         )

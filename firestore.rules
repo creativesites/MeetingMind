@@ -35,11 +35,13 @@ service cloud.firestore {
     }
     function validCard(c) {
       return c is map
-        && c.keys().hasOnly(['templateId', 'text', 'mood'])
+        && c.keys().hasOnly(['templateId', 'text', 'mood', 'verseRef', 'verseText'])
         && c.keys().hasAll(['templateId', 'text'])
         && c.templateId is string && c.templateId.size() > 0 && c.templateId.size() <= 40
         && c.text is string && c.text.size() > 0 && c.text.size() <= 600
-        && (!('mood' in c) || (c.mood is string && c.mood.size() <= 24));
+        && (!('mood' in c) || (c.mood is string && c.mood.size() <= 24))
+        && (!('verseRef' in c) || (c.verseRef is string && c.verseRef.size() <= 64))
+        && (!('verseText' in c) || (c.verseText is string && c.verseText.size() <= 600));
     }
 
     match /circles/{circleId} {

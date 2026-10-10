@@ -268,6 +268,14 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             navController.navigate(Routes.FELLOWSHIP)
         }
     }
+    // A tapped Circles notification: open that circle (the circle screen picks the tab and post), or the list.
+    val pendingCircleTarget by com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.pendingTarget.collectAsState()
+    LaunchedEffect(pendingCircleTarget) {
+        val t = pendingCircleTarget ?: return@LaunchedEffect
+        navController.navigate(Routes.FELLOWSHIP)
+        if (t.circleId != null) navController.navigate(Routes.circleDetailRoute(t.circleId))
+        if (t.circleId == null) com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.consumeTarget()
+    }
     val playbackState by PlaybackController.state.collectAsState()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route

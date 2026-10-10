@@ -15,6 +15,9 @@ interface LocalCircleStore {
     fun removeCircle(id: String)
     fun myPostIds(circleId: String): Set<String>
     fun addMyPost(circleId: String, postId: String)
+    /** Posts I wrote anonymously: my own comments on these must go through the Worker (`commentAsAuthor`). */
+    fun anonymousPostIds(circleId: String): Set<String>
+    fun addAnonymousPost(circleId: String, postId: String)
     fun prayedIds(circleId: String): Set<String>
     fun addPrayed(circleId: String, postId: String)
     fun lastRead(circleId: String): Long
@@ -26,12 +29,15 @@ class InMemoryLocalCircleStore : LocalCircleStore {
     private val circles = LinkedHashSet<String>()
     private val mine = HashMap<String, MutableSet<String>>()
     private val prayed = HashMap<String, MutableSet<String>>()
+    private val anon = HashMap<String, MutableSet<String>>()
     private val read = HashMap<String, Long>()
     override fun circleIds() = circles.toList()
     override fun addCircle(id: String) { circles += id }
     override fun removeCircle(id: String) { circles -= id }
     override fun myPostIds(circleId: String): Set<String> = mine[circleId].orEmpty()
     override fun addMyPost(circleId: String, postId: String) { mine.getOrPut(circleId) { mutableSetOf() } += postId }
+    override fun anonymousPostIds(circleId: String): Set<String> = anon[circleId].orEmpty()
+    override fun addAnonymousPost(circleId: String, postId: String) { anon.getOrPut(circleId) { mutableSetOf() } += postId }
     override fun prayedIds(circleId: String): Set<String> = prayed[circleId].orEmpty()
     override fun addPrayed(circleId: String, postId: String) { prayed.getOrPut(circleId) { mutableSetOf() } += postId }
     override fun lastRead(circleId: String) = read[circleId] ?: 0L
@@ -53,6 +59,8 @@ class SharedPrefsLocalCircleStore(context: Context) : LocalCircleStore {
     override fun removeCircle(id: String) { prefs.edit().putString("ids", (circleIds() - id).joinToString(",")).apply() }
     override fun myPostIds(circleId: String): Set<String> = set("mine_$circleId")
     override fun addMyPost(circleId: String, postId: String) = put("mine_$circleId", set("mine_$circleId").apply { add(postId) })
+    override fun anonymousPostIds(circleId: String): Set<String> = set("anon_$circleId")
+    override fun addAnonymousPost(circleId: String, postId: String) = put("anon_$circleId", set("anon_$circleId").apply { add(postId) })
     override fun prayedIds(circleId: String): Set<String> = set("prayed_$circleId")
     override fun addPrayed(circleId: String, postId: String) = put("prayed_$circleId", set("prayed_$circleId").apply { add(postId) })
     override fun lastRead(circleId: String) = prefs.getLong("read_$circleId", 0L)

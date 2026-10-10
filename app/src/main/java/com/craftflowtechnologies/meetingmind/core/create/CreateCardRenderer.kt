@@ -99,7 +99,7 @@ object CreateCardRenderer {
             refPaint.textSize = max(30f * unit, versePaint.textSize * 0.56f)
             main = if (hasBody) layout(body, bodyPaint, width, align) else null
             vl = verseText?.let { layout(it, versePaint, width, align, 1.26f) }
-            rl = verse?.let { layout(it.reference + " · " + it.versionAbbreviation, refPaint, width, align, 1.1f, 2) }
+            rl = verse?.let { layout(if (it.versionAbbreviation.isBlank()) it.reference else it.reference + " · " + it.versionAbbreviation, refPaint, width, align, 1.1f, 2) }
             val h = (main?.height ?: 0) + (vl?.height ?: 0) + (rl?.height ?: 0) + gap + (if (rl != null) 40f * unit else 0f)
             if (h <= availableH || size <= minSize) {
                 return Blocks(main, vl, rl, gap + (if (rl != null) 40f * unit else 0f), overflow = h > availableH)

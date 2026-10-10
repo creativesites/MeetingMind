@@ -46,6 +46,7 @@ Success: `{"ok":true,...}`. Failure: `{"ok":false,"error":{"code","message"}}` w
 | `prayed` | member | one per user; `alreadyPrayed` true on repeat |
 | `react` | member | `kind` in `praying, amen, heart, celebrate`, or `null` to remove |
 | `syncCounts` | member | recomputes comment/reaction counters after client-side comment writes (idempotent, 20 s debounce) |
+| `commentAsAuthor` | the hidden author of an anonymous prayer request | `circleId, postId, body, parentId?` -> `commentId`. Written by the service account with no `authorUid` and `author: true` (shown as "Requester"); 60/h |
 | `report` | member | `circleId, postId, reason?` |
 | `myCircles` | any signed-in | `circleIds` the caller is still a member of |
 | `reportMessage` | member | `circleId, messageId, reason?`; reporter stored as a keyed hash |
@@ -75,7 +76,7 @@ daily digest ("N people prayed for you today": counts only).
 ## Residual risks (read these)
 
 1. **Operator can unmask.** Whoever holds the Firebase console / service account can read `postAuthors`. Anonymity is "to members and admins", not to the founder.
-2. **Anonymous author commenting on their own request** writes `authorUid` on the comment (comments are client-written). The app should either hide the comment box for the author or route those comments through a Worker endpoint (not built yet).
+2. **Anonymous author commenting on their own request** is handled: the app sends those comments to `commentAsAuthor`, which writes them with no `authorUid`. The phone knows a post is its own anonymous request from a local list of post ids, so a reinstall or a second phone on a linked account falls back to the normal comment path (which writes the uid). The author also can't delete such a comment (only admins can). A comment still lands at its real time, so timing can hint at who is online.
 3. **Behavioural unmasking**: a small circle plus a tight request ("my brother Tom's surgery") can identify someone by content; approval helps but can't fix this.
 4. **KV rate limits are best effort**: eventually consistent and non-atomic, so parallel requests can slip past; they fail open if KV is down. The Workers **free KV plan allows only 1,000 writes/day** across all users; heavy use will start returning "rate_limited"/slow counters. Upgrade to Workers Paid ($5/month) when real usage arrives. Hard caps (50 members, 10 circles, invite uses) are enforced transactionally in Firestore, not KV.
 5. **Anonymous accounts are free to mint**, so per-uid limits are weak; join-failure throttling also runs per IP. Invite codes (about 34M combinations, 7 day default expiry, 50 uses) are guessable only at throttled rates, but a link posted publicly stays valid until revoked or expired.
