@@ -38,6 +38,16 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.Companion
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionSettings
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 
+/** Whether the companion (and so its StatusLine fix) shows on the processing screen. */
+@Composable
+internal fun rememberProcessingCompanionShown(): Boolean {
+    val settings = LocalCompanionSettings.current
+    return remember(settings) {
+        CompanionRoster.resolve(settings.form) != null &&
+            CompanionPresence.visibleOn(CompanionPage.PROCESSING, settings, LocalClock(System.currentTimeMillis()))
+    }
+}
+
 /** Resolves a [CaptionSpec] to text. The caption is a pure function of the stage event. */
 @Composable
 internal fun captionText(key: CaptionKey?, space: NotebookSpace?): String? {

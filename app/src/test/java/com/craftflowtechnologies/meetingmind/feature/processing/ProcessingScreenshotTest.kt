@@ -56,7 +56,8 @@ class ProcessingScreenshotTest {
                 error = "Google's AI couldn't transcribe this recording. Transcribing failed: your Gemini API key was rejected."),
             "processing_failed"
         )
-        compose.onNodeWithText("Try again").assertIsDisplayed()
+        compose.onNodeWithText("Retry").assertIsDisplayed()
+        compose.onNodeWithText("Try again").assertDoesNotExist() // one primary action: the companion line carries it
     }
 
     @Test

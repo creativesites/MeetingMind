@@ -32,10 +32,15 @@ class CompanionLabTest {
 
     @Test fun `the lab renders`() {
         rule.mainClock.autoAdvance = false
-        rule.setContent { CompanionLabScreen() }
+        // The .riv files are bundled, but the JVM must never load Rive natives: force the Canvas path.
+        rule.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true
+            ) { CompanionLabScreen() }
+        }
         rule.mainClock.advanceTimeBy(500)
         rule.onNodeWithText("Companion Lab").assertExists()
-        rule.onNodeWithText("Renderer: CANVAS (NO_ASSET)").assertExists()
+        rule.onNodeWithText("Renderer: CANVAS (FORCED_CANVAS)").assertExists()
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/companion/lab.png")
     }
 }

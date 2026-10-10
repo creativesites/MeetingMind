@@ -23,6 +23,10 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.Companion
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionRiveContract
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RendererChoice
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RendererReason
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RendererInputs
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionRendererSelector
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionRiveBudget
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.LocalCompanionRiveBudget
 import com.craftflowtechnologies.meetingmind.ui.theme.MMAccent
 import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
 import com.craftflowtechnologies.meetingmind.ui.theme.companionPalette
@@ -44,20 +48,37 @@ import org.robolectric.annotation.GraphicsMode
 class CompanionRendererTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun `no riv bundled yet - every form renders on Canvas`() {
+    @Test fun `all four riv files are bundled, so a 96 dp animated slot is Rive-ready`() {
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
-        for (f in CompanionForm.entries) assertFalse(CompanionAssets.isBundled(ctx, f))
+        for (f in CompanionForm.entries) {
+            assertTrue("$f .riv bundled", CompanionAssets.isBundled(ctx, f))
+            val inputs = RendererInputs(
+                sizeDp = 96f, durationScale = 1f, assetBundled = CompanionAssets.isBundled(ctx, f), hasBudgetSlot = true
+            )
+            assertEquals(RendererChoice(CompanionRenderer.RIVE, RendererReason.RIVE_READY), CompanionRendererSelector.select(inputs))
+            // Slot < 48 dp, or animations off, still falls back to Canvas.
+            assertEquals(RendererReason.TOO_SMALL, CompanionRendererSelector.select(inputs.copy(sizeDp = 47f)).reason)
+            assertEquals(RendererReason.REDUCED_MOTION, CompanionRendererSelector.select(inputs.copy(durationScale = 0f)).reason)
+        }
+    }
+
+    @Test fun `the shell wants Rive for a bundled form, and only the budget keeps the JVM off the natives`() {
+        // A zero budget means Companion() reaches the Rive decision (asset found, 96 dp, animations on)
+        // and then stops at OVER_BUDGET, so no Rive native library is ever loaded on the JVM.
         var choice: RendererChoice? = null
         rule.mainClock.autoAdvance = false
         rule.setContent {
             MeetMindTheme(darkTheme = false) {
-                CompositionLocalProvider(LocalCompanionReducedMotion provides false) {
+                CompositionLocalProvider(
+                    LocalCompanionReducedMotion provides false,
+                    LocalCompanionRiveBudget provides CompanionRiveBudget(max = 0)
+                ) {
                     Companion(CompanionForm.ZURI, CompanionState.IDLE, 96.dp, onRenderer = { choice = it })
                 }
             }
         }
         rule.mainClock.advanceTimeByFrame()
-        assertEquals(RendererChoice(CompanionRenderer.CANVAS, RendererReason.NO_ASSET), choice)
+        assertEquals(RendererChoice(CompanionRenderer.CANVAS, RendererReason.OVER_BUDGET), choice)
     }
 
     @Test fun `small, reduced-motion and forced slots say why they are Canvas`() {
