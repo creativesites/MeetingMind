@@ -259,3 +259,12 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
 }
+
+// Dev (debug) APKs are side-loaded from GitHub, which caps a file at 100 MiB. Compressing the native
+// libraries (about 58 MB uncompressed: MediaPipe, ONNX Runtime, sherpa-onnx) keeps them well under
+// it. Release bundles keep them uncompressed so Play can serve them page-aligned and mmap them.
+androidComponents {
+  onVariants(selector().withBuildType("debug")) { variant ->
+    variant.packaging.jniLibs.useLegacyPackaging.set(true)
+  }
+}
