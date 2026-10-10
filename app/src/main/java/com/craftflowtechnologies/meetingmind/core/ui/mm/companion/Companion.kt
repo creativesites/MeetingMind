@@ -105,7 +105,7 @@ fun Companion(
 
     val base = RendererInputs(
         sizeDp = size.value, durationScale = durationScale, assetBundled = bundled, hasBudgetSlot = false,
-        riveEnabled = CompanionFlags.rive, forceCanvas = forceCanvas, riveFailed = riveFailed
+        riveEnabled = CompanionFlags.rive && com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RiveSafety.allowed(context), forceCanvas = forceCanvas, riveFailed = riveFailed
     )
     val wantsRive = CompanionRendererSelector.wantsRive(base)
     val budget = LocalCompanionRiveBudget.current

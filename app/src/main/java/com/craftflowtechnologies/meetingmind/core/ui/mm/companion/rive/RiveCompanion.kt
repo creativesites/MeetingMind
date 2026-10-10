@@ -64,13 +64,28 @@ internal fun RiveCompanion(
     modifier: Modifier = Modifier
 ) {
     val holder = remember(form, bytes) { RiveHolder() }
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
-            RiveAnimationView(ctx, null).also { view ->
+            // The native runtime starts before the view exists, and the view is created inside the
+            // guard: creating a RiveAnimationView before Rive.init, outside any catch, took the app
+            // down on launch. A failure here falls back to Canvas instead.
+            RiveSafety.markAttempt(ctx)
+            val created: RiveAnimationView? = if (RiveRuntime.ensureInit(ctx)) {
+                runCatching { RiveAnimationView(ctx, null) }
+                    .onFailure { Log.w(RiveRuntime.Tag, "Rive view could not be created", it) }
+                    .getOrNull()
+            } else null
+            if (created == null) {
+                RiveSafety.disableForProcess()
+                RiveSafety.markHealthy(ctx) // a caught failure is not a crash: don't penalise the next run
+                onFailure("native runtime unavailable")
+                return@AndroidView android.view.View(ctx)
+            }
+            created.also { view ->
                 holder.view = view
                 val problem = runCatching {
-                    if (!RiveRuntime.ensureInit(ctx)) return@runCatching "native runtime unavailable"
                     view.setRiveBytes(
                         bytes,
                         artboardName = CompanionRiveContract.artboard(form),
@@ -126,11 +141,14 @@ internal fun RiveCompanion(
         view.play()
         val smoother = LevelSmoother()
         var last = 0L
+        var playingSince = 0L
         var sent = -1f
         while (true) {
             val now = awaitFrame()
             val dt = if (last == 0L) 16f else (now - last) / 1_000_000f
             last = now
+            if (playingSince == 0L) playingSince = now
+            else if (now - playingSince > 2_000_000_000L) RiveSafety.markHealthy(appContext)
             val v = CompanionRiveContract.levelValue(smoother.update(level(), dt))
             if (abs(v - sent) >= 0.5f) {
                 runCatching { view.setNumberState(CompanionRiveContract.StateMachine, CompanionRiveContract.Inputs.Level, v) }
