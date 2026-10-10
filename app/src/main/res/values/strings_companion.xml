@@ -24,6 +24,12 @@
     <string name="companion_onboarding_step1_body">They listen when you record, keep you posted while your note is written, and cheer when it\'s ready. Never inside your notes.</string>
     <string name="companion_onboarding_step1_footnote">You can change this any time in Settings, or just long-press your companion.</string>
     <string name="companion_onboarding_no_companion">No companion</string>
+    <!-- One line per companion, from the family table (spec 1.2). -->
+    <string name="companion_line_zuri">The record button, awake.</string>
+    <string name="companion_line_nas">A calm little puppy, glad you\'re here.</string>
+    <string name="companion_line_wren">A small songbird who keeps what matters.</string>
+    <string name="companion_line_page">Your note, come to life.</string>
+    <string name="companion_line_none">Just the app, quietly.</string>
 
     <string name="companion_onboarding_step2_title">What do you want to remember?</string>
 

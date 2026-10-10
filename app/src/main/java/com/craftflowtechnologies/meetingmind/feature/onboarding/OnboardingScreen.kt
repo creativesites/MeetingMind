@@ -81,6 +81,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -91,6 +92,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.core.common.DeviceCapabilityDetector
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionForm
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionRoster
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionSettingsSource
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionSettingsStore
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.model.DeviceCapabilities
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
@@ -106,8 +111,24 @@ import kotlinx.coroutines.launch
 /** How the person wants the app's AI to run, chosen on the setup step. */
 enum class SetupChoice { OFFLINE_PACK, INTERNET, LATER }
 
-class OnboardingViewModel(application: Application) : AndroidViewModel(application) {
+class OnboardingViewModel(
+    application: Application,
+    private val companionSettings: CompanionSettingsSource
+) : AndroidViewModel(application) {
+    constructor(application: Application) : this(application, CompanionSettingsStore(application))
+
     private val prefs = UserPreferencesManager(application)
+
+    /** Who keeps the person company (Z-15). Zuri is pre-selected; null is "No companion". Saved on Continue. */
+    private val _companion = MutableStateFlow<CompanionForm?>(CompanionForm.ZURI)
+    val companion: StateFlow<CompanionForm?> = _companion.asStateFlow()
+    fun setCompanion(form: CompanionForm?) { _companion.value = form }
+
+    /** Writes the companion choice to the settings store; runs when the step's Continue is pressed. */
+    fun commitCompanion() {
+        val form = _companion.value
+        viewModelScope.launch { companionSettings.setForm(form) }
+    }
     val deviceCapabilities: DeviceCapabilities = DeviceCapabilityDetector.detect(application)
 
     private val _selectedModel = MutableStateFlow(deviceCapabilities.recommendedAsrModelId)
@@ -177,6 +198,7 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
 
     fun completeOnboarding(onCompleted: () -> Unit) {
         viewModelScope.launch {
+            companionSettings.setForm(_companion.value)
             prefs.setSelectedAsrModel(_selectedModel.value)
             prefs.setUserName(_userName.value)
             prefs.setSpaces(_spaces.value)
@@ -209,10 +231,11 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     }
 }
 
-private const val STEPS = 7
+/** Welcome, Pick your companion, What it does, Name, Spaces, Setup, Bible, Permissions. */
+private const val STEPS = 8
 
 /**
- * First run: a warm welcome in the brand's navy, then seven short steps — what it does, your name,
+ * First run: a warm welcome in the brand's navy, then short steps — who keeps you company, what it does, your name,
  * what it's for, how the AI runs (the offline pack is explained as three jobs so nobody stops at
  * one model), and the two permissions that matter. Everything can be changed later.
  */
@@ -227,8 +250,9 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
     val setup by viewModel.setup.collectAsState()
     val wifiOnly by viewModel.wifiOnly.collectAsState()
     val bible by viewModel.bible.collectAsState()
+    val companion by viewModel.companion.collectAsState()
 
-    fun next() { forward = true; if (step < STEPS - 1) step++ else viewModel.completeOnboarding(onFinishOnboarding) }
+    fun next() { forward = true; if (step == 1) viewModel.commitCompanion(); if (step < STEPS - 1) step++ else viewModel.completeOnboarding(onFinishOnboarding) }
     fun back() { forward = false; if (step > 0) step-- }
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Brand.Navy, Brand.NavyLift, Brand.Navy))).testTag("onboarding")) {
@@ -258,11 +282,12 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
                     when (s) {
                         0 -> Welcome()
-                        1 -> WhatItDoes()
-                        2 -> NameStep(userName, viewModel::setUserName)
-                        3 -> SpacesStep(spaces, viewModel::setSpaces, look, viewModel::setLook, workProfile, viewModel::setWorkProfile)
-                        4 -> SetupStep(viewModel, setup, viewModel::setSetup, wifiOnly, viewModel::setWifiOnly)
-                        5 -> BibleStep(viewModel)
+                        1 -> CompanionPickStep(companion, viewModel::setCompanion)
+                        2 -> WhatItDoes()
+                        3 -> NameStep(userName, viewModel::setUserName, companion?.let { stringResource(CompanionRoster.displayName(it)) })
+                        4 -> SpacesStep(spaces, viewModel::setSpaces, look, viewModel::setLook, workProfile, viewModel::setWorkProfile)
+                        5 -> SetupStep(viewModel, setup, viewModel::setSetup, wifiOnly, viewModel::setWifiOnly)
+                        6 -> BibleStep(viewModel)
                         else -> PermissionsStep()
                     }
                 }
@@ -273,7 +298,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                 Surface(onClick = { next() }, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = Modifier.testTag("onboarding_next_btn")) {
                     Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            when (step) { 0 -> "Get started"; STEPS - 1 -> "Start using MeetingMind"; 2 -> if (userName.isBlank()) "Skip" else "Continue"; 5 -> if (bible == null) "Skip for now" else "Download and continue"; else -> "Continue" },
+                            when (step) { 0 -> "Get started"; STEPS - 1 -> "Start using MeetingMind"; 3 -> if (userName.isBlank()) "Skip" else "Continue"; 6 -> if (bible == null) "Skip for now" else "Download and continue"; else -> "Continue" },
                             color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp
                         )
                         Spacer(Modifier.width(8.dp))
@@ -346,8 +371,8 @@ private fun Feature(icon: ImageVector, title: String, line: String) {
 }
 
 @Composable
-private fun NameStep(name: String, onName: (String) -> Unit) {
-    StepTitle("What should we call you?", "For greetings, and so Ask AI can address you. Optional, and it stays on this phone.")
+private fun NameStep(name: String, onName: (String) -> Unit, companionName: String?) {
+    StepTitle(if (companionName != null) stringResource(R.string.companion_onboarding_step3_title, companionName) else "What should we call you?", "For greetings, and so Ask AI can address you. Optional, and it stays on this phone.")
     OutlinedTextField(
         value = name, onValueChange = onName, singleLine = true,
         placeholder = { Text("Your first name", color = Color.White.copy(alpha = 0.35f)) },

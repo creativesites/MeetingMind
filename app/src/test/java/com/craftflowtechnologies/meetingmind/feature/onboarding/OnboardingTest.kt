@@ -1,6 +1,9 @@
 package com.craftflowtechnologies.meetingmind.feature.onboarding
 
 import android.app.Application
+import androidx.compose.runtime.CompositionLocalProvider
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
@@ -32,8 +35,15 @@ class OnboardingTest {
     @Test fun `walks through every step and remembers the choices`() {
         val vm = OnboardingViewModel(app)
         var finished = false
-        compose.setContent { MeetMindTheme { OnboardingScreen(vm) { finished = true } } }
-        val shots = listOf("welcome", "what", "name", "spaces", "setup", "bible", "permissions")
+        compose.setContent {
+            MeetMindTheme {
+                // The companion's idle loop never settles, so the walk-through draws it static on Canvas.
+                CompositionLocalProvider(LocalCompanionForceCanvas provides true, LocalCompanionReducedMotion provides true) {
+                    OnboardingScreen(vm) { finished = true }
+                }
+            }
+        }
+        val shots = listOf("welcome", "companion", "what", "name", "spaces", "setup", "bible", "permissions")
         shots.forEachIndexed { i, name ->
             compose.waitForIdle()
             compose.mainClock.advanceTimeBy(600)
