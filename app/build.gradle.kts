@@ -32,6 +32,16 @@ android {
       if (local.exists()) local.inputStream().use { props.load(it) }
       props.getProperty("youversion.appKey") ?: System.getenv("YOUVERSION_APP_KEY") ?: ""
     }
+    // Circles (docs/mvp/FAITH_V2.md section 7): base URL of the deployed Worker in server/circles-api, e.g.
+    // https://circles-api.<account>.workers.dev. From local.properties (circles.apiUrl=...) or the
+    // CIRCLES_API_URL environment variable. Empty (the default) makes the app show "Circles isn't connected yet".
+    val circlesApiUrl = run {
+      val props = Properties()
+      val local = rootProject.file("local.properties")
+      if (local.exists()) local.inputStream().use { props.load(it) }
+      System.getenv("CIRCLES_API_URL") ?: props.getProperty("circles.apiUrl") ?: ""
+    }
+    buildConfigField("String", "CIRCLES_API_URL", "\"${circlesApiUrl.trim().replace("\"", "")}\"")
     buildConfigField("String", "YOUVERSION_APP_KEY", "\"${youVersionKey.replace("\"", "")}\"")
     // System Gemini API key for closed testing (via SYSTEM_GEMINI_API_KEY env var)
     val systemGeminiKey = System.getenv("SYSTEM_GEMINI_API_KEY") ?: ""

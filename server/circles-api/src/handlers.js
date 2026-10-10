@@ -7,7 +7,7 @@ import { pushToUsers } from "./fcm.js";
 import { hit, check, record } from "./ratelimit.js";
 import {
   LIMITS, RATE, REACTIONS, POST_TYPES, TEMPLATES, validId, cleanText, cleanVerseRef, normalizeSettings,
-  generateCode, extractCodes, clampInvite, joinDecision, canInvite, isAdmin, shapePost, publishFromPending, assertNoAuthorLeak,
+  generateCode, extractCodes, CHAT, shapePoll, shapeCelebration, clampInvite, joinDecision, canInvite, isAdmin, shapePost, publishFromPending, assertNoAuthorLeak,
 } from "./logic.js";
 
 const C = (id) => `circles/${id}`;
@@ -74,7 +74,7 @@ async function createCircle(ctx) {
     return [
       w.create(C(id), { name: nm, template, vocab, settings, ownerUid: ctx.uid, memberCount: 1, orgId: null, closed: false, createdAt: ctx.now }),
       w.create(`${C(id)}/members/${ctx.uid}`, { role: "owner", displayName, joinedAt: ctx.now, muted: false }),
-      w.set(`userMeta/${ctx.uid}`, { circleCount: n + 1 }),
+      w.set(`userMeta/${ctx.uid}`, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), id] }),
     ];
   });
   return { circleId: id };
@@ -91,6 +91,14 @@ async function updateCircle(ctx) {
   if (!Object.keys(data).length) throw new ApiError(400, "bad_request", "Nothing to change");
   await ctx.db.commit([w.update(C(id), data)]);
   return {};
+}
+
+/** The caller's circle ids (so a fresh install on a linked account can find its circles; rules forbid listing circles). */
+async function myCircles(ctx) {
+  const meta = await ctx.db.get(`userMeta/${ctx.uid}`);
+  const ids = (meta?.data.circleIds || []).slice(0, LIMITS.circlesPerUser);
+  const members = ids.length ? await ctx.db.batchGet(ids.map((id) => `${C(id)}/members/${ctx.uid}`)) : [];
+  return { circleIds: ids.filter((_, i) => members[i]) };
 }
 
 // ---------- invites ----------
@@ -155,7 +163,7 @@ async function join(ctx) {
         w.create(`${C(invite.circleId)}/members/${ctx.uid}`, { role: "member", displayName, joinedAt: ctx.now, muted: false }),
         w.update(C(invite.circleId), { memberCount: circle.memberCount + 1 }),
         w.update(`invites/${code}`, {}, { inc: { uses: 1 } }),
-        w.set(`userMeta/${ctx.uid}`, { circleCount: (meta?.data.circleCount || 0) + 1 }),
+        w.set(`userMeta/${ctx.uid}`, { circleCount: (meta?.data.circleCount || 0) + 1, circleIds: [...(meta?.data.circleIds || []), invite.circleId] }),
       ];
     });
   } catch (e) {
@@ -180,7 +188,7 @@ async function removeFromCircle(ctx, circleId, targetUid, authorize) {
     return [
       w.del(`${C(circleId)}/members/${targetUid}`),
       w.update(C(circleId), left <= 0 ? { memberCount: 0, closed: true } : { memberCount: left }),
-      w.set(`userMeta/${targetUid}`, { circleCount: Math.max(0, (meta?.data.circleCount || 1) - 1) }),
+      w.set(`userMeta/${targetUid}`, { circleCount: Math.max(0, (meta?.data.circleCount || 1) - 1), circleIds: (meta?.data.circleIds || []).filter((x) => x !== circleId) }),
     ];
   });
   return {};
@@ -403,6 +411,97 @@ async function report(ctx) {
   return {};
 }
 
+// ---------- chat & fun ----------
+// Clients write text/card/reply messages themselves (rules). Polls, prayer chains and celebrations
+// are created here so their shape, rate limits and notifications can't be forged.
+function systemMessage(ctx, member, fields) {
+  return { authorUid: ctx.uid, displayName: member.displayName, deleted: false, createdAt: ctx.now, editedAt: null, ...fields };
+}
+
+async function createPoll(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const { circle, member } = await load(ctx, circleId);
+  const shaped = shapePoll(ctx.body);
+  await hit(ctx.kv, `rl:createPoll:${ctx.uid}`, RATE.createPoll);
+  const pollId = newId(); const messageId = newId();
+  await ctx.db.commit([
+    w.create(`${C(circleId)}/polls/${pollId}`, { ...shaped, closed: false, createdBy: ctx.uid, createdAt: ctx.now, messageId }),
+    w.create(`${C(circleId)}/messages/${messageId}`, systemMessage(ctx, member, { kind: "poll", text: shaped.question, pollId })),
+  ]);
+  ctx.defer(notifyMembers(ctx, circleId, ctx.uid, { title: circle.name, body: `${member.displayName} started a poll`, data: { kind: "poll", circleId, messageId } }));
+  return { pollId, messageId };
+}
+
+async function closePoll(ctx) {
+  const circleId = str(ctx.body, "circleId"); const pollId = str(ctx.body, "pollId");
+  const { member } = await load(ctx, circleId);
+  const poll = await ctx.db.get(`${C(circleId)}/polls/${pollId}`);
+  if (!poll) throw notFound("That poll");
+  if (poll.data.createdBy !== ctx.uid && !isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only the person who made the poll, or an admin, can close it.");
+  if (!poll.data.closed) await ctx.db.commit([w.update(`${C(circleId)}/polls/${pollId}`, { closed: true, closedAt: ctx.now })]);
+  return {};
+}
+
+async function startChain(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const { circle, member } = await load(ctx, circleId);
+  if (!circle.settings.allowedTypes.includes("prayer")) throw new ApiError(403, "type_not_allowed", "This circle doesn't use prayer requests.");
+  const title = cleanText(ctx.body.title, "title", { max: CHAT.chainTitleMax });
+  let postId = null;
+  if (ctx.body.postId !== undefined && ctx.body.postId !== null) {
+    postId = str(ctx.body, "postId");
+    const post = await livePost(ctx, circleId, postId);
+    if (post.type !== "prayer") throw new ApiError(400, "bad_request", "A prayer chain is for a prayer request.");
+  }
+  await hit(ctx.kv, `rl:startChain:${ctx.uid}`, RATE.startChain);
+  const chainId = newId(); const messageId = newId();
+  const endsAt = new Date(ctx.now.getTime() + CHAT.chainHours * 3_600_000);
+  await ctx.db.commit([
+    w.create(`${C(circleId)}/chains/${chainId}`, { title, postId, hours: CHAT.chainHours, startsAt: ctx.now, endsAt, createdBy: ctx.uid, createdByName: member.displayName, messageId }),
+    w.create(`${C(circleId)}/messages/${messageId}`, systemMessage(ctx, member, { kind: "chain", text: title, chainId })),
+  ]);
+  ctx.defer(notifyMembers(ctx, circleId, ctx.uid, { title: circle.name, body: `${member.displayName} started a 24-hour prayer chain`, data: { kind: "chain", circleId, chainId } }));
+  return { chainId, messageId, endsAt: endsAt.toISOString() };
+}
+
+/** A member celebrates THEMSELVES (never someone else, so birthdays stay opt-in). */
+async function celebrate(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const { circle, member } = await load(ctx, circleId);
+  const c = shapeCelebration(ctx.body);
+  if (c.kind === "answered") {
+    // An answered prayer may be celebrated only by its named author. Anonymous requests can never be
+    // celebrated by name, or this would unmask the requester.
+    const postId = str(ctx.body, "postId");
+    const post = await livePost(ctx, circleId, postId);
+    if (post.anonymous) throw new ApiError(400, "bad_request", "Anonymous requests can't be celebrated by name.");
+    await requireAuthor(ctx, circleId, postId);
+    if (post.status !== "answered") throw new ApiError(409, "not_answered", "Mark the request answered first.");
+  }
+  await hit(ctx.kv, `rl:celebrate:${ctx.uid}`, RATE.celebrate);
+  const messageId = newId();
+  await ctx.db.commit([w.create(`${C(circleId)}/messages/${messageId}`, systemMessage(ctx, member, { kind: "celebration", text: c.text, celebration: c.kind, companion: c.companion }))]);
+  ctx.defer(notifyMembers(ctx, circleId, ctx.uid, { title: circle.name, body: `${member.displayName} has something to celebrate`, data: { kind: "celebration", circleId, messageId } }));
+  return { messageId };
+}
+
+/** Report a chat message. Like post reports, the reporter is stored only as a keyed hash. */
+async function reportMessage(ctx) {
+  const circleId = str(ctx.body, "circleId"); const messageId = str(ctx.body, "messageId");
+  await load(ctx, circleId);
+  const m = await ctx.db.get(`${C(circleId)}/messages/${messageId}`);
+  if (!m || m.data.deleted) throw notFound("That message");
+  const reason = cleanText(ctx.body.reason, "reason", { min: 0, max: 500, optional: true }) ?? "";
+  await hit(ctx.kv, `rl:report:${ctx.uid}`, RATE.report);
+  const h = (await hmacHex(parseServiceAccount(ctx.env).private_key, `${ctx.uid}:${messageId}`)).slice(0, 24);
+  try {
+    await ctx.db.commit([w.create(`${C(circleId)}/reports/m_${messageId}_${h}`, { messageId, reason, createdAt: ctx.now })]);
+  } catch (e) {
+    if (!(e instanceof FirestoreError && e.code === "ALREADY_EXISTS")) throw e;
+  }
+  return {};
+}
+
 // ---------- devices ----------
 function token(b) {
   const t = b.token;
@@ -427,5 +526,6 @@ export const HANDLERS = {
   createCircle, updateCircle, createInvite, revokeInvite, join, leave, removeMember, setRole, setMute,
   createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, deletePost,
   prayed, react, syncCounts, report, registerToken, unregisterToken,
+  createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
 };
 export { POST_TYPES };

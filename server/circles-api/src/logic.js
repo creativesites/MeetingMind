@@ -125,6 +125,9 @@ export const RATE = {
   createCircle: { limit: 5, ttl: 3600 },
   createInvite: { limit: 10, ttl: 3600 },
   report: { limit: 20, ttl: 3600 },
+  createPoll: { limit: 10, ttl: 3600 },
+  startChain: { limit: 3, ttl: 86_400 },
+  celebrate: { limit: 5, ttl: 86_400 },
   comment: { limit: 60, ttl: 3600 },
   joinFailUser: { limit: 10, ttl: 3600 },
   joinFailIp: { limit: 40, ttl: 3600 },
@@ -167,4 +170,30 @@ export function publishFromPending(pendingDoc, authorDoc, now) {
   const post = { ...pendingDoc, createdAt: pendingDoc.anonymous ? hourFloor(now) : now };
   if (!pendingDoc.anonymous) { post.authorUid = authorDoc.authorUid; post.authorName = authorDoc.authorName; }
   return post;
+}
+
+// ---- chat & fun (FAITH_V2 section 2.2b) ----
+export const CHAT = { pollQuestionMax: 200, pollOptionMax: 80, pollOptionsMin: 2, pollOptionsMax: 6, chainHours: 24, chainTitleMax: 120, celebrationTextMax: 140 };
+export const COMPANIONS = ["zuri", "nas", "wren", "page"];
+export const CELEBRATIONS = ["birthday", "answered", "streak", "milestone"];
+
+/** Validate and shape a poll. Returns { question, options:[{id,text}], optionIds, multi }. */
+export function shapePoll({ question, options, multi }) {
+  const q = cleanText(question, "question", { max: CHAT.pollQuestionMax });
+  if (!Array.isArray(options) || options.length < CHAT.pollOptionsMin || options.length > CHAT.pollOptionsMax) {
+    throw bad("bad_request", `A poll needs ${CHAT.pollOptionsMin} to ${CHAT.pollOptionsMax} options`);
+  }
+  const texts = options.map((o) => cleanText(o, "option", { max: CHAT.pollOptionMax }));
+  if (new Set(texts.map((t) => t.toLowerCase())).size !== texts.length) throw bad("bad_request", "Options must be different");
+  if (multi !== undefined && typeof multi !== "boolean") throw bad("bad_request", "multi must be true or false");
+  const opts = texts.map((text, i) => ({ id: `o${i}`, text }));
+  return { question: q, options: opts, optionIds: opts.map((o) => o.id), multi: multi === true };
+}
+
+/** Validate a celebration. `kind` is one of CELEBRATIONS; companion falls back to null (client picks its own). */
+export function shapeCelebration({ kind, text, companion }) {
+  if (!CELEBRATIONS.includes(kind)) throw bad("bad_request", "Unknown celebration");
+  const t = cleanText(text, "text", { min: 0, max: CHAT.celebrationTextMax, optional: true }) ?? "";
+  if (companion !== undefined && companion !== null && !COMPANIONS.includes(companion)) throw bad("bad_request", "Unknown companion");
+  return { kind, text: t, companion: companion ?? null };
 }

@@ -69,3 +69,14 @@ test("validation helpers reject path injection and junk", () => {
   assert.throws(() => clampInvite({ maxUses: 1000 })); assert.deepEqual(clampInvite({}), { days: 7, uses: 50 });
   assert.equal(canInvite("member", settings), false); assert.equal(canInvite("member", { whoCanInvite: "members" }), true);
 });
+
+import { shapePoll, shapeCelebration } from "../../src/logic.js";
+test("shapePoll builds stable option ids; shapeCelebration validates kind and companion", () => {
+  const p = shapePoll({ question: " Night? ", options: [" Tue ", "Thu"], multi: undefined });
+  assert.deepEqual(p.optionIds, ["o0", "o1"]); assert.equal(p.question, "Night?"); assert.equal(p.multi, false);
+  assert.throws(() => shapePoll({ question: "Q", options: "ab" }));
+  assert.throws(() => shapePoll({ question: "Q", options: ["a", "b"], multi: "yes" }));
+  assert.deepEqual(shapeCelebration({ kind: "streak" }), { kind: "streak", text: "", companion: null });
+  assert.throws(() => shapeCelebration({ kind: "x" }));
+  assert.throws(() => shapeCelebration({ kind: "streak", text: "x".repeat(141) }));
+});

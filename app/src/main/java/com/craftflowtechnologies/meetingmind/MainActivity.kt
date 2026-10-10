@@ -262,7 +262,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
     // People is built from history, once, after the work schema arrives (PLAN_PROFESSIONAL.md §5.1).
     LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.core.work.WorkStartup.run(context) }
-    val pendingCircleInvite by com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.pendingInviteUri.collectAsState()
+    val pendingCircleInvite by com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.pendingCode.collectAsState()
     LaunchedEffect(pendingCircleInvite) {
         if (pendingCircleInvite != null) {
             navController.navigate(Routes.FELLOWSHIP)
@@ -554,50 +554,33 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 )
             }
         }
+        // Circles v2 (docs/mvp/FAITH_V2.md): the Fellowship entry points open the new Circles list.
         composable(Routes.FELLOWSHIP) {
-            val circlesVm: com.craftflowtechnologies.meetingmind.feature.fellowship.circles.CircleViewModel = viewModel()
-            val circles by circlesVm.circles.collectAsState()
-            val cachedName by circlesVm.cachedDisplayName.collectAsState()
-            com.craftflowtechnologies.meetingmind.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
-                com.craftflowtechnologies.meetingmind.feature.fellowship.FellowshipHubScreen(
-                    onNavigateBack = { navController.popBackStack() },
-                    onPick = { kind -> navController.navigate(Routes.fellowshipPickRoute(kind.route)) },
-                    circlesSection = {
-                        com.craftflowtechnologies.meetingmind.feature.fellowship.circles.CirclesHubSection(
-                            circles = circles,
-                            cachedDisplayName = cachedName,
-                            onOpenCircle = { circleId -> navController.navigate(Routes.circleDetailRoute(circleId)) },
-                            onCreateCircle = { name, desc, dName, emoji ->
-                                circlesVm.createCircle(name, desc, dName, emoji) { id ->
-                                    navController.navigate(Routes.circleDetailRoute(id))
-                                }
-                            },
-                            onJoinCircle = { code, dName ->
-                                circlesVm.joinCircle(code, dName) { id ->
-                                    if (id != null) navController.navigate(Routes.circleDetailRoute(id))
-                                }
-                            }
-                        )
-                    }
-                )
-            }
+            val inviteCode by com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.pendingCode.collectAsState()
+            com.craftflowtechnologies.meetingmind.feature.circles2.CirclesListScreen(
+                onBack = { navController.popBackStack() },
+                onOpenCircle = { circleId -> navController.navigate(Routes.circleDetailRoute(circleId)) },
+                onCreate = { navController.navigate(Routes.CIRCLE_CREATE) },
+                initialCode = inviteCode,
+                onInitialCodeHandled = { com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.consume() }
+            )
+        }
+        composable(Routes.CIRCLE_CREATE) {
+            com.craftflowtechnologies.meetingmind.feature.circles2.CreateCircleScreen(
+                onBack = { navController.popBackStack() },
+                onCreated = { circleId ->
+                    navController.navigate(Routes.circleDetailRoute(circleId)) { popUpTo(Routes.CIRCLE_CREATE) { inclusive = true } }
+                }
+            )
         }
         composable(
             Routes.CIRCLE_DETAIL,
             arguments = listOf(navArgument("circleId") { type = NavType.StringType })
         ) { entry ->
-            val circleId = entry.arguments?.getString("circleId").orEmpty()
-            val circlesVm: com.craftflowtechnologies.meetingmind.feature.fellowship.circles.CircleViewModel = viewModel()
-            val faithVm: com.craftflowtechnologies.meetingmind.feature.faith.FaithViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            val notes by faithVm.faithNotes.collectAsState()
-            com.craftflowtechnologies.meetingmind.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
-                com.craftflowtechnologies.meetingmind.feature.fellowship.circles.CircleScreen(
-                    circleId = circleId,
-                    viewModel = circlesVm,
-                    faithNotes = notes,
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
+            com.craftflowtechnologies.meetingmind.feature.circles2.CircleHomeScreen(
+                circleId = entry.arguments?.getString("circleId").orEmpty(),
+                onBack = { navController.popBackStack() }
+            )
         }
         composable(
             Routes.FELLOWSHIP_PICK,

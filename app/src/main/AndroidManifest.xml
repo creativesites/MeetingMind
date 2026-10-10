@@ -77,7 +77,8 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="mindcircle" android:host="join" />
+                <!-- Circles invite links: meetingmind://c/GRACE-7K2Q (replaces the old mindcircle:// link that carried a key) -->
+                <data android:scheme="meetingmind" android:host="c" />
             </intent-filter>
         </activity>
 

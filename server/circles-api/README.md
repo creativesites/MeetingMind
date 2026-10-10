@@ -47,6 +47,12 @@ Success: `{"ok":true,...}`. Failure: `{"ok":false,"error":{"code","message"}}` w
 | `react` | member | `kind` in `praying, amen, heart, celebrate`, or `null` to remove |
 | `syncCounts` | member | recomputes comment/reaction counters after client-side comment writes (idempotent, 20 s debounce) |
 | `report` | member | `circleId, postId, reason?` |
+| `myCircles` | any signed-in | `circleIds` the caller is still a member of |
+| `reportMessage` | member | `circleId, messageId, reason?`; reporter stored as a keyed hash |
+| `createPoll` | member | `circleId, question, options[2-6], multi?` -> `pollId, messageId` (10/h). Votes are written by clients under rules (doc id = uid, open polls only) |
+| `closePoll` | poll creator or admin | `circleId, pollId` |
+| `startChain` | member | `circleId, title, postId?` -> 24-hour prayer chain (3/day). Members claim hour slots `0..23` under rules |
+| `celebrate` | member (self only) | `circleId, kind` in `birthday, answered, streak, milestone`, `text?, companion?, postId` (answered: named, answered requests you wrote only; anonymous ones are refused so nobody is unmasked) (5/day) |
 | `registerToken`, `unregisterToken` | any | FCM `token` (max 5 devices per user) |
 
 Post types: prayer, testimony, achievement, study, encouragement, reading, announcement (admins only). Only prayer requests can be
@@ -74,7 +80,8 @@ daily digest ("N people prayed for you today": counts only).
 4. **KV rate limits are best effort**: eventually consistent and non-atomic, so parallel requests can slip past; they fail open if KV is down. The Workers **free KV plan allows only 1,000 writes/day** across all users; heavy use will start returning "rate_limited"/slow counters. Upgrade to Workers Paid ($5/month) when real usage arrives. Hard caps (50 members, 10 circles, invite uses) are enforced transactionally in Firestore, not KV.
 5. **Anonymous accounts are free to mint**, so per-uid limits are weak; join-failure throttling also runs per IP. Invite codes (about 34M combinations, 7 day default expiry, 50 uses) are guessable only at throttled rates, but a link posted publicly stays valid until revoked or expired.
 6. **Free-plan fan-out**: Workers free allows 50 outbound calls per request. `NOTIFY_MAX` (default 30) caps pushes per event; large circles may get only some pushes. Raise it on the paid plan. The digest handles up to 40 tallied posts per day-run and carries leftovers forward.
-7. **Client comments/reactions bypass the Worker**: they are member-only and size-limited by the rules, but have no rate limit and counters can lag until `syncCounts`.
+7. **Chat messages, message reactions, votes and slot claims bypass the Worker** (text/card/reply messages): they are member-only, size- and time-checked by the rules, but have no per-user rate limit. A flood by one member is visible and removable by admins (soft delete); a Worker sweep is a future hardening.
+8. **Client comments/reactions bypass the Worker**: they are member-only and size-limited by the rules, but have no rate limit and counters can lag until `syncCounts`.
 8. Not built: join-approval setting, block-a-person, `cleanupDeleted` job (soft-deleted posts keep no text), admin UI for reports (admins can read `circles/{id}/reports`), push quiet hours.
 9. Token verification trusts Google's JWKS endpoint (cached per Cache-Control). A revoked or deleted user's token stays valid until it expires (up to 1 hour); we do not call Firebase to check revocation.
 10. Firestore transactions via REST retry on contention (4 attempts); under extreme contention a join may return a 500 and should simply be retried.
