@@ -735,6 +735,12 @@ class MeetingProcessingPipeline(
                     }
                 }.onFailure { Log.w(PERF_TAG, "Faith notes skipped: ${it.message}") }
             }
+            // Highlights, typed notes, scripture and prayer points marked while recording (R-1).
+            runCatching {
+                com.craftflowtechnologies.meetingmind.core.work.MarkerNote.apply(context, database, meetingId, diarizedSegments.map {
+                    com.craftflowtechnologies.meetingmind.core.work.Marks.Segment(it.id, it.startMs, it.endMs, it.speakerId, it.cleanedText ?: it.text)
+                })
+            }.onFailure { Log.w(PERF_TAG, "Marker notes skipped: ${it.message}") }
 
             val updatedMeeting = existingMeeting.copy(
                 title = generatedTitle,

@@ -14,7 +14,11 @@ object RecordingMarks {
     private val _marks = MutableStateFlow<List<Mark>>(emptyList())
     val marks: StateFlow<List<Mark>> = _marks.asStateFlow()
 
-    fun add(kind: MarkKind, atMs: Long): Mark = Mark(kind, atMs).also { m -> _marks.value = _marks.value + m }
+    fun add(kind: MarkKind, atMs: Long, text: String? = null): Mark =
+        Mark(kind, atMs, text?.trim()?.ifBlank { null }).also { m -> _marks.value = _marks.value + m }
+
+    /** Takes back the last mark (a mis-tap). Returns it, or null when there is none. */
+    fun undoLast(): Mark? = _marks.value.lastOrNull()?.also { _marks.value = _marks.value.dropLast(1) }
 
     /** Everything marked so far, leaving the list empty for the next recording. */
     fun take(): List<Mark> = _marks.value.also { _marks.value = emptyList() }
