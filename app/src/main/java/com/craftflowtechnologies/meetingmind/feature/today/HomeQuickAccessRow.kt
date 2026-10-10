@@ -15,7 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material.icons.filled.Church
 import androidx.compose.material.icons.filled.Favorite
@@ -54,7 +54,7 @@ fun HomeQuickAccessRow(
     // have stronger entry points elsewhere on Today.
     val items = buildList {
         add(QuickAccessItem("faith", "Faith", Icons.Filled.Church, onOpenFaith))
-        onOpenCreate?.let { add(QuickAccessItem("create", "Create", Icons.Filled.AutoAwesome, it)) }
+        onOpenCreate?.let { add(QuickAccessItem("create", "Create", Icons.Filled.Palette, it)) }
         if (showWork) add(QuickAccessItem("work", "Work", Icons.Filled.Work, onOpenWork))
         add(QuickAccessItem("prayer", "Prayer", Icons.Filled.Favorite, onOpenPrayer))
         add(QuickAccessItem("word", "Word", Icons.AutoMirrored.Filled.MenuBook, onOpenWord))
