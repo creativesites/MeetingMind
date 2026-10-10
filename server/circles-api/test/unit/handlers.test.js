@@ -228,3 +228,14 @@ test("celebrate: self only; answered needs a named, answered request you wrote; 
   await W.call("ann", "celebrate", { circleId: id, kind: "answered", postId: named });
   assert.equal((await W.err("stranger", "celebrate", { circleId: id, kind: "birthday" })).code, "not_a_member");
 });
+
+test("myCircles lists the caller's circles and forgets left ones", async () => {
+  const W = world();
+  const a = await circle(W); const b = (await W.call("owner", "createCircle", { name: "Two", template: "custom" })).circleId;
+  await joinAs(W, "ann", a, "Ann");
+  assert.deepEqual((await W.call("owner", "myCircles", {})).circleIds.sort(), [a, b].sort());
+  assert.deepEqual((await W.call("ann", "myCircles", {})).circleIds, [a]);
+  await W.call("ann", "leave", { circleId: a });
+  assert.deepEqual((await W.call("ann", "myCircles", {})).circleIds, []);
+  assert.deepEqual((await W.call("stranger", "myCircles", {})).circleIds, []);
+});

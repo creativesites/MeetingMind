@@ -74,7 +74,7 @@ async function createCircle(ctx) {
     return [
       w.create(C(id), { name: nm, template, vocab, settings, ownerUid: ctx.uid, memberCount: 1, orgId: null, closed: false, createdAt: ctx.now }),
       w.create(`${C(id)}/members/${ctx.uid}`, { role: "owner", displayName, joinedAt: ctx.now, muted: false }),
-      w.set(`userMeta/${ctx.uid}`, { circleCount: n + 1 }),
+      w.set(`userMeta/${ctx.uid}`, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), id] }),
     ];
   });
   return { circleId: id };
@@ -91,6 +91,14 @@ async function updateCircle(ctx) {
   if (!Object.keys(data).length) throw new ApiError(400, "bad_request", "Nothing to change");
   await ctx.db.commit([w.update(C(id), data)]);
   return {};
+}
+
+/** The caller's circle ids (so a fresh install on a linked account can find its circles; rules forbid listing circles). */
+async function myCircles(ctx) {
+  const meta = await ctx.db.get(`userMeta/${ctx.uid}`);
+  const ids = (meta?.data.circleIds || []).slice(0, LIMITS.circlesPerUser);
+  const members = ids.length ? await ctx.db.batchGet(ids.map((id) => `${C(id)}/members/${ctx.uid}`)) : [];
+  return { circleIds: ids.filter((_, i) => members[i]) };
 }
 
 // ---------- invites ----------
@@ -155,7 +163,7 @@ async function join(ctx) {
         w.create(`${C(invite.circleId)}/members/${ctx.uid}`, { role: "member", displayName, joinedAt: ctx.now, muted: false }),
         w.update(C(invite.circleId), { memberCount: circle.memberCount + 1 }),
         w.update(`invites/${code}`, {}, { inc: { uses: 1 } }),
-        w.set(`userMeta/${ctx.uid}`, { circleCount: (meta?.data.circleCount || 0) + 1 }),
+        w.set(`userMeta/${ctx.uid}`, { circleCount: (meta?.data.circleCount || 0) + 1, circleIds: [...(meta?.data.circleIds || []), invite.circleId] }),
       ];
     });
   } catch (e) {
@@ -180,7 +188,7 @@ async function removeFromCircle(ctx, circleId, targetUid, authorize) {
     return [
       w.del(`${C(circleId)}/members/${targetUid}`),
       w.update(C(circleId), left <= 0 ? { memberCount: 0, closed: true } : { memberCount: left }),
-      w.set(`userMeta/${targetUid}`, { circleCount: Math.max(0, (meta?.data.circleCount || 1) - 1) }),
+      w.set(`userMeta/${targetUid}`, { circleCount: Math.max(0, (meta?.data.circleCount || 1) - 1), circleIds: (meta?.data.circleIds || []).filter((x) => x !== circleId) }),
     ];
   });
   return {};
@@ -501,6 +509,6 @@ export const HANDLERS = {
   createCircle, updateCircle, createInvite, revokeInvite, join, leave, removeMember, setRole, setMute,
   createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, deletePost,
   prayed, react, syncCounts, report, registerToken, unregisterToken,
-  createPoll, closePoll, startChain, celebrate,
+  createPoll, closePoll, startChain, celebrate, myCircles,
 };
 export { POST_TYPES };

@@ -174,7 +174,7 @@ export function publishFromPending(pendingDoc, authorDoc, now) {
 
 // ---- chat & fun (FAITH_V2 section 2.2b) ----
 export const CHAT = { pollQuestionMax: 200, pollOptionMax: 80, pollOptionsMin: 2, pollOptionsMax: 6, chainHours: 24, chainTitleMax: 120, celebrationTextMax: 140 };
-export const COMPANIONS = ["zuri", "nas", "mimi", "tobi", "ada", "kofi"];
+export const COMPANIONS = ["zuri", "nas", "wren", "page"];
 export const CELEBRATIONS = ["birthday", "answered", "streak", "milestone"];
 
 /** Validate and shape a poll. Returns { question, options:[{id,text}], optionIds, multi }. */
