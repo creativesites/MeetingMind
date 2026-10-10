@@ -122,7 +122,8 @@ fun DevotionalScreen(
         if (playOnOpen == "prayer") viewModel.listen(com.craftflowtechnologies.meetingmind.ai.voice.VoiceSection.PRAYER, only = true)
     }
     var showAsk by rememberSaveable { mutableStateOf(false) }
-    var showSermonStudio by rememberSaveable { mutableStateOf(false) }
+    val create = com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController()
+    com.craftflowtechnologies.meetingmind.feature.create.CreateHost(create)
     state.today?.let { t -> LaunchedEffect(t.note.id) { viewModel.opened(t) } }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     DevotionalContent(
@@ -141,18 +142,11 @@ fun DevotionalScreen(
         onListenFrom = { section, only -> viewModel.listen(section, only) },
         onLive = onLive,
         onShare = { t -> onShare(shareRequest(t, viewModel.audioPath(t), viewModel.coverPath(t))) },
-        onOpenSermonStudio = { showSermonStudio = true },
+        onCreateCard = { create.open(devotionalSeed(state.today)) },
         onArchive = onArchive,
         onFavourite = viewModel::toggleFavourite,
         onExamen = viewModel::writeExamen,
         onClassic = viewModel::readClassic
-    )
-    if (showSermonStudio) com.craftflowtechnologies.meetingmind.feature.faith.SparkStudioSheet(
-        onDismiss = { showSermonStudio = false },
-        onShareStory = { req ->
-            showSermonStudio = false
-            onShare(req)
-        }
     )
     if (showAsk) AskDevotionalSheet(
         profile = state.profile,
@@ -189,7 +183,7 @@ fun DevotionalContent(
     onArchive: () -> Unit = {},
     onFavourite: (DailyDevotional) -> Unit = {},
     onExamen: () -> Unit = {},
-    onOpenSermonStudio: () -> Unit = {},
+    onCreateCard: () -> Unit = {},
     onClassic: () -> Unit = {}
 ) {
     val today = state.today
@@ -311,7 +305,7 @@ fun DevotionalContent(
                 }
                 item {
                     Footer(
-                        today, onOpenNote, onRewrite, onShare, onOpenSermonStudio = onOpenSermonStudio, past = state.past,
+                        today, onOpenNote, onRewrite, onShare, onCreateCard = onCreateCard, past = state.past,
                         onCopyAll = { wholeText(today) { copyToClipboard(context, today.devotional.title, it) } },
                         onShareText = { wholeText(today) { shareAsText(context, today.devotional.title, it) } }
                     )
@@ -739,7 +733,7 @@ private fun Footer(
     onOpenNote: (String) -> Unit,
     onRewrite: () -> Unit,
     onShare: (DailyDevotional) -> Unit,
-    onOpenSermonStudio: () -> Unit = {},
+    onCreateCard: () -> Unit = {},
     past: Boolean = false,
     onCopyAll: () -> Unit = {},
     onShareText: () -> Unit = {}
@@ -762,15 +756,15 @@ private fun Footer(
                 }
             }
             Surface(
-                onClick = onOpenSermonStudio,
+                onClick = onCreateCard,
                 shape = RoundedCornerShape(50),
                 color = SurfaceRaised,
                 border = BorderStroke(1.dp, Line),
-                modifier = Modifier.testTag("devotional_sermon_studio")
+                modifier = Modifier.testTag("devotional_create")
             ) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Church, contentDescription = null, tint = Gold, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(8.dp))
-                    Text("Motivational Sermon", fontSize = 14.sp, color = Ink, fontWeight = FontWeight.SemiBold)
+                    Text("Create a card", fontSize = 14.sp, color = Ink, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -809,6 +803,17 @@ private fun Footer(
 fun DevotionalProfile.summary(): String = buildString {
     append(source.label)
     append(" · ${minutes} min · ${tone.label}")
+}
+
+/** What Create starts from for a devotional: its word for today, with its first scripture as the verse to attach. */
+internal fun devotionalSeed(t: DailyDevotional?): com.craftflowtechnologies.meetingmind.core.create.CreateSeed {
+    val d = t?.devotional ?: return com.craftflowtechnologies.meetingmind.core.create.CreateSeed(com.craftflowtechnologies.meetingmind.core.create.CreateSourceKind.DEVOTIONAL)
+    val text = d.motivation ?: d.keyText?.takeIf { d.origin == DevotionalOrigin.CLASSIC } ?: d.reflection.firstOrNull() ?: d.title
+    return com.craftflowtechnologies.meetingmind.core.create.CreateSeed(
+        com.craftflowtechnologies.meetingmind.core.create.CreateSourceKind.DEVOTIONAL,
+        text = com.craftflowtechnologies.meetingmind.core.create.CreateGuards.leadingExcerpt(text, 600),
+        reference = d.scripture.firstOrNull()?.display()
+    )
 }
 
 /** What sharing a devotional sends: its word for today (or opening), titled, with its label. */

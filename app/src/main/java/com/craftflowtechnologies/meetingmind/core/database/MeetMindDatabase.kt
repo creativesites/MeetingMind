@@ -58,7 +58,8 @@ import androidx.room.migration.Migration
         CircleMemberEntity::class,
         CirclePrayerEntity::class,
         CircleTestimonyEntity::class,
-        CircleSermonEntity::class
+        CircleSermonEntity::class,
+        CreateCardEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
@@ -70,6 +71,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun signalDao(): SignalDao
     abstract fun briefDao(): BriefDao
     abstract fun inboxDao(): InboxDao
+    abstract fun createCardDao(): CreateCardDao
     abstract fun memoryStoryDao(): MemoryStoryDao
     abstract fun transcriptDao(): TranscriptDao
     abstract fun speakerDao(): SpeakerDao
@@ -510,6 +512,19 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /** Create (Spark v2): the "My creations" gallery. A new table and its indexes only. */
+        val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_23_24_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_23_24_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `create_cards` (`id` TEXT NOT NULL, `source` TEXT NOT NULL, `sourceText` TEXT NOT NULL, `sourceRef` TEXT, `vibe` TEXT NOT NULL, `text` TEXT NOT NULL, `scriptureRef` TEXT, `scriptureVersionId` INTEGER, `format` TEXT NOT NULL, `designJson` TEXT NOT NULL, `versionsJson` TEXT NOT NULL, `pinned` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_create_cards_updatedAt` ON `create_cards` (`updatedAt`)",
+            "CREATE INDEX IF NOT EXISTS `index_create_cards_pinned` ON `create_cards` (`pinned`)"
+        )
+
         /** Fellowship Circles: Tier 2 (docs/PLAN_V2.md §F8). Circles, members, prayers, testimonies, sermons. */
         val MIGRATION_22_23 = object : Migration(22, 23) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -544,7 +559,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
         }
 
         /** Every step from schema 1 to [VERSION]; the app and the migration tests open the database with the same list. */
-        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
+        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
 
         internal val MIGRATION_21_22_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `learning_sessions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `meetingId` TEXT, `title` TEXT NOT NULL, `courseName` TEXT, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `lastStudiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
@@ -708,7 +723,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 23
+        const val VERSION = 24
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {

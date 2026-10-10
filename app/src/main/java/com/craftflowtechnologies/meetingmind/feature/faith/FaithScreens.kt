@@ -134,19 +134,9 @@ fun FaithScreen(
 ) {
     var studyPicker by remember { mutableStateOf(false) }
     var assistantOpen by remember { mutableStateOf(false) }
-    var sparkStudioOpen by remember { mutableStateOf(false) }
-    var sparkInitialVibe by remember { mutableStateOf(com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.DEEP) }
     var noteToDelete by remember { mutableStateOf<Note?>(null) }
-    if (sparkStudioOpen) {
-        SparkStudioSheet(
-            initialVibe = sparkInitialVibe,
-            onDismiss = { sparkStudioOpen = false },
-            onShareStory = { req ->
-                sparkStudioOpen = false
-                onShare(req)
-            }
-        )
-    }
+    val create = com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController()
+    com.craftflowtechnologies.meetingmind.feature.create.CreateHost(create)
     if (assistantOpen) {
         val lib: com.craftflowtechnologies.meetingmind.feature.assistant.LibraryAssistantViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
         com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(lib.faith, onOpenNote = { assistantOpen = false; onOpenNote(it) }, onOpenTasks = { assistantOpen = false; onOpenTasks() }, onDismiss = { assistantOpen = false })
@@ -186,13 +176,23 @@ fun FaithScreen(
             // Today's devotional, written for the day (PLAN_V2 F2).
             item { TodayDevotionalCard(devotional?.devotional, onOpenDevotional) }
 
-            // Spark: shareable thoughts, humor, deep perspective & stories
-            item {
-                SparkCard(
-                    onOpen = { vibe ->
-                        sparkInitialVibe = vibe
-                        sparkStudioOpen = true
-                    }
+            // Create: a quiet row with a card suggested for today (BIBLE_DEVOTIONAL_V2 §5).
+            item(key = "create_row") {
+                val found = (votd?.passage as? PassageResult.Found)?.passage
+                val verse = found?.let { com.craftflowtechnologies.meetingmind.core.create.ResolvedScripture(it.reference.display(), it.text.trim(), it.versionId, it.versionAbbreviation, it.attribution) }
+                val mood = remember(verse?.text) {
+                    com.craftflowtechnologies.meetingmind.core.create.CreateVibePolicy.suggestFromText(com.craftflowtechnologies.meetingmind.core.create.CreateSourceKind.VERSE, verse?.text.orEmpty())
+                }
+                com.craftflowtechnologies.meetingmind.feature.create.CreateRow(
+                    verse = verse, mood = mood,
+                    onOpen = {
+                        create.open(
+                            votd?.let { com.craftflowtechnologies.meetingmind.core.create.CreateSeed(com.craftflowtechnologies.meetingmind.core.create.CreateSourceKind.VERSE, reference = it.reference.display(), vibe = mood) }
+                                ?: com.craftflowtechnologies.meetingmind.core.create.CreateSeed()
+                        )
+                    },
+                    onSeeMore = create::openGallery,
+                    modifier = Modifier.padding(horizontal = com.craftflowtechnologies.meetingmind.ui.theme.MM.space.l).padding(top = com.craftflowtechnologies.meetingmind.ui.theme.MM.space.m)
                 )
             }
 
@@ -451,117 +451,6 @@ private fun TodayDevotionalCard(today: com.craftflowtechnologies.meetingmind.cor
                 Row(Modifier.padding(top = 14.dp).clip(RoundedCornerShape(50)).background(Ink).padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.WbSunny, contentDescription = null, tint = Color(0xFFF6D365).forTheme(), modifier = Modifier.size(15.dp))
                     Text(if (today != null) "  Read today's" else "  Begin", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = OnInk)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SparkCard(onOpen: (com.craftflowtechnologies.meetingmind.core.faith.SparkVibe) -> Unit) {
-    Surface(
-        onClick = { onOpen(com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.DEEP) },
-        shape = RoundedCornerShape(22.dp),
-        color = com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised,
-        border = BorderStroke(1.dp, Line),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(Color(0xFFF59E0B), Color(0xFFEF4444))
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("⚡", fontSize = 20.sp)
-                }
-                Spacer(Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Spark",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = FontFamily.Serif,
-                            color = Ink
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
-                        ) {
-                            Text(
-                                text = "Stories & Status",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                    Text(
-                        text = "Deep, witty, fire & authentic thoughts to share",
-                        fontSize = 12.sp,
-                        color = InkMuted
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
-                    modifier = Modifier.clip(RoundedCornerShape(20.dp))
-                ) {
-                    Text(
-                        text = "Open",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = com.craftflowtechnologies.meetingmind.ui.theme.OnAccent,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // Quick vibe launch chips
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(
-                    com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.DEEP,
-                    com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.FUNNY,
-                    com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.FIRE,
-                    com.craftflowtechnologies.meetingmind.core.faith.SparkVibe.REAL
-                ).forEach { vibe ->
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk,
-                        border = BorderStroke(1.dp, com.craftflowtechnologies.meetingmind.ui.theme.LineFaint),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { onOpen(vibe) }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(vertical = 6.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(vibe.emoji, fontSize = 12.sp)
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                text = vibe.label,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = InkSecondary
-                            )
-                        }
-                    }
                 }
             }
         }

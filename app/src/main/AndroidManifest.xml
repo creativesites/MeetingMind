@@ -28,6 +28,13 @@
          offline transcriptions aren't paused with the screen off. The user decides. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Create: see whether WhatsApp or Instagram is installed, to offer direct sharing. -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+        <package android:name="com.instagram.android" />
+    </queries>
+
     <application
         android:name=".MeetingMindApp"
         android:allowBackup="true"
