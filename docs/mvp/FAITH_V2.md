@@ -68,6 +68,46 @@ Different traditions call these groups different things and run them differently
 **Comments** sit under every post: threaded one level deep. **No open group chat at MVP.** Chat is a different
 product and moderation-heavy, and posts plus comments cover the need. Events can come in v2.1.
 
+### 2.2b Chat and fun (founder, 2026-10-10)
+
+The founder wants Circles to have **chat and fun features** alongside posts.
+
+**Chat** (one per circle):
+
+- Real-time messages, replies to a message, and emoji reactions.
+- "Typing…" and unread counts.
+- Mute per circle.
+- Long-press: copy, react, reply, report, delete own (admins can delete any).
+- Messages are written by the client under rules: author = auth.uid, members only, rate-limited by the rules' size and
+  time checks plus a Worker sweep.
+
+**Fun, at MVP:**
+
+- **Polls:** "Which night for Bible study?", single or multi-choice, with results live.
+- **Share a Create card into chat:** the card is sent as its template id + text + mood and rendered on each phone, so
+  there is no image upload. Cloud Storage needs the paid plan.
+- **Celebrations:** birthdays (opt-in) and milestones (answered prayers, reading-plan streaks) get a celebration
+  message with the member's companion (Zuri, Nas, …) cheering.
+- **Prayer chain:** a member starts a 24-hour chain for a request and others claim an hour. Progress shows as a ring.
+- **Verse of the day for the circle:** the same verse for everyone, with "I read it" taps.
+
+**Later:**
+
+- weekly Bible trivia
+- shared reading-plan race
+- voice notes (needs Storage)
+- photo sharing (needs Storage)
+
+**Data:**
+
+- `circles/{id}/messages/{msgId}`: author, text, replyTo, createdAt, editedAt, deleted, kind
+  (text, card, poll, celebration, chain)
+- `…/messages/{msgId}/reactions/{uid}`
+- `…/polls/{pollId}/votes/{uid}`
+- `…/chains/{chainId}/slots/{hour}`
+
+Rules and Worker tests are extended to match.
+
 ### 2.3 Joining that never crashes
 
 - **Invites.** A short human code (e.g. `GRACE-7K2Q`), a link (`https://…/c/GRACE-7K2Q`) and a QR code.
