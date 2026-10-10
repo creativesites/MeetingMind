@@ -83,8 +83,7 @@ For each file:
   in light and dark, and reduced motion, which should switch to Canvas.
 - **If the line reads `CANVAS (RIVE_FAILED)`:** run `adb logcat -s Companion`, then fix the file
   and recheck.
-- **Run the unit and screenshot tests:** `./gradlew :app:testDevDebugUnitTest` (or the repo's
-  equivalent). The goldens should not change, because tests always use Canvas.
+- **Run the unit and screenshot tests:** `./gradlew :app:testDebugUnitTest`. The goldens should not change, because tests always use Canvas.
 
 ## Step 4: commit
 
