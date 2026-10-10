@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Companion (Zuri and friends) copy. Source: docs/mvp/ZURI_EXPERIENCE.md sections 5 and 6.
+
+  Placeholders: positional only (%1$s, %2$s). Each string that has one documents its args in the comment above it.
+  {companion} = the companion's name, as the user chose it (default "Zuri").
+  {name}      = the user's name.
+  Apostrophes and double quotes are escaped with a backslash, as Android resources require.
+
+  Variants: a <string-array> lists the variants of one moment in a fixed order. For the processing captions the order
+  is Everyday, Faith, Work, Study. Where the spec has no variant for a space ("—"), the Everyday line is used.
+-->
+<resources>
+
+    <!-- Form display names (spec 1.2). -->
+    <string name="form_zuri">Zuri</string>
+    <string name="form_nas">Nas</string>
+    <string name="form_wren">Wren</string>
+    <string name="form_page">Page</string>
+
+    <!-- ===== 5.1 First launch and onboarding ===== -->
+    <string name="companion_onboarding_step1_title">Pick who keeps you company</string>
+    <string name="companion_onboarding_step1_sentence">Pick who keeps you company.</string>
+    <string name="companion_onboarding_step1_body">They listen when you record, keep you posted while your note is written, and cheer when it\'s ready. Never inside your notes.</string>
+    <string name="companion_onboarding_step1_footnote">You can change this any time in Settings, or just long-press your companion.</string>
+    <string name="companion_onboarding_no_companion">No companion</string>
+
+    <string name="companion_onboarding_step2_title">What do you want to remember?</string>
+
+    <!-- %1$s: companion name. -->
+    <string name="companion_onboarding_step3_title">What should %1$s call you?</string>
+    <string name="companion_onboarding_name_question_first_person">What should I call you?</string>
+
+    <string name="companion_onboarding_step4_ai_choice">Fastest results use Google\'s Gemini online. Prefer everything on your phone? Choose On-device.</string>
+
+    <!-- %1$s: companion name. -->
+    <string name="companion_onboarding_step5_title">Say hello. Tell %1$s one thing you want to remember this week.</string>
+    <string name="companion_onboarding_say_hello_first_person">Say hello. Tell me one thing you want to remember this week.</string>
+
+    <!-- %1$s: companion name. -->
+    <string name="companion_onboarding_hello">Hi, I\'m %1$s. I\'ll listen when you record and keep what matters.</string>
+
+    <!-- %1$s: user's name. -->
+    <string name="companion_onboarding_nice_to_meet_you">Nice to meet you, %1$s.</string>
+
+    <string name="companion_onboarding_first_note_ready">Here\'s your first note.</string>
+    <string name="companion_onboarding_first_note_kept">Here\'s your first note. Everything you said, kept.</string>
+
+    <!-- %1$s: companion name. -->
+    <string name="companion_permission_microphone_rationale">%1$s needs the microphone to listen.</string>
+
+    <!-- ===== 5.2 First-recording peak; 6.2 peaks ===== -->
+    <string name="companion_peak_first_note_body">Your first note is ready. Everything you said, kept.</string>
+    <string name="companion_peak_first_note_open">Open note</string>
+    <string name="companion_peak_share_moment">Share a moment</string>
+    <string name="companion_peak_note_ready">Your note is ready.</string>
+    <string name="companion_peak_ten_notes">Ten notes kept. That\'s a lot of remembering.</string>
+
+    <!-- ===== 5.3 The four homes; 6.2 home ===== -->
+    <!-- %1$s: user's name. -->
+    <string name="companion_home_greeting_morning">Good morning, %1$s.</string>
+    <!-- %1$s: user's name. -->
+    <string name="companion_home_greeting_morning_faith">Good morning, %1$s. Today\'s Word is ready.</string>
+    <!-- %1$s: user's name. -->
+    <string name="companion_home_greeting_evening">Good evening, %1$s. Your notes from today are ready.</string>
+    <string name="companion_home_faith_word_ready">Today\'s Word is ready.</string>
+    <!-- %1$s: number of cards due. The companion name is not used here. -->
+    <string name="companion_home_study_cards_due">%1$s cards are due. A quick round?</string>
+    <string name="companion_home_sleepy_late">It\'s late, so take it easy. Your notes will keep.</string>
+    <!-- %1$s: meeting time, for example 3:00 (Work, Phase C). -->
+    <string name="companion_home_work_brief_entry">Brief me for %1$s</string>
+    <string name="companion_home_tap_hi">hi</string>
+
+    <!-- ===== 5.4 Recording and processing; 6.2 recording ===== -->
+    <!-- %1$s: companion name. TalkBack only. -->
+    <string name="companion_recording_listening_talkback">%1$s is listening</string>
+    <!-- %1$s: companion name. -->
+    <string name="companion_recording_listening_sentence">%1$s is listening.</string>
+    <string name="companion_recording_quiet_chip">Quiet during sermon · tap to change</string>
+
+    <string name="companion_processing_preparing_audio">Getting the audio ready…</string>
+
+    <!-- Index 0 Everyday, 1 Faith, 2 Work, 3 Study. Work has no line in the spec, so it uses Everyday. -->
+    <string-array name="companion_processing_detecting_speech">
+        <item>Finding where people speak…</item>
+        <item>Finding the sermon in the recording…</item>
+        <item>Finding where people speak…</item>
+        <item>Finding the lecture…</item>
+    </string-array>
+
+    <!-- %1$s: minutes transcribed so far. %2$s: total minutes. Shown only when both are known. -->
+    <string name="companion_processing_transcribing">Writing down every word… %1$s of %2$s min</string>
+
+    <!-- Index 0 Everyday, 1 Faith, 2 Work, 3 Study. Faith and Study have no line, so they use Everyday. -->
+    <!-- %1$s: number of voices found so far. Shown only when the count is known. Index 2 (Work) has no number. -->
+    <string-array name="companion_processing_diarizing">
+        <item>Listening for who\'s speaking… %1$s voices so far</item>
+        <item>Listening for who\'s speaking… %1$s voices so far</item>
+        <item>Working out who said what…</item>
+        <item>Listening for who\'s speaking… %1$s voices so far</item>
+    </string-array>
+
+    <string name="companion_processing_cleaning_transcript">Tidying the transcript…</string>
+
+    <!-- Index 0 Everyday, 1 Faith, 2 Work, 3 Study. -->
+    <string-array name="companion_processing_analyzing">
+        <item>Finding what matters…</item>
+        <item>Finding the scripture and main points…</item>
+        <item>Pulling out decisions and action items…</item>
+        <item>Picking out what the lecturer stressed…</item>
+    </string-array>
+
+    <string name="companion_processing_saving_results">Putting your note together…</string>
+    <string name="companion_processing_cancelled">Stopped. Your recording is safe.</string>
+
+    <!-- Note ready. -->
+    <!-- %1$s: note title. -->
+    <string name="companion_note_ready_snackbar">%1$s is ready.</string>
+    <string name="companion_note_ready_action_open">Open</string>
+    <string name="companion_note_ready_sermon">Your sermon notes are ready 🙏</string>
+
+    <!-- Index 0 Everyday (background notification), 1 Faith. -->
+    <!-- %1$s: note title. Index 0 only; index 1 has no placeholder. -->
+    <string-array name="companion_notification_note_ready">
+        <item>%1$s is ready.</item>
+        <item>Your sermon notes are ready 🙏</item>
+    </string-array>
+
+    <!-- %1$s: companion name. -->
+    <string name="companion_notification_model_download_done">%1$s can now work offline.</string>
+
+    <!-- ===== 5.5 Empty states ===== -->
+    <!-- %1$s: companion name. -->
+    <string name="companion_empty_notes">Nothing here yet. Record something, and %1$s will keep it.</string>
+    <string name="companion_empty_notes_action_record">Record</string>
+    <!-- %1$s: the search query. -->
+    <string name="companion_empty_search_no_results">No matches for \"%1$s\".</string>
+    <string name="companion_empty_tasks_all_done">Nothing waiting on you.</string>
+    <string name="companion_empty_study_all_caught_up">All caught up. Nice work.</string>
+
+    <!-- ===== 5.6 Errors and honest fallbacks; 6.2 failures ===== -->
+    <string name="companion_error_processing_failed">That one didn\'t finish. Your recording is safe.</string>
+    <string name="companion_error_online_fallback">Couldn\'t reach Gemini, so this note was made on your phone.</string>
+    <!-- %1$s: companion name. -->
+    <string name="companion_error_models_missing">%1$s needs its on-device models to work offline.</string>
+    <string name="companion_error_models_missing_first_person">I need my on-device models to work offline.</string>
+    <!-- %1$s: companion name. -->
+    <string name="companion_error_mic_denied">%1$s can\'t hear without the microphone.</string>
+    <string name="companion_error_mic_denied_first_person">I can\'t hear without the microphone.</string>
+    <string name="companion_error_no_storage">Your phone is out of space, so recording stopped. What\'s recorded is saved.</string>
+
+    <string name="companion_action_retry">Retry</string>
+    <string name="companion_action_redo_online">Redo online</string>
+    <string name="companion_action_download_models">Download (420 MB)</string>
+    <string name="companion_action_open_settings">Open settings</string>
+    <string name="companion_action_manage_storage">Manage storage</string>
+
+    <!-- ===== 5.7 Rhythms ===== -->
+    <!-- %1$s: number of mornings with the Word this week. -->
+    <string name="companion_rhythm_faith_mornings">%1$s mornings with the Word this week.</string>
+    <!-- %1$s: number of days reviewed this week. -->
+    <string name="companion_rhythm_study_days">You reviewed %1$s days this week.</string>
+
+    <!-- ===== 5.9 Create, achievement ===== -->
+    <!-- %1$s: companion name. -->
+    <string name="companion_create_include">Include %1$s</string>
+    <string name="companion_create_suggested_peaceful">Suggested: Peaceful</string>
+    <string name="companion_create_suggested_prayerful">Suggested: Prayerful. On prayer requests, only Prayerful or Peaceful.</string>
+    <string name="companion_achievement_reading_plan">You finished the reading plan. Share it with your circle?</string>
+
+    <!-- ===== 6.2 Quick sheet ===== -->
+    <!-- %1$s: companion name. -->
+    <string name="companion_quick_sheet_hidden">Hidden until tomorrow morning. Long-press the greeting to bring %1$s back.</string>
+
+    <!-- ===== 6.2 Ask {companion} ===== -->
+    <string name="companion_ask_not_found">I couldn\'t find that in your notes. Want me to search the transcripts too?</string>
+    <string name="companion_ask_answered_on_device">Answered on your phone. Nothing left it.</string>
+
+</resources>
