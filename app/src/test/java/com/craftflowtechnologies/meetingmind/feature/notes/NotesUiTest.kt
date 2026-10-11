@@ -182,10 +182,12 @@ class NotesUiTest {
                 NotesScreen(viewModel = vm, onOpenNote = {}, onOpenNotebook = {}, onOpenArchive = {}, onNavigateBack = null, onNavigateBottomNav = {})
             }
         }
-        compose.waitUntil(60_000) { vm.visibleNotes.value.size == 3 }
+        // The library loads through Dispatchers.IO and posts back to the main looper; a paused Robolectric looper only runs
+        // those posts when told to, so idle it while waiting instead of hoping the compose clock does.
+        compose.waitUntil(60_000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS); vm.library.items.value.items.size == 3 }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("src/test/screenshots/notes_library.png")
-        assertEquals("Team sync", vm.visibleNotes.value.first().title)
+        assertEquals("Team sync", vm.library.items.value.items.first().note.title)
     }
 
     @Test

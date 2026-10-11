@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,7 +34,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import com.craftflowtechnologies.meetingmind.core.notes.NoteSearch
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
@@ -80,14 +86,23 @@ data class NoteRowModel(
     val attachmentCount: Int = 0,
     val timeLabel: String = "",
     val pinned: Boolean = false,
-    val isPrivate: Boolean = false
+    val isPrivate: Boolean = false,
+    /** The note type's icon, shown before the title (library rows). Null: none. */
+    val typeIcon: ImageVector? = null,
+    /** The type's name, for screen readers and as a quiet label when [typeIcon] is set. */
+    val typeLabel: String = "",
+    /** "42 min", for a note that came from a recording. */
+    val durationLabel: String = "",
+    /** Words to mark in the title and preview (search terms). */
+    val highlight: List<String> = emptyList()
 )
 
 private fun NoteRowModel.summary(): String = buildList {
     add(title)
+    if (typeLabel.isNotBlank()) add(typeLabel)
     if (pinned) add("Pinned")
     if (isPrivate) add("Private")
-    if (hasRecording) add("Has recording")
+    if (hasRecording) add(if (durationLabel.isNotBlank()) "Has recording, $durationLabel" else "Has recording")
     when (transcriptStatus) {
         NoteTranscriptStatus.Processing -> add("Transcript processing")
         NoteTranscriptStatus.Ready -> add("Transcript ready")
@@ -107,6 +122,17 @@ private fun Glyph(icon: ImageVector, tint: Color, label: String? = null) {
             Spacer(Modifier.width(MM.space.xs))
             Text(label, style = MM.type.caption, color = tint)
         }
+    }
+}
+
+/** [text] with the words in [terms] marked: bold on the accent wash. Plain text when there is nothing to mark. */
+@Composable
+internal fun highlighted(text: String, terms: List<String>): AnnotatedString {
+    val mark = SpanStyle(background = MM.colors.accentWash, color = MM.colors.ink, fontWeight = FontWeight.SemiBold)
+    return remember(text, terms, mark) {
+        val ranges = NoteSearch.highlights(text, terms)
+        if (ranges.isEmpty()) AnnotatedString(text)
+        else buildAnnotatedString { append(text); ranges.forEach { addStyle(mark, it.first, it.last + 1) } }
     }
 }
 
@@ -130,9 +156,15 @@ fun NoteRow(
         )
         Spacer(Modifier.width(MM.space.m))
         Column(Modifier.weight(1f)) {
-            Text(note.title, style = MM.type.bodyStrong, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (note.typeIcon != null) {
+                    Icon(note.typeIcon, contentDescription = null, tint = c.inkMuted, modifier = Modifier.size(MMSize.iconSmall))
+                    Spacer(Modifier.width(MM.space.s))
+                }
+                Text(highlighted(note.title, note.highlight), style = MM.type.bodyStrong, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             if (note.preview.isNotBlank()) {
-                Text(note.preview, style = MM.type.secondary, color = c.inkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(highlighted(note.preview, note.highlight), style = MM.type.secondary, color = c.inkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             val hasIcons = note.hasRecording || note.transcriptStatus != NoteTranscriptStatus.None ||
                 note.taskCount > 0 || note.attachmentCount > 0
@@ -142,7 +174,7 @@ fun NoteRow(
                     horizontalArrangement = Arrangement.spacedBy(MM.space.m),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (note.hasRecording) Glyph(Icons.Rounded.Mic, c.inkSecondary)
+                    if (note.hasRecording) Glyph(Icons.Rounded.Mic, c.inkSecondary, note.durationLabel.ifBlank { null })
                     when (note.transcriptStatus) {
                         NoteTranscriptStatus.Ready -> Glyph(Icons.Rounded.Subject, c.inkSecondary)
                         NoteTranscriptStatus.Processing -> Glyph(Icons.Rounded.Subject, c.inkMuted, "Transcribing")

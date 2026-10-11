@@ -901,7 +901,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onNavigateBottomNav = navigateToPrimary,
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
-                onOpenTrash = { navController.navigate(Routes.NOTES_TRASH) }
+                onOpenTrash = { navController.navigate(Routes.NOTES_TRASH) },
+                onRecord = { navController.navigate(Routes.RECORDING) }
             )
         }
 
