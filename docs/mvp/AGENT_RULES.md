@@ -76,6 +76,16 @@ If a token is missing, say so in your report. Don't invent one.
 **Database.** No schema change without a Room migration, a bumped version, an exported schema JSON and a migration
 test. Real users have data on schema 23.
 
+**Experience first, note after** (founder rule, 2026-10-11; see `ONE_PLACE.md`).
+
+- A prominent button must start the experience its label names.
+- Notes are what an experience produces, never the experience itself.
+- A button that only creates a note must say "Write …" and be visually quiet.
+- One concept, one place, one name.
+- Simple screens with power one tap away: show the one to three things most people need and layer the rest
+  ("More ways to …", Advanced, long-press). Never remove a capability to simplify, and never add a Simple/Advanced
+  switch.
+
 **Main thread.** No `runBlocking` on main paths, and no unbounded `SELECT *` flows feeding UI.
 
 **Build.** The Android SDK is at `/root/android-sdk` (`local.properties`). Run
