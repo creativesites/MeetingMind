@@ -22,6 +22,10 @@ object JournalMeta {
     /** A [SessionKind.key]. */
     const val SESSION_KIND = "sessionKind"
     const val NEED = "studyNeed"
+    /** For a devotional's reflection: the devotional note it answers. */
+    const val DEVOTIONAL_NOTE = "devotionalNoteId"
+    /** For a devotional's reflection: the day the devotional is for ("yyyy-MM-dd"). */
+    const val DEVOTIONAL_DAY = "devotionalForDay"
 }
 
 /** The entry a session writes: title, metadata and the blocks. Pure, so it can be tested without a database. */
@@ -29,11 +33,12 @@ object JournalEntry {
 
     fun title(passage: ScriptureReference, kind: SessionKind) = "${passage.display()} · ${kind.label}"
 
-    fun metadata(passage: ScriptureReference, kind: SessionKind, need: Need?): Map<String, String> =
+    fun metadata(passage: ScriptureReference, kind: SessionKind, need: Need?, extra: Map<String, String> = emptyMap()): Map<String, String> =
         buildMap {
             put(JournalMeta.PASSAGE_REF, passage.passageId())
             put(JournalMeta.SESSION_KIND, kind.key)
             need?.let { put(JournalMeta.NEED, it.key) }
+            putAll(extra)
         }
 
     /** The passage block (with its reference) followed by each written answer under the question it answered. */
@@ -60,29 +65,37 @@ object JournalEntry {
  * creates the note, with their first words already in it, on the first keystroke. A blank note is
  * never made first. After that it keeps the same note up to date. Closing an untouched session
  * leaves nothing behind.
+ *
+ * A devotional's reflection uses the same session ([SessionKind.DEVOTIONAL]): [title] and [extraMeta]
+ * link the entry to its devotional, and [resumeNoteId] continues an entry written earlier, so
+ * reopening the devotional edits the same note instead of making a second one.
  */
 class JournalSession(
     private val notes: NoteRepository,
     private val passage: ScriptureReference,
     private val kind: SessionKind,
-    private val need: Need? = null
+    private val need: Need? = null,
+    private val title: String? = null,
+    private val extraMeta: Map<String, String> = emptyMap(),
+    resumeNoteId: String? = null
 ) {
     private val lock = Mutex()
 
     /** The journal entry's note id, once the person has written something. */
-    var noteId: String? = null
+    var noteId: String? = resumeNoteId
         private set
 
     suspend fun onChanged(state: SessionState) = lock.withLock {
-        if (!state.touched) return@withLock
-        val written = state.written()
         val id = noteId
+        // Nothing yet and nothing written: nothing is made. Text cleared from an existing entry is cleared.
+        if (!state.touched && id == null) return@withLock
+        val written = state.written()
         if (id == null) {
             val provisional = "pending"
             val (blocks, ref) = JournalEntry.blocks(provisional, passage, written, NoteRepository.Companion::newId)
             val note = notes.createNote(
-                workflow = RecordingType.BIBLE_STUDY, title = JournalEntry.title(passage, kind),
-                metadata = JournalEntry.metadata(passage, kind, need), initialBlocks = blocks, useTemplate = false
+                workflow = RecordingType.BIBLE_STUDY, title = title ?: JournalEntry.title(passage, kind),
+                metadata = JournalEntry.metadata(passage, kind, need, extraMeta), initialBlocks = blocks, useTemplate = false
             )
             notes.addScriptureRefs(listOf(ref.copy(noteId = note.id)))
             noteId = note.id

@@ -164,7 +164,7 @@ class DevotionalEngine(
         }
         val seriesLine = series?.let { "${it.title}, day ${it.dayIndex(date.toEpochDay()) + 1} of ${it.passages.size}" }
         val seriesSoFar = series?.let { sp -> memory.seriesSoFar(sp.title).map { e -> "${e.title} (${e.passage}) — ${e.point ?: e.opening.orEmpty()}" } }.orEmpty()
-        val morningLine = morning?.takeIf { evening }?.let { m -> "\"${m.title}\" on ${m.scripture.firstOrNull()?.display().orEmpty()}; it asked: ${m.application.joinToString("; ").ifBlank { m.question.orEmpty() }}" }
+        val morningLine = morning?.takeIf { evening }?.let { m -> "\"${m.title}\" on ${m.scripture.firstOrNull()?.display().orEmpty()}; it asked: ${listOfNotNull(m.liveItToday).plus(m.application).joinToString("; ").ifBlank { m.question.orEmpty() }}" }
         val recentLines = recent.ifEmpty { memory.promptLines() }
         val text = runCatching { verseText(passage) }.getOrNull()
         val weekday = date.dayOfWeek.getDisplayName(TextStyle.FULL, locale)
@@ -263,6 +263,9 @@ class DevotionalEngine(
             ?: ScriptureReferenceParser.parse("John 15:5")!!
     }
 
+    /** One line: the first sentence-sized line of [s], so "Live it today" is never a paragraph. */
+    private fun oneLine(s: String): String = s.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
+
     /** Applies the labelled-AI rules to an answer; null when too little survives to be worth reading. */
     private suspend fun check(answer: DevotionalAnswer, passage: ScriptureReference, profile: DevotionalProfile, date: LocalDate, askTopics: Set<String> = emptySet()): Devotional? {
         var removed = 0
@@ -289,6 +292,7 @@ class DevotionalEngine(
             scripture = listOf(passage) + extra,
             reflection = reflection,
             application = answer.application.mapNotNull { whole(it) },
+            liveItToday = whole(answer.liveItToday)?.let { oneLine(it) },
             prayer = if (profile.includePrayer) whole(answer.prayer) else null,
             motivation = if (profile.includeMotivation) whole(answer.motivation) else null,
             insight = if (profile.includeInsight) Quotes.pick(quotes, quoteWeights(profile, date, askTopics), date, profile.lessOf) else null,
@@ -320,6 +324,7 @@ class DevotionalEngine(
             scripture = listOfNotNull(r.reference),
             keyText = r.keyText.takeIf { it.isNotBlank() },
             reflection = r.paragraphs,
+            liveItToday = com.craftflowtechnologies.meetingmind.core.devotional.LiveItToday.fallback(LocalDay.of(date)),
             insight = if (profile.includeInsight) Quotes.pick(quotes, quoteWeights(profile, date), date, profile.lessOf) else null,
             label = classics.attribution,
             engine = "${classics.author}, ${classics.title}${if (evening) " (evening)" else ""}",

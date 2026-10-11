@@ -13,7 +13,9 @@ enum class SessionKind(val key: String, val label: String) {
     /** Walk me through it, as Scripture, Observation, Application, Prayer. */
     SOAP("soap", "SOAP"),
     /** Walk me through it, one verse at a time. */
-    VERSE_BY_VERSE("verses", "Verse by verse");
+    VERSE_BY_VERSE("verses", "Verse by verse"),
+    /** The reflection written under a devotional's one question. */
+    DEVOTIONAL("devotional", "Devotional");
 
     /** Today, a need and a plan day share one shape: why, read, questions, prayer, live it. */
     val isPickedForYou: Boolean get() = this == TODAY || this == NEED || this == PLAN
@@ -51,6 +53,9 @@ data class SessionStep(
     val ordinal: Int = 0
 )
 
+/** The one answerable step of a devotional's journal entry. */
+const val DEVOTIONAL_STEP = "reflection"
+
 /** Builds the steps of a session from its kind. Pure and data-driven, so it is easy to test. */
 object SessionPlan {
 
@@ -75,6 +80,9 @@ object SessionPlan {
             SessionStep("application", StepType.APPLY, "Application", answerable = true),
             SessionStep("prayer", StepType.PRAYER, "Prayer", answerable = true),
             SessionStep("close", StepType.CLOSE, "Done", answerable = false)
+        )
+        SessionKind.DEVOTIONAL -> listOf(
+            SessionStep(DEVOTIONAL_STEP, StepType.OBSERVE, "Your reflection", answerable = true)
         )
         SessionKind.VERSE_BY_VERSE -> {
             val each = verses.ifEmpty { listOf(0) }.map { v ->

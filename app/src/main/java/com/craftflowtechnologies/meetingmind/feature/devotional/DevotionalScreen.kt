@@ -94,6 +94,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -137,7 +138,7 @@ fun DevotionalScreen(
         onMakeCurrent = viewModel::makeCurrent,
         onDismissError = viewModel::dismissError,
         onFeedback = { d, v -> viewModel.feedback(d, v) },
-        onSaveResponse = { d, t -> viewModel.saveResponse(d, t) },
+        onSaveResponse = { d, t -> viewModel.saveReflection(d, t) },
         onListen = { viewModel.listen() },
         onListenFrom = { section, only -> viewModel.listen(section, only) },
         onLive = onLive,
@@ -273,19 +274,20 @@ fun DevotionalContent(
                     item { Section("Reflection", DevotionalText.block(d, DevotionalBlock.REFLECTION)) }
                     d.reflection.forEach { p -> item { Paragraph(p) } }
                 }
-                if (d.application.isNotEmpty()) {
+                // The shape of a devotional: Scripture, Reflection, one question (with the place to answer it), Prayer, Live it today.
+                d.question?.let { q -> item { QuestionCard(q) } }
+                if (d.origin != DevotionalOrigin.CARE) item { Response(today, state.reflection, onSaveResponse) }
+                d.prayer?.let { p -> item { PrayerCard(p, DevotionalText.block(d, DevotionalBlock.PRAYER), praying = state.voice.current == com.craftflowtechnologies.meetingmind.ai.voice.VoiceSection.PRAYER && state.voice.playing, onPrayWithMe = { onLive(com.craftflowtechnologies.meetingmind.core.prayer.PrayMode.TOGETHER) }) { onListenFrom(com.craftflowtechnologies.meetingmind.ai.voice.VoiceSection.PRAYER, true) } } }
+                if (d.liveItToday != null) item { LiveItTodayCard(d.liveItToday) }
+                // Devotionals saved before "Live it today" keep their own list of things to do.
+                else if (d.application.isNotEmpty()) {
                     item { Section("Today I will", DevotionalText.block(d, DevotionalBlock.APPLICATION)) }
                     val checks = today.document.blocks.filter { it.sectionKey == DevotionalNotes.S_APPLICATION && it.type == NoteBlockType.CHECKLIST }.sortedBy { it.position }
                     d.application.forEachIndexed { i, a -> item { CheckRow(a, checks.getOrNull(i)?.checked == true) } }
                 }
-                d.prayer?.let { p -> item { PrayerCard(p, DevotionalText.block(d, DevotionalBlock.PRAYER), praying = state.voice.current == com.craftflowtechnologies.meetingmind.ai.voice.VoiceSection.PRAYER && state.voice.playing, onPrayWithMe = { onLive(com.craftflowtechnologies.meetingmind.core.prayer.PrayMode.TOGETHER) }) { onListenFrom(com.craftflowtechnologies.meetingmind.ai.voice.VoiceSection.PRAYER, true) } } }
                 d.motivation?.let { m -> item { WordForToday(m) } }
                 d.insight?.let { q -> item { QuoteCard(q.text, listOf(q.author, q.source).filter { it.isNotBlank() }.joinToString(", "), DevotionalText.block(d, DevotionalBlock.QUOTE)) } }
-                d.question?.let { q -> item { QuestionCard(q) } }
-                if (d.origin != DevotionalOrigin.CARE) {
-                    item { Response(today, onSaveResponse) }
-                    item { Feedback(today, onFeedback) }
-                }
+                if (d.origin != DevotionalOrigin.CARE) item { Feedback(today, onFeedback) }
                 if (d.origin != DevotionalOrigin.CARE) item {
                     Surface(onClick = { onLive(com.craftflowtechnologies.meetingmind.core.prayer.PrayMode.TALK_IT_THROUGH) }, shape = RoundedCornerShape(22.dp), color = Night, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
                         Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -614,36 +616,55 @@ private fun Callout(title: String, body: String, action: String, secondary: Stri
     }
 }
 
+/** "Live it today": the one thing to do, in a line. Selectable, with Copy and Share like every block. */
 @Composable
-private fun Response(today: DailyDevotional, onSave: (DailyDevotional, String) -> Unit) {
-    var text by remember(today.note.id) { mutableStateOf(today.response) }
-    var saved by remember(today.note.id) { mutableStateOf(today.response) }
-    // Saves as you pause, and when you leave — nothing to remember to press.
+private fun LiveItTodayCard(text: String) {
+    val c = MM.colors
+    Column(Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s).fillMaxWidth().testTag("devotional_live")
+        .clip(MM.radius.card).background(c.goldWash).padding(MM.space.l)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("LIVE IT TODAY", style = MM.type.overline, color = c.goldInk, modifier = Modifier.weight(1f))
+            BlockActions("Live it today", text, tint = c.goldInk)
+        }
+        SelectionContainer { Text(text, style = MM.type.scripture, color = c.ink, modifier = Modifier.padding(top = MM.space.xs)) }
+    }
+}
+
+/**
+ * "Write your reflection": the answer to the one question. It is the study journal's entry for this
+ * devotional, saved as you pause and when you leave, and made on the first keystroke, not before.
+ */
+@Composable
+private fun Response(today: DailyDevotional, initial: String, onSave: (DailyDevotional, String) -> Unit) {
+    var text by remember(today.note.id) { mutableStateOf(initial) }
+    var saved by remember(today.note.id) { mutableStateOf(initial) }
     LaunchedEffect(text) {
         if (text.trim() == saved.trim()) return@LaunchedEffect
         kotlinx.coroutines.delay(700)
         onSave(today, text); saved = text
     }
     val latest = androidx.compose.runtime.rememberUpdatedState(text)
+    val lastSaved = androidx.compose.runtime.rememberUpdatedState(saved)
     androidx.compose.runtime.DisposableEffect(today.note.id) {
-        onDispose { if (latest.value.trim() != saved.trim()) onSave(today, latest.value) }
+        onDispose { if (latest.value.trim() != lastSaved.value.trim()) onSave(today, latest.value) }
     }
+    val c = MM.colors
     Column(
-        Modifier.padding(horizontal = 16.dp, vertical = 18.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
-            .background(SurfaceBase).border(1.dp, Gold.copy(alpha = 0.25f), RoundedCornerShape(24.dp)).padding(22.dp)
+        Modifier.padding(horizontal = MM.space.l, vertical = MM.space.m).fillMaxWidth().clip(MM.radius.card)
+            .background(c.surface).border(1.dp, c.gold.copy(alpha = 0.25f), MM.radius.card).padding(MM.space.l)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("MY RESPONSE", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Gold, modifier = Modifier.weight(1f))
-            if (text.isNotBlank()) Text(if (text.trim() == saved.trim()) "Saved" else "Saving…", fontSize = 11.sp, color = InkMuted)
+            Text("WRITE YOUR REFLECTION", style = MM.type.overline, color = c.goldInk, modifier = Modifier.weight(1f))
+            if (text.isNotBlank()) Text(if (text.trim() == saved.trim()) "Saved" else "Saving…", style = MM.type.caption, color = c.inkMuted, modifier = Modifier.testTag("devotional_saved"))
         }
         androidx.compose.foundation.text.BasicTextField(
             value = text, onValueChange = { text = it },
-            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 17.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, color = Ink),
-            cursorBrush = androidx.compose.ui.graphics.SolidColor(Gold),
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp).testTag("devotional_response"),
+            textStyle = MM.type.scripture.copy(color = c.ink),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(c.gold),
+            modifier = Modifier.fillMaxWidth().padding(top = MM.space.s).testTag("devotional_response"),
             decorationBox = { inner ->
                 Box {
-                    if (text.isEmpty()) Text("What is God stirring in you today? It stays on your phone.", fontSize = 17.sp, lineHeight = 27.sp, fontFamily = FontFamily.Serif, color = InkMuted)
+                    if (text.isEmpty()) Text("Write what comes to mind. It's kept in your study journal, on your phone.", style = MM.type.scripture, color = c.inkMuted)
                     inner()
                 }
             }

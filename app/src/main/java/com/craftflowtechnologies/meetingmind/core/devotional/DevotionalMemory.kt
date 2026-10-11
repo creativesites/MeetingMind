@@ -59,7 +59,7 @@ data class DevotionalMemory(val entries: List<MemoryEntry> = emptyList()) {
     fun repeatOf(d: Devotional): String? {
         val title = d.title.trim().lowercase()
         val opening = d.reflection.firstOrNull()?.let { DevotionalNotes.firstSentence(it) }.orEmpty()
-        val point = d.application.firstOrNull() ?: d.motivation.orEmpty()
+        val point = d.liveItToday ?: d.application.firstOrNull() ?: d.motivation.orEmpty()
         for (e in entries) {
             if (title.isNotEmpty() && e.title.trim().lowercase() == title) return "the title \"${d.title}\" was used on ${e.day}"
             if (opening.isNotBlank() && e.opening != null && similarity(opening, e.opening) >= 0.6) return "it opens almost like the one on ${e.day} (\"${e.opening.take(80)}\")"

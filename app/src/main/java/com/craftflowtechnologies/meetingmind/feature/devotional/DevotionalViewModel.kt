@@ -37,7 +37,9 @@ data class DevotionalUiState(
     val date: LocalDate = LocalDate.now(),
     val voice: VoiceUi = VoiceUi(),
     /** Opened from the archive: read-only for writing — no "new", no rewrite. */
-    val past: Boolean = false
+    val past: Boolean = false,
+    /** What the person has written under the shown devotional's question (its journal entry). */
+    val reflection: String = ""
 )
 
 /** The Listen button's state. */
@@ -124,7 +126,8 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
             all = all,
             writers = available,
             season = LiturgicalCalendar.dayOf(day.date, profile.tradition),
-            date = day.date
+            date = day.date,
+            reflection = today?.let { runCatching { repo.reflectionOf(it) }.getOrNull() }.orEmpty()
         )
     }
 
@@ -241,7 +244,8 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
 
     fun feedback(daily: DailyDevotional, value: String?) = viewModelScope.launch { repo.setFeedback(daily, value) }
 
-    fun saveResponse(daily: DailyDevotional, text: String) = viewModelScope.launch { repo.saveResponse(daily, text) }
+    /** The reflection is auto-saved into the study journal (created on the first keystroke only). */
+    fun saveReflection(daily: DailyDevotional, text: String) = viewModelScope.launch { runCatching { repo.saveReflection(daily, text) } }
 
     /** Saving settings shapes tomorrow's devotional; a new one today is always the person's call. */
     fun saveProfile(profile: DevotionalProfile) = viewModelScope.launch { repo.setProfile(profile) }
