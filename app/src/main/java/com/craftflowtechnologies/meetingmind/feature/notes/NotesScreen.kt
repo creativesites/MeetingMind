@@ -184,6 +184,14 @@ fun NotesScreen(
     var moreFilters by remember { mutableStateOf(false) }
     var moveOpen by remember { mutableStateOf(false) }
 
+    var searchOpen by remember { mutableStateOf(false) }
+    val homeMode = isRoot && !folders
+    val showHero = homeMode && !query.isFiltered && !query.isSearching && searchText.isBlank()
+    val latestMeeting = remember(state.items) {
+        state.items.filter { it.hasRecording && Workflows.space(it.note.workflow) == NotebookSpace.WORK }
+            .maxByOrNull { it.note.eventDate ?: it.note.createdAt }
+    }
+
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     fun offerUndo(message: String, undo: Undo) {
@@ -243,7 +251,7 @@ fun NotesScreen(
                     },
                     onRestore = { viewModel.restoreAll(selectedItems); selectedIds = emptySet() }
                 )
-            } else {
+            } else if (!homeMode) {
                 ScreenHeader(
                     title = title,
                     modifier = Modifier.padding(horizontal = MM.space.l),
@@ -271,7 +279,7 @@ fun NotesScreen(
                     }
                 }
             }
-
+            if (!homeMode) {
             // ------------------------------------------------------------ search first, then the chips
             WorkTextField(
                 value = searchText, onValueChange = library::setSearch,
@@ -280,12 +288,15 @@ fun NotesScreen(
                 modifier = Modifier.padding(horizontal = MM.space.l).testTag("notes_search"),
                 clearLabel = "Clear search"
             )
-            if (!isTrash && !isArchive && !folders) {
-                LibraryChips(
-                    query = query, showWork = NotebookSpace.WORK in appIdentity.spaces, showFaith = appIdentity.showsFaith,
-                    onAll = library::showAll, onChip = library::toggleChip, onMore = { moreFilters = true },
-                    modifier = Modifier.padding(horizontal = MM.space.l)
-                )
+            }
+            if (!homeMode) {
+                if (!isTrash && !isArchive && !folders) {
+                    LibraryChips(
+                        query = query, showWork = NotebookSpace.WORK in appIdentity.spaces, showFaith = appIdentity.showsFaith,
+                        onAll = library::showAll, onChip = library::toggleChip, onMore = { moreFilters = true },
+                        modifier = Modifier.padding(horizontal = MM.space.l)
+                    )
+                }
             }
 
             // ------------------------------------------------------------ the body
@@ -301,6 +312,41 @@ fun NotesScreen(
                     Modifier.weight(1f).fillMaxWidth().testTag("notes_list"), state = listState,
                     contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, bottom = MM.space.xxl)
                 ) {
+                    if (homeMode) {
+                        item(key = "home-top") {
+                            NotesHomeTopBar(
+                                onSearch = { searchOpen = !searchOpen },
+                                onFolders = { library.setView(LibraryView.FOLDERS) },
+                                archived = archivedCount, trash = trashCount, onArchive = onOpenArchive, onTrash = onOpenTrash
+                            )
+                        }
+                        item(key = "home-greeting") {
+                            NotesGreeting(
+                                hasLatest = showHero && latestMeeting != null,
+                                onBubbleClick = { latestMeeting?.let { onOpenNote(it.id) } }
+                            )
+                        }
+                        if (showHero && latestMeeting != null) item(key = "home-hero") {
+                            LatestMeetingCard(latestMeeting, onOpen = { onOpenNote(latestMeeting.id) }, modifier = Modifier.padding(top = MM.space.l))
+                        }
+                        if (searchOpen || searchText.isNotBlank()) item(key = "home-search") {
+                            WorkTextField(
+                                value = searchText, onValueChange = library::setSearch, placeholder = "Search notes",
+                                icon = Icons.Rounded.Search, modifier = Modifier.padding(top = MM.space.m).testTag("notes_search"),
+                                clearLabel = "Clear search"
+                            )
+                        }
+                        item(key = "home-header") {
+                            NotesSectionHeader(
+                                extraFilters = query.types.size + if (query.tagId != null) 1 else 0,
+                                sort = query.sort, onSort = library::setSort,
+                                onFilters = { moreFilters = true }, onNew = { viewModel.createNote(onOpenNote) }
+                            )
+                        }
+                        item(key = "home-chips") {
+                            HomeChips(query, showWork = NotebookSpace.WORK in appIdentity.spaces, showFaith = appIdentity.showsFaith, onAll = library::showAll, onChip = library::toggleChip)
+                        }
+                    }
                     if (isTrash) {
                         item(key = "trash-info") {
                             Text(
@@ -334,7 +380,9 @@ fun NotesScreen(
                                     item = item, now = now, query = query, inTrash = isTrash, notebooks = notebooks,
                                     selecting = selecting, isSelected = item.id in selectedIds,
                                     onClick = { if (selecting) toggleSelect(item.id) else if (isTrash) noteMenu = item else onOpenNote(item.id) },
-                                    onLongClick = { if (isTrash && !selecting) noteMenu = item else toggleSelect(item.id) }
+                                    onLongClick = { if (isTrash && !selecting) noteMenu = item else toggleSelect(item.id) },
+                                    latestId = if (showHero) latestMeeting?.id else null,
+                                    onTogglePin = { viewModel.togglePin(item.note) }
                                 )
                             }
                             pagedFooter(state, if (query.isSearching) "That's every match" else "That's everything", library::retry)
@@ -511,7 +559,7 @@ private fun MoreFiltersSheet(
 }
 
 @Composable
-private fun SortMenu(sort: NoteSort, onSort: (NoteSort) -> Unit) {
+internal fun SortMenu(sort: NoteSort, onSort: (NoteSort) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, "Sort: ${sort.label}", tint = MM.colors.inkSecondary) }
@@ -529,7 +577,7 @@ private fun SortMenu(sort: NoteSort, onSort: (NoteSort) -> Unit) {
 
 /** Archived and Trash are one tap away, not rows at the bottom of a long list. */
 @Composable
-private fun LibraryMenu(archived: Int, trash: Int, onArchive: () -> Unit, onTrash: () -> Unit) {
+internal fun LibraryMenu(archived: Int, trash: Int, onArchive: () -> Unit, onTrash: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Rounded.MoreVert, "More", tint = MM.colors.inkSecondary) }
@@ -569,7 +617,7 @@ private fun SelectionBar(
 @Composable
 private fun LibraryRow(
     item: LibraryItem, now: Long, query: LibraryQuery, inTrash: Boolean, notebooks: List<Notebook>,
-    selecting: Boolean, isSelected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit
+    selecting: Boolean, isSelected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, latestId: String?, onTogglePin: () -> Unit
 ) {
     val note = item.note
     val c = MM.colors
@@ -606,7 +654,15 @@ private fun LibraryRow(
                 tint = if (isSelected) c.accent else c.inkFaint, modifier = Modifier.padding(end = MM.space.s).size(MMSize.icon)
             )
         }
-        NoteRow(model, Modifier.weight(1f).combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick))
+        if (query.isSearching) {
+            NoteRow(model, Modifier.weight(1f).combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick))
+        } else {
+            NoteCard(
+                model, tile = marker, isLatest = item.id == latestId, selected = isSelected,
+                showPin = !inTrash && !selecting, onTogglePin = onTogglePin,
+                onClick = onClick, onLongClick = onLongClick, modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
