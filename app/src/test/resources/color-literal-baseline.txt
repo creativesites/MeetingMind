@@ -34,5 +34,4 @@ com/craftflowtechnologies/meetingmind/feature/stories/StoriesScreen.kt 15
 com/craftflowtechnologies/meetingmind/feature/today/HomeStart.kt 5
 com/craftflowtechnologies/meetingmind/feature/today/TimelineViews.kt 7
 com/craftflowtechnologies/meetingmind/feature/today/TodayScreen.kt 0
-com/craftflowtechnologies/meetingmind/feature/fellowship/FellowshipUi.kt 7
 com/craftflowtechnologies/meetingmind/feature/today/HomeQuickAccessRow.kt 12

@@ -128,10 +128,6 @@ class FaithViewModel(application: Application) : AndroidViewModel(application) {
         onCreated(notes.createNote(workflow = type, draft = true).id)
     }
 
-    fun startStudy(template: com.craftflowtechnologies.meetingmind.core.faith.StudyTemplate, onCreated: (String) -> Unit) = viewModelScope.launch {
-        onCreated(notes.startStudy(template, null).id)
-    }
-
     fun startDevotional(reference: ScriptureReference, onCreated: (String) -> Unit) = viewModelScope.launch {
         onCreated(notes.startDevotional(reference).id)
     }

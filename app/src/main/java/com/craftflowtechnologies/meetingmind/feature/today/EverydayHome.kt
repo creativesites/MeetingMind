@@ -48,6 +48,7 @@ import com.craftflowtechnologies.meetingmind.core.timeline.ItemKind
 import com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar
 import com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
+import com.craftflowtechnologies.meetingmind.core.ui.EntryPoints
 import com.craftflowtechnologies.meetingmind.core.ui.mm.HeroCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.HomeHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.HomeScaffold
@@ -192,7 +193,7 @@ fun EverydayHomeContent(
                 title = "Nothing here yet",
                 body = "Record a conversation or write a note, and it shows up here.",
                 illustration = { ZuriSlot(CompanionPage.EMPTY, EmptyCompanionSize) },
-                action = { PrimaryButton("Record", actions.onRecord) }
+                action = { PrimaryButton(EntryPoints.everydayRecord.label, actions.onRecord) }
             )
         }
         if (model.agenda.isNotEmpty()) item(key = "today") {
@@ -293,8 +294,8 @@ fun EverydayHome(
                     subtitle = prep?.let { p -> "Last time: ${p.lastTitle ?: "with " + p.sharedPeople.joinToString()}" }
                         ?: listOfNotNull(e.otherPeople.takeIf { it.isNotEmpty() }?.let { if (it.size <= 2) it.joinToString() else "${it.first()} +${it.size - 1}" }, e.location)
                             .joinToString(" · ").ifBlank { null },
-                    primaryLabel = "Record", onPrimary = { recordEvent(e) },
-                    secondaryLabel = "Prepare", onSecondary = {
+                    primaryLabel = EntryPoints.everydayRecord.label, onPrimary = { recordEvent(e) },
+                    secondaryLabel = EntryPoints.everydayPrepare.label, onSecondary = {
                         if (prep?.lastNoteId != null && e.begin - now > 5 * 60_000) onOpenNote(prep.lastNoteId) else openEvent(e)
                     },
                     onClick = { openEvent(e) }
@@ -304,7 +305,7 @@ fun EverydayHome(
                 eyebrow = "PICK UP WHERE YOU LEFT OFF",
                 title = heroNote.title.ifBlank { heroNote.workflow.displayName },
                 subtitle = previewOf(heroNote.plainText, 120).ifBlank { null },
-                primaryLabel = "Open", onPrimary = { onOpenNote(heroNote.id) },
+                primaryLabel = EntryPoints.everydayOpen.label, onPrimary = { onOpenNote(heroNote.id) },
                 onClick = { onOpenNote(heroNote.id) }
             )
             else -> null

@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.craftflowtechnologies.meetingmind.core.biblestudy.Need
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser
+import com.craftflowtechnologies.meetingmind.core.ui.EntryPoints
 import com.craftflowtechnologies.meetingmind.core.ui.mm.HeroCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.HomeScaffold
 import com.craftflowtechnologies.meetingmind.core.ui.mm.InsetPanel
@@ -116,7 +117,7 @@ fun BibleHomeContent(state: BibleHomeState, actions: BibleHomeActions) {
             item(key = "rows") {
                 MMCard(contentPadding = MM.space.s) {
                     ListRow(
-                        title = "Study a passage", subtitle = "Pick a reference and we'll walk through it",
+                        title = EntryPoints.bibleStudyPassage.label, subtitle = "Pick a reference and we'll walk through it",
                         modifier = Modifier.padding(horizontal = MM.space.s).testTag("bible_home_study"),
                         trailing = { Chevron() }, onClick = { studySheet = true }
                     )
@@ -174,7 +175,7 @@ private fun ContinueHero(state: BibleHomeState, actions: BibleHomeActions) {
             Icon(Icons.Rounded.AutoStories, null, tint = c.accent, modifier = Modifier.width(MMSize.icon))
             Spacer(Modifier.width(MM.space.m))
             Column(Modifier.weight(1f)) {
-                Text(if (place == null) "Start reading" else "Continue", style = MM.type.heading, color = c.ink)
+                Text(if (place == null) EntryPoints.bibleStartReading.label else EntryPoints.bibleContinue.label, style = MM.type.heading, color = c.ink)
                 Text(
                     if (place == null) "Begin with the Gospel of John" else place.display(),
                     style = MM.type.secondary, color = c.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis
@@ -199,8 +200,8 @@ private fun TodayCard(reference: ScriptureReference, lines: List<String>, action
             lines.take(2).forEach { Text(it, style = MM.type.secondary, color = c.inkSecondary) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s), verticalAlignment = Alignment.CenterVertically) {
-            PrimaryButton("Guide me", onClick = { actions.onGuideToday(reference) }, modifier = Modifier.testTag("bible_home_guide"))
-            SecondaryButton("Just read", onClick = { actions.onRead(reference) }, modifier = Modifier.testTag("bible_home_read"))
+            PrimaryButton(EntryPoints.bibleGuideMe.label, onClick = { actions.onGuideToday(reference) }, modifier = Modifier.testTag("bible_home_guide"))
+            SecondaryButton(EntryPoints.bibleJustRead.label, onClick = { actions.onRead(reference) }, modifier = Modifier.testTag("bible_home_read"))
         }
     }
 }
@@ -217,7 +218,7 @@ private fun StudyPassageSheet(onDismiss: () -> Unit, onWalk: (ScriptureReference
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = MM.space.l).padding(bottom = MM.space.l),
             verticalArrangement = Arrangement.spacedBy(MM.space.m)
         ) {
-            Text("Study a passage", style = MM.type.title, color = c.ink)
+            Text(EntryPoints.bibleStudyPassage.label, style = MM.type.title, color = c.ink)
             InsetPanel {
                 BasicTextField(
                     value = text, onValueChange = { text = it }, singleLine = true,
@@ -241,7 +242,7 @@ private fun StudyPassageSheet(onDismiss: () -> Unit, onWalk: (ScriptureReference
                 },
                 style = MM.type.secondary, color = if (parsed != null) c.inkSecondary else c.inkMuted
             )
-            PrimaryButton("Walk me through it", onClick = { parsed?.let(onWalk) }, enabled = parsed != null, modifier = Modifier.testTag("bible_home_walk"))
+            PrimaryButton(EntryPoints.bibleWalkMe.label, onClick = { parsed?.let(onWalk) }, enabled = parsed != null, modifier = Modifier.testTag("bible_home_walk"))
         }
     }
 }

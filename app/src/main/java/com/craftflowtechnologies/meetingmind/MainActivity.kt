@@ -544,8 +544,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onOpenJourney = { navController.navigate(Routes.FAITH_JOURNEY) },
                     onOpenScripture = { navController.navigate(Routes.FAITH_SCRIPTURE) },
                     onOpenBible = { navController.navigate(Routes.BIBLE_HOME) },
-                    onSearchBible = { navController.navigate(Routes.bibleRoute(search = true)) },
                     onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },
+                    onGuideToday = { r -> navController.navigate(Routes.bibleSessionRoute(r.passageId(), "today")) },
                     onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                     onShare = { req -> com.craftflowtechnologies.meetingmind.feature.share.ShareRequests.pending = req; navController.navigate(Routes.SHARE) },
                     onPrayWithMe = { navController.navigate(Routes.prayRoute()) },
@@ -599,68 +599,6 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 circleId = entry.arguments?.getString("circleId").orEmpty(),
                 onBack = { navController.popBackStack() }
             )
-        }
-        composable(
-            Routes.FELLOWSHIP_PICK,
-            arguments = listOf(navArgument("kind") { type = NavType.StringType })
-        ) { entry ->
-            val kind = com.craftflowtechnologies.meetingmind.feature.fellowship.FellowshipKind.fromRoute(entry.arguments?.getString("kind"))
-            val vm: com.craftflowtechnologies.meetingmind.feature.faith.FaithViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            val notes by vm.faithNotes.collectAsState()
-            if (kind != null) com.craftflowtechnologies.meetingmind.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
-                com.craftflowtechnologies.meetingmind.feature.fellowship.FellowshipPickerScreen(
-                    kind = kind,
-                    notes = notes,
-                    onNavigateBack = { navController.popBackStack() },
-                    onPick = { note ->
-                        navController.navigate(
-                            if (kind == com.craftflowtechnologies.meetingmind.feature.fellowship.FellowshipKind.STUDY) Routes.fellowshipGuideRoute(note.id)
-                            else Routes.fellowshipDraftRoute(kind.route, note.id)
-                        )
-                    },
-                    onCreate = {
-                        if (kind == com.craftflowtechnologies.meetingmind.feature.fellowship.FellowshipKind.STUDY) navController.navigate(Routes.recordTypeRoute(RecordingType.SERMON))
-                        else vm.create(kind.createType) { id -> navController.navigate(Routes.noteRoute(id)) }
-                    }
-                )
-            }
-        }
-        composable(
-            Routes.FELLOWSHIP_GUIDE,
-            arguments = listOf(navArgument("noteId") { type = NavType.StringType })
-        ) { entry ->
-            val noteId = entry.arguments?.getString("noteId").orEmpty()
-            val vm: com.craftflowtechnologies.meetingmind.feature.faith.FaithViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            val notes by vm.faithNotes.collectAsState()
-            val title = notes.firstOrNull { it.id == noteId }?.title.orEmpty()
-            com.craftflowtechnologies.meetingmind.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
-                com.craftflowtechnologies.meetingmind.feature.fellowship.GroupGuideScreen(
-                    noteId = noteId, noteTitle = title, onNavigateBack = { navController.popBackStack() }
-                )
-            }
-        }
-        composable(
-            Routes.FELLOWSHIP_DRAFT,
-            arguments = listOf(
-                navArgument("kind") { type = NavType.StringType },
-                navArgument("noteId") { type = NavType.StringType }
-            )
-        ) { entry ->
-            val kind = com.craftflowtechnologies.meetingmind.feature.fellowship.FellowshipKind.fromRoute(entry.arguments?.getString("kind"))
-            val noteId = entry.arguments?.getString("noteId").orEmpty()
-            val vm: com.craftflowtechnologies.meetingmind.feature.faith.FaithViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            val notes by vm.faithNotes.collectAsState()
-            if (kind != null) com.craftflowtechnologies.meetingmind.feature.faith.FaithLockGate(onCancel = { navController.popBackStack() }) {
-                com.craftflowtechnologies.meetingmind.feature.fellowship.FellowshipDraftScreen(
-                    kind = kind,
-                    note = notes.firstOrNull { it.id == noteId },
-                    onNavigateBack = { navController.popBackStack() },
-                    onDesignCard = { req ->
-                        com.craftflowtechnologies.meetingmind.feature.share.ShareRequests.pending = req
-                        navController.navigate(Routes.SHARE)
-                    }
-                )
-            }
         }
         composable(
             Routes.STORIES,
