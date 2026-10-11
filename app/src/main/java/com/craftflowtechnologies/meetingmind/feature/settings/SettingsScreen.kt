@@ -5,6 +5,24 @@ import com.craftflowtechnologies.meetingmind.ui.theme.forTheme
 import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import android.app.Application
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.Role
+import com.craftflowtechnologies.meetingmind.core.ui.mm.InsetPanel
+import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
+import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
+import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
+import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -95,7 +113,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     /** Redacted, so a set key can be shown as set without being put back on screen. */
     val geminiKeyDisplay: StateFlow<String?> = geminiCredentials.userKeyFlow
-        .map { own -> geminiCredentials.redact(own) ?: com.craftflowtechnologies.meetingmind.ai.cloud.GeminiCredentialStore.systemKey?.let { "Built-in tester key" } }
+        .map { own -> geminiCredentials.redact(own) ?: com.craftflowtechnologies.meetingmind.ai.cloud.GeminiCredentialStore.systemKey?.let { "Built in" } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun setGeminiApiKey(key: String) {
@@ -162,16 +180,49 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         initialValue = AppPreferencesState()
     )
 
+    private val devotionalRepository = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalRepository(application)
+
+    /** The daily devotional's profile; its notification switches are on the Notifications screen. */
+    val devotional: StateFlow<com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile> = userPrefs.devotionalProfile.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile()
+    )
+
+    fun setDevotional(profile: com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile) {
+        viewModelScope.launch { devotionalRepository.setProfile(profile) }
+    }
+
+    val reminders: StateFlow<com.craftflowtechnologies.meetingmind.core.faith.ReminderSettings> = userPrefs.reminderSettings.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), com.craftflowtechnologies.meetingmind.core.faith.ReminderSettings()
+    )
+
+    fun setReminders(settings: com.craftflowtechnologies.meetingmind.core.faith.ReminderSettings) {
+        viewModelScope.launch { userPrefs.setReminderSettings(settings) }
+    }
+
+    fun updateWork(change: (com.craftflowtechnologies.meetingmind.core.work.WorkSettings) -> com.craftflowtechnologies.meetingmind.core.work.WorkSettings) {
+        viewModelScope.launch { userPrefs.updateWorkSettings(change) }
+    }
+
+    private val pushStore = com.craftflowtechnologies.meetingmind.core.circles2.SharedPrefsPushTokenStore(application)
+    private val _circlesPush = kotlinx.coroutines.flow.MutableStateFlow(pushStore.wantsPush)
+
+    /** Whether this phone asks for Circles push messages (the same switch Circles itself uses). */
+    val circlesPush: StateFlow<Boolean> = _circlesPush
+
+    fun setCirclesPush(on: Boolean) {
+        _circlesPush.value = on
+        viewModelScope.launch {
+            val tokens = com.craftflowtechnologies.meetingmind.core.circles2.Circles2.pushTokens(getApplication())
+            if (on) tokens.activate() else tokens.deactivate()
+        }
+    }
+
     fun setBibleVersion(id: Int) {
         viewModelScope.launch { userPrefs.setBibleVersionId(id) }
     }
 
     fun setCalendar(enabled: Boolean) {
         viewModelScope.launch { userPrefs.setCalendarEnabled(enabled) }
-    }
-
-    fun setThemeMode(mode: com.craftflowtechnologies.meetingmind.ui.theme.ThemeMode) {
-        viewModelScope.launch { userPrefs.setThemeMode(mode.name) }
     }
 
     fun setFaithLock(enabled: Boolean) {
@@ -236,14 +287,100 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 }
 
+/** Where Settings is showing. Kept as a string so it survives rotation; see [encode] and [parsePage]. */
+internal sealed interface SettingsPage {
+    data object Hub : SettingsPage
+    data class Group(val group: SettingsGroup, val focus: SettingId? = null) : SettingsPage
+    data class Notifications(val focus: SettingId? = null) : SettingsPage
+    data class Devotional(val startPage: String?) : SettingsPage
+    data object Reminders : SettingsPage
+}
+
+internal fun SettingsPage.encode(): String = when (this) {
+    SettingsPage.Hub -> "hub"
+    is SettingsPage.Group -> "group:${group.key}:${focus?.name.orEmpty()}"
+    is SettingsPage.Notifications -> "notifications:${focus?.name.orEmpty()}"
+    is SettingsPage.Devotional -> "devotional:${startPage.orEmpty()}"
+    SettingsPage.Reminders -> "reminders"
+}
+
+internal fun parsePage(raw: String): SettingsPage {
+    val p = raw.split(":")
+    fun id(i: Int) = p.getOrNull(i)?.takeIf { it.isNotBlank() }?.let { n -> SettingId.entries.firstOrNull { it.name == n } }
+    return when (p[0]) {
+        "group" -> SettingsGroup.fromKey(p.getOrNull(1))?.let { SettingsPage.Group(it, id(2)) } ?: SettingsPage.Hub
+        "notifications" -> SettingsPage.Notifications(id(1))
+        "devotional" -> SettingsPage.Devotional(p.getOrNull(1)?.takeIf { it.isNotBlank() })
+        "reminders" -> SettingsPage.Reminders
+        else -> SettingsPage.Hub
+    }
+}
+
+private fun SettingsPage.parent(): SettingsPage = when (this) {
+    SettingsPage.Hub -> SettingsPage.Hub
+    is SettingsPage.Group -> SettingsPage.Hub
+    is SettingsPage.Notifications -> SettingsPage.Group(SettingsGroup.ACCOUNT, SettingId.NOTIFICATIONS)
+    is SettingsPage.Devotional -> SettingsPage.Group(SettingsGroup.FAITH, SettingId.DEVOTIONAL)
+    SettingsPage.Reminders -> SettingsPage.Group(SettingsGroup.FAITH, SettingId.PRAYER_REMINDERS)
+}
+
+/** What the rows need from the screen: the dialogs it owns and the places it can go. */
+private class SettingsActions(
+    val onNavigateToModels: () -> Unit,
+    val onOpenBible: () -> Unit,
+    val onOpenSetup: () -> Unit,
+    val onOpenDataBackup: () -> Unit,
+    val onOpenAppearance: () -> Unit,
+    val onOpenWork: () -> Unit,
+    val onOpenIntegrations: () -> Unit,
+    val onOpenRecipes: () -> Unit,
+    val onOpenCompanion: () -> Unit,
+    val onReplayTour: () -> Unit,
+    val editName: () -> Unit,
+    val pickAvatar: () -> Unit,
+    val showSpaces: () -> Unit,
+    val showLook: () -> Unit,
+    val showBibleVersions: () -> Unit,
+    val showCrash: () -> Unit,
+    val askClearData: () -> Unit,
+    val setCalendar: (Boolean) -> Unit,
+    val setCirclesPush: (Boolean) -> Unit,
+    val open: (SettingsPage) -> Unit
+)
+
+private class SettingsEnv(
+    val vm: SettingsViewModel,
+    val prefs: AppPreferencesState,
+    val work: com.craftflowtechnologies.meetingmind.core.work.WorkSettings,
+    val devotional: com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile,
+    val reminders: com.craftflowtechnologies.meetingmind.core.faith.ReminderSettings,
+    val circlesPush: Boolean,
+    val geminiKeyDisplay: String?,
+    val calendarGranted: Boolean,
+    val bibleVersions: List<com.craftflowtechnologies.meetingmind.core.scripture.BibleInfo>,
+    val crashPresent: Boolean,
+    val actions: SettingsActions
+) {
+    val spaces get() = prefs.identity.spaces
+
+    /** Whether a setting exists for this person right now. Faith is always available: it hides, but search finds it. */
+    fun available(entry: SettingEntry): Boolean = when (entry.needs) {
+        Needs.NOTHING, Needs.FAITH_SPACE -> true
+        Needs.WORK_SPACE -> com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in spaces
+        Needs.FEATURE_RECIPES -> BuildConfig.FEATURE_RECIPES
+        Needs.CRASH_REPORT -> crashPresent
+        Needs.DEBUG_BUILD -> BuildConfig.DEBUG
+    }
+
+    /** Whether to list a setting when browsing (not searching). */
+    fun listed(entry: SettingEntry): Boolean = available(entry) && (entry.needs != Needs.FAITH_SPACE || prefs.identity.showsFaith)
+}
+
 /**
- * Settings screen (Phase 15 §Part 2 / design `#6d`) — restyled onto the Ink/Accent flat-row
- * token system shared with AI Engine and the meeting detail screen. Visual pass only: every
- * existing row (Wi-Fi-only downloads, filler-word cleanup, transcript cleanup mode, speaker
- * detection strategy, privacy notice, clear-data) is kept, grouped exactly as before, in
- * `#6d`'s labelled-row-group pattern instead of Material3 cards. Adds a Profile section with the
- * user's own name (already collected at onboarding, but never editable afterward) — `#6d`'s
- * mockup doesn't show one, but there was nowhere else in the app to change it once set.
+ * Settings: a search field and eight groups. A group shows its few most-used rows first and the rest under
+ * Advanced. Every setting is in exactly one place ([SettingsRegistry]); nothing here is a Simple/Advanced mode.
+ *
+ * [startGroup] opens a group directly (a [SettingsGroup.key]); the route into this screen is unchanged.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -260,516 +397,121 @@ fun SettingsScreen(
     onOpenIntegrations: () -> Unit = {},
     onOpenRecipes: () -> Unit = {},
     onOpenCompanion: () -> Unit = {},
-    onReplayTour: () -> Unit = {}
+    onReplayTour: () -> Unit = {},
+    startGroup: String? = null
 ) {
     val context = LocalContext.current
     val prefs by viewModel.preferencesState.collectAsState()
     val geminiKeyDisplay by viewModel.geminiKeyDisplay.collectAsState()
     val work by viewModel.workSettings.collectAsState()
+    val devotional by viewModel.devotional.collectAsState()
+    val reminders by viewModel.reminders.collectAsState()
+    val circlesPush by viewModel.circlesPush.collectAsState()
+    var pageKey by rememberSaveable { mutableStateOf(startGroup?.let { "group:$it:" } ?: "hub") }
+    val page = parsePage(pageKey)
+    val go: (SettingsPage) -> Unit = { pageKey = it.encode() }
+    androidx.activity.compose.BackHandler(enabled = page != SettingsPage.Hub) { go(page.parent()) }
+
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showSpaces by remember { mutableStateOf(false) }
     var showCrashReport by remember { mutableStateOf(false) }
     var crashReport by remember { mutableStateOf(com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.pending(context)) }
     var showLook by remember { mutableStateOf(false) }
+    var showBibleVersions by remember { mutableStateOf(false) }
     val avatarPicker = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
     ) { uri -> if (uri != null) viewModel.setAvatar(uri) }
+    var calendarGranted by remember { mutableStateOf(com.craftflowtechnologies.meetingmind.core.calendar.CalendarEvents(context).hasPermission()) }
+    val calendarPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted -> calendarGranted = granted; if (granted) viewModel.setCalendar(true) }
+    val askNotifications = com.craftflowtechnologies.meetingmind.feature.circles2.rememberNotificationAsk()
+    // The translations licensed to this app, as the service reports them.
+    var bibleVersions by remember { mutableStateOf<List<com.craftflowtechnologies.meetingmind.core.scripture.BibleInfo>>(emptyList()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        bibleVersions = runCatching { com.craftflowtechnologies.meetingmind.core.scripture.ScriptureService.library(context).bibles() }.getOrDefault(emptyList())
+    }
+
+    val actions = SettingsActions(
+        onNavigateToModels, onOpenBible, onOpenSetup, onOpenDataBackup, onOpenAppearance, onOpenWork, onOpenIntegrations,
+        onOpenRecipes, onOpenCompanion, onReplayTour,
+        editName = { showEditNameDialog = true },
+        pickAvatar = { avatarPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+        showSpaces = { showSpaces = true },
+        showLook = { showLook = true },
+        showBibleVersions = { showBibleVersions = true },
+        showCrash = { showCrashReport = true },
+        askClearData = { showClearDataDialog = true },
+        setCalendar = { on ->
+            if (!on) viewModel.setCalendar(false)
+            else if (calendarGranted) viewModel.setCalendar(true)
+            else calendarPermission.launch(android.Manifest.permission.READ_CALENDAR)
+        },
+        setCirclesPush = { on -> if (on) askNotifications { viewModel.setCirclesPush(true) } else viewModel.setCirclesPush(false) },
+        open = go
+    )
+    val env = SettingsEnv(viewModel, prefs, work, devotional, reminders, circlesPush, geminiKeyDisplay, calendarGranted, bibleVersions, crashReport != null, actions)
+
     if (showSpaces) {
-        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showSpaces = false }, containerColor = SurfaceBase) {
-            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
-                Text("What's MeetingMind for you?", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                Text("Only these spaces show in Home, Notes and Record.", fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showSpaces = false }, containerColor = MM.colors.surfaceRaised) {
+            Column(Modifier.padding(horizontal = MM.space.l).padding(bottom = MM.space.xl)) {
+                Text("What's MeetingMind for you?", style = MM.type.title, color = MM.colors.ink)
+                Text("Only these spaces show in Home, Notes and Record.", style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(top = MM.space.xs, bottom = MM.space.m))
                 com.craftflowtechnologies.meetingmind.core.identity.SpacesPicker(prefs.identity.spaces) { viewModel.setSpaces(it) }
             }
         }
     }
     if (showLook) {
-        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showLook = false }, containerColor = SurfaceBase) {
-            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
-                Text("Look & feel", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(bottom = 14.dp))
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showLook = false }, containerColor = MM.colors.surfaceRaised) {
+            Column(Modifier.padding(horizontal = MM.space.l).padding(bottom = MM.space.xl)) {
+                Text("Look & feel", style = MM.type.title, color = MM.colors.ink, modifier = Modifier.padding(bottom = MM.space.m))
                 com.craftflowtechnologies.meetingmind.core.identity.LookPicker(prefs.identity.look) { viewModel.setLook(it) }
-                Text("Cards", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 20.dp, bottom = 10.dp))
+                Text("Cards", style = MM.type.heading, color = MM.colors.ink, modifier = Modifier.padding(top = MM.space.xl, bottom = MM.space.s))
                 com.craftflowtechnologies.meetingmind.core.identity.CardStyle.entries.forEach { style ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { viewModel.setCardStyle(style) }.padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        androidx.compose.material3.RadioButton(selected = prefs.identity.cardStyle == style, onClick = { viewModel.setCardStyle(style) })
-                        Column {
-                            Text(style.label, fontWeight = FontWeight.SemiBold, color = Ink)
-                            Text(style.description, fontSize = 12.5.sp, color = InkMuted)
-                        }
-                    }
+                    SettingsRadioRow(style.label, style.description, prefs.identity.cardStyle == style, { viewModel.setCardStyle(style) }, "settings_card_${style.name.lowercase()}")
                 }
             }
         }
     }
-    var showBibleVersions by remember { mutableStateOf(false) }
-    var calendarGranted by remember { mutableStateOf(com.craftflowtechnologies.meetingmind.core.calendar.CalendarEvents(context).hasPermission()) }
-    val calendarPermission = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { granted -> calendarGranted = granted; if (granted) viewModel.setCalendar(true) }
-    // The translations licensed to this app, as the service reports them.
-    var bibleVersions by remember { mutableStateOf<List<com.craftflowtechnologies.meetingmind.core.scripture.BibleInfo>>(emptyList()) }
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        bibleVersions = com.craftflowtechnologies.meetingmind.core.scripture.ScriptureService.library(context).bibles()
-    }
-
     if (showBibleVersions) {
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { showBibleVersions = false },
-            containerColor = SurfaceBase,
+            containerColor = MM.colors.surfaceRaised,
             title = { Text("Bible translation") },
             text = {
                 Column {
                     if (bibleVersions.isEmpty()) Text("Connect to the internet to see the translations available.")
                     bibleVersions.forEach { v ->
-                        Row(
-                            Modifier.fillMaxWidth().clickable { viewModel.setBibleVersion(v.id); showBibleVersions = false }.padding(vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            androidx.compose.material3.RadioButton(selected = v.id == prefs.bibleVersionId, onClick = { viewModel.setBibleVersion(v.id); showBibleVersions = false })
-                            Column {
-                                Text(v.abbreviation, fontWeight = FontWeight.SemiBold)
-                                Text(v.title, style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
+                        SettingsRadioRow(v.abbreviation, v.title, v.id == prefs.bibleVersionId, { viewModel.setBibleVersion(v.id); showBibleVersions = false }, "settings_bible_${v.id}")
                     }
                     Text(
-                        "More translations (NIV, KJV, ESV…) appear here once their licence is accepted for this app on platform.youversion.com.",
-                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp)
+                        "More translations appear here as they become available for this app.",
+                        style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(top = MM.space.s)
                     )
                 }
             },
-            confirmButton = { androidx.compose.material3.TextButton(onClick = { showBibleVersions = false }) { Text("Done") } }
+            confirmButton = { TextButton(onClick = { showBibleVersions = false }) { Text("Done") } }
         )
     }
 
     Scaffold(
-        containerColor = SurfaceBase,
+        containerColor = MM.colors.background,
         bottomBar = {
-            com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar(
+            if (page == SettingsPage.Hub) com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar(
                 current = com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination.SETTINGS,
                 onNavigate = onNavigateBottomNav,
                 showNewAction = true
             )
         }
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(bottom = 22.dp)
-        ) {
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(start = 22.dp, end = 22.dp, top = 18.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onNavigateBack, modifier = Modifier.testTag("settings_back_btn").size(34.dp)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = InkSecondary)
-                    }
-                }
-                Text(
-                    text = "Settings",
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = (-0.7).sp,
-                    color = Ink,
-                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 2.dp)
-                )
-            }
-
-            settingsSection(title = "Profile") {
-                settingsRow {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        com.craftflowtechnologies.meetingmind.core.identity.Avatar(prefs.identity, 56.dp, Modifier.testTag("settings_avatar")) {
-                            avatarPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        }
-                        Column(Modifier.weight(1f).padding(start = 14.dp)) {
-                            Text(prefs.userName?.takeIf { it.isNotBlank() } ?: "Add your name", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                            Text("Tap the photo to change it", fontSize = 12.5.sp, color = InkMuted)
-                        }
-                        if (prefs.identity.avatarPath != null) androidx.compose.material3.TextButton(onClick = { viewModel.removeAvatar() }) { Text("Remove", color = InkMuted) }
-                    }
-                }
-                settingsRow {
-                    SettingsNavRow(
-                        title = "What it's for",
-                        subtitle = prefs.identity.spaces.sortedBy { it.ordinal }.joinToString(" · ") { it.displayName },
-                        onClick = { showSpaces = true }
-                    )
-                }
-                if (com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in prefs.identity.spaces) settingsRow {
-                    SettingsNavRow(
-                        title = "Work",
-                        subtitle = listOfNotNull(work.profile.label, work.terms.organisation + " · " + work.terms.project, "on this phone only".takeIf { work.keepOnDevice }).joinToString(" · "),
-                        onClick = onOpenWork
-                    )
-                }
-                settingsRow {
-                    SettingsNavRow(title = "Look & feel", subtitle = prefs.identity.look.label + " — " + prefs.identity.look.description, onClick = { showLook = true })
-                }
-                settingsRow {
-                    SettingsValueRow(
-                        title = "Name",
-                        value = prefs.userName?.takeIf { it.isNotBlank() } ?: "Not set",
-                        subtitle = "Used to personalize your experience, like Ask AI addressing you by name.",
-                        onClick = { showEditNameDialog = true },
-                        modifier = Modifier.testTag("settings_name_row")
-                    )
-                }
-                settingsRow {
-                    SettingsNavRow(
-                        title = "Integrations",
-                        subtitle = "Calendar, storage, email & sharing",
-                        onClick = onOpenIntegrations
-                    )
-                }
-                if (com.craftflowtechnologies.meetingmind.BuildConfig.FEATURE_RECIPES) {
-                    settingsRow {
-                        SettingsNavRow(
-                            title = "Recipes & Automation",
-                            subtitle = "Post-meeting actions, tasks & review triggers",
-                            onClick = onOpenRecipes
-                        )
-                    }
-                }
-            }
-
-            settingsSection(title = "Calendar") {
-                settingsRow {
-                    SettingsSwitchRow(
-                        title = "Upcoming events on Home",
-                        subtitle = if (prefs.calendarEnabled && !calendarGranted) "Allow calendar access to show them — tap to ask again"
-                            else "Today's meetings and services from your phone's calendars, ready to record. Read only; nothing leaves the phone.",
-                        checked = prefs.calendarEnabled && calendarGranted,
-                        onCheckedChange = { on ->
-                            if (!on) viewModel.setCalendar(false)
-                            else if (calendarGranted) viewModel.setCalendar(true)
-                            else calendarPermission.launch(android.Manifest.permission.READ_CALENDAR)
-                        },
-                        testTag = "settings_calendar"
-                    )
-                }
-            }
-
-            settingsSection(title = "Bible & Faith") {
-                settingsRow {
-                    val version = bibleVersions.firstOrNull { it.id == prefs.bibleVersionId }
-                    SettingsNavRow(
-                        title = "Bible translation",
-                        subtitle = (version?.let { "${it.title} (${it.abbreviation})" } ?: com.craftflowtechnologies.meetingmind.core.scripture.BibleVersions.common.firstOrNull { it.id == prefs.bibleVersionId }?.let { "${it.title} (${it.abbreviation})" } ?: "Translation ${prefs.bibleVersionId}") +
-                            if (com.craftflowtechnologies.meetingmind.BuildConfig.YOUVERSION_APP_KEY.isBlank()) " · verse text isn't set up in this build" else " · from YouVersion",
-                        onClick = { showBibleVersions = true }
-                    )
-                }
-                settingsRow {
-                    SettingsNavRow(
-                        title = "Bible on this phone",
-                        subtitle = "Read and search offline — download an open translation from the Bible's translation menu",
-                        onClick = onOpenBible
-                    )
-                }
-                OriginalsPack.entries.forEach { pack ->
-                    settingsRow {
-                        com.craftflowtechnologies.meetingmind.feature.bible.OriginalsPackRow(pack) { title, subtitle, onClick -> SettingsNavRow(title = title, subtitle = subtitle, onClick = onClick) }
-                    }
-                }
-                settingsRow {
-                    SettingsSwitchRow(
-                        title = "Lock Faith notes",
-                        subtitle = "Prayers, reflections and the Faith space need your fingerprint, face or screen lock to open.",
-                        checked = prefs.faithLockEnabled,
-                        onCheckedChange = { viewModel.setFaithLock(it) },
-                        testTag = "settings_faith_lock"
-                    )
-                }
-            }
-
-            settingsSection(title = "Appearance") {
-                settingsRow {
-                    SettingsNavRow(
-                        title = "Look and home",
-                        subtitle = "Colour, text size, and Today or Focus as your home",
-                        onClick = onOpenAppearance
-                    )
-                }
-                settingsRow {
-                    val companion by com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings()
-                    val companionForm = companion.form
-                    SettingsNavRow(
-                        title = stringResource(R.string.companion_settings_title),
-                        subtitle = if (companionForm == null) stringResource(R.string.companion_settings_row_subtitle_none)
-                        else stringResource(
-                            R.string.companion_settings_row_subtitle,
-                            companion.name ?: stringResource(com.craftflowtechnologies.meetingmind.core.companion.CompanionRoster.displayName(companionForm)),
-                            stringResource(when (companion.presence) {
-                                com.craftflowtechnologies.meetingmind.core.companion.Presence.AROUND -> R.string.companion_presence_around
-                                com.craftflowtechnologies.meetingmind.core.companion.Presence.MOMENTS -> R.string.companion_presence_moments_long
-                                com.craftflowtechnologies.meetingmind.core.companion.Presence.OFF -> R.string.companion_presence_off
-                            })
-                        ),
-                        onClick = onOpenCompanion
-                    )
-                }
-                val current = runCatching { com.craftflowtechnologies.meetingmind.ui.theme.ThemeMode.valueOf(prefs.themeMode) }.getOrDefault(com.craftflowtechnologies.meetingmind.ui.theme.ThemeMode.DARK)
-                com.craftflowtechnologies.meetingmind.ui.theme.ThemeMode.entries.forEach { mode ->
-                    settingsRow {
-                        SettingsRadioRow(
-                            title = mode.label,
-                            subtitle = when (mode) {
-                                com.craftflowtechnologies.meetingmind.ui.theme.ThemeMode.DARK -> "Graphite: easy on the eyes, day and night"
-                                com.craftflowtechnologies.meetingmind.ui.theme.ThemeMode.LIGHT -> "Paper: warm and bright"
-                                com.craftflowtechnologies.meetingmind.ui.theme.ThemeMode.SYSTEM -> "Follows your phone's dark mode"
-                            },
-                            selected = current == mode,
-                            onClick = { viewModel.setThemeMode(mode) },
-                            testTag = "settings_theme_${mode.name.lowercase()}"
-                        )
-                    }
-                }
-                item {
-                    Text(
-                        "Home hero card display",
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = InkSecondary,
-                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp)
-                    )
-                }
-                val heroMode = prefs.homeHeroDisplayMode
-                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.entries.forEach { mode ->
-                    settingsRow {
-                        SettingsRadioRow(
-                            title = when (mode) {
-                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_SCRIPTURE -> "Daily scripture"
-                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_QUOTE -> "Daily quote"
-                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.STATS -> "Progress stats & streak"
-                            },
-                            subtitle = when (mode) {
-                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_SCRIPTURE -> "Display an inspiring scripture banner in the Home sky card"
-                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_QUOTE -> "Display a wisdom and faith quote in the Home sky card"
-                                com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.STATS -> "Display days streak and notes count"
-                            },
-                            selected = heroMode == mode,
-                            onClick = { viewModel.setHomeHeroDisplayMode(mode) },
-                            testTag = "settings_hero_${mode.name.lowercase()}"
-                        )
-                    }
-                }
-            }
-
-            settingsSection(title = "Share & Community") {
-                settingsRow {
-                    SettingsNavRow(
-                        title = "Share MeetingMind",
-                        subtitle = "Invite friends, colleagues, or study partners to try MeetingMind",
-                        onClick = {
-                            val sendIntent = android.content.Intent().apply {
-                                action = android.content.Intent.ACTION_SEND
-                                putExtra(android.content.Intent.EXTRA_TEXT, "Hey! I'm testing MeetingMind — the intelligent offline-first app for faith and work meetings. Check it out here: https://github.com/creativesites/MeetingMind/releases")
-                                type = "text/plain"
-                            }
-                            context.startActivity(android.content.Intent.createChooser(sendIntent, "Share MeetingMind"))
-                        }
-                    )
-                }
-            }
-
-            settingsSection(title = "Your data") {
-                settingsRow {
-                    SettingsNavRow(
-                        title = "Data & backup",
-                        subtitle = "Back up, restore, export everything as Markdown, and the Trash",
-                        onClick = onOpenDataBackup
-                    )
-                }
-                if (crashReport != null) {
-                    settingsRow {
-                        SettingsNavRow(
-                            title = "Last crash report",
-                            subtitle = "The app closed unexpectedly. Copy this and send it to whoever is fixing it",
-                            onClick = { showCrashReport = true }
-                        )
-                    }
-                }
-            }
-
-            settingsSection(title = "AI & Models") {
-                settingsRow {
-                    SettingsNavRow(
-                        title = "Setup guide",
-                        subtitle = "What the app needs to transcribe and summarise, and one tap to get it",
-                        onClick = onOpenSetup
-                    )
-                }
-                settingsRow {
-                    SettingsNavRow(
-                        title = "Show me around again",
-                        subtitle = "Replay the quick tour of Home",
-                        onClick = onReplayTour
-                    )
-                }
-                settingsRow {
-                    SettingsNavRow(
-                        title = "AI Engine",
-                        subtitle = "On-device models: download, pause, resume or remove",
-                        onClick = onNavigateToModels
-                    )
-                }
-                settingsRow {
-                    SettingsSwitchRow(
-                        title = "Download Models Over Wi-Fi Only",
-                        subtitle = "Off by default — model downloads use mobile data too, unless you turn this on.",
-                        checked = prefs.wifiOnlyDownload,
-                        onCheckedChange = { viewModel.toggleWifiOnly(it) },
-                        testTag = "settings_wifi_only_switch"
-                    )
-                }
-            }
-
-            settingsSection(title = "Transcripts") {
-                settingsRow {
-                    SettingsSwitchRow(
-                        title = "Tidy Up Filler Words",
-                        subtitle = "Hides \"uh\" and \"um\" when reading. Your transcript is always stored word-for-word, so turning this off brings them straight back.",
-                        checked = prefs.cleanFillerWords,
-                        onCheckedChange = { viewModel.toggleCleanFillerWords(it) },
-                        testTag = "settings_clean_filler_switch"
-                    )
-                }
-            }
-
-            settingsSection(title = "Transcript Cleanup") {
-                settingsRow {
-                    SettingsRadioRow(
-                        title = "Conservative",
-                        subtitle = "Light cleanup. Keeps your original wording.",
-                        selected = prefs.transcriptCleanupMode == com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode.CONSERVATIVE,
-                        onClick = { viewModel.setTranscriptCleanupMode(com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode.CONSERVATIVE) },
-                        testTag = "settings_cleanup_mode_conservative"
-                    )
-                }
-                settingsRow {
-                    SettingsRadioRow(
-                        title = "Moderate",
-                        subtitle = "Balances readability with your original wording.",
-                        selected = prefs.transcriptCleanupMode == com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode.MODERATE,
-                        onClick = { viewModel.setTranscriptCleanupMode(com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode.MODERATE) },
-                        testTag = "settings_cleanup_mode_moderate"
-                    )
-                }
-                settingsRow {
-                    SettingsRadioRow(
-                        title = "Aggressive",
-                        subtitle = "Creates the most polished transcript. May make larger wording changes.",
-                        selected = prefs.transcriptCleanupMode == com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode.AGGRESSIVE,
-                        onClick = { viewModel.setTranscriptCleanupMode(com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode.AGGRESSIVE) },
-                        testTag = "settings_cleanup_mode_aggressive"
-                    )
-                }
-            }
-
-            settingsSection(title = "Speaker Detection") {
-                settingsRow {
-                    SettingsRadioRow(
-                        title = "Automatic",
-                        subtitle = "MeetingMind chooses the best approach.",
-                        selected = prefs.diarizationStrategy == com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.AUTO,
-                        onClick = { viewModel.setDiarizationStrategy(com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.AUTO) },
-                        testTag = "settings_diarization_auto"
-                    )
-                }
-                settingsRow {
-                    SettingsRadioRow(
-                        title = "Deterministic",
-                        subtitle = "Uses the local speaker detection engine.",
-                        selected = prefs.diarizationStrategy == com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.DETERMINISTIC,
-                        onClick = { viewModel.setDiarizationStrategy(com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.DETERMINISTIC) },
-                        testTag = "settings_diarization_deterministic"
-                    )
-                }
-                settingsRow {
-                    SettingsRadioRow(
-                        title = "AI-assisted",
-                        subtitle = "Uses local AI to help resolve difficult speaker assignments.",
-                        selected = prefs.diarizationStrategy == com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.AI_ASSISTED,
-                        onClick = { viewModel.setDiarizationStrategy(com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.AI_ASSISTED) },
-                        testTag = "settings_diarization_ai_assisted"
-                    )
-                }
-            }
-
-            settingsSection(title = "Privacy") {
-                settingsRow { AppLockSettingRow(enabled = prefs.appLockEnabled) }
-                // #6d expresses this as one switch with a line of consequence, not a pair of
-                // radio buttons: "on-device only, yes or no" is the decision the user is actually
-                // making, and the hint says what turning it off means before they do it.
-                settingsRow {
-                    SettingsSwitchRow(
-                        title = "On-device only",
-                        subtitle = if (prefs.processingProfile.requiresNetwork) {
-                            "Off. Recordings are uploaded to Google's AI services for transcription and analysis; results are stored on this phone."
-                        } else {
-                            "On. Audio and transcripts never leave this phone — transcription, speakers, summaries and search all run on its own CPU."
-                        },
-                        checked = !prefs.processingProfile.requiresNetwork,
-                        onCheckedChange = { onDeviceOnly ->
-                            viewModel.setProcessingProfile(
-                                if (onDeviceOnly) com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.OFFLINE
-                                else com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET
-                            )
-                        },
-                        testTag = "settings_on_device_only"
-                    )
-                }
-                // Always offered: Pray with me and "New devotional → Gemini" use the key even when
-                // recordings stay on the phone.
-                item {
-                    GeminiApiKeyRow(
-                        redactedKey = geminiKeyDisplay,
-                        onSave = { viewModel.setGeminiApiKey(it) },
-                        onClear = { viewModel.clearGeminiApiKey() }
-                    )
-                }
-                if (geminiKeyDisplay != null) item {
-                    val check by viewModel.keyCheck.collectAsState()
-                    val checking by viewModel.checking.collectAsState()
-                    GeminiKeyCheck(check, checking, onCheck = { viewModel.checkGeminiKey() })
-                }
-                item { DeepSeekRow() }
-                item { GeminiLogRow() }
-                if (BuildConfig.DEBUG) item { AudioBenchmarkRow() }
-            }
-
-            settingsSection(title = "Storage") {
-                item {
-                    Text(
-                        text = "Clear all local data & audio",
-                        fontSize = 15.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Danger,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showClearDataDialog = true }
-                            .padding(horizontal = 22.dp, vertical = 12.dp)
-                    )
-                }
-            }
-
-            item {
-                Text(
-                    text = "MeetingMind ${BuildConfig.VERSION_NAME} · no account, no sync",
-                    fontSize = 12.5.sp,
-                    color = InkMuted,
-                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp).padding(horizontal = 22.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
+        Box(Modifier.fillMaxSize().padding(innerPadding)) {
+            when (page) {
+                SettingsPage.Hub -> SettingsHub(env, onNavigateBack)
+                is SettingsPage.Group -> SettingsGroupPage(page, env) { go(SettingsPage.Hub) }
+                is SettingsPage.Notifications -> SettingsNotificationsPage(page, env) { go(page.parent()) }
+                is SettingsPage.Devotional -> com.craftflowtechnologies.meetingmind.feature.devotional.DevotionalSettingsScreen(page.startPage) { go(page.parent()) }
+                SettingsPage.Reminders -> SettingsRemindersPage(env) { go(page.parent()) }
             }
         }
     }
@@ -783,9 +525,7 @@ fun SettingsScreen(
                 Column {
                     Text(
                         "Used to personalize your experience, like Ask AI addressing you by name. Stored only on this device.",
-                        fontSize = 13.sp,
-                        color = InkSecondary,
-                        modifier = Modifier.padding(bottom = 12.dp)
+                        style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(bottom = MM.space.m)
                     )
                     OutlinedTextField(
                         value = draftName,
@@ -798,19 +538,12 @@ fun SettingsScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = {
-                        viewModel.setUserName(draftName)
-                        showEditNameDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Ink),
+                    onClick = { viewModel.setUserName(draftName); showEditNameDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = MM.colors.ink),
                     modifier = Modifier.testTag("settings_name_save_btn")
-                ) {
-                    Text("Save", color = OnInk)
-                }
+                ) { Text("Save", color = MM.colors.onInk) }
             },
-            dismissButton = {
-                TextButton(onClick = { showEditNameDialog = false }) { Text("Cancel", color = InkSecondary) }
-            }
+            dismissButton = { TextButton(onClick = { showEditNameDialog = false }) { Text("Cancel", color = MM.colors.inkSecondary) } }
         )
     }
 
@@ -829,107 +562,449 @@ fun SettingsScreen(
     if (showClearDataDialog) {
         AlertDialog(
             onDismissRequest = { showClearDataDialog = false },
-            title = { Text("Delete All Data?") },
-            text = { Text("This will permanently delete all meeting audio recordings, transcripts, summaries, and action items from your device. This cannot be undone.") },
+            title = { Text("Delete all meetings and audio?") },
+            text = { Text("This permanently deletes every meeting on this phone: its audio recording, transcript, summary and action items. Your notes, tasks and Faith content are kept. This cannot be undone.") },
             confirmButton = {
                 Button(
                     onClick = {
                         showClearDataDialog = false
                         viewModel.clearAllData {
-                            Toast.makeText(context, "All local data cleared", Toast.LENGTH_SHORT).show()
-                            onNavigateBack()
+                            Toast.makeText(context, "All meetings and audio deleted", Toast.LENGTH_SHORT).show()
+                            go(SettingsPage.Hub)
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
-                ) {
-                    Text("Delete All", color = Color.White)
-                }
+                    colors = ButtonDefaults.buttonColors(containerColor = MM.colors.danger)
+                ) { Text("Delete all", color = MM.colors.onInk) }
             },
-            dismissButton = {
-                TextButton(onClick = { showClearDataDialog = false }) {
-                    Text("Cancel", color = InkSecondary)
+            dismissButton = { TextButton(onClick = { showClearDataDialog = false }) { Text("Cancel", color = MM.colors.inkSecondary) } }
+        )
+    }
+}
+
+// ───────────────────────────── Top level ─────────────────────────────
+
+@Composable
+private fun SettingsHub(env: SettingsEnv, onBack: () -> Unit) {
+    var query by rememberSaveable { mutableStateOf("") }
+    val hits = remember(query, env.spaces, env.crashPresent) { SettingsRegistry.search(query, env::available) }
+    LazyColumn(Modifier.fillMaxSize().testTag("settings_hub"), contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.s)) {
+        item {
+            ScreenHeader(
+                "Settings", Modifier.statusBarsPadding(),
+                leading = { IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back_btn")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MM.colors.inkSecondary) } }
+            )
+        }
+        item { SettingsSearchField(query) { query = it } }
+        if (query.isBlank()) {
+            item {
+                MMCard(contentPadding = MM.space.xs) {
+                    SettingsRegistry.groups.filter { it != SettingsGroup.FAITH || env.prefs.identity.showsFaith }.forEachIndexed { i, group ->
+                        if (i > 0) SettingsDivider()
+                        ListRow(
+                            title = group.title, subtitle = group.summary,
+                            modifier = Modifier.padding(horizontal = MM.space.m).testTag("settings_group_${group.key}"),
+                            trailing = { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MM.colors.inkMuted) },
+                            onClick = { env.actions.open(SettingsPage.Group(group)) }
+                        )
+                    }
                 }
             }
-        )
-    }
-}
-
-private fun androidx.compose.foundation.lazy.LazyListScope.settingsSection(
-    title: String,
-    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit
-) {
-    item {
-        Text(
-            text = title.uppercase(),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.6.sp,
-            color = InkMuted,
-            modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 26.dp, bottom = 8.dp)
-        )
-    }
-    content()
-    item { HorizontalDivider(color = LineSoft, modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 4.dp)) }
-}
-
-private fun androidx.compose.foundation.lazy.LazyListScope.settingsRow(content: @Composable () -> Unit) {
-    item {
-        Column {
-            content()
-            HorizontalDivider(color = com.craftflowtechnologies.meetingmind.ui.theme.LineFaint, modifier = Modifier.padding(start = 22.dp, end = 22.dp))
-        }
-    }
-}
-
-@Composable
-private fun SettingsNavRow(title: String, subtitle: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 22.dp, vertical = 13.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 15.5.sp, color = Ink)
-            Text(subtitle, fontSize = 12.5.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
-        }
-        Text("›", fontSize = 18.sp, color = InkFaint, modifier = Modifier.padding(start = 12.dp))
-    }
-}
-
-@Composable
-private fun SettingsValueRow(title: String, value: String, subtitle: String? = null, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 22.dp, vertical = 13.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 15.5.sp, color = Ink)
-            if (subtitle != null) {
-                Text(subtitle, fontSize = 12.5.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
+            item { VersionLine() }
+        } else if (hits.isEmpty()) {
+            item { Text("Nothing matches \"${query.trim()}\".", style = MM.type.body, color = MM.colors.inkSecondary, modifier = Modifier.padding(vertical = MM.space.l)) }
+        } else {
+            items(hits, key = { it.key }) { hit ->
+                ListRow(
+                    title = hit.title,
+                    subtitle = hit.group.title + if (hit.place == Place.NOTIFICATIONS) " › Notifications" else if (hit.advanced) " › Advanced" else "",
+                    modifier = Modifier.testTag("settings_hit_${hit.key}"),
+                    trailing = { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MM.colors.inkMuted) },
+                    onClick = {
+                        env.actions.open(if (hit.place == Place.NOTIFICATIONS) SettingsPage.Notifications(hit.id) else SettingsPage.Group(hit.group, hit.id))
+                    }
+                )
             }
         }
-        Text(value, fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 12.dp))
     }
 }
 
 @Composable
-private fun SettingsSwitchRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, testTag: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 13.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(title, fontSize = 15.5.sp, color = Ink)
-            Text(subtitle, fontSize = 12.5.sp, color = InkMuted, lineHeight = 18.sp, modifier = Modifier.padding(top = 2.dp))
+private fun SettingsSearchField(query: String, onChange: (String) -> Unit) {
+    InsetPanel(Modifier.padding(vertical = MM.space.m)) {
+        Row(Modifier.heightIn(min = MMSize.minTouch - MM.space.l), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Search, null, tint = MM.colors.inkMuted)
+            Box(Modifier.weight(1f).padding(horizontal = MM.space.s)) {
+                if (query.isEmpty()) Text("Search settings", style = MM.type.body, color = MM.colors.inkMuted)
+                androidx.compose.foundation.text.BasicTextField(
+                    value = query, onValueChange = onChange, singleLine = true,
+                    textStyle = MM.type.body.copy(color = MM.colors.ink),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(MM.colors.accent),
+                    modifier = Modifier.fillMaxWidth().testTag("settings_search")
+                )
+            }
+            if (query.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Rounded.Close, "Clear search", tint = MM.colors.inkMuted) }
         }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = Accent, checkedThumbColor = OnInk),
-            modifier = Modifier.testTag(testTag)
+    }
+}
+
+@Composable
+private fun VersionLine() {
+    Text(
+        "MeetingMind ${BuildConfig.VERSION_NAME}",
+        style = MM.type.caption, color = MM.colors.inkMuted,
+        modifier = Modifier.fillMaxWidth().padding(top = MM.space.xl),
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+    )
+}
+
+// ───────────────────────────── A group ─────────────────────────────
+
+@Composable
+private fun SettingsGroupPage(page: SettingsPage.Group, env: SettingsEnv, onBack: () -> Unit) {
+    val group = page.group
+    val rows = remember(group, env.spaces, env.crashPresent) { SettingsRegistry.inGroup(group).filter(env::listed) }
+    val primary = rows.filter { !it.advanced }
+    val advanced = rows.filter { it.advanced }
+    var expanded by rememberSaveable(group) { mutableStateOf(page.focus != null && advanced.any { it.id == page.focus }) }
+    var highlight by remember(page.focus) { mutableStateOf(page.focus) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(page.focus) {
+        val focus = page.focus ?: return@LaunchedEffect
+        val at = primary.indexOfFirst { it.id == focus }.takeIf { it >= 0 }?.let { it + 1 }
+            ?: advanced.indexOfFirst { it.id == focus }.takeIf { it >= 0 }?.let { 1 + primary.size + 1 + it }
+        if (at != null) listState.animateScrollToItem(at)
+        kotlinx.coroutines.delay(1_800)
+        highlight = null
+    }
+    LazyColumn(Modifier.fillMaxSize().testTag("settings_group_page"), state = listState, contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.s)) {
+        item {
+            ScreenHeader(
+                group.title, Modifier.statusBarsPadding(),
+                leading = { IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back_btn")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MM.colors.inkSecondary) } }
+            )
+        }
+        items(primary, key = { it.key }) { entry -> SettingBlock(entry, highlight == entry.id, env) }
+        if (advanced.isNotEmpty()) {
+            item(key = "advanced") { AdvancedToggle(expanded) { expanded = !expanded } }
+            if (expanded) items(advanced, key = { it.key }) { entry -> SettingBlock(entry, highlight == entry.id, env) }
+        }
+        if (group == SettingsGroup.ABOUT) item { VersionLine() }
+    }
+}
+
+@Composable
+private fun SettingBlock(entry: SettingEntry, highlighted: Boolean, env: SettingsEnv) {
+    val wash = if (highlighted) MM.colors.accentWash else androidx.compose.ui.graphics.Color.Transparent
+    Column(Modifier.fillMaxWidth().background(wash, MM.radius.small).testTag("setting_${entry.key}")) {
+        SettingBody(entry.id, env)
+        SettingsDivider()
+    }
+}
+
+/** Draws one setting. Exhaustive: adding a [SettingId] without drawing it fails to compile. */
+@Composable
+private fun SettingBody(id: SettingId, env: SettingsEnv) {
+    val vm = env.vm
+    val prefs = env.prefs
+    val a = env.actions
+    val context = LocalContext.current
+    when (id) {
+        SettingId.PROFILE -> Row(Modifier.fillMaxWidth().padding(vertical = MM.space.m), verticalAlignment = Alignment.CenterVertically) {
+            com.craftflowtechnologies.meetingmind.core.identity.Avatar(prefs.identity, 56.dp, Modifier.testTag("settings_avatar")) { a.pickAvatar() }
+            Column(Modifier.weight(1f).padding(start = MM.space.m).clickable(role = Role.Button, onClick = a.editName).testTag("settings_name_row")) {
+                Text(prefs.userName?.takeIf { it.isNotBlank() } ?: "Add your name", style = MM.type.heading, color = MM.colors.ink)
+                Text("Tap the photo to change it. Your name is used to greet you and in Ask AI.", style = MM.type.secondary, color = MM.colors.inkSecondary)
+            }
+            if (prefs.identity.avatarPath != null) TextAction("Remove", { vm.removeAvatar() })
+        }
+        SettingId.SPACES -> SettingsNavRow("What it's for", prefs.identity.spaces.sortedBy { it.ordinal }.joinToString(" · ") { it.displayName }, a.showSpaces)
+        SettingId.NOTIFICATIONS -> SettingsNavRow("Notifications", "Devotional, prayer, Circles, recording", { a.open(SettingsPage.Notifications()) })
+        SettingId.WORK -> SettingsNavRow(
+            "Work",
+            listOfNotNull(env.work.profile.label, env.work.terms.organisation + " · " + env.work.terms.project, "on this phone only".takeIf { env.work.keepOnDevice }).joinToString(" · "),
+            a.onOpenWork
         )
+        SettingId.INTEGRATIONS -> SettingsNavRow("Integrations", "Calendar, storage, email and sharing", a.onOpenIntegrations)
+
+        SettingId.TIDY_FILLER -> SettingsSwitchRow(
+            "Tidy up filler words",
+            "Hides \"uh\" and \"um\" when reading. The transcript is always stored word for word, so turning this off brings them straight back.",
+            prefs.cleanFillerWords, { vm.toggleCleanFillerWords(it) }, "settings_clean_filler_switch"
+        )
+        SettingId.TRANSCRIPT_CLEANUP -> SettingsChoiceBlock("Transcript cleanup") {
+            val mode = prefs.transcriptCleanupMode
+            com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode.entries.forEach { m ->
+                SettingsRadioRow(
+                    m.name.lowercase().replaceFirstChar { it.uppercase() },
+                    when (m) {
+                        com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode.CONSERVATIVE -> "Light cleanup. Keeps your original wording."
+                        com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode.MODERATE -> "Balances readability with your original wording."
+                        com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode.AGGRESSIVE -> "The most polished transcript. May change wording more."
+                    },
+                    mode == m, { vm.setTranscriptCleanupMode(m) }, "settings_cleanup_mode_${m.name.lowercase()}"
+                )
+            }
+        }
+        SettingId.SPEAKER_DETECTION -> SettingsChoiceBlock("Speaker detection") {
+            com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.entries.forEach { s ->
+                SettingsRadioRow(
+                    when (s) {
+                        com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.AUTO -> "Automatic"
+                        com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.DETERMINISTIC -> "Deterministic"
+                        com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.AI_ASSISTED -> "AI-assisted"
+                    },
+                    when (s) {
+                        com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.AUTO -> "MeetingMind chooses the best approach."
+                        com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.DETERMINISTIC -> "Uses the local speaker detection engine."
+                        com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.AI_ASSISTED -> "Uses local AI to help resolve difficult speaker assignments."
+                    },
+                    prefs.diarizationStrategy == s, { vm.setDiarizationStrategy(s) }, "settings_diarization_${s.name.lowercase()}"
+                )
+            }
+        }
+        SettingId.RECIPES -> SettingsNavRow("Recipes & automation", "Post-meeting actions, tasks and review triggers", a.onOpenRecipes)
+
+        SettingId.SETUP_GUIDE -> SettingsNavRow("Setup guide", "What the app needs to transcribe and summarise, and one tap to get it", a.onOpenSetup)
+        SettingId.AI_ENGINE -> SettingsNavRow("AI Engine", "On-device models: download, pause, resume or remove", a.onNavigateToModels)
+        SettingId.GEMINI_KEY -> GeminiApiKeyRow(env.geminiKeyDisplay, { vm.setGeminiApiKey(it) }, { vm.clearGeminiApiKey() })
+        SettingId.WIFI_ONLY -> SettingsSwitchRow(
+            "Download models over Wi-Fi only",
+            "Off by default, so model downloads may use mobile data. Turn this on on a limited plan.",
+            prefs.wifiOnlyDownload, { vm.toggleWifiOnly(it) }, "settings_wifi_only_switch"
+        )
+        SettingId.GEMINI_CHECK -> {
+            val check by vm.keyCheck.collectAsState()
+            val checking by vm.checking.collectAsState()
+            GeminiKeyCheck(check, checking, onCheck = { vm.checkGeminiKey() })
+        }
+        SettingId.DEEPSEEK -> DeepSeekRow()
+
+        SettingId.BIBLE_TRANSLATION -> {
+            val version = env.bibleVersions.firstOrNull { it.id == prefs.bibleVersionId }
+                ?.let { "${it.title} (${it.abbreviation})" }
+                ?: com.craftflowtechnologies.meetingmind.core.scripture.BibleVersions.common.firstOrNull { it.id == prefs.bibleVersionId }?.let { "${it.title} (${it.abbreviation})" }
+                ?: "Translation ${prefs.bibleVersionId}"
+            SettingsNavRow("Bible translation", version, a.showBibleVersions)
+        }
+        SettingId.BIBLE_OFFLINE -> SettingsNavRow("Bible on this phone", "Read and search offline. Download an open translation from the Bible's translation menu.", a.onOpenBible)
+        SettingId.DEVOTIONAL -> SettingsNavRow(
+            "Devotional time & style",
+            (if (env.devotional.enabled) "Every morning at %d:%02d".format(env.devotional.deliveryMinutes / 60, env.devotional.deliveryMinutes % 60) else "When you open it") +
+                " · " + env.devotional.tradition.label,
+            { a.open(SettingsPage.Devotional(null)) }
+        )
+        SettingId.PRAYER_REMINDERS -> SettingsNavRow("Prayer reminders", reminderSummary(env), { a.open(SettingsPage.Reminders) })
+        SettingId.ORIGINAL_PACKS -> Column {
+            OriginalsPack.entries.forEach { pack ->
+                com.craftflowtechnologies.meetingmind.feature.bible.OriginalsPackRow(pack) { title, subtitle, onClick -> SettingsNavRow(title, subtitle, onClick) }
+            }
+        }
+        SettingId.PERSONAL_TOUCH -> SettingsNavRow(
+            "Personal touch", env.devotional.personalTouch.let { "${it.label} · ${it.description}" },
+            { a.open(SettingsPage.Devotional("PERSONAL")) }
+        )
+        SettingId.FAITH_LOCK -> SettingsSwitchRow(
+            "Lock Faith notes",
+            "Prayers, reflections and the Faith space need your fingerprint, face or screen lock to open.",
+            prefs.faithLockEnabled, { vm.setFaithLock(it) }, "settings_faith_lock"
+        )
+
+        SettingId.LOOK_AND_HOME -> SettingsNavRow("Look and home", "Light or dark, colour, text size, and which home you see", a.onOpenAppearance)
+        SettingId.COMPANION -> {
+            val companion by com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings()
+            val form = companion.form
+            SettingsNavRow(
+                stringResource(R.string.companion_settings_title),
+                if (form == null) stringResource(R.string.companion_settings_row_subtitle_none)
+                else stringResource(
+                    R.string.companion_settings_row_subtitle,
+                    companion.name ?: stringResource(com.craftflowtechnologies.meetingmind.core.companion.CompanionRoster.displayName(form)),
+                    stringResource(when (companion.presence) {
+                        com.craftflowtechnologies.meetingmind.core.companion.Presence.AROUND -> R.string.companion_presence_around
+                        com.craftflowtechnologies.meetingmind.core.companion.Presence.MOMENTS -> R.string.companion_presence_moments_long
+                        com.craftflowtechnologies.meetingmind.core.companion.Presence.OFF -> R.string.companion_presence_off
+                    })
+                ),
+                a.onOpenCompanion
+            )
+        }
+        SettingId.HERO_MODE -> SettingsChoiceBlock("Home hero card") {
+            com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.entries.forEach { mode ->
+                SettingsRadioRow(
+                    when (mode) {
+                        com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_SCRIPTURE -> "Daily scripture"
+                        com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_QUOTE -> "Daily quote"
+                        com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.STATS -> "Progress stats & streak"
+                    },
+                    when (mode) {
+                        com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_SCRIPTURE -> "An inspiring scripture banner in the Home sky card"
+                        com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.DAILY_QUOTE -> "A wisdom and faith quote in the Home sky card"
+                        com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.STATS -> "Your streak and notes count"
+                    },
+                    prefs.homeHeroDisplayMode == mode, { vm.setHomeHeroDisplayMode(mode) }, "settings_hero_${mode.name.lowercase()}"
+                )
+            }
+        }
+        SettingId.LOOK_FEEL -> SettingsNavRow("Look & feel", prefs.identity.look.label + " — " + prefs.identity.look.description, a.showLook)
+        SettingId.CALENDAR_ON_HOME -> SettingsSwitchRow(
+            "Upcoming events on Home",
+            if (prefs.calendarEnabled && !env.calendarGranted) "Allow calendar access to show them. Tap to ask again."
+            else "Today's meetings and services from your phone's calendars, ready to record. Read only; nothing leaves the phone.",
+            prefs.calendarEnabled && env.calendarGranted, a.setCalendar, "settings_calendar"
+        )
+
+        SettingId.APP_LOCK -> AppLockSettingRow(enabled = prefs.appLockEnabled)
+        SettingId.ON_DEVICE_ONLY -> SettingsSwitchRow(
+            "On-device only",
+            if (prefs.processingProfile.requiresNetwork) "Off. Recordings are uploaded to Google's AI services for transcription and analysis; results are stored on this phone."
+            else "On. Audio and transcripts never leave this phone: transcription, speakers, summaries and search all run on its own processor.",
+            !prefs.processingProfile.requiresNetwork,
+            { onDeviceOnly ->
+                vm.setProcessingProfile(
+                    if (onDeviceOnly) com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.OFFLINE
+                    else com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET
+                )
+            },
+            "settings_on_device_only"
+        )
+
+        SettingId.DATA_BACKUP -> SettingsNavRow("Data & backup", "Back up, restore, export everything as Markdown, and the Trash", a.onOpenDataBackup)
+        SettingId.CLEAR_DATA -> SettingsInfoText(
+            "Delete all meetings & audio", "Removes every meeting, recording and transcript on this phone. Notes and tasks are kept.", danger = true, onClick = a.askClearData
+        )
+
+        SettingId.REPLAY_TOUR -> SettingsNavRow("Show me around again", "Replay the quick tour of Home", a.onReplayTour)
+        SettingId.SHARE_APP -> SettingsNavRow("Share MeetingMind", "Invite friends, colleagues or study partners to try it", {
+            val send = android.content.Intent().apply {
+                action = android.content.Intent.ACTION_SEND
+                putExtra(android.content.Intent.EXTRA_TEXT, "Hey! I'm testing MeetingMind — the intelligent offline-first app for faith and work meetings. Check it out here: https://github.com/creativesites/MeetingMind/releases")
+                type = "text/plain"
+            }
+            context.startActivity(android.content.Intent.createChooser(send, "Share MeetingMind"))
+        })
+        SettingId.CRASH_REPORT -> SettingsNavRow("Last crash report", "The app closed unexpectedly. You can copy the report to share it.", a.showCrash)
+        SettingId.DIAGNOSTIC_LOG -> GeminiLogRow()
+        SettingId.AUDIO_BENCHMARK -> if (BuildConfig.DEBUG) AudioBenchmarkRow()
+
+        // Notification toggles are drawn by the Notifications screen.
+        SettingId.NOTIF_DEVOTIONAL, SettingId.NOTIF_EXAMEN, SettingId.NOTIF_PRAYER_TIMES, SettingId.NOTIF_READING,
+        SettingId.NOTIF_EVENING_REFLECTION, SettingId.NOTIF_MEETING_PREP, SettingId.NOTIF_CIRCLES,
+        SettingId.NOTIF_WORK_MORNING, SettingId.NOTIF_WORK_PREP, SettingId.NOTIF_WORK_START, SettingId.NOTIF_WORK_WEEKLY,
+        SettingId.NOTIF_RECORDING, SettingId.NOTIF_DOWNLOADS -> NotificationToggle(id, env)
+    }
+}
+
+@Composable
+private fun SettingsInfoText(title: String, subtitle: String, danger: Boolean, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth().heightIn(min = MMSize.minTouch).clickable(role = Role.Button, onClick = onClick).padding(vertical = MM.space.m)) {
+        Text(title, style = MM.type.bodyStrong, color = if (danger) MM.colors.danger else MM.colors.ink)
+        Text(subtitle, style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(top = MM.space.xs))
+    }
+}
+
+private fun reminderSummary(env: SettingsEnv): String {
+    val r = env.reminders
+    val parts = listOfNotNull(
+        r.prayerTimes.sortedBy { it.ordinal }.joinToString(", ") { it.label.lowercase() }.takeIf { it.isNotBlank() }?.let { "Prayer: $it" },
+        "reading".takeIf { r.readingNudge }, "evening reflection".takeIf { r.eveningReflection }, "before meetings".takeIf { r.meetingPrep }
+    )
+    return parts.joinToString(" · ").ifBlank { "None on. Pick the gentle nudges you want." }
+}
+
+// ───────────────────────────── Notifications ─────────────────────────────
+
+@Composable
+private fun SettingsNotificationsPage(page: SettingsPage.Notifications, env: SettingsEnv, onBack: () -> Unit) {
+    val rows = remember(env.spaces) { SettingsRegistry.notifications().filter { env.listed(it) || it.id == page.focus } }
+    var highlight by remember(page.focus) { mutableStateOf(page.focus) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(page.focus) {
+        val focus = page.focus ?: return@LaunchedEffect
+        rows.indexOfFirst { it.id == focus }.takeIf { it >= 0 }?.let { listState.animateScrollToItem(it + 2) }
+        kotlinx.coroutines.delay(1_800)
+        highlight = null
+    }
+    LazyColumn(Modifier.fillMaxSize().testTag("settings_notifications"), state = listState, contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.s)) {
+        item {
+            ScreenHeader(
+                "Notifications", Modifier.statusBarsPadding(),
+                leading = { IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back_btn")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MM.colors.inkSecondary) } }
+            )
+        }
+        item { Text("Every kind of notification MeetingMind can send, and only the ones you turn on.", style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(bottom = MM.space.s)) }
+        items(rows, key = { it.key }) { entry -> SettingBlock(entry, highlight == entry.id, env) }
+    }
+}
+
+@Composable
+private fun NotificationToggle(id: SettingId, env: SettingsEnv) {
+    val vm = env.vm
+    val dev = env.devotional
+    val r = env.reminders
+    val w = env.work
+    val context = LocalContext.current
+    fun time(m: Int) = "%d:%02d".format(m / 60, m % 60)
+    when (id) {
+        SettingId.NOTIF_DEVOTIONAL -> SettingsSwitchRow(
+            "Daily devotional", if (dev.enabled) "A gentle notification every morning at ${time(dev.deliveryMinutes)}" else "Off. It's ready when you open it.",
+            dev.enabled, { vm.setDevotional(dev.copy(enabled = it)) }, "settings_notif_devotional"
+        )
+        SettingId.NOTIF_EXAMEN -> SettingsSwitchRow(
+            "Evening Examen", "In the evening, look back on the day with God.",
+            dev.eveningExamen, { vm.setDevotional(dev.copy(eveningExamen = it)) }, "settings_notif_examen"
+        )
+        SettingId.NOTIF_PRAYER_TIMES -> SettingsNavRow(
+            "Prayer times (Daily Office)",
+            r.prayerTimes.sortedBy { it.ordinal }.joinToString(" · ") { it.label }.ifBlank { "None chosen" } + ". Times and quiet hours are in Faith.",
+            { env.actions.open(SettingsPage.Reminders) }
+        )
+        SettingId.NOTIF_READING -> SettingsSwitchRow("Today's reading", "At 7 pm if you haven't read yet", r.readingNudge, { vm.setReminders(r.copy(readingNudge = it)) }, "settings_notif_reading")
+        SettingId.NOTIF_EVENING_REFLECTION -> SettingsSwitchRow("Evening reflection", "A moment at 9 pm to notice the day", r.eveningReflection, { vm.setReminders(r.copy(eveningReflection = it)) }, "settings_notif_reflection")
+        SettingId.NOTIF_MEETING_PREP -> SettingsSwitchRow("Before meetings", "A moment of prayer 15 minutes before calendar events", r.meetingPrep, { vm.setReminders(r.copy(meetingPrep = it)) }, "settings_notif_meeting_prep")
+        SettingId.NOTIF_CIRCLES -> SettingsSwitchRow("Circles", "Messages and activity from your circles. You can also mute one circle in its own settings.", env.circlesPush, env.actions.setCirclesPush, "settings_notif_circles")
+        SettingId.NOTIF_WORK_MORNING -> SettingsSwitchRow("Work morning briefing", "Your day ahead, on working days", w.notifyMorning, { vm.updateWork { s -> s.copy(notifyMorning = it) } }, "settings_notif_work_morning")
+        SettingId.NOTIF_WORK_PREP -> SettingsSwitchRow("Work meeting prep", "A short brief before each meeting", w.notifyPrep, { vm.updateWork { s -> s.copy(notifyPrep = it) } }, "settings_notif_work_prep")
+        SettingId.NOTIF_WORK_START -> SettingsSwitchRow("Starting now. Record?", "Asked when a meeting begins", w.notifyStartNow, { vm.updateWork { s -> s.copy(notifyStartNow = it) } }, "settings_notif_work_start")
+        SettingId.NOTIF_WORK_WEEKLY -> SettingsSwitchRow("Work weekly review", "A look back at the week", w.notifyWeekly, { vm.updateWork { s -> s.copy(notifyWeekly = it) } }, "settings_notif_work_weekly")
+        SettingId.NOTIF_RECORDING -> SettingsNavRow(
+            "Recording and processing", "Progress while a recording is transcribed and summarised. Sound and visibility are set in Android's settings.",
+            { openChannelSettings(context, com.craftflowtechnologies.meetingmind.core.notify.AppNotifications.CHANNEL_WORK) }
+        )
+        SettingId.NOTIF_DOWNLOADS -> SettingsNavRow(
+            "Model downloads", "Progress while an on-device model downloads. Sound and visibility are set in Android's settings.",
+            { openChannelSettings(context, com.craftflowtechnologies.meetingmind.core.notify.AppNotifications.CHANNEL_DOWNLOADS) }
+        )
+        else -> Unit
+    }
+}
+
+/** Android owns the switch for a foreground-service channel, so the row opens that channel's own settings. */
+private fun openChannelSettings(context: android.content.Context, channelId: String) {
+    val intent = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        android.content.Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, channelId)
+    } else {
+        android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}"))
+    }
+    runCatching { context.startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
+
+// ───────────────────────────── Prayer reminders ─────────────────────────────
+
+@Composable
+private fun SettingsRemindersPage(env: SettingsEnv, onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize().testTag("settings_reminders").verticalScroll(rememberScrollState()).padding(horizontal = MM.space.l, vertical = MM.space.s)) {
+        ScreenHeader(
+            "Prayer reminders", Modifier.statusBarsPadding(),
+            leading = { IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back_btn")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MM.colors.inkSecondary) } }
+        )
+        Text(
+            "Gentle nudges, only the ones you choose. Your daily devotional has its own time under Devotional time & style.",
+            style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(bottom = MM.space.s)
+        )
+        com.craftflowtechnologies.meetingmind.feature.faith.RemindersBody(env.reminders) { env.vm.setReminders(it) }
+        Spacer(Modifier.height(MM.space.xl))
     }
 }
 
@@ -999,26 +1074,6 @@ private fun AppLockSettingRow(enabled: Boolean) {
     }
 }
 
-@Composable
-private fun SettingsRadioRow(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit, testTag: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 22.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(title, fontSize = 15.5.sp, color = Ink)
-            Text(subtitle, fontSize = 12.5.sp, color = InkMuted, lineHeight = 18.sp, modifier = Modifier.padding(top = 2.dp))
-        }
-        RadioButton(
-            selected = selected,
-            onClick = onClick,
-            colors = RadioButtonDefaults.colors(selectedColor = Accent, unselectedColor = InkFaint),
-            modifier = Modifier.testTag(testTag)
-        )
-    }
-}
-
 /**
  * DeepSeek, the backup writer: when Gemini can't answer, AI text features use it. Shows this
  * month's usage against the allowance, takes a key for testing, and checks it works.
@@ -1035,7 +1090,7 @@ private fun DeepSeekRow() {
     var draft by remember { mutableStateOf("") }
     val builtIn = com.craftflowtechnologies.meetingmind.ai.cloud.DeepSeek.proxyUrl != null || com.craftflowtechnologies.meetingmind.ai.cloud.DeepSeek.systemKey != null
     androidx.compose.runtime.LaunchedEffect(key, status) { used = ds.usedThisMonth() }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("settings_deepseek")) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp).testTag("settings_deepseek")) {
         Text("Backup AI (DeepSeek)", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
         Text(
             when {
@@ -1095,7 +1150,7 @@ private fun AudioBenchmarkRow() {
                 }
                 running = false
             }
-        }.padding(horizontal = 16.dp, vertical = 14.dp).testTag("settings_audio_benchmark"),
+        }.padding(vertical = 14.dp).testTag("settings_audio_benchmark"),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
@@ -1120,12 +1175,12 @@ private fun GeminiLogRow() {
     val context = LocalContext.current
     var open by remember { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().clickable { com.craftflowtechnologies.meetingmind.ai.cloud.GeminiLog.attach(context); open = true }.padding(horizontal = 16.dp, vertical = 14.dp).testTag("settings_gemini_log"),
+        Modifier.fillMaxWidth().clickable { com.craftflowtechnologies.meetingmind.ai.cloud.GeminiLog.attach(context); open = true }.padding(vertical = 14.dp).testTag("settings_gemini_log"),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
             Text("Gemini log", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text("What happened on each request, with Gemini's own errors. Copy it and send it to the developer.", fontSize = 12.5.sp, color = InkMuted)
+            Text("What happened on each request, with Gemini's own errors. Copy it to share when you report a problem.", fontSize = 12.5.sp, color = InkMuted)
         }
     }
     if (open) {
@@ -1167,7 +1222,7 @@ private fun GeminiLogRow() {
 /** "Check Gemini key": tests writing and live voice with the saved key, and says what works. */
 @Composable
 private fun GeminiKeyCheck(result: List<Pair<String, String?>>?, checking: Boolean, onCheck: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).testTag("settings_gemini_check")) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp).testTag("settings_gemini_check")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Check Gemini key", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
             if (checking) androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -1209,13 +1264,13 @@ private fun GeminiApiKeyRow(
     var editing by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
         Text(text = "Gemini API key", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = Ink)
         Text(
             text = if (redactedKey != null) {
                 "Saved on this device: $redactedKey"
             } else {
-                "Internet mode needs your own Gemini API key. It is stored on this device only — never in the app or its source."
+                "Internet mode needs a Gemini API key. It stays on this phone and is never part of the app."
             },
             fontSize = 12.5.sp,
             color = InkSecondary,

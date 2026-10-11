@@ -354,29 +354,41 @@ fun RemindersSheet(vm: FaithExtrasViewModel, onDismiss: () -> Unit) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).navigationBarsPadding()) {
             Text("Reminders", fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
             Text("Gentle nudges, only the ones you choose. Your daily devotional has its own setting on its page.", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
-            Text("Prayer times (Daily Office)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(top = 8.dp, bottom = 6.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PrayerTime.entries.forEach { t ->
-                    val on = t in s.prayerTimes
-                    Surface(onClick = { s = s.copy(prayerTimes = if (on) s.prayerTimes - t else s.prayerTimes + t) }, shape = RoundedCornerShape(50), color = if (on) Gold.copy(alpha = 0.14f) else OnInk, border = BorderStroke(1.dp, if (on) Gold else Line)) {
-                        Text("${t.label} · %d:%02d".format(t.defaultMinutes / 60, t.defaultMinutes % 60), fontSize = 13.sp, color = if (on) FaithGoldInk else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
-                    }
-                }
-            }
-            Toggle("Today's reading", "At 7 pm if you haven't read yet", s.readingNudge) { s = s.copy(readingNudge = it) }
-            Toggle("Evening reflection", "A moment at 9 pm to notice the day", s.eveningReflection) { s = s.copy(eveningReflection = it) }
-            Toggle("Before meetings", "15 minutes before calendar events", s.meetingPrep) { s = s.copy(meetingPrep = it) }
-            Text("Quiet hours: %d:%02d – %d:%02d".format(s.quietStart / 60, s.quietStart % 60, s.quietEnd / 60, s.quietEnd % 60), fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 14.dp))
-            Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(21 * 60 to 7 * 60, 22 * 60 to 7 * 60, 23 * 60 to 6 * 60).forEach { (a, b) ->
-                    val on = s.quietStart == a && s.quietEnd == b
-                    Surface(onClick = { s = s.copy(quietStart = a, quietEnd = b) }, shape = RoundedCornerShape(50), color = if (on) Ink else SurfaceBase, border = BorderStroke(1.dp, if (on) Ink else Line)) {
-                        Text("${a / 60}:00–${b / 60}:00", fontSize = 13.sp, color = if (on) OnInk else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
-                    }
-                }
-            }
+            RemindersBody(s) { s = it }
             Surface(onClick = { vm.setReminders(s); onDismiss() }, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.padding(top = 10.dp, bottom = 24.dp)) {
                 Text("Save", color = OnInk, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 22.dp, vertical = 11.dp))
+            }
+        }
+    }
+}
+
+/**
+ * The reminder controls themselves: prayer times, the three nudges, quiet hours. Shared by the sheet on the prayer
+ * list and by the Faith group in Settings, so there is one set of controls for one set of preferences.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun RemindersBody(s: ReminderSettings, onChange: (ReminderSettings) -> Unit) {
+    Column {
+        Text("Prayer times (Daily Office)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(top = 8.dp, bottom = 6.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PrayerTime.entries.forEach { t ->
+                val on = t in s.prayerTimes
+                Surface(onClick = { onChange(s.copy(prayerTimes = if (on) s.prayerTimes - t else s.prayerTimes + t)) }, shape = RoundedCornerShape(50), color = if (on) Gold.copy(alpha = 0.14f) else OnInk, border = BorderStroke(1.dp, if (on) Gold else Line)) {
+                    Text("${t.label} · %d:%02d".format(t.defaultMinutes / 60, t.defaultMinutes % 60), fontSize = 13.sp, color = if (on) FaithGoldInk else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                }
+            }
+        }
+        Toggle("Today's reading", "At 7 pm if you haven't read yet", s.readingNudge) { onChange(s.copy(readingNudge = it)) }
+        Toggle("Evening reflection", "A moment at 9 pm to notice the day", s.eveningReflection) { onChange(s.copy(eveningReflection = it)) }
+        Toggle("Before meetings", "15 minutes before calendar events", s.meetingPrep) { onChange(s.copy(meetingPrep = it)) }
+        Text("Quiet hours: %d:%02d – %d:%02d".format(s.quietStart / 60, s.quietStart % 60, s.quietEnd / 60, s.quietEnd % 60), fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 14.dp))
+        Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(21 * 60 to 7 * 60, 22 * 60 to 7 * 60, 23 * 60 to 6 * 60).forEach { (a, b) ->
+                val on = s.quietStart == a && s.quietEnd == b
+                Surface(onClick = { onChange(s.copy(quietStart = a, quietEnd = b)) }, shape = RoundedCornerShape(50), color = if (on) Ink else SurfaceBase, border = BorderStroke(1.dp, if (on) Ink else Line)) {
+                    Text("${a / 60}:00–${b / 60}:00", fontSize = 13.sp, color = if (on) OnInk else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                }
             }
         }
     }
