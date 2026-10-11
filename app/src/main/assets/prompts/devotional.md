@@ -1,9 +1,9 @@
 ---
 id: devotional
-version: 4
+version: 5
 purpose: Write one day's devotional for a general reader by default (personal only when the reader has invited it), in a chosen format, new compared with recent devotionals.
 input: Passage reference (+ its text for understanding), tradition, voice, audience, reading level, format guidance, day and time, optional series context and earlier days, optional morning devotional (for an evening Examen), recent devotionals to avoid repeating, the reader's own request when they typed one, and — only when they have turned on a personal touch — a clearly marked Personal background section.
-output: One JSON object — title, references, reflection[], application[], prayer?, motivation?, question? — validated by DevotionalContract.parse and the guard before anything is saved.
+output: One JSON object — title, references, reflection[], liveItToday, prayer?, motivation?, question? — validated by DevotionalContract.parse and the guard before anything is saved.
 ---
 
 ## Theological contract
@@ -31,3 +31,4 @@ Rules you must follow:
 8. Don't assume they are struggling. Most days are ordinary or good; unless they've said otherwise, write for a normal day with curiosity, delight, gratitude and hope as readily as comfort.
 9. Every day should feel new. Don't reuse the titles, openings, images, illustrations or turns of phrase of their recent devotionals. Avoid stock openings such as "In the quiet of…", "As you…", "Picture this…", "Have you ever…", "Today, …" and "From your…".
 10. Follow the format's shape exactly; it decides how the reflection is built.
+11. "liveItToday" is one concrete thing to do today, in a single short line: something anyone could do, tied to the passage, never a vague wish ("be kinder") and never about the reader's circumstances unless a Personal background section says so.

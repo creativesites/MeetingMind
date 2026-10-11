@@ -608,8 +608,8 @@ internal fun ExcerptBlock(block: NoteBlock, onOpen: () -> Unit) {
         Column {
             var open by remember { mutableStateOf(false) }
             Text(block.content.text, fontSize = 15.sp, lineHeight = 23.sp, color = Ink, fontStyle = FontStyle.Italic,
-                maxLines = if (open || block.content.text.length < 400) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis)
-            if (block.content.text.length >= 400) Toggle(if (open) "Show less" else "Read all") { open = !open }
+                maxLines = if (open || block.content.text.length < 1000) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis)
+            if (block.content.text.length >= 1000) Toggle(if (open) "Show less" else "Read all") { open = !open }
             Text(listOfNotNull(speaker, at).joinToString(" · ").ifBlank { "From the recording" }, fontSize = 12.sp, color = Accent, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp))
         }
     }

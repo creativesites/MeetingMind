@@ -252,3 +252,31 @@ test("reportMessage: members only, idempotent, reporter unattributed", async () 
   assert.equal((await W.err("owner", "reportMessage", { circleId: id, messageId: "nope" })).code, "not_found");
   assert.equal((await W.err("stranger", "reportMessage", { circleId: id, messageId: "mm1" })).code, "not_a_member");
 });
+
+test("commentAsAuthor: hidden author comments without authorUid; others and named posts refused", async () => {
+  const W = world();
+  const id = await circle(W);
+  await joinAs(W, "ann", id, "Ann");
+  await joinAs(W, "bob", id, "Bob");
+  const { postId } = await W.call("ann", "createPost", { circleId: id, type: "prayer", body: "Please pray", anonymous: true });
+  await W.call("owner", "approvePost", { circleId: id, postId });
+  const r = await W.call("ann", "commentAsAuthor", { circleId: id, postId, body: "Thank you all" });
+  const c = W.db.dump(`circles/${id}/posts/${postId}/comments/${r.commentId}`);
+  assert.equal(c.body, "Thank you all");
+  assert.equal(c.author, true);
+  assert.ok(!("authorUid" in c));
+  assert.doesNotMatch(JSON.stringify(c), /"ann"|Ann/);
+  // reply to a top-level comment is allowed; reply to a reply is not
+  const r2 = await W.call("ann", "commentAsAuthor", { circleId: id, postId, body: "reply", parentId: r.commentId });
+  assert.equal(W.db.dump(`circles/${id}/posts/${postId}/comments/${r2.commentId}`).parentId, r.commentId);
+  assert.equal((await W.err("ann", "commentAsAuthor", { circleId: id, postId, body: "x", parentId: r2.commentId })).code, "not_found");
+  // others (even admins) cannot use it; non-members neither
+  assert.equal((await W.err("bob", "commentAsAuthor", { circleId: id, postId, body: "x" })).code, "forbidden");
+  assert.equal((await W.err("owner", "commentAsAuthor", { circleId: id, postId, body: "x" })).code, "forbidden");
+  assert.equal((await W.err("eve", "commentAsAuthor", { circleId: id, postId, body: "x" })).code, "not_a_member");
+  // empty body rejected
+  assert.equal((await W.err("ann", "commentAsAuthor", { circleId: id, postId, body: "  " })).code, "bad_request");
+  // a named post is refused: use the normal comment path
+  const named = await W.call("bob", "createPost", { circleId: id, type: "testimony", body: "Hi", anonymous: false });
+  assert.equal((await W.err("bob", "commentAsAuthor", { circleId: id, postId: named.postId, body: "x" })).code, "bad_request");
+});

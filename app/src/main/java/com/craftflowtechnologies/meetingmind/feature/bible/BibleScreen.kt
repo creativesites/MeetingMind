@@ -44,6 +44,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.NoteAdd
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -69,6 +70,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -127,8 +129,8 @@ private enum class Page { READ, BOOKS, SEARCH }
  * The Bible: read any chapter in any available translation, search it, and take verses into notes.
  *
  * [onInsert] turns on "pick" mode (opened from a note): the main action inserts the selected
- * verses into that note. Without it, the main action starts a new devotional from them
- * ([onStartNote]).
+ * verses into that note. Without it, the main action is "Guide me" ([onGuide]): a guided
+ * session on the selection (ONE_PLACE §3.4). [onOpenNote] opens one of "Your notes on this passage".
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -137,7 +139,8 @@ fun BibleScreen(
     initialReference: ScriptureReference? = null,
     onNavigateBack: () -> Unit,
     onInsert: ((ScriptureReference, Int) -> Unit)? = null,
-    onStartNote: ((ScriptureReference) -> Unit)? = null,
+    onGuide: ((ScriptureReference) -> Unit)? = null,
+    onOpenNote: ((String) -> Unit)? = null,
     startInSearch: Boolean = false
 ) {
     val context = LocalContext.current
@@ -189,7 +192,7 @@ fun BibleScreen(
 
         Box(Modifier.weight(1f)) {
             when (page) {
-                Page.READ -> Reader(viewModel, content, selection)
+                Page.READ -> Reader(viewModel, content, selection, onOpenNote)
                 Page.BOOKS -> BookPicker(current, book, onPick = { b, c -> viewModel.open(b, c); page = Page.READ })
                 Page.SEARCH -> SearchPage(viewModel, download, onOpen = { ref ->
                     viewModel.open(ref.book, ref.chapter, ref.verseStart, ref.verseEnd); page = Page.READ
@@ -203,10 +206,11 @@ fun BibleScreen(
             val ready = content as? ChapterState.Ready
             SelectionBar(
                 reference = ref,
-                insertLabel = if (onInsert != null) "Insert into note" else "Study this",
+                insertLabel = if (onInsert != null) "Insert into note" else "Guide me",
+                insertIcon = if (onInsert != null) Icons.AutoMirrored.Filled.NoteAdd else Icons.Filled.AutoStories,
                 onPrimary = {
                     val id = current?.id ?: return@SelectionBar
-                    if (onInsert != null) onInsert(ref, id) else onStartNote?.invoke(ref)
+                    if (onInsert != null) onInsert(ref, id) else onGuide?.invoke(ref)
                     viewModel.clearSelection()
                 },
                 onSave = { collectionFor = ref },
@@ -284,12 +288,13 @@ private fun quote(content: ChapterContent, ref: ScriptureReference): String =
     "“${content.text(ref.verseStart, ref.verseEnd)}”\n— ${ref.display()} (${content.abbreviation})"
 
 @Composable
-private fun Reader(viewModel: BibleViewModel, content: ChapterState, selection: IntRange?) {
+private fun Reader(viewModel: BibleViewModel, content: ChapterState, selection: IntRange?, onOpenNote: ((String) -> Unit)? = null) {
     val focus by viewModel.focus.collectAsState()
     val extras by viewModel.extras.collectAsState()
     val reading by viewModel.readingVerse.collectAsState()
     val playing by viewModel.audioPlaying.collectAsState()
     val narrator by viewModel.narrator.collectAsState()
+    val notesHere by viewModel.notesHere.collectAsState()
     when (content) {
         ChapterState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(26.dp))
@@ -314,6 +319,12 @@ private fun Reader(viewModel: BibleViewModel, content: ChapterState, selection: 
                 val index = paragraphs.indexOfFirst { p -> p.any { it.number == v } }
                 if (index >= 0 && listState.layoutInfo.visibleItemsInfo.none { it.index == index + 1 }) listState.animateScrollToItem(index + 1)
             }
+            // Remember the verse at the top, so Continue can reopen exactly here.
+            LaunchedEffect(listState, paragraphs) {
+                snapshotFlow { listState.firstVisibleItemIndex }.collect { i ->
+                    paragraphs.getOrNull((i - 1).coerceAtLeast(0))?.firstOrNull()?.let { viewModel.rememberVerse(it.number) }
+                }
+            }
             LazyColumn(state = listState, contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 24.dp), modifier = Modifier.fillMaxSize().testTag("bible_reader")) {
                 item {
                     Text(
@@ -321,6 +332,7 @@ private fun Reader(viewModel: BibleViewModel, content: ChapterState, selection: 
                         color = Ink, modifier = Modifier.padding(top = 10.dp, bottom = 12.dp)
                     )
                     if (extras.audio.isNotEmpty()) ListenRow(extras.audio, narrator, playing, onListen = { viewModel.listen() }, onNarrator = viewModel::chooseNarrator)
+                    if (notesHere.isNotEmpty() && onOpenNote != null) NotesHere(notesHere, onOpenNote)
                 }
                 items(paragraphs) { verses ->
                     headingAt[verses.first().number]?.let { h ->
@@ -345,6 +357,28 @@ private fun Reader(viewModel: BibleViewModel, content: ChapterState, selection: 
                     }
                 }
             }
+        }
+    }
+}
+
+/** "Your notes on this passage": a quiet dot and count that opens the list. Nothing renders when there are none. */
+@Composable
+private fun NotesHere(notes: List<com.craftflowtechnologies.meetingmind.core.faith.LinkedNote>, onOpen: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(bottom = 14.dp).testTag("notes_here")) {
+        Row(
+            Modifier.clip(RoundedCornerShape(50)).clickable { open = !open }.padding(vertical = 8.dp, horizontal = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(Accent))
+            Spacer(Modifier.width(8.dp))
+            Text("Your notes on this passage · ${notes.size}", color = InkSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        }
+        if (open) notes.forEach { n ->
+            Text(
+                n.title, color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().clickable { onOpen(n.noteId) }.padding(vertical = 10.dp, horizontal = 16.dp)
+            )
         }
     }
 }
@@ -405,6 +439,7 @@ private fun paragraphText(verses: List<ChapterVerse>, selection: IntRange?, high
 private fun SelectionBar(
     reference: ScriptureReference,
     insertLabel: String,
+    insertIcon: androidx.compose.ui.graphics.vector.ImageVector,
     onPrimary: () -> Unit,
     onSave: () -> Unit,
     onCopy: () -> Unit,
@@ -430,7 +465,7 @@ private fun SelectionBar(
                 }
                 Spacer(Modifier.weight(1f))
                 Surface(onClick = onStudy, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("bible_study")) {
-                    Text("Study", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                    Text("Explain", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
                 }
                 onListenHere?.let { go ->
                     Surface(onClick = go, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line)) {
@@ -441,7 +476,7 @@ private fun SelectionBar(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Surface(onClick = onPrimary, shape = RoundedCornerShape(12.dp), color = Ink, modifier = Modifier.weight(1.6f).testTag("bible_insert")) {
                     Row(Modifier.padding(vertical = 11.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = null, tint = OnInk, modifier = Modifier.size(18.dp))
+                        Icon(insertIcon, contentDescription = null, tint = OnInk, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(insertLabel, color = OnInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     }
@@ -717,7 +752,7 @@ private fun ListenRow(audio: List<com.craftflowtechnologies.meetingmind.core.scr
 /** A verse's cross-references (Open Bible, CC BY) and what the classic commentators say. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StudySheet(state: StudyState, onCommentary: (String) -> Unit, onOpen: (ScriptureReference) -> Unit, onDismiss: () -> Unit) {
+internal fun StudySheet(state: StudyState, onCommentary: (String) -> Unit, onOpen: (ScriptureReference) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceBase) {
         LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding().testTag("study_sheet"), contentPadding = PaddingValues(horizontal = 22.dp, vertical = 4.dp)) {
             item {

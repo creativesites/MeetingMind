@@ -735,6 +735,12 @@ class MeetingProcessingPipeline(
                     }
                 }.onFailure { Log.w(PERF_TAG, "Faith notes skipped: ${it.message}") }
             }
+            // Highlights, typed notes, scripture and prayer points marked while recording (R-1).
+            runCatching {
+                com.craftflowtechnologies.meetingmind.core.work.MarkerNote.apply(context, database, meetingId, diarizedSegments.map {
+                    com.craftflowtechnologies.meetingmind.core.work.Marks.Segment(it.id, it.startMs, it.endMs, it.speakerId, it.cleanedText ?: it.text)
+                })
+            }.onFailure { Log.w(PERF_TAG, "Marker notes skipped: ${it.message}") }
 
             val updatedMeeting = existingMeeting.copy(
                 title = generatedTitle,
@@ -1090,10 +1096,14 @@ class MeetingProcessingPipeline(
         }
         if (unavailableReason != null) Log.w(PERF_TAG, "Sermon notes unavailable: $unavailableReason")
         val generated = com.craftflowtechnologies.meetingmind.ai.faith.SermonNoteBuilder.build(
-            noteId, meetingId, segments, extraction, detections, unavailableReason = unavailableReason
+            noteId, meetingId, segments, extraction, detections, unavailableReason = unavailableReason,
+            spoken = if (isSermon) spoken else emptyList(),
+            speakers = if (isSermon) database.speakerDao().getSpeakersForMeetingDirect(meetingId).map {
+                com.craftflowtechnologies.meetingmind.core.model.Speaker(it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence)
+            } else emptyList()
         )
         com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database)
-            .applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys)
+            .applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys, generated.endKeys)
     }
 
     private suspend fun resolveSpeakerMerges(

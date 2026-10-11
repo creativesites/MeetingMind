@@ -64,10 +64,15 @@ class TodayScreenTest {
         }
     }
 
-    /** The view chips are a LazyRow: with Inter's wider glyphs the later ones start off-screen. */
+    /**
+     * The view chips are a LazyRow: with Inter's wider glyphs the later ones start off-screen. The row is found by its own
+     * tag. (It used to be found by "has a view_day descendant", but once the row has scrolled past the first chip that
+     * chip is no longer composed, so the row could not be found and the next scroll failed.)
+     */
     private fun scrollToView(tag: String) {
-        compose.onNode(androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange) and androidx.compose.ui.test.hasScrollToNodeAction() and androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasTestTag("view_day")))
-            .performScrollToNode(androidx.compose.ui.test.hasTestTag(tag))
+        // The chips sit part-way down a lazy page and are not composed until it has scrolled to them.
+        compose.onNodeWithTag("today_list").performScrollToNode(androidx.compose.ui.test.hasTestTag("view_chips"))
+        compose.onNodeWithTag("view_chips").performScrollToNode(androidx.compose.ui.test.hasTestTag(tag))
     }
 
     @Test

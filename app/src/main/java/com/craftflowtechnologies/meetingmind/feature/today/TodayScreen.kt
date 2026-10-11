@@ -235,7 +235,7 @@ fun TodayScreen(
             )
         }
     ) { padding ->
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 28.dp)) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).testTag("today_list"), contentPadding = PaddingValues(bottom = 28.dp)) {
             item(key = "hero") {
                 val devData = devotional?.devotional
                 val scripture = devData?.scripture?.firstOrNull()
@@ -367,7 +367,7 @@ fun TodayScreen(
                         IconButton(onClick = { viewModel.shift(1) }) { Icon(Icons.Filled.ChevronRight, contentDescription = "Later", tint = InkNavy) }
                         IconButton(onClick = { showLayers = true }, modifier = Modifier.testTag("today_layers")) { Icon(Icons.Filled.Layers, contentDescription = "What shows", tint = InkNavy) }
                     }
-                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag("view_chips")) {
                         items(CalendarView.entries) { v ->
                             val on = v == view
                             Surface(onClick = { viewModel.setView(v) }, shape = CircleShape, color = if (on) InkNavy else SurfaceBase, border = if (on) null else BorderStroke(1.dp, Hairline),

@@ -24,7 +24,9 @@ class CirclesRepository(
     val data: CirclesData,
     val auth: CirclesAuth,
     val store: LocalCircleStore,
-    val clock: () -> Long = System::currentTimeMillis
+    val clock: () -> Long = System::currentTimeMillis,
+    /** Keeps this phone's push token registered with the Worker. Null in tests that don't care. */
+    val push: PushRegistrar? = null
 ) {
     val isConfigured: Boolean get() = api.isConfigured
 
@@ -45,6 +47,8 @@ class CirclesRepository(
             is CirclesResult.Ok -> { r.value.forEach(store::addCircle); ids.value = store.circleIds(); note.value = null }
             is CirclesResult.Err -> note.value = r.failure.takeIf { it.kind != FailureKind.NotConnected }
         }
+        // Opening Circles (or already being in one) is when pushes become useful.
+        push?.activate()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -96,17 +100,55 @@ class CirclesRepository(
         return r
     }
 
-    private fun remember(circleId: String) { store.addCircle(circleId); ids.value = store.circleIds() }
+    private suspend fun remember(circleId: String) {
+        store.addCircle(circleId); ids.value = store.circleIds()
+        push?.activate()
+    }
+
+    /** True when this is the person's first circle: the moment to ask for notification permission, in context. */
+    fun isFirstCircle(): Boolean = store.circleIds().size == 1
 
     suspend fun leave(circleId: String): CirclesResult<Unit> {
         val r = api.leave(circleId)
-        if (r is CirclesResult.Ok) { store.removeCircle(circleId); ids.value = store.circleIds() }
+        if (r is CirclesResult.Ok) {
+            store.removeCircle(circleId); ids.value = store.circleIds()
+            if (store.circleIds().isEmpty()) push?.deactivate()
+        }
         return r
+    }
+
+    /** After the account changed (switched to an existing Google account): its circles replace the local list. */
+    suspend fun onAccountSwitched() {
+        store.circleIds().forEach(store::removeCircle)
+        ids.value = store.circleIds()
+        push?.onAccountChanged()
+        refresh()
     }
 
     suspend fun createPost(req: CreatePostRequest): CirclesResult<CreatedPost> {
         val r = api.createPost(req)
-        if (r is CirclesResult.Ok) store.addMyPost(req.circleId, r.value.postId)
+        if (r is CirclesResult.Ok) {
+            store.addMyPost(req.circleId, r.value.postId)
+            // Remembered on this phone only: it tells us later to comment through the Worker so the uid never reaches the comment.
+            if (req.anonymous && req.type == PostType.Prayer) store.addAnonymousPost(req.circleId, r.value.postId)
+        }
+        return r
+    }
+
+    /**
+     * Comments on a post. When I'm the hidden author of an anonymous request, a client-written comment would carry my
+     * uid, so it goes through the Worker instead (`commentAsAuthor`, written with no uid). Everyone else writes directly.
+     */
+    suspend fun comment(circleId: String, postId: String, name: String, body: String, parentId: String?): CirclesResult<Unit> {
+        val text = body.trim().take(2000)
+        if (text.isEmpty()) return CirclesFailure(FailureKind.Rejected, "Write something first.").asResult()
+        val myUid = when (val u = uid()) {
+            is CirclesResult.Ok -> u.value
+            is CirclesResult.Err -> return u
+        }
+        val r = if (postId in store.anonymousPostIds(circleId)) api.commentAsAuthor(circleId, postId, text, parentId)
+        else data.addComment(circleId, postId, myUid, name, text, parentId)
+        if (r is CirclesResult.Ok) api.syncCounts(circleId, postId) // keeps the comment counter honest; a failure is harmless
         return r
     }
 

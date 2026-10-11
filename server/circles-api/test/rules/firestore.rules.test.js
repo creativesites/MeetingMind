@@ -105,6 +105,17 @@ test("comments: own authorUid ok; spoofing / extra fields / non-members / bad ti
   await assertFails(setDoc(doc(as("member"), path("f")), { authorUid: "member", body: "", createdAt: serverTimestamp() }));
   await assertFails(setDoc(doc(as("member"), path("g")), { authorUid: "member", body: "x".repeat(2001), createdAt: serverTimestamp() }));
   await assertFails(setDoc(doc(as("member"), `circles/${C}/posts/gone/comments/h`), { authorUid: "member", body: "x", createdAt: serverTimestamp() }));
+  // Anonymous-author comments are written by the Worker (no authorUid, `author` flag). Clients can't forge that shape.
+  await assertFails(setDoc(doc(as("member"), path("w1")), { author: true, body: "x", createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(as("member"), path("w2")), { authorUid: "member", author: true, body: "x", createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(as("member"), path("w3")), { body: "x", createdAt: serverTimestamp() }));
+  // ...but members can read them, and nobody can edit one (no authorUid to match).
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), path("anon1")), { body: "thanks", displayName: "Requester", author: true, createdAt: new Date() });
+  });
+  await assertSucceeds(getDoc(doc(as("member"), path("anon1"))));
+  await assertFails(updateDoc(doc(as("member"), path("anon1")), { body: "hax" }));
+  await assertSucceeds(deleteDoc(doc(as("admin"), path("anon1"))));
   // edit/delete: only own text; authorUid immutable
   await assertSucceeds(updateDoc(doc(as("member"), path("cm1")), { body: "edited" }));
   await assertFails(updateDoc(doc(as("member"), path("cm1")), { authorUid: "admin" }));
@@ -180,6 +191,11 @@ test("chat: replies must point at an existing message; cards must be well-formed
   await assertFails(setDoc(doc(as("member"), M("c3")), msg({ kind: "card", text: "", card: { ...card, extra: 1 } })));
   await assertFails(setDoc(doc(as("member"), M("c4")), msg({ kind: "card", text: "", card: { templateId: "dawn", text: "x".repeat(601) } })));
   await assertFails(setDoc(doc(as("member"), M("c5")), msg({ card }))); // card on a text message
+  // Create-studio cards carry a verse reference and its words
+  const studio = { templateId: "create:dawn", text: "Be still", mood: "peaceful", verseRef: "Psalm 46:10 · NIV", verseText: "Be still, and know that I am God." };
+  await assertSucceeds(setDoc(doc(as("member"), M("c6")), msg({ kind: "card", text: "", card: studio })));
+  await assertFails(setDoc(doc(as("member"), M("c7")), msg({ kind: "card", text: "", card: { ...studio, verseRef: "x".repeat(65) } })));
+  await assertFails(setDoc(doc(as("member"), M("c8")), msg({ kind: "card", text: "", card: { ...studio, verseText: "x".repeat(601) } })));
 });
 
 test("chat: edit own text only; soft-delete own; admins soft-delete any; no hard delete", async () => {

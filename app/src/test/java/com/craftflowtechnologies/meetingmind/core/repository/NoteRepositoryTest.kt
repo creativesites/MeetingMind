@@ -339,6 +339,24 @@ class NoteRepositoryTest {
     }
 
     @Test
+    fun `the sermon transcript is written once, at the end, and replaced on a re-run`() = runBlocking {
+        val meeting = meetings.createInitialMeeting(title = "Sermon", source = MeetingSource.LOCAL_RECORDING, recordingType = RecordingType.SERMON)
+        val noteId = database.meetingDao().getMeetingById(meeting.id)!!.noteId!!
+        val key = com.craftflowtechnologies.meetingmind.ai.faith.SermonNoteBuilder.KEY_TRANSCRIPT
+        fun gen(text: String, k: String, type: NoteBlockType = NoteBlockType.PARAGRAPH) = NoteBlock(NoteRepository.newId("block"), noteId, 0, type, RichText.plain(text), source = BlockSource.AI, sectionKey = k)
+        suspend fun run(tag: String) = notes.applyGeneratedSections(
+            noteId, listOf(gen("message $tag", "key_message"), gen("Transcript", key, NoteBlockType.HEADING_2), gen("words $tag", key, NoteBlockType.TRANSCRIPT_EXCERPT)),
+            emptyList(), setOf("key_message", key), setOf(key)
+        )
+        run("1"); run("2")
+        val blocks = notes.getDocument(noteId)!!.blocks
+        assertEquals(1, blocks.count { it.sectionKey == key && it.type == NoteBlockType.HEADING_2 })
+        assertEquals(listOf("words 2"), blocks.filter { it.type == NoteBlockType.TRANSCRIPT_EXCERPT }.map { it.content.text })
+        assertEquals(key, blocks.last().sectionKey)
+        assertTrue(blocks.indexOfFirst { it.sectionKey == "my_notes" } < blocks.indexOfFirst { it.sectionKey == key })
+    }
+
+    @Test
     fun `a prayer request goes from open to answered to testimony`() = runBlocking {
         val request = notes.createNote(workflow = com.craftflowtechnologies.meetingmind.core.model.RecordingType.PRAYER_REQUEST, title = "Mum's surgery")
         assertTrue(request.isPrivate)

@@ -5,16 +5,24 @@ import com.craftflowtechnologies.meetingmind.core.model.NoteBlock
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlockType
 import com.craftflowtechnologies.meetingmind.core.model.ScriptureOrigin
 import com.craftflowtechnologies.meetingmind.core.model.ScriptureRef
+import com.craftflowtechnologies.meetingmind.core.model.Speaker
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
 import com.craftflowtechnologies.meetingmind.core.model.Workflows
 import com.craftflowtechnologies.meetingmind.core.notes.RichText
+import com.craftflowtechnologies.meetingmind.core.notes.TranscriptBlocks
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.scripture.DetectedScripture
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureDetector
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
 
 /** The generated part of a sermon note: its blocks, and the scripture references they show. */
-data class GeneratedSections(val blocks: List<NoteBlock>, val refs: List<ScriptureRef>, val keys: Set<String>)
+data class GeneratedSections(
+    val blocks: List<NoteBlock>,
+    val refs: List<ScriptureRef>,
+    val keys: Set<String>,
+    /** Sections that go at the very end of the note instead of straight after the recording. */
+    val endKeys: Set<String> = emptySet()
+)
 
 /**
  * Turns a sermon's extraction and the scripture heard in it into note sections (docs/PLAN_V1.md §5).
@@ -29,6 +37,9 @@ object SermonNoteBuilder {
 
     /** The section that says why the sermon notes are missing. Replaced on every run, so a retry clears it. */
     const val KEY_STATUS = "sermon_status"
+
+    /** The transcript at the end of the note: heading and paragraphs, replaced on every run. */
+    const val KEY_TRANSCRIPT = "sermon_transcript"
 
     /**
      * The one plain line shown at the top of a sermon note whose AI notes could not be written.
@@ -46,7 +57,10 @@ object SermonNoteBuilder {
         detections: List<DetectedScripture>,
         now: Long = System.currentTimeMillis(),
         /** Why there is no extraction, when the sermon notes could not be written. Null when they were. */
-        unavailableReason: String? = null
+        unavailableReason: String? = null,
+        /** What was spoken (worship already left out), for the transcript section; empty writes none. */
+        spoken: List<TranscriptSegment> = emptyList(),
+        speakers: List<Speaker> = emptyList()
     ): GeneratedSections {
         val bySegment = segments.associateBy { it.id }
         val blocks = mutableListOf<NoteBlock>()
@@ -141,9 +155,17 @@ object SermonNoteBuilder {
             }
         }
 
+        // The whole sermon, as readable paragraphs by speaker, at the end of the note. Always written when
+        // there is speech, so a note without AI notes still has its transcript.
+        val transcript = TranscriptBlocks.build(noteId, meetingId, spoken, speakers, sectionKey = KEY_TRANSCRIPT)
+        if (transcript.isNotEmpty()) {
+            heading(KEY_TRANSCRIPT, "Transcript")
+            blocks += transcript
+        }
+
         val keys = Workflows.template(com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON).sections
-            .filter { it.source == com.craftflowtechnologies.meetingmind.core.model.SectionSource.AI }.map { it.key }.toSet() + KEY_ALL_SCRIPTURE + KEY_STATUS
-        return GeneratedSections(blocks, refs, keys)
+            .filter { it.source == com.craftflowtechnologies.meetingmind.core.model.SectionSource.AI }.map { it.key }.toSet() + KEY_ALL_SCRIPTURE + KEY_STATUS + KEY_TRANSCRIPT
+        return GeneratedSections(blocks, refs, keys, endKeys = setOf(KEY_TRANSCRIPT))
     }
 
     private fun startOf(ids: List<String>, bySegment: Map<String, TranscriptSegment>): Long? =

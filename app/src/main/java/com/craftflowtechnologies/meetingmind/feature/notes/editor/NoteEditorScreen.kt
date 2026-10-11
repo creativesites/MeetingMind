@@ -179,6 +179,7 @@ fun NoteEditorScreen(
     var showExport by remember { mutableStateOf(false) }
     var showCopyAs by remember { mutableStateOf(false) }
     var showExcerpts by remember { mutableStateOf(false) }
+    var recordingPick by remember { mutableStateOf<NoteEditorViewModel.RecordingContent?>(null) }
     var showNoteLinks by remember { mutableStateOf(false) }
     var showScriptureEntry by remember { mutableStateOf(false) }
     var showPrayerUpdate by remember { mutableStateOf(false) }
@@ -270,6 +271,10 @@ fun NoteEditorScreen(
             InsertAction.AUDIO -> pickAudio.launch("audio/*")
             InsertAction.RECORD -> scope.launch { viewModel.flush(); onRecordHere(viewModel.noteId) }
             InsertAction.EXCERPT -> showExcerpts = true
+            InsertAction.SUMMARY, InsertAction.TRANSCRIPT -> {
+                val what = if (action == InsertAction.SUMMARY) NoteEditorViewModel.RecordingContent.SUMMARY else NoteEditorViewModel.RecordingContent.TRANSCRIPT
+                recordings.values.singleOrNull()?.let { viewModel.insertFromRecording(it.meetingId, what) } ?: run { recordingPick = what }
+            }
             InsertAction.NOTE_LINK -> showNoteLinks = true
             InsertAction.SCRIPTURE -> showScriptureEntry = true
         }
@@ -694,6 +699,14 @@ fun NoteEditorScreen(
         },
         onDismiss = { showExport = false }
     )
+    recordingPick?.let { what ->
+        RecordingPickerSheet(
+            title = if (what == NoteEditorViewModel.RecordingContent.SUMMARY) "Insert summary from" else "Insert transcript from",
+            recordings = recordings.values.toList(),
+            onPick = { viewModel.insertFromRecording(it.meetingId, what); recordingPick = null },
+            onDismiss = { recordingPick = null }
+        )
+    }
     if (showExcerpts) ExcerptPickerSheet(load = { viewModel.excerptCandidates() }, onPick = { viewModel.insertExcerpt(it); showExcerpts = false }, onDismiss = { showExcerpts = false })
     if (showDetails) note?.let { n ->
         SermonDetailsDialog(

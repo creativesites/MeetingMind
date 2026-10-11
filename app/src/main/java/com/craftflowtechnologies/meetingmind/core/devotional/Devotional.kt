@@ -18,6 +18,8 @@ data class Devotional(
     val keyText: String? = null,
     val reflection: List<String>,
     val application: List<String> = emptyList(),
+    /** "Live it today": one concrete action, one line. Null on devotionals saved before it existed. */
+    val liveItToday: String? = null,
     val prayer: String? = null,
     val motivation: String? = null,
     val insight: Quote? = null,

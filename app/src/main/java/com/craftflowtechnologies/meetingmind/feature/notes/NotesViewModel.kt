@@ -2,25 +2,35 @@ package com.craftflowtechnologies.meetingmind.feature.notes
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.Note
 import com.craftflowtechnologies.meetingmind.core.model.Notebook
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.Tag
+import com.craftflowtechnologies.meetingmind.core.model.Workflows
+import com.craftflowtechnologies.meetingmind.core.notes.LibraryItem
+import com.craftflowtechnologies.meetingmind.core.notes.LibraryMode
+import com.craftflowtechnologies.meetingmind.core.notes.NoteLibraryStore
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-enum class NoteSort(val label: String) { UPDATED("Last edited"), CREATED("Date"), TITLE("Title") }
+/**
+ * The space a note is filtered under. A Work workflow (meeting, interview, decision...) is always Work, even when
+ * the note sits in "My Notes" because it had no project notebook; anything else follows its notebook's space.
+ * (The library's SQL applies the same rule; this is kept for callers that group notes in memory.)
+ */
+internal fun spaceOf(note: Note, notebookSpace: NotebookSpace?): NotebookSpace? =
+    if (Workflows.space(note.workflow) == NotebookSpace.WORK) NotebookSpace.WORK else notebookSpace
 
 /** Which notes the library is showing. */
 sealed interface NotesScope {
@@ -31,62 +41,51 @@ sealed interface NotesScope {
     data object Trash : NotesScope
 }
 
+/** Keeps the library's chips, search and view in a [SavedStateHandle] that outlives the view model (rotation, process death). */
+class NotesStateHolder(val handle: SavedStateHandle) : ViewModel()
+
+/** A step that puts a bulk action back. */
+fun interface Undo { suspend fun run() }
+
 /**
- * The Notes library: every note, filtered by space, notebook, tag and text, and the notebooks
- * themselves. Filtering happens here, in memory — a person's notes number in the hundreds or low
- * thousands, and in-memory filtering keeps every chip instant.
+ * The Notes library: notes arrive a page at a time through [library] (chips, ranked search and sort are SQL, never an
+ * in-memory filter over every note), beside the notebooks themselves and the actions on a selection.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class NotesViewModel(application: Application, val scope: NotesScope = NotesScope.All) : AndroidViewModel(application) {
 
-    private val notes = NoteRepository(application, MeetMindDatabase.getInstance(application))
+    private val db = MeetMindDatabase.getInstance(application)
+    private val notes = NoteRepository(application, db)
 
-    val space = MutableStateFlow<NotebookSpace?>(null)
-    val tagFilter = MutableStateFlow<Tag?>(null)
-    val query = MutableStateFlow("")
-    val sort = MutableStateFlow(NoteSort.UPDATED)
+    /** Chips, search, sort and the one pager. Call [attach] once with the saved state; until then nothing loads. */
+    val library = NotesLibrary(
+        viewModelScope, NoteLibraryStore(db),
+        mode = when (scope) { NotesScope.Archived -> LibraryMode.ARCHIVED; NotesScope.Trash -> LibraryMode.TRASH; else -> LibraryMode.ACTIVE },
+        notebookId = (scope as? NotesScope.InNotebook)?.notebookId
+    )
+
+    /** Loads the first page from the saved choices. [onResume] keeps the Faith lock in step. */
+    fun attach(handle: SavedStateHandle) { library.start(handle); onResume() }
+
+    private val prefs = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(application)
+
+    /** The Faith lock is on and still locked: private and Faith notes drop out of search and their previews blank. */
+    fun onResume() {
+        viewModelScope.launch {
+            val on = runCatching { prefs.preferencesFlow.first().faithLockEnabled }.getOrDefault(false)
+            library.setHideLocked(on && !com.craftflowtechnologies.meetingmind.feature.faith.FaithLock.isUnlocked())
+        }
+    }
 
     val notebooks: StateFlow<List<Notebook>> = notes.observeNotebooks().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val notebookCounts: StateFlow<Map<String, Int>> = notes.observeNotebookCounts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val tags: StateFlow<List<Tag>> = notes.observeTags().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    val archivedCount: StateFlow<Int> = notes.observeArchivedNotes().map { it.size }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
-
-    private val source = when (scope) {
-        NotesScope.All -> notes.observeNotes()
-        is NotesScope.InNotebook -> notes.observeNotesInNotebook(scope.notebookId)
-        NotesScope.Archived -> notes.observeArchivedNotes()
-        NotesScope.Trash -> notes.observeTrashedNotes()
-    }
-
-    val trashCount: StateFlow<Int> = notes.observeTrashedNotes().map { it.size }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    val archivedCount: StateFlow<Int> = db.noteDao().observeArchivedCount().stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    val trashCount: StateFlow<Int> = db.noteDao().observeTrashedCount().stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     val trashedNotebooks: StateFlow<List<Notebook>> =
         (if (scope == NotesScope.Trash) notes.observeTrashedNotebooks() else kotlinx.coroutines.flow.flowOf(emptyList()))
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    private val tagged = tagFilter.flatMapLatest { tag -> if (tag == null) source else notes.observeNotesWithTag(tag.id) }
-
-    private val _loaded = MutableStateFlow(false)
-    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
-
-    val visibleNotes: StateFlow<List<Note>> = combine(tagged, notebooks, space, query, sort) { list, books, space, q, sort ->
-        _loaded.value = true
-        val spaceOf = books.associate { it.id to it.space }
-        list.asSequence()
-            .filter { scope !is NotesScope.InNotebook || it.notebookId == scope.notebookId }
-            .filter { space == null || spaceOf[it.notebookId] == space }
-            .filter { n -> q.isBlank() || n.title.contains(q, ignoreCase = true) || n.plainText.contains(q, ignoreCase = true) }
-            .let { seq ->
-                when (sort) {
-                    NoteSort.UPDATED -> seq.sortedWith(compareByDescending<Note> { it.pinned }.thenByDescending { it.updatedAt })
-                    NoteSort.CREATED -> seq.sortedWith(compareByDescending<Note> { it.pinned }.thenByDescending { it.eventDate ?: it.createdAt })
-                    NoteSort.TITLE -> seq.sortedWith(compareByDescending<Note> { it.pinned }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.title.ifBlank { "\uFFFF" } })
-                }
-            }
-            .toList()
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val currentNotebook: StateFlow<Notebook?> = notebooks.map { books ->
         (scope as? NotesScope.InNotebook)?.let { nb -> books.firstOrNull { it.id == nb.notebookId } }
@@ -149,12 +148,30 @@ class NotesViewModel(application: Application, val scope: NotesScope = NotesScop
     fun deleteNotebookForever(id: String) = viewModelScope.launch { notes.deleteNotebook(id) }
     fun archiveNotebook(id: String) = viewModelScope.launch { notes.archiveNotebook(id) }
 
-    /** Acts on every selected note at once; each is a single, undoable-by-Trash step. */
-    fun archiveAll(ids: Collection<String>) = viewModelScope.launch { ids.forEach { notes.archiveNote(it) } }
-    fun deleteAll(ids: Collection<String>) = viewModelScope.launch { ids.forEach { notes.moveToTrash(it) } }
-    fun restoreAll(ids: Collection<String>) = viewModelScope.launch { ids.forEach { notes.restoreFromTrash(it) } }
-    fun pinAll(ids: Collection<String>, pinned: Boolean) = viewModelScope.launch { ids.forEach { notes.setPinned(it, pinned) } }
-    fun moveAll(ids: Collection<String>, notebookId: String?) = viewModelScope.launch { ids.forEach { notes.moveToNotebook(it, notebookId) } }
+    /** Bulk actions on a selection. Each returns the step that undoes it, for the snackbar's Undo. */
+    suspend fun pinAll(items: List<LibraryItem>, pinned: Boolean): Undo {
+        val before = items.associate { it.id to it.note.pinned }
+        viewModelScope.async { items.forEach { notes.setPinned(it.id, pinned) } }.await()
+        return Undo { before.forEach { (id, was) -> notes.setPinned(id, was) } }
+    }
+
+    suspend fun moveAll(items: List<LibraryItem>, notebookId: String?): Undo {
+        val before = items.associate { it.id to it.note.notebookId }
+        viewModelScope.async { items.forEach { notes.moveToNotebook(it.id, notebookId) } }.await()
+        return Undo { before.forEach { (id, was) -> notes.moveToNotebook(id, was) } }
+    }
+
+    suspend fun deleteAll(items: List<LibraryItem>): Undo {
+        viewModelScope.async { items.forEach { notes.moveToTrash(it.id) } }.await()
+        return Undo { items.forEach { notes.restoreFromTrash(it.id) } }
+    }
+
+    suspend fun archiveAll(items: List<LibraryItem>): Undo {
+        viewModelScope.async { items.forEach { notes.archiveNote(it.id) } }.await()
+        return Undo { items.forEach { notes.unarchiveNote(it.id) } }
+    }
+
+    fun restoreAll(items: List<LibraryItem>) = viewModelScope.launch { items.forEach { notes.restoreFromTrash(it.id) } }
 
     fun togglePin(note: Note) = viewModelScope.launch { notes.setPinned(note.id, !note.pinned) }
     fun archive(note: Note) = viewModelScope.launch { notes.archiveNote(note.id) }

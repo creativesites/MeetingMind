@@ -58,9 +58,10 @@ fun CreateCircleScreen(onBack: () -> Unit, onCreated: (String) -> Unit) {
     val repo = remember { Circles2.repository(context) }
     val vm: CreateCircleViewModel = viewModel(factory = CreateCircleViewModel.Factory(repo))
     val state by vm.state.collectAsState()
+    val askNotifications = rememberNotificationAsk()
     CreateCircleContent(
         state, onBack, vm::pickTemplate, vm::setName, vm::setVocab, vm::setDisplayName, vm::toggleType, vm::setApproval, vm::setWhoCanInvite,
-        onCreate = { vm.create(onCreated) }
+        onCreate = { vm.create { id -> if (repo.isFirstCircle()) askNotifications { onCreated(id) } else onCreated(id) } }
     )
 }
 

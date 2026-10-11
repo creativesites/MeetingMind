@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.today
 
 import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
+import com.craftflowtechnologies.meetingmind.ui.theme.OnSky
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
@@ -238,7 +239,7 @@ private fun TopRow(
         Spacer(Modifier.width(8.dp))
         Surface(
             shape = CircleShape, color = SurfaceBase.copy(alpha = 0.78f),
-            border = BorderStroke(1.dp, Brush.verticalGradient(listOf(Color.White, Hairline))), shadowElevation = 10.dp
+            border = BorderStroke(1.dp, Brush.verticalGradient(listOf(OnSky, Hairline))), shadowElevation = 10.dp
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(4.dp)) {
                 DockButton(Color.Transparent, "home_search_button", onSearch) {
@@ -246,7 +247,7 @@ private fun TopRow(
                 }
                 DockButton(Color.Transparent, "home_inbox_button", onInbox) {
                     BadgedBox(badge = {
-                        if (inboxCount > 0) Badge(containerColor = look.accent) { Text("$inboxCount", color = Color.White, fontSize = 10.sp) }
+                        if (inboxCount > 0) Badge(containerColor = look.accent) { Text("$inboxCount", color = OnSky, fontSize = 10.sp) }
                     }) { Icon(Icons.Outlined.Notifications, contentDescription = "Inbox", tint = InkNavy, modifier = Modifier.size(19.dp)) }
                 }
                 if (showSwitch) DockButton(look.accentSoft, "home_switch_button", onSwitch) {
@@ -373,7 +374,7 @@ private fun HeroStage(
                         endGap = 12.dp, offerShow = true
                     )
                     Text(
-                        greeting, color = Color.White, fontFamily = if (identity.faithFirst) look.headingFont else OutfitFamily,
+                        greeting, color = OnSky, fontFamily = if (identity.faithFirst) look.headingFont else OutfitFamily,
                         fontWeight = FontWeight.Medium, fontSize = 27.sp, lineHeight = 32.sp, letterSpacing = (-0.6).sp, maxLines = 3,
                         overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
                     )
@@ -444,7 +445,7 @@ private fun HeroStage(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
                         .background(Brush.linearGradient(listOf(tile.accent, lerp(tile.accent, InkNavy, 0.6f))))
-                ) { Icon(tile.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp)) }
+                ) { Icon(tile.icon, contentDescription = null, tint = OnSky, modifier = Modifier.size(22.dp)) }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(tile.label, color = Slate, fontFamily = InterFamily, fontSize = 11.5.sp, maxLines = 1)
@@ -507,7 +508,7 @@ private fun HeroScriptureBanner(
                 )
                 Text(
                     verseText,
-                    color = Color.White,
+                    color = OnSky,
                     fontSize = 12.sp,
                     fontFamily = InterFamily,
                     lineHeight = 16.sp,
@@ -539,7 +540,7 @@ private fun HeroQuoteBanner(
             )
         }
         Text(
-            "“$quote”", color = Color.White, fontSize = 14.sp, fontFamily = InterFamily,
+            "“$quote”", color = OnSky, fontSize = 14.sp, fontFamily = InterFamily,
             fontWeight = FontWeight.Medium, lineHeight = 19.sp, maxLines = 2,
             overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = if (author == null) 0.dp else 3.dp)
         )
@@ -557,7 +558,7 @@ private fun GlassChip(icon: ImageVector, label: String, tint: Color, onClick: ((
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(6.dp))
-        Text(label, color = Color.White, fontFamily = InterFamily, fontWeight = FontWeight.Medium, fontSize = 12.sp, maxLines = 1)
+        Text(label, color = OnSky, fontFamily = InterFamily, fontWeight = FontWeight.Medium, fontSize = 12.sp, maxLines = 1)
     }
 }
 

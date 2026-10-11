@@ -4,6 +4,9 @@ import android.content.Context
 import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalEngine
 import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalSignals
 import com.craftflowtechnologies.meetingmind.ai.devotional.ModelCandidate
+import com.craftflowtechnologies.meetingmind.core.biblestudy.JournalMeta
+import com.craftflowtechnologies.meetingmind.core.biblestudy.JournalSession
+import com.craftflowtechnologies.meetingmind.core.biblestudy.SessionKind
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.model.ModelCapability
@@ -39,13 +42,20 @@ data class ArchiveItem(
     val favourite: Boolean,
     val evening: Boolean,
     val origin: DevotionalOrigin?,
-    val text: String
+    val text: String,
+    /** What the person wrote under this devotional's question (its journal entry), if anything. */
+    val reflection: String? = null
 ) {
-    /** Title, passage, series, format or words — what the archive's search box matches. */
+    val hasReflection: Boolean get() = !reflection.isNullOrBlank()
+
+    /** The first line of the reflection, for the archive row. */
+    val reflectionLine: String? get() = reflection?.let { DevotionalJournal.firstLine(it) }
+
+    /** Title, passage, series, format, the devotional's words or the person's own reflection — what the archive's search box matches. */
     fun matches(query: String): Boolean {
         val q = query.trim().lowercase()
         if (q.isEmpty()) return true
-        return listOfNotNull(title, passage, series, format?.label, text).any { it.lowercase().contains(q) }
+        return listOfNotNull(title, passage, series, format?.label, text, reflection).any { it.lowercase().contains(q) }
     }
 }
 
@@ -123,6 +133,7 @@ class DevotionalRepository(
 
     /** Every devotional ever saved, newest first, as light rows for the archive. */
     suspend fun archive(limit: Int = 2000): List<ArchiveItem> = withContext(Dispatchers.IO) {
+        val reflections = reflections()
         recent(limit).filter { it.archivedAt == null }.map { n ->
             val m = n.metadata
             ArchiveItem(
@@ -135,7 +146,8 @@ class DevotionalRepository(
                 favourite = m[DevotionalNotes.META_FAVOURITE] == "1",
                 evening = m[DevotionalNotes.META_EVENING] == "1",
                 origin = runCatching { DevotionalOrigin.valueOf(m[DevotionalNotes.META_ORIGIN].orEmpty()) }.getOrNull(),
-                text = n.plainText
+                text = n.plainText,
+                reflection = reflections[n.id]
             )
         }.sortedWith(compareByDescending<ArchiveItem> { it.day }.thenByDescending { it.evening })
     }
@@ -370,6 +382,56 @@ class DevotionalRepository(
     suspend fun markOpened(daily: DailyDevotional) {
         if (daily.note.metadata[DevotionalNotes.META_OPENED] != null) return
         editMeta(daily.note.id) { it + (DevotionalNotes.META_OPENED to System.currentTimeMillis().toString()) }
+    }
+
+    // ------------------------------------------------------------ the reflection journal
+
+    private val sessions = mutableMapOf<String, JournalSession>()
+    private val sessionLock = Mutex()
+
+    private fun journalPattern(devotionalNoteId: String) = "%\"${JournalMeta.DEVOTIONAL_NOTE}\":\"$devotionalNoteId\"%"
+
+    /** The study journal entry that holds the reflection for [devotionalNoteId], if the person has written one. */
+    suspend fun journalFor(devotionalNoteId: String): Note? = withContext(Dispatchers.IO) {
+        noteDao.findByMetadata(journalPattern(devotionalNoteId))?.let { with(NoteCodec) { it.toDomain() } }
+    }
+
+    /**
+     * What the person has written under [daily]'s question: its journal entry, or, for a devotional
+     * saved before reflections moved to the journal, the response kept in the devotional's own note.
+     */
+    suspend fun reflectionOf(daily: DailyDevotional): String = withContext(Dispatchers.IO) {
+        val entry = journalFor(daily.note.id) ?: return@withContext daily.response
+        notes.getDocument(entry.id)?.let { DevotionalJournal.textOf(it.blocks) }.orEmpty()
+    }
+
+    /**
+     * Saves the reflection into the study journal through the same [JournalSession] a guided session uses:
+     * the entry is created on the first keystroke and never before, so a devotional nobody wrote on leaves
+     * nothing, and it is then kept up to date. The entry is linked to the devotional and its passage.
+     */
+    suspend fun saveReflection(daily: DailyDevotional, text: String) {
+        val passage = DevotionalJournal.passageOf(daily.devotional, daily.note)
+        if (passage == null) { saveResponse(daily, text); return }
+        val session = sessionLock.withLock {
+            sessions.getOrPut(daily.note.id) {
+                JournalSession(
+                    notes, passage, SessionKind.DEVOTIONAL,
+                    extraMeta = DevotionalJournal.links(daily), resumeNoteId = journalFor(daily.note.id)?.id
+                )
+            }
+        }
+        session.onChanged(DevotionalJournal.state(daily.devotional.question, text))
+    }
+
+    /** Every written reflection by the devotional it answers. */
+    private suspend fun reflections(): Map<String, String> {
+        val entries = noteDao.findAllByMetadata("%\"${JournalMeta.SESSION_KIND}\":\"${SessionKind.DEVOTIONAL.key}\"%", 2000).map { with(NoteCodec) { it.toDomain() } }
+        return entries.mapNotNull { n ->
+            val devotional = n.metadata[JournalMeta.DEVOTIONAL_NOTE] ?: return@mapNotNull null
+            val text = notes.getDocument(n.id)?.let { DevotionalJournal.textOf(it.blocks) }.orEmpty()
+            if (text.isBlank()) null else devotional to text
+        }.toMap()
     }
 
     suspend fun saveResponse(daily: DailyDevotional, text: String) {

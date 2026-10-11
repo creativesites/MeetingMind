@@ -110,20 +110,7 @@ fun AppearanceScreen(vm: AppearanceViewModel, onNavigateBack: () -> Unit) {
             Segments(TextSize.entries, a.textSize, { it.label }) { s -> vm.update { it.copy(textSize = s) } }
 
             Label("Home")
-            HomeStyle.entries.forEach { h ->
-                val on = a.homeStyle == h
-                Row(
-                    Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(RoundedCornerShape(16.dp)).background(if (on) AccentWash else SurfaceRaised)
-                        .border(1.dp, if (on) Accent else LineSoft, RoundedCornerShape(16.dp)).clickable { vm.update { it.copy(homeStyle = h) } }.padding(16.dp).testTag("home_${h.name.lowercase()}"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(h.label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                        Text(h.description, fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 2.dp))
-                    }
-                    if (on) Icon(Icons.Filled.Check, null, tint = Accent)
-                }
-            }
+            HomePicker(a.homeStyle, onSelect = { h -> vm.update { it.copy(homeStyle = h) } })
 
             if (a.homeStyle == HomeStyle.TODAY) {
                 Label("On the Today home")

@@ -504,13 +504,13 @@ private fun Section(label: String, content: @Composable () -> Unit) {
 
 /** A few open tasks, for a home screen: the next ones due, with a tick and "See all". */
 @Composable
-fun TasksPeekCard(title: String, kinds: Set<TaskKind>?, onOpenAll: () -> Unit, modifier: Modifier = Modifier) {
+fun TasksPeekCard(title: String, kinds: Set<TaskKind>?, onOpenAll: () -> Unit, modifier: Modifier = Modifier, horizontalPadding: androidx.compose.ui.unit.Dp = 20.dp) {
     val vm: TasksViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val tasks by vm.tasks.collectAsState()
     val people by vm.people.collectAsState()
     val open = tasks.filter { !it.done && (kinds == null || it.kind in kinds) }.take(3)
     if (open.isEmpty()) return
-    Column(modifier.fillMaxWidth().padding(horizontal = 20.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceRaised).border(1.dp, com.craftflowtechnologies.meetingmind.ui.theme.LineSoft, RoundedCornerShape(18.dp)).padding(vertical = 6.dp)) {
+    Column(modifier.fillMaxWidth().padding(horizontal = horizontalPadding).clip(RoundedCornerShape(18.dp)).background(SurfaceRaised).border(1.dp, com.craftflowtechnologies.meetingmind.ui.theme.LineSoft, RoundedCornerShape(18.dp)).padding(vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
             TextButton(onClick = onOpenAll) { Text("See all", color = Accent, fontSize = 13.sp) }

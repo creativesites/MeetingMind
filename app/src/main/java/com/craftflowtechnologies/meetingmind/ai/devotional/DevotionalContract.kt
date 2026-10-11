@@ -46,6 +46,8 @@ data class DevotionalAnswer(
     val extraReferences: List<String>,
     val reflection: List<String>,
     val application: List<String>,
+    /** "Live it today": one concrete action, one line; null when the model left it out. */
+    val liveItToday: String?,
     val prayer: String?,
     val motivation: String?,
     val question: String?
@@ -99,7 +101,7 @@ object DevotionalContract {
             add("\"title\": a short title (max 8 words)")
             add("\"references\": up to 2 other Bible references that support the reflection (references only, e.g. \"Romans 8:28\")")
             add("\"reflection\": an array of paragraphs, about ${p.words} words in total")
-            add("\"application\": an array of 1–3 small, concrete things to do today (each under 15 words)")
+            add("\"liveItToday\": ONE concrete thing to do today, a single short line under 20 words, starting with a verb; it must be doable by anyone")
             if (p.includePrayer) add("\"prayer\": a short prayer in the first person (\"Lord, …\"), 60–120 words, ending with Amen")
             if (p.includeMotivation) add("\"motivation\": one or two encouraging sentences to carry into the day")
             if (p.includeQuestion) add("\"question\": one reflective question to sit with")
@@ -192,6 +194,7 @@ object DevotionalContract {
             extraReferences = strings("references").take(3),
             reflection = reflection,
             application = strings("application").take(3),
+            liveItToday = text("liveItToday")?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim()?.take(200),
             prayer = text("prayer"),
             motivation = text("motivation"),
             question = text("question")

@@ -115,7 +115,8 @@ private fun RecordingTypeChip(
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                text = type.displayName,
+                // A start action: "Bible study" alone reads like a template (ONE_PLACE §3.4).
+                text = if (type == RecordingType.BIBLE_STUDY) "Record a Bible study" else type.displayName,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                 color = if (isSelected) IndigoPrimaryLight else MaterialTheme.colorScheme.onSurface

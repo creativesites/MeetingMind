@@ -218,7 +218,7 @@ class UserPreferencesManager(private val context: Context) {
             autoStopSilenceMinutes = prefs[AUTO_STOP_MINUTES] ?: 15,
             cloudSyncEnabled = prefs[CLOUD_SYNC_ENABLED] ?: false,
             themeMode = prefs[THEME_MODE] ?: "DARK",
-            appearance = com.craftflowtechnologies.meetingmind.ui.theme.Appearance.decode(prefs[APPEARANCE]),
+            appearance = com.craftflowtechnologies.meetingmind.ui.theme.Appearance.decode(prefs[APPEARANCE], existingInstall = prefs[ONBOARDING_COMPLETED] == true),
             cleanFillerWords = prefs[CLEAN_FILLER_WORDS] ?: true,
             // A stored value from a future/renamed enum constant falls back to the current default
             // rather than crashing — the same defensive parse pattern already used throughout this
@@ -320,7 +320,11 @@ class UserPreferencesManager(private val context: Context) {
     }
 
     suspend fun setOnboardingCompleted(completed: Boolean) {
-        context.dataStore.edit { it[ONBOARDING_COMPLETED] = completed }
+        context.dataStore.edit {
+            // A new install settles on the default home (Everyday) now, so a later release can never move it.
+            if (completed && it[APPEARANCE] == null) it[APPEARANCE] = com.craftflowtechnologies.meetingmind.ui.theme.Appearance().encode()
+            it[ONBOARDING_COMPLETED] = completed
+        }
     }
 
     suspend fun setSelectedAsrModel(modelId: String) {

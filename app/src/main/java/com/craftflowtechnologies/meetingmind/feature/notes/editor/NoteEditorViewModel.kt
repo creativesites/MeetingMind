@@ -900,6 +900,72 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         )
     }
 
+    /** Which part of a recording "Insert from a recording" adds. */
+    enum class RecordingContent { SUMMARY, TRANSCRIPT }
+
+    /**
+     * Adds a recording's summary or transcript as blocks after the focused block (or at the end), as one
+     * undoable step. The transcript is the text the app shows, with speakers' current names.
+     */
+    fun insertFromRecording(meetingId: String, what: RecordingContent) {
+        viewModelScope.launch {
+            val blocks = withContext(Dispatchers.IO) { recordingBlocks(meetingId, what) }
+            if (blocks.isEmpty()) {
+                _message.value = if (what == RecordingContent.SUMMARY) "This recording has no summary yet" else "This recording has no transcript yet"
+                return@launch
+            }
+            insert(blocks)
+        }
+    }
+
+    private suspend fun recordingBlocks(meetingId: String, what: RecordingContent): List<NoteBlock> {
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId).map {
+            com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment(
+                id = it.id, meetingId = it.meetingId, speakerId = it.speakerId, speakerName = it.speakerName, startMs = it.startMs,
+                endMs = it.endMs, text = it.text, confidence = it.confidence, isUserEdited = it.isUserEdited, cleanedText = it.cleanedText
+            )
+        }
+        return when (what) {
+            RecordingContent.TRANSCRIPT -> {
+                val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId).map {
+                    com.craftflowtechnologies.meetingmind.core.model.Speaker(it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence)
+                }
+                val body = com.craftflowtechnologies.meetingmind.core.notes.TranscriptBlocks.build(noteId, meetingId, segments, speakers)
+                if (body.isEmpty()) emptyList() else {
+                    val title = recordings.value.takeIf { it.size > 1 }?.get(meetingId)?.title?.takeIf { it.isNotBlank() }
+                    listOf(headingBlock(if (title != null) "Transcript: $title" else "Transcript")) + body
+                }
+            }
+            RecordingContent.SUMMARY -> {
+                fun ids(json: String) = runCatching { org.json.JSONArray(json).let { a -> (0 until a.length()).map { a.getString(it) } } }.getOrDefault(emptyList())
+                val meeting = database.meetingDao().getMeetingById(meetingId)
+                com.craftflowtechnologies.meetingmind.core.notes.SummaryBlocks.build(
+                    noteId, meetingId, meeting?.summaryText,
+                    decisions = database.decisionDao().getDecisionsForMeetingDirect(meetingId).map {
+                        com.craftflowtechnologies.meetingmind.core.model.Decision(it.id, it.meetingId, it.text, sourceSegmentIds = ids(it.sourceSegmentIdsJson))
+                    },
+                    actionItems = database.actionItemDao().getActionItemsForMeetingDirect(meetingId).map {
+                        com.craftflowtechnologies.meetingmind.core.model.ActionItem(
+                            it.id, it.meetingId, it.task, assigneeName = it.assigneeName, deadline = it.deadline,
+                            isCompleted = it.isCompleted, sourceSegmentIds = ids(it.sourceSegmentIdsJson)
+                        )
+                    },
+                    questions = database.questionDao().getQuestionsForMeetingDirect(meetingId).map {
+                        com.craftflowtechnologies.meetingmind.core.model.Question(
+                            it.id, it.meetingId, it.text, resolved = it.resolved, answer = it.answer, sourceSegmentIds = ids(it.sourceSegmentIdsJson)
+                        )
+                    },
+                    segmentStarts = segments.associate { it.id to it.startMs }
+                )
+            }
+        }
+    }
+
+    private fun headingBlock(text: String) = NoteBlock(
+        id = NoteRepository.newId("block"), noteId = noteId, position = 0, type = NoteBlockType.HEADING_2,
+        content = RichText.plain(text), source = BlockSource.TRANSCRIPT
+    )
+
     suspend fun excerptCandidates(): List<ExcerptCandidate> = withContext(Dispatchers.IO) {
         recordings.value.values.flatMap { card ->
             database.transcriptDao().getSegmentsForMeetingDirect(card.meetingId).map {

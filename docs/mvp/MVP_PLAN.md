@@ -266,5 +266,24 @@ prototype is https://claude.ai/artifact/CwsiqKq3ff7wCt4hjC2bB3.
 | R-1 | **Recording screen redesign** to match the rest of the app's high-end UI, with **dynamic buttons** per recording type | Sermon first: highlight a key moment, add a quick note, mark scripture, all timestamped into the note. Then meetings: mark decision, action item, question. The companion is already on this screen (Z-8) |
 | W-3 | **Return Work notes to the Notes library** | Work notes must also appear in Notes (with a Work filter), not only on the Work page |
 | H-1 | **Today page.** Founder: "the current version of Today looks awesome — restore it, and make the polished Today you made a new home page the user can also choose, and the default home" | Needs clarification of which version is "current" (see conversation 2026-10-10). Fits the home-system plan: several home designs on one scaffold |
-| C-1 | Circles follow-ups | Connect the Create studio to chat card sharing (needs a result callback on `CreateController`); register FCM tokens in the app for pushes; typing indicators; hide or route the anonymous author's own comments via the Worker; remove the old encrypted circle tables (Room migration 24→25) |
+| C-1 | Circles follow-ups | Connect the Create studio to chat card sharing (needs a result callback on `CreateController`); register FCM tokens in the app for pushes; typing indicators; ~~hide or route the anonymous author's own comments via the Worker~~ (done: `commentAsAuthor`); ~~FCM token registration~~ (done); ~~Create studio to chat~~ (done); remove the old encrypted circle tables (Room migration 24→25) |
 | D-1 | Remove the old `HomeHeroHeader`/`PraySession` colour literals so `ColorLiteralGuardTest` goes green | Haiku task |
+
+## 9. Founder backlog (2026-10-11): polish the core, later
+
+**Scope decision.** Learning is cut from the MVP and will not be in the first Play Store release. Its UI, routes and
+AI were already removed in S-7; its tables were kept. The MVP is the core done really well:
+
+- offline and online transcription
+- workflows
+- the Work vertical (the founder is happy with it)
+- the Faith vertical (needs a few polishes)
+
+| ID | Item | Notes |
+|---|---|---|
+| P-1 | **Transcript play sync**: highlighting starts late, some way into the transcript | Find the offset source (segment timestamps vs player position, diarization re-timing, the VAD start offset). Sync must be exact, because P-2 depends on it |
+| P-2 | **Read to me in notes** (very important for sermon notes) | <ul><li>Listen to a note like a sermon replay, with the current block highlighted.</li><li>For recorded notes, offer "Play the original audio" synced to the text.</li><li>Every read-aloud surface (notes, devotional, Bible, journal) has one shared voice/speed/options sheet, changeable at any time.</li></ul> |
+| P-3 | **Never an empty devotional.** Seeding, scheduling and notifications must be reliable | <ul><li>A devotional is always there on first open.</li><li>The notification fires on the dot at the scheduled time, app open or not, using exact alarms with a fallback.</li><li>No user should need to know how to generate one.</li><li>The app already bundles Spurgeon's *Morning and Evening* (1865, public domain, 365×2) in `core/devotional/Classics.kt`. So **why users still see blank devotionals is a bug to root-cause first**, likely the AUTO path waiting on AI instead of showing the classic at once and upgrading later.</li><li>Other public-domain options to offer as user-chosen year-long sets: Spurgeon's *Faith's Checkbook*, *Daily Light on the Daily Path* (scripture-only), and Cowman's *Streams in the Desert* (1925; public domain in the US since 2021; check other markets).</li><li>Avoid *My Utmost for His Highest*: its US copyright status is unsafe.</li><li>Fallback: write our own year.</li></ul> |
+| P-4 | **Remove "Sing with me" from Pray with me** | The AI cannot sing yet. Remove the hymn and sing mode wording too |
+| P-5 | **Companions on live screens and AI assistant screens** | Pray with me, Talk it through, the live session, and the Assistant sheet. Zuri reacts to listening, speaking and thinking states (Z-8 pattern) |
+| P-6 | **Voice quality: the on-device TTS voice is a last resort** | <ul><li>An online-generated devotional must never play in the poor on-device voice.</li><li>Use the Gemini or other good voice whenever online.</li><li>The low-quality voice must never be the first voice a user hears in the app. It is only used when truly offline, or later on the free tier, and then with an honest line.</li><li>Voice and options can be changed at any time from the player (shared with P-2).</li></ul> |

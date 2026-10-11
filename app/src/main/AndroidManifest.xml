@@ -82,6 +82,18 @@
             </intent-filter>
         </activity>
 
+        <!-- Circles pushes (new post, approval, answered, daily digest). Background pushes use the "circles" channel. -->
+        <service
+            android:name="com.craftflowtechnologies.meetingmind.core.circles2.CirclesMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="circles" />
+
         <service
             android:name="com.craftflowtechnologies.meetingmind.core.audio.MeetingRecordingService"
             android:exported="false"

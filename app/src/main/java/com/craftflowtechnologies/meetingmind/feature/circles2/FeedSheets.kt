@@ -116,7 +116,7 @@ fun ThreadSheet(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("${cm.authorName} · ${relativeTime(now, cm.createdAt)}", style = MM.type.caption, color = MM.colors.inkSecondary, modifier = Modifier.weight(1f))
-                            if (cm.authorUid == myUid || isAdmin) TextAction("Delete", { onDeleteComment(cm) })
+                            if ((cm.authorUid != null && cm.authorUid == myUid) || isAdmin) TextAction("Delete", { onDeleteComment(cm) })
                         }
                         SelectionContainer { Text(cm.body, style = MM.type.body, color = MM.colors.ink) }
                     }

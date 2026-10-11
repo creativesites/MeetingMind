@@ -11,6 +11,21 @@ class FakeAuth(var uid: String? = "me", var anonymous: Boolean = true) : Circles
     override suspend fun idToken(): CirclesResult<String> = uid?.let { CirclesResult.Ok("token-$it") } ?: CirclesFailure.signedOut.asResult()
     override val currentUid: String? get() = uid
     override val isAnonymous: Boolean get() = anonymous
+    override var linkedEmail: String? = null
+    /** What the next [linkGoogle] returns, and what [switchToLinkedAccount] returns. */
+    var linkResult: LinkResult = LinkResult.Linked("me@example.com")
+    var switchResult: LinkResult = LinkResult.Linked("me@example.com")
+    val authCalls = mutableListOf<String>()
+    override suspend fun linkGoogle(activityContext: android.content.Context): LinkResult {
+        authCalls += "link"
+        (linkResult as? LinkResult.Linked)?.let { anonymous = false; linkedEmail = it.email }
+        return linkResult
+    }
+    override suspend fun switchToLinkedAccount(): LinkResult {
+        authCalls += "switch"
+        (switchResult as? LinkResult.Linked)?.let { anonymous = false; linkedEmail = it.email; uid = "other-phone-uid" }
+        return switchResult
+    }
 }
 
 /** Records every call and replies from [nextFailure] or the defaults. */
@@ -31,7 +46,7 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
 
     override suspend fun createCircle(req: CreateCircleRequest) = reply("createCircle", "new-circle")
     override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?) = reply("updateCircle", Unit)
-    override suspend fun myCircles() = reply("myCircles", emptyList<String>())
+    override suspend fun myCircles() = reply("myCircles", myCirclesResult)
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = reply("createInvite", Invite("GRACE-7K2Q", null, 50))
     override suspend fun revokeInvite(code: String) = reply("revokeInvite", Unit)
     override suspend fun join(pasted: String, displayName: String): CirclesResult<String> { lastJoinText = pasted; return reply("join", joinedCircleId) }
@@ -57,7 +72,15 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
     override suspend fun celebrate(circleId: String, kind: CelebrationKind, text: String, companion: String?, postId: String?): CirclesResult<Unit> {
         lastCelebrate = Triple(kind, companion, postId); return reply("celebrate", Unit)
     }
-    override suspend fun registerToken(token: String) = reply("registerToken", Unit)
+    var lastCommentAsAuthor: Triple<String, String, String?>? = null
+    override suspend fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?): CirclesResult<Unit> {
+        lastCommentAsAuthor = Triple(postId, body, parentId); return reply("commentAsAuthor", Unit)
+    }
+    var myCirclesResult: List<String> = emptyList()
+    val registered = mutableListOf<String>()
+    val unregistered = mutableListOf<String>()
+    override suspend fun registerToken(token: String): CirclesResult<Unit> { registered += token; return reply("registerToken", Unit) }
+    override suspend fun unregisterToken(token: String): CirclesResult<Unit> { unregistered += token; return reply("unregisterToken", Unit) }
 }
 
 class FakeData : CirclesData {
@@ -109,5 +132,5 @@ fun testCircle(approval: Boolean = true, types: List<PostType> = PostType.entrie
     CircleSettings(allowedTypes = types, prayerApproval = approval), memberCount = 3, ownerUid = "owner"
 )
 
-fun repoWith(api: FakeApi = FakeApi(), data: FakeData = FakeData(), auth: FakeAuth = FakeAuth(), store: LocalCircleStore = InMemoryLocalCircleStore()) =
-    CirclesRepository(api, data, auth, store, clock = { 1_700_000_000_000L })
+fun repoWith(api: FakeApi = FakeApi(), data: FakeData = FakeData(), auth: FakeAuth = FakeAuth(), store: LocalCircleStore = InMemoryLocalCircleStore(), push: PushRegistrar? = null) =
+    CirclesRepository(api, data, auth, store, clock = { 1_700_000_000_000L }, push = push)

@@ -392,6 +392,32 @@ async function syncCounts(ctx) {
   return { counts: { ...post.counts, comments, reactions } };
 }
 
+/**
+ * The hidden author of an ANONYMOUS prayer request comments on it. Clients can't do this themselves: a
+ * client-written comment must carry authorUid (rules), which would unmask them. The Worker resolves the
+ * author via postAuthors and writes the comment as the service account with NO authorUid, only an
+ * `author: true` flag so everyone sees "Requester".
+ */
+async function commentAsAuthor(ctx) {
+  const circleId = str(ctx.body, "circleId"); const postId = str(ctx.body, "postId");
+  await load(ctx, circleId);
+  await requireAuthor(ctx, circleId, postId);
+  const post = await livePost(ctx, circleId, postId);
+  if (!post.anonymous) throw new ApiError(400, "bad_request", "Comment on your own named post the normal way.");
+  const text = cleanText(ctx.body.body, "body", { max: 2000 });
+  let parentId = null;
+  if (ctx.body.parentId !== undefined && ctx.body.parentId !== null) {
+    parentId = str(ctx.body, "parentId");
+    const parent = await ctx.db.get(`${C(circleId)}/posts/${postId}/comments/${parentId}`);
+    if (!parent || parent.data.parentId) throw notFound("That comment");
+  }
+  await hit(ctx.kv, `rl:comment:${ctx.uid}`, RATE.comment);
+  const id = newId();
+  const doc = { body: text, displayName: "Requester", author: true, parentId, createdAt: ctx.now };
+  await ctx.db.commit([w.create(`${C(circleId)}/posts/${postId}/comments/${id}`, doc)]);
+  return { commentId: id };
+}
+
 async function report(ctx) {
   const circleId = str(ctx.body, "circleId"); const postId = str(ctx.body, "postId");
   await load(ctx, circleId);
@@ -525,7 +551,7 @@ async function unregisterToken(ctx) {
 export const HANDLERS = {
   createCircle, updateCircle, createInvite, revokeInvite, join, leave, removeMember, setRole, setMute,
   createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, deletePost,
-  prayed, react, syncCounts, report, registerToken, unregisterToken,
+  prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken,
   createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
 };
 export { POST_TYPES };

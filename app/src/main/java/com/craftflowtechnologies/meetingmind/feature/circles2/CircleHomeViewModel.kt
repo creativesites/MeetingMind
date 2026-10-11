@@ -245,16 +245,7 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     fun comment(postId: String, text: String, parentId: String? = null) {
         val t = text.trim(); if (t.isEmpty()) return
         val name = state.value.me?.displayName ?: repo.displayName.ifBlank { "Member" }
-        viewModelScope.launch {
-            val uid = when (val u = repo.uid()) {
-                is CirclesResult.Ok -> u.value
-                is CirclesResult.Err -> { fail(u.failure); return@launch }
-            }
-            when (val r = repo.data.addComment(circleId, postId, uid, name, t.take(2000), parentId)) {
-                is CirclesResult.Ok -> repo.api.syncCounts(circleId, postId) // keeps the comment counter honest; failure is harmless
-                is CirclesResult.Err -> fail(r.failure)
-            }
-        }
+        viewModelScope.launch { repo.comment(circleId, postId, name, t, parentId).failureOrNull?.let(::fail) }
     }
 
     fun deleteComment(postId: String, commentId: String) {

@@ -5,7 +5,7 @@ import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
 
 /** A devotional block's words as plain text, for copying and sharing. */
 enum class DevotionalBlock(val heading: String) {
-    SCRIPTURE("Scripture"), REFLECTION("Reflection"), APPLICATION("Today I will"),
+    SCRIPTURE("Scripture"), REFLECTION("Reflection"), APPLICATION("Today I will"), LIVE("Live it today"),
     PRAYER("Prayer"), WORD("A word for today"), QUOTE("Quote"), QUESTION("A question to sit with")
 }
 
@@ -22,6 +22,7 @@ object DevotionalText {
         DevotionalBlock.SCRIPTURE -> d.keyText?.let { "“$it”" } ?: d.scripture.joinToString("\n") { it.display() }.ifBlank { null }
         DevotionalBlock.REFLECTION -> d.reflection.joinToString("\n\n").ifBlank { null }
         DevotionalBlock.APPLICATION -> d.application.joinToString("\n") { "• $it" }.ifBlank { null }
+        DevotionalBlock.LIVE -> d.liveItToday?.ifBlank { null }
         DevotionalBlock.PRAYER -> d.prayer?.ifBlank { null }
         DevotionalBlock.WORD -> d.motivation?.ifBlank { null }
         DevotionalBlock.QUOTE -> d.insight?.let { q -> listOf(q.author, q.source).filter { it.isNotBlank() }.joinToString(", ").let { by -> if (by.isBlank()) "“${q.text}”" else "“${q.text}”\n— $by" } }
@@ -41,6 +42,7 @@ object DevotionalText {
         section(DevotionalBlock.REFLECTION.heading, block(d, DevotionalBlock.REFLECTION))
         section(DevotionalBlock.APPLICATION.heading, block(d, DevotionalBlock.APPLICATION))
         section(DevotionalBlock.PRAYER.heading, block(d, DevotionalBlock.PRAYER))
+        section(DevotionalBlock.LIVE.heading, block(d, DevotionalBlock.LIVE))
         section(DevotionalBlock.WORD.heading, block(d, DevotionalBlock.WORD))
         section(DevotionalBlock.QUOTE.heading, block(d, DevotionalBlock.QUOTE))
         section(DevotionalBlock.QUESTION.heading, block(d, DevotionalBlock.QUESTION))

@@ -71,14 +71,17 @@ object CirclesParsing {
     fun update(id: String, d: Map<String, Any?>) = PostUpdate(id, str(d, "body").orEmpty(), millis(d["createdAt"]))
 
     fun comment(id: String, d: Map<String, Any?>): Comment? {
-        val uid = str(d, "authorUid") ?: return null
-        return Comment(id, uid, str(d, "displayName")?.ifBlank { null } ?: "Member", str(d, "body").orEmpty(), str(d, "parentId"), millis(d["createdAt"]))
+        val uid = str(d, "authorUid")
+        val requester = uid == null && d["author"] == true
+        if (uid == null && !requester) return null
+        val name = if (requester) "Requester" else str(d, "displayName")?.ifBlank { null } ?: "Member"
+        return Comment(id, uid, name, str(d, "body").orEmpty(), str(d, "parentId"), millis(d["createdAt"]), byRequester = requester)
     }
 
     fun message(id: String, d: Map<String, Any?>): ChatMessage? {
         val uid = str(d, "authorUid") ?: return null
         val c = map(d["card"])
-        val card = if (c.isNotEmpty()) CardPayload(str(c, "templateId").orEmpty(), str(c, "text").orEmpty(), str(c, "mood")) else null
+        val card = if (c.isNotEmpty()) CardPayload(str(c, "templateId").orEmpty(), str(c, "text").orEmpty(), str(c, "mood"), str(c, "verseRef")?.ifBlank { null }, str(c, "verseText")?.ifBlank { null }) else null
         return ChatMessage(
             id = id, authorUid = uid, authorName = str(d, "displayName")?.ifBlank { null } ?: "Member", kind = MessageKind.from(str(d, "kind")),
             text = str(d, "text").orEmpty(), replyTo = str(d, "replyTo"), card = card, pollId = str(d, "pollId"), chainId = str(d, "chainId"),

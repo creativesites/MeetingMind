@@ -19,6 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
+import com.craftflowtechnologies.meetingmind.core.create.CreateChatCard
+import com.craftflowtechnologies.meetingmind.core.create.CreateSeed
+import com.craftflowtechnologies.meetingmind.feature.create.CreateHost
+import com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesFailure
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
 import com.craftflowtechnologies.meetingmind.core.circles2.WhoCanInvite
@@ -50,6 +54,9 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     val pollDraft by chat.pollDraft.collectAsState()
     val settings by rememberCompanionSettings()
     val companionId = settings.form?.name?.lowercase()
+    val account: AccountViewModel = viewModel(factory = AccountViewModel.Factory(repo))
+    val accountState by account.state.collectAsState()
+    val create = rememberCreateController()
 
     var tab by rememberSaveable { mutableStateOf(HomeTab.Feed) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
@@ -69,6 +76,16 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
 
     LaunchedEffect(home) { home.messages.collect { snackbar.showSnackbar(it) } }
     LaunchedEffect(chat) { chat.notices.collect { snackbar.showSnackbar(it) } }
+    // A tapped notification for this circle: land on the right tab, and open the post it is about.
+    val target by com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.pendingTarget.collectAsState()
+    LaunchedEffect(target) {
+        val t = target ?: return@LaunchedEffect
+        if (t.circleId != circleId) return@LaunchedEffect
+        showSettings = false
+        tab = if (t.destination == com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat) HomeTab.Chat else HomeTab.Feed
+        t.postId?.let(home::openThread)
+        com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.consumeTarget()
+    }
     LaunchedEffect(tab, chatState.messages.size) { if (tab == HomeTab.Chat) chat.markRead() }
     BackHandler(showSettings) { showSettings = false }
 
@@ -76,7 +93,8 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     if (showSettings && circle != null) {
         CircleSettingsContent(
             circle = circle, me = state.me, onBack = { showSettings = false },
-            onSave = home::saveSettings, onMute = home::setMuted, onLeave = { home.leave(onBack) }
+            onSave = home::saveSettings, onMute = home::setMuted, onLeave = { home.leave(onBack) },
+            account = accountState, onLink = account::link, onSwitch = account::switchAccount, onDismissConflict = account::dismissConflict
         )
     } else {
         val feed = FeedActions(
@@ -96,7 +114,12 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             reactionsFor = chat::reactionsFor, onToggleReaction = chat::toggleReaction,
             pollFor = chat::pollFor, onVote = chat::vote, onClosePoll = chat::closePoll,
             chainFor = chat::chainFor, onClaim = chat::claimSlot, onRelease = chat::releaseSlot,
-            onNewPoll = chat::openPollDraft, onShareCard = { showCard = true }, onStartChain = { chainPost = null; chainTitle = "" }, onCelebrate = { showCelebrate = true }
+            onNewPoll = chat::openPollDraft, onShareCard = {
+                // The real Create studio; the finished card is posted into this chat.
+                create.open(CreateSeed(), label = circle?.name ?: "the chat") { r ->
+                    CreateChatCard.toPayload(r.card, r.scripture)?.let(chat::shareCard)
+                }
+            }, onStartChain = { chainPost = null; chainTitle = "" }, onCelebrate = { showCelebrate = true }
         )
         CircleHomeContent(
             state = state, chat = chatState, draft = draft, tab = tab, onTab = { tab = it }, now = now,
@@ -120,6 +143,8 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     pollDraft?.let { d ->
         PollSheet(d, PollSheetActions(chat::setPollQuestion, chat::setPollOption, chat::addPollOption, chat::removePollOption, chat::setPollMulti, chat::createPoll), chat::closePollDraft)
     }
+    CreateHost(create)
+    // The simple card sheet is only a fallback for builds where the studio can't open.
     if (showCard) CardShareSheet({ chat.shareCard(it) }, { showCard = false })
     chainTitle?.let { t -> ChainSheet(t, { chat.startChain(it, chainPost) }, { chainTitle = null; chainPost = null }) }
     if (showCelebrate) CelebrateSheet(companionId, { k, text -> chat.celebrate(k, text, companionId) }, { showCelebrate = false })

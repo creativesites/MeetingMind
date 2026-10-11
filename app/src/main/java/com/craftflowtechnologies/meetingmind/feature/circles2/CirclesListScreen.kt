@@ -65,6 +65,9 @@ fun CirclesListScreen(
     val vm: CirclesListViewModel = viewModel(factory = CirclesListViewModel.Factory(repo))
     val list by vm.list.collectAsState()
     val join by vm.join.collectAsState()
+    val account: AccountViewModel = viewModel(factory = AccountViewModel.Factory(repo))
+    val accountState by account.state.collectAsState()
+    val askNotifications = rememberNotificationAsk()
     var showJoin by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(initialCode) {
         if (initialCode != null) { vm.onPaste(initialCode); showJoin = true; onInitialCodeHandled() }
@@ -74,8 +77,10 @@ fun CirclesListScreen(
         onBack = onBack, onOpen = onOpenCircle, onCreate = onCreate,
         onShowJoin = { showJoin = true }, onHideJoin = { showJoin = false; vm.resetJoin() },
         onPaste = vm::onPaste, onJoinName = vm::onJoinName,
-        onJoin = { vm.join { id -> showJoin = false; vm.resetJoin(); onOpenCircle(id) } },
-        onRefresh = vm::refresh
+        // The first circle is when "tell me when something happens" makes sense, so that is when we ask.
+        onJoin = { vm.join { id -> showJoin = false; vm.resetJoin(); if (repo.isFirstCircle()) askNotifications { onOpenCircle(id) } else onOpenCircle(id) } },
+        onRefresh = vm::refresh,
+        account = accountState, onLink = account::link, onSwitch = account::switchAccount, onDismissConflict = account::dismissConflict
     )
 }
 
@@ -92,7 +97,11 @@ fun CirclesListContent(
     onPaste: (String) -> Unit,
     onJoinName: (String) -> Unit,
     onJoin: () -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    account: AccountUiState? = null,
+    onLink: (android.content.Context) -> Unit = {},
+    onSwitch: () -> Unit = {},
+    onDismissConflict: () -> Unit = {}
 ) {
     val canAct = state !is CirclesListState.NotConnected
     Column(Modifier.fillMaxSize().background(MM.colors.background).statusBarsPadding()) {
@@ -131,6 +140,7 @@ fun CirclesListContent(
                 ) {
                     state.note?.let { n -> item { Note(n, onRefresh) } }
                     items(state.circles, key = { it.id }) { c -> CircleRow(c) { onOpen(c.id) } }
+                    if (account != null) item { KeepCirclesOffer(account, onLink, onSwitch, onDismissConflict) }
                     item { Row(Modifier.fillMaxWidth().padding(top = MM.space.s), horizontalArrangement = Arrangement.Center) { PrimaryButton("Start a circle", onCreate, leadingIcon = Icons.Rounded.Add) } }
                 }
             }

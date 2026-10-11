@@ -64,6 +64,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 import com.craftflowtechnologies.meetingmind.ui.theme.forTheme
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import java.util.UUID
 
 /**
@@ -272,7 +273,7 @@ private fun TestimoniesHeroBanner(onNewTestimony: () -> Unit) {
                         "Overcoming by Testimony",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
+                        color = FixedWhite,
                         fontFamily = FontFamily.Serif
                     )
                 }
@@ -280,14 +281,14 @@ private fun TestimoniesHeroBanner(onNewTestimony: () -> Unit) {
                     "“And they overcame by the blood of the Lamb and by the word of their testimony.” — Rev 12:11",
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = FixedWhite.copy(alpha = 0.85f),
                     modifier = Modifier.padding(top = 8.dp)
                 )
                 Surface(
                     onClick = onNewTestimony,
                     shape = RoundedCornerShape(50),
-                    color = Color.White.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                    color = FixedWhite.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, FixedWhite.copy(alpha = 0.3f)),
                     modifier = Modifier.padding(top = 12.dp)
                 ) {
                     Row(
@@ -305,7 +306,7 @@ private fun TestimoniesHeroBanner(onNewTestimony: () -> Unit) {
                             "Share What God Has Done",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
-                            color = Color.White
+                            color = FixedWhite
                         )
                     }
                 }

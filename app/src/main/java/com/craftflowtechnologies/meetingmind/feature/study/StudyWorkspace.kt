@@ -415,24 +415,3 @@ private fun SermonTranscript(s: SermonStudy?, onPlay: (Long) -> Unit) {
 }
 
 @Suppress("unused") private val dot = CircleShape
-
-/** Choose a study method; each makes an ordinary Bible-study note. */
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-@Composable
-fun StudyTemplateSheet(passage: ScriptureReference?, onPick: (com.craftflowtechnologies.meetingmind.core.faith.StudyTemplate) -> Unit, onDismiss: () -> Unit) {
-    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = LocalMMColors.current.surface) {
-        LazyColumn(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
-            item {
-                Text(passage?.let { "Study ${it.display()}" } ?: "Start a Bible study", fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
-                Text("Choose a method. It becomes a normal note you can change freely, with the passage open beside it.", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
-            }
-            items(com.craftflowtechnologies.meetingmind.core.faith.StudyTemplate.entries) { t ->
-                Column(Modifier.fillMaxWidth().clickable { onPick(t) }.padding(vertical = 12.dp).testTag("study_template_${t.name}")) {
-                    Text(t.label, fontSize = 16.sp, color = Ink, fontWeight = FontWeight.Medium)
-                    Text(t.description, fontSize = 13.sp, color = InkSecondary)
-                }
-                HorizontalDivider(color = LineSoft, thickness = 0.5.dp)
-            }
-        }
-    }
-}
