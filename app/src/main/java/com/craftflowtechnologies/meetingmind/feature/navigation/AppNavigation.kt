@@ -35,6 +35,11 @@ object Routes {
     const val FAITH_JOURNEY = "faith_journey"
     const val FAITH_SCRIPTURE = "faith_scripture"
     const val BIBLE = "bible?ref={ref}&search={search}"
+    /** The one Bible place: Continue, Today's reading, how I feel, plans, study journal (ONE_PLACE §3). */
+    const val BIBLE_HOME = "bible_home"
+    /** A guided session on a passage. [kind] is a SessionKind key, or "walk" to choose SOAP or Verse by verse first. */
+    const val BIBLE_SESSION = "bible_session?ref={ref}&kind={kind}&need={need}&plan={plan}&day={day}"
+    const val BIBLE_JOURNAL = "bible_journal"
     const val DEVOTIONAL = "devotional?play={play}&note={note}"
     fun devotionalRoute(play: String? = null) = "devotional" + (play?.let { "?play=$it" } ?: "")
     /** A saved devotional, opened as it was — never rewritten. */
@@ -102,6 +107,10 @@ object Routes {
     /** The Bible reader, at [reference] (a USFM passage id such as "JHN.3.16") or where it was left. */
     fun bibleRoute(reference: String? = null, search: Boolean = false) =
         "bible?search=$search" + (reference?.let { "&ref=$it" } ?: "")
+
+    /** A guided session on [passageId] (a USFM passage id such as "JHN.3.16"). [need] is a Need key; [plan]/[day] mark a plan day read when finished. */
+    fun bibleSessionRoute(passageId: String, kind: String, need: String? = null, plan: String? = null, day: Int? = null) =
+        "bible_session?ref=$passageId&kind=$kind" + (need?.let { "&need=$it" } ?: "") + (plan?.let { "&plan=$it" } ?: "") + (day?.let { "&day=$it" } ?: "")
 
     fun notebookRoute(notebookId: String) = "notebook/$notebookId"
 

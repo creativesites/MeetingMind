@@ -202,7 +202,7 @@ fun PrayingForCard(vm: FaithExtrasViewModel, onOpenList: () -> Unit) {
 // ---------------------------------------------------------------- screens
 
 @Composable
-fun ReadingPlansScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit, onRead: (ScriptureReference) -> Unit) {
+fun ReadingPlansScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit, onRead: (ScriptureReference) -> Unit, onReadDay: ((ReadingPlan, Int) -> Unit)? = null) {
     val plans by vm.plans.collectAsState()
     var open by remember { mutableStateOf<String?>(plans.firstOrNull()?.plan?.id) }
     Scaffold(containerColor = SurfaceBase) { padding ->
@@ -225,7 +225,7 @@ fun ReadingPlansScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit, onR
                 if (open == p.plan.id) items(p.plan.length, key = { "d-${p.plan.id}-$it" }) { d ->
                     val done = d in p.done
                     val isToday = d == p.dayFor(vm.today)
-                    Row(Modifier.fillMaxWidth().clickable { onRead(p.plan.days[d].first()) }.padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clickable { onReadDay?.invoke(p.plan, d) ?: onRead(p.plan.days[d].first()) }.padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(26.dp).clip(CircleShape).background(if (done) Color(0xFF2563EB).forTheme() else com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk).clickable { vm.setDone(p.plan, d, !done) }
                             .then(if (!done) Modifier.background(Color(0xFFEFF3FB).forTheme()) else Modifier), contentAlignment = Alignment.Center) {
                             if (done) Icon(Icons.Filled.Check, contentDescription = "Read", tint = Color.White, modifier = Modifier.size(16.dp))

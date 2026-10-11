@@ -342,7 +342,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Processing -> openProcessing(link.meetingId)
             is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Recording -> navController.navigate(Routes.meetingDetailRoute(link.meetingId))
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Models -> navController.navigate(Routes.MODELS) { launchSingleTop = true }
-            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Bible -> navController.navigate(Routes.bibleRoute()) { launchSingleTop = true }
+            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Bible -> navController.navigate(Routes.BIBLE_HOME) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Devotional -> navController.navigate(Routes.devotionalRoute()) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.PrayerList -> navController.navigate(Routes.PRAYER_LIST) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.ReadingPlans -> navController.navigate(Routes.PLANS) { launchSingleTop = true }
@@ -543,7 +543,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onRecordSermon = { navController.navigate(Routes.recordTypeRoute(RecordingType.SERMON)) },
                     onOpenJourney = { navController.navigate(Routes.FAITH_JOURNEY) },
                     onOpenScripture = { navController.navigate(Routes.FAITH_SCRIPTURE) },
-                    onOpenBible = { navController.navigate(Routes.bibleRoute()) },
+                    onOpenBible = { navController.navigate(Routes.BIBLE_HOME) },
                     onSearchBible = { navController.navigate(Routes.bibleRoute(search = true)) },
                     onReadPassage = { navController.navigate(Routes.bibleRoute(it.passageId())) },
                     onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
@@ -706,7 +706,11 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         }
         composable(Routes.PLANS) {
             val vm: com.craftflowtechnologies.meetingmind.feature.faith.FaithExtrasViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
-            com.craftflowtechnologies.meetingmind.feature.faith.ReadingPlansScreen(vm, onNavigateBack = { navController.popBackStack() }, onRead = { navController.navigate(Routes.bibleRoute(it.passageId())) })
+            com.craftflowtechnologies.meetingmind.feature.faith.ReadingPlansScreen(
+                vm, onNavigateBack = { navController.popBackStack() }, onRead = { navController.navigate(Routes.bibleRoute(it.passageId())) },
+                // A plan day opens as a guided session, not just text; finishing it ticks the day off.
+                onReadDay = { plan, day -> navController.navigate(Routes.bibleSessionRoute(plan.days[day].first().passageId(), "plan", plan = plan.id, day = day)) }
+            )
         }
         composable(com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsRoute) {
             com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsScreen(onNavigateBack = { navController.popBackStack() })
@@ -806,25 +810,70 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         ) { backStackEntry ->
             val vm: com.craftflowtechnologies.meetingmind.feature.bible.BibleViewModel = viewModel()
             val ref = backStackEntry.arguments?.getString("ref")?.let { com.craftflowtechnologies.meetingmind.core.scripture.YouVersionScriptureProvider.parsePassageId(it) }
-            // "Study this": pick a method, get a study note with the passage open beside it.
-            var studyFor by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference?>(null) }
-            val studyScope = rememberCoroutineScope()
-            studyFor?.let { passage ->
-                com.craftflowtechnologies.meetingmind.feature.study.StudyTemplateSheet(passage, onPick = { t ->
-                    studyFor = null
-                    studyScope.launch {
-                        val note = com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(context)).startStudy(t, passage)
-                        navController.navigate(Routes.studyRoute(note.id, passageId = passage.passageId()))
-                    }
-                }, onDismiss = { studyFor = null })
-            }
             com.craftflowtechnologies.meetingmind.feature.bible.BibleScreen(
                 viewModel = vm,
                 initialReference = ref,
                 onNavigateBack = { navController.popBackStack() },
-                onStartNote = { r -> studyFor = r },
+                // "Guide me" on a selection starts Walk me through it (SOAP or Verse by verse).
+                onGuide = { r -> navController.navigate(Routes.bibleSessionRoute(r.passageId(), "walk")) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 startInSearch = backStackEntry.arguments?.getBoolean("search") == true
             )
+        }
+        composable(Routes.BIBLE_HOME) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.bible.BibleHomeViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.bible.BibleHomeScreen(
+                vm,
+                com.craftflowtechnologies.meetingmind.feature.bible.BibleHomeActions(
+                    onBack = { navController.popBackStack() },
+                    onSearch = { navController.navigate(Routes.bibleRoute(search = true)) },
+                    onRead = { r -> navController.navigate(Routes.bibleRoute(r?.passageId())) },
+                    onGuideToday = { r -> navController.navigate(Routes.bibleSessionRoute(r.passageId(), "today")) },
+                    onNeed = { need ->
+                        val pick = com.craftflowtechnologies.meetingmind.core.biblestudy.NeedPassages.pick(need, java.time.LocalDate.now().toEpochDay())
+                        navController.navigate(Routes.bibleSessionRoute(pick.reference.passageId(), "need", need = need.key))
+                    },
+                    onWalkThrough = { r -> navController.navigate(Routes.bibleSessionRoute(r.passageId(), "walk")) },
+                    onPlanDay = { p -> navController.navigate(Routes.bibleSessionRoute(p.reference.passageId(), "plan", plan = p.planId, day = p.dayIndex)) },
+                    onAllPlans = { navController.navigate(Routes.PLANS) },
+                    onJournal = { navController.navigate(Routes.BIBLE_JOURNAL) }
+                )
+            )
+        }
+        composable(
+            Routes.BIBLE_SESSION,
+            arguments = listOf(
+                navArgument("ref") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("kind") { type = NavType.StringType; defaultValue = "walk" },
+                navArgument("need") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("plan") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("day") { type = NavType.IntType; defaultValue = -1 }
+            )
+        ) { entry ->
+            val vm: com.craftflowtechnologies.meetingmind.feature.bible.GuidedSessionViewModel = viewModel()
+            val passage = entry.arguments?.getString("ref")?.let { com.craftflowtechnologies.meetingmind.core.scripture.YouVersionScriptureProvider.parsePassageId(it) }
+            if (passage == null) { LaunchedEffect(Unit) { navController.popBackStack() } } else {
+                val kindKey = entry.arguments?.getString("kind")
+                val kind = com.craftflowtechnologies.meetingmind.core.biblestudy.SessionKind.byKey(kindKey) ?: com.craftflowtechnologies.meetingmind.core.biblestudy.SessionKind.SOAP
+                LaunchedEffect(Unit) {
+                    vm.start(
+                        com.craftflowtechnologies.meetingmind.core.biblestudy.SessionRequest(
+                            kind, passage, com.craftflowtechnologies.meetingmind.core.biblestudy.Need.byKey(entry.arguments?.getString("need")),
+                            entry.arguments?.getString("plan"), entry.arguments?.getInt("day")?.takeIf { it >= 0 }
+                        ),
+                        walk = kindKey == "walk"
+                    )
+                }
+                com.craftflowtechnologies.meetingmind.feature.bible.GuidedSessionScreen(
+                    vm, onClose = { navController.popBackStack() },
+                    onOpenReader = { r -> navController.navigate(Routes.bibleRoute(r.passageId())) },
+                    onOpenNote = { navController.navigate(Routes.noteRoute(it)) }
+                )
+            }
+        }
+        composable(Routes.BIBLE_JOURNAL) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.bible.StudyJournalViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.bible.StudyJournalScreen(vm, onBack = { navController.popBackStack() }, onOpenNote = { navController.navigate(Routes.noteRoute(it)) })
         }
         composable(Routes.FAITH_JOURNEY) {
             val vm: com.craftflowtechnologies.meetingmind.feature.faith.FaithViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
