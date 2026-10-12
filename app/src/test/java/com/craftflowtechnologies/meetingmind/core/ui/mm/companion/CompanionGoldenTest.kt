@@ -25,9 +25,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Companion goldens (§10.10), one parameterised test: every roster form × (6 MVP states + 6
- * Create modes) × Paper/Graphite × 24/96 dp with Indigo, plus Idle × 6 accents × 2 themes at
- * 64 dp. Static poses on the Canvas renderer. Record with `./gradlew recordRoborazziDebug`.
+ * Companion goldens (§10.10), one parameterised test: every roster form × (6 MVP states + 3
+ * Phase B states + 6 Create modes) × Paper/Graphite × 24/96 dp with Indigo, plus Idle × 6 accents
+ * × 2 themes at 64 dp. Static poses on the Canvas renderer. Record with `./gradlew recordRoborazziDebug`.
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -59,7 +59,9 @@ class CompanionGoldenTest(private val case: Case) {
     }
 
     companion object {
-        private val visuals: List<CompanionVisual> = CompanionState.Mvp + CreateMode.entries
+        /** The 6 MVP states, the Phase B states (Curious, Proud, Reading; Z-20) and the 6 Create modes. */
+        private val visuals: List<CompanionVisual> = CompanionState.Mvp + PhaseB + CreateMode.entries
+        private val PhaseB: List<CompanionVisual> get() = listOf(CompanionState.CURIOUS, CompanionState.PROUD, CompanionState.READING)
 
         @JvmStatic
         @ParameterizedRobolectricTestRunner.Parameters(name = "{0}")

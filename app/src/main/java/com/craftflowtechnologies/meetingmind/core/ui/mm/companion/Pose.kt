@@ -52,7 +52,9 @@ data class Pose(
     val pageLean: Float = 0f,
     val fx: Fx = Fx.NONE,
     /** Sermon quiet: no level reaction, no rings. */
-    val calm: Boolean = false
+    val calm: Boolean = false,
+    /** Reading aloud: how far the mouth (Page) or beak (Wren) opens with the voice, 0..1. */
+    val talk: Float = 0f
 )
 
 private fun mix(a: Float, b: Float, t: Float) = a + (b - a) * t
@@ -71,6 +73,7 @@ fun lerp(a: Pose, b: Pose, t: Float): Pose {
         ear = mix(a.ear, b.ear, t), headTilt = mix(a.headTilt, b.headTilt, t), headDy = mix(a.headDy, b.headDy, t),
         tail = mix(a.tail, b.tail, t), wing = mix(a.wing, b.wing, t),
         fold = mix(a.fold, b.fold, t), pageLean = mix(a.pageLean, b.pageLean, t),
-        fx = if (late) b.fx else a.fx, calm = if (late) b.calm else a.calm
+        fx = if (late) b.fx else a.fx, calm = if (late) b.calm else a.calm,
+        talk = mix(a.talk, b.talk, t)
     )
 }

@@ -8,7 +8,7 @@
     <string name="companion_lab_mode">Create mode</string>
     <string name="companion_lab_mode_none">None</string>
     <string name="companion_lab_variant">Variant</string>
-    <string name="companion_lab_level">Mic level %1$d%%</string>
+    <string name="companion_lab_level">Level (mic, or the voice while Reading) %1$d%%</string>
     <string name="companion_lab_level_wobble">Simulate speech</string>
     <string name="companion_lab_accent">Accent</string>
     <string name="companion_lab_theme_light">Light</string>

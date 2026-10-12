@@ -12,6 +12,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.forms.glint
 
 class CompanionMotionTest {
     private val eps = 1e-4f
@@ -137,5 +138,61 @@ class CompanionMotionTest {
         assertEquals(1f, s.value, 1e-3f)
         s.update(5f, 16f); assertTrue(s.value <= 1f)
         val before = s.value; s.update(0f, 0f); assertEquals(before, s.value, 0f)
+    }
+
+    // ───────────── Z-20: Curious, Proud, Reading ─────────────
+
+    @Test fun `curious leans in over 600 ms and holds its static pose`() {
+        val spec = ZuriMotion.specs.getValue(CompanionState.CURIOUS)
+        assertEquals(Timing.OneShot(600), spec.timing)
+        for (f in CompanionForm.entries) {
+            val start = CompanionPoses.pose(f, CompanionState.CURIOUS, 0f, 0f, false)
+            val end = CompanionPoses.pose(f, CompanionState.CURIOUS, 0.6f, 0f, false)
+            val still = CompanionPoses.pose(f, CompanionState.CURIOUS, 0f, 0f, true)
+            assertEquals("$f starts upright", 0f, start.tilt, eps)
+            assertEquals("$f ends where the static pose is", still, end)
+        }
+        val z = CompanionPoses.pose(CompanionForm.ZURI, CompanionState.CURIOUS, 0f, 0f, true)
+        assertEquals(8f, z.tilt, eps); assertEquals(1.1f, z.eyeScale, eps); assertEquals(1.04f, z.sy, eps)
+        assertEquals(-12f, CompanionPoses.pose(CompanionForm.NAS, CompanionState.CURIOUS, 0f, 0f, true).headTilt, eps)
+    }
+
+    @Test fun `proud is chest up with one glint, small and warm, and settles to its static pose`() {
+        val spec = ZuriMotion.specs.getValue(CompanionState.PROUD)
+        assertEquals(Timing.OneShot(1200), spec.timing)
+        for (f in CompanionForm.entries) {
+            val still = CompanionPoses.pose(f, CompanionState.PROUD, 0f, 0f, true)
+            assertEquals("$f", still, CompanionPoses.pose(f, CompanionState.PROUD, 1.2f, 0f, false))
+            assertEquals(1.04f, still.sy, eps); assertEquals(Fx.GLINT, still.fx); assertEquals(Eyes.HAPPY, still.eyes)
+            // Never a hop: the body rises at most a unit and a bit, unlike Celebrating's 9.
+            for (i in 0..24) assertTrue(CompanionPoses.pose(f, CompanionState.PROUD, i * 0.05f, 0f, false).dy > -1.5f)
+        }
+        assertEquals(0f, glint(0.1f), eps)
+        assertEquals(1f, glint(1.2f), eps)
+        assertEquals(1f, glint(5f), eps)
+    }
+
+    @Test fun `reading follows the voice level and its static pose has the mouth closed`() {
+        assertEquals(Timing.Driven, ZuriMotion.specs.getValue(CompanionState.READING).timing)
+        assertEquals(30, ZuriMotion.specs.getValue(CompanionState.READING).fps)
+        for (f in CompanionForm.entries) {
+            val still = CompanionPoses.pose(f, CompanionState.READING, 0f, 0.55f, true)
+            assertEquals("$f static mouth closed", 0f, still.talk, 0f)
+            assertEquals("$f eyes centred", 0f, still.lookX, 0f)
+        }
+        val quiet = CompanionPoses.pose(CompanionForm.ZURI, CompanionState.READING, 1f, 0f, false)
+        val loud = CompanionPoses.pose(CompanionForm.ZURI, CompanionState.READING, 1f, 1f, false)
+        assertTrue("the sprout follows the voice", loud.sprout1 > quiet.sprout1)
+        assertEquals(1f, loud.talk, eps)
+        val nasQuiet = CompanionPoses.pose(CompanionForm.NAS, CompanionState.READING, 1f, 0f, false)
+        val nasLoud = CompanionPoses.pose(CompanionForm.NAS, CompanionState.READING, 1f, 1f, false)
+        assertEquals("Nas's ears move, subtly", 4f, nasLoud.ear - nasQuiet.ear, eps)
+    }
+
+    @Test fun `reading glance sweeps left to right per sentence, then returns`() {
+        assertEquals(-1.2f, CompanionPoses.readingGlance(0f), eps)
+        assertEquals(1.2f, CompanionPoses.readingGlance(CompanionPoses.ReadingSentenceS * 0.85f), 1e-3f)
+        assertTrue(CompanionPoses.readingGlance(CompanionPoses.ReadingSentenceS * 0.4f) in -1.2f..1.2f)
+        assertEquals(CompanionPoses.readingGlance(0.3f), CompanionPoses.readingGlance(0.3f + CompanionPoses.ReadingSentenceS), 1e-3f)
     }
 }

@@ -47,13 +47,22 @@ object WrenDrawer : FormDrawer {
                 rotate(pose.headTilt, Offset(58f, 50f)) {
                     drawCircle(p.bodyTop, radius = 15.5f, center = Offset(62f, 40f))
                     val beak = path(9)
-                    if (pose.mouth == Mouth.OPEN) {
-                        beak.moveTo(76f, 37.5f); beak.lineTo(86.5f, 39.8f); beak.lineTo(76f, 42f); beak.close()
-                        beak.moveTo(76f, 43f); beak.lineTo(84f, 46.5f); beak.lineTo(76f, 47f); beak.close()
+                    if (pose.talk > TalkMin && pose.mouth != Mouth.OPEN) {
+                        // Reading aloud: the lower beak opens with the voice, hinged at the head.
+                        beak.moveTo(76f, 37.5f); beak.lineTo(86.5f, 40.6f); beak.lineTo(76f, 42.5f); beak.close()
+                        drawPath(beak, p.deep)
+                        val lower = path(11)
+                        lower.moveTo(76f, 42.5f); lower.lineTo(85f, 42.9f); lower.lineTo(76f, 45.5f); lower.close()
+                        rotate(pose.talk * 16f, Offset(76f, 43f)) { drawPath(lower, p.deep) }
                     } else {
-                        beak.moveTo(76f, 38f); beak.lineTo(87f, 41.8f); beak.lineTo(76f, 45.5f); beak.close()
+                        if (pose.mouth == Mouth.OPEN) {
+                            beak.moveTo(76f, 37.5f); beak.lineTo(86.5f, 39.8f); beak.lineTo(76f, 42f); beak.close()
+                            beak.moveTo(76f, 43f); beak.lineTo(84f, 46.5f); beak.lineTo(76f, 47f); beak.close()
+                        } else {
+                            beak.moveTo(76f, 38f); beak.lineTo(87f, 41.8f); beak.lineTo(76f, 45.5f); beak.close()
+                        }
+                        drawPath(beak, p.deep)
                     }
-                    drawPath(beak, p.deep)
                     eyes(f, p, 68f, 37f, Float.NaN, 0f, if (lod) 2.8f else 3.8f, if (lod) 3.4f else 4.4f, if (lod) 2f else 2.8f, look = 0.8f)
                     if (pose.brows) {
                         val brow = path(1)

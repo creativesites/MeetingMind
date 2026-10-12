@@ -28,7 +28,7 @@ sealed interface Timing {
 }
 
 /** The pose channels a keyframe track can drive. */
-enum class PoseChannel { DY, SX, SY, TILT, HOP }
+enum class PoseChannel { DY, SX, SY, TILT, HOP, EYE_SCALE }
 
 @Immutable
 data class Keyframe(val at: Float, val value: Float, val easing: Easing = FastOutSlowInEasing)
@@ -105,6 +105,31 @@ object ZuriMotion {
         )
     }
 
+    /**
+     * Curious (§3.1, Phase B): a 600 ms lean-in on each new question, then hold. Head tilt 8°, the
+     * body leans in 4% (the "4 units" of the spec, about the foot) and the eyes widen to 1.1×.
+     */
+    private val CuriousTracks = listOf(
+        Track(PoseChannel.TILT, listOf(Keyframe(0f, 0f), Keyframe(0.55f, 9.5f, EaseOut), Keyframe(1f, 8f))),
+        Track(PoseChannel.SX, listOf(Keyframe(0f, 1f), Keyframe(0.5f, 1.05f, EaseOut), Keyframe(1f, 1.04f))),
+        Track(PoseChannel.SY, listOf(Keyframe(0f, 1f), Keyframe(0.5f, 1.05f, EaseOut), Keyframe(1f, 1.04f))),
+        Track(PoseChannel.DY, listOf(Keyframe(0f, 0f), Keyframe(0.5f, -1.4f, EaseOut), Keyframe(1f, -1f))),
+        Track(PoseChannel.EYE_SCALE, listOf(Keyframe(0f, 1f), Keyframe(0.5f, 1.12f, EaseOut), Keyframe(1f, 1.1f)))
+    )
+
+    /**
+     * Proud (§3.1, Phase B): 1.2 s, chest up and one gold glint, then Idle. Warm and small on
+     * purpose: a tiny breath in, the chest lifts, no hop and no sparkle burst.
+     */
+    private val ProudTracks = run {
+        fun at(ms: Int) = ms / 1200f
+        listOf(
+            Track(PoseChannel.SY, listOf(Keyframe(0f, 1f), Keyframe(at(140), 0.985f), Keyframe(at(520), 1.046f, EaseOut), Keyframe(at(800), 1.038f), Keyframe(1f, 1.04f))),
+            Track(PoseChannel.SX, listOf(Keyframe(0f, 1f), Keyframe(at(140), 1.008f), Keyframe(at(520), 0.976f, EaseOut), Keyframe(at(800), 0.982f), Keyframe(1f, 0.98f))),
+            Track(PoseChannel.DY, listOf(Keyframe(0f, 0f), Keyframe(at(140), 0.4f), Keyframe(at(520), -1.2f, EaseOut), Keyframe(at(800), -0.9f), Keyframe(1f, -1f)))
+        )
+    }
+
     /** The nod (§3.1): 600 ms, a single 3-unit dip, no sparkles. */
     val Nod = MotionSpec(
         CompanionState.CELEBRATING, Timing.OneShot(600),
@@ -121,8 +146,8 @@ object ZuriMotion {
         MotionSpec(CompanionState.CELEBRATING, Timing.OneShot(1600), tracks = CelebrateTracks),
         MotionSpec(CompanionState.WORRIED, Timing.Loop(6980), sway = Sway(6980, 1.5f), blinkEveryMs = 3800, fps = 30),
         MotionSpec(CompanionState.SLEEPY, Timing.Loop(2600, maxCycles = 3), breath = Breath(5500, 0.025f), fps = 30),
-        MotionSpec(CompanionState.CURIOUS, Timing.OneShot(600)),
-        MotionSpec(CompanionState.PROUD, Timing.OneShot(1200)),
+        MotionSpec(CompanionState.CURIOUS, Timing.OneShot(600), tracks = CuriousTracks),
+        MotionSpec(CompanionState.PROUD, Timing.OneShot(1200), tracks = ProudTracks),
         MotionSpec(CompanionState.READING, Timing.Driven, blinkEveryMs = 2400, fps = 30),
         MotionSpec(CreateMode.PRAYERFUL, Timing.Loop(6000), breath = Breath(6000, 0.008f), fps = 30),
         MotionSpec(CreateMode.PEACEFUL, Timing.Loop(6000), breath = Breath(6000, 0.015f), fps = 30),
@@ -163,8 +188,9 @@ object CompanionPoses {
             return pose(form, CreateMode.PEACEFUL, t, 0f, reduced).copy(calm = true, fx = Fx.NONE)
         }
         val spec = ZuriMotion.spec(visual, variant)
-        val L = level.coerceIn(0f, 1f)
         val rm = reduced
+        // Reading's static pose has the mouth closed (§3.1), whatever level the caller passes.
+        val L = if (rm && visual == CompanionState.READING) 0f else level.coerceIn(0f, 1f)
         fun blinkAt(periodMs: Int?): Float {
             if (rm || periodMs == null) return 0f
             val q = t % (periodMs / 1000f)
@@ -203,12 +229,27 @@ object CompanionPoses {
                 lookY = 0.7f, eyeScale = 0.88f, blink = blinkAt(spec.blinkEveryMs)
             )
             CompanionState.SLEEPY -> Pose(sx = bx, sy = by - 0.03f, dy = 2f, tilt = 6f, eyes = Eyes.CLOSED, mouth = Mouth.NONE, fx = Fx.ZZZ)
-            CompanionState.CURIOUS -> Pose(tilt = 8f, dy = -1f, lookX = 0.8f, lookY = -0.4f, eyeScale = 1.1f, blink = blinkAt(4600))
-            CompanionState.PROUD -> Pose(sy = 1.04f, sx = 0.98f, dy = -1f, eyes = Eyes.HAPPY, mouth = Mouth.SMILE, fx = Fx.GLINT)
-            CompanionState.READING -> {
-                val glance = if (rm) 0f else ((t % 2.4f) / 2.4f) * 2.4f - 1.2f
-                Pose(lookX = glance, lookY = 0.6f, mouth = Mouth.SMILE, blink = blinkAt(spec.blinkEveryMs))
+            CompanionState.CURIOUS -> {
+                val prog = oneShotProgress(t, 600, rm)
+                val e = FastOutSlowInEasing.transform(prog)
+                Pose(
+                    tilt = spec.track(PoseChannel.TILT)!!.valueAt(prog), dy = spec.track(PoseChannel.DY)!!.valueAt(prog),
+                    sx = spec.track(PoseChannel.SX)!!.valueAt(prog), sy = spec.track(PoseChannel.SY)!!.valueAt(prog),
+                    eyeScale = spec.track(PoseChannel.EYE_SCALE)!!.valueAt(prog), lookX = 0.8f * e, lookY = -0.4f * e
+                )
             }
+            CompanionState.PROUD -> {
+                val prog = oneShotProgress(t, 1200, rm)
+                Pose(
+                    sy = spec.track(PoseChannel.SY)!!.valueAt(prog), sx = spec.track(PoseChannel.SX)!!.valueAt(prog),
+                    dy = spec.track(PoseChannel.DY)!!.valueAt(prog), eyes = Eyes.HAPPY, mouth = Mouth.SMILE, fx = Fx.GLINT
+                )
+            }
+            CompanionState.READING -> Pose(
+                // Eyes follow the line (§3.1): a sweep left to right per sentence, a quick return.
+                lookX = if (rm) 0f else readingGlance(t), lookY = 0.6f, mouth = Mouth.SMILE,
+                sy = 1f + 0.015f * L, sx = 1f + 0.006f * L, blink = blinkAt(spec.blinkEveryMs), talk = L
+            )
             CreateMode.PRAYERFUL -> Pose(sx = bx, sy = by, dy = 1f, eyes = Eyes.CLOSED, mouth = Mouth.NONE, hands = true)
             CreateMode.PEACEFUL -> Pose(sx = bx, sy = by, eyes = Eyes.CLOSED, mouth = Mouth.SMILE)
             CreateMode.GRATEFUL -> Pose(sx = bx, sy = by, eyes = Eyes.HAPPY, mouth = Mouth.SMILE, tilt = if (rm) 4f else sway(), fx = Fx.HEART)
@@ -219,6 +260,19 @@ object CompanionPoses {
         p = formChannels(form, visual, variant, p, t, L, rm)
         return p
     }
+
+    /** 0..1 through a one-shot of [ms]; the static pose is the held end (1). */
+    internal fun oneShotProgress(t: Float, ms: Int, rm: Boolean): Float = if (rm) 1f else (t * 1000f / ms).coerceIn(0f, 1f)
+
+    /** The Reading glance: −1.2 → +1.2 over 85% of a 2.4 s sentence (eased), then back in the rest. */
+    internal fun readingGlance(t: Float): Float {
+        val ph = (t % ReadingSentenceS) / ReadingSentenceS
+        return if (ph < 0.85f) -1.2f + 2.4f * FastOutSlowInEasing.transform(ph / 0.85f)
+        else 1.2f - 2.4f * ((ph - 0.85f) / 0.15f)
+    }
+
+    /** The default sentence length while reading aloud (§3.1). */
+    const val ReadingSentenceS = 2.4f
 
     private fun celebrate(spec: MotionSpec, t: Float, rm: Boolean): Pose {
         val base = Pose(eyes = Eyes.HAPPY, mouth = Mouth.OPEN, fx = Fx.SPARKLES)
@@ -235,6 +289,12 @@ object CompanionPoses {
     private fun formChannels(form: CompanionForm, visual: CompanionVisual, variant: CompanionVariant, p: Pose, t: Float, L: Float, rm: Boolean): Pose {
         val v: CompanionVisual = if (variant == CompanionVariant.Nod) CompanionState.IDLE else visual
         val celebrating = v == CompanionState.CELEBRATING || v == CreateMode.CELEBRATORY
+        // Curious and Proud ease their form channels in with the one-shot; static poses hold the end.
+        val e = when (v) {
+            CompanionState.CURIOUS -> FastOutSlowInEasing.transform(oneShotProgress(t, 600, rm))
+            CompanionState.PROUD -> FastOutSlowInEasing.transform(oneShotProgress(t, 1200, rm))
+            else -> 1f
+        }
         return when (form) {
             CompanionForm.ZURI -> {
                 var lean = 0f
@@ -258,7 +318,9 @@ object CompanionPoses {
                         // The sprout follows the voice while reading aloud.
                         h0 = 4f + L * 5f; h1 = 6f + L * 7f; h2 = 4f + L * 5f
                     }
-                    celebrating || v == CompanionState.PROUD -> { h0 = 8f; h1 = 12f; h2 = 8f }
+                    celebrating -> { h0 = 8f; h1 = 12f; h2 = 8f }
+                    v == CompanionState.PROUD -> { h0 = 5f + 3f * e; h1 = 8f + 4f * e; h2 = 5f + 3f * e }
+                    v == CompanionState.CURIOUS -> { h0 = 5f + 1f * e; h1 = 8f + 2.5f * e; h2 = 5f + 1f * e; lean = -6f * e }
                     v == CreateMode.JOYFUL -> {
                         if (rm) { h0 = 6f; h1 = 10f; h2 = 6f } else { h0 = 6f + 2f * sin(t * 5f); h1 = 6f + 2f * sin(t * 5f + 1f); h2 = 6f + 2f * sin(t * 5f + 2f) }
                     }
@@ -289,8 +351,12 @@ object CompanionPoses {
                     v == CreateMode.PRAYERFUL -> { ear = 5f; headDy = 2f }
                     v == CreateMode.PEACEFUL -> { ear = 8f; headR = 4f }
                     v == CreateMode.GRATEFUL -> { ear = 10f; headR = 6f; headDy = 1f; tail = if (rm) 6f else sin(t * 3f) * 6f }
-                    v == CompanionState.CURIOUS -> { headR = -12f; ear = 18f }
-                    v == CompanionState.PROUD -> { ear = 20f; tail = 18f }
+                    v == CompanionState.CURIOUS -> { headR = -12f * e; ear = 12f + 6f * e }
+                    v == CompanionState.PROUD -> {
+                        // A small, warm wag that settles: never the celebration wag.
+                        ear = 12f + 8f * e
+                        tail = 18f * e + if (rm) 0f else sin(t * TAU * 2.5f) * 7f * (1f - (t / 1.2f)).coerceIn(0f, 1f)
+                    }
                     v == CompanionState.READING -> { ear = 12f + L * 4f; headR = -4f }
                 }
                 if (p.calm) { ear = 8f; headR = 4f }
@@ -310,8 +376,8 @@ object CompanionPoses {
                     v == CreateMode.PRAYERFUL -> { tail = -8f; headDy = 3f; headR = 14f; wing = -16f }
                     v == CreateMode.PEACEFUL -> { tail = -4f; headR = 6f }
                     v == CreateMode.GRATEFUL -> { tail = 4f; headR = 10f; headDy = 1f }
-                    v == CompanionState.CURIOUS -> { tail = 6f; headR = -12f }
-                    v == CompanionState.PROUD -> { tail = 14f; wing = -10f }
+                    v == CompanionState.CURIOUS -> { tail = 6f * e; headR = -12f * e }
+                    v == CompanionState.PROUD -> { tail = 14f * e; wing = -10f * e }
                     v == CompanionState.READING -> { tail = 2f; headR = -4f }
                 }
                 if (p.calm) { tail = -4f; headR = 6f }
@@ -324,6 +390,9 @@ object CompanionPoses {
                     v == CompanionState.WORRIED -> { fold = 17f; lean = -4f }
                     v == CompanionState.SLEEPY -> lean = 4f
                     v == CreateMode.PRAYERFUL || v == CreateMode.GRATEFUL -> lean = 3f
+                    // Proud: the corner lifts a little; Curious leans toward the question.
+                    v == CompanionState.PROUD -> fold = 12f + 1.5f * e
+                    v == CompanionState.CURIOUS -> lean = -2f * e
                 }
                 p.copy(fold = fold, pageLean = lean)
             }

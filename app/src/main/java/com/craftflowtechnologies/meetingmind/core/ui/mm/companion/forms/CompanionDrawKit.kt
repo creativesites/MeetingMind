@@ -40,6 +40,17 @@ class CompanionFrame {
     var lod: Boolean = true
 }
 
+/** Below this [Pose.talk] the mouth or beak stays closed. */
+internal const val TalkMin = 0.02f
+
+/** Proud's glint scale over its 1.2 s one-shot: 0 until 0.3 s, a smooth pop by 0.6 s, a fading twinkle, exactly 1 at the end. */
+internal fun glint(t: Float): Float {
+    val a = ((t - 0.3f) / 0.3f).coerceIn(0f, 1f)
+    val pop = a * a * (3f - 2f * a)
+    val twinkle = if (t < 1.2f) 1f + 0.12f * sin((t - 0.6f).coerceAtLeast(0f) * 9f) * (1f - t / 1.2f) else 1f
+    return pop * twinkle
+}
+
 /** A fixed effect anchor set for a form: sparkle spots, the thinking dots and the sleepy z's. */
 class FxAnchors(
     /** x, y, size for four sparkles. */
@@ -163,11 +174,19 @@ class CompanionDrawKit {
         drawPath(path, p.eye, style = stroke(sw))
     }
 
-    /** The shared mouth (Zuri, Page). Dropped at LOD-0. */
-    fun DrawScope.mouth(f: CompanionFrame, p: CompanionPalette, x: Float, y: Float, w: Float) {
+    /**
+     * The shared mouth (Zuri, Page). Dropped at LOD-0. With [talks], a smile opens with
+     * [Pose.talk] while reading aloud (Page); Zuri talks with its sprout instead.
+     */
+    fun DrawScope.mouth(f: CompanionFrame, p: CompanionPalette, x: Float, y: Float, w: Float, talks: Boolean = false) {
         if (!f.lod) return
+        val talk = f.pose.talk
         when (f.pose.mouth) {
-            Mouth.SMILE -> {
+            Mouth.SMILE -> if (talks && talk > TalkMin) {
+                val path = path(2)
+                path.moveTo(x - w, y - 0.2f); path.quadraticTo(x, y + w * (0.85f + 1.1f * talk), x + w, y - 0.2f); path.close()
+                drawPath(path, p.eye)
+            } else {
                 val path = path(2)
                 path.moveTo(x - w, y); path.quadraticTo(x, y + w * 0.85f, x + w, y)
                 drawPath(path, p.eye, style = stroke(w * 0.5f))
@@ -246,7 +265,11 @@ class CompanionDrawKit {
                 val k = if (rm) 0.8f else 0.5f + 0.4f * sin(t * 3f + i * 2f)
                 sparkle(sp[i * 3], sp[i * 3 + 1], sp[i * 3 + 2] * k, if (i == 1) p.gold else p.sparkle, 0.8f)
             }
-            Fx.GLINT -> sparkle(sp[3], sp[4], sp[5], p.gold, 1f)
+            Fx.GLINT -> {
+                // Proud's one gold glint: it pops in a third of the way through and twinkles to rest.
+                val k = if (rm) 1f else glint(t)
+                sparkle(sp[3], sp[4], sp[5] * k, p.gold, k.coerceIn(0f, 1f))
+            }
             Fx.HEART -> {
                 val hy = if (rm) 0f else sin(t * 1.6f) * 1.5f
                 heart(sp[3] - 2f, sp[4] + 4f + hy, 3.6f, p.tongue, 0.9f)

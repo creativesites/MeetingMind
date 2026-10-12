@@ -51,7 +51,7 @@ object PageDrawer : FormDrawer {
                 }
                 eyes(f, p, 42f, 40f, 56f, 40f, if (lod) 2.9f else 3.8f, if (lod) 3.9f else 5f, if (lod) 2.1f else 2.8f)
                 if (pose.brows) brows(p, 42f, 40f, 56f, 40f, 2.9f, 3.9f, 1.6f)
-                mouth(f, p, 49f, 47.5f, 2.6f)
+                mouth(f, p, 49f, 47.5f, 2.6f, talks = true)
                 if (lod) lines(kit, f, p, visual)
             }
         }
