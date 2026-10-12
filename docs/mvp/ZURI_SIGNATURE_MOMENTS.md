@@ -222,13 +222,25 @@ loop the processing screen opened (the labor illusion pays off). Without Zuri, t
 The ladder: **FIRST_KEEP** (3.6 s) > **UNVEIL** (variant, 1.2–1.8 s) > **NOD** (0.6 s) > **PLAIN** (no motion;
 the note is simply there).
 
+> **Founder decision 2026-10-12 (supersedes the Unveil rotation for now):** the First Keep plays on **every**
+> successful note, because the founder loves it; variations come later. It sits behind
+> `CompanionFlags.firstKeepEveryNote` (default **true**). While it is true, the planner uses the table below
+> with these changes: row 3 becomes "any successful note → **FIRST_KEEP** (the quiet version in Faith or for a
+> sermon)", the daily budget and the back-to-back guard no longer apply, and rows 8 and 9 (the Unveil rotation)
+> are skipped. Everything else stays: failures and sacred notes stay plain, a recording in progress defers it, and
+> reduced motion, battery saver, a low-end phone and a very short recording still step down, because those are
+> system or honesty guards, not taste. The Unveil variants, `UnveilRotation` and `DailyBudget` stay in the code
+> behind the flag, dormant, so "later we make variations" is a flag flip, not a rewrite. The **chime** plays only
+> on the two once-ever First Keeps (hello and first real recording), never on every note. It would become
+> grating at the 50th note.
+
 `MomentPlanner.plan(facts)` is a pure function. **The first matching row wins:**
 
 | # | Condition | Plan | Why |
 |---|---|---|---|
 | 1 | Processing failed, or partial (summary missing), or `MODEL_REQUIRED` | **PLAIN** + `StatusLine` with the fix; Zuri Worried / Sleepy in its leading slot | Never celebrate a failure |
 | 2 | `sensitive` (prayer request, grief/funeral/memorial tag) or Good Friday | **PLAIN** (no companion motion) | §1.3, §5.10 |
-| 3 | First note ever, and the ledger allows `FirstRecordingPeak` | **FIRST_KEEP** (quiet if Faith or a sermon) | Once ever |
+| 3 | First note ever, and the ledger allows `FirstRecordingPeak`; **or `firstKeepEveryNote` is on and the note succeeded** | **FIRST_KEEP** (quiet if Faith or a sermon) | The signature moment (every note while the flag is on) |
 | 4 | A recording is in progress | Defer: the ticket waits. After the stop, one snackbar for all queued notes ("2 notes are ready."); each later opens with a **NOD** | Never interrupt a recording |
 | 5 | Reduced motion (animator duration scale 0) | **PLAIN** + the polite announcement | Static end state |
 | 6 | Sermon recording (quiet) | **UNVEIL Dawn, quiet** (no glint, eyes closed → soft nod) if the budget allows, else **NOD** quiet | Calm: a warm glow and a soft nod |
@@ -877,5 +889,7 @@ Each idea comes with a one-line sanity check.
 | 6 | Curtain in Faith | **Keep** at weight 1. |
 | 7 | Animated card export | **Out for now.** It stays in §11 as an idea. Nothing is built for it, and no task is scheduled. |
 | 8 | "Share a moment" on the First Keep | **Keep** (§5.2). |
+
+| 9 | Should the First Keep play on every note? | **Yes, for now** (later 2026-10-12). `CompanionFlags.firstKeepEveryNote = true`; the Unveil rotation stays dormant behind it (§3.3). The chime stays on the two once-ever plays. Variations come later. |
 
 The original questions and recommendations are kept in git history.
