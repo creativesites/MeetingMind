@@ -51,7 +51,15 @@ VM_ID = "0:40"
 VM_INSTANCE = "0:41"
 VM_PROP = {name: f"0:{42 + i}" for i, (name, _) in enumerate(COLORS)}
 # input mirrors, only present in the test build (see StateMachineBuilder)
-VM_TEST = {"state": "0:70", "level": "0:71", "mode": "0:72", "calm": "0:73", "celebrate": "0:74", "nod": "0:75"}
+VM_TEST = {"state": "0:70", "level": "0:71", "mode": "0:72", "calm": "0:73", "celebrate": "0:74", "nod": "0:75", "lookX": "0:76", "lookY": "0:77"}
+
+
+def layer_for(param):
+    """The state machine layer that owns a parameter, by prefix."""
+    for prefix, layer in (("fx_", "fx"), ("bl_", "blink"), ("lkx_", "lookx"), ("lky_", "looky")):
+        if param.startswith(prefix):
+            return layer
+    return "pose"
 
 
 class Ctx:
@@ -86,7 +94,7 @@ class Ctx:
                 base = float(attrs.get(prop, 0.0))
             self.targets.setdefault(param, []).append((objid, prop, mode, base, mult))
             if param not in self.layer_of:
-                self.layer_of[param] = "fx" if param.startswith("fx_") else ("blink" if param.startswith("bl_") else "pose")
+                self.layer_of[param] = layer_for(param)
 
 
 # ------------------------------------------------------------------ element helpers
@@ -415,7 +423,8 @@ def anim_xml(ctx, name, T, loop, tracks, layers, aid, extra_layers=()):
 
 
 class SM:
-    """The `Companion` state machine: three layers (Pose, Fx, Blink) driven by the contract inputs.
+    """The `Companion` state machine: Pose, Fx and Blink layers driven by the contract inputs, plus LookX and
+    LookY (parallax, one blend state each on the optional `lookX`/`lookY` inputs).
 
     mode == "input": real StateMachine inputs (what ships).
     mode == "vm":    the same graph driven by view model properties, so the CLI (which can set view model
@@ -427,7 +436,8 @@ class SM:
     def __init__(self, ctx, mode):
         self.ctx = ctx
         self.mode = mode
-        self.in_id = {"state": "0:30", "level": "0:31", "mode": "0:32", "celebrate": "0:33", "nod": "0:34", "calm": "0:35"}
+        self.in_id = {"state": "0:30", "level": "0:31", "mode": "0:32", "celebrate": "0:33", "nod": "0:34", "calm": "0:35",
+                      "lookX": "0:36", "lookY": "0:37"}
         self.layers = []
 
     def inputs_xml(self):
@@ -441,6 +451,9 @@ class SM:
             + el("StateMachineTrigger", {"name": "celebrate", "id": i["celebrate"]})
             + el("StateMachineTrigger", {"name": "nod", "id": i["nod"]})
             + el("StateMachineBool", {"name": "calm", "id": i["calm"]})
+            # optional parallax inputs (-100..100), sent by the app when the volume layer is on (Z-14)
+            + el("StateMachineNumber", {"name": "lookX", "id": i["lookX"]})
+            + el("StateMachineNumber", {"name": "lookY", "id": i["lookY"]})
         )
 
     def _vm_ref(self, name):
@@ -500,11 +513,12 @@ class SM:
             if s["kind"] == "anim":
                 parts.append(el("AnimationState", {"x": s["x"], "y": s["y"], "animationId": s["anim"], "reset": s.get("reset", False) or None, "id": s["id"]}, trs))
             else:
+                src = s.get("input", "level")  # the number that drives the blend: level, lookX or lookY
                 if self.mode == "input":
-                    bs = el("BlendState1DInput", {"x": s["x"], "y": s["y"], "inputId": self.in_id["level"], "id": s["id"]},
+                    bs = el("BlendState1DInput", {"x": s["x"], "y": s["y"], "inputId": self.in_id[src], "id": s["id"]},
                             "".join(el("BlendAnimation1D", {"animationId": a, "value": v}) for a, v in s["blend"]) + trs)
                 else:
-                    bp = el("BindablePropertyNumber", {}, el("DataBindContext", {"sourcePathIds": self._vm_ref("level"), "propertyKey": 636}))
+                    bp = el("BindablePropertyNumber", {}, el("DataBindContext", {"sourcePathIds": self._vm_ref(src), "propertyKey": 636}))
                     bs = el("BlendState1DViewModel", {"x": s["x"], "y": s["y"], "id": s["id"]},
                             bp + "".join(el("BlendAnimation1D", {"animationId": a, "value": v}) for a, v in s["blend"]) + trs)
                 parts.append(bs)
@@ -515,7 +529,8 @@ def view_model_xml(mode):
     props = "".join(el("ViewModelPropertyColor", {"name": n, "id": VM_PROP[n]}) for n, _ in COLORS)
     vals = "".join(el("ViewModelInstanceColor", {"propertyValue": c, "viewModelPropertyId": VM_PROP[n]}) for n, c in COLORS)
     if mode == "vm":
-        for n, t in (("state", "Number"), ("level", "Number"), ("mode", "Number"), ("calm", "Boolean"), ("celebrate", "Trigger"), ("nod", "Trigger")):
+        for n, t in (("state", "Number"), ("level", "Number"), ("mode", "Number"), ("calm", "Boolean"), ("celebrate", "Trigger"), ("nod", "Trigger"),
+                     ("lookX", "Number"), ("lookY", "Number")):
             props += el(f"ViewModelProperty{t}", {"name": n, "id": VM_TEST[n]})
             v = {"Number": "0", "Boolean": "false", "Trigger": "0"}[t]
             vals += el(f"ViewModelInstance{t}", {"propertyValue": v, "viewModelPropertyId": VM_TEST[n]})

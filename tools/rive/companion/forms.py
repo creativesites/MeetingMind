@@ -14,9 +14,13 @@ HEART = "F4F47A8A"[2:]  # tongue / heart rose, baked on purpose (not an accent c
 ROSE = "FFF47A8A"
 WHITE = "FFFFFFFF"
 
-POSES = ["idle", "listening", "thinking", "celebrating", "worried", "sleepy", "prayerful", "peaceful", "grateful", "joyful", "reflective", "nod"]
-PERIOD = dict(idle=6.8, listening=4.8, thinking=4.5, celebrating=1.6, worried=7.0, sleepy=5.5, prayerful=6.0, peaceful=6.0, grateful=9.0, joyful=1.2, reflective=4.5, nod=0.6)
-ONESHOT = {"celebrating", "nod"}
+POSES = ["idle", "listening", "thinking", "celebrating", "worried", "sleepy", "prayerful", "peaceful", "grateful", "joyful", "reflective", "nod",
+         "curious", "proud", "reading"]
+PERIOD = dict(idle=6.8, listening=4.8, thinking=4.5, celebrating=1.6, worried=7.0, sleepy=5.5, prayerful=6.0, peaceful=6.0, grateful=9.0, joyful=1.2, reflective=4.5, nod=0.6,
+              curious=0.6, proud=1.2, reading=2.4)
+ONESHOT = {"celebrating", "nod", "curious", "proud"}
+# level-driven poses: one animation at level 0 and one at 100, blended on `level`
+DRIVEN = {"listening", "reading"}
 
 
 def sm(x0, x1, v):  # smoothstep from x0..x1
@@ -58,6 +62,44 @@ def celeb_env(t, hop_scale=1.0):
     d = t - 0.80  # damped spring
     k = math.exp(-3.4 * d) * math.cos(TAU * 1.6 * d)
     return 0.0, 1 - 0.015 * k, 1 + 0.02 * k, 0.0
+
+
+def ease(u):
+    """The app's FastOutSlowIn, approximated by smoothstep (close enough for keyframe sampling)."""
+    return sm(0.0, 1.0, u)
+
+
+def keys(t, pts):
+    """Piecewise-linear-in-eased-time through [(t, v)], holding the ends (mirrors the app's Track)."""
+    if t <= pts[0][0]:
+        return pts[0][1]
+    for (t0, v0), (t1, v1) in zip(pts, pts[1:]):
+        if t <= t1:
+            return lerp(v0, v1, ease((t - t0) / (t1 - t0)))
+    return pts[-1][1]
+
+
+def glint(t):
+    """Proud's glint scale (the app's `glint()`): pops in at 0.3-0.6 s, twinkles, exactly 1 at 1.2 s."""
+    a = min(1.0, max(0.0, (t - 0.3) / 0.3))
+    pop = a * a * (3 - 2 * a)
+    tw = 1 + 0.12 * math.sin(max(0.0, t - 0.6) * 9) * (1 - t / 1.2) if t < 1.2 else 1.0
+    return pop * tw
+
+
+def reading_glance(t):
+    """Reading (the app's `readingGlance()`): eyes sweep -1.2 -> 1.2 over 85% of a 2.4 s sentence, then return."""
+    ph = (t % 2.4) / 2.4
+    return -1.2 + 2.4 * ease(ph / 0.85) if ph < 0.85 else 1.2 - 2.4 * ((ph - 0.85) / 0.15)
+
+
+def oneshot_e(key, t):
+    """0..1 eased progress for the Curious and Proud one-shots (1 for everything else)."""
+    if key == "curious":
+        return ease(min(1.0, t / 0.6))
+    if key == "proud":
+        return ease(min(1.0, t / 1.2))
+    return 1.0
 
 
 def base_pose():
@@ -109,14 +151,34 @@ def pose(key, t, L):
         p.update(lookX=-1.0, lookY=-1.5, rot=-3.0)
     elif key == "nod":
         p.update(eye="happy", mouth="smile", by=3 * math.sin(math.pi * t / 0.6))
+    elif key == "curious":  # Phase B (state 6): lean in over 600 ms, then hold
+        u = min(1.0, t / 0.6)
+        e = ease(u)
+        sc = keys(u, [(0, 1.0), (0.5, 1.05), (1, 1.04)])
+        p.update(rot=keys(u, [(0, 0.0), (0.55, 9.5), (1, 8.0)]), by=keys(u, [(0, 0.0), (0.5, -1.4), (1, -1.0)]), sx=sc, sy=sc,
+                 eyeScale=keys(u, [(0, 1.0), (0.5, 1.12), (1, 1.1)]), lookX=0.8 * e, lookY=-0.4 * e)
+    elif key == "proud":  # Phase B (state 7): chest up and one gold glint over 1.2 s; warm and small, no hop
+        u = min(1.0, t / 1.2)
+        p.update(sy=keys(u, [(0, 1.0), (0.117, 0.985), (0.433, 1.046), (0.667, 1.038), (1, 1.04)]),
+                 sx=keys(u, [(0, 1.0), (0.117, 1.008), (0.433, 0.976), (0.667, 0.982), (1, 0.98)]),
+                 by=keys(u, [(0, 0.0), (0.117, 0.4), (0.433, -1.2), (0.667, -0.9), (1, -1.0)]), eye="happy", mouth="smile")
+    elif key == "reading":  # Phase B (state 8): eyes follow the line; the voice level arrives through the blend
+        p.update(lookX=reading_glance(t), lookY=0.6, sy=1 + 0.015 * L, sx=1 + 0.006 * L)
     return p
 
 
 # ------------------------------------------------------------------ shared face
 
 
+# Parallax (Z-14): the app sends lookX/lookY in -100..100. At +-100 the eyes move 0.7 / 0.5 units and the body
+# 1.2 units, as in the visual reference (`pose()` and `bodyT()` with the 3D look on).
+LOOK_EYE_X, LOOK_EYE_Y, LOOK_BODY_X = 0.7, 0.5, 1.2
+BODY_LOOK = ("lkx_body", "x", "d", U)
+
+
 def reg_defaults(ctx):
     d = ctx.default
+    d("lkx_eye", 0.0, "lookx"); d("lkx_body", 0.0, "lookx"); d("lky_eye", 0.0, "looky")
     d("bodyY", 0.0); d("bodyRot", 0.0); d("bodySX", 1.0); d("bodySY", 1.0); d("shadowSX", 1.0)
     d("eyeOpen", 1.0); d("eyeHappy", 0.0); d("eyeClosed", 0.0); d("eyeSX", 1.0); d("eyeSY", 1.0); d("eyeDY", 0.0)
     d("gazeX", 0.0); d("gazeY", 0.0)
@@ -158,7 +220,9 @@ def eyes_xml(ctx, org, centers, rx, ry, sw, look=1.0):
         happy = path_shape(ctx, "eyeHappy", f"M{-rx*1.15} {ry*.35} Q0 {-ry*1.25} {rx*1.15} {ry*.35}", (0, 0), stroke_c("eye", sw), reg=[("eyeHappy", "opacity", "a", 1.0)])
         closed = path_shape(ctx, "eyeClosed", f"M{-rx*1.15} 0 Q0 {ry*.95} {rx*1.15} 0", (0, 0), stroke_c("eye", sw), reg=[("eyeClosed", "opacity", "a", 1.0)])
         out.append(node(ctx, f"eye{i}", cx, cy, org, open_shape + happy + closed, reg=[("bl_blink", "scaleY", "a", 1.0)]))
-    return node(ctx, "gaze", org[0], org[1], org, "".join(out), reg=[("gazeX", "x", "d", U * look), ("gazeY", "y", "d", U * look)])
+    gaze = node(ctx, "gaze", org[0], org[1], org, "".join(out), reg=[("gazeX", "x", "d", U * look), ("gazeY", "y", "d", U * look)])
+    # Parallax look (optional `lookX`/`lookY` inputs, Z-14): a wrapper the Look layers move, so it adds to the pose gaze.
+    return node(ctx, "look", org[0], org[1], org, gaze, reg=[("lkx_eye", "x", "d", U * look), ("lky_eye", "y", "d", U * look)])
 
 
 def brows_xml(ctx, org, centers, rx, ry, sw, rows=None):
@@ -254,6 +318,10 @@ def fx_tracks(kind, t, sp_count=4):
     elif kind == "grateful":
         o["fx_hY"] = math.sin(t * TAU / 4.5) * 1.5
         o["fx_hOp"] = 0.9
+    elif kind == "proud":  # one gold glint (sparkle 1 is the gold one)
+        k = glint(t)
+        o["fx_sOp1"] = min(1.0, k)
+        o["fx_sSc1"] = k
     elif kind == "sleepy":
         place = [(0.30, 0.85), (0.68, 0.85), (0.30, 0.0)]
         for i in range(3):
@@ -271,7 +339,7 @@ def fx_tracks(kind, t, sp_count=4):
     return o
 
 
-FX_PERIOD = dict(none=0.5, thinking=1.5, celebrating=1.6, sleepy=7.8, joyful=2.1, grateful=4.5)
+FX_PERIOD = dict(none=0.5, thinking=1.5, celebrating=1.6, sleepy=7.8, joyful=2.1, grateful=4.5, proud=1.2)
 FX_JUMPS = {**{f"fx_zX{i}": 5 for i in range(3)}, **{f"fx_zY{i}": 8 for i in range(3)}, **{f"fx_zS{i}": 0.35 for i in range(3)}}
 
 
@@ -307,7 +375,7 @@ class Zuri:
             + cheeks_xml(ctx, org, [(33.5, 65), (66.5, 65)], 4.2, 2.5)
         )
         body = node(ctx, "body", 50, 88, (0, 0), face + shine + body_circle + sprout,
-                    reg=[("bodyY", "y", "d", U), ("bodyRot", "rotation", "d", RAD), ("bodySX", "scaleX", "a", 1.0), ("bodySY", "scaleY", "a", 1.0)])
+                    reg=[("bodyY", "y", "d", U), ("bodyRot", "rotation", "d", RAD), ("bodySX", "scaleX", "a", 1.0), ("bodySY", "scaleY", "a", 1.0), BODY_LOOK])
         shadow = shadow_xml(ctx, 93)
         rings = "".join(
             shape(ctx, f"ring{i}", ellipse_geom(31, 31), stroke_c("accent", 1.4), px(50), px(58), 0.0, 0.0,
@@ -338,6 +406,14 @@ class Zuri:
             hs, lean = [3, 5, 3], 10.0
         elif key == "peaceful":
             hs, lean = [4, 6, 4], 6.0
+        elif key == "curious":
+            e = oneshot_e(key, t)
+            hs, lean = [5 + e, 8 + 2.5 * e, 5 + e], -6.0 * e
+        elif key == "proud":
+            e = oneshot_e(key, t)
+            hs = [5 + 3 * e, 8 + 4 * e, 5 + 3 * e]
+        elif key == "reading":  # the sprout is Zuri's mouth while reading aloud
+            hs = [4 + L * 5, 6 + L * 7, 4 + L * 5]
         o = {f"bar{i}": max(2.5, h) + 4 for i, h in enumerate(hs)}
         o["sproutLean"] = lean
         p = pose(key, t, L)
@@ -409,7 +485,7 @@ class Nas:
         tail = node(ctx, "tail", 64, 76, org, shape(ctx, "tailRect", rect_geom(16, 6.5, 3.25), fill_c("deep"), px(71 - 64), px(75.25 - 76)),
                     rot=-35.0, reg=[("tail", "rotation", "d", -RAD)])
         body = node(ctx, "body", 50, 91, (0, 0), paws_up + head + paws_down + belly + body_ell + tail,
-                    reg=[("bodyY", "y", "d", U), ("bodyRot", "rotation", "d", RAD), ("bodySX", "scaleX", "a", 1.0), ("bodySY", "scaleY", "a", 1.0)])
+                    reg=[("bodyY", "y", "d", U), ("bodyRot", "rotation", "d", RAD), ("bodySX", "scaleX", "a", 1.0), ("bodySY", "scaleY", "a", 1.0), BODY_LOOK])
         fx = fx_xml(ctx, [(12, 26, 4.5), (88, 20, 4), (92, 64, 3.5), (9, 66, 3)], (68, 10), (76, 22))
         return fx + body + shadow_xml(ctx, 93)
 
@@ -444,6 +520,14 @@ class Nas:
             ear, headR = 8.0, 4.0
         elif key == "grateful":
             ear, headR, headDy, tail = 10.0, 6.0, 1.0, math.sin(t * TAU / 2.25) * 6
+        elif key == "curious":
+            e = oneshot_e(key, t)
+            headR, ear = -12 * e, 12 + 6 * e
+        elif key == "proud":  # a small, warm wag that settles; never the celebration wag
+            e = oneshot_e(key, t)
+            ear, tail = 12 + 8 * e, 18 * e + math.sin(t * TAU * 2.5) * 7 * max(0.0, 1 - t / 1.2)
+        elif key == "reading":  # the ears follow the voice, subtly
+            ear, headR = 12 + L * 4, -4.0
         o = dict(ear=ear, headR=headR, headDy=headDy, tail=tail, pawsUp=1.0 if p["hands"] else 0.0, pawsDown=0.0 if p["hands"] else 1.0)
         if key == "celebrating":
             o.update(bodyY=p["by"], shadowSX=1 - p["hop"] * 0.35)
@@ -488,7 +572,7 @@ class Wren:
         legs = path_shape(ctx, "legs", "M45 80 L43.5 89 M55 80 L56 89", org, stroke_c("deep", 2.4))
         tail = node(ctx, "tail", 34, 54, org, path_shape(ctx, "tailPath", "M32 58 Q16 44 15 24 Q24 27 40 48 Z", (34, 54), fill_c("deep")), reg=[("tail", "rotation", "d", RAD)])
         body = node(ctx, "body", 50, 88, (0, 0), wing + belly + head + body_circle + legs + tail,
-                    reg=[("bodyY", "y", "d", U), ("bodyRot", "rotation", "d", RAD), ("bodySX", "scaleX", "a", 1.0), ("bodySY", "scaleY", "a", 1.0)])
+                    reg=[("bodyY", "y", "d", U), ("bodyRot", "rotation", "d", RAD), ("bodySX", "scaleX", "a", 1.0), ("bodySY", "scaleY", "a", 1.0), BODY_LOOK])
         arcs = ""
         for i in range(3):
             arcs += path_shape(ctx, f"arc{i}", "M95 26 Q89 36 95 46", (0, 0), stroke_c("accent", 1.6), op=0.0,
@@ -530,8 +614,18 @@ class Wren:
             tail, headR = -4.0, 6.0
         elif key == "grateful":
             tail, headR, headDy = 4.0, 10.0, 1.0
-        open_beak = key in ("celebrating", "joyful")
-        o = dict(tail=tail, wing=wing, headR=headR, headDy=headDy, beakOpen=1.0 if open_beak else 0.0, beakClosed=0.0 if open_beak else 1.0)
+        elif key == "curious":
+            e = oneshot_e(key, t)
+            tail, headR = 6 * e, -12 * e
+        elif key == "proud":
+            e = oneshot_e(key, t)
+            tail, wing = 14 * e, -10 * e
+        elif key == "reading":
+            tail, headR = 2.0, -4.0
+        # Reading: the beak opens with the voice. The rig has two beaks (closed, open), so the level blend
+        # cross-fades them; a hinged lower beak like the Canvas drawer's would need an authoring pass.
+        open_beak = 1.0 if key in ("celebrating", "joyful") else (L if key == "reading" else 0.0)
+        o = dict(tail=tail, wing=wing, headR=headR, headDy=headDy, beakOpen=open_beak, beakClosed=1.0 - open_beak)
         if key == "celebrating":
             o.update(bodyY=p["by"], shadowSX=1 - p["hop"] * 0.35)
         return o
@@ -623,7 +717,7 @@ class Page:
             + cheeks_xml(ctx, org, [(36.5, 47), (61.5, 47)], 3.2, 2)
         )
         body = node(ctx, "body", 50, 84, (0, 0), face + fold + page + ribbon,
-                    reg=[("bodyY", "y", "d", U), ("bodyRot", "rotation", "d", RAD), ("bodySX", "scaleX", "a", 1.0), ("bodySY", "scaleY", "a", 1.0)])
+                    reg=[("bodyY", "y", "d", U), ("bodyRot", "rotation", "d", RAD), ("bodySX", "scaleX", "a", 1.0), ("bodySY", "scaleY", "a", 1.0), BODY_LOOK])
         fx = fx_xml(ctx, [(16, 26, 4.5), (86, 20, 4), (88, 60, 3.5), (14, 66, 3)], (68, 10), (74, 22))
         return fx + body + shadow_xml(ctx, 95)
 
@@ -645,6 +739,10 @@ class Page:
                 line_op = 0.0
         elif key == "listening":
             line_op = 0.0
+        elif key == "curious":
+            lean = -2.0 * oneshot_e(key, t)
+        elif key == "proud":
+            F = 12 + 1.5 * oneshot_e(key, t)
         caret_op = 0.0
         if key == "thinking":
             total = (t * 5.0 * 16 / 5.0) % 80  # 16 units/s over a 5 s cycle
@@ -662,6 +760,8 @@ class Page:
             for i in range(3):
                 o[f"trim{i}"] = 1.0
         o.update(foldD=F - 12.0, lineOp=line_op, dashOp=dash_op, caretOp=caret_op, bodyRot=p["rot"] + lean)
+        if key == "reading":  # Page's mouth opens with the voice (cross-fade smile -> open across the level blend)
+            o.update(mouthSmile=1.0 - L, mouthOpen=L)
         return o
 
     @staticmethod

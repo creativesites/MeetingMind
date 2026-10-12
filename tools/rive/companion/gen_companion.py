@@ -28,15 +28,18 @@ def MODE(v):
     return ("n", "mode", "eq", v)
 
 
-STATE_GE6 = ("n", "state", "ge", 6)  # Phase B states (6 Curious, 7 Proud, 8 Reading) fall back to Idle for now
-
+# Phase B states (Z-20): 6 Curious, 7 Proud, 8 Reading. Curious and Proud are one-shots that hold their last frame
+# (the app returns `state` to Idle when Proud is over); Reading is level-driven like Listening.
 POSE_TARGETS = {
-    "idle": [[M0, NC, S(0)], [M0, NC, STATE_GE6]],
+    "idle": [[M0, NC, S(0)]],
     "listening": [[M0, NC, S(1)]],
     "thinking": [[M0, NC, S(2)]],
     "celebA": [[MODE(6)], [M0, NC, S(3)]],
     "worried": [[M0, NC, S(4)]],
     "sleepy": [[M0, NC, S(5)]],
+    "curious": [[M0, NC, S(6)]],
+    "proud": [[M0, NC, S(7)]],
+    "reading": [[M0, NC, S(8)]],
     "prayerful": [[MODE(1)]],
     "peaceful": [[MODE(2)], [M0, CALM]],
     "grateful": [[MODE(3)]],
@@ -44,23 +47,24 @@ POSE_TARGETS = {
     "reflective": [[MODE(5)]],
 }
 FX_TARGETS = {
-    "none": [[M0, NC, S(0)], [M0, NC, S(4)], [M0, NC, STATE_GE6], [MODE(1)], [MODE(2)], [MODE(5)], [M0, CALM]],
+    "none": [[M0, NC, S(0)], [M0, NC, S(4)], [M0, NC, S(6)], [M0, NC, S(8)], [MODE(1)], [MODE(2)], [MODE(5)], [M0, CALM]],
     "listening": [[M0, NC, S(1)]],
     "thinking": [[M0, NC, S(2)]],
     "celebA": [[MODE(6)], [M0, NC, S(3)]],
     "sleepy": [[M0, NC, S(5)]],
+    "proud": [[M0, NC, S(7)]],
     "joyful": [[MODE(4)]],
     "grateful": [[MODE(3)]],
 }
 BLINK_TARGETS = {
-    "idle": [[M0, NC, S(0)], [M0, NC, STATE_GE6]],
+    "idle": [[M0, NC, S(0)]],
     "thinking": [[M0, NC, S(2)]],
     "worried": [[M0, NC, S(4)]],
+    "reading": [[M0, NC, S(8)]],
     "reflective": [[MODE(5)]],
-    "none": [[M0, NC, S(1)], [M0, NC, S(3)], [M0, NC, S(5)], [MODE(1)], [MODE(2)], [MODE(3)], [MODE(4)], [MODE(6)], [M0, CALM]],
+    "none": [[M0, NC, S(1)], [M0, NC, S(3)], [M0, NC, S(5)], [M0, NC, S(6)], [M0, NC, S(7)], [MODE(1)], [MODE(2)], [MODE(3)], [MODE(4)], [MODE(6)], [M0, CALM]],
 }
-BLINK_PERIOD = dict(idle=4.6, thinking=3.1, worried=3.8, reflective=4.2, none=1.0)
-
+BLINK_PERIOD = dict(idle=4.6, thinking=3.1, worried=3.8, reading=2.4, reflective=4.2, none=1.0)
 
 def grid(keys, cols=4, x0=160, dx=220, dy=130):
     return {k: (x0 + (i % cols) * dx, 60 + (i // cols) * dy) for i, k in enumerate(keys)}
@@ -88,10 +92,10 @@ def build(form, mode, bg=None):
     for key in POSES:
         T = periods[key]
         dt = 1 / 60.0 if key == "celebrating" else 1 / 30.0
-        if key == "listening":
+        if key in DRIVEN:  # level-driven: one animation at level 0 and one at 100, blended on `level`
             for lv in (0, 1):
-                f = lambda t, lv=lv: {**common(pose("listening", t, float(lv)), F.cfg), **F.extra("listening", t, float(lv))}
-                pose_anim[("listening", lv)] = add(f"Listening{lv * 100}", T, True, sample(f, T, dt), {"pose"})
+                f = lambda t, lv=lv, key=key: {**common(pose(key, t, float(lv)), F.cfg), **F.extra(key, t, float(lv))}
+                pose_anim[(key, lv)] = add(f"{key.capitalize()}{lv * 100}", T, True, sample(f, T, dt), {"pose"})
             continue
         f = lambda t, key=key: {**common(pose(key, t, 0.0), F.cfg), **F.extra(key, t, 0.0)}
         jumps = {"trim0": 0.5, "trim1": 0.5, "trim2": 0.5, "caretX": 5, "caretY": 5} if form == "page" else None
@@ -102,9 +106,10 @@ def build(form, mode, bg=None):
 
     # ---- fx layer animations
     fx_anim = {}
-    for kind in ("none", "thinking", "celebrating", "sleepy", "joyful", "grateful"):
+    for kind in ("none", "thinking", "celebrating", "sleepy", "joyful", "grateful", "proud"):
         T = FX_PERIOD[kind]
-        tracks = sample(lambda t, kind=kind: fx_tracks(kind, t), T, 1 / 30.0, FX_JUMPS) if kind != "none" else {}
+        dt = 1 / 60.0 if kind == "proud" else 1 / 30.0
+        tracks = sample(lambda t, kind=kind: fx_tracks(kind, t), T, dt, FX_JUMPS) if kind != "none" else {}
         fx_anim[kind] = add("Fx" + kind.capitalize(), T, kind in ("thinking", "joyful", "grateful", "none"), tracks, {"fx"})
     LT = F.listen_fx_period
     for lv in (0, 1):
@@ -133,9 +138,13 @@ def build(form, mode, bg=None):
         return out
 
     # pose layer
-    pose_keys = ["idle", "listening", "thinking", "celebA", "celebB", "worried", "sleepy", "prayerful", "peaceful", "grateful", "joyful", "reflective", "nod"]
+    pose_keys = ["idle", "listening", "thinking", "celebA", "celebB", "worried", "sleepy", "prayerful", "peaceful", "grateful", "joyful", "reflective", "nod",
+                 "curious", "proud", "reading"]
     pspec = {k: dict(kind="anim", anim=pose_anim[k]) for k in ("idle", "thinking", "worried", "sleepy", "prayerful", "peaceful", "grateful", "joyful", "reflective")}
-    pspec["listening"] = dict(kind="blend", blend=[(pose_anim[("listening", 0)], 0), (pose_anim[("listening", 1)], 100)])
+    for k in DRIVEN:
+        pspec[k] = dict(kind="blend", blend=[(pose_anim[(k, 0)], 0), (pose_anim[(k, 1)], 100)])
+    pspec["curious"] = dict(kind="anim", anim=pose_anim["curious"], reset=True)
+    pspec["proud"] = dict(kind="anim", anim=pose_anim["proud"], reset=True)
     pspec["celebA"] = dict(kind="anim", anim=pose_anim["celebrating"], reset=True)
     pspec["celebB"] = dict(kind="anim", anim=pose_anim["celebrating"], reset=True)
     pspec["nod"] = dict(kind="anim", anim=pose_anim["nod"], reset=True)
@@ -156,7 +165,7 @@ def build(form, mode, bg=None):
     # the replay triggers must beat the generic transitions that cannot fire anyway: order is irrelevant
 
     # fx layer
-    fx_keys = ["none", "listening", "thinking", "celebA", "celebB", "sleepy", "joyful", "grateful"]
+    fx_keys = ["none", "listening", "thinking", "celebA", "celebB", "sleepy", "joyful", "grateful", "proud"]
     fspec = {
         "none": dict(kind="anim", anim=fx_anim["none"]),
         "listening": dict(kind="blend", blend=[(fx_anim[("listening", 0)], 0), (fx_anim[("listening", 1)], 100)]),
@@ -166,6 +175,7 @@ def build(form, mode, bg=None):
         "sleepy": dict(kind="anim", anim=fx_anim["sleepy"], reset=True),
         "joyful": dict(kind="anim", anim=fx_anim["joyful"]),
         "grateful": dict(kind="anim", anim=fx_anim["grateful"]),
+        "proud": dict(kind="anim", anim=fx_anim["proud"], reset=True),
     }
     fstates = mk_states(fx_keys, fspec)
     ftr = []
@@ -181,7 +191,7 @@ def build(form, mode, bg=None):
             ftr.append((src, "celebA", [("t", "celebrate"), NC], 0, False))
 
     # blink layer
-    b_keys = ["none", "idle", "thinking", "worried", "reflective"]
+    b_keys = ["none", "idle", "thinking", "worried", "reading", "reflective"]
     bspec = {k: dict(kind="anim", anim=blink_anim[k]) for k in b_keys}
     bstates = mk_states(b_keys, bspec)
     btr = []
@@ -192,10 +202,19 @@ def build(form, mode, bg=None):
             for conds in alts:
                 btr.append((src, tgt, conds, 120, False))
 
+    # look layers (Z-14 parallax): one blend state each on the optional lookX / lookY inputs, -100..100
+    look_layers = ""
+    for axis, layer_name, params in (("X", "lookx", {"lkx_eye": LOOK_EYE_X, "lkx_body": LOOK_BODY_X}), ("Y", "looky", {"lky_eye": LOOK_EYE_Y})):
+        lo = add(f"Look{axis}Min", 1.0, True, {p: const(-v) for p, v in params.items()}, {layer_name})
+        hi = add(f"Look{axis}Max", 1.0, True, {p: const(v) for p, v in params.items()}, {layer_name})
+        st = {"look": dict(kind="blend", input="look" + axis, blend=[(lo, -100), (hi, 100)], id=ctx.nid(), x=160, y=60)}
+        look_layers += smb.layer("Look" + axis, ctx.nid(), st, [], "look")
+
     layers = (
         smb.layer("Pose", ctx.nid(), pstates, ptr, "idle")
         + smb.layer("Fx", ctx.nid(), fstates, ftr, "none")
         + smb.layer("Blink", ctx.nid(), bstates, btr, "none")
+        + look_layers
     )
     sm_xml = el("StateMachine", {"name": "Companion", "id": "0:7"}, smb.inputs_xml() + layers)
 

@@ -14,7 +14,9 @@ CASES = [  # name, data
     ("idle", dict(state=0)), ("listen0", dict(state=1, level=0)), ("listen50", dict(state=1, level=50)), ("listen100", dict(state=1, level=100)),
     ("thinking", dict(state=2)), ("celebrating", dict(state=3)), ("worried", dict(state=4)), ("sleepy", dict(state=5)),
     ("m1 prayerful", dict(mode=1)), ("m2 peaceful", dict(mode=2)), ("m3 grateful", dict(mode=3)), ("m4 joyful", dict(mode=4)),
-    ("m5 reflective", dict(mode=5)), ("m6 celebratory", dict(mode=6)), ("calm", dict(calm="true", state=1, level=80)), ("phaseB 7", dict(state=7)),
+    ("m5 reflective", dict(mode=5)), ("m6 celebratory", dict(mode=6)), ("calm", dict(calm="true", state=1, level=80)),
+    ("curious", dict(state=6)), ("proud", dict(state=7)), ("read0", dict(state=8, level=0)), ("read100", dict(state=8, level=100)),
+    ("lookL", dict(state=0, lookX=-100)), ("lookR", dict(state=0, lookX=100)), ("lookUp", dict(state=0, lookY=-100)),
 ]
 
 def main():

@@ -86,7 +86,7 @@ Source of truth in code: `core/ui/mm/companion/rive/CompanionRiveContract.kt`.
 | `nod` | Trigger | — | Yes | The 600 ms nod (a later note on the same day, a tap, a new form pick). |
 | `calm` | Boolean | false | Yes | Sermon quiet: show the Peaceful pose, ignore `level`, no rings, no one-shots. |
 | `blink` | Trigger | — | No | One blink. If absent, the file blinks on its own timer (§4). |
-| `lookX`, `lookY` | Number | −100..100 | No | Parallax gaze. The app does not send these yet (T1 parallax is Z-14); default 0. |
+| `lookX`, `lookY` | Number | −100..100 | No | Parallax (Z-14): touch, scroll and, for heroes, the gyroscope. The app sends them only when the volume layer is on and the file has them, at most once per frame and only on a change ≥ 1. At ±100 the eyes move 0.7 (x) / 0.5 (y) units and the body 1.2 units (x), as in the reference's 3D look. Default 0. |
 
 The app reads input names on load. A missing **required** input means Canvas for that form.
 
@@ -109,6 +109,8 @@ The app reads input names on load. A missing **required** input means Canvas for
 `mode`: 0 none · 1 Prayerful · 2 Peaceful · 3 Grateful · 4 Joyful · 5 Reflective · 6 Celebratory.
 
 Phase B states (6–8) may be missing in the first files: route them to Idle until they are built.
+The generator in `tools/rive/companion` now emits them (see §12); the bundled `.riv` files predate
+that and still route 6–8 to Idle until they are rebuilt.
 
 ### 3.4 Colours: data binding (view model `CompanionTheme`)
 
@@ -272,9 +274,9 @@ changes blend over **250 ms** (`MM.motion.standard`); use 250 ms blend transitio
 | **Nod** (`nod` trigger) | Happy eyes, smile | 600 ms: one 3-unit dip, no sparkles | One-shot |
 | **Worried** (4) | Droop: sx 1.03, sy 0.95, y +1.5; brows raised on the inner ends; wobbly mouth; eyes 0.88×, looking down (+0.7); no cheeks | Enter 250 ms. Slow sway ±1.5° (7 s). Blink every 3.8 s. | Loop, 7 s |
 | **Sleepy** (5) | Closed eyes (∪), no mouth, tilt 6°, y +2 | Breath 5.5 s ± 2.5%. z's rise 16 units and fade over 2.6 s, staggered by a third. **3 cycles, then still** (two z's placed). | Loop ×3, then hold |
-| Curious (6) | Head tilt 8°, lean in, eyes 1.1× | One-shot 600 ms on entry, then hold | Phase B |
-| Proud (7) | Chest up (sy 1.04), happy eyes, one gold glint | One-shot 1.2 s, then Idle | Phase B |
-| Reading (8) | Eyes glance left to right (2.4 s per sweep); the sprout or ears follow `level` | Loop while active | Phase B |
+| Curious (6) | Head tilt 8°, lean in 4% about the foot, eyes 1.1×, looking up-right (+0.8, −0.4). Zuri's sprout perks up and leans toward the question; Nas's head tilts −12°, ears up 6°; Wren's head −12°; Page leans −2°. | One-shot 600 ms on entry (tilt overshoots to 9.5° and settles at 8°), then hold | Phase B (Z-20) |
+| Proud (7) | Chest up (sy 1.04, sx 0.98, y −1), happy eyes, smile, one gold glint (sparkle 1). Zuri's sprout 8/12/8; Nas's ears 20°, a small wag that settles; Wren's tail 14°, wing −10°; Page's fold 13.5. **Warm and small: no hop, no sparkle burst, never competitive.** | One-shot 1.2 s (a tiny breath in, the chest lifts, the glint pops in at 0.3–0.6 s), then the app returns `state` to Idle | Phase B (Z-20) |
+| Reading (8) | Eyes look down at the line (+0.6) and sweep left → right over 85% of a 2.4 s sentence, then return. `level` is the TTS amplitude: Zuri's sprout 4/6/4 + level·5/7/5; Nas's ears + 4°·level; Wren's beak and Page's mouth open with it. Blink every 2.4 s. | Loop while active, level-driven (1D blend on `level`, like Listening); 30 fps feel | Phase B (Z-20) |
 | **calm** = true | The Peaceful pose (below), 6 s breath | Ignore `level`; no rings, no one-shots | Overrides `state` |
 
 **Never** add idle motion that grabs attention: no bouncing at rest, no random glances, no wagging
@@ -371,3 +373,31 @@ versions. The only transitive additions are volley, relinker, `customview` 1.1.0
 
 The library is loaded lazily: `Rive.init` runs only the first time a Rive companion is drawn, so
 builds and sessions without `.riv` files never load the native code.
+
+## 12. The generator (`tools/rive/companion`)
+
+The bundled files are built by a script, not drawn by hand: `gen_companion.py <form>` writes
+`<form>/scene.rml` and `rive <form> --once` (the Rive CLI) compiles it to `<form>/build/<form>.riv`,
+which is then copied to `app/src/main/assets/companion/`. `preview.py` renders a contact sheet through
+the CLI.
+
+**Status (2026-10-12):** the generator now emits
+
+- the Phase B states: Curious (6) and Proud (7) as one-shots that hold, Reading (8) as a level blend,
+  Proud's glint on the Fx layer, and Reading's own 2.4 s blink;
+- the optional `lookX` / `lookY` inputs, with two extra layers (`LookX`, `LookY`) that each hold one
+  1D blend state moving a `look` wrapper around the eyes (and the body on x).
+
+The regenerated `scene.rml` sources are checked in and pass a structural check (well-formed, every
+state, animation, input and object reference resolves), but **they have not been compiled**: the
+Rive CLI was not available where this was written. The `.riv` files in `assets/companion/` are still
+the earlier build (states 6–8 show Idle; no look inputs, which the app treats as optional). To ship
+the update, run on a machine with the CLI:
+
+```
+cd tools/rive/companion
+for f in zuri nas wren page; do python3 gen_companion.py $f && rive $f --once && cp $f/build/$f.riv ../../../app/src/main/assets/companion/; done
+python3 preview.py zuri --only curious,proud,read0,read100,lookL,lookR   # eyeball the new states
+```
+
+then walk §9 in Companion Lab (states 6–8 and the parallax readout).
