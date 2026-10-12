@@ -201,6 +201,18 @@ loop the processing screen opened (the labor illusion pays off). Without Zuri, t
 
 ### 3.2 Where it plays: the ticket rule
 
+> **Founder decision (2026-10-12, later): the Unveil plays every time a note is opened.** The ticket rule below
+> now gates only the **First Keep** (a note that finished in the background plays its First Keep on first open).
+> The Unveil needs no ticket. Behind `CompanionFlags.unveilOnEveryOpen` (default **true**).
+>
+> What counts as "opening a note": a fresh navigation into `MeetingDetail` / `WrapUp` (from the Notes list, Home,
+> search, a notification or a snackbar). What does **not** count, so it never replays by accident: a
+> configuration change or process restore, coming back from a sub-screen (the editor, the share sheet, the audio
+> player, Back from a link), the app returning to the foreground, and the open that **just** played a First Keep
+> (the note is already on screen; "Open note" dismisses the overlay and plays nothing more). It is skippable with
+> any tap, never blocks, and the note is readable from frame 0.
+>
+> The original rule (once per note, within 24 h) is kept below for the flag-off case:
 > **A note is unveiled once: the first time it is opened, within 24 hours of being ready.**
 
 - On `SUCCEEDED`, the processing view model writes an **`UnveilTicket(noteId, readyAtMs, space, sermon,
@@ -222,15 +234,17 @@ loop the processing screen opened (the labor illusion pays off). Without Zuri, t
 The ladder: **FIRST_KEEP** (3.6 s) > **UNVEIL** (variant, 1.2–1.8 s) > **NOD** (0.6 s) > **PLAIN** (no motion;
 the note is simply there).
 
-> **Founder decision 2026-10-12 (supersedes the Unveil rotation for now):** the First Keep plays on **every**
+> **Founder decision 2026-10-12 (the Unveil rotation is back on, see §3.2):** the First Keep plays on **every**
 > successful note, because the founder loves it; variations come later. It sits behind
 > `CompanionFlags.firstKeepEveryNote` (default **true**). While it is true, the planner uses the table below
 > with these changes: row 3 becomes "any successful note → **FIRST_KEEP** (the quiet version in Faith or for a
 > sermon)", the daily budget and the back-to-back guard no longer apply, and rows 8 and 9 (the Unveil rotation)
-> are skipped. Everything else stays: failures and sacred notes stay plain, a recording in progress defers it, and
+> now run on **open**, not on arrival: with `unveilOnEveryOpen` on, every fresh open of a note gets the next
+> rotation variant and the 2-a-day budget does not apply. A note-ready arrival gets the First Keep and its open
+> gets no second moment. Everything else stays: failures and sacred notes stay plain, a recording in progress defers it, and
 > reduced motion, battery saver, a low-end phone and a very short recording still step down, because those are
-> system or honesty guards, not taste. The Unveil variants, `UnveilRotation` and `DailyBudget` stay in the code
-> behind the flag, dormant, so "later we make variations" is a flag flip, not a rewrite. The **chime** plays only
+> system or honesty guards, not taste. `DailyBudget` stays in the code behind
+> `unveilOnEveryOpen = false`, so tightening the rule later is a flag flip, not a rewrite. The **chime** plays only
 > on the two once-ever First Keeps (hello and first real recording), never on every note. It would become
 > grating at the 50th note.
 
@@ -757,7 +771,7 @@ form use Canvas; the state machine keeps working for everything else (unchanged 
 | Moment | Cap | Ledger key |
 |---|---|---|
 | First Keep | Once ever | `peak.first` (existing `FirstRecordingPeak`) |
-| ★ Unveil | **2 per local day, ≥ 3 h apart** (decided 2026-10-12) (`Cap.DailyBudget(2, 3h)`) | `unveil` (replaces `FullCelebration` for note-ready; `celebrate.full` stays for other full Celebrating uses) |
+| ★ Unveil | **Every open while `unveilOnEveryOpen` is on** (later decision); otherwise 2 per local day, ≥ 3 h apart (`Cap.DailyBudget(2, 3h)`) | `unveil` (replaces `FullCelebration` for note-ready; `celebrate.full` stays for other full Celebrating uses) |
 | ★ Back-to-back guard | A note-ready < 15 min after the previous one → NOD | `noteready.last` |
 | Nod | Uncapped (it's the quiet default), but at most one per note (the ticket) | — |
 | ★ Ticket | One moment per note, valid for 24 h | `ticket.{noteId}` |
@@ -891,5 +905,7 @@ Each idea comes with a one-line sanity check.
 | 8 | "Share a moment" on the First Keep | **Keep** (§5.2). |
 
 | 9 | Should the First Keep play on every note? | **Yes, for now** (later 2026-10-12). `CompanionFlags.firstKeepEveryNote = true`; the Unveil rotation stays dormant behind it (§3.3). The chime stays on the two once-ever plays. Variations come later. |
+
+| 10 | Should the Unveil play when opening notes? | **Yes, every time** (later 2026-10-12). `CompanionFlags.unveilOnEveryOpen = true`; it replaces the 2-a-day budget. It plays on a fresh open only, never on a rotation, a return from a sub-screen or the app resuming, and never right after a First Keep on the same open (§3.2). Same guards as before: failed or sacred notes plain, reduced motion plain, battery saver or low-end nod, sermons quiet Dawn. |
 
 The original questions and recommendations are kept in git history.
