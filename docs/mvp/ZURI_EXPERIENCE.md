@@ -597,7 +597,7 @@ Zuri is Worried only when there is a fix. The `StatusLine` carries the message; 
 
 | Never in | Why |
 |---|---|
-| Inside notes, transcripts, the block editor, scripture text, the Bible reader | "The Note is the workspace." It is the user's content. |
+| Covering, editing or replacing the user's own words: notes, transcripts, the block editor, scripture text, the Bible reader | "The Note is the workspace." It is the user's content. **Rule changed 2026-10-12 (founder: user experience comes first):** Zuri may share the note screen during a designed moment (the First Keep, the Unveil, a perch on the First Keep card; see ZURI_SIGNATURE_MOMENTS.md §0), but never over the text, and never once the moment ends. |
 | Prayer list, prayer requests, guided Prayer, Bible study steps | Sacred moments; Zuri goes quiet. |
 | Circle feeds, other people's posts and comments | Other people's content. |
 | Paywalls, upgrade prompts, pricing | Zuri never sells. |

@@ -34,14 +34,16 @@ in that page.
 9. [Copy](#9-copy)
 10. [Build tasks](#10-build-tasks)
 11. [Ideas (not commitments)](#11-ideas-not-commitments)
-12. [Open questions for the founder](#12-open-questions-for-the-founder)
+12. [Decisions (founder, 2026-10-12)](#12-decisions-founder-2026-10-12)
 
 ---
 
 ## 0. Principles for every moment
 
 1. **The note is the hero; Zuri hands it over.** Zuri appears, gives the note, and **steps back**: it ends
-   off-stage or small. It never stays over the note's content (§5.10 "never inside notes").
+   off-stage or small. It may share the note screen during a designed moment (founder decision 2026-10-12: user
+   experience comes first), but it never covers, edits or replaces the user's own words, and it never stays on
+   the note once the moment ends (§5.10).
 2. **Never blocking.** The note renders underneath from frame 0. Any tap skips to the end state, and the tap
    still reaches what it landed on. Back skips too. The Share and Open actions work from the first frame.
 3. **Text carries the meaning.** Each moment makes one polite announcement and has a static end state. Motion is
@@ -107,8 +109,12 @@ screen would just be a success toast. With it, the moment has a giver.
 
 ### 2.2 Where and when
 
-- **Trigger:** `NoteReady(isFirstEver = true)`, and `MomentLedger.allows(FirstRecordingPeak)`. "First" means
-  the first **real** note. The onboarding say-hello note gets a normal Unveil (open question 1, §12).
+- **Trigger:** `NoteReady(isFirstEver = true)`, and `MomentLedger.allows(FirstRecordingPeak)`. **Both** the
+  onboarding say-hello note (P-3 step 5, a sample note) **and** the first real recording get a First Keep
+  (founder decision 2026-10-12). They are two separate once-ever moments with their own ledger keys
+  (`peak.first.hello` and `peak.first`). The hello version plays on the sample content with the line "Here's what
+  a note looks like", and is otherwise identical, so the user learns the gesture before it matters. The real one
+  is the full celebration.
 - **Where:** a full-screen overlay (`FirstKeepOverlay`) composed **on top of the note screen** (`MeetingDetail` or
   `WrapUp`), which is already rendered underneath. "Open note" just dismisses the overlay, so the note is already
   there.
@@ -158,9 +164,9 @@ rest pose, the headline, the sub line, **Open note** (primary) and **Share a mom
   and Canvas share them.
 - **Haptics:** at most **2** (tick at the apex, confirm at the landing), and only when system haptic feedback is
   on. None in Faith. Use `View.performHapticFeedback` with the constants above. Never use vibration patterns.
-- **Sound (stretch, founder decision):** one soft two-note chime (≤ 300 ms, ≤ 20 KB OGG) at 1500. It plays only
-  when the ringer mode is normal, Do Not Disturb is off and the space isn't Faith. There's no sound in any other
-  moment, ever.
+- **Sound (decided 2026-10-12: ship it):** one soft two-note chime (≤ 300 ms, ≤ 20 KB OGG) at 1500. It plays only
+  when the ringer mode is normal, Do Not Disturb is off and the space isn't Faith, and the user can turn it off in
+  Settings → Companion → Advanced → "Sounds" (on by default). There's no sound in any other moment, ever.
 
 ### 2.6 Skip and never blocking
 
@@ -416,7 +422,7 @@ beat's span lies within `baseMs`, and that each `formTake` only references chann
 | **Long processing finished in the background** | Notification with `ic_zuri_glyph` → tap → the note opens and the planned moment plays (FIRST_KEEP or UNVEIL per the ladder). Counts against `CompanionNotification` (once a day, none in quiet hours). Beyond the cap, the plain system notification ("{Note title} is ready.") still posts, because status is never withheld | Glyph only in the notification | "{Note title} is ready." / sermon: "Your sermon notes are ready 🙏" |
 | **Several notes ready while away** | The first one opened gets the planned moment; the rest get NOD (budget) | — | — |
 | **Work Wrap-up destination** | Same ladder. Zuri stays in the header and top-bar zone at ≤ 48 dp and never crosses decisions or tasks (§2.6 Work) | Crisp | — |
-| **Onboarding say-hello note** (P-3 step 5) | **UNVEIL Lift**, at the onboarding preview size. It doesn't consume the First Keep (open question 1) | — | "Here's your first note. Everything you said, kept." |
+| **Onboarding say-hello note** (P-3 step 5) | **FIRST KEEP (hello version)** on the sample note, at the onboarding preview size. It has its own once-ever key (`peak.first.hello`) and doesn't consume the real First Keep (decision 1) | — | "Here's your first note. Everything you said, kept." |
 | **Retry succeeded** | **NOD** | — | — |
 
 ---
@@ -739,13 +745,13 @@ form use Canvas; the state machine keeps working for everything else (unchanged 
 | Moment | Cap | Ledger key |
 |---|---|---|
 | First Keep | Once ever | `peak.first` (existing `FirstRecordingPeak`) |
-| ★ Unveil | **2 per local day, ≥ 3 h apart** (`Cap.DailyBudget(2, 3h)`) | `unveil` (replaces `FullCelebration` for note-ready; `celebrate.full` stays for other full Celebrating uses) |
+| ★ Unveil | **2 per local day, ≥ 3 h apart** (decided 2026-10-12) (`Cap.DailyBudget(2, 3h)`) | `unveil` (replaces `FullCelebration` for note-ready; `celebrate.full` stays for other full Celebrating uses) |
 | ★ Back-to-back guard | A note-ready < 15 min after the previous one → NOD | `noteready.last` |
 | Nod | Uncapped (it's the quiet default), but at most one per note (the ticket) | — |
 | ★ Ticket | One moment per note, valid for 24 h | `ticket.{noteId}` |
 | Companion notification | Once a day, none in quiet hours or during a Faith recording | `notify` (existing) |
 | ★ Card reveal | The full 1.5 s reveal once per card session; afterwards, chip changes get the 250 ms crossfade + Signature | In memory (per card) |
-| ★ First Keep chime | Once ever (with the First Keep) | — |
+| ★ First Keep chime | Twice ever (with each First Keep), when "Sounds" is on | — |
 
 The ledger stores only timestamps (`DailyBudget` keeps the last *max* timestamps per key), so nothing personal is
 stored.
@@ -757,7 +763,7 @@ stored.
 - No rating or review prompt, no upsell and no paywall anywhere near a peak. **Never piggyback on a moment.**
 - No sharing nudge after the Unveil. "Share a moment" exists only on the First Keep, as a secondary text button.
 - No auto-posting. Cards are shared only by an explicit tap.
-- No sound except the optional First Keep chime.
+- No sound except the First Keep chime (which has a "Sounds" switch).
 - No randomness in what the user gets. The reward is always the note, immediately underneath.
 - No animation the user has to wait for: skippable, never blocking, and 0 fps after.
 - No moment on failures, prayer requests, grief or Good Friday. No hops in Faith.
@@ -859,17 +865,17 @@ Each idea comes with a one-line sanity check.
 
 ---
 
-## 12. Open questions for the founder
+## 12. Decisions (founder, 2026-10-12)
 
-1. **Which note gets the First Keep:** the onboarding say-hello note (P-3 step 5) or the first *real* recording?
-   *Recommendation:* the first real one (§5.2 as written); the say-hello note gets a Lift Unveil.
-2. **The Unveil budget:** 2 a day, ≥ 3 h apart (recommended), or 1 a day (stricter, the current
-   `FullCelebration` cap)?
-3. **Sound:** ship the optional First Keep chime, or keep MeetingMind silent?
-4. **Companion off:** should the note-side beats (header fade-up) still play, or should the note open plainly?
-   *Recommendation:* header fade only.
-5. **Wren perching on the First Keep card:** acceptable, given "never inside notes"? It's on the moment screen,
-   not in the note.
-6. **Curtain in Faith:** keep it at weight 1, or remove it? (A parting curtain could read as theatrical.)
-7. **The animated card export:** worth an experiment?
-8. **The First Keep "Share a moment" action:** keep it (§5.2), or remove it so the first peak is pure reward?
+| # | Question | Decision |
+|---|---|---|
+| 1 | Which note gets the First Keep? | **Both**: the onboarding say-hello note and the first real recording (§2.2). Two once-ever keys. |
+| 2 | The Unveil budget | **2 a day**, ≥ 3 h apart (§8). |
+| 3 | Sound | **Soft chime ships**, with a "Sounds" switch in Advanced (§2.5). |
+| 4 | Companion off | The note header **still fades up** (header fade only, no character). |
+| 5 | Wren perching on the First Keep card | **Yes**, and the broader rule changes: user experience comes first. "Never inside notes" is replaced by "never cover, edit or replace the user's words" (§0, ZURI_EXPERIENCE §5.10). The sacred-moment rows there (prayer list, prayer requests, guided Prayer, Bible study steps) are unchanged unless the founder says otherwise. |
+| 6 | Curtain in Faith | **Keep** at weight 1. |
+| 7 | Animated card export | **Out for now.** It stays in §11 as an idea. Nothing is built for it, and no task is scheduled. |
+| 8 | "Share a moment" on the First Keep | **Keep** (§5.2). |
+
+The original questions and recommendations are kept in git history.
