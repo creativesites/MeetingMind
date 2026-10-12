@@ -80,6 +80,14 @@ class HomeStartTest {
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/home_tour_new.png")
         compose.onNodeWithTag("coach_skip").performClick()
         settle()
-        runBlocking { assertTrue(UserPreferencesManager(app).preferencesFlow.first().tourCompleted) }
+        // The skip is saved on Dispatchers.IO and posts back to the paused looper; idle it until the save lands.
+        runBlocking {
+            repeat(100) {
+                if (UserPreferencesManager(app).preferencesFlow.first().tourCompleted) return@repeat
+                org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS)
+                Thread.sleep(50)
+            }
+            assertTrue(UserPreferencesManager(app).preferencesFlow.first().tourCompleted)
+        }
     }
 }
