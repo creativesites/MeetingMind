@@ -83,7 +83,18 @@ data class AppPreferencesState(
     /** The first-run guided tour of Home has been shown (finished or skipped). */
     val tourCompleted: Boolean = false,
     /** The "Getting started" checklist on Home was closed. */
-    val gettingStartedDismissed: Boolean = false
+    val gettingStartedDismissed: Boolean = false,
+    /** Which onboarding design the saved progress belongs to; a different version restarts the flow from the welcome. */
+    val onboardingVersion: Int = 0,
+    /** Where the person got to in onboarding (an OnboardingStep name), so a killed app resumes there. */
+    val onboardingStep: String? = null,
+    /** "SAMPLE" or "RECORD": how they chose to start. */
+    val onboardingEntryRoute: String? = null,
+    /** What they capture (CaptureGoal names) and what they want from recordings (DesiredOutcome names). */
+    val onboardingGoals: Set<String> = emptySet(),
+    val onboardingOutcomes: Set<String> = emptySet(),
+    /** They watched the example recording to its notes. This is never a personal recording. */
+    val sampleViewed: Boolean = false
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -139,6 +150,12 @@ class UserPreferencesManager(private val context: Context) {
     private val SETUP_SNOOZED_UNTIL = androidx.datastore.preferences.core.longPreferencesKey("setup_snoozed_until")
     private val TOUR_COMPLETED = booleanPreferencesKey("tour_completed")
     private val GETTING_STARTED_DISMISSED = booleanPreferencesKey("getting_started_dismissed")
+    private val ONBOARDING_VERSION = intPreferencesKey("onboarding_version")
+    private val ONBOARDING_STEP = stringPreferencesKey("onboarding_step")
+    private val ONBOARDING_ENTRY = stringPreferencesKey("onboarding_entry")
+    private val ONBOARDING_GOALS = stringSetPreferencesKey("onboarding_goals")
+    private val ONBOARDING_OUTCOMES = stringSetPreferencesKey("onboarding_outcomes")
+    private val SAMPLE_VIEWED = booleanPreferencesKey("sample_viewed")
     private val WORK_SETTINGS = stringPreferencesKey("work_settings")
     private val PULSE_SEEN_AT = androidx.datastore.preferences.core.longPreferencesKey("pulse_seen_at")
 
@@ -246,8 +263,29 @@ class UserPreferencesManager(private val context: Context) {
             timelineView = prefs[TIMELINE_VIEW] ?: "AGENDA",
             setupSnoozedUntil = prefs[SETUP_SNOOZED_UNTIL] ?: 0L,
             tourCompleted = prefs[TOUR_COMPLETED] ?: false,
-            gettingStartedDismissed = prefs[GETTING_STARTED_DISMISSED] ?: false
+            gettingStartedDismissed = prefs[GETTING_STARTED_DISMISSED] ?: false,
+            onboardingVersion = prefs[ONBOARDING_VERSION] ?: 0,
+            onboardingStep = prefs[ONBOARDING_STEP],
+            onboardingEntryRoute = prefs[ONBOARDING_ENTRY],
+            onboardingGoals = prefs[ONBOARDING_GOALS] ?: emptySet(),
+            onboardingOutcomes = prefs[ONBOARDING_OUTCOMES] ?: emptySet(),
+            sampleViewed = prefs[SAMPLE_VIEWED] ?: false
         )
+    }
+
+    /** Saves where onboarding is up to, so a process death resumes it instead of restarting. */
+    suspend fun saveOnboardingProgress(version: Int, step: String, entryRoute: String?, goals: Set<String>, outcomes: Set<String>) {
+        context.dataStore.edit {
+            it[ONBOARDING_VERSION] = version
+            it[ONBOARDING_STEP] = step
+            if (entryRoute == null) it.remove(ONBOARDING_ENTRY) else it[ONBOARDING_ENTRY] = entryRoute
+            it[ONBOARDING_GOALS] = goals
+            it[ONBOARDING_OUTCOMES] = outcomes
+        }
+    }
+
+    suspend fun setSampleViewed(viewed: Boolean) {
+        context.dataStore.edit { it[SAMPLE_VIEWED] = viewed }
     }
 
     suspend fun setBibleVersionId(id: Int) {

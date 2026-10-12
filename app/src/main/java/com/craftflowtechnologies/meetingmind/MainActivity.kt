@@ -232,24 +232,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     val prefsManager = remember { UserPreferencesManager(context) }
     val prefsState by prefsManager.preferencesFlow.collectAsState(initial = null)
 
-    // Request Audio & Notification permissions
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { _ -> }
-
-    LaunchedEffect(Unit) {
-        val permissionsToRequest = mutableListOf(Manifest.permission.RECORD_AUDIO)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        val needed = permissionsToRequest.filter {
-            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (needed.isNotEmpty()) {
-            permissionLauncher.launch(needed.toTypedArray())
-        }
-    }
-
+    // No permission is requested here. The microphone is asked for in context (the recorder, or the
+    // last onboarding step) and notifications on that same step, each after saying why.
     if (prefsState == null) return
 
     val startRoute = if (prefsState?.onboardingCompleted == true) Routes.HOME else Routes.ONBOARDING
@@ -387,6 +371,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     navController.navigate(Routes.HOME) {
                         popUpTo(Routes.ONBOARDING) { inclusive = true }
                     }
+                },
+                // "Record something now": Home underneath, the recorder on top, so Back lands on Home.
+                onRecordNow = {
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                    navController.navigate(Routes.recordTypeRoute(RecordingType.MEETING)) { launchSingleTop = true }
                 }
             )
         }

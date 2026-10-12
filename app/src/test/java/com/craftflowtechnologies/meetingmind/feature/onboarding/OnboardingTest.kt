@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.onboarding
 
 import android.app.Application
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
@@ -33,11 +34,15 @@ class OnboardingTest {
         val vm = OnboardingViewModel(app)
         var finished = false
         compose.setContent { MeetMindTheme { OnboardingScreen(vm) { finished = true } } }
-        val shots = listOf("welcome", "what", "name", "spaces", "setup", "bible", "permissions")
+        val shots = listOf("welcome", "sample", "goals", "setup", "bible", "permissions")
         shots.forEachIndexed { i, name ->
             compose.waitForIdle()
             compose.mainClock.advanceTimeBy(600)
-            if (name == "name") compose.onNodeWithTag("onboarding_name_field").performTextInput("Ana")
+            if (name == "goals") {
+                compose.onNodeWithTag("goal_SERMONS").performClick()
+                compose.onNodeWithTag("outcome_SUMMARIES").performClick()
+                compose.onNodeWithTag("onboarding_name_field").performTextInput("Ana")
+            }
             if (name == "setup") compose.onNodeWithTag("setup_choice_internet").performClick()
             compose.waitForIdle()
             compose.onRoot().captureRoboImage("build/outputs/roborazzi/onboarding_${i}_$name.png")
@@ -51,6 +56,34 @@ class OnboardingTest {
             assertEquals("Ana", prefs.userName)
             assertEquals(ProcessingProfile.INTERNET, prefs.processingProfile)
         }
+    }
+
+    @Test fun `record now skips the sample and finishes through the recorder`() {
+        val vm = OnboardingViewModel(app)
+        var recorded = false
+        var finished = false
+        compose.setContent { MeetMindTheme { OnboardingScreen(vm, onFinishOnboarding = { finished = true }, onRecordNow = { recorded = true }) } }
+        compose.waitForIdle()
+        compose.onNodeWithTag("onboarding_record_now_btn").performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(600)
+        assertEquals(OnboardingStep.SETUP, vm.step.value)
+        compose.onNodeWithTag("onboarding_next_btn").performClick()
+        runBlocking { repeat(50) { if (!recorded) { Thread.sleep(50); compose.waitForIdle() } } }
+        assertTrue(recorded && !finished)
+    }
+
+    @Test fun `the sample is reachable offline and ends with notes and an answer`() {
+        val vm = OnboardingViewModel(app)
+        compose.setContent { MeetMindTheme { OnboardingScreen(vm) { } } }
+        compose.onNodeWithTag("onboarding_next_btn").performClick()
+        compose.waitForIdle()
+        // The transcript streams in on a timer; skip ahead past the last line.
+        compose.mainClock.advanceTimeBy(30_000)
+        compose.waitForIdle()
+        compose.onNodeWithTag("sample_summary").assertExists()
+        compose.onNodeWithTag("sample_question").performClick()
+        compose.onNodeWithTag("sample_answer").assertExists()
     }
 
     @Test fun `internet mode is the default, with the offline pack sized for this phone`() {
