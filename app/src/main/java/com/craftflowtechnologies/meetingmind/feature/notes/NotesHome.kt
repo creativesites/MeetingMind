@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -284,7 +283,7 @@ internal fun NoteCard(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.size(56.dp).background(tint.copy(alpha = 0.16f), MM.radius.small), contentAlignment = Alignment.Center) {
-            Icon(model.typeIcon, null, tint = tint, modifier = Modifier.size(MMSize.icon))
+            model.typeIcon?.let { Icon(it, null, tint = tint, modifier = Modifier.size(MMSize.icon)) }
         }
         Column(Modifier.weight(1f).padding(start = MM.space.m)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
