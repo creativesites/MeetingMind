@@ -36,7 +36,7 @@ class CompanionLabTest {
         rule.setContent {
             androidx.compose.runtime.CompositionLocalProvider(
                 com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true
-            ) { CompanionLabScreen() }
+            ) { CompanionLabScreen(liveStats = false) }
         }
         rule.mainClock.advanceTimeBy(500)
         rule.onNodeWithText("Companion Lab").assertExists()

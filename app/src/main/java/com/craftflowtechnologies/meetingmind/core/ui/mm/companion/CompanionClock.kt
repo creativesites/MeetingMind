@@ -3,7 +3,7 @@ package com.craftflowtechnologies.meetingmind.core.ui.mm.companion
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
-import androidx.compose.runtime.State
+import androidx.compose.runtime.FloatState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -88,7 +88,7 @@ fun rememberCompanionTime(
     durationScale: Float = 1f,
     runMs: Long? = null,
     onFinished: () -> Unit = {}
-): State<Float> {
+): FloatState {
     val time: MutableFloatState = remember(restartKey) { mutableFloatStateOf(0f) }
     LaunchedEffect(restartKey, running, fps, durationScale, runMs) {
         if (!running) return@LaunchedEffect

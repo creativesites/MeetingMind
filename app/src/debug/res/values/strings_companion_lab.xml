@@ -35,4 +35,6 @@
     <string name="companion_lab_guard_process">Rive crash guard: Rive\'s native runtime failed in this process; off until restart.</string>
     <string name="companion_lab_rive_failure">Last Rive failure: %1$s</string>
     <string name="companion_lab_reset_guard">Reset Rive guard</string>
+    <string name="companion_lab_stats">Canvas frame: %1$.2f ms draw · %2$s allocations · %3$d frames measured · live Rive views: %4$d</string>
+    <string name="companion_lab_stats_na">n/a</string>
 </resources>

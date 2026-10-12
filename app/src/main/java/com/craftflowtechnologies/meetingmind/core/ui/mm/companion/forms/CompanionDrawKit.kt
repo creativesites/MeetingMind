@@ -65,8 +65,8 @@ class FxAnchors(
  */
 class CompanionDrawKit {
     private val paths = Array(12) { Path() }
-    private val strokeWidths = FloatArray(24)
-    private val strokes = arrayOfNulls<Stroke>(24)
+    private val strokeWidths = FloatArray(48)
+    private val strokes = arrayOfNulls<Stroke>(48)
     private var strokeCount = 0
     val dash: PathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 3.5f))
     private val dashedStroke = Stroke(width = 2.2f, cap = StrokeCap.Round, pathEffect = dash)
@@ -243,11 +243,14 @@ class CompanionDrawKit {
     }
 
     /** A sleepy "z" drawn as a stroke, so no font or text layout is needed. */
-    private fun DrawScope.zee(x: Float, y: Float, size: Float, color: Color, alpha: Float) {
+    private fun DrawScope.zee(x: Float, y: Float, size: Float, color: Color, alpha: Float, exact: Boolean) {
         val w = size * 0.48f; val h = size * 0.5f
         val path = path(4)
         path.moveTo(x, y - h); path.lineTo(x + w, y - h); path.lineTo(x, y); path.lineTo(x + w, y)
-        drawPath(path, color, alpha = alpha.coerceIn(0f, 1f), style = stroke(size * 0.15f))
+        // While the z's rise their width changes every frame: snap it to 0.05 units so the stroke
+        // cache holds every width and no frame allocates. The static pose keeps the exact width.
+        val sw = if (exact) size * 0.15f else Math.round(size * 0.15f * 20f) / 20f
+        drawPath(path, color, alpha = alpha.coerceIn(0f, 1f), style = stroke(sw))
     }
 
     /** The effect layer (the reference's `fx()`), drawn outside the body transform. */
@@ -283,7 +286,7 @@ class CompanionDrawKit {
                 for (i in 0 until n) {
                     val q = if (rm) (if (i == 0) 0.3f else 0.68f) else ((t / 2.6f + i / 3f) % 1f)
                     val op = if (rm) 0.85f else sin(q * PI.toFloat())
-                    zee(a.zX + q * 10f, a.zY - q * 16f, 6f + q * 5f, p.mute, op)
+                    zee(a.zX + q * 10f, a.zY - q * 16f, 6f + q * 5f, p.mute, op, exact = rm)
                 }
             }
             Fx.RINGS, Fx.NONE -> Unit

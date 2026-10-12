@@ -180,24 +180,28 @@ internal fun CanvasCompanion(
     val holder = remember { PoseMemory() }
     val transition = remember { Animatable(1f) }
     LaunchedEffect(visual, variant) {
-        holder.from = holder.last
-        if (durationScale <= 0f || holder.from == null) { transition.snapTo(1f); return@LaunchedEffect }
+        holder.hasFrom = holder.hasLast
+        if (holder.hasLast) holder.from.set(holder.last)
+        if (durationScale <= 0f || !holder.hasFrom) { transition.snapTo(1f); return@LaunchedEffect }
         transition.snapTo(0f)
         val ms = if (tier == CompanionTier.T0) 150 else spec.enterMs
         transition.animateTo(1f, tween((ms * durationScale).toInt(), easing = LinearEasing))
     }
     val drawer = FormDrawer.of(form)
     val lod = size >= CompanionLodCutoff
+    val driven = spec.timing is Timing.Driven
     Canvas(modifier) {
-        val t = time.value
+        val diag = CompanionDiagnostics.frameStart()
+        val t = time.floatValue
         val dt = ((t - holder.lastT) * 1000f).coerceIn(0f, 100f)
         holder.lastT = t
-        val l = if (static) StaticLevel else smoother.update(level(), if (dt == 0f) 16f else dt)
-        val target = CompanionPoses.pose(form, visual, t, l, static, variant)
-        val from = holder.from
+        // Only level-driven visuals read the level: a host lambda returns a boxed Float.
+        val l = if (static) StaticLevel else smoother.update(if (driven) level() else 0f, if (dt == 0f) 16f else dt)
+        val target = CompanionPoses.poseInto(holder.target, form, visual, t, l, static, variant)
         val progress = transition.value
-        val pose = if (from != null && progress < 1f) lerp(from, target, progress) else target
-        holder.last = pose
+        val pose = if (holder.hasFrom && progress < 1f) lerpInto(holder.blend, holder.from, target, progress) else target
+        holder.last.set(pose)
+        holder.hasLast = true
         frame.pose = pose
         frame.visual = visual
         frame.t = t
@@ -205,15 +209,21 @@ internal fun CanvasCompanion(
         frame.reduced = static
         frame.lod = lod
         drawCompanion(kit, frame, drawer, palette)
+        CompanionDiagnostics.frameEnd(diag)
     }
 }
 
 /** The level the static Listening pose shows (§3.1). */
 private const val StaticLevel = 0.55f
 
+/** Per-slot pose buffers, refilled every frame so drawing allocates nothing. */
 private class PoseMemory {
-    var last: Pose? = null
-    var from: Pose? = null
+    val target = Pose()
+    val blend = Pose()
+    val last = Pose()
+    val from = Pose()
+    var hasLast = false
+    var hasFrom = false
     var lastT: Float = 0f
 }
 

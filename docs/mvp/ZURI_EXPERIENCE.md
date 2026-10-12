@@ -981,8 +981,13 @@ sliders over `ZuriMotion`, so motion can change without code archaeology.
 - **Canvas: one `Canvas` per instance.** Drawers implement
   `fun DrawScope.draw(kit: CompanionDrawKit, f: CompanionFrame, p: CompanionPalette)` in the 100-unit box.
 - **Paths are pre-allocated** in `CompanionDrawKit` and reset each frame; brushes are rebuilt only when the
-  palette changes and strokes are cached. One small `Pose` is still allocated per frame; the allocation counter
-  in Companion Lab is not built yet.
+  palette changes and strokes are cached (the rising z's snap their width to 0.05 units so the cache holds them).
+  `Pose` is filled in place (`CompanionPoses.poseInto`, `lerpInto`) in per-slot buffers, the clock is read as a
+  primitive `FloatState`, and only level-driven visuals call the host's `level` lambda. The draw path allocates
+  nothing per frame: `CompanionDrawPerfTest` checks every form × every visual on the JVM (Z-14), and Companion Lab
+  shows the runtime's allocation count per frame on a device. One host-side cost remains: `level: () -> Float`
+  returns a boxed `Float`, so Listening and Reading allocate one small object per frame inside the caller's
+  lambda (changing that type touches the recording and read-aloud call sites, another lane).
 - **Animation clock:** `withFrameNanos` in a `LaunchedEffect`. It runs only when the active `MotionSpec` needs time
   (Loop, OneShot or Driven) **and** the slot is visible. Visibility means the lifecycle is ≥ STARTED and the slot is
   on screen (`onGloballyPositioned` + window bounds).

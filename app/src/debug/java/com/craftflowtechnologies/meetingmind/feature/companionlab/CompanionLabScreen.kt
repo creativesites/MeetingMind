@@ -17,6 +17,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -56,11 +57,13 @@ import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMAccent
 import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
 import kotlin.math.sin
+import kotlinx.coroutines.delay
 
 private val Ladder = listOf(24, 40, 64, 96, 160)
 
 @Composable
-fun CompanionLabScreen() {
+/** @param liveStats the live counters line; off in the screenshot test, where its numbers vary. */
+fun CompanionLabScreen(liveStats: Boolean = true) {
     var formIndex by rememberSaveable { mutableIntStateOf(0) }
     var stateIndex by rememberSaveable { mutableIntStateOf(0) }
     var modeIndex by rememberSaveable { mutableIntStateOf(-1) }
@@ -119,6 +122,7 @@ fun CompanionLabScreen() {
                         stringResource(R.string.companion_lab_contract, CompanionRiveContract.artboard(form), CompanionRiveContract.StateMachine, CompanionRiveContract.ViewModel),
                         style = MM.type.caption, color = MM.colors.inkMuted
                     )
+                    if (liveStats) LabStats()
                     SecondaryButton(stringResource(R.string.companion_lab_replay), onClick = { replay++ })
                     SecondaryButton(stringResource(R.string.companion_lab_reset_guard), onClick = {
                         RiveSafety.reset(ctx)
@@ -180,6 +184,30 @@ fun CompanionLabScreen() {
             }
         }
     }
+}
+
+/**
+ * Live debug counters (§10.8): Canvas draw time and allocations per frame (the runtime's counter,
+ * debug builds), and live Rive views. Counting runs only while the Lab is open.
+ */
+@Composable
+private fun LabStats() {
+    DisposableEffect(Unit) {
+        CompanionDiagnostics.enable(true)
+        onDispose { CompanionDiagnostics.enable(false) }
+    }
+    var text by remember { mutableStateOf("") }
+    val drawFmt = stringResource(R.string.companion_lab_stats)
+    val na = stringResource(R.string.companion_lab_stats_na)
+    LaunchedEffect(drawFmt) {
+        while (true) {
+            val d = CompanionDiagnostics
+            val allocs = if (d.allocsAvg < 0f) na else "%.1f".format(d.allocsAvg)
+            text = drawFmt.format(d.drawNsAvg / 1_000_000f, allocs, d.frames, d.liveRive.get())
+            delay(500)
+        }
+    }
+    Text(text, style = MM.type.caption, color = MM.colors.inkMuted)
 }
 
 /** The Lab's words for why a slot got its renderer. */

@@ -75,7 +75,11 @@ data class MotionSpec(
     val exitMs: Int = 250,
     val fps: Int = 60
 ) {
-    fun track(c: PoseChannel): Track? = tracks.firstOrNull { it.channel == c }
+    /** The track for a channel; an indexed loop, so the per-frame path allocates no iterator. */
+    fun track(c: PoseChannel): Track? {
+        for (i in tracks.indices) if (tracks[i].channel == c) return tracks[i]
+        return null
+    }
 
     /** How long the clock must run, or null for as long as visible. */
     val runMs: Long?
@@ -183,82 +187,97 @@ object CompanionPoses {
         level: Float,
         reduced: Boolean,
         variant: CompanionVariant = CompanionVariant.Normal
+    ): Pose = poseInto(Pose(), form, visual, t, level, reduced, variant)
+
+    /**
+     * [pose] written into [out] in place: the Canvas renderer's per-frame path, which allocates
+     * nothing (§10.8). Returns [out].
+     */
+    fun poseInto(
+        out: Pose,
+        form: CompanionForm,
+        visual: CompanionVisual,
+        t: Float,
+        level: Float,
+        reduced: Boolean,
+        variant: CompanionVariant = CompanionVariant.Normal
     ): Pose {
         if (variant == CompanionVariant.Quiet) {
-            return pose(form, CreateMode.PEACEFUL, t, 0f, reduced).copy(calm = true, fx = Fx.NONE)
+            poseInto(out, form, CreateMode.PEACEFUL, t, 0f, reduced)
+            out.calm = true
+            out.fx = Fx.NONE
+            return out
         }
         val spec = ZuriMotion.spec(visual, variant)
         val rm = reduced
         // Reading's static pose has the mouth closed (§3.1), whatever level the caller passes.
         val L = if (rm && visual == CompanionState.READING) 0f else level.coerceIn(0f, 1f)
-        fun blinkAt(periodMs: Int?): Float {
-            if (rm || periodMs == null) return 0f
-            val q = t % (periodMs / 1000f)
-            return if (q < 0.16f) sin(q / 0.16f * PI.toFloat()) else 0f
-        }
-        fun breath(): Pair<Float, Float> {
-            val b = spec.breath ?: return 1f to 1f
-            val v = if (rm) 0f else sin(t * TAU / (b.periodMs / 1000f))
-            return (1f - b.amp * 0.55f * v) to (1f + b.amp * v)
-        }
-        fun sway(): Float {
-            val s = spec.sway ?: return 0f
-            return s.base + if (rm) 0f else sin(t * TAU / (s.periodMs / 1000f)) * s.amp
-        }
-        val (bx, by) = breath()
+        val b = spec.breath
+        val bv = if (b == null || rm) 0f else sin(t * TAU / (b.periodMs / 1000f))
+        val bx = if (b == null) 1f else 1f - b.amp * 0.55f * bv
+        val by = if (b == null) 1f else 1f + b.amp * bv
+        val p = out.reset()
 
-        var p = when (if (variant == CompanionVariant.Nod) null else visual) {
+        when (if (variant == CompanionVariant.Nod) null else visual) {
             null -> {
                 // The nod: happy face, one dip.
                 val prog = if (rm) 0.4f else (t * 1000f / 600f).coerceIn(0f, 1f)
-                Pose(eyes = Eyes.HAPPY, mouth = Mouth.SMILE,
-                    dy = spec.track(PoseChannel.DY)!!.valueAt(prog), sy = spec.track(PoseChannel.SY)!!.valueAt(prog))
+                p.eyes = Eyes.HAPPY; p.mouth = Mouth.SMILE
+                p.dy = spec.track(PoseChannel.DY)!!.valueAt(prog); p.sy = spec.track(PoseChannel.SY)!!.valueAt(prog)
             }
-            CompanionState.IDLE -> Pose(sx = bx, sy = by, blink = blinkAt(spec.blinkEveryMs))
+            CompanionState.IDLE -> { p.sx = bx; p.sy = by; p.blink = blinkAt(spec.blinkEveryMs, t, rm) }
             CompanionState.LISTENING -> {
-                val b = if (rm) 0f else sin(t * TAU / 2.2f)
-                Pose(sy = 1f + 0.035f * L + 0.01f * b, sx = 1f + 0.014f * L, tilt = sway(), eyes = Eyes.SOFT, lookX = 0.6f, fx = Fx.RINGS)
+                val br = if (rm) 0f else sin(t * TAU / 2.2f)
+                p.sy = 1f + 0.035f * L + 0.01f * br; p.sx = 1f + 0.014f * L; p.tilt = sway(spec, t, rm)
+                p.eyes = Eyes.SOFT; p.lookX = 0.6f; p.fx = Fx.RINGS
             }
-            CompanionState.THINKING -> Pose(
-                tilt = if (rm) 3f else sway(), lookX = 1.1f, lookY = -1.5f, mouth = Mouth.O,
-                blink = blinkAt(spec.blinkEveryMs), fx = Fx.DOTS
-            )
-            CompanionState.CELEBRATING, CreateMode.CELEBRATORY -> celebrate(spec, t, rm)
-            CompanionState.WORRIED -> Pose(
-                sx = 1.03f, sy = 0.95f, dy = 1.5f, tilt = if (rm) 0f else sway(), brows = true, mouth = Mouth.WOBBLE,
-                lookY = 0.7f, eyeScale = 0.88f, blink = blinkAt(spec.blinkEveryMs)
-            )
-            CompanionState.SLEEPY -> Pose(sx = bx, sy = by - 0.03f, dy = 2f, tilt = 6f, eyes = Eyes.CLOSED, mouth = Mouth.NONE, fx = Fx.ZZZ)
+            CompanionState.THINKING -> {
+                p.tilt = if (rm) 3f else sway(spec, t, rm); p.lookX = 1.1f; p.lookY = -1.5f; p.mouth = Mouth.O
+                p.blink = blinkAt(spec.blinkEveryMs, t, rm); p.fx = Fx.DOTS
+            }
+            CompanionState.CELEBRATING, CreateMode.CELEBRATORY -> celebrate(p, spec, t, rm)
+            CompanionState.WORRIED -> {
+                p.sx = 1.03f; p.sy = 0.95f; p.dy = 1.5f; p.tilt = if (rm) 0f else sway(spec, t, rm); p.brows = true; p.mouth = Mouth.WOBBLE
+                p.lookY = 0.7f; p.eyeScale = 0.88f; p.blink = blinkAt(spec.blinkEveryMs, t, rm)
+            }
+            CompanionState.SLEEPY -> { p.sx = bx; p.sy = by - 0.03f; p.dy = 2f; p.tilt = 6f; p.eyes = Eyes.CLOSED; p.mouth = Mouth.NONE; p.fx = Fx.ZZZ }
             CompanionState.CURIOUS -> {
                 val prog = oneShotProgress(t, 600, rm)
                 val e = FastOutSlowInEasing.transform(prog)
-                Pose(
-                    tilt = spec.track(PoseChannel.TILT)!!.valueAt(prog), dy = spec.track(PoseChannel.DY)!!.valueAt(prog),
-                    sx = spec.track(PoseChannel.SX)!!.valueAt(prog), sy = spec.track(PoseChannel.SY)!!.valueAt(prog),
-                    eyeScale = spec.track(PoseChannel.EYE_SCALE)!!.valueAt(prog), lookX = 0.8f * e, lookY = -0.4f * e
-                )
+                p.tilt = spec.track(PoseChannel.TILT)!!.valueAt(prog); p.dy = spec.track(PoseChannel.DY)!!.valueAt(prog)
+                p.sx = spec.track(PoseChannel.SX)!!.valueAt(prog); p.sy = spec.track(PoseChannel.SY)!!.valueAt(prog)
+                p.eyeScale = spec.track(PoseChannel.EYE_SCALE)!!.valueAt(prog); p.lookX = 0.8f * e; p.lookY = -0.4f * e
             }
             CompanionState.PROUD -> {
                 val prog = oneShotProgress(t, 1200, rm)
-                Pose(
-                    sy = spec.track(PoseChannel.SY)!!.valueAt(prog), sx = spec.track(PoseChannel.SX)!!.valueAt(prog),
-                    dy = spec.track(PoseChannel.DY)!!.valueAt(prog), eyes = Eyes.HAPPY, mouth = Mouth.SMILE, fx = Fx.GLINT
-                )
+                p.sy = spec.track(PoseChannel.SY)!!.valueAt(prog); p.sx = spec.track(PoseChannel.SX)!!.valueAt(prog)
+                p.dy = spec.track(PoseChannel.DY)!!.valueAt(prog); p.eyes = Eyes.HAPPY; p.mouth = Mouth.SMILE; p.fx = Fx.GLINT
             }
-            CompanionState.READING -> Pose(
+            CompanionState.READING -> {
                 // Eyes follow the line (§3.1): a sweep left to right per sentence, a quick return.
-                lookX = if (rm) 0f else readingGlance(t), lookY = 0.6f, mouth = Mouth.SMILE,
-                sy = 1f + 0.015f * L, sx = 1f + 0.006f * L, blink = blinkAt(spec.blinkEveryMs), talk = L
-            )
-            CreateMode.PRAYERFUL -> Pose(sx = bx, sy = by, dy = 1f, eyes = Eyes.CLOSED, mouth = Mouth.NONE, hands = true)
-            CreateMode.PEACEFUL -> Pose(sx = bx, sy = by, eyes = Eyes.CLOSED, mouth = Mouth.SMILE)
-            CreateMode.GRATEFUL -> Pose(sx = bx, sy = by, eyes = Eyes.HAPPY, mouth = Mouth.SMILE, tilt = if (rm) 4f else sway(), fx = Fx.HEART)
-            CreateMode.JOYFUL -> Pose(eyes = Eyes.HAPPY, mouth = Mouth.OPEN, dy = if (rm) -2f else -abs(sin(t * 2.6f)) * 3f, fx = Fx.SPARKLES_TWO)
-            CreateMode.REFLECTIVE -> Pose(sx = bx, sy = by, lookX = -1f, lookY = -1.5f, tilt = -3f, blink = blinkAt(spec.blinkEveryMs))
-            else -> Pose()
+                p.lookX = if (rm) 0f else readingGlance(t); p.lookY = 0.6f; p.mouth = Mouth.SMILE
+                p.sy = 1f + 0.015f * L; p.sx = 1f + 0.006f * L; p.blink = blinkAt(spec.blinkEveryMs, t, rm); p.talk = L
+            }
+            CreateMode.PRAYERFUL -> { p.sx = bx; p.sy = by; p.dy = 1f; p.eyes = Eyes.CLOSED; p.mouth = Mouth.NONE; p.hands = true }
+            CreateMode.PEACEFUL -> { p.sx = bx; p.sy = by; p.eyes = Eyes.CLOSED; p.mouth = Mouth.SMILE }
+            CreateMode.GRATEFUL -> { p.sx = bx; p.sy = by; p.eyes = Eyes.HAPPY; p.mouth = Mouth.SMILE; p.tilt = if (rm) 4f else sway(spec, t, rm); p.fx = Fx.HEART }
+            CreateMode.JOYFUL -> { p.eyes = Eyes.HAPPY; p.mouth = Mouth.OPEN; p.dy = if (rm) -2f else -abs(sin(t * 2.6f)) * 3f; p.fx = Fx.SPARKLES_TWO }
+            CreateMode.REFLECTIVE -> { p.sx = bx; p.sy = by; p.lookX = -1f; p.lookY = -1.5f; p.tilt = -3f; p.blink = blinkAt(spec.blinkEveryMs, t, rm) }
+            else -> Unit
         }
-        p = formChannels(form, visual, variant, p, t, L, rm)
+        formChannels(form, visual, variant, p, t, L, rm)
         return p
+    }
+
+    private fun blinkAt(periodMs: Int?, t: Float, rm: Boolean): Float {
+        if (rm || periodMs == null) return 0f
+        val q = t % (periodMs / 1000f)
+        return if (q < 0.16f) sin(q / 0.16f * PI.toFloat()) else 0f
+    }
+
+    private fun sway(spec: MotionSpec, t: Float, rm: Boolean): Float {
+        val s = spec.sway ?: return 0f
+        return s.base + if (rm) 0f else sin(t * TAU / (s.periodMs / 1000f)) * s.amp
     }
 
     /** 0..1 through a one-shot of [ms]; the static pose is the held end (1). */
@@ -274,19 +293,17 @@ object CompanionPoses {
     /** The default sentence length while reading aloud (§3.1). */
     const val ReadingSentenceS = 2.4f
 
-    private fun celebrate(spec: MotionSpec, t: Float, rm: Boolean): Pose {
-        val base = Pose(eyes = Eyes.HAPPY, mouth = Mouth.OPEN, fx = Fx.SPARKLES)
-        if (rm) return base.copy(dy = -5f, sy = 1.04f, sx = 0.97f, hop = 0.6f)
+    private fun celebrate(p: Pose, spec: MotionSpec, t: Float, rm: Boolean) {
+        p.eyes = Eyes.HAPPY; p.mouth = Mouth.OPEN; p.fx = Fx.SPARKLES
+        if (rm) { p.dy = -5f; p.sy = 1.04f; p.sx = 0.97f; p.hop = 0.6f; return }
         val prog = (t * 1000f / 1600f).coerceIn(0f, 1f)
-        return base.copy(
-            dy = spec.track(PoseChannel.DY)?.valueAt(prog) ?: 0f,
-            sx = spec.track(PoseChannel.SX)?.valueAt(prog) ?: 1f,
-            sy = spec.track(PoseChannel.SY)?.valueAt(prog) ?: 1f,
-            hop = spec.track(PoseChannel.HOP)?.valueAt(prog) ?: 0f
-        )
+        p.dy = spec.track(PoseChannel.DY)?.valueAt(prog) ?: 0f
+        p.sx = spec.track(PoseChannel.SX)?.valueAt(prog) ?: 1f
+        p.sy = spec.track(PoseChannel.SY)?.valueAt(prog) ?: 1f
+        p.hop = spec.track(PoseChannel.HOP)?.valueAt(prog) ?: 0f
     }
 
-    private fun formChannels(form: CompanionForm, visual: CompanionVisual, variant: CompanionVariant, p: Pose, t: Float, L: Float, rm: Boolean): Pose {
+    private fun formChannels(form: CompanionForm, visual: CompanionVisual, variant: CompanionVariant, p: Pose, t: Float, L: Float, rm: Boolean) {
         val v: CompanionVisual = if (variant == CompanionVariant.Nod) CompanionState.IDLE else visual
         val celebrating = v == CompanionState.CELEBRATING || v == CreateMode.CELEBRATORY
         // Curious and Proud ease their form channels in with the one-shot; static poses hold the end.
@@ -295,7 +312,7 @@ object CompanionPoses {
             CompanionState.PROUD -> FastOutSlowInEasing.transform(oneShotProgress(t, 1200, rm))
             else -> 1f
         }
-        return when (form) {
+        when (form) {
             CompanionForm.ZURI -> {
                 var lean = 0f
                 val h0: Float; val h1: Float; val h2: Float
@@ -330,7 +347,7 @@ object CompanionPoses {
                     else -> { h0 = 5f; h1 = 8f; h2 = 5f }
                 }
                 if (p.calm) lean = 6f
-                p.copy(sprout0 = h0, sprout1 = h1, sprout2 = h2, sproutLean = lean)
+                p.sprout0 = h0; p.sprout1 = h1; p.sprout2 = h2; p.sproutLean = lean
             }
             CompanionForm.NAS -> {
                 var headR = 0f; var headDy = 0f; var ear = 12f; var tail = 0f; var dy = p.dy
@@ -360,7 +377,7 @@ object CompanionPoses {
                     v == CompanionState.READING -> { ear = 12f + L * 4f; headR = -4f }
                 }
                 if (p.calm) { ear = 8f; headR = 4f }
-                p.copy(dy = dy, headTilt = headR, headDy = headDy, ear = ear, tail = tail)
+                p.dy = dy; p.headTilt = headR; p.headDy = headDy; p.ear = ear; p.tail = tail
             }
             CompanionForm.WREN -> {
                 var tail = 0f; var wing = 0f; var headDy = 0f; var headR = 0f
@@ -381,7 +398,7 @@ object CompanionPoses {
                     v == CompanionState.READING -> { tail = 2f; headR = -4f }
                 }
                 if (p.calm) { tail = -4f; headR = 6f }
-                p.copy(tail = tail, wing = wing, headDy = headDy, headTilt = headR)
+                p.tail = tail; p.wing = wing; p.headDy = headDy; p.headTilt = headR
             }
             CompanionForm.PAGE -> {
                 var fold = 12f; var lean = 0f
@@ -394,7 +411,7 @@ object CompanionPoses {
                     v == CompanionState.PROUD -> fold = 12f + 1.5f * e
                     v == CompanionState.CURIOUS -> lean = -2f * e
                 }
-                p.copy(fold = fold, pageLean = lean)
+                p.fold = fold; p.pageLean = lean
             }
         }
     }
