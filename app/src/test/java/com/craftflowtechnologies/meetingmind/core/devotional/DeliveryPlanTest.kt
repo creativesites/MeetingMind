@@ -78,10 +78,9 @@ class DeliveryPlanTest {
     }
 
     // Timetable
-    @Test fun `write alarm is ninety minutes before delivery and not the evening before`() {
-        assertEquals(5 * 60, DevotionalDelivery.writeMinute(6 * 60 + 30))
-        assertEquals(0, DevotionalDelivery.writeMinute(30))
-        assertEquals(0, DevotionalDelivery.writeMinute(0))
+    @Test fun `write alarm is 00 01 whatever the delivery time`() {
+        assertEquals(1, DevotionalDelivery.writeMinute())
+        assertEquals(1, DevotionalDelivery.WRITE_MINUTE)
     }
 
     private fun ms(z: ZonedDateTime) = z.toInstant().toEpochMilli()

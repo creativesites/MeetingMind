@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.room.Room
@@ -54,6 +55,7 @@ class FaithScreenshotTest {
         place = ref("John 3:16"),
         today = TodayReading(ref("Psalm 23"), listOf("A psalm of trust, short enough to read slowly.", "Good for a day that feels full.")),
         devotional = FaithDevotionalLine("Rest in the middle of the work", "Matthew 11:28-30", written = true),
+        reading = "Morning and Evening",
         verse = FaithVerseLine("Philippians 4:6-7", "WEB", "In nothing be anxious, but in everything, by prayer and petition with thanksgiving, let your requests be made known to God.", "World English Bible, public domain"),
         plan = FaithPlanLine("Gospels in 90 days", "Luke 4–5", 12, 90, 13, 1, ref("Luke 4")),
         prayerPeople = listOf(PrayerPerson(1, "Grace", "recovering from surgery", null, 3), PrayerPerson(2, "Daniel", "", null, 1)),
@@ -71,6 +73,16 @@ class FaithScreenshotTest {
         compose.setContent { MeetMindTheme(darkTheme = dark) { FaithHomeContent(state, FaithHomeActions()) } }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/faith_home_$name.png")
+    }
+
+    @Test fun `the reading line sits under Today's devotional and writes one with AI`() {
+        var wrote = 0
+        compose.setContent { MeetMindTheme { FaithHomeContent(populated, FaithHomeActions(onWriteDevotionalWithAi = { wrote++ })) } }
+        compose.onNodeWithTag("faith_reading_line").assertExists()
+        compose.onNodeWithText("Reading: Morning and Evening").assertExists()
+        compose.onNodeWithTag("faith_write_ai").performClick()
+        assertEquals(1, wrote)
+        // Nothing to say, nothing shown.
     }
 
     @Test fun `populated light`() = shot("populated_light", populated)

@@ -147,7 +147,9 @@ fun DevotionalScreen(
         onArchive = onArchive,
         onFavourite = viewModel::toggleFavourite,
         onExamen = viewModel::writeExamen,
-        onClassic = viewModel::readClassic
+        onClassic = viewModel::readClassic,
+        onWriteWithAi = viewModel::writeWithAi,
+        onDismissTip = viewModel::dismissTip
     )
     if (showAsk) AskDevotionalSheet(
         profile = state.profile,
@@ -185,7 +187,9 @@ fun DevotionalContent(
     onFavourite: (DailyDevotional) -> Unit = {},
     onExamen: () -> Unit = {},
     onCreateCard: () -> Unit = {},
-    onClassic: () -> Unit = {}
+    onClassic: () -> Unit = {},
+    onWriteWithAi: () -> Unit = {},
+    onDismissTip: () -> Unit = {}
 ) {
     val today = state.today
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -235,6 +239,11 @@ fun DevotionalContent(
             Hero(state.date, state.season, today?.devotional, writing = state.writing && today == null, cover = cover) {
                 if (today != null && today.devotional.origin != DevotionalOrigin.MINE && today.devotional.origin != DevotionalOrigin.CARE) ListenPill(state.voice, onListen)
             }
+        }
+        // Which plan is being read, with a quiet way to write one with AI; and, once, a tip saying so.
+        if (today != null && !state.past) com.craftflowtechnologies.meetingmind.core.devotional.DevotionalTip.readingName(today.devotional)?.let { name ->
+            item { ReadingStrip(name, writing = state.writing, onWriteWithAi = onWriteWithAi) }
+            if (state.tipVisible) item { WriteWithAiTip(name, onDismiss = onDismissTip) }
         }
         if (state.all.size > 1 && today != null) item { DayList(state.all, today, state.date, onSelect, onMakeCurrent) }
         if (today != null && state.voice.marks.size > 1) item { SectionChips(state.voice, onListenFrom) }

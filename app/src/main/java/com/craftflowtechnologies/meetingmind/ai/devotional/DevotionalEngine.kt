@@ -53,13 +53,21 @@ data class DevotionalAsk(
      * answer), say so instead of quietly filing a classic as today's devotional. With no AI set
      * up at all, the usual classic still stands in.
      */
-    val keepToAi: Boolean = false
+    val keepToAi: Boolean = false,
+    /**
+     * "Write one with AI": the person asked for an AI-written devotional, so nothing else may stand in.
+     * With no AI set up, or when every model fails, the write is refused with a plain reason.
+     */
+    val aiOnly: Boolean = false
 ) {
+    /** Whether this asks for an AI-written devotional (rather than whatever the day's source gives). */
+    val wantsAi get() = aiOnly || keepToAi || custom || writer == DevotionalWriter.DEVICE || writer == DevotionalWriter.GEMINI
+
     val custom get() = !about.isNullOrBlank() || !passage.isNullOrBlank() || topics.isNotEmpty() || tone != null || minutes != null
 
     fun toJson(): String = org.json.JSONObject().apply {
         about?.let { put("about", it) }; passage?.let { put("passage", it) }; put("topics", org.json.JSONArray(topics.toList()))
-        tone?.let { put("tone", it.name) }; minutes?.let { put("minutes", it) }; put("variant", variant); put("writer", writer.name); hour?.let { put("hour", it) }; if (keepToAi) put("keepToAi", true)
+        tone?.let { put("tone", it.name) }; minutes?.let { put("minutes", it) }; put("variant", variant); put("writer", writer.name); hour?.let { put("hour", it) }; if (keepToAi) put("keepToAi", true); if (aiOnly) put("aiOnly", true)
     }.toString()
 
     companion object {
@@ -74,7 +82,8 @@ data class DevotionalAsk(
                 minutes = o.optInt("minutes", 0).takeIf { it > 0 }, variant = o.optInt("variant", 0),
                 writer = runCatching { DevotionalWriter.valueOf(o.getString("writer")) }.getOrDefault(DevotionalWriter.AUTO),
                 hour = if (o.has("hour")) o.optInt("hour") else null,
-                keepToAi = o.optBoolean("keepToAi", false)
+                keepToAi = o.optBoolean("keepToAi", false),
+                aiOnly = o.optBoolean("aiOnly", false)
             )
         }
     }
@@ -135,7 +144,7 @@ class DevotionalEngine(
         val askTopics = ask?.topics.orEmpty()
         val variant = ask?.variant ?: 0
         val day = LiturgicalCalendar.dayOf(date, profile.tradition)
-        val source = if (ask?.custom == true) DevotionalSource.AI else when (profile.source) {
+        val source = if (ask?.wantsAi == true) DevotionalSource.AI else when (profile.source) {
             DevotionalSource.MIX -> if (date.dayOfWeek == DayOfWeek.SUNDAY) DevotionalSource.CLASSIC else DevotionalSource.AI
             else -> profile.source
         }
@@ -210,8 +219,9 @@ class DevotionalEngine(
         if (writer == DevotionalWriter.DEVICE || writer == DevotionalWriter.GEMINI) {
             throw DevotionalUnavailable(lastFallbackReason ?: "The AI couldn't write one just now.")
         }
-        if (pool.isNotEmpty() && ask?.keepToAi == true) throw DevotionalUnavailable(lastFallbackReason ?: "The AI couldn't write one just now.")
-        if (lastFallbackReason == null) lastFallbackReason = "No AI model is set up, so today's reading is a classic."
+        if (pool.isNotEmpty() && (ask?.keepToAi == true || ask?.aiOnly == true)) throw DevotionalUnavailable(lastFallbackReason ?: "The AI couldn't write one just now.")
+        if (pool.isEmpty() && ask?.aiOnly == true) throw DevotionalUnavailable("No AI is set up yet. Add a Gemini key in Settings, or download the on-device model in Setup.")
+        if (lastFallbackReason == null) lastFallbackReason = "No AI model is set up, so today's reading is from ${classics.title}."
         return anyClassic(date, false, profile, variant) ?: mine(date, profile)
     }
 
@@ -302,7 +312,10 @@ class DevotionalEngine(
     }
 
     /** The day's classic, or — for "a different one" — the evening reading, then readings from nearby days. */
-    /** A classic for the day, looking further afield rather than ever falling back to a blank page. */
+    /**
+     * The chosen plan's entry for [date], looking further afield rather than ever falling back to a blank page.
+     * It needs no network, no key and no model, so it is what is written first, before any AI is tried.
+     */
     fun anyClassic(date: LocalDate, evening: Boolean, profile: DevotionalProfile, variant: Int): Devotional? =
         classicVariant(date, evening, profile, variant) ?: classic(date, evening, profile) ?: classic(date, !evening, profile)
             ?: (1..14).firstNotNullOfOrNull { classic(date.minusDays(it.toLong()), evening, profile)?.copy(day = LocalDay.of(date)) }
@@ -315,8 +328,9 @@ class DevotionalEngine(
 
     fun classic(date: LocalDate, evening: Boolean, profile: DevotionalProfile): Devotional? {
         val r = classics.forDate(date, evening) ?: return null
-        val title = r.keyText.trim('"', '“', '”', ' ').let { if (it.length > 70) it.take(67).substringBeforeLast(' ') + "…" else it }
-            .ifBlank { r.referenceText }
+        val title = r.heading.trim().takeIf { it.isNotBlank() }
+            ?: r.keyText.trim('"', '“', '”', ' ').let { if (it.length > 70) it.take(67).substringBeforeLast(' ') + "…" else it }
+                .ifBlank { r.referenceText }
         return Devotional(
             day = LocalDay.of(date),
             origin = DevotionalOrigin.CLASSIC,
@@ -327,7 +341,7 @@ class DevotionalEngine(
             liveItToday = com.craftflowtechnologies.meetingmind.core.devotional.LiveItToday.fallback(LocalDay.of(date)),
             insight = if (profile.includeInsight) Quotes.pick(quotes, quoteWeights(profile, date), date, profile.lessOf) else null,
             label = classics.attribution,
-            engine = "${classics.author}, ${classics.title}${if (evening) " (evening)" else ""}",
+            engine = "${classics.author}, ${classics.title}${if (evening && classics.plan.hasEvening) " (evening)" else ""}",
             season = LiturgicalCalendar.dayOf(date, profile.tradition)
         )
     }

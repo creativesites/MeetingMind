@@ -192,6 +192,15 @@ class UserPreferencesManager(private val context: Context) {
     val devotionalProfile: Flow<com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile> =
         context.dataStore.data.map { com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile.fromJson(it[DEVOTIONAL_PROFILE]) }
 
+    private val DEVOTIONAL_TIP_DISMISSED = booleanPreferencesKey("devotional_tip_dismissed")
+
+    /** Whether the one-time "you can write one with AI" tip on the devotional page has been dismissed. Once true, never shown again. */
+    val devotionalTipDismissed: Flow<Boolean> = context.dataStore.data.map { it[DEVOTIONAL_TIP_DISMISSED] ?: false }
+
+    suspend fun dismissDevotionalTip() {
+        context.dataStore.edit { it[DEVOTIONAL_TIP_DISMISSED] = true }
+    }
+
     private val FAITH_REMINDERS = stringPreferencesKey("faith_reminders")
 
     /** Prayer, reading, evening and meeting reminders (PLAN_V2 F6). */

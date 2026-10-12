@@ -53,7 +53,7 @@ class DevotionalEngineTest {
         classics = classics, quotes = quotes, locale = Locale.UK
     )
 
-    private val profile = DevotionalProfile(topics = setOf("Rest"), personalTouch = com.craftflowtechnologies.meetingmind.core.devotional.PersonalTouch.ALWAYS)
+    private val profile = DevotionalProfile(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI, topics = setOf("Rest"), personalTouch = com.craftflowtechnologies.meetingmind.core.devotional.PersonalTouch.ALWAYS)
 
     @Test fun `a good cloud answer becomes a labelled AI devotional on a real passage`() = runBlocking {
         val model = FakeModel(good)
@@ -229,5 +229,27 @@ class DevotionalEngineTest {
         assertTrue(DevotionalContract.timeLine(21).contains("evening"))
         assertTrue(DevotionalContract.timeLine(2).contains("late at night"))
         assertEquals(16, DevotionalAsk.fromJson(DevotionalAsk(hour = 16).toJson())!!.hour)
+    }
+
+    @Test fun `Write one with AI is labelled as AI, and is refused rather than filed as a plan reading`() = runBlocking {
+        val planProfile = DevotionalProfile()   // a plan by default
+        val ai = engine(FakeModel(good) to true).write(thursday, planProfile, ask = DevotionalAsk(aiOnly = true))
+        assertEquals(DevotionalOrigin.CLOUD_AI, ai.origin)
+        assertEquals("Written with AI", ai.label)
+        try { engine().write(thursday, planProfile, ask = DevotionalAsk(aiOnly = true)); org.junit.Assert.fail("no AI set up") }
+        catch (e: DevotionalUnavailable) { assertTrue(e.message!!.contains("No AI is set up")) }
+        try { engine(FakeModel(null) to true).write(thursday, planProfile, ask = DevotionalAsk(aiOnly = true)); org.junit.Assert.fail("AI failed") }
+        catch (e: DevotionalUnavailable) { assertEquals("offline", e.message) }
+    }
+
+    @Test fun `the plan is read before any AI is tried`() = runBlocking {
+        val model = FakeModel(good)
+        val d = engine(model to true).write(thursday, DevotionalProfile(source = DevotionalSource.AI), ask = DevotionalAsk(writer = DevotionalWriter.CLASSIC))
+        assertEquals(DevotionalOrigin.CLASSIC, d.origin)
+        assertTrue("no model was asked", model.prompts.isEmpty())
+        // And the default profile, a plan, never asks a model for the day's own reading.
+        val plan = engine(model to true).write(thursday, DevotionalProfile())
+        assertEquals(DevotionalOrigin.CLASSIC, plan.origin)
+        assertTrue(model.prompts.isEmpty())
     }
 }

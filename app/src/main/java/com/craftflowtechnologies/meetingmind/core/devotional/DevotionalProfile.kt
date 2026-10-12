@@ -5,10 +5,11 @@ import org.json.JSONObject
 
 /** Where each day's devotional comes from. */
 enum class DevotionalSource(val label: String, val description: String) {
-    AI("Written for you", "A fresh devotional each day, a different passage and theme each time. Labelled as AI-written."),
-    CLASSIC("A classic", "Spurgeon's Morning and Evening — a reading for every morning and evening of the year."),
+    AI("Written with AI", "A fresh devotional each day, a different passage and theme each time. Labelled as written with AI. If no AI is available, your reading plan fills in."),
+    /** "A reading plan": a bundled devotional book chosen by [DevotionalProfile.planId]. Works with no network and no key. */
+    CLASSIC("A reading plan", "A bundled devotional book with a reading for every day of the year. Works offline."),
     MINE("My own", "A guided page each morning with a verse to start from, for you to write."),
-    MIX("A mix", "Written for you in the week, a classic on Sundays.")
+    MIX("A mix", "Written with AI in the week, a reading from your plan on Sundays.")
 }
 
 /** Shapes wording and calendar awareness; never doctrine the person hasn't chosen. */
@@ -94,7 +95,10 @@ object DevotionalTopics {
  */
 data class DevotionalProfile(
     val enabled: Boolean = false,
-    val source: DevotionalSource = DevotionalSource.AI,
+    /** A plan by default: a new install has a devotional on day one, with no network and no key. */
+    val source: DevotionalSource = DevotionalSource.CLASSIC,
+    /** Which bundled plan [DevotionalSource.CLASSIC] reads from, and the fallback for the other sources. */
+    val planId: String = DevotionalPlans.DEFAULT_ID,
     val tradition: Tradition = Tradition.NON_DENOMINATIONAL,
     /** Reading time: 3, 7 or 12 minutes. */
     val minutes: Int = 3,
@@ -146,8 +150,23 @@ data class DevotionalProfile(
 ) {
     val words: Int get() = when { minutes <= 3 -> 280; minutes <= 7 -> 650; else -> 1100 }
 
+    /** The plan this profile reads from (the default plan when [planId] is unknown or unavailable). */
+    val plan: DevotionalPlan get() = DevotionalPlans.resolve(planId)
+
+    /** Whether the AI writes the devotional of [date] (the AI source, or a mix on every day but Sunday). */
+    fun writesWithAiOn(date: java.time.LocalDate): Boolean =
+        source == DevotionalSource.AI || source == DevotionalSource.MIX && date.dayOfWeek != java.time.DayOfWeek.SUNDAY
+
+    /** What the person is reading, in a few words, for "Reading: …". */
+    val readingName: String get() = when (source) {
+        DevotionalSource.CLASSIC -> plan.title
+        DevotionalSource.AI -> "Written with AI"
+        DevotionalSource.MINE -> "Your own page"
+        DevotionalSource.MIX -> "Written with AI, and ${plan.title}"
+    }
+
     fun toJson(): String = JSONObject().apply {
-        put("enabled", enabled); put("source", source.name); put("tradition", tradition.name); put("minutes", minutes)
+        put("enabled", enabled); put("source", source.name); put("planId", planId); put("tradition", tradition.name); put("minutes", minutes)
         put("tone", tone.name); put("topics", JSONArray(topics.toList())); season?.let { put("season", it) }
         put("aboutMe", aboutMe); put("prayer", includePrayer); put("motivation", includeMotivation)
         put("insight", includeInsight); put("question", includeQuestion); put("delivery", deliveryMinutes)
@@ -171,6 +190,8 @@ data class DevotionalProfile(
             return DevotionalProfile(
                 enabled = o.optBoolean("enabled", d.enabled),
                 source = runCatching { DevotionalSource.valueOf(o.getString("source")) }.getOrDefault(d.source),
+                // A profile saved before plans existed has no planId: its "classic" was Morning and Evening.
+                planId = o.optString("planId").takeIf { it.isNotBlank() } ?: DevotionalPlans.DEFAULT_ID,
                 tradition = runCatching { Tradition.valueOf(o.getString("tradition")) }.getOrDefault(d.tradition),
                 minutes = o.optInt("minutes", d.minutes).coerceIn(2, 15),
                 tone = runCatching { DevotionalTone.valueOf(o.getString("tone")) }.getOrDefault(d.tone),

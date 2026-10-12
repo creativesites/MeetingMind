@@ -14,6 +14,7 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -23,8 +24,10 @@ import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
 
 /**
- * The daily devotional's timetable: written [LEAD_MINUTES] before it's due (so a slow model or
- * network doesn't make it late), announced at the chosen time.
+ * The daily devotional's timetable: written at 00:01 local time (the plan's reading, which needs no network,
+ * so the day is never empty), announced at the chosen time from what is already written. If the source is AI
+ * and an AI is set up, a second step writes an AI devotional when it can; it never leaves the day without the
+ * plan's reading, which stays in the archive when the AI one takes its place.
  *
  * Both moments are wall-clock alarms ([DailyAlarms]), not periodic work, so they stay on the set
  * time. If the phone was off or asleep through the writing time, opening the app catches up.
@@ -36,10 +39,10 @@ object DevotionalScheduler {
     private const val RUN = "devotional-scheduled"
     private const val NOTIFY_RUN = "devotional-announce"
     private const val NOW = "devotional-now"
+    private const val AI_RUN = "devotional-scheduled-ai"
     private const val EXTRAS = "devotional-extras"
     const val ALARM_WRITE = "devotional-write"
     const val ALARM_NOTIFY = "devotional-notify"
-    const val LEAD_MINUTES = DevotionalDelivery.LEAD_MINUTES
 
     fun handles(key: String) = key == ALARM_WRITE || key == ALARM_NOTIFY
 
@@ -51,18 +54,18 @@ object DevotionalScheduler {
             DailyAlarms.cancel(context, ALARM_WRITE); DailyAlarms.cancel(context, ALARM_NOTIFY)
             return
         }
-        DailyAlarms.schedule(context, ALARM_WRITE, DevotionalDelivery.writeMinute(profile.deliveryMinutes))
+        DailyAlarms.schedule(context, ALARM_WRITE, DevotionalDelivery.writeMinute())
         DailyAlarms.schedule(context, ALARM_NOTIFY, profile.deliveryMinutes)
         // Missed the writing time today (phone off, app killed)? Write it now. A devotional that
         // already exists is kept, so this costs nothing on a normal day.
-        if (isPastWriteTime(LocalDateTime.now(), profile.deliveryMinutes)) scheduledWrite(context)
+        if (isPastWriteTime(LocalDateTime.now())) scheduledWrite(context)
     }
 
     fun onAlarm(context: Context, key: String) {
         when (key) {
-            // A fresh request each day: a stale one still waiting for a network must not block today's.
+            // A fresh request each day: a stale one must not block today's.
             ALARM_WRITE -> scheduledWrite(context, replace = true)
-            // The last try, with no network requirement: the phone's own model can still write offline.
+            // The last try, with no network requirement: the plan's reading is bundled.
             ALARM_NOTIFY -> runCatching {
                 WorkManager.getInstance(context).enqueueUniqueWork(
                     NOTIFY_RUN, ExistingWorkPolicy.REPLACE,
@@ -75,17 +78,29 @@ object DevotionalScheduler {
     }
 
     /**
-     * Today's devotional as the timetable writes it: ahead of time, once there's a network, retried
-     * with growing waits until delivery. Announced once it's due and ready.
+     * Today's devotional as the timetable writes it, at 00:01: the plan's reading, with no network constraint, so it
+     * is there however the phone is connected. When the source writes with AI, the worker then queues the AI step.
      */
     internal fun scheduledWrite(context: Context, replace: Boolean = false) {
         val request = OneTimeWorkRequestBuilder<DevotionalWorker>()
             .setInputData(workDataOf(DevotionalWorker.KEY_MODE to DevotionalWorker.MODE_WRITE))
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, DevotionalDelivery.BACKOFF_SECONDS, TimeUnit.SECONDS)
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
         runCatching { WorkManager.getInstance(context).enqueueUniqueWork(RUN, if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request) }
+    }
+
+    /**
+     * The AI devotional for today, on top of the plan's reading: retried with growing waits until delivery plus a
+     * short grace. It waits for a network only when no model is installed on the phone.
+     */
+    internal fun scheduledAi(context: Context, needsNetwork: Boolean) {
+        val request = OneTimeWorkRequestBuilder<DevotionalWorker>()
+            .setInputData(workDataOf(DevotionalWorker.KEY_MODE to DevotionalWorker.MODE_AI))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(if (needsNetwork) NetworkType.CONNECTED else NetworkType.NOT_REQUIRED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, DevotionalDelivery.BACKOFF_SECONDS, TimeUnit.SECONDS)
+            .build()
+        runCatching { WorkManager.getInstance(context).enqueueUniqueWork(AI_RUN, ExistingWorkPolicy.KEEP, request) }
     }
 
     /** Whether the write-ahead is running this moment. */
@@ -99,11 +114,9 @@ object DevotionalScheduler {
         caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }.getOrDefault(true)
 
-    fun isPastWriteTime(now: LocalDateTime, deliveryMinutes: Int): Boolean {
-        // A time just after midnight is written from midnight, not the evening before: the day's
-        // devotional can't be written before its day has begun.
-        val writeAt = DevotionalDelivery.writeMinute(deliveryMinutes)
-        return now.hour * 60 + now.minute >= writeAt
+    fun isPastWriteTime(now: LocalDateTime): Boolean {
+        // Written from 00:01: the day's devotional can't be written before its day has begun.
+        return now.hour * 60 + now.minute >= DevotionalDelivery.writeMinute()
     }
 
     fun isPastDelivery(now: LocalDateTime, deliveryMinutes: Int): Boolean =
@@ -192,8 +205,8 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
     }
 
     /** One bounded try at writing today's devotional; never throws, never leaves a blank page. */
-    private suspend fun attempt(repo: DevotionalRepository, replace: Boolean, ask: com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk?): Attempt {
-        val result = runCatching { withTimeoutOrNull(WRITE_TIMEOUT_MS) { repo.ensure(LocalDate.now(), another = replace, ask = ask) } }
+    private suspend fun attempt(write: suspend () -> DailyDevotional?): Attempt {
+        val result = runCatching { withTimeoutOrNull(WRITE_TIMEOUT_MS) { write() } }
         result.getOrNull()?.let { return Attempt.Written(it) }
         val online = DevotionalScheduler.isOnline(applicationContext)
         val timedOut = result.isSuccess
@@ -212,38 +225,39 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
                 extras(repo, today, profile)
                 Result.success()
             }
+            MODE_AI -> aiStep(repo, profile)
             else -> {
                 val replace = inputData.getBoolean(KEY_REPLACE, false)
                 val onDemand = !inputData.getBoolean(KEY_NOTIFY, true)
                 val fromNotice = inputData.getBoolean(KEY_FROM_NOTICE, false)
+                if (!onDemand && !fromNotice) return scheduledPlan(repo, profile)
                 val asked = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk.fromJson(inputData.getString(KEY_ASK))
                 // Asked for now: it's read now, so it knows whether it's afternoon or evening.
                 val base = asked ?: com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk()
-                val ask = if (onDemand) base.copy(hour = java.time.LocalTime.now().hour, keepToAi = fromNotice)
-                // The timetable's own write: if the AI fails, retry — don't file a classic as today's.
-                else base.copy(keepToAi = true)
-                when (val r = attempt(repo, replace, ask)) {
+                val ask = base.copy(hour = java.time.LocalTime.now().hour, keepToAi = fromNotice || base.keepToAi)
+                when (val r = attempt { repo.ensure(LocalDate.now(), another = replace, ask = ask) }) {
                     is Attempt.Failed -> {
                         DevotionalScheduler.setLastError(applicationContext, r.message)
                         if (fromNotice) {
-                            val online = DevotionalScheduler.isOnline(applicationContext)
-                            com.craftflowtechnologies.meetingmind.core.notify.AppNotifications.devotionalNotReady(
-                                applicationContext, DevotionalDelivery.reasonFor(r.kind, online, writeInFlight = false)
-                            )
+                            // The plan's reading is written first, so there is usually something to open.
+                            val existing = repo.find(LocalDay.today())
+                            if (existing != null) DevotionalScheduler.announce(applicationContext, existing)
+                            else {
+                                val online = DevotionalScheduler.isOnline(applicationContext)
+                                com.craftflowtechnologies.meetingmind.core.notify.AppNotifications.devotionalNotReady(
+                                    applicationContext, DevotionalDelivery.reasonFor(r.kind, online, writeInFlight = false)
+                                )
+                            }
                         }
                         // Someone is waiting on the page: say so now rather than retrying quietly.
-                        if (!onDemand && DevotionalDelivery.shouldRetry(LocalDateTime.now(), profile.deliveryMinutes)) Result.retry()
-                        else Result.failure(workDataOf(KEY_ERROR to r.message))
+                        Result.failure(workDataOf(KEY_ERROR to r.message))
                     }
                     is Attempt.Written -> {
                         val written = r.daily
-                        if (onDemand) DevotionalScheduler.setLastError(applicationContext, null)
+                        DevotionalScheduler.setLastError(applicationContext, null)
                         com.craftflowtechnologies.meetingmind.core.widget.Widgets.refresh(applicationContext)
-                        if (onDemand) DevotionalScheduler.finishLater(applicationContext) else extras(repo, written, profile)
+                        DevotionalScheduler.finishLater(applicationContext)
                         if (fromNotice) DevotionalScheduler.announce(applicationContext, written)
-                        else if (!onDemand && profile.enabled && DevotionalScheduler.isPastDelivery(LocalDateTime.now(), profile.deliveryMinutes)) {
-                            DevotionalScheduler.announceOnce(applicationContext, written)
-                        }
                         Result.success()
                     }
                 }
@@ -252,8 +266,58 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
     }
 
     /**
-     * The delivery moment. Ready: announce. Not ready: one last try now (any writer, no network
-     * needed for the phone's own model), then either announce or say honestly why not.
+     * The 00:01 write: the plan's reading for today, which needs no network, so the day is never empty. Then, if the
+     * source writes with AI, the AI step is queued; it never replaces the plan's reading with nothing.
+     */
+    private suspend fun scheduledPlan(repo: DevotionalRepository, profile: DevotionalProfile): Result {
+        val ctx = applicationContext
+        val today = LocalDate.now()
+        return when (val r = attempt { repo.ensureBase(today) }) {
+            is Attempt.Failed -> {
+                DevotionalScheduler.setLastError(ctx, r.message)
+                if (DevotionalDelivery.shouldRetry(LocalDateTime.now(), profile.deliveryMinutes)) Result.retry()
+                else Result.failure(workDataOf(KEY_ERROR to r.message))
+            }
+            is Attempt.Written -> {
+                val written = r.daily
+                com.craftflowtechnologies.meetingmind.core.widget.Widgets.refresh(ctx)
+                // The picture and the voice come after, once there may be a network: the words never wait on them.
+                DevotionalScheduler.finishLater(ctx)
+                // The phone was off at delivery time: tell them now.
+                if (profile.enabled && DevotionalScheduler.isPastDelivery(LocalDateTime.now(), profile.deliveryMinutes)) DevotionalScheduler.announceOnce(ctx, written)
+                if (profile.writesWithAiOn(today) && written.devotional.origin.let { it != DevotionalOrigin.CLOUD_AI && it != DevotionalOrigin.DEVICE_AI }) {
+                    // A model on the phone can write offline; otherwise wait for a connection.
+                    val local = DevotionalWriter.DEVICE in repo.writersAvailable()
+                    DevotionalScheduler.scheduledAi(ctx, needsNetwork = !local)
+                }
+                Result.success()
+            }
+        }
+    }
+
+    /** The AI step: today's AI devotional on top of the plan's reading. The plan's reading stands if it can't be written in time. */
+    private suspend fun aiStep(repo: DevotionalRepository, profile: DevotionalProfile): Result {
+        val ctx = applicationContext
+        val today = LocalDate.now()
+        if (!profile.writesWithAiOn(today)) return Result.success()
+        return when (val r = attempt { repo.ensureAi(today) }) {
+            is Attempt.Written -> {
+                com.craftflowtechnologies.meetingmind.core.widget.Widgets.refresh(ctx)
+                DevotionalScheduler.finishLater(ctx)
+                Result.success()
+            }
+            is Attempt.Failed ->
+                if (DevotionalDelivery.shouldRetry(LocalDateTime.now(), profile.deliveryMinutes)) Result.retry()
+                else {
+                    repo.explainPlanReading(today, r.message)
+                    Result.success()
+                }
+        }
+    }
+
+    /**
+     * The delivery moment. Ready: announce what is already written. Not ready (the 00:01 write didn't happen): one last
+     * try now with the plan's reading, which needs no network, then either announce or say honestly why not.
      */
     private suspend fun deliver(repo: DevotionalRepository, profile: DevotionalProfile) {
         val ctx = applicationContext
@@ -264,8 +328,8 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
         )
         var action = DevotionalDelivery.atDelivery(state)
         if (action is DeliveryAction.TryWriteNow) {
-            val ask = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk(keepToAi = true)
-            val r = attempt(repo, false, ask)
+            // The plan's reading needs no network or model, so this last try always has something to put out.
+            val r = attempt { repo.ensureBase(LocalDate.now()) }
             today = (r as? Attempt.Written)?.daily ?: repo.find(LocalDay.today())
             state = state.copy(
                 ready = today != null, attempted = true, online = DevotionalScheduler.isOnline(ctx),
@@ -297,6 +361,7 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
         const val MODE_WRITE = "write"
         const val MODE_NOTIFY = "notify"
         const val MODE_EXTRAS = "extras"
+        const val MODE_AI = "ai"
         const val KEY_ERROR = "error"
         const val WRITE_TIMEOUT_MS = 150_000L
         const val EXTRA_TIMEOUT_MS = 90_000L

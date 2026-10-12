@@ -95,9 +95,9 @@ class DevotionalJournalTest {
         }
         fun engine(answer: String) = DevotionalEngine({ listOf(ModelCandidate(Fake(answer), "gemini-test", true)) }, { null }, classics, emptyList())
         val date = LocalDate.of(2026, 9, 24)
-        val with = engine("""{"title":"T","reflection":["R one."],"liveItToday":"Send one kind message today."}""").write(date, DevotionalProfile())
+        val with = engine("""{"title":"T","reflection":["R one."],"liveItToday":"Send one kind message today."}""").write(date, DevotionalProfile(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI))
         assertEquals("Send one kind message today.", with.liveItToday)
-        val without = engine("""{"title":"T","reflection":["R one."]}""").write(date, DevotionalProfile())
+        val without = engine("""{"title":"T","reflection":["R one."]}""").write(date, DevotionalProfile(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI))
         assertEquals(DevotionalOrigin.CLOUD_AI, without.origin)
         assertNull(without.liveItToday)
     }

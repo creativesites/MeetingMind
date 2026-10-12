@@ -148,6 +148,8 @@ fun FaithScreen(
     val people by extras.people.collectAsState()
     val votd by viewModel.verseOfTheDay.collectAsState()
     val devotional by viewModel.todayDevotional.collectAsState()
+    val devotionalProfile by viewModel.devotionalProfile.collectAsState()
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val requests by viewModel.openRequests.collectAsState()
     val answered by viewModel.answeredCount.collectAsState()
     val onThisDay by viewModel.onThisDay.collectAsState()
@@ -171,6 +173,7 @@ fun FaithScreen(
                 written = true
             )
         },
+        reading = devotionalProfile.readingName.takeIf { devotionalProfile.source != com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.MINE },
         verse = votd?.let { v ->
             (v.passage as? PassageResult.Found)?.passage?.let { FaithVerseLine(v.reference.display(), it.versionAbbreviation, it.text, it.attribution) }
         },
@@ -197,6 +200,13 @@ fun FaithScreen(
         onRead = { r -> if (r != null) onReadPassage(r) else onOpenBible() },
         onGuideToday = onGuideToday,
         onOpenDevotional = onOpenDevotional,
+        onWriteDevotionalWithAi = {
+            // Starts the AI write, then opens the page, which shows it being written (or why it couldn't be).
+            com.craftflowtechnologies.meetingmind.core.devotional.DevotionalScheduler.writeNow(
+                appContext, replace = true, ask = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk(aiOnly = true)
+            )
+            onOpenDevotional()
+        },
         onPray = onPrayWithMe,
         onCircles = onOpenFellowship,
         onReadVerse = { votd?.let { onReadPassage(it.reference) } },

@@ -43,7 +43,7 @@ class OnboardingTest {
                 }
             }
         }
-        val shots = listOf("welcome", "companion", "what", "name", "spaces", "setup", "bible", "permissions")
+        val shots = listOf("welcome", "companion", "what", "name", "spaces", "setup", "bible", "plan", "permissions")
         shots.forEachIndexed { i, name ->
             compose.waitForIdle()
             compose.mainClock.advanceTimeBy(600)
@@ -60,6 +60,10 @@ class OnboardingTest {
             assertTrue(finished && prefs.onboardingCompleted)
             assertEquals("Ana", prefs.userName)
             assertEquals(ProcessingProfile.INTERNET, prefs.processingProfile)
+            // The reading step was skipped: nothing is written and the devotional stays on Morning and Evening.
+            val profile = UserPreferencesManager(app).devotionalProfile.first()
+            assertEquals(com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.CLASSIC, profile.source)
+            assertEquals("morning-and-evening", profile.planId)
         }
     }
 

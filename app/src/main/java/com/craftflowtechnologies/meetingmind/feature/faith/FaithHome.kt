@@ -86,6 +86,8 @@ data class FaithHomeState(
     val start: ScriptureReference? = null,
     val today: TodayReading? = null,
     val devotional: FaithDevotionalLine? = null,
+    /** What the person is reading ("Morning and Evening"), for the quiet line under Today's devotional; null renders nothing. */
+    val reading: String? = null,
     val verse: FaithVerseLine? = null,
     val versePending: Boolean = false,
     val plan: FaithPlanLine? = null,
@@ -107,6 +109,7 @@ data class FaithHomeActions(
     val onRead: (ScriptureReference?) -> Unit = {},
     val onGuideToday: (ScriptureReference) -> Unit = {},
     val onOpenDevotional: () -> Unit = {},
+    val onWriteDevotionalWithAi: () -> Unit = {},
     val onPray: () -> Unit = {},
     val onCircles: () -> Unit = {},
     val onReadVerse: () -> Unit = {},
@@ -169,7 +172,12 @@ fun FaithHomeContent(
         },
         hero = { BibleCard(state, actions) },
         sections = {
-            item(key = "devotional") { DevotionalCard(state.devotional, actions.onOpenDevotional) }
+            item(key = "devotional") {
+                Column {
+                    DevotionalCard(state.devotional, actions.onOpenDevotional)
+                    state.reading?.let { ReadingLine(it, actions.onWriteDevotionalWithAi) }
+                }
+            }
             item(key = "pray_circles") {
                 MMCard(contentPadding = MM.space.s) {
                     ListRow(
@@ -324,6 +332,17 @@ private fun DevotionalCard(devotional: FaithDevotionalLine?, onClick: () -> Unit
             }
             Chevron()
         }
+    }
+}
+
+/** "Reading: Morning and Evening · Write one with AI": quiet, one line, under Today's devotional. */
+@Composable
+internal fun ReadingLine(name: String, onWriteWithAi: () -> Unit) {
+    val c = MM.colors
+    Row(Modifier.fillMaxWidth().padding(horizontal = MM.space.xs).testTag("faith_reading_line"), verticalAlignment = Alignment.CenterVertically) {
+        Text("Reading: $name", style = MM.type.caption, color = c.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        Text(" · ", style = MM.type.caption, color = c.inkMuted)
+        TextAction("Write one with AI", onClick = onWriteWithAi, modifier = Modifier.testTag("faith_write_ai"))
     }
 }
 

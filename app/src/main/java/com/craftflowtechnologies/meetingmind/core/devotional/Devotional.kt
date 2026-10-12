@@ -24,7 +24,7 @@ data class Devotional(
     val motivation: String? = null,
     val insight: Quote? = null,
     val question: String? = null,
-    /** Always shown: "AI-written devotional", "From Morning and Evening…". */
+    /** Always shown: "Written with AI", "From Morning and Evening…". */
     val label: String,
     /** What wrote it, for the honest "written by" line ("gemini-…", "qwen…"). */
     val engine: String? = null,
@@ -47,8 +47,8 @@ value class LocalDay(val iso: String) {
 }
 
 object DevotionalLabels {
-    const val CLOUD = "AI-written devotional"
-    const val DEVICE = "AI-written devotional · written on this phone"
+    const val CLOUD = "Written with AI"
+    const val DEVICE = "Written with AI · on this phone"
     const val MINE = "Your devotional"
     const val CARE = "A gentle word for today"
 }

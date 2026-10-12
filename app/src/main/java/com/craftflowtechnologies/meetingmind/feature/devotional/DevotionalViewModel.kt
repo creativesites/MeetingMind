@@ -39,7 +39,9 @@ data class DevotionalUiState(
     /** Opened from the archive: read-only for writing — no "new", no rewrite. */
     val past: Boolean = false,
     /** What the person has written under the shown devotional's question (its journal entry). */
-    val reflection: String = ""
+    val reflection: String = "",
+    /** The one-time "write one with AI" tip: shown until it is dismissed, then never. */
+    val tipVisible: Boolean = false
 )
 
 /** The Listen button's state. */
@@ -88,6 +90,8 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
     private val pinned = MutableStateFlow<DailyDevotional?>(null)
     private val localError = MutableStateFlow<String?>(null)
     private val examenBusy = MutableStateFlow(false)
+    private val prefs = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(app)
+    private val tipDismissed = prefs.devotionalTipDismissed.catch { emit(true) }
 
     private val shown = combine(repo.observeDay(day), selected, pinned) { all, pick, old ->
         if (old != null) return@combine listOf(old) to old
@@ -116,7 +120,7 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
         examenBusy.value = false
     }
 
-    private val base = combine(shown, repo.profile, writingFlow, requested, combine(errorDismissed, writers) { d, w -> d to w }) { (all, today), profile, (writing, error), asked, (dismissed, available) ->
+    private val base = combine(shown, repo.profile, writingFlow, requested, combine(errorDismissed, writers, tipDismissed) { d, w, t -> Triple(d, w, t) }) { (all, today), profile, (writing, error), asked, (dismissed, available, tip) ->
         DevotionalUiState(
             loading = false,
             today = today,
@@ -127,7 +131,8 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
             writers = available,
             season = LiturgicalCalendar.dayOf(day.date, profile.tradition),
             date = day.date,
-            reflection = today?.let { runCatching { repo.reflectionOf(it) }.getOrNull() }.orEmpty()
+            reflection = today?.let { runCatching { repo.reflectionOf(it) }.getOrNull() }.orEmpty(),
+            tipVisible = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalTip.visible(tip, pinned.value != null, today?.devotional)
         )
     }
 
@@ -219,6 +224,18 @@ class DevotionalViewModel(app: Application) : AndroidViewModel(app) {
         errorDismissed.value = null
         DevotionalScheduler.writeNow(getApplication(), replace = true, ask = ask)
     }
+
+    /**
+     * "Write one with AI": an AI-written devotional for today, labelled as such. The plan reading is not overwritten:
+     * it is set aside and stays in the archive. With no AI set up, or if it fails, the page says why and offers a retry.
+     */
+    fun writeWithAi() {
+        dismissTip()
+        rewrite(com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk(aiOnly = true))
+    }
+
+    /** Hides the one-time tip for good. */
+    fun dismissTip() { viewModelScope.launch { runCatching { prefs.dismissDevotionalTip() } } }
 
     /** Today's reading from the classics, for when the AI can't write one. */
     fun readClassic() = rewrite(com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk(writer = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter.CLASSIC))

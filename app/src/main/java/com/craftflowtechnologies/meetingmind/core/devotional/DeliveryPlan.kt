@@ -98,11 +98,14 @@ object DevotionalDelivery {
 
     // Timetable ---------------------------------------------------------------------------------
 
-    const val LEAD_MINUTES = 90
+    /**
+     * The day's devotional is written at 00:01 local time, as soon as its day has begun, whatever the delivery time:
+     * the plan's reading needs no network, so there is nothing to wait for and nothing to leave to chance.
+     */
+    const val WRITE_MINUTE = 1
 
-    /** When, in minutes after midnight, the write-ahead alarm rings: [LEAD_MINUTES] before delivery, but not the evening before. */
-    fun writeMinute(deliveryMinutes: Int): Int =
-        (Math.floorMod(deliveryMinutes, 24 * 60) - LEAD_MINUTES).coerceAtLeast(0)
+    /** When, in minutes after midnight, the write alarm rings. */
+    fun writeMinute(): Int = WRITE_MINUTE
 
     /** The next instant [minuteOfDay] comes round in [zone], strictly after [nowMillis]. Handles midnight and DST. */
     fun nextAlarmMillis(nowMillis: Long, minuteOfDay: Int, zone: ZoneId): Long {

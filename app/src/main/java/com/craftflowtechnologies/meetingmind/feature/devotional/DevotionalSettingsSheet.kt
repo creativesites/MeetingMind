@@ -127,7 +127,9 @@ fun DevotionalSettingsContent(profile: DevotionalProfile, onSave: (DevotionalPro
                 }
                 Spacer(Modifier.height(24.dp))
                 if (page == null) {
-                    val changedContent = p.copy(enabled = profile.enabled, deliveryMinutes = profile.deliveryMinutes, lessOf = profile.lessOf, moreOf = profile.moreOf) != profile
+                    // A change of plan swaps today's plan reading on its own (and keeps the archive); it isn't a "write a new one".
+                    val changedContent = p.copy(enabled = profile.enabled, deliveryMinutes = profile.deliveryMinutes, lessOf = profile.lessOf, moreOf = profile.moreOf,
+                        planId = if (p.source == DevotionalSource.CLASSIC && profile.source == DevotionalSource.CLASSIC) profile.planId else p.planId) != profile
                     if (changedContent) PillButton("Save and write a new one", filled = false) { onSave(p, true) }
                     Spacer(Modifier.height(24.dp))
                 }
@@ -143,7 +145,7 @@ private fun Overview(p: DevotionalProfile, open: (SettingsPage) -> Unit) {
     val formats = if (p.rotateFormats) "${p.formats.size} formats take turns" else (p.fixedFormat ?: p.formats.firstOrNull())?.label ?: "Reflection"
     SectionRow(SettingsPage.TRADITION.title, listOfNotNull(p.preset?.label, p.tradition.label).distinct().joinToString(" · "), open, SettingsPage.TRADITION)
     SectionRow(SettingsPage.DELIVERY.title, if (p.enabled) "Every morning at %d:%02d".format(p.deliveryMinutes / 60, p.deliveryMinutes % 60) + if (p.eveningExamen) " · evening Examen" else "" else "When you open it", open, SettingsPage.DELIVERY)
-    SectionRow(SettingsPage.STYLE.title, "${p.source.label} · $formats · ${p.minutes} min · ${p.tone.label}", open, SettingsPage.STYLE)
+    SectionRow(SettingsPage.STYLE.title, "${p.readingName} · $formats · ${p.minutes} min · ${p.tone.label}", open, SettingsPage.STYLE)
     SectionRow(SettingsPage.SERIES.title, p.series?.let { s -> "${s.title} · day ${(s.dayIndex(java.time.LocalDate.now().toEpochDay()) + 1).coerceAtMost(s.passages.size)} of ${s.passages.size}" } ?: "None — a new passage each day", open, SettingsPage.SERIES)
     SectionRow(SettingsPage.PERSONAL.title, p.personalTouch.let { "${it.label} · ${it.description}" }, open, SettingsPage.PERSONAL)
     SectionRow(SettingsPage.VARIETY.title, "no passage twice in ${p.passageExclusionDays} days", open, SettingsPage.VARIETY)
@@ -220,7 +222,16 @@ private fun DeliveryPage(p: DevotionalProfile, set: (DevotionalProfile) -> Unit)
 @Composable
 private fun StylePage(p: DevotionalProfile, set: (DevotionalProfile) -> Unit) {
     Label("Where it comes from")
-    DevotionalSource.entries.forEach { s -> OptionCard(s.label, s.description, p.source == s, Modifier.fillMaxWidth().padding(vertical = 4.dp)) { set(p.copy(source = s)) } }
+    // The reading plans first (the first is the recommended one), then AI and your own. Changing plan keeps the archive.
+    com.craftflowtechnologies.meetingmind.core.devotional.DevotionalPlans.available.forEach { plan ->
+        val on = p.source == DevotionalSource.CLASSIC && p.plan.id == plan.id
+        OptionCard(plan.title, "${plan.author} · ${plan.blurb}", on, Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("plan_${plan.id}")) {
+            set(p.copy(source = DevotionalSource.CLASSIC, planId = plan.id))
+        }
+    }
+    DevotionalSource.entries.filter { it != DevotionalSource.CLASSIC }.forEach { s ->
+        OptionCard(s.label, s.description, p.source == s, Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("source_${s.name.lowercase()}")) { set(p.copy(source = s)) }
+    }
     if (p.source != DevotionalSource.AI && p.source != DevotionalSource.MIX) return
     Label("Format")
     ToggleRow("Mix it up", "Formats take turns — never the same one two days running", p.rotateFormats) { set(p.copy(rotateFormats = it)) }

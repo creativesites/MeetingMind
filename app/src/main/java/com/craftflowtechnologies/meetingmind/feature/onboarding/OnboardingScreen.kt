@@ -192,6 +192,32 @@ class OnboardingViewModel(
         }
     }
 
+    /**
+     * How the person wants to read their devotional: a plan's id, or [PlanChoice.AI]. Morning and Evening until they pick.
+     * Untouched means skipped, and a skipped step writes nothing, so the default stands.
+     */
+    private val _reading = MutableStateFlow(com.craftflowtechnologies.meetingmind.core.devotional.DevotionalPlans.DEFAULT_ID)
+    val reading: StateFlow<String> = _reading.asStateFlow()
+    private val _readingTouched = MutableStateFlow(false)
+    val readingTouched: StateFlow<Boolean> = _readingTouched.asStateFlow()
+    fun setReading(id: String) { _reading.value = id; _readingTouched.value = true }
+
+    /** The plans on offer with a taste of each one's first entry; loaded off the main thread. */
+    private val _planChoices = MutableStateFlow<List<PlanChoice>>(emptyList())
+    val planChoices: StateFlow<List<PlanChoice>> = _planChoices.asStateFlow()
+    fun loadPlans() {
+        if (_planChoices.value.isNotEmpty()) return
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val plans = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.craftflowtechnologies.meetingmind.core.devotional.DevotionalPlans.available.mapIndexed { i, p ->
+                    PlanChoice.of(com.craftflowtechnologies.meetingmind.core.devotional.ClassicDevotionals.get(app, p.id), recommended = i == 0)
+                }
+            }
+            _planChoices.value = plans + PlanChoice.ai()
+        }
+    }
+
     /** What the offline pack is on this phone: each job's model and size. */
     val pack = SetupPart.entries.map { it to SetupGuide.modelsFor(it, deviceCapabilities.totalRamGb) }
     val packBytes: Long = pack.sumOf { (_, models) -> models.sumOf { it.sizeBytes } }
@@ -207,6 +233,10 @@ class OnboardingViewModel(
                 prefs.setWorkSettings(com.craftflowtechnologies.meetingmind.core.work.WorkSettings.forProfile(_workProfile.value ?: com.craftflowtechnologies.meetingmind.core.work.WorkProfile.GENERAL))
             }
             prefs.setWifiOnlyDownload(_wifiOnly.value)
+            if (_readingTouched.value) {
+                val current = prefs.devotionalProfile.first()
+                prefs.setDevotionalProfile(commitReading(current, _reading.value))
+            }
             _bible.value?.let { t ->
                 // Becomes the reading Bible now, and downloads in the background for offline use.
                 prefs.setBibleVersionId(t.intId)
@@ -231,8 +261,16 @@ class OnboardingViewModel(
     }
 }
 
-/** Welcome, Pick your companion, What it does, Name, Spaces, Setup, Bible, Permissions. */
-private const val STEPS = 8
+/**
+ * What the "Choose how you read" step does to the devotional profile: a plan sets the source to a plan and its id;
+ * "Write one with AI" sets the source to AI (Morning and Evening stays as the fallback). Nothing else changes.
+ */
+fun commitReading(profile: com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile, choice: String) =
+    if (choice == PlanChoice.AI) profile.copy(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI)
+    else profile.copy(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.CLASSIC, planId = choice)
+
+/** Welcome, Pick your companion, What it does, Name, Spaces, Setup, Bible, [Choose how you read, with Faith], Permissions. */
+private fun stepCount(faith: Boolean) = if (faith) 9 else 8
 
 /**
  * First run: a warm welcome in the brand's navy, then short steps — who keeps you company, what it does, your name,
@@ -251,6 +289,13 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
     val wifiOnly by viewModel.wifiOnly.collectAsState()
     val bible by viewModel.bible.collectAsState()
     val companion by viewModel.companion.collectAsState()
+    val reading by viewModel.reading.collectAsState()
+    val readingTouched by viewModel.readingTouched.collectAsState()
+    val planChoices by viewModel.planChoices.collectAsState()
+    // The reading step is for people who chose Faith; for everyone else it would be a step that doesn't earn its place.
+    val faith = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH in spaces
+    val STEPS = stepCount(faith)
+    val planStep = if (faith) 7 else -1
 
     fun next() { forward = true; if (step == 1) viewModel.commitCompanion(); if (step < STEPS - 1) step++ else viewModel.completeOnboarding(onFinishOnboarding) }
     fun back() { forward = false; if (step > 0) step-- }
@@ -288,6 +333,10 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                         4 -> SpacesStep(spaces, viewModel::setSpaces, look, viewModel::setLook, workProfile, viewModel::setWorkProfile)
                         5 -> SetupStep(viewModel, setup, viewModel::setSetup, wifiOnly, viewModel::setWifiOnly)
                         6 -> BibleStep(viewModel)
+                        planStep -> {
+                            androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.loadPlans() }
+                            PlanStep(planChoices, reading, viewModel::setReading)
+                        }
                         else -> PermissionsStep()
                     }
                 }
@@ -298,7 +347,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                 Surface(onClick = { next() }, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = Modifier.testTag("onboarding_next_btn")) {
                     Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            when (step) { 0 -> "Get started"; STEPS - 1 -> "Start using MeetingMind"; 3 -> if (userName.isBlank()) "Skip" else "Continue"; 6 -> if (bible == null) "Skip for now" else "Download and continue"; else -> "Continue" },
+                            when (step) { 0 -> "Get started"; STEPS - 1 -> "Start using MeetingMind"; 3 -> if (userName.isBlank()) "Skip" else "Continue"; 6 -> if (bible == null) "Skip for now" else "Download and continue"; planStep -> if (readingTouched) "Continue" else "Skip for now"; else -> "Continue" },
                             color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp
                         )
                         Spacer(Modifier.width(8.dp))

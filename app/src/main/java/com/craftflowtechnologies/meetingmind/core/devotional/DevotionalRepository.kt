@@ -1,7 +1,10 @@
 package com.craftflowtechnologies.meetingmind.core.devotional
 
 import android.content.Context
+import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk
 import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalEngine
+import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalUnavailable
+import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter
 import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalSignals
 import com.craftflowtechnologies.meetingmind.ai.devotional.ModelCandidate
 import com.craftflowtechnologies.meetingmind.core.biblestudy.JournalMeta
@@ -71,6 +74,8 @@ data class DailyDevotional(val note: Note, val devotional: Devotional, val docum
 private const val META_VARIANT = "devotionalVariant"
 const val META_ASKED = "devotionalAsked"
 const val META_WRITER = "devotionalWriter"
+/** Which plan a plan reading came from, so changing plan only swaps readings of another plan. */
+const val META_PLAN = "devotionalPlan"
 private const val EARLIER = "-earlier-"
 
 class DevotionalRepository(
@@ -84,9 +89,33 @@ class DevotionalRepository(
     val profile: Flow<DevotionalProfile> get() = prefs.devotionalProfile
 
     suspend fun setProfile(profile: DevotionalProfile) {
+        val before = prefs.devotionalProfile.first()
         prefs.setDevotionalProfile(profile)
         DevotionalScheduler.sync(context, profile)
+        // Changing plan keeps the archive; today's plan reading, if that is what is on the page, becomes the new plan's.
+        if (profile.source == DevotionalSource.CLASSIC && (before.planId != profile.planId || before.source != DevotionalSource.CLASSIC)) {
+            runCatching { switchTodayToPlan(java.time.LocalDate.now(), profile) }
+        }
     }
+
+    /**
+     * After a change of plan: if today's current devotional is a plan reading, write the new plan's reading for
+     * today and set the old one aside (it stays in the archive). Anything else on the page - an AI devotional, the
+     * person's own page - is left alone.
+     */
+    suspend fun switchTodayToPlan(date: LocalDate, profile: DevotionalProfile): DailyDevotional? = writing.withLock {
+        withContext(Dispatchers.IO) {
+            val current = find(LocalDay.of(date))
+            if (current != null && current.devotional.origin != DevotionalOrigin.CLASSIC) return@withContext current
+            if (current != null && (current.note.metadata[META_PLAN] ?: DevotionalPlans.DEFAULT_ID) == profile.plan.id) return@withContext current
+            val (devotional, reason) = write(date, profile, false, planAsk())
+            val saved = save(devotional, profile, false, reason, extra = mapOf(META_VARIANT to "0", META_WRITER to DevotionalWriter.CLASSIC.name))
+            if (saved != null && current != null && current.note.id != saved.note.id) setAside(current)
+            saved
+        }
+    }
+
+    private fun planAsk() = DevotionalAsk(writer = DevotionalWriter.CLASSIC)
 
     private fun pattern(key: String) = "%\"${DevotionalNotes.META_KEY}\":\"$key\"%"
 
@@ -161,23 +190,60 @@ class DevotionalRepository(
     private val writing = Mutex()
 
     /**
-     * Writes [date]'s devotional unless there already is one. With [another], a new one is
-     * written for the day and becomes current; the one before is kept (set aside, still listed for
-     * the day). If writing fails nothing changes — the error is thrown, never a blank page saved.
+     * The day's devotional, never empty. The first thing written for a morning is always the chosen plan's
+     * reading for [date] - no network, no key, no model - so a devotional is there however the AI fares.
+     *
+     * The AI comes after, and only when the person asked for it ([ask] wants AI) or the source is AI (or a mix,
+     * on its AI days) and a model is set up. An AI devotional becomes the day's current one; the plan reading
+     * is set aside, not deleted, so it stays in the archive. If the AI fails on its own, the plan reading stands
+     * and says so in one plain line; if the person asked for AI by name, the failure is thrown so the page can
+     * say it and offer a retry.
+     *
+     * With [another], a new one is written for the day and becomes current; the one before is kept (set aside,
+     * still listed for the day). If writing fails nothing changes - the error is thrown, never a blank page saved.
      */
     suspend fun ensure(
         date: LocalDate = LocalDate.now(), another: Boolean = false, evening: Boolean = false,
-        ask: com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk? = null
+        ask: DevotionalAsk? = null
     ): DailyDevotional? = writing.withLock {
         withContext(Dispatchers.IO) {
             val day = LocalDay.of(date)
-            val existing = find(day, evening)
+            var existing = find(day, evening)
             if (existing != null && !another) return@withContext existing
             val profile = prefs.devotionalProfile.first()
+            val askedForAi = ask?.wantsAi == true
+            val planOnly = ask?.writer == DevotionalWriter.CLASSIC
+            var planFirst = false
+            if (existing == null && !evening && profile.source != DevotionalSource.MINE) {
+                // Which plan reading, and whether an AI is going to follow it (so the page can say why it's a plan reading).
+                val aiFollows = !planOnly && (askedForAi || profile.writesWithAiOn(date))
+                val noAi = !askedForAi && !planOnly && profile.writesWithAiOn(date) && candidates(prefs.preferencesFlow.first().processingProfile, DevotionalWriter.AUTO).isEmpty()
+                val reason = if (noAi) "No AI is set up, so today's reading is from ${profile.plan.title}." else null
+                val (plan, _) = write(date, profile, false, planAsk())
+                existing = save(plan, profile, false, reason, extra = mapOf(META_VARIANT to "0", META_WRITER to DevotionalWriter.CLASSIC.name))
+                planFirst = true
+                if (!aiFollows || noAi) return@withContext existing
+            }
             // Each new one steps further, so it never repeats what was just read.
-            val variant = if (another) (existing?.note?.metadata?.get(META_VARIANT)?.toIntOrNull() ?: 0) + 1 else 0
-            val request = (ask ?: com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk()).copy(variant = variant)
-            val (devotional, reason) = write(date, profile, evening, request)
+            // The first AI devotional on top of a plan reading is the day's first AI one (variant 0).
+            val variant = when {
+                !another -> 0
+                askedForAi && !planOnly && existing?.devotional?.origin == DevotionalOrigin.CLASSIC -> 0
+                else -> (existing?.note?.metadata?.get(META_VARIANT)?.toIntOrNull() ?: 0) + 1
+            }
+            val request = (ask ?: DevotionalAsk()).copy(variant = variant)
+            val (devotional, reason) = try {
+                write(date, profile, evening, request)
+            } catch (e: DevotionalUnavailable) {
+                // The plan reading stands, with the reason in one line, unless the person asked for AI by name.
+                if (planFirst && !askedForAi) { noteFallback(existing, e.message); return@withContext existing }
+                throw e
+            }
+            // An attempt at AI that fell back to a plan reading must not file a second copy of it.
+            if (!planOnly && (askedForAi || profile.writesWithAiOn(date)) && devotional.origin == DevotionalOrigin.CLASSIC && existing?.devotional?.origin == DevotionalOrigin.CLASSIC) {
+                noteFallback(existing, reason ?: engineReason)
+                return@withContext existing
+            }
             val saved = save(devotional, profile, evening, reason, extra = buildMap {
                 put(META_VARIANT, variant.toString())
                 ask?.about?.takeIf { it.isNotBlank() }?.let { put(META_ASKED, it.take(300)) }
@@ -188,26 +254,65 @@ class DevotionalRepository(
         }
     }
 
+    /** The day's first entry for the timetable and the page: the plan's reading (or the person's own page). No AI, no network. */
+    suspend fun ensureBase(date: LocalDate = LocalDate.now()): DailyDevotional? {
+        val profile = prefs.devotionalProfile.first()
+        return ensure(date, ask = if (profile.source == DevotionalSource.MINE) null else planAsk())
+    }
+
+    /**
+     * Today's AI-written devotional on top of the day's first entry, for a source that writes with AI. Returns the
+     * day's AI devotional if there already is one; otherwise writes it (throwing if the AI can't) and sets the plan
+     * reading aside. It never replaces the plan reading with nothing.
+     */
+    suspend fun ensureAi(date: LocalDate = LocalDate.now()): DailyDevotional? {
+        val current = find(LocalDay.of(date))
+        if (current != null && current.devotional.origin.let { it == DevotionalOrigin.CLOUD_AI || it == DevotionalOrigin.DEVICE_AI }) return current
+        return ensure(date, another = current != null, ask = DevotionalAsk(aiOnly = true))
+    }
+
+    /** Whether any AI model is set up (a Gemini key, or the on-device model), so an AI write has a chance. */
+    suspend fun aiAvailable(): Boolean = withContext(Dispatchers.IO) {
+        candidates(prefs.preferencesFlow.first().processingProfile, DevotionalWriter.AUTO).isNotEmpty()
+    }
+
+    /** After the AI step gave up for the day: one plain line on today's plan reading saying why it is not an AI devotional. */
+    suspend fun explainPlanReading(date: LocalDate, reason: String?) {
+        val current = find(LocalDay.of(date)) ?: return
+        if (current.devotional.origin == DevotionalOrigin.CLASSIC) noteFallback(current, reason)
+    }
+
+    /** Adds one plain line to a devotional saying why it is the plan's reading and not an AI one. */
+    private suspend fun noteFallback(daily: DailyDevotional?, reason: String?) {
+        if (daily == null) return
+        val line = "The AI couldn't write one just now (${reason?.trimEnd('.') ?: "unavailable"}), so today's reading is from ${daily.devotional.engine?.substringAfter(", ") ?: "your plan"}."
+        editMeta(daily.note.id) { it + ("devotionalFallback" to line) }
+    }
+
     /** Last fallback reason, shown quietly under a classic that stood in for an AI devotional. */
     var lastFallbackReason: String? = null
         private set
 
-    private suspend fun write(date: LocalDate, profile: DevotionalProfile, evening: Boolean, ask: com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk?): Pair<Devotional, String?> {
+    /** Why the engine's last write fell back, for the plain line under a plan reading that stood in for an AI one. */
+    private var engineReason: String? = null
+
+    private suspend fun write(date: LocalDate, profile: DevotionalProfile, evening: Boolean, ask: DevotionalAsk?): Pair<Devotional, String?> {
         val app = prefs.preferencesFlow.first()
         val scripture = ScriptureService(context)
         val engine = DevotionalEngine(
             candidates = { candidates(app.processingProfile, ask?.writer ?: com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter.AUTO) },
             verseText = { ref -> (scripture.passage(ref) as? PassageResult.Found)?.passage?.text },
-            classics = ClassicDevotionals.get(context),
+            classics = ClassicDevotionals.get(context, profile.planId),
             quotes = Quotes.get(context),
             verseOfTheDay = { d -> runCatching { scripture.verseOfTheDay(d.dayOfYear) }.getOrNull() }
         )
-        val signals = if (profile.source == DevotionalSource.CLASSIC) DevotionalSignals() else signals(date)
+        val signals = if (profile.source == DevotionalSource.CLASSIC || ask?.writer == DevotionalWriter.CLASSIC) DevotionalSignals() else signals(date)
         return try {
             // The last fortnight, so today's is new: passage window, format rotation, novelty check.
             val memory = com.craftflowtechnologies.meetingmind.ai.devotional.memoryOf(runCatching { recent(20) }.getOrDefault(emptyList()), date)
             val morning = if (evening) find(LocalDay.of(date), false)?.devotional else null
             val d = engine.write(date, profile, signals, app.identity.displayName?.substringBefore(' '), evening, ask, memory = memory, morning = morning)
+            engineReason = engine.lastFallbackReason
             d to engine.lastFallbackReason.takeIf { d.origin == DevotionalOrigin.CLASSIC && profile.source != DevotionalSource.CLASSIC }
         } finally {
             runCatching { com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmEngineManager.release() }
@@ -305,7 +410,7 @@ class DevotionalRepository(
             title = d.title,
             isPrivate = false,
             eventDate = at,
-            metadata = DevotionalNotes.metadata(d, evening) + extra + (reason?.let { mapOf("devotionalFallback" to it) } ?: emptyMap()),
+            metadata = DevotionalNotes.metadata(d, evening) + extra + (if (d.origin == DevotionalOrigin.CLASSIC) mapOf(META_PLAN to profile.plan.id) else emptyMap()) + (reason?.let { mapOf("devotionalFallback" to it) } ?: emptyMap()),
             initialBlocks = listOf(com.craftflowtechnologies.meetingmind.core.model.NoteBlock("tmp", "tmp", 0, com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.PARAGRAPH)),
             useTemplate = false
         )
