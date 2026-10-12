@@ -40,7 +40,7 @@ class CompanionLabTest {
         }
         rule.mainClock.advanceTimeBy(500)
         rule.onNodeWithText("Companion Lab").assertExists()
-        rule.onNodeWithText("Renderer: CANVAS (FORCED_CANVAS)").assertExists()
+        rule.onNodeWithText("Renderer: CANVAS (forced Canvas)").assertExists()
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/companion/lab.png")
     }
 }

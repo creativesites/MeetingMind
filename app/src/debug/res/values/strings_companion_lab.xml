@@ -21,4 +21,18 @@
     <string name="companion_lab_assets">Bundled .riv files</string>
     <string name="companion_lab_assets_none">None yet: every form draws on Canvas. Drop zuri.riv, nas.riv, wren.riv or page.riv into app/src/main/assets/companion/.</string>
     <string name="companion_lab_contract">Contract: artboard \"%1$s\", state machine \"%2$s\", view model \"%3$s\"</string>
+    <string name="companion_lab_reason_ready">ready</string>
+    <string name="companion_lab_reason_too_small">under 48 dp: the T0 glyph</string>
+    <string name="companion_lab_reason_reduced">reduced motion</string>
+    <string name="companion_lab_reason_no_asset">no asset</string>
+    <string name="companion_lab_reason_budget">over the live-Rive budget</string>
+    <string name="companion_lab_reason_flag">flag off</string>
+    <string name="companion_lab_reason_guard">disabled by crash guard for this version</string>
+    <string name="companion_lab_reason_forced">forced Canvas</string>
+    <string name="companion_lab_reason_failed">Rive file failed its check</string>
+    <string name="companion_lab_guard_ok">Rive crash guard: armed, Rive allowed</string>
+    <string name="companion_lab_guard_version">Rive crash guard: TRIPPED. An earlier run of this version stopped while Rive was starting, so Rive is off for this version. See adb logcat -s Companion.</string>
+    <string name="companion_lab_guard_process">Rive crash guard: Rive\'s native runtime failed in this process; off until restart.</string>
+    <string name="companion_lab_rive_failure">Last Rive failure: %1$s</string>
+    <string name="companion_lab_reset_guard">Reset Rive guard</string>
 </resources>

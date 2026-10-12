@@ -49,6 +49,9 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanion
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionAssets
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionRiveContract
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RendererChoice
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RendererReason
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RiveSafety
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.CompanionDiagnostics
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMAccent
 import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
@@ -104,13 +107,24 @@ fun CompanionLabScreen() {
                         }
                     }
                     heroChoice.value?.let {
-                        Text(stringResource(R.string.companion_lab_renderer, it.renderer.name, it.reason.name), style = MM.type.caption, color = MM.colors.inkSecondary)
+                        Text(stringResource(R.string.companion_lab_renderer, it.renderer.name, stringResource(reasonLabel(it.reason))), style = MM.type.caption, color = MM.colors.inkSecondary)
+                    }
+                    val ctx = LocalContext.current
+                    val guard = remember(replay) { RiveSafety.status(ctx) }
+                    Text(stringResource(guardLabel(guard)), style = MM.type.caption, color = MM.colors.inkMuted)
+                    CompanionDiagnostics.lastRiveFailure?.let {
+                        Text(stringResource(R.string.companion_lab_rive_failure, it), style = MM.type.caption, color = MM.colors.inkMuted)
                     }
                     Text(
                         stringResource(R.string.companion_lab_contract, CompanionRiveContract.artboard(form), CompanionRiveContract.StateMachine, CompanionRiveContract.ViewModel),
                         style = MM.type.caption, color = MM.colors.inkMuted
                     )
                     SecondaryButton(stringResource(R.string.companion_lab_replay), onClick = { replay++ })
+                    SecondaryButton(stringResource(R.string.companion_lab_reset_guard), onClick = {
+                        RiveSafety.reset(ctx)
+                        CompanionDiagnostics.lastRiveFailure = null
+                        replay++
+                    })
                 }
 
                 SectionHeader(stringResource(R.string.companion_lab_form))
@@ -166,6 +180,25 @@ fun CompanionLabScreen() {
             }
         }
     }
+}
+
+/** The Lab's words for why a slot got its renderer. */
+internal fun reasonLabel(r: RendererReason): Int = when (r) {
+    RendererReason.RIVE_READY -> R.string.companion_lab_reason_ready
+    RendererReason.TOO_SMALL -> R.string.companion_lab_reason_too_small
+    RendererReason.REDUCED_MOTION -> R.string.companion_lab_reason_reduced
+    RendererReason.NO_ASSET -> R.string.companion_lab_reason_no_asset
+    RendererReason.OVER_BUDGET -> R.string.companion_lab_reason_budget
+    RendererReason.DISABLED -> R.string.companion_lab_reason_flag
+    RendererReason.CRASH_GUARD -> R.string.companion_lab_reason_guard
+    RendererReason.FORCED_CANVAS -> R.string.companion_lab_reason_forced
+    RendererReason.RIVE_FAILED -> R.string.companion_lab_reason_failed
+}
+
+private fun guardLabel(s: RiveSafety.Status): Int = when (s) {
+    RiveSafety.Status.ALLOWED -> R.string.companion_lab_guard_ok
+    RiveSafety.Status.TRIPPED_FOR_VERSION -> R.string.companion_lab_guard_version
+    RiveSafety.Status.OFF_FOR_PROCESS -> R.string.companion_lab_guard_process
 }
 
 @Composable

@@ -1063,6 +1063,34 @@ at 64 dp (12 per form). Phase B adds Curious, Proud and Reading (+12 per form).
 **Screen goldens:** the Home header with a companion (each home), EmptyState with and without a companion, the
 quick sheet, onboarding step 1, the recording screen (normal and Quiet), and processing.
 
+### 10.11 The Rive crash guard (`RiveSafety`): what it costs
+
+Rive is native code that only runs on a device, so a device-specific crash in it would take the app
+down every time a companion appears. `RiveSafety` prevents that loop: before the first Rive view of a
+process it writes an "in flight" mark (synchronously); the mark clears after half a second of Rive
+play, or when a Rive view that has drawn leaves the screen. If the next launch finds the mark still
+set, it **turns Rive off for that app version** and every companion draws on Canvas. A caught native
+failure (`Rive.init` or the view failing) turns Rive off for the current process only.
+
+**The honest cost:** a single failed Rive start silently switches Rive off for the whole version,
+and so does any process death inside that short window, even one Rive didn't cause (the system
+killing the app in the background half a second after launch, a force-stop from the IDE). Users
+never see an error; they just get the Canvas companion. A new version code gets a fresh try.
+
+**How to tell, and undo it:**
+
+- Companion Lab's renderer line names the reason: `RIVE (ready)`, `CANVAS (disabled by crash guard
+  for this version)`, `CANVAS (flag off)`, `CANVAS (no asset)`, `CANVAS (reduced motion)`, `CANVAS
+  (under 48 dp: the T0 glyph)`, `CANVAS (over the live-Rive budget)`, `CANVAS (Rive file failed its
+  check)` or `CANVAS (forced Canvas)`. A second line shows the guard's state and the last Rive failure.
+- **Reset Rive guard** (Companion Lab, debug builds) clears the mark and the per-version switch.
+- `adb logcat -s Companion` shows, in order: `The last run stopped while starting Rive; companions
+  use Canvas for this version` (the guard tripping), `Rive is off for version N (crash guard)` (every
+  later launch of that version), `Rive init failed` / `Rive view could not be created` (a caught
+  native failure, with the exception), `Rive companion <FORM>: <problem>; using Canvas` (a file that
+  misses its state machine, an input or a colour) and `Rive crash guard reset`. A real native crash
+  shows as a `SIGSEGV`/`SIGABRT` tombstone in `adb logcat -b crash` just before the guard trips.
+
 ---
 
 ## 11. Build plan

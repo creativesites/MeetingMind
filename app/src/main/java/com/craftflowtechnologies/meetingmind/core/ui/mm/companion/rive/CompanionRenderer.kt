@@ -21,6 +21,11 @@ enum class RendererReason {
     OVER_BUDGET,
     /** `CompanionFlags.rive` is off. */
     DISABLED,
+    /**
+     * The crash guard ([RiveSafety]) turned Rive off: an earlier run of this app version stopped
+     * while a Rive view was starting, or the native runtime failed in this process.
+     */
+    CRASH_GUARD,
     /** Screenshot tests and card export force Canvas. */
     FORCED_CANVAS,
     /** The file failed to load or lacks the contract (missing state machine or colours). */
@@ -38,7 +43,9 @@ data class RendererInputs(
     val hasBudgetSlot: Boolean,
     val riveEnabled: Boolean = true,
     val forceCanvas: Boolean = false,
-    val riveFailed: Boolean = false
+    val riveFailed: Boolean = false,
+    /** [RiveSafety] has turned Rive off for this version or this process. */
+    val guardTripped: Boolean = false
 )
 
 /**
@@ -54,6 +61,7 @@ object CompanionRendererSelector {
         return when {
             i.forceCanvas -> canvas(RendererReason.FORCED_CANVAS)
             !i.riveEnabled -> canvas(RendererReason.DISABLED)
+            i.guardTripped -> canvas(RendererReason.CRASH_GUARD)
             i.sizeDp < MinRiveSizeDp -> canvas(RendererReason.TOO_SMALL)
             i.durationScale <= 0f -> canvas(RendererReason.REDUCED_MOTION)
             !i.assetBundled -> canvas(RendererReason.NO_ASSET)

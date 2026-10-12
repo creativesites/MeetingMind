@@ -20,6 +20,7 @@ import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionVariant
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionVisual
 import com.craftflowtechnologies.meetingmind.core.companion.CreateMode
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.CompanionDiagnostics
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LevelSmoother
 import com.craftflowtechnologies.meetingmind.ui.theme.CompanionPalette
 import kotlinx.coroutines.android.awaitFrame
@@ -84,6 +85,8 @@ internal fun RiveCompanion(
                 return@AndroidView android.view.View(ctx)
             }
             created.also { view ->
+                CompanionDiagnostics.liveRive.incrementAndGet()
+                holder.counted = true
                 holder.view = view
                 val problem = runCatching {
                     view.setRiveBytes(
@@ -108,7 +111,12 @@ internal fun RiveCompanion(
                 }
             }
         },
-        onRelease = { holder.view = null; holder.viewModel = null }
+        onRelease = {
+            // A view that loaded and drew without taking the process down has passed the risky part.
+            if (holder.framesPlayed > 0) RiveSafety.markHealthy(appContext)
+            if (holder.counted) { CompanionDiagnostics.liveRive.decrementAndGet(); holder.counted = false }
+            holder.view = null; holder.viewModel = null
+        }
     )
 
     // Accent colours through view-model data binding.
@@ -148,7 +156,8 @@ internal fun RiveCompanion(
             val dt = if (last == 0L) 16f else (now - last) / 1_000_000f
             last = now
             if (playingSince == 0L) playingSince = now
-            else if (now - playingSince > 2_000_000_000L) RiveSafety.markHealthy(appContext)
+            else if (now - playingSince > HealthyAfterNs) RiveSafety.markHealthy(appContext)
+            holder.framesPlayed++
             val v = CompanionRiveContract.levelValue(smoother.update(level(), dt))
             if (abs(v - sent) >= 0.5f) {
                 runCatching { view.setNumberState(CompanionRiveContract.StateMachine, CompanionRiveContract.Inputs.Level, v) }
@@ -158,7 +167,12 @@ internal fun RiveCompanion(
     }
 }
 
+/** Play this long without trouble and the crash guard's mark clears. */
+private const val HealthyAfterNs = 500_000_000L
+
 private class RiveHolder {
+    var framesPlayed = 0
+    var counted = false
     var view: RiveAnimationView? = null
     var viewModel: ViewModelInstance? = null
 

@@ -13,6 +13,10 @@ import com.craftflowtechnologies.meetingmind.BuildConfig
  * synchronously; once a Rive companion has played for a moment it clears it. If the process dies
  * in between, the next launch finds the mark, turns Rive off for this app version and every
  * companion draws with Canvas instead. A new version gets a fresh try.
+ *
+ * The cost: one failed start (or a process death in that window, for any reason) turns Rive off
+ * silently for the whole version. The window is kept short: the mark clears after half a second of
+ * play, or when a loaded Rive view leaves the screen. See docs/mvp/ZURI_EXPERIENCE.md §10.11.
  */
 object RiveSafety {
     private const val Prefs = "companion_rive_safety"
@@ -23,6 +27,23 @@ object RiveSafety {
     @Volatile private var allowed = true
     @Volatile private var attempted = false
     @Volatile private var healthy = false
+    @Volatile private var processDisabled = false
+
+    /** Why Rive is or isn't allowed (Companion Lab). */
+    enum class Status {
+        /** Rive may run. */
+        ALLOWED,
+        /** An earlier run of this version stopped while a Rive view was starting: off for this version. */
+        TRIPPED_FOR_VERSION,
+        /** The native runtime failed in this process (caught): off until the app restarts. */
+        OFF_FOR_PROCESS
+    }
+
+    fun status(context: Context): Status = when {
+        allowed(context) -> Status.ALLOWED
+        processDisabled -> Status.OFF_FOR_PROCESS
+        else -> Status.TRIPPED_FOR_VERSION
+    }
 
     /** Whether Rive may be used in this process. The first call settles it from the last run. */
     fun allowed(context: Context): Boolean {
@@ -35,7 +56,9 @@ object RiveSafety {
                         Log.w(RiveRuntime.Tag, "The last run stopped while starting Rive; companions use Canvas for this version")
                         p.edit().putBoolean(InFlight, false).putInt(DisabledVersion, BuildConfig.VERSION_CODE).commit()
                     }
-                    p.getInt(DisabledVersion, -1) != BuildConfig.VERSION_CODE
+                    val ok = p.getInt(DisabledVersion, -1) != BuildConfig.VERSION_CODE
+                    if (!ok) Log.w(RiveRuntime.Tag, "Rive is off for version ${BuildConfig.VERSION_CODE} (crash guard); companions use Canvas. Companion Lab: Reset Rive guard")
+                    ok
                 }.getOrDefault(false)
                 checked = true
             }
@@ -65,5 +88,21 @@ object RiveSafety {
     fun disableForProcess() {
         allowed = false
         checked = true
+        processDisabled = true
+    }
+
+    /**
+     * Debug only (Companion Lab's "Reset Rive guard"): forgets a tripped guard and the in-flight
+     * mark, so the next Rive companion tries again. A real crash will trip it again.
+     */
+    fun reset(context: Context) {
+        runCatching {
+            context.applicationContext.getSharedPreferences(Prefs, Context.MODE_PRIVATE).edit()
+                .putBoolean(InFlight, false).remove(DisabledVersion).commit()
+        }
+        synchronized(this) {
+            checked = false; allowed = true; attempted = false; healthy = false; processDisabled = false
+        }
+        Log.i(RiveRuntime.Tag, "Rive crash guard reset")
     }
 }

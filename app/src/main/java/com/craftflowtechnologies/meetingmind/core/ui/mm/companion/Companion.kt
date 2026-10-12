@@ -51,6 +51,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.LocalComp
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RendererChoice
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RendererInputs
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RiveCompanion
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RiveSafety
 import com.craftflowtechnologies.meetingmind.ui.theme.CompanionPalette
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.companionPalette
@@ -105,7 +106,8 @@ fun Companion(
 
     val base = RendererInputs(
         sizeDp = size.value, durationScale = durationScale, assetBundled = bundled, hasBudgetSlot = false,
-        riveEnabled = CompanionFlags.rive && com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RiveSafety.allowed(context), forceCanvas = forceCanvas, riveFailed = riveFailed
+        riveEnabled = CompanionFlags.rive, forceCanvas = forceCanvas, riveFailed = riveFailed,
+        guardTripped = CompanionFlags.rive && !forceCanvas && !RiveSafety.allowed(context)
     )
     val wantsRive = CompanionRendererSelector.wantsRive(base)
     val budget = LocalCompanionRiveBudget.current
@@ -132,7 +134,7 @@ fun Companion(
             RiveCompanion(
                 form = form, bytes = riveBytes, visual = visual, variant = variant, palette = palette, level = level,
                 active = onScreen.isOnScreen && lifecycleAtLeast(Lifecycle.State.RESUMED),
-                onFailure = { riveFailed = true },
+                onFailure = { why -> CompanionDiagnostics.lastRiveFailure = "${form.name}: $why"; riveFailed = true },
                 modifier = Modifier.fillMaxSize()
             )
         } else {

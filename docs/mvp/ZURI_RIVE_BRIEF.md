@@ -320,7 +320,7 @@ The runtime itself costs far more than the files: see §11.
 
 1. [ ] File name, artboard name and state machine name exactly as in §2 and §3.
 2. [ ] All required inputs exist with the right types (§3.2). The Lab's renderer line reads
-   `RIVE (RIVE_READY)`, not `CANVAS (RIVE_FAILED)`.
+   `RIVE (ready)`, not `CANVAS (Rive file failed its check)`.
 3. [ ] View model `CompanionTheme` is the artboard's view model; all required colours (§3.4) exist and
    every fill/stroke is bound. Switch all 6 accents × light/dark in the Lab: **no** shape keeps
    a baked colour.
@@ -346,12 +346,12 @@ The runtime itself costs far more than the files: see §11.
 3. Open **Companion Lab**. It has its own launcher icon in debug builds ("Companion Lab"), or run
    `adb shell am start -n com.craftflowtechnologies.meetingmind.dev/com.craftflowtechnologies.meetingmind.feature.companionlab.CompanionLabActivity`.
 4. "Bundled .riv files" lists the file. Pick the form; the hero's renderer line reads
-   `Renderer: RIVE (RIVE_READY)`.
+   `Renderer: RIVE (ready)`.
 5. Walk the checklist: every state, every Create mode, Quiet and Nod variants, the level slider,
    accents, light/dark, and the size ladder.
-6. Turn on **Reduced motion**: the hero switches to Canvas (`REDUCED_MOTION`) and shows the static
+6. Turn on **Reduced motion**: the hero switches to Canvas (`reduced motion`) and shows the static
    pose. That is expected.
-7. If the line reads `CANVAS (RIVE_FAILED)`, run `adb logcat -s Companion`: the log names what is
+7. If the line reads `CANVAS (Rive file failed its check)` (the next line names the problem), or `CANVAS (disabled by crash guard for this version)` (see ZURI_EXPERIENCE.md §10.11 and the Lab's Reset Rive guard), run `adb logcat -s Companion`: the log names what is
    missing (state machine, an input or a colour property).
 8. Commit the file. No code change is needed. The screenshot goldens don't change: tests always use
    Canvas.

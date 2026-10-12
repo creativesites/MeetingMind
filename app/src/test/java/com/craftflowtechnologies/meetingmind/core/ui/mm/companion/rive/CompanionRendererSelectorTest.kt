@@ -60,4 +60,12 @@ class CompanionRendererSelectorTest {
         assertEquals(55f, CompanionRiveContract.levelValue(0.55f), 1e-4f)
         assertEquals(100f, CompanionRiveContract.levelValue(3f), 0f)
     }
+
+    @Test fun `the crash guard is its own reason, after the flag and before everything else`() {
+        assertEquals(RendererReason.CRASH_GUARD, reason(ready.copy(guardTripped = true)))
+        assertEquals(RendererReason.CRASH_GUARD, reason(ready.copy(guardTripped = true, sizeDp = 24f, assetBundled = false)))
+        assertEquals(RendererReason.DISABLED, reason(ready.copy(guardTripped = true, riveEnabled = false)))
+        assertEquals(RendererReason.FORCED_CANVAS, reason(ready.copy(guardTripped = true, forceCanvas = true)))
+        assertFalse(CompanionRendererSelector.wantsRive(ready.copy(guardTripped = true)))
+    }
 }
