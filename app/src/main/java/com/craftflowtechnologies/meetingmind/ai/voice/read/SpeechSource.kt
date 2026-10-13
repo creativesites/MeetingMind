@@ -50,6 +50,16 @@ data class SpeechSource(val sections: List<SpeechSection>, val skipped: List<Ski
     val isEmpty: Boolean get() = units.none { it.role != SpeechRole.HEADING }
     val containsPrivate: Boolean get() = units.any { it.isPrivate }
     val containsLicensedScripture: Boolean get() = units.any { it.licenseRestricted }
+    /** The person's own prayers or reflections (not text a model or the Bible library supplied). */
+    val containsPersonal: Boolean get() = units.any { it.role == SpeechRole.PERSONAL || (it.role == SpeechRole.PRAYER && !it.aiGenerated) }
+
+    /** The same reading with the person's own prayers and reflections left out as well. */
+    fun withoutPersonal(): SpeechSource = withoutPrivate().let { rest ->
+        rest.copy(sections = rest.sections.mapNotNull { s ->
+            val kept = s.units.filterNot { it.role == SpeechRole.PERSONAL || (it.role == SpeechRole.PRAYER && !it.aiGenerated) }
+            if (kept.none { it.role != SpeechRole.HEADING }) null else s.copy(units = kept)
+        })
+    }
 
     /** The same reading with the private sections left out — the way to offer a cloud voice for the rest. */
     fun withoutPrivate(): SpeechSource = copy(sections = sections.mapNotNull { s ->

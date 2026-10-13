@@ -9,6 +9,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -27,9 +28,13 @@ class GeminiInteractions(
 ) {
     suspend fun isConfigured(): Boolean = credentials.getApiKey() != null
 
-    /** Sends [body] and returns the last media item of [type] ("audio" or "image") in the answer. */
-    suspend fun media(body: JSONObject, type: String): AiResult<GeneratedMedia> = withContext(Dispatchers.IO) {
-        val key = credentials.getApiKey() ?: return@withContext AiResult.ModelUnavailable(body.optString("model"), "No Gemini API key is set.")
+    /**
+     * Sends [body] and returns the last media item of [type] ("audio" or "image") in the answer, or a
+     * typed [GeminiError] saying what went wrong (and whether trying again could help).
+     */
+    suspend fun mediaTyped(body: JSONObject, type: String): GeminiResult<GeneratedMedia> = withContext(Dispatchers.IO) {
+        val key = credentials.getApiKey()
+            ?: return@withContext GeminiResult.Failure(GeminiError(GeminiErrorKind.NO_KEY, null, "No Gemini API key is set."))
         try {
             val request = Request.Builder()
                 .url("$baseUrl/v1beta/interactions")
@@ -39,17 +44,36 @@ class GeminiInteractions(
             client.newCall(request).execute().use { response ->
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    val message = runCatching { JSONObject(text).optJSONObject("error")?.optString("message") }.getOrNull()
-                    return@withContext AiResult.Failed("Gemini ${response.code}: ${message?.take(200) ?: "request failed"}")
+                    return@withContext GeminiResult.Failure(GeminiErrors.fromHttp(response.code, text, response.header("Retry-After")))
                 }
-                val found = findMedia(JSONObject(text), type) ?: return@withContext AiResult.Failed("Gemini returned no $type.")
-                AiResult.Success(GeneratedMedia(Base64.decode(found.first, Base64.DEFAULT), found.second))
+                val json = try { JSONObject(text) } catch (e: JSONException) {
+                    return@withContext GeminiResult.Failure(GeminiError(GeminiErrorKind.MALFORMED, response.code, "Gemini's answer couldn't be read."))
+                }
+                val found = findMedia(json, type)
+                    ?: return@withContext GeminiResult.Failure(GeminiError(GeminiErrorKind.MALFORMED, response.code, "Gemini returned no $type."))
+                val bytes = try { Base64.decode(found.first, Base64.DEFAULT) } catch (e: IllegalArgumentException) {
+                    return@withContext GeminiResult.Failure(GeminiError(GeminiErrorKind.MALFORMED, response.code, "Gemini's $type couldn't be decoded."))
+                }
+                if (bytes.isEmpty()) return@withContext GeminiResult.Failure(GeminiError(GeminiErrorKind.EMPTY_AUDIO, response.code, "Gemini returned empty $type."))
+                GeminiResult.Success(GeneratedMedia(bytes, found.second))
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
+        } catch (e: java.io.InterruptedIOException) {
+            GeminiResult.Failure(GeminiError(GeminiErrorKind.TIMEOUT, null, e.message ?: "Gemini took too long to answer."))
+        } catch (e: java.io.IOException) {
+            GeminiResult.Failure(GeminiError(GeminiErrorKind.NETWORK, null, e.message ?: "Couldn't reach Gemini."))
         } catch (e: Exception) {
-            AiResult.Failed(e.message ?: "Gemini request failed.", e)
+            GeminiResult.Failure(GeminiError(GeminiErrorKind.NETWORK, null, e.message ?: "Gemini request failed."))
         }
+    }
+
+    /** [mediaTyped] for callers (the image path) that only need success or a message. */
+    suspend fun media(body: JSONObject, type: String): AiResult<GeneratedMedia> = when (val r = mediaTyped(body, type)) {
+        is GeminiResult.Success -> AiResult.Success(r.value)
+        is GeminiResult.Failure ->
+            if (r.error.kind == GeminiErrorKind.NO_KEY) AiResult.ModelUnavailable(body.optString("model"), r.error.message)
+            else AiResult.Failed(r.error.legacyMessage)
     }
 
     companion object {

@@ -4,11 +4,21 @@ import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
 
 enum class SpeechProvider { GEMINI, LOCAL }
 
+/**
+ * What is known about the plan the Gemini key is on. Google's terms say free ("Unpaid") services may use
+ * and human-review what is sent and ask that sensitive, confidential or personal information not be
+ * submitted to them; paid services don't use it to improve products. The app can't see the plan, so
+ * [PAID] only ever comes from the person confirming it (or the owner confirming the built-in key).
+ */
+enum class GeminiKeyTier { PAID, UNKNOWN }
+
 /** Why a reading can't use the cloud voice. Shown to the person, so each one is a plain reason. */
 enum class CloudBlock {
     OFFLINE_MODE, NOT_CONFIGURED, NOT_ENTITLED,
     PRIVATE_NOTE, CONFIDENTIAL_NOTEBOOK, WORK_PRIVACY,
-    PRIVATE_SECTIONS, LICENSED_SCRIPTURE
+    PRIVATE_SECTIONS, LICENSED_SCRIPTURE,
+    /** The reading has the person's own prayers or reflections and the key's plan isn't confirmed paid. */
+    PERSONAL_ON_UNCONFIRMED_PLAN
 }
 
 data class RouteInputs(
@@ -26,7 +36,8 @@ data class RouteInputs(
     val disclosureAccepted: Boolean,
     /** The person asked for the phone's voice even when the cloud voice is allowed. */
     val prefersLocal: Boolean = false,
-    val source: SpeechSource
+    val source: SpeechSource,
+    val keyTier: GeminiKeyTier = GeminiKeyTier.PAID
 )
 
 data class RouteDecision(
@@ -46,6 +57,10 @@ data class RouteDecision(
 
     /** Only private sections stand in the way: reading the rest with the cloud voice is a real choice. */
     val canOfferWithoutPrivate: Boolean get() = cloudBlocks == setOf(CloudBlock.PRIVATE_SECTIONS)
+
+    /** Only private or personal sections stand in the way: the rest could be read with the cloud voice if they are left out. */
+    val canOfferWithoutPersonal: Boolean
+        get() = cloudBlocks.isNotEmpty() && cloudBlocks.all { it == CloudBlock.PRIVATE_SECTIONS || it == CloudBlock.PERSONAL_ON_UNCONFIRMED_PLAN }
 }
 
 /**
@@ -65,6 +80,7 @@ object SpeechRoute {
             if (i.workPrivacyOffline) add(CloudBlock.WORK_PRIVACY)
             if (i.source.containsPrivate && !i.notePrivate) add(CloudBlock.PRIVATE_SECTIONS)
             if (i.source.containsLicensedScripture) add(CloudBlock.LICENSED_SCRIPTURE)
+            if (i.keyTier != GeminiKeyTier.PAID && i.source.containsPersonal) add(CloudBlock.PERSONAL_ON_UNCONFIRMED_PLAN)
         }
         val provider = if (blocks.isEmpty() && !i.prefersLocal) SpeechProvider.GEMINI else SpeechProvider.LOCAL
         return RouteDecision(

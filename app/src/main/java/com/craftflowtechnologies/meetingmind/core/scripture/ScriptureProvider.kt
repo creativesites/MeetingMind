@@ -39,7 +39,10 @@ data class Passage(
     val versionId: Int,
     val versionAbbreviation: String,
     val attribution: String
-)
+) {
+    /** The text may go to a cloud speech service and be kept as audio (see [BibleLicensing.openForCloud]). */
+    val openForCloud: Boolean get() = BibleLicensing.openForCloud(versionId, versionAbbreviation, attribution)
+}
 
 sealed interface PassageResult {
     data class Found(val passage: Passage) : PassageResult

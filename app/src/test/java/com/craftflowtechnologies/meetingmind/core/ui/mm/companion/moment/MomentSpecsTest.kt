@@ -221,7 +221,7 @@ class MomentSpecsTest {
 
     @Test fun `evaluating a frame allocates nothing`() {
         val bean = ManagementFactory.getThreadMXBean() as com.sun.management.ThreadMXBean
-        val moments = listOf(
+        val moments = arrayOf(
             ResolvedMoment.firstKeep(CompanionForm.ZURI, MomentSpace.EVERYDAY, false),
             ResolvedMoment.firstKeep(CompanionForm.NAS, MomentSpace.FAITH, true),
             ResolvedMoment.unveil(UnveilVariant.INKLINE, CompanionForm.NAS, MomentSpace.WORK),
@@ -229,18 +229,19 @@ class MomentSpecsTest {
             ResolvedMoment.unveil(UnveilVariant.CURTAIN, CompanionForm.WREN, MomentSpace.EVERYDAY)
         )
         val pose = Pose()
+        val targets = StageTarget.entries.toTypedArray()
         fun frame(m: ResolvedMoment, t: Float): Float {
             MomentPose.poseInto(pose, m, t)
             var acc = 0f
-            for (target in StageTarget.entries) acc += m.stage(target, StageProp.ALPHA, t, 1f) + m.stage(target, StageProp.Y_DP, t, 0f)
+            for (i in targets.indices) acc += m.stage(targets[i], StageProp.ALPHA, t, 1f) + m.stage(targets[i], StageProp.Y_DP, t, 0f)
             return acc + m.visual(t).ordinal
         }
-        repeat(500) { i -> for (m in moments) frame(m, (i * 7 % 3600).toFloat()) }
+        repeat(500) { i -> for (j in moments.indices) frame(moments[j], (i * 7 % 3600).toFloat()) }
         val id = Thread.currentThread().id
         val before = bean.getThreadAllocatedBytes(id)
         var sink = 0f
         val frames = 2000
-        for (i in 0 until frames) for (m in moments) sink += frame(m, (i * 3 % 3600).toFloat())
+        for (i in 0 until frames) for (j in moments.indices) sink += frame(moments[j], (i * 3 % 3600).toFloat())
         val per = (bean.getThreadAllocatedBytes(id) - before).toDouble() / (frames * moments.size)
         assertTrue("allocates $per bytes per frame ($sink)", per < 8.0)
     }

@@ -125,6 +125,11 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     val tags: StateFlow<List<Tag>> = notes.observeDocument(noteId).map { it?.tags.orEmpty() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** Scripture reference id to the translation it was saved with (only those pinned to one). The card shows that translation, as export and Read to Me do. */
+    val scriptureVersions: StateFlow<Map<String, Int>> = notes.observeDocument(noteId)
+        .map { doc -> doc?.scriptureRefs.orEmpty().mapNotNull { r -> r.versionId?.let { r.id to it } }.toMap() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
     val allTags: StateFlow<List<Tag>> = notes.observeTags().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val notebooks: StateFlow<List<Notebook>> = notes.observeNotebooks().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())

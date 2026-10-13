@@ -13,6 +13,7 @@ class SpeechRouteTest {
     private val plain = extract(Blocks().apply { add(PARAGRAPH, "a normal note") })
 
     private fun inputs(
+        keyTier: GeminiKeyTier = GeminiKeyTier.PAID,
         profile: ProcessingProfile = ProcessingProfile.INTERNET,
         configured: Boolean = true,
         entitled: Boolean = true,
@@ -23,7 +24,7 @@ class SpeechRouteTest {
         disclosed: Boolean = true,
         prefersLocal: Boolean = false,
         source: SpeechSource = plain
-    ) = RouteInputs(profile, configured, entitled, notePrivate, confidential, workOffline, faithLocked, disclosed, prefersLocal, source)
+    ) = RouteInputs(profile, configured, entitled, notePrivate, confidential, workOffline, faithLocked, disclosed, prefersLocal, source, keyTier)
 
     @Test fun `internet mode with a key reads with Gemini`() {
         val d = SpeechRoute.decide(inputs())
@@ -89,6 +90,44 @@ class SpeechRouteTest {
         assertEquals(SpeechProvider.GEMINI, SpeechRoute.decide(inputs(source = src)).provider)
     }
 
+    private val personalNote get() = extract(Blocks().apply {
+        add(HEADING_3, "What stands out?", "q1"); add(PARAGRAPH, "his grace", "q1", edited = true)
+    })
+
+    @Test fun `personal reflections stay on the phone while the plan behind the key is unconfirmed`() {
+        val d = SpeechRoute.decide(inputs(source = personalNote, keyTier = GeminiKeyTier.UNKNOWN))
+        assertEquals(SpeechProvider.LOCAL, d.provider)
+        assertEquals(setOf(CloudBlock.PERSONAL_ON_UNCONFIRMED_PLAN), d.cloudBlocks)
+        assertTrue(d.canOfferWithoutPersonal)
+    }
+
+    @Test fun `leaving the personal parts out lets the rest use the cloud voice`() {
+        val mixed = extract(Blocks().apply {
+            add(HEADING_2, "Notes", "key_message"); add(PARAGRAPH, "model prose", "key_message", BlockSource.AI)
+            add(HEADING_3, "What stands out?", "q1"); add(PARAGRAPH, "his grace", "q1", edited = true)
+        })
+        assertTrue(mixed.containsPersonal)
+        val rest = mixed.withoutPersonal()
+        assertFalse(rest.containsPersonal)
+        assertTrue(rest.sections.flatMap { it.units }.any { it.text == "model prose" })
+        assertEquals(SpeechProvider.GEMINI, SpeechRoute.decide(inputs(source = rest, keyTier = GeminiKeyTier.UNKNOWN)).provider)
+    }
+
+    @Test fun `a confirmed paid plan lets personal content use the cloud voice`() {
+        assertEquals(SpeechProvider.GEMINI, SpeechRoute.decide(inputs(source = personalNote, keyTier = GeminiKeyTier.PAID)).provider)
+    }
+
+    @Test fun `a note with no personal writing is not held back by an unconfirmed plan`() {
+        assertEquals(SpeechProvider.GEMINI, SpeechRoute.decide(inputs(source = plain, keyTier = GeminiKeyTier.UNKNOWN)).provider)
+    }
+
+    @Test fun `the person's own prayer counts as personal but an AI-written one does not`() {
+        val own = extract(Blocks().apply { add(PARAGRAPH, "Lord, help me", "my_prayer", edited = true) })
+        val ai = extract(Blocks().apply { add(PARAGRAPH, "Lord, guide us", "daily_prayer", BlockSource.AI) })
+        assertTrue(own.containsPersonal)
+        assertFalse(ai.containsPersonal)
+    }
+
     @Test fun `licensed scripture keeps the reading on the phone with short-lived audio`() {
         val b = Blocks().apply { scripture("John 3:16-17") }
         val src = extract(b, lookupOf("John 3:16-17" to john316.copy(openForCloud = false)))
@@ -109,7 +148,7 @@ class SpeechRouteTest {
         val bools = listOf(false, true)
         for (profile in ProcessingProfile.entries) for (configured in bools) for (entitled in bools)
             for (priv in bools) for (conf in bools) for (work in bools) for (prefersLocal in bools) {
-                val d = SpeechRoute.decide(inputs(profile, configured, entitled, priv, conf, work, prefersLocal = prefersLocal))
+                val d = SpeechRoute.decide(inputs(profile = profile, configured = configured, entitled = entitled, notePrivate = priv, confidential = conf, workOffline = work, prefersLocal = prefersLocal))
                 if (d.provider == SpeechProvider.GEMINI) {
                     assertEquals(ProcessingProfile.INTERNET, profile)
                     assertTrue(configured && entitled && !priv && !conf && !work && !prefersLocal)

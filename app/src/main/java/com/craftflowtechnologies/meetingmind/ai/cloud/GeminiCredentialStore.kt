@@ -45,6 +45,20 @@ class GeminiCredentialStore(private val context: Context) {
 
     suspend fun getApiKey(): String? = apiKeyFlow.first()
 
+    /** Whether the person says their own key is on a paid plan. Only they know; the app can't see it. */
+    val paidPlanConfirmedFlow: Flow<Boolean> = context.geminiDataStore.data.map { it[PAID_PLAN] == true }
+
+    suspend fun setPaidPlanConfirmed(confirmed: Boolean) {
+        context.geminiDataStore.edit { it[PAID_PLAN] = confirmed }
+    }
+
+    /**
+     * What is known about the plan behind the key requests will use: the built-in tester key follows
+     * [SYSTEM_KEY_CONFIRMED_PAID]; the person's own key follows their confirmation.
+     */
+    suspend fun keyPlanConfirmedPaid(): Boolean =
+        if (usingSystemKey()) SYSTEM_KEY_CONFIRMED_PAID else paidPlanConfirmedFlow.first()
+
     suspend fun getUserKey(): String? = userKeyFlow.first()
 
     /** Whether requests are running on the built-in tester key rather than the person's own. */
@@ -74,6 +88,14 @@ class GeminiCredentialStore(private val context: Context) {
 
     companion object {
         private val API_KEY = stringPreferencesKey("gemini_api_key")
+        private val PAID_PLAN = androidx.datastore.preferences.core.booleanPreferencesKey("paid_plan_confirmed")
+
+        /**
+         * Whether the built-in tester key is on a Google Cloud project with active billing (a paid service
+         * under Google's Gemini API terms). Not knowable from the repository, so false until the owner
+         * confirms it here. While false, Read to Me keeps people's own prayers and reflections on the phone.
+         */
+        const val SYSTEM_KEY_CONFIRMED_PAID = false
 
         /** The tester key compiled into this build, or null when none was supplied. */
         val systemKey: String? = com.craftflowtechnologies.meetingmind.BuildConfig.SYSTEM_GEMINI_API_KEY.trim().takeIf { it.isNotEmpty() }
