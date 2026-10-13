@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.Note
+import com.craftflowtechnologies.meetingmind.core.model.NoteBlock
 import com.craftflowtechnologies.meetingmind.core.model.Notebook
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.Tag
@@ -17,9 +18,12 @@ import com.craftflowtechnologies.meetingmind.core.notes.NoteLibraryStore
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -78,6 +82,14 @@ class NotesViewModel(application: Application, val scope: NotesScope = NotesScop
     }
 
     val notebooks: StateFlow<List<Notebook>> = notes.observeNotebooks().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** The note the Latest meeting hero shows; its blocks feed the hero's tiles and follow edits. */
+    private val heroNoteId = MutableStateFlow<String?>(null)
+    val heroBlocks: StateFlow<List<NoteBlock>> = heroNoteId
+        .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else notes.observeDocument(id).map { it?.blocks.orEmpty() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun watchHero(noteId: String?) { heroNoteId.value = noteId }
     val notebookCounts: StateFlow<Map<String, Int>> = notes.observeNotebookCounts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val tags: StateFlow<List<Tag>> = notes.observeTags().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val archivedCount: StateFlow<Int> = db.noteDao().observeArchivedCount().stateIn(viewModelScope, SharingStarted.Eagerly, 0)

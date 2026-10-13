@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -48,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -59,7 +59,9 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import com.craftflowtechnologies.meetingmind.core.ui.MeetingMindMark
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
 import com.craftflowtechnologies.meetingmind.core.notes.LibraryChip
@@ -78,6 +80,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 // The Notes "home" layout (root, list view): top bar, greeting with Zuri, the Latest meeting hero, then the library.
 // Everything here uses MM tokens only, so light/dark and all six accents work without extra code.
@@ -90,7 +93,7 @@ internal fun NotesHomeTopBar(
 ) {
     val c = MM.colors
     Row(Modifier.fillMaxWidth().padding(top = MM.space.s), verticalAlignment = Alignment.CenterVertically) {
-        Icon(AiMark, null, tint = c.accent, modifier = Modifier.size(28.dp))
+        MeetingMindMark(size = 32.dp)
         Row(Modifier.weight(1f).padding(start = MM.space.s)) {
             Text("Meeting", style = MM.type.title, color = c.ink)
             Text("Mind", style = MM.type.title, color = c.accent)
@@ -101,28 +104,110 @@ internal fun NotesHomeTopBar(
     }
 }
 
-/** Greeting on the left, Zuri and a speech bubble on the right. Zuri sleeps late at night. */
+/** The hour's greeting, and whether Zuri should be asleep (late at night). */
+private class GreetingInfo(val greeting: String, val lateNight: Boolean)
+
+@Composable
+private fun rememberGreeting(): GreetingInfo = remember {
+    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    GreetingInfo(
+        greeting = when { hour < 12 -> "Good morning"; hour < 18 -> "Good afternoon"; else -> "Good evening" },
+        lateNight = hour >= 22 || hour < 5
+    )
+}
+
+@Composable
+private fun GreetingText(greeting: String, modifier: Modifier = Modifier) {
+    val c = MM.colors
+    Column(modifier) {
+        Text("$greeting,", style = MM.type.heading, color = c.inkSecondary)
+        Text("You got this.", style = MM.type.display, color = c.accent)
+        Spacer(Modifier.height(MM.space.s))
+        Text("Your thoughts matter. I'm here to help you make the most of them.", style = MM.type.secondary, color = c.inkSecondary)
+    }
+}
+
+/** Greeting on the left, Zuri and a speech bubble on the right, side by side. Used when the Latest meeting hero is not shown. */
 @Composable
 internal fun NotesGreeting(hasLatest: Boolean, onBubbleClick: () -> Unit) {
-    val c = MM.colors
-    val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-    val greeting = when { hour < 12 -> "Good morning"; hour < 18 -> "Good afternoon"; else -> "Good evening" }
-    val lateNight = hour >= 22 || hour < 5
+    val info = rememberGreeting()
     val companionShown = rememberCompanionVisible(CompanionPage.HOME)
     Row(Modifier.fillMaxWidth().padding(top = MM.space.l), verticalAlignment = Alignment.Top) {
-        Column(Modifier.weight(1f)) {
-            Text("$greeting,", style = MM.type.heading, color = c.inkSecondary)
-            Text("You got this.", style = MM.type.display, color = c.accent)
-            Spacer(Modifier.height(MM.space.s))
-            Text("Your thoughts matter. I'm here to help you make the most of them.", style = MM.type.secondary, color = c.inkSecondary)
-        }
+        GreetingText(info.greeting, Modifier.weight(1f))
         if (companionShown) {
-            Column(Modifier.padding(start = MM.space.s).widthIn(max = 132.dp), horizontalAlignment = Alignment.End) {
-                if (hasLatest) SpeechBubble("Ready to review your latest meeting?", onBubbleClick)
-                ZuriSlot(CompanionPage.HOME, 104.dp, state = if (lateNight) CompanionState.SLEEPY else CompanionState.IDLE)
+            Column(Modifier.padding(start = MM.space.s).widthIn(max = ZURI_COLUMN_WIDTH), horizontalAlignment = Alignment.End) {
+                if (hasLatest) CompanionBubble(onBubbleClick)
+                CompanionZuri(info.lateNight)
             }
         }
     }
+}
+
+/**
+ * How much of Zuri's height sits behind the hero card: the lower 38% is covered, so the face and the speech bubble
+ * stay visible. Tune on a device; raise it to hide more of Zuri's body, lower it to show more.
+ */
+private const val ZURI_OVERLAP = 0.38f
+private val ZURI_SIZE = 104.dp
+private val ZURI_COLUMN_WIDTH = 132.dp
+
+@Composable
+private fun CompanionBubble(onClick: () -> Unit) = SpeechBubble("Ready to review your latest meeting?", onClick)
+
+@Composable
+private fun CompanionZuri(lateNight: Boolean) =
+    ZuriSlot(CompanionPage.HOME, ZURI_SIZE, state = if (lateNight) CompanionState.SLEEPY else CompanionState.IDLE)
+
+/**
+ * The greeting, Zuri and the Latest meeting card as one block. Zuri sits top-end; the card is placed last, so it covers
+ * Zuri's lower body and takes every tap over that overlap. The card's top is measured from the greeting and from Zuri,
+ * never a fixed height, so the greeting text cannot run under the card at any font scale.
+ */
+@Composable
+internal fun HeroWithZuri(
+    greetingSlot: @Composable () -> Unit,
+    bubbleSlot: @Composable () -> Unit,
+    zuriSlot: @Composable () -> Unit,
+    heroSlot: @Composable () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // Read the MM token here, in composition: the measure lambda below is not composable.
+    val gapDp = MM.space.m
+    Layout(
+        content = { greetingSlot(); bubbleSlot(); zuriSlot(); heroSlot() },
+        modifier = modifier
+    ) { measurables, constraints ->
+        val (greetingM, bubbleM, zuriM, heroM) = measurables
+        val width = constraints.maxWidth
+        val gap = gapDp.roundToPx()
+        val columnWidth = ZURI_COLUMN_WIDTH.roundToPx()
+        val greeting = greetingM.measure(Constraints(maxWidth = (width * 0.6f).roundToInt()))
+        val bubble = bubbleM.measure(Constraints(maxWidth = columnWidth))
+        val zuri = zuriM.measure(Constraints(maxWidth = columnWidth))
+        val zuriTop = bubble.height + gap
+        val zuriVisibleBottom = zuriTop + (zuri.height * (1f - ZURI_OVERLAP)).roundToInt()
+        val cardTop = maxOf(greeting.height + gap, zuriVisibleBottom)
+        val hero = heroM.measure(Constraints.fixedWidth(width))
+        layout(width, cardTop + hero.height) {
+            greeting.placeRelative(0, 0)
+            bubble.placeRelative(width - bubble.width, 0)
+            zuri.placeRelative(width - zuri.width, zuriTop)
+            hero.placeRelative(0, cardTop)
+        }
+    }
+}
+
+/** The overlap block for the home list: greeting, bubble, Zuri and the hero card. Needs the companion to be shown. */
+@Composable
+internal fun HomeHeroBlock(item: LibraryItem, tiles: List<MeetingTile>, onOpen: () -> Unit, onTile: (TileAction) -> Unit) {
+    val info = rememberGreeting()
+    HeroWithZuri(
+        greetingSlot = { GreetingText(info.greeting) },
+        bubbleSlot = { CompanionBubble(onOpen) },
+        zuriSlot = { CompanionZuri(info.lateNight) },
+        heroSlot = { LatestMeetingCard(item, tiles, onOpen, onTile) },
+        modifier = Modifier.fillMaxWidth().padding(top = MM.space.l)
+    )
 }
 
 @Composable
@@ -144,7 +229,8 @@ private fun SpeechBubble(text: String, onClick: () -> Unit) {
  */
 @Composable
 internal fun LatestMeetingCard(
-    item: LibraryItem, onOpen: () -> Unit, modifier: Modifier = Modifier, @DrawableRes heroImage: Int? = null
+    item: LibraryItem, tiles: List<MeetingTile>, onOpen: () -> Unit, onTile: (TileAction) -> Unit,
+    modifier: Modifier = Modifier, @DrawableRes heroImage: Int? = null
 ) {
     val c = MM.colors
     val note = item.note
@@ -175,16 +261,24 @@ internal fun LatestMeetingCard(
                     Icon(Icons.Rounded.ChevronRight, "Open note", tint = c.ink)
                 }
             }
-            Spacer(Modifier.height(MM.space.l))
-            // TODO: replace the static sublines with real counts (insights, tasks, read time) once the note exposes them.
-            Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                InsightTile(Icons.Rounded.Lightbulb, "Key Insights", "Highlights", onOpen, Modifier.weight(1f))
-                InsightTile(Icons.Rounded.CheckCircle, "Action Items", "To do", onOpen, Modifier.weight(1f))
-                InsightTile(Icons.Rounded.Description, "Summary", "Quick read", onOpen, Modifier.weight(1f))
-                InsightTile(AiMark, "AI Assistant", "Ask anything", onOpen, Modifier.weight(1f))
+            // Only tiles with real data are passed in; with none there is no row and no extra spacing.
+            if (tiles.isNotEmpty()) {
+                Spacer(Modifier.height(MM.space.l))
+                Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    tiles.forEach { tile ->
+                        InsightTile(tile.action.icon(), tile.label, tile.subtitle, { onTile(tile.action) }, Modifier.weight(1f))
+                    }
+                }
             }
         }
     }
+}
+
+private fun TileAction.icon(): ImageVector = when (this) {
+    TileAction.KEY_POINTS -> Icons.Rounded.Lightbulb
+    TileAction.ACTION_ITEMS -> Icons.Rounded.CheckCircle
+    TileAction.SUMMARY -> Icons.Rounded.Description
+    TileAction.ASSISTANT -> AiMark
 }
 
 @Composable
@@ -284,7 +378,7 @@ internal fun NoteCard(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.size(56.dp).background(tint.copy(alpha = 0.16f), MM.radius.small), contentAlignment = Alignment.Center) {
-            Icon(model.typeIcon, null, tint = tint, modifier = Modifier.size(MMSize.icon))
+            Icon(model.typeIcon ?: Icons.Rounded.Description, null, tint = tint, modifier = Modifier.size(MMSize.icon))
         }
         Column(Modifier.weight(1f).padding(start = MM.space.m)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
