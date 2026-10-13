@@ -21,6 +21,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assertIsDisplayed
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionForm
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionSettings
@@ -59,6 +60,7 @@ class FakeCompanionSettings(initial: CompanionSettings = CompanionSettings()) : 
     override suspend fun setOnRecordButton(on: Boolean) { state.value = state.value.copy(onRecordButton = on) }
     override suspend fun setQuietSermons(on: Boolean) { state.value = state.value.copy(quietSermons = on) }
     override suspend fun setCreateSuggest(on: Boolean) { state.value = state.value.copy(createSuggest = on) }
+    override suspend fun setSounds(on: Boolean) { state.value = state.value.copy(sounds = on) }
 }
 
 /**
@@ -125,6 +127,29 @@ class CompanionPlacementsScreenshotTest {
         rule.onNodeWithTag("companion_form_nas").assertIsDisplayed()
         rule.onNodeWithTag("companion_none").performClick()
         assertEquals(null, fake.state.value.form)
+    }
+
+    @Test fun `the Sounds switch is on by default and turns the chime off`() {
+        val fake = FakeCompanionSettings()
+        rule.setContent {
+            Harness(fake) {
+                CompanionSettingsContent(
+                    fake.state.collectAsState().value, object : CompanionSettingsActions {
+                        override fun setForm(form: CompanionForm?) {}
+                        override fun rename(raw: String) {}
+                        override fun setPresence(presence: Presence) {}
+                        override fun setOnRecordButton(on: Boolean) {}
+                        override fun setQuietSermons(on: Boolean) {}
+                        override fun setCreateSuggest(on: Boolean) {}
+                        override fun setSounds(on: Boolean) { fake.state.value = fake.state.value.copy(sounds = on) }
+                    }, onNavigateBack = {}
+                )
+            }
+        }
+        assertEquals(true, fake.state.value.sounds)
+        rule.onNodeWithTag("companion_sounds").performScrollTo().performClick()
+        rule.waitForIdle()
+        assertEquals(false, fake.state.value.sounds)
     }
 
     private fun hero(source: CompanionSettingsSource, file: String, hour: Int = 9) {

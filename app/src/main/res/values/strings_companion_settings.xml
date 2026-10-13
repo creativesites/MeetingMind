@@ -49,6 +49,8 @@
     <!-- %1$s: companion name. -->
     <string name="companion_advanced_create_suggest">Suggest %1$s on Create cards</string>
     <string name="companion_advanced_create_suggest_body">Offers a companion pose when you make a card. Never on prayer lists.</string>
+    <string name="companion_advanced_sounds">Sounds</string>
+    <string name="companion_advanced_sounds_body">A soft chime when your first note is ready. Never in Faith, on silent or in Do Not Disturb.</string>
 
     <!-- Quick sheet. %1$s: companion name. -->
     <string name="companion_quick_options">%1$s options</string>
