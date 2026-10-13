@@ -18,7 +18,9 @@ import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.ui.CreateSheet
 import com.craftflowtechnologies.meetingmind.feature.notes.editor.NoteEditorScreen
 import com.craftflowtechnologies.meetingmind.feature.notes.editor.NoteEditorViewModel
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion
 import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import kotlinx.coroutines.runBlocking
@@ -179,7 +181,10 @@ class NotesUiTest {
         val vm = NotesViewModel(app)
         compose.setContent {
             MeetMindTheme {
-                NotesScreen(viewModel = vm, onOpenNote = {}, onOpenNotebook = {}, onOpenArchive = {}, onNavigateBack = null, onNavigateBottomNav = {})
+                // The home's companion animates every frame; a reduced-motion companion lets Compose go idle in tests.
+                CompositionLocalProvider(LocalCompanionReducedMotion provides true) {
+                    NotesScreen(viewModel = vm, onOpenNote = {}, onOpenNotebook = {}, onOpenArchive = {}, onNavigateBack = null, onNavigateBottomNav = {})
+                }
             }
         }
         // The library loads through Dispatchers.IO and posts back to the main looper; a paused Robolectric looper only runs

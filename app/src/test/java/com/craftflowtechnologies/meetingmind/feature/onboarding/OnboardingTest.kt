@@ -55,7 +55,7 @@ class OnboardingTest {
         }
         compose.waitForIdle()
         runBlocking {
-            repeat(50) { if (!finished) { Thread.sleep(50); compose.waitForIdle() } }
+            repeat(50) { if (!finished) { org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS); Thread.sleep(50); compose.waitForIdle() } }
             val prefs = UserPreferencesManager(app).preferencesFlow.first()
             assertTrue(finished && prefs.onboardingCompleted)
             assertEquals("Ana", prefs.userName)
