@@ -24,7 +24,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Moment goldens (§7.9 engine sets, Z-30): a bounded set of 55 key frames, frozen with [LocalMomentTime]
+ * Moment goldens (§7.9 engine sets, Z-30): a bounded set of 73 key frames, frozen with [LocalMomentTime]
  * on the sample note, Indigo, Canvas renderer, 360 × 720 dp at 2×.
  *
  * - First Keep: 0, 0.7, 1.5, 3.6 s × Paper/Graphite × Zuri/Nas (16) + the quiet Faith version at its
@@ -33,6 +33,7 @@ import org.robolectric.annotation.GraphicsMode
  * - Nas Signatures: 5 variants × peak, Paper (5)
  * - Nod and the sermon's quiet Dawn: peak × Paper/Graphite (4)
  * - Reduced motion: the First Keep end, an Unveil end and the card reveal × Paper/Graphite (6)
+ * - Wren and Page takes (Z-32): First Keep 0.7, 1.5, 3.0, 3.6 s and the five Unveil peaks, Paper (18)
  *
  * Record with `./gradlew recordRoborazziDebug --tests '*MomentGoldenTest'`.
  */
@@ -95,6 +96,12 @@ class MomentGoldenTest(private val case: Case) {
             for (d in themes) {
                 out += Case("nod", LabMoment.NOD, z, e, 300, d)
                 out += Case("nod", LabMoment.DAWN_QUIET, z, MomentSpace.FAITH, 920, d)
+            }
+            // Z-32: the Wren and Page takes. First Keep 0.7, 1.5, 3.0 (Wren's perch, Page's mini) and 3.6 s, and the five Unveil peaks, Paper.
+            for (form in listOf(CompanionForm.WREN, CompanionForm.PAGE)) {
+                val set = form.name.lowercase()
+                for (t in listOf(700, 1500, 3000, 3600)) out += Case(set, LabMoment.FIRST_KEEP, form, e, t, false)
+                for ((m, peak) in Peaks) out += Case(set, m, form, e, peak, false)
             }
             for (d in themes) {
                 out += Case("reduced", LabMoment.FIRST_KEEP, z, e, null, d, reduced = true)
