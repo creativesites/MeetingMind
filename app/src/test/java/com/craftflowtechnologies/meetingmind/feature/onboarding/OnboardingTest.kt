@@ -6,6 +6,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanion
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -106,7 +107,13 @@ class OnboardingTest {
     }
 
     @Test fun `the sample is reachable offline and ends with notes and an answer`() {
-        val vm = OnboardingViewModel(app)
+        val file = java.io.File(app.cacheDir, "moments-${System.nanoTime()}.preferences_pb")
+        val store = com.craftflowtechnologies.meetingmind.core.companion.MomentLedgerStore(
+            androidx.datastore.preferences.core.PreferenceDataStoreFactory.create(
+                scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+            ) { file }
+        )
+        val vm = OnboardingViewModel(app, com.craftflowtechnologies.meetingmind.core.companion.CompanionSettingsStore(app), store)
         compose.setContent { Static { OnboardingScreen(vm, onFinishOnboarding = { }) } }
         compose.onNodeWithTag("onboarding_next_btn").performClick()
         compose.waitForIdle()
@@ -116,6 +123,13 @@ class OnboardingTest {
         compose.waitForIdle()
         // The transcript streams in on a timer; skip ahead past the last line.
         compose.mainClock.advanceTimeBy(30_000)
+        compose.waitForIdle()
+        // The example's notes arrive with the hello First Keep over them; Open note shows the example underneath.
+        // The plan is made on a background thread and lands on the main looper.
+        repeat(200) { if (vm.hello.value == null) { Thread.sleep(25); org.robolectric.shadows.ShadowLooper.idleMainLooper(); compose.waitForIdle() } }
+        assertTrue(vm.hello.value?.hello == true)
+        compose.onNodeWithText("Here's what a note looks like.").assertExists()
+        compose.onNodeWithText("Open note").performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("sample_summary").assertExists()
         compose.onNodeWithTag("sample_question").performScrollTo().performClick()
