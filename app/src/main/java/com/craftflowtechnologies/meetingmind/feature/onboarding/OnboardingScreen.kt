@@ -589,7 +589,7 @@ private fun ChoiceCard(selected: Boolean, onClick: () -> Unit, icon: ImageVector
 }
 
 /** Text on the onboarding's navy: always white, whatever the app theme. */
-private val OnNavy = Color.White.copy(alpha = 1f)
+internal val OnNavy = Color.White.copy(alpha = 1f)
 
 /** Pick a Bible to keep offline: a few well-known ones first, then a search across the whole catalogue. */
 @Composable

@@ -77,8 +77,8 @@ internal fun SampleStep(kind: SampleKind, onKind: (SampleKind) -> Unit, onViewed
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp).testTag("sample_transcript")
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(sample.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Text("EXAMPLE", color = Color.White, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp,
+            Text(sample.title, color = OnNavy, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("EXAMPLE", color = OnNavy, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp,
                 modifier = Modifier.clip(RoundedCornerShape(50)).background(Brush.horizontalGradient(listOf(Brand.Blue, Brand.Violet))).padding(horizontal = 9.dp, vertical = 3.dp))
         }
         Text("${sample.length} · not your recording", color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp))
@@ -106,7 +106,7 @@ internal fun SampleStep(kind: SampleKind, onKind: (SampleKind) -> Unit, onViewed
                 sample.actions.forEach { a ->
                     Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
                         Box(Modifier.padding(top = 2.dp).size(18.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
+                            Icon(Icons.Filled.Check, contentDescription = null, tint = OnNavy, modifier = Modifier.size(11.dp))
                         }
                         Spacer(Modifier.width(10.dp))
                         Text(a, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp, lineHeight = 20.sp)
@@ -141,16 +141,16 @@ internal fun GoalsStep(
     nameTitle: String? = null
 ) {
     StepTitle("Make it yours", "Pick everything that applies. It sets up your space and what MeetingMind suggests first. You can change it any time.")
-    Text("What do you capture?", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 10.dp))
+    Text("What do you capture?", color = OnNavy, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 10.dp))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         CaptureGoal.entries.forEach { g -> Chip(g.label, selected = g in goals, tag = "goal_${g.name}") { onGoal(g) } }
     }
-    Text("What do you want from recordings?", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
+    Text("What do you want from recordings?", color = OnNavy, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         DesiredOutcome.entries.forEach { o -> Chip(o.label, selected = o in outcomes, tag = "outcome_${o.name}") { onOutcome(o) } }
     }
     if (showWorkProfile) {
-        Text("What kind of work?", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 4.dp))
+        Text("What kind of work?", color = OnNavy, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 4.dp))
         Text("Sets the words, templates and privacy. Doctors and lawyers get on-device only.", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             com.craftflowtechnologies.meetingmind.core.work.WorkProfile.entries.forEach { p ->
@@ -159,13 +159,13 @@ internal fun GoalsStep(
         }
         workProfile?.let { Text(it.description, color = Color.White.copy(alpha = 0.6f), fontSize = 12.5.sp, modifier = Modifier.padding(top = 8.dp)) }
     }
-    Text(nameTitle?.let { "$it (optional)" } ?: "What should we call you? (optional)", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
+    Text(nameTitle?.let { "$it (optional)" } ?: "What should we call you? (optional)", color = OnNavy, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
     OutlinedTextField(
         value = name, onValueChange = onName, singleLine = true,
         placeholder = { Text("Your first name", color = Color.White.copy(alpha = 0.35f)) },
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Brand.Cyan, unfocusedBorderColor = Color.White.copy(alpha = 0.2f), cursorColor = Brand.Cyan,
-            focusedTextColor = Color.White, unfocusedTextColor = Color.White
+            focusedTextColor = OnNavy, unfocusedTextColor = OnNavy
         ),
         shape = RoundedCornerShape(16.dp), textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp),
         modifier = Modifier.fillMaxWidth().testTag("onboarding_name_field")
@@ -177,7 +177,7 @@ internal fun GoalsStep(
 private fun Chip(label: String, selected: Boolean, tag: String, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = if (selected) Color.White else Color.White.copy(alpha = 0.08f),
+        color = if (selected) OnNavy else Color.White.copy(alpha = 0.08f),
         modifier = Modifier.clickable(onClick = onClick).testTag(tag)
     ) {
         Text(label, color = if (selected) Color.Black else Color.White.copy(alpha = 0.9f), fontSize = 13.5.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
@@ -193,7 +193,7 @@ private fun TextAction(label: String, tag: String, onClick: () -> Unit) {
 @Composable
 private fun ResultCard(title: String, tagLine: String, tag: String, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp).testTag(tag)) {
-        Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text(title, color = OnNavy, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Text(tagLine, color = Color.White.copy(alpha = 0.5f), fontSize = 11.5.sp, modifier = Modifier.padding(bottom = 8.dp))
         content()
     }
