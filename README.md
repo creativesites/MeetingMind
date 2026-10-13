@@ -1,6 +1,6 @@
 # MeetingMind dev build
 
-**MeetingMind-Dev-36b3568.apk**: "MeetingMind Dev" built from commit `36b3568` on `claude/meetingmind-mvp-planning-7dgowm`
+****MeetingMind-Dev-0c91d9d-arm64-v8a.apk**: "MeetingMind Dev" built from commit `0c91d9d` on `ccr-5dc13c30-a5eqgv` (includes the Zuri companion moments, the notes polish, recording markers and Read to Me through Stage D). Not yet tested on a device.
 (arm64-v8a, 70 MB). It installs beside the tester app (`com.craftflowtechnologies.meetingmind.dev`) and keeps its own data.
 
 New in this build:
