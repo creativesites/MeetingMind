@@ -382,7 +382,7 @@ fun NotesScreen(
                         }
                         state.items.isEmpty() -> item(key = "empty") {
                             EmptyLibrary(
-                                query = query, issArchive = isArchive, isTrash = isTrash, searchText = searchText,
+                                query = query, isArchive = isArchive, isTrash = isTrash, searchText = searchText,
                                 onSearchTranscripts = { library.setIncludeTranscripts(true) },
                                 onClear = library::clearFilters,
                                 onRecord = startRecording, onWrite = { viewModel.createNote(onOpenNote) }
