@@ -173,6 +173,17 @@ fun NoteEditorScreen(
     val message by viewModel.message.collectAsState()
     val aiEdit by viewModel.aiEdit.collectAsState()
 
+    // The Unveil (docs/mvp/ZURI_SIGNATURE_MOMENTS.md §3.2): a fresh open of this note plays the planner's moment,
+    // the same as the meeting detail. Its facts come from the note's first recording; the Faith lock and the
+    // loading note plan nothing yet. A return to this entry (sub-screens, rotation, resume) never replays.
+    val momentSubject = com.craftflowtechnologies.meetingmind.feature.moments.noteMomentSubject(
+        noteLoaded = note != null, locked = lockNeeded && !faithUnlocked, recordingIds = recordings.keys
+    )
+    val noteMoment = com.craftflowtechnologies.meetingmind.feature.moments.rememberNoteMoment(momentSubject)
+    val momentForm = com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings().value.form
+    val createController = com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController()
+    val momentCard = recordings[momentSubject]
+
     var showInsert by remember { mutableStateOf(false) }
     var showLink by remember { mutableStateOf(false) }
     var showTags by remember { mutableStateOf(false) }
@@ -309,6 +320,16 @@ fun NoteEditorScreen(
         InlineStyle.entries.filter { viewModel.isActive(it) }.toSet()
     }
 
+    Box(Modifier.fillMaxSize()) {
+    com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.NoteUnveil(
+        plan = noteMoment.plan,
+        form = momentForm,
+        announcement = com.craftflowtechnologies.meetingmind.feature.moments.noteReadyAnnouncement(note?.title.orEmpty()),
+        // The stage draws Dawn's glow behind the header, so the screen's colour lives here.
+        modifier = Modifier.fillMaxSize().background(SurfaceBase),
+        key = "unveil:${viewModel.noteId}",
+        titleWords = note?.title.orEmpty().split(' ').count { it.isNotBlank() }.coerceAtLeast(1)
+    ) {
     Scaffold(
         containerColor = SurfaceBase,
         snackbarHost = { SnackbarHost(snackbar) },
@@ -630,6 +651,25 @@ fun NoteEditorScreen(
                 )
             }
         }
+    }
+    }
+
+    // The First Keep over the note (§2.2): its card shows the note's title and recording length only.
+    com.craftflowtechnologies.meetingmind.feature.moments.NoteFirstKeep(
+        state = noteMoment,
+        meta = momentCard?.let { Formatters.formatDurationHms(it.durationMs) }.orEmpty(),
+        keyPoints = emptyList(),
+        actionCount = 0,
+        onShare = {
+            createController.open(
+                com.craftflowtechnologies.meetingmind.core.create.CreateSeed(
+                    com.craftflowtechnologies.meetingmind.core.create.CreateSourceKind.SELECTED_TEXT,
+                    text = note?.title.orEmpty()
+                )
+            )
+        }
+    )
+    com.craftflowtechnologies.meetingmind.feature.create.CreateHost(createController)
     }
 
     // ---- sheets and dialogs

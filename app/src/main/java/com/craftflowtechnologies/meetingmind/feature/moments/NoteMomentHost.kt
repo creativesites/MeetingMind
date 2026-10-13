@@ -111,6 +111,15 @@ fun rememberNoteMoment(noteId: String, refreshKey: Any? = null): NoteMomentState
 }
 
 /**
+ * The id [rememberNoteMoment] plans for a note editor (`NoteEditorScreen`). The moment's facts come from a
+ * recording, so a note plans on its first recording (the recordings list is ordered by creation). It plans
+ * nothing (""), and waits, while the note is still loading or behind the Faith lock: a moment is claimed only
+ * once it can be shown. A note with no recording has no facts, so it opens plain.
+ */
+fun noteMomentSubject(noteLoaded: Boolean, locked: Boolean, recordingIds: Collection<String>): String =
+    if (!noteLoaded || locked) "" else recordingIds.firstOrNull().orEmpty()
+
+/**
  * The First Keep over the already-rendered note (§2.2): the card shows only the note's verbatim title and
  * key points. "Open note" and Back dismiss it; the note is already there underneath. [onShare] opens Create
  * with the note's title.
