@@ -142,6 +142,84 @@ class OnboardingViewModel(
     fun selectModel(modelId: String) { _selectedModel.value = modelId }
     fun setUserName(name: String) { _userName.value = name }
 
+    // Where the person is in the flow. Saved on every move, so a killed app resumes here.
+    private val _step = MutableStateFlow(OnboardingStep.WELCOME)
+    val step: StateFlow<OnboardingStep> = _step.asStateFlow()
+    private val _route = MutableStateFlow(EntryRoute.SAMPLE)
+    val route: StateFlow<EntryRoute> = _route.asStateFlow()
+    private val _goals = MutableStateFlow<Set<CaptureGoal>>(emptySet())
+    val goals: StateFlow<Set<CaptureGoal>> = _goals.asStateFlow()
+    private val _outcomes = MutableStateFlow<Set<DesiredOutcome>>(emptySet())
+    val outcomes: StateFlow<Set<DesiredOutcome>> = _outcomes.asStateFlow()
+    private val _sampleKind = MutableStateFlow(SampleKind.MEETING)
+    val sampleKind: StateFlow<SampleKind> = _sampleKind.asStateFlow()
+    private var moved = false
+
+    private fun restore() {
+        viewModelScope.launch {
+            val saved = prefs.preferencesFlow.first()
+            // Only resume an unfinished flow of this design, and never after the person has already moved.
+            if (saved.onboardingCompleted || moved || saved.onboardingVersion != ONBOARDING_VERSION) return@launch
+            _route.value = EntryRoute.entries.firstOrNull { it.name == saved.onboardingEntryRoute } ?: EntryRoute.SAMPLE
+            _goals.value = CaptureGoal.entries.filter { it.name in saved.onboardingGoals }.toSet()
+            _outcomes.value = DesiredOutcome.entries.filter { it.name in saved.onboardingOutcomes }.toSet()
+            _spaces.value = spacesFor(_goals.value)
+            val resumed = restoredStep(saved.onboardingStep, saved.onboardingVersion)
+            val steps = stepsFor(_route.value, _spaces.value)
+            _step.value = if (resumed in steps) resumed else OnboardingStep.WELCOME
+            // Past the companion step, the pick was already saved on its Continue: show that one again.
+            if (steps.indexOf(_step.value) > steps.indexOf(OnboardingStep.COMPANION)) {
+                _companion.value = runCatching { companionSettings.settings.first().form }.getOrDefault(_companion.value)
+            }
+        }
+    }
+
+    private fun goTo(step: OnboardingStep) { moved = true; _step.value = step; persist() }
+
+    private fun persist() {
+        val step = _step.value.name
+        val route = _route.value.name
+        val goals = _goals.value.map { it.name }.toSet()
+        val outcomes = _outcomes.value.map { it.name }.toSet()
+        viewModelScope.launch { prefs.saveOnboardingProgress(ONBOARDING_VERSION, step, route, goals, outcomes) }
+    }
+
+    /** "Explore a sample": pick a companion first (step 1), then the example. */
+    fun startSample() { _route.value = EntryRoute.SAMPLE; goTo(OnboardingStep.COMPANION) }
+    /**
+     * "Record something now": pick a companion (unless that's done already, as when leaving the example),
+     * then the AI choice, then the recorder.
+     */
+    fun startRecordNow() {
+        val pickedAlready = _step.value != OnboardingStep.WELCOME && _step.value != OnboardingStep.COMPANION
+        _route.value = EntryRoute.RECORD
+        goTo(if (pickedAlready) OnboardingStep.SETUP else OnboardingStep.COMPANION)
+    }
+    fun setSampleKind(kind: SampleKind) { _sampleKind.value = kind }
+    fun markSampleViewed() { viewModelScope.launch { prefs.setSampleViewed(true) } }
+
+    fun next(steps: List<OnboardingStep>, finish: () -> Unit) {
+        if (_step.value == OnboardingStep.COMPANION) commitCompanion()
+        val i = steps.indexOf(_step.value)
+        if (i < 0 || i >= steps.lastIndex) completeOnboarding(finish) else goTo(steps[i + 1])
+    }
+
+    fun back(steps: List<OnboardingStep>) {
+        val i = steps.indexOf(_step.value)
+        if (i > 0) goTo(steps[i - 1])
+    }
+
+    fun toggleGoal(goal: CaptureGoal) {
+        _goals.value = _goals.value.let { if (goal in it) it - goal else it + goal }
+        setSpaces(spacesFor(_goals.value))
+        persist()
+    }
+
+    fun toggleOutcome(outcome: DesiredOutcome) {
+        _outcomes.value = _outcomes.value.let { if (outcome in it) it - outcome else it + outcome }
+        persist()
+    }
+
     /** What the app is for, and how it feels (PLAN_V2 F0). Everything on by default. */
     private val _spaces = MutableStateFlow(com.craftflowtechnologies.meetingmind.core.model.OfferedNotebookSpaces.toSet())
     val spaces: StateFlow<Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>> = _spaces.asStateFlow()
@@ -259,6 +337,9 @@ class OnboardingViewModel(
             onCompleted()
         }
     }
+
+    // Last, so every field it fills is already initialised.
+    init { restore() }
 }
 
 /**
@@ -269,21 +350,23 @@ fun commitReading(profile: com.craftflowtechnologies.meetingmind.core.devotional
     if (choice == PlanChoice.AI) profile.copy(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI)
     else profile.copy(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.CLASSIC, planId = choice)
 
-/** Welcome, Pick your companion, What it does, Name, Spaces, Setup, Bible, [Choose how you read, with Faith], Permissions. */
-private fun stepCount(faith: Boolean) = if (faith) 9 else 8
-
 /**
- * First run: a warm welcome in the brand's navy, then short steps — who keeps you company, what it does, your name,
- * what it's for, how the AI runs (the offline pack is explained as three jobs so nobody stops at
- * one model), and the two permissions that matter. Everything can be changed later.
+ * First run: a welcome that offers an example or the recorder, then step 1 of both routes, "Pick who keeps
+ * you company" (ZURI_EXPERIENCE §5.1). On the example route come the example itself (with the hello First
+ * Keep), what the person captures, how the AI runs, the Bible and reading steps for Faith, and the two
+ * permissions that matter. The record route goes from the companion to the AI choice and then the
+ * recorder. Every move is saved, so a killed app resumes where it was. Everything can be changed later.
  */
 @Composable
-fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> Unit) {
-    var step by rememberSaveable { mutableIntStateOf(0) }
+fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> Unit, onRecordNow: () -> Unit = onFinishOnboarding) {
+    val step by viewModel.step.collectAsState()
+    val route by viewModel.route.collectAsState()
     var forward by remember { mutableStateOf(true) }
     val userName by viewModel.userName.collectAsState()
     val spaces by viewModel.spaces.collectAsState()
-    val look by viewModel.look.collectAsState()
+    val goals by viewModel.goals.collectAsState()
+    val outcomes by viewModel.outcomes.collectAsState()
+    val sampleKind by viewModel.sampleKind.collectAsState()
     val workProfile by viewModel.workProfile.collectAsState()
     val setup by viewModel.setup.collectAsState()
     val wifiOnly by viewModel.wifiOnly.collectAsState()
@@ -292,13 +375,11 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
     val reading by viewModel.reading.collectAsState()
     val readingTouched by viewModel.readingTouched.collectAsState()
     val planChoices by viewModel.planChoices.collectAsState()
-    // The reading step is for people who chose Faith; for everyone else it would be a step that doesn't earn its place.
-    val faith = com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH in spaces
-    val STEPS = stepCount(faith)
-    val planStep = if (faith) 7 else -1
-
-    fun next() { forward = true; if (step == 1) viewModel.commitCompanion(); if (step < STEPS - 1) step++ else viewModel.completeOnboarding(onFinishOnboarding) }
-    fun back() { forward = false; if (step > 0) step-- }
+    val steps = stepsFor(route, spaces)
+    val index = steps.indexOf(step).coerceAtLeast(0)
+    val finish = if (route == EntryRoute.RECORD) onRecordNow else onFinishOnboarding
+    fun next() { forward = true; viewModel.next(steps, finish) }
+    fun back() { forward = false; viewModel.back(steps) }
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Brand.Navy, Brand.NavyLift, Brand.Navy))).testTag("onboarding")) {
         // The icon's light, softly behind everything.
@@ -308,11 +389,11 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
             .background(Brush.radialGradient(listOf(Brand.Cyan.copy(alpha = 0.14f), Color.Transparent)), CircleShape))
 
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-            if (step > 0) {
+            if (step != OnboardingStep.WELCOME) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    repeat(STEPS - 1) { i ->
+                    repeat((steps.size - 1).coerceAtLeast(1)) { i ->
                         Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp))
-                            .background(if (i < step) Brush.horizontalGradient(Brand.sweep) else Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.15f)))))
+                            .background(if (i < index) Brush.horizontalGradient(Brand.sweep) else Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.15f)))))
                     }
                 }
             }
@@ -326,35 +407,65 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
             ) { s ->
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
                     when (s) {
-                        0 -> Welcome()
-                        1 -> CompanionPickStep(companion, viewModel::setCompanion)
-                        2 -> WhatItDoes()
-                        3 -> NameStep(userName, viewModel::setUserName, companion?.let { stringResource(CompanionRoster.displayName(it)) })
-                        4 -> SpacesStep(spaces, viewModel::setSpaces, look, viewModel::setLook, workProfile, viewModel::setWorkProfile)
-                        5 -> SetupStep(viewModel, setup, viewModel::setSetup, wifiOnly, viewModel::setWifiOnly)
-                        6 -> BibleStep(viewModel)
-                        planStep -> {
+                        OnboardingStep.WELCOME -> Welcome()
+                        OnboardingStep.COMPANION -> CompanionPickStep(companion, viewModel::setCompanion)
+                        OnboardingStep.SAMPLE -> SampleStep(
+                            kind = sampleKind, onKind = viewModel::setSampleKind, onViewed = viewModel::markSampleViewed,
+                            onRecordInstead = { forward = true; viewModel.startRecordNow() }
+                        )
+                        OnboardingStep.GOALS -> GoalsStep(
+                            goals, viewModel::toggleGoal, outcomes, viewModel::toggleOutcome,
+                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in spaces, workProfile, viewModel::setWorkProfile,
+                            userName, viewModel::setUserName,
+                            nameTitle = companion?.let { stringResource(R.string.companion_onboarding_step3_title, stringResource(CompanionRoster.displayName(it))) }
+                        )
+                        OnboardingStep.SETUP -> SetupStep(viewModel, setup, viewModel::setSetup, wifiOnly, viewModel::setWifiOnly)
+                        OnboardingStep.BIBLE -> BibleStep(viewModel)
+                        OnboardingStep.PLAN -> {
                             androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.loadPlans() }
                             PlanStep(planChoices, reading, viewModel::setReading)
                         }
-                        else -> PermissionsStep()
+                        OnboardingStep.PERMISSIONS -> PermissionsStep()
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (step > 0) Text("Back", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { back() }.padding(vertical = 12.dp, horizontal = 4.dp).testTag("onboarding_back_btn"))
-                Spacer(Modifier.weight(1f))
-                Surface(onClick = { next() }, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = Modifier.testTag("onboarding_next_btn")) {
-                    Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            when (step) { 0 -> "Get started"; STEPS - 1 -> "Start using MeetingMind"; 3 -> if (userName.isBlank()) "Skip" else "Continue"; 6 -> if (bible == null) "Skip for now" else "Download and continue"; planStep -> if (readingTouched) "Continue" else "Skip for now"; else -> "Continue" },
-                            color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                    }
+            if (step == OnboardingStep.WELCOME) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    GradientButton("Explore a sample", "onboarding_next_btn") { forward = true; viewModel.startSample() }
+                    Text(
+                        "Record something now", color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).clickable { forward = true; viewModel.startRecordNow() }.padding(horizontal = 16.dp, vertical = 12.dp).testTag("onboarding_record_now_btn")
+                    )
+                }
+            } else {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Back", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { back() }.padding(vertical = 12.dp, horizontal = 4.dp).testTag("onboarding_back_btn"))
+                    Spacer(Modifier.weight(1f))
+                    val last = index >= steps.lastIndex
+                    GradientButton(
+                        when {
+                            step == OnboardingStep.SAMPLE -> "Make it mine"
+                            step == OnboardingStep.BIBLE -> if (bible == null) "Skip for now" else "Download and continue"
+                            step == OnboardingStep.PLAN -> if (readingTouched) "Continue" else "Skip for now"
+                            last && route == EntryRoute.RECORD -> "Start recording"
+                            last -> "Start using MeetingMind"
+                            else -> "Continue"
+                        },
+                        "onboarding_next_btn"
+                    ) { next() }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun GradientButton(label: String, tag: String, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = Modifier.testTag(tag)) {
+        Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -363,19 +474,19 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
 private fun Welcome() {
     val t = rememberInfiniteTransition(label = "glow")
     val glow by t.animateFloat(0.85f, 1.12f, infiniteRepeatable(tween(2600), RepeatMode.Reverse), label = "g")
-    Column(Modifier.fillMaxWidth().padding(top = 72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(220.dp)) {
-            Box(Modifier.size(220.dp).graphicsLayer { scaleX = glow; scaleY = glow }.background(Brush.radialGradient(listOf(Brand.Indigo.copy(alpha = 0.45f), Color.Transparent)), CircleShape))
-            Image(painterResource(R.drawable.brand_mark), contentDescription = "MeetingMind", modifier = Modifier.size(width = 150.dp, height = 128.dp))
+    Column(Modifier.fillMaxWidth().padding(top = 56.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(200.dp)) {
+            Box(Modifier.size(200.dp).graphicsLayer { scaleX = glow; scaleY = glow }.background(Brush.radialGradient(listOf(Brand.Indigo.copy(alpha = 0.45f), Color.Transparent)), CircleShape))
+            Image(painterResource(R.drawable.brand_mark), contentDescription = "MeetingMind", modifier = Modifier.size(width = 138.dp, height = 118.dp))
         }
-        Text("MeetingMind", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp, modifier = Modifier.padding(top = 18.dp))
+        Text("Your thoughts deserve to be remembered.", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.6).sp, lineHeight = 36.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 18.dp))
         Text(
-            "Remember every conversation.\nFast, accurate notes with Gemini — or keep everything on your phone.",
-            color = Color.White.copy(alpha = 0.72f), fontSize = 18.sp, lineHeight = 26.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp)
+            "Turn conversations, ideas and lessons into knowledge you can return to.",
+            color = Color.White.copy(alpha = 0.72f), fontSize = 17.sp, lineHeight = 25.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp)
         )
-        Row(Modifier.padding(top = 36.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(Icons.Filled.Lock, "Private by choice")
-            Pill(Icons.Filled.PhoneAndroid, "Offline option")
+        Row(Modifier.padding(top = 32.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Pill(Icons.Filled.Lock, "Private")
+            Pill(Icons.Filled.PhoneAndroid, "Works offline")
             Pill(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, "AI notes")
         }
     }
@@ -391,78 +502,9 @@ private fun Pill(icon: ImageVector, label: String) {
 }
 
 @Composable
-private fun StepTitle(title: String, line: String) {
+internal fun StepTitle(title: String, line: String) {
     Text(title, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.6).sp, lineHeight = 34.sp, modifier = Modifier.padding(top = 12.dp))
     Text(line, color = Color.White.copy(alpha = 0.7f), fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
-}
-
-@Composable
-private fun WhatItDoes() {
-    StepTitle("Here's what it does", "Press record. MeetingMind listens, writes it all down, and hands you what matters.")
-    Feature(Icons.Filled.Mic, "Record anything", "Meetings, lectures, sermons, calls, voice notes — even with the screen off.")
-    Feature(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, "Transcripts and summaries", "Who said what, the decisions, the action items. Ask questions about any recording.")
-    Feature(Icons.Filled.EditNote, "Notes that connect", "Write, add photos and scripture. Recordings become notes you can share or export.")
-    Feature(Icons.Filled.CalendarMonth, "Your day at a glance", "Today shows what's next, preps you for meetings and keeps everything on a timeline.")
-}
-
-@Composable
-private fun Feature(icon: ImageVector, title: String, line: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Brand.Blue, Brand.Violet))), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-        }
-        Spacer(Modifier.width(14.dp))
-        Column {
-            Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Text(line, color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 2.dp))
-        }
-    }
-}
-
-@Composable
-private fun NameStep(name: String, onName: (String) -> Unit, companionName: String?) {
-    StepTitle(if (companionName != null) stringResource(R.string.companion_onboarding_step3_title, companionName) else "What should we call you?", "For greetings, and so Ask AI can address you. Optional, and it stays on this phone.")
-    OutlinedTextField(
-        value = name, onValueChange = onName, singleLine = true,
-        placeholder = { Text("Your first name", color = Color.White.copy(alpha = 0.35f)) },
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Brand.Cyan, unfocusedBorderColor = Color.White.copy(alpha = 0.2f), cursorColor = Brand.Cyan,
-            focusedTextColor = Color.White, unfocusedTextColor = Color.White
-        ),
-        shape = RoundedCornerShape(16.dp), textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp),
-        modifier = Modifier.fillMaxWidth().testTag("onboarding_name_field")
-    )
-}
-
-@Composable
-private fun SpacesStep(
-    spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>, onSpaces: (Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>) -> Unit,
-    look: com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel, onLook: (com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel) -> Unit,
-    workProfile: com.craftflowtechnologies.meetingmind.core.work.WorkProfile?, onWorkProfile: (com.craftflowtechnologies.meetingmind.core.work.WorkProfile) -> Unit
-) {
-    StepTitle("What's it for?", "Pick what you'll use it for — the app shows only those. Change it any time in Settings.")
-    com.craftflowtechnologies.meetingmind.core.identity.SpacesPicker(spaces, onSpaces)
-    if (com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in spaces) {
-        Text("What kind of work?", color = com.craftflowtechnologies.meetingmind.ui.theme.Briefing.OnBrief, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 4.dp))
-        Text("Sets the words, templates and privacy. Doctors and lawyers get on-device only.", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp))
-        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            com.craftflowtechnologies.meetingmind.core.work.WorkProfile.entries.forEach { p ->
-                val on = p == workProfile
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (on) com.craftflowtechnologies.meetingmind.ui.theme.Briefing.OnBrief else Color.White.copy(alpha = 0.08f),
-                    modifier = Modifier.clickable { onWorkProfile(p) }.testTag("work_profile_${p.name}")
-                ) {
-                    Text(p.label, color = if (on) Color.Black else com.craftflowtechnologies.meetingmind.ui.theme.Briefing.OnBrief, fontSize = 13.5.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
-                }
-            }
-        }
-        workProfile?.let { Text(it.description, color = Color.White.copy(alpha = 0.6f), fontSize = 12.5.sp, modifier = Modifier.padding(top = 8.dp)) }
-    }
-    Text("How should it feel?", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
-    com.craftflowtechnologies.meetingmind.core.identity.LookPicker(look, onLook)
-    Spacer(Modifier.height(12.dp))
 }
 
 @Composable
