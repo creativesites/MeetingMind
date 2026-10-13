@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
@@ -44,28 +45,47 @@ class MomentClock internal constructor(val playedMs: Int) {
         internal set
     var playing: Boolean by mutableStateOf(true)
         internal set
-    /** True when the end came from a skip (tap, Back, leaving the app): no haptic after it. */
+    /**
+     * True once skipped (a tap, Back, leaving the app). A skip rushes to the end in [SkipMs] (the spec's
+     * 150 ms crossfade) and no haptic or sound fires after it.
+     */
     var skipped: Boolean by mutableStateOf(false)
         internal set
 
     val atEnd: Boolean get() = !playing
 
+    /** Rush to the end over [SkipMs]. Safe to call any time; a no-op once ended. */
     fun skip() {
         if (!playing) return
         skipped = true
-        timeMs = playedMs.toFloat()
-        playing = false
+        if (!looping) finish()
     }
+
+    /** Jump to the end now (the screen stopped mid-moment; on return it shows the end state). */
+    fun finishNow() {
+        if (!playing) return
+        skipped = true
+        finish()
+    }
+
+    internal var looping = false
 
     internal fun finish() {
         timeMs = playedMs.toFloat()
         playing = false
     }
+
+    companion object {
+        const val SkipMs = 150f
+    }
 }
 
 /**
- * Runs [MomentClock] for [playedMs] (before the system animator scale [durationScale]). A new [key]
- * restarts it. [onFrame] sees each frame's played ms (haptics); [onEnd] runs once at the end or skip.
+ * Runs [MomentClock] for [playedMs] (before the system animator scale [durationScale]). [key] must be
+ * stable and equal across recreation (a String such as the note id plus the moment): once a moment has
+ * started under a key it is remembered as played (`rememberSaveable`), so a configuration change, a
+ * process restore or a return to the screen shows the end state and never replays. A new key plays again.
+ * [onFrame] sees each frame's played ms (haptics, the chime); [onEnd] runs once at the end or after a skip.
  */
 @Composable
 fun rememberMomentClock(
@@ -76,7 +96,8 @@ fun rememberMomentClock(
     onEnd: () -> Unit = {}
 ): MomentClock {
     val frozen = LocalMomentTime.current
-    val clock = remember(key, playedMs) { MomentClock(playedMs) }
+    var played by rememberSaveable(key, playedMs) { mutableStateOf(false) }
+    val clock = remember(key, playedMs) { MomentClock(playedMs).also { if (played) it.finish() } }
     val endCb by rememberUpdatedState(onEnd)
     val frameCb by rememberUpdatedState(onFrame)
     LaunchedEffect(clock, frozen, durationScale) {
@@ -86,22 +107,34 @@ fun rememberMomentClock(
             return@LaunchedEffect
         }
         if (!clock.playing) return@LaunchedEffect
+        played = true
         if (durationScale <= 0f) { clock.finish(); endCb(); return@LaunchedEffect }
         val start = withFrameNanos { it }
-        while (clock.playing) {
-            val now = withFrameNanos { it }
-            val prev = clock.timeMs
-            val t = MomentTimeline.playedMs(start, now, durationScale, playedMs)
-            clock.timeMs = t
-            frameCb(prev, t)
-            if (t >= playedMs) clock.finish()
+        var skipStart = 0L
+        var skipFrom = 0f
+        clock.looping = true
+        try {
+            while (clock.playing) {
+                val now = withFrameNanos { it }
+                val prev = clock.timeMs
+                val t = if (clock.skipped) {
+                    if (skipStart == 0L) { skipStart = now; skipFrom = prev }
+                    val u = ((now - skipStart) / 1_000_000f / MomentClock.SkipMs).coerceIn(0f, 1f)
+                    skipFrom + (playedMs - skipFrom) * u
+                } else MomentTimeline.playedMs(start, now, durationScale, playedMs)
+                clock.timeMs = t
+                if (!clock.skipped) frameCb(prev, t)
+                if (t >= playedMs) clock.finish()
+            }
+        } finally {
+            clock.looping = false
         }
         endCb()
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(clock, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP && clock.playing && frozen == null) clock.skip()
+            if (event == Lifecycle.Event.ON_STOP && clock.playing && frozen == null) clock.finishNow()
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }

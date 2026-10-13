@@ -373,8 +373,8 @@ next(space):
 
 `VARIANT_ORDER = [LIFT, INKLINE, CURTAIN, DAWN, PLANT]` (the same as the `riveId`, append-only).
 
-**Worked example (Everyday, from zero):** Lift, Inkline, Curtain, Dawn, Plant, Lift, Inkline, Curtain, Lift, Dawn,
-Plant… With the guard, no variant ever plays twice in a row. In Faith, Dawn can't play back to back, so its
+**Worked example (Everyday, from zero):** Lift, Inkline, Curtain, Dawn, Plant, Lift, Inkline, Curtain, Dawn, Plant,
+Lift… (what the pseudocode and the prototype produce; `UnveilRotationTest` pins it). With the guard, no variant ever plays twice in a row. In Faith, Dawn can't play back to back, so its
 effective share is at most 50% (≈ Dawn, Inkline, Dawn, Curtain, Dawn, Inkline…), which is intended. The prototype
 prints the next 12 picks for each space.
 
@@ -586,20 +586,26 @@ Two sessions own two lanes. **Each task touches one lane only.**
 
 ```
 ENGINE LANE (companion session)
-core/companion/moments/                     pure Kotlin, no Compose
-    MomentPlanner.kt        MomentFacts → MomentPlan (FirstKeep | Unveil(variant, ms, quiet) | Nod | Plain)
-    UnveilRotation.kt       SWRR + no-repeat guard + familiarity (pure; state in, state out)
-    UnveilTicket.kt         ticket model + expiry
+core/companion/moment/                      pure Kotlin, no Compose (built, Z-26)
+    MomentPlanner.kt        MomentFacts → PlannedMoment(MomentPlan, MomentEffects)
+    UnveilRotation.kt       SWRR + no-repeat guard + familiarity (pure; state in, state out), UnveilVariant, MomentSpace
+    UnveilTicket.kt         ticket model + expiry + encoding
+    OpenSession.kt          "a fresh open": one claim per navigation entry
+    MomentEnvironment.kt    DeviceFacts (battery saver, low-end, animator scale) from the system
 core/companion/MomentLedger.kt              + Cap.DailyBudget(max, minGapMs), Moment.Unveil
 core/companion/MomentLedgerStore.kt         + rotation state + tickets (same DataStore file)
-core/ui/mm/companion/moments/               Compose
-    MomentSpecs.kt          the data table (§3.7)
+core/ui/mm/companion/moment/                Compose (built, Z-27/Z-28)
+    MomentSpec.kt           types: MomentSpec, MsKey, StageTrack, PoseTrack, MomentPatch, KeyTrack, MomentEasing
+    MomentSpecs.kt          the data table (§3.7), ported from the prototype
+    ResolvedMoment.kt       spec × form × quiet × played length; the one place the time scale is chosen
+    MomentPose.kt           the moment pose-override hook over CompanionPoses
     MomentClock.kt          frame clock for one-shots; LocalMomentTime override for tests
-    MomentStage.kt          the stage host: evaluates tracks, skip, haptics, a11y, reduced motion
-    MomentLayers.kt         Modifier.momentLayer(target) + bloom/halo/sparkles/curtain/glow/ripple/underline/sprouts
-    FirstKeepOverlay.kt     slots: card, headline, sub, actions
+    MomentStage.kt          the stage host + MomentScope (momentLayer), skip, haptics, a11y, rememberOpenSession
+    MomentLayers.kt         glow/curtain/ripple/sprouts, the character, MomentTitle (Inkline, caret, underline, glint)
+    FirstKeepOverlay.kt     the First Keep (card, headline, sub, actions), bloom/halo/ring/sparkles/glint
     NoteUnveil.kt           wraps a header block + body
     CardReveal.kt           the Create reveal overlay
+    FirstKeepChime.kt       the chime and its gate (res/raw/first_keep_chime.ogg)
 core/ui/mm/companion/rive/CompanionRiveContract.kt   + optional moment inputs (§7.6)
 tools/rive/companion/**                     timelines for the moment inputs (stretch)
 
@@ -616,29 +622,71 @@ res/values/strings_moments.xml  every line in §9
 
 No `MainActivity` change is needed: navigation stays as it is, and the moment rides on the destination.
 
-### 7.2 Planner inputs
+### 7.2 Planner inputs (built: the wiring contract)
+
+Everything below is in `core.companion.moment` unless noted. The planner is pure; the store runs it in one
+DataStore transaction.
 
 ```kotlin
-data class MomentFacts(
-    val noteId: String, val isFirstEver: Boolean, val sensitive: Boolean, val goodFriday: Boolean,
-    val outcome: NoteOutcome,                 // COMPLETE, PARTIAL, AI_FALLBACK, FAILED, MODEL_REQUIRED, NO_SPEECH
-    val space: NotebookSpace, val sermonQuiet: Boolean,
-    val audioMs: Long, val transcriptWords: Int,
-    val recordingActive: Boolean, val batterySaver: Boolean, val lowEnd: Boolean,
-    val durationScale: Float, val companionShown: Boolean,
-    val lastNoteReadyMs: Long?, val clock: LocalClock, val ledger: MomentLedger, val rotation: RotationState,
-)
-sealed interface MomentPlan {
-    data class FirstKeep(val quiet: Boolean) : MomentPlan
-    data class Unveil(val variant: UnveilVariant, val durationMs: Int, val quiet: Boolean) : MomentPlan
-    data object Nod : MomentPlan
-    data class Plain(val status: FixAction?) : MomentPlan
+// 1. When processing SUCCEEDS (feature/processing): write the ticket. isFirstEver = READY note count was 0.
+store.issueTicket(UnveilTicket(noteId, readyAtMs = now, space = note.space, sermon = isSermon,
+    partial = summaryMissing, firstEver = isFirstEver))
+// Onboarding's say-hello sample note: store.issueTicket(UnveilTicket.hello(sampleId, now))
+
+// 2. On the note screen (MeetingDetail, WrapUp): once per navigation entry.
+val session = rememberOpenSession()                       // core.ui.mm.companion.moment
+var plan by remember { mutableStateOf<MomentPlan?>(null) }
+LaunchedEffect(noteId) {
+    if (!session.claim()) { plan = MomentPlan.Plain(PlainReason.NOT_FRESH); return@LaunchedEffect }
+    val clock = LocalClock(System.currentTimeMillis(), TimeZone.getDefault().getOffset(now).toLong())
+    plan = store.planOpen(noteId, clock) { ticket, ledger, rotation ->
+        MomentFacts(
+            noteId = noteId, ticket = ticket, outcome = outcome /* NoteOutcome */,
+            sensitive = isPrayerRequest || hasGriefTag, goodFriday = isGoodFriday(clock),
+            space = note.space, sermon = isSermon, audioMs = note.durationMs, transcriptWords = words,
+            retried = cameFromRetry, recordingActive = recorder.isRecording,
+            device = MomentEnvironment.read(context),
+            companionShown = settings.form != null && CompanionPresence.visibleOn(CompanionPage.NOTE_READY, settings, clock),
+            nodPlayedInSnackbar = cameFromSnackbar,
+            clock = clock, ledger = ledger, rotation = rotation
+        )
+    }.plan
 }
-fun plan(f: MomentFacts): Pair<MomentPlan, MomentEffects>   // effects = ledger records + new rotation state
 ```
 
-The planner runs **when the ticket is consumed** (on open), not when the note finishes, so battery saver, the
-recording state and the budget reflect the moment of viewing.
+| Fact | Who supplies it | Notes |
+|---|---|---|
+| `ticket`, `ledger`, `rotation` | `MomentLedgerStore.planOpen` | Never build them yourself |
+| `outcome` | the note | `PARTIAL` also comes from `ticket.partial` |
+| `sensitive`, `goodFriday` | note type and tags; the calendar | Row 2 |
+| `space`, `sermon` | the note (defaults from the ticket) | `NotebookSpace` → `MomentSpace` (Personal = Everyday, Learning = Study) |
+| `audioMs`, `transcriptWords` | the note; null when unknown | Row 7, "very short" |
+| `retried` | the processing view model | §4 Retry succeeded → nod |
+| `recordingActive` | the recorder | Row 4: the ticket is kept, marked deferred |
+| `device` | `MomentEnvironment.read(context)` | battery saver, low-end (cached), animator scale |
+| `companionShown`, `nodPlayedInSnackbar` | settings + presence; the navigation source | Presence filter; snackbar path |
+| `freshOpen` | `OpenSession.claim()` | Not fresh = `Plain(NOT_FRESH)`, effects untouched |
+| `flags` | `CompanionFlags` (default) | `MomentFlags.Budgeted` = both flags off |
+
+```kotlin
+sealed interface MomentPlan {                      // every plan has .announce
+    data class FirstKeep(val quiet: Boolean, val hello: Boolean, val onceEver: Boolean, val chime: Boolean,
+                         val space: MomentSpace, val companion: Boolean = true)
+    data class Unveil(val variant: UnveilVariant, val durationMs: Int, val quiet: Boolean, val space: MomentSpace)
+    data class Nod(val companion: Boolean = true, val quiet: Boolean = false, val space: MomentSpace = EVERYDAY)
+    data class Plain(val reason: PlainReason, val fix: FixAction? = null)   // reason.statusCompanion: Worried/Sleepy
+}
+data class MomentEffects(val record: List<Moment>, val rotation: RotationState?, val ticket: TicketAction)
+```
+
+The planner runs **when the note is opened**, not when it finishes, so battery saver, the recording state and
+the budget reflect the moment of viewing. The reducer's `NoteReady` no longer records `FirstRecordingPeak` or
+`FullCelebration`: the planner owns those caps, so nothing is counted twice.
+
+Interpretations made while building (flag on): a retry that succeeds still nods; a running recording defers the
+arrival (ticket kept, marked deferred), and after the stop the note nods unless a once-ever First Keep is owed;
+the back-to-back guard applies only to arrivals and only while `firstKeepEveryNote` is off; the sermon's quiet Dawn
+never advances the rotation; familiarity counts the current play (as the prototype does).
 
 ### 7.3 Which tier draws it
 
@@ -656,35 +704,55 @@ checks each file's timeline length against `MomentSpec.baseMs` (±1 frame) and r
 fails (that moment uses Canvas). For Faith and Work, scaled moments use Canvas unless the Rive runtime can bind
 playback speed (open engineering question, Z-31).
 
-### 7.4 Compose hooks
+### 7.4 Compose hooks (built)
 
 ```kotlin
-/** Hosts one moment. Owns the clock (withFrameNanos only while playing), skip, haptics and the announcement. */
-@Composable
-fun MomentStage(
-    plan: MomentPlan, form: CompanionForm?, space: NotebookSpace,
-    announcement: String,                         // the single polite line
-    onEnd: () -> Unit, modifier: Modifier = Modifier,
-    content: @Composable MomentScope.() -> Unit,
-)
-interface MomentScope {
-    /** graphicsLayer driven by the spec for [target]; read in the draw phase, no recomposition per frame. */
-    fun Modifier.momentLayer(target: StageTarget): Modifier
-    val progress: () -> Float                     // 0..1, for custom drawing (curtain, ripple…)
-    @Composable fun Companion(size: Dp)           // the character, with pose overrides for this moment
+// The note screen: Unveil, nod, or plain. A FirstKeep plan shows the note still here (the overlay plays it).
+NoteUnveil(plan, form = settings.form, announcement = "$title is ready.", key = "unveil:$noteId",
+           titleWords = title.split(' ').size) {
+    Column {
+        Column(Modifier.momentLayer(StageTarget.HEADER)) {      // title, meta row, chips
+            MomentTitle(title, MM.type.display)                 // real Text; Inkline writes it word by word
+            MetaRow(); Chips()
+        }
+        Summary(Modifier.momentLayer(StageTarget.BODY, 0))
+        KeyPoints(Modifier.momentLayer(StageTarget.BODY, 1))
+        Actions(Modifier.momentLayer(StageTarget.BODY, 2))
+    }
 }
-
-// Call sites (feature lane)
-NoteUnveil(ticket, form, space) { HeaderBlock(Modifier.momentLayer(StageTarget.HEADER)); Body(Modifier.momentLayer(StageTarget.BODY)) }
-FirstKeepOverlay(note = FirstKeepNote(title, meta, keyPoints = note.keyPoints.take(3), actionCount), onOpen, onShare)
-CardReveal(form, mode, placement, playKey = includeCompanion to format)
+// The First Keep, above the already-rendered note (same Box, drawn last).
+if (plan is MomentPlan.FirstKeep && showFirstKeep) FirstKeepOverlay(
+    plan, form = settings.form, note = FirstKeepNote(title, meta, keyPoints.take(3)),
+    headline = ..., subline = ..., companionLine = ..., openLabel = ..., shareLabel = ...,
+    announcement = "Your first note is ready. $title.", sounds = settings.sounds, key = "firstkeep:$noteId",
+    onOpen = { showFirstKeep = false }, onShare = { openCreate(title) })
+// Create (Z-22).
+CardReveal(form, mode, size = slotDp, playKey = "$cardId/$format", prayerRequest = isPrayerRequest,
+           announcement = "$companion added. $modeName pose.", onSettled = { showCaptionOnce() })
 ```
 
-- **Skip:** `pointerInput(Unit) { awaitPointerEventScope { … PointerEventPass.Initial, never consume } }` plus
-  `BackHandler(enabled = playing)`. Skip sets `t = baseMs` and runs a 150 ms crossfade.
-- **Lifecycle:** the clock pauses below STARTED. On resume the moment shows its end state (never replays).
-- **Haptics:** `LocalView.current.performHapticFeedback(TICK → CLOCK_TICK, CONFIRM → CONFIRM (API 30+) else
-  VIRTUAL_KEY)`, only while playing, never after a skip.
+- `MomentStage(plan, form, announcement, key, …) { … }` is the general host (`NoteUnveil` is a thin wrapper);
+  `MomentStage(moment: ResolvedMoment, …)` is the lower-level one the Lab uses.
+- `MomentScope`: `Modifier.momentLayer(target, index)` (a `graphicsLayer` read in the draw phase: no
+  recomposition per frame), `value(target, prop, default)`, `progress()`, `baseMs()`, `playing`,
+  `MomentCompanion(form, size)`, `MomentTitle(text, style)`. With a plain plan every call is a no-op.
+- **`key`** must be stable across recreation (`"unveil:$noteId"`): a moment that started under a key is saved as
+  played, so a rotation, process restore or return shows the end state and never replays.
+- **Skip:** a press anywhere is observed in `PointerEventPass.Initial` and **not consumed** (a tap on a button
+  under it still works); the clock rushes to the end in 150 ms. `BackHandler` skips while playing (the First
+  Keep's Back calls `onBack`, default `onOpen`).
+- **Lifecycle:** at `ON_STOP` the moment jumps to its end; it never replays on return.
+- **Haptics:** `View.performHapticFeedback(CLOCK_TICK)` for a tick, `CONFIRM` (API 30+, else `VIRTUAL_KEY`)
+  for a confirm; they follow the system touch-feedback setting; none in Faith; none after a skip.
+- **Chime:** `FirstKeepChime` at 1.5 s, only when the plan's `chime` (the two once-ever plays, never quiet),
+  `sounds` (Settings → Advanced → Sounds, `CompanionSettings.sounds`), the ringer is normal and DND is off.
+- **Announcement:** one live region (`LiveRegionMode.Polite`) on the given text, removed after 4 s.
+- **Reduced motion:** the clock ends at once; the First Keep shows its end layout with the static Celebrating
+  pose (Peaceful and glad when quiet); Unveil and nod are already PLAIN from the planner.
+- **Presence off / no companion:** pass `form = null`: the Unveil becomes the header fade, the First Keep keeps
+  its bloom, card, words and actions.
+- **Tests and the Lab:** `CompositionLocalProvider(LocalMomentTime provides ms)` freezes every moment below at
+  that played millisecond.
 
 ### 7.5 Budgets
 
