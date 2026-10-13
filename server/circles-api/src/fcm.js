@@ -4,7 +4,7 @@ import { getAccessToken } from "./google.js";
 import { w } from "./firestore.js";
 
 export class Fcm {
-  constructor({ projectId, env, fetchImpl = fetch }) { this.projectId = projectId; this.env = env; this.fetch = fetchImpl; }
+  constructor({ projectId, env, fetchImpl = fetch }) { this.projectId = projectId; this.env = env; this.fetch = (...args) => Reflect.apply(fetchImpl, globalThis, args); }
   /** -> "ok" | "dead" (token is invalid, remove it) | "error" */
   async send(token, { title, body, data = {} }) {
     try {

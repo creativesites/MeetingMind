@@ -59,7 +59,9 @@ import androidx.room.migration.Migration
         CirclePrayerEntity::class,
         CircleTestimonyEntity::class,
         CircleSermonEntity::class,
-        CreateCardEntity::class
+        CreateCardEntity::class,
+        RecordingMarkerEntity::class,
+        LegacyNoteMarkEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
@@ -93,6 +95,8 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun peopleDao(): PeopleDao
     abstract fun taskDao(): TaskDao
     abstract fun searchDao(): SearchDao
+    abstract fun recordingMarkerDao(): RecordingMarkerDao
+    abstract fun legacyNoteMarkDao(): LegacyNoteMarkDao
     abstract fun noteAiJobDao(): NoteAiJobDao
     abstract fun noteVersionDao(): NoteVersionDao
     abstract fun learningSessionDao(): LearningSessionDao
@@ -558,8 +562,32 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Source-owned recording markers (schema 25). Additive only: two new tables, one column on
+         * meetings, and the legacy note-level marks copied out by [LegacyMarkMigration]. The notes'
+         * own metadataJson is left as it was, so nothing is lost if this migration is reverted.
+         */
+        val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_24_25_SQL.forEach { db.execSQL(it) }
+                LegacyMarkMigration.run(db)
+            }
+        }
+
+        internal val MIGRATION_24_25_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `recording_markers` (`id` TEXT NOT NULL, `meetingId` TEXT NOT NULL, `sequence` INTEGER NOT NULL, `timestampMs` INTEGER NOT NULL, `kind` TEXT NOT NULL, `text` TEXT, `sectionKey` TEXT, `resolvedSegmentId` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `createdDuringRecording` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
+            "CREATE INDEX IF NOT EXISTS `index_recording_markers_meetingId_timestampMs` ON `recording_markers` (`meetingId`, `timestampMs`)",
+            "CREATE INDEX IF NOT EXISTS `index_recording_markers_meetingId_sequence` ON `recording_markers` (`meetingId`, `sequence`)",
+            "CREATE TABLE IF NOT EXISTS `legacy_note_marks` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `status` TEXT NOT NULL, `rawKind` TEXT, `atMs` INTEGER, `text` TEXT, `rawJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_legacy_note_marks_noteId` ON `legacy_note_marks` (`noteId`)",
+            "ALTER TABLE `meetings` ADD COLUMN `recordingOrder` INTEGER NOT NULL DEFAULT 0",
+            "CREATE INDEX IF NOT EXISTS `index_meetings_noteId_recordingOrder` ON `meetings` (`noteId`, `recordingOrder`)",
+            // Backfill: each recording's place is the count of earlier recordings on the same note, by creation time, then id.
+            "UPDATE meetings SET recordingOrder = (SELECT COUNT(*) FROM meetings AS earlier WHERE earlier.noteId = meetings.noteId AND (earlier.createdAt < meetings.createdAt OR (earlier.createdAt = meetings.createdAt AND earlier.id < meetings.id))) WHERE noteId IS NOT NULL"
+        )
+
         /** Every step from schema 1 to [VERSION]; the app and the migration tests open the database with the same list. */
-        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
+        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
 
         internal val MIGRATION_21_22_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `learning_sessions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `meetingId` TEXT, `title` TEXT NOT NULL, `courseName` TEXT, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `lastStudiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
@@ -723,7 +751,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 24
+        const val VERSION = 25
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {

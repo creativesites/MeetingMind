@@ -25,6 +25,7 @@ service account. Phones only read circles they belong to and write their own com
 8. Daily prayer digest: the cron in `wrangler.toml` (18:00 UTC) is registered by the deploy. Nothing else to do.
 
 Tests: `npm test` (Worker logic, no network) and `npm run test:rules` (Firestore rules; needs Java and downloads the emulator once).
+`GET /health` checks that the Worker responds. `GET /ready` checks that the service-account secret is valid JSON with the required fields; it does not expose configuration values. Every API response includes a `requestId` and `X-Request-Id` header (the Cloudflare Ray ID when present) for matching app diagnostics with Worker logs. Configure `SERVICE_ACCOUNT_JSON` with a Firebase service-account key containing `client_email` and `private_key`; an OAuth client secret or `google-services.json` is not a service-account key.
 
 ## API
 
@@ -33,7 +34,7 @@ Success: `{"ok":true,...}`. Failure: `{"ok":false,"error":{"code","message"}}` w
 
 | Endpoint | Who | Body / result |
 |---|---|---|
-| `createCircle` | anyone (max 10 circles) | `name, template, vocab?, settings?, displayName?` -> `circleId` |
+| `createCircle` | anyone (max 10 circles) | `name, template, vocab?, settings?, displayName?, requestId` (UUID, reused for retries) -> `circleId` |
 | `updateCircle` | owner/admin | `circleId, name?, vocab?, settings?` |
 | `createInvite` | owner/admin (or any member if `whoCanInvite=members`) | `circleId, expiresInDays? (1-30, 7), maxUses? (1-100, 50)` -> `code` like `GRACE-7K2Q` |
 | `revokeInvite` | admin or creator | `code` |

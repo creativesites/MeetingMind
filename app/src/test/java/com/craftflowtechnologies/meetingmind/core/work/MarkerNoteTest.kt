@@ -56,11 +56,8 @@ class MarkerNoteTest {
     @Test fun markersKeepTheirTextWhenSavedWithTheRecording() = runBlocking {
         val (meetingId, noteId) = sermon()
         Marks.save(db, meetingId, marks)
-        assertEquals(marks, Marks.read(db.noteDao().getById(noteId)!!.metadataJson))
-    }
-
-    @Test fun anOldMarkWithoutTextStillReads() {
-        assertEquals(listOf(Mark(MarkKind.KEY, 5)), Marks.read("""{"marks":"[{\"kind\":\"KEY\",\"at\":5}]"}"""))
+        // Read back in timestamp order, which is how a recording's marks are always listed.
+        assertEquals(marks.sortedBy { it.atMs }, Marks.forMeeting(db, meetingId))
     }
 
     @Test fun undoTakesBackOnlyTheLastMark() {

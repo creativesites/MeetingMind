@@ -4,7 +4,7 @@ package com.craftflowtechnologies.meetingmind.core.circles2
 enum class FailureKind { NotConnected, Offline, SignedOut, Rejected, RateLimited, NotFound, Server }
 
 /** A failure with one plain sentence that is safe to show. */
-data class CirclesFailure(val kind: FailureKind, val message: String, val code: String? = null) {
+data class CirclesFailure(val kind: FailureKind, val message: String, val code: String? = null, val requestId: String? = null, val httpStatus: Int? = null) {
     companion object {
         val notConnected = CirclesFailure(FailureKind.NotConnected, "Circles isn't connected yet.")
         val offline = CirclesFailure(FailureKind.Offline, "You're offline. Check your connection and try again.")

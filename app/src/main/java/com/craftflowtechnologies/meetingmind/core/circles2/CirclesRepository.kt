@@ -76,11 +76,11 @@ class CirclesRepository(
         }
     }
 
-    suspend fun createCircle(name: String, template: String, vocab: String, displayName: String, settings: CircleSettings): CirclesResult<String> {
+    suspend fun createCircle(name: String, template: String, vocab: String, displayName: String, settings: CircleSettings, requestId: String = java.util.UUID.randomUUID().toString()): CirclesResult<String> {
         if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
         val signedIn = uid()
         if (signedIn is CirclesResult.Err) return signedIn
-        val r = api.createCircle(CreateCircleRequest(name.trim(), template, vocab.trim(), displayName.trim(), settings))
+        val r = api.createCircle(CreateCircleRequest(name.trim(), template, vocab.trim(), displayName.trim(), settings, requestId))
         if (r is CirclesResult.Ok) { store.displayName = displayName.trim(); remember(r.value) }
         return r
     }

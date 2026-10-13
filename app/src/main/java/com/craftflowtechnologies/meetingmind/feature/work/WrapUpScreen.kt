@@ -91,6 +91,7 @@ fun WrapUpScreen(
     val items by viewModel.findings.collectAsState()
     val speakers by viewModel.speakers.collectAsState()
     val note by viewModel.note.collectAsState()
+    val keyMoments by viewModel.keyMoments.collectAsState()
     val notebooks by viewModel.projects.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val with by viewModel.with.collectAsState()
@@ -184,7 +185,6 @@ fun WrapUpScreen(
                                 if (with.isEmpty()) Text("Name the speakers to add people", fontSize = 13.sp, color = InkMuted)
                             }
                         }
-                        val keyMoments = note?.metadata?.let { m -> com.craftflowtechnologies.meetingmind.core.work.Marks.keyMoments(org.json.JSONObject(m as Map<*, *>).toString()) }.orEmpty()
                         if (keyMoments.isNotEmpty()) MetaRow("Key moments") {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 keyMoments.forEach { at -> Chip("⭐ " + formatTime(at)) { onPlay(at) } }

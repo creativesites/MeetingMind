@@ -59,7 +59,7 @@ class Migration23To24Test {
         migrated!!.close()
         assertEquals(before, tables.associateWith { count(it) })
         assertEquals(1, before.getValue("notes"))
-        assertEquals(24, MeetMindDatabase.VERSION)
+        assertTrue(MeetMindDatabase.VERSION >= 24)
     }
 
     @Test fun `the new table stores and queries cards`() = runBlocking {

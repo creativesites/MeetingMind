@@ -65,9 +65,21 @@ async function createCircle(ctx) {
   const vocab = cleanText(b.vocab, "vocab", { min: 0, max: 40, optional: true }) ?? "Circle";
   const settings = normalizeSettings(b.settings, template);
   const displayName = name(b.displayName);
+  // Older app builds do not send a key yet; keep them working, while newer builds
+  // reuse a stable key across retries to make the create operation idempotent.
+  const requestId = b.requestId == null ? crypto.randomUUID()
+    : typeof b.requestId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(b.requestId)
+      ? b.requestId.toLowerCase() : null;
+  if (!requestId) throw new ApiError(400, "bad_request", "A valid request ID is required.");
+  const idempotencyPath = `userMeta/${ctx.uid}/circleCreateRequests/${requestId}`;
+  const prior = await ctx.db.get(idempotencyPath);
+  if (prior?.data.circleId) return { circleId: prior.data.circleId };
   await hit(ctx.kv, `rl:createCircle:${ctx.uid}`, RATE.createCircle);
   const id = newId();
+  let resultId = id;
   await ctx.db.runTx(async (tx) => {
+    const priorRequest = await tx.get(idempotencyPath);
+    if (priorRequest?.data.circleId) { resultId = priorRequest.data.circleId; return []; }
     const meta = await tx.get(`userMeta/${ctx.uid}`);
     const n = meta?.data.circleCount || 0;
     if (n >= LIMITS.circlesPerUser) throw new ApiError(409, "too_many_circles", "You're in the maximum of 10 circles. Leave one to create another.");
@@ -75,9 +87,10 @@ async function createCircle(ctx) {
       w.create(C(id), { name: nm, template, vocab, settings, ownerUid: ctx.uid, memberCount: 1, orgId: null, closed: false, createdAt: ctx.now }),
       w.create(`${C(id)}/members/${ctx.uid}`, { role: "owner", displayName, joinedAt: ctx.now, muted: false }),
       w.set(`userMeta/${ctx.uid}`, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), id] }),
+      w.create(idempotencyPath, { circleId: id, createdAt: ctx.now }),
     ];
   });
-  return { circleId: id };
+  return { circleId: resultId };
 }
 
 async function updateCircle(ctx) {

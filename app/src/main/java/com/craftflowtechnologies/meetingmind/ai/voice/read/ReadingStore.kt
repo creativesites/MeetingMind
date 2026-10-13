@@ -140,6 +140,22 @@ class ReadingStore(
         if (!tmp.renameTo(target)) { target.delete(); tmp.renameTo(target) }
     }
 
+    /** Read, change and write the manifest as one step, so a save from generation can't undo progress saved by playback. */
+    @Synchronized
+    fun update(noteId: String, build: (current: ReadingManifest?) -> ReadingManifest) {
+        save(build(load(noteId)))
+    }
+
+    /** Deletes audio files in the note's folders that the manifest no longer lists (replaced by an edit or a new voice). */
+    @Synchronized
+    fun pruneUnreferenced(noteId: String) {
+        val manifest = load(noteId) ?: return
+        val keep = manifest.sections.mapNotNull { it.fileName }.toSet()
+        listOf(dir(noteId, false), dir(noteId, true)).forEach { folder ->
+            folder.listFiles { f -> f.isFile && f.name != MANIFEST && f.name != "$MANIFEST.tmp" && f.name !in keep }?.forEach { it.delete() }
+        }
+    }
+
     /**
      * Saves [pcm] as the audio for a section and returns its entry (READY). AAC when the phone can
      * encode it, WAV otherwise.
