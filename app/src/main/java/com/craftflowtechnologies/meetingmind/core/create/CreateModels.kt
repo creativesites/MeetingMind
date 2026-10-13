@@ -72,6 +72,10 @@ data class CreateDesign(
     val fontPair: CreateFontPair = CreateFontPair.CLASSIC,
     val centered: Boolean = true,
     val includeCompanion: Boolean = false,
+    /** The person's pose override (§5.3); null follows the vibe. Always re-checked against the policy. */
+    val companionPose: CreateMode? = null,
+    /** Where the companion sits (§5.2). */
+    val companionAnchor: CompanionAnchor = CompanionAnchor.BELOW,
     val watermark: Boolean = false,
     /** Relative text size, 0.7–1.4. */
     val textScale: Float = 1f

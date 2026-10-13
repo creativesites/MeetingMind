@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.core.app.ApplicationProvider
@@ -23,6 +24,10 @@ import com.craftflowtechnologies.meetingmind.core.create.CreateVibePolicy
 import com.craftflowtechnologies.meetingmind.core.create.ResolvedScripture
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onNodeWithText
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
 import org.junit.Test
@@ -67,6 +72,58 @@ class CreateScreenshotTest {
             }
         }
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/create/${name}_${if (dark) "dark" else "light"}.png")
+    }
+
+    // Z-22: the Design step with the companion on (pose chips, the suggestion line, anchor chips, the reveal settled).
+    private fun companionShot(name: String, dark: Boolean, source: CreateSourceKind, vibe: CreateVibe, design: CreateDesign = CreateDesign(includeCompanion = true)) {
+        val c = card(CreateFormat.STORY, vibe, design).copy(source = source)
+        val u = ui(c, CreateStep.DESIGN)
+        val allowed = com.craftflowtechnologies.meetingmind.core.create.CompanionPose.allowed(source, vibe)
+        val suggested = com.craftflowtechnologies.meetingmind.core.create.CompanionPose.suggested(source, vibe)
+        val mode = com.craftflowtechnologies.meetingmind.core.create.CompanionPose.effective(source, vibe, design.companionPose)
+        val bmp = com.craftflowtechnologies.meetingmind.core.ui.mm.companion.renderCompanionBitmap(
+            com.craftflowtechnologies.meetingmind.core.companion.CompanionForm.ZURI, mode,
+            com.craftflowtechnologies.meetingmind.ui.theme.companionPalette(com.craftflowtechnologies.meetingmind.ui.theme.MMAccent.Indigo.light, false),
+            com.craftflowtechnologies.meetingmind.core.create.CompanionPlacement.maxExportBitmapPx
+        ).asAndroidBitmap()
+        val preview = CreateCardRenderer.render(context, CreateRenderInput(c.text, u.scripture, c.format, c.design), 0.4f, bmp).asImageBitmap()
+        rule.setContent {
+            MeetMindTheme(darkTheme = dark) {
+                CreateStudioContent(
+                    u, preview, fits = true,
+                    companion = CompanionOffer("Zuri", mode.name, com.craftflowtechnologies.meetingmind.core.companion.CompanionForm.ZURI, mode, suggested, allowed,
+                        prayerRequest = source == CreateSourceKind.PRAYER, sacred = source.faith),
+                    actions = CreateActions.None
+                )
+            }
+        }
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/create/${name}_${if (dark) "dark" else "light"}.png")
+    }
+
+    @Test fun design_companion_quote_light() = companionShot("design_companion_quote", false, CreateSourceKind.VERSE, CreateVibe.PEACEFUL)
+    @Test fun design_companion_quote_dark() = companionShot("design_companion_quote", true, CreateSourceKind.VERSE, CreateVibe.PEACEFUL)
+    @Test fun design_companion_prayer_light() = companionShot("design_companion_prayer", false, CreateSourceKind.PRAYER, CreateVibe.PRAYERFUL)
+    @Test fun design_companion_prayer_dark() = companionShot("design_companion_prayer", true, CreateSourceKind.PRAYER, CreateVibe.PRAYERFUL)
+    @Test fun design_companion_win_light() = companionShot("design_companion_win", false, CreateSourceKind.ACHIEVEMENT, CreateVibe.CELEBRATORY,
+        CreateDesign(includeCompanion = true, companionPose = com.craftflowtechnologies.meetingmind.core.companion.CreateMode.JOYFUL, companionAnchor = com.craftflowtechnologies.meetingmind.core.create.CompanionAnchor.CORNER_END))
+    @Test fun design_companion_win_dark() = companionShot("design_companion_win", true, CreateSourceKind.ACHIEVEMENT, CreateVibe.CELEBRATORY,
+        CreateDesign(includeCompanion = true, companionPose = com.craftflowtechnologies.meetingmind.core.companion.CreateMode.JOYFUL, companionAnchor = com.craftflowtechnologies.meetingmind.core.create.CompanionAnchor.CORNER_END))
+
+    @Test fun `a prayer request offers only Prayerful and Peaceful chips, the others are hidden`() {
+        val c = card(CreateFormat.STORY, CreateVibe.PRAYERFUL, CreateDesign(includeCompanion = true)).copy(source = CreateSourceKind.PRAYER)
+        val allowed = com.craftflowtechnologies.meetingmind.core.create.CompanionPose.allowed(CreateSourceKind.PRAYER, CreateVibe.PRAYERFUL)
+        rule.setContent {
+            MeetMindTheme {
+                CreateStudioContent(ui(c, CreateStep.DESIGN), null, true,
+                    CompanionOffer("Zuri", "Prayerful", com.craftflowtechnologies.meetingmind.core.companion.CompanionForm.ZURI,
+                        com.craftflowtechnologies.meetingmind.core.companion.CreateMode.PRAYERFUL, com.craftflowtechnologies.meetingmind.core.companion.CreateMode.PRAYERFUL, allowed, prayerRequest = true, sacred = true),
+                    CreateActions.None)
+            }
+        }
+        rule.onNodeWithTag("pose_PRAYERFUL").assertExists()
+        rule.onNodeWithTag("pose_PEACEFUL").assertExists()
+        listOf("JOYFUL", "GRATEFUL", "REFLECTIVE", "CELEBRATORY").forEach { rule.onAllNodesWithTag("pose_$it").assertCountEquals(0) }
+        rule.onNodeWithText("On prayer requests, only Prayerful or Peaceful.").assertExists()
     }
 
     // Words step, story

@@ -109,7 +109,9 @@ class CreateViewModel(app: Application) : AndroidViewModel(app) {
     private val misc = MutableStateFlow(Misc())
     private val installed = MutableStateFlow(InstalledApps())
 
-    private var grief = false
+    /** The source note is tagged grief, funeral or memorial (from the seed): Peaceful only. */
+    var grief = false
+        private set
 
     val ui: StateFlow<CreateUi> = sessionFlow.flatMapLatest { s ->
         combine(s.card, s.scripture, s.working, misc, installed) { card, verse, working, m, apps ->
