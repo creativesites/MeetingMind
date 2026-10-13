@@ -29,6 +29,9 @@ import com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore
 import com.craftflowtechnologies.meetingmind.ai.voice.read.ScriptureLookup
 import com.craftflowtechnologies.meetingmind.ai.voice.read.ScriptureResolver
 import com.craftflowtechnologies.meetingmind.ai.voice.read.SectionVoice
+import com.craftflowtechnologies.meetingmind.ai.voice.read.smart.RewriteModel
+import com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ScriptStore
+import com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper
 import com.craftflowtechnologies.meetingmind.core.audio.PlaybackController
 import com.craftflowtechnologies.meetingmind.core.audio.QueueItem
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
@@ -132,6 +135,21 @@ class AndroidReadingHost(context: Context) : ReadingHost {
         engine = LocalSpeechEngine({ AndroidTtsClient(app) }, File(app.cacheDir, "read_to_me_tts").apply { mkdirs() }),
         locale = Locale.getDefault(), voiceName = settings.localVoice, rate = settings.pace, requireOffline = requireOffline
     )
+
+    override fun shaper(noteId: String, allowCloud: Boolean, passages: List<String>): SmartShaper {
+        val model = if (!allowCloud) null else {
+            val lm = com.craftflowtechnologies.meetingmind.ai.cloud.GeminiLanguageModel(
+                com.craftflowtechnologies.meetingmind.ai.cloud.GeminiHttpTransport(credentials),
+                systemInstruction = "You rewrite short passages from a person's notes so they sound natural read aloud. Follow the rules in the request exactly and reply with only the rewritten text."
+            )
+            val gate = CloudGate(true, { prefs.preferencesFlow.first().processingProfile })
+            RewriteModel { prompt ->
+                if (gate.blockedReason() != null) null
+                else (lm.generate(prompt, 1024) as? com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success)?.value
+            }
+        }
+        return SmartShaper(model, ScriptStore(store.scriptFile(noteId)), passages)
+    }
 
     override fun geminiVoice(settings: ReadToMeSettings, delivery: DeliverySpec, routeAllowsCloud: Boolean): SectionVoice {
         val gate = CloudGate(routeAllowsCloud, { prefs.preferencesFlow.first().processingProfile })

@@ -27,7 +27,9 @@ data class ReadToMeSettings(
     val readVerseNumbers: Boolean = false,
     val labelStyle: LabelStyle = LabelStyle.FULL,
     val announceTranslation: TranslationAnnouncement = TranslationAnnouncement.WHEN_CHANGED,
-    val pauseAfterQuestion: PauseAfterQuestion = PauseAfterQuestion.SHORT
+    val pauseAfterQuestion: PauseAfterQuestion = PauseAfterQuestion.SHORT,
+    /** Smart Read (smoother wording for listening) rather than Read Exactly. Scripture, quotes, prayers and personal writing are never reworded either way. */
+    val smartRead: Boolean = true
 ) {
     fun extractOptions() = ExtractOptions(readVerseNumbers, labelStyle, announceTranslation)
 }
@@ -58,7 +60,8 @@ class ReadToMeSettingsStore(context: Context) {
         readVerseNumbers = prefs.getBoolean("readVerseNumbers", false),
         labelStyle = enumOf("labelStyle", LabelStyle.FULL),
         announceTranslation = enumOf("announceTranslation", TranslationAnnouncement.WHEN_CHANGED),
-        pauseAfterQuestion = enumOf("pauseAfterQuestion", PauseAfterQuestion.SHORT)
+        pauseAfterQuestion = enumOf("pauseAfterQuestion", PauseAfterQuestion.SHORT),
+        smartRead = prefs.getBoolean("smartRead", true)
     )
 
     fun update(change: (ReadToMeSettings) -> ReadToMeSettings): ReadToMeSettings {
@@ -68,7 +71,7 @@ class ReadToMeSettingsStore(context: Context) {
             .putString("preset", s.preset.name).putInt("energy", s.energy).putFloat("pace", s.pace)
             .putString("geminiVoice", s.geminiVoice).putString("localVoice", s.localVoice)
             .putBoolean("readVerseNumbers", s.readVerseNumbers).putString("labelStyle", s.labelStyle.name)
-            .putString("announceTranslation", s.announceTranslation.name).putString("pauseAfterQuestion", s.pauseAfterQuestion.name)
+            .putString("announceTranslation", s.announceTranslation.name).putString("pauseAfterQuestion", s.pauseAfterQuestion.name).putBoolean("smartRead", s.smartRead)
             .apply()
         return s
     }

@@ -59,6 +59,11 @@ private class CHost(
     override fun settings() = settings
     override fun updateSettings(change: (ReadToMeSettings) -> ReadToMeSettings): ReadToMeSettings { settings = change(settings); return settings }
     override fun localVoice(settings: ReadToMeSettings, requireOffline: Boolean): SectionVoice { localOffline = requireOffline; return local }
+    var shaperAllowCloud: Boolean? = null
+    override fun shaper(noteId: String, allowCloud: Boolean, passages: List<String>): com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper {
+        shaperAllowCloud = allowCloud
+        return com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper(null, com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ScriptStore(store.scriptFile(noteId)), passages)
+    }
     override fun geminiVoice(settings: ReadToMeSettings, delivery: DeliverySpec, routeAllowsCloud: Boolean): SectionVoice { geminiCreatedWithCloudAllowed = routeAllowsCloud; return gemini }
 }
 
@@ -223,5 +228,33 @@ class ReadingCoordinatorTest {
         val done = coordinator.state.value as ReadingUiState.Finished
         assertEquals(SpeechProvider.LOCAL, done.provider)
         assertEquals(listOf("h1", "h2"), host.local.made)
+    }
+
+    @Test fun `Smart Read may use a text model only where the cloud is allowed`() = scope.runTest {
+        go { coordinator.start("n1") }
+        assertEquals(true, host.shaperAllowCloud)
+        host.shaperAllowCloud = null
+        host.env = online.copy(profile = ProcessingProfile.OFFLINE)
+        go { coordinator.start("n1") }
+        assertEquals(false, host.shaperAllowCloud)
+        host.shaperAllowCloud = null
+        host.env = online
+        host.note = loaded(facts.copy(notePrivate = true))
+        go { coordinator.start("n1") }
+        assertEquals(false, host.shaperAllowCloud)
+    }
+
+    @Test fun `Read Exactly never builds the wording step`() = scope.runTest {
+        host.settings = host.settings.copy(smartRead = false)
+        host.shaperAllowCloud = null
+        go { coordinator.start("n1") }
+        assertEquals(null, host.shaperAllowCloud)
+        assertEquals("exact", host.store.load("n1")!!.mode)
+    }
+
+    @Test fun `phone voice choice with disclosure not accepted keeps Smart Read off the cloud`() = scope.runTest {
+        host.settings = host.settings.copy(disclosureAccepted = false, prefersLocal = true)
+        go { coordinator.start("n1") }
+        assertEquals(false, host.shaperAllowCloud)
     }
 }

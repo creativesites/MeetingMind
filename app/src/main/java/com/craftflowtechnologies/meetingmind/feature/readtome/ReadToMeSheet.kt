@@ -119,6 +119,7 @@ fun ReadToMeSheet(noteId: String, onDismiss: () -> Unit) {
                     StatusLine(StatusKind.Info, "Playing with ${if (shown.provider == SpeechProvider.GEMINI) "the Gemini voice" else "your phone's voice"}. The player at the bottom has the controls.")
                     if (shown.switchedToPhone) StatusLine(StatusKind.Warning, "Part of this reading uses your phone's voice because you switched.")
                     shown.note?.let { StatusLine(StatusKind.Info, it) }
+                    ChangesSection(noteId)
                     PrimaryButton("Done", onClick = { coordinator.dismiss(); onDismiss() }, modifier = Modifier.fillMaxWidth())
                 }
                 is ReadingUiState.NeedsChoice -> {
@@ -205,6 +206,17 @@ private fun SetupContent(
     }
     if (offer.skippedCount > 0) Text("${offer.skippedCount} items such as images or embeds aren't read.", style = MM.type.caption, color = MM.colors.inkMuted)
 
+    Text("Wording", style = MM.type.bodyStrong, color = MM.colors.ink)
+    SegmentedControl(listOf("Smart Read", "Read Exactly"), if (settings.smartRead) 0 else 1, { i -> change { it.copy(smartRead = i == 0) } })
+    Text(
+        when {
+            !settings.smartRead -> "Reads your words exactly as written."
+            provider == SpeechProvider.GEMINI && settings.disclosureAccepted -> "Smoother wording for listening. Scripture, quotes, transcripts and your own prayers and notes are never reworded."
+            else -> "Smoother wording for listening. Without the Gemini voice it only spells out shorthand such as “e.g.”. Scripture, quotes and your own writing are never reworded."
+        },
+        style = MM.type.caption, color = MM.colors.inkMuted
+    )
+
     if (offer.sections.size > 1) {
         Text("Start from", style = MM.type.bodyStrong, color = MM.colors.ink)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
@@ -237,4 +249,27 @@ private fun SetupContent(
 
     PrimaryButton("Listen", onClick = { onStart(false) }, modifier = Modifier.fillMaxWidth())
     if (offer.hasSavedPlace) TextAction("Continue where I left off", onClick = { onStart(true) })
+}
+
+/** "See what changed": what Smart Read did to the wording, and anything it left as written and why. */
+@Composable
+private fun ChangesSection(noteId: String) {
+    val context = LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    val changes = remember(noteId) { com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ScriptStore(com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore.get(context).scriptFile(noteId)).all() }
+    val shown = changes.filter { it.kind != com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ChangeKind.AS_WRITTEN || it.reason != null }
+    if (shown.isEmpty()) return
+    val reworded = shown.count { it.kind != com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ChangeKind.AS_WRITTEN }
+    TextAction(if (open) "Hide what changed" else "See what changed ($reworded reworded, ${shown.size - reworded} read as written)", onClick = { open = !open })
+    if (open) Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+        shown.forEach { c ->
+            val asWritten = c.kind == com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ChangeKind.AS_WRITTEN
+            Text(
+                if (asWritten) "Read as written${c.reason?.let { " ($it)" }.orEmpty()}" else if (c.kind == com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ChangeKind.SPOKEN_FORM) "Spelled out" else "Reworded",
+                style = MM.type.caption, color = MM.colors.accent
+            )
+            Text("Your words: ${c.before}", style = MM.type.secondary, color = MM.colors.inkSecondary)
+            if (!asWritten) Text("Read as: ${c.after}", style = MM.type.secondary, color = MM.colors.ink)
+        }
+    }
 }

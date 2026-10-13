@@ -122,6 +122,9 @@ class ReadingStore(
     private fun dir(noteId: String, ephemeral: Boolean) = File(if (ephemeral) ephemeralRoot else persistentRoot, safe(noteId))
     private fun manifestFile(noteId: String) = File(dir(noteId, false), MANIFEST)
 
+    /** Where Smart Read keeps the rewrites it has made for the note. */
+    fun scriptFile(noteId: String) = File(dir(noteId, false), SCRIPT)
+
     fun load(noteId: String): ReadingManifest? {
         val file = manifestFile(noteId)
         if (!file.exists()) return null
@@ -152,7 +155,7 @@ class ReadingStore(
         val manifest = load(noteId) ?: return
         val keep = manifest.sections.mapNotNull { it.fileName }.toSet()
         listOf(dir(noteId, false), dir(noteId, true)).forEach { folder ->
-            folder.listFiles { f -> f.isFile && f.name != MANIFEST && f.name != "$MANIFEST.tmp" && f.name !in keep }?.forEach { it.delete() }
+            folder.listFiles { f -> f.isFile && f.name != MANIFEST && f.name != "$MANIFEST.tmp" && f.name != SCRIPT && f.name != "$SCRIPT.tmp" && f.name !in keep }?.forEach { it.delete() }
         }
     }
 
@@ -235,6 +238,7 @@ class ReadingStore(
 
     companion object {
         private const val MANIFEST = "manifest.json"
+        private const val SCRIPT = "script.json"
         const val MAX_BYTES = 200L * 1024 * 1024
         const val EPHEMERAL_TTL_MS = 24L * 60 * 60 * 1000
         const val ID_PREFIX = "read:"

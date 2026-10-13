@@ -32,6 +32,8 @@ interface ReadingHost {
     fun localVoice(settings: ReadToMeSettings, requireOffline: Boolean): SectionVoice
     /** The Gemini voice; every request is checked again against [routeAllowsCloud] and the live settings. */
     fun geminiVoice(settings: ReadToMeSettings, delivery: DeliverySpec, routeAllowsCloud: Boolean): SectionVoice
+    /** Smart Read's wording step for [noteId]'s reading; [allowCloud] says whether a text model may be used at all. */
+    fun shaper(noteId: String, allowCloud: Boolean, passages: List<String>): com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper
 }
 
 sealed interface ReadingUiState {
@@ -193,9 +195,18 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
                 val source = ReadingPlan.fromSection(prepared.source, request.startSectionId)
                 val parts = ReadingPlan.parts(source, settings.pauseAfterQuestion == PauseAfterQuestion.UNTIL_RESUME)
                 val delivery = DeliveryResolver.resolve(settings, note.space)
+                // Smart Read may use a text model only where the same rules allow the cloud: licensed Bible text is never
+                // sent (it is locked), so it alone doesn't stop the rewrite of the plain prose around it.
+                val smart = settings.smartRead
+                val cloudRewrite = smart && settings.disclosureAccepted && !settings.prefersLocal && env.profile == ProcessingProfile.INTERNET &&
+                    env.geminiConfigured && env.entitled && (prepared.decision.cloudBlocks - CloudBlock.LICENSED_SCRIPTURE).isEmpty()
+                val shaper = if (smart) host.shaper(request.noteId, cloudRewrite, source.sections.flatMap { it.units }.filter { it.role == SpeechRole.SCRIPTURE && !it.unavailable }.map { it.text }) else null
+                val shapeFn: (suspend (SpeechSection) -> SpeechSection)? = if (shaper == null) null else { part -> shaper.shape(part) }
                 val plan = ReadPlan(
-                    noteId = request.noteId, parts = parts, mode = MODE_EXACT, delivery = delivery, language = note.language,
-                    genericTitle = note.facts.genericTitle, ephemeral = prepared.decision.ephemeralAudio, settings = settings
+                    noteId = request.noteId, parts = parts, mode = if (smart) MODE_SMART else MODE_EXACT, delivery = delivery, language = note.language,
+                    genericTitle = note.facts.genericTitle, ephemeral = prepared.decision.ephemeralAudio, settings = settings,
+                    shape = shapeFn,
+                    scriptVersion = if (smart) com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper.SCRIPT_VERSION else 1
                 )
                 val voice = if (prepared.decision.provider == SpeechProvider.GEMINI) host.geminiVoice(settings, delivery, prepared.decision.cloudAllowed)
                 else host.localVoice(settings, requireOffline = mustStayOffline(env, note.facts))
@@ -245,5 +256,6 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
 
     companion object {
         const val MODE_EXACT = "exact"
+        const val MODE_SMART = "smart"
     }
 }

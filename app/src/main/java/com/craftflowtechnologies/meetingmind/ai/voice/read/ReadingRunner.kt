@@ -49,7 +49,10 @@ data class ReadPlan(
     val genericTitle: Boolean,
     /** Audio of licensed text: kept briefly, outside backups. */
     val ephemeral: Boolean,
-    val settings: ReadToMeSettings
+    val settings: ReadToMeSettings,
+    /** Smart Read: shapes a part's wording just before it is spoken. Null for Read Exactly, which never changes a word. */
+    val shape: (suspend (SpeechSection) -> SpeechSection)? = null,
+    val scriptVersion: Int = 1
 )
 
 data class ResumeTarget(val partIndex: Int, val positionMs: Long)
@@ -79,7 +82,7 @@ class ReadingRunner(private val store: ReadingStore, private val player: ReadPla
         onPartProgress: (Float) -> Unit = {}
     ): RunOutcome {
         val total = plan.parts.size
-        val settings = FingerprintSettings(plan.mode, voice.provider, voice.fingerprintModel, voice.voiceId, plan.delivery.canonical(), plan.language)
+        val settings = FingerprintSettings(plan.mode, voice.provider, voice.fingerprintModel, voice.voiceId, plan.delivery.canonical(), plan.language, plan.scriptVersion)
         val previous = store.load(plan.noteId)
         val entries = LinkedHashMap<String, SectionEntry>()
         previous?.sections?.forEach { if (it.status == SectionStatus.READY) entries[it.sectionId] = it }
@@ -119,7 +122,7 @@ class ReadingRunner(private val store: ReadingStore, private val player: ReadPla
                 val part = plan.parts[i]
                 val entry = fresh(i) ?: run {
                     onProgress(i, total)
-                    when (val r = voice.synthesize(part.id, fingerprints[i], ReadingPlan.chunks(part, plan.settings), onPartProgress)) {
+                    when (val r = voice.synthesize(part.id, fingerprints[i], ReadingPlan.chunks(plan.shape?.invoke(part) ?: part, plan.settings), onPartProgress)) {
                         is VoiceResult.Failed -> {
                             entries[part.id] = SectionEntry(part.id, titleOf(plan, part), fingerprints[i], SectionStatus.FAILED, blockIds = part.blockIds, references = part.references, error = r.message)
                             save(model)
