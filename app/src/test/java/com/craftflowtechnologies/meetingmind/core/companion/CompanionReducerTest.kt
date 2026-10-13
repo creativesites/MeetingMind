@@ -12,7 +12,6 @@ import com.craftflowtechnologies.meetingmind.core.model.ProcessingStage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -176,22 +175,21 @@ class CompanionReducerTest {
         assertEquals(CompanionUiState(), run(CompanionEvent.RetryTapped))
     }
 
-    @Test fun `first ever note gets the full celebration once`() {
+    @Test fun `first ever note celebrates in the slot but leaves the peak to the planner`() {
         val s = run(NoteReady("a", isFirstEver = true))
         assertEquals(OneShotKind.CELEBRATING, s.oneShot?.kind)
         assertEquals(CompanionState.CELEBRATING, s.visual)
-        assertFalse(ledger.allows(Moment.FirstRecordingPeak, LocalClock(nowMs)))
+        // MomentPlanner records the First Keep when the note is opened: no double counting (Z-26).
+        assertTrue(ledger.allows(Moment.FirstRecordingPeak, LocalClock(nowMs)))
     }
 
-    @Test fun `the full celebration is once a day, later notes nod`() {
+    @Test fun `later notes nod in the slot and spend no cap`() {
         val first = run(NoteReady("a", isFirstEver = false))
-        assertEquals(OneShotKind.CELEBRATING, first.oneShot?.kind)
+        assertEquals(OneShotKind.NOD, first.oneShot?.kind)
         nowMs += 5_000
         val second = run(NoteReady("b", isFirstEver = false), from = first.copy(oneShot = null))
         assertEquals(OneShotKind.NOD, second.oneShot?.kind)
-        nowMs += LocalClock.DayMs
-        val tomorrow = run(NoteReady("c", isFirstEver = false), from = second.copy(oneShot = null))
-        assertEquals(OneShotKind.CELEBRATING, tomorrow.oneShot?.kind)
+        assertEquals(MomentLedger(), ledger)
     }
 
     @Test fun `nothing celebrates on sensitive notes or on Good Friday`() {

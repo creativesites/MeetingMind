@@ -52,6 +52,8 @@ interface CompanionSettingsSource {
     suspend fun setOnRecordButton(on: Boolean)
     suspend fun setQuietSermons(on: Boolean)
     suspend fun setCreateSuggest(on: Boolean)
+    /** The First Keep chime switch ("Sounds", Advanced). A no-op for sources that don't store it. */
+    suspend fun setSounds(on: Boolean) {}
 }
 
 /**
@@ -80,7 +82,8 @@ class CompanionSettingsStore(
             onRecordButton = p[OnRecordButton] ?: defaults.onRecordButton,
             quietSermons = p[QuietSermons] ?: defaults.quietSermons,
             createSuggest = p[CreateSuggest] ?: defaults.createSuggest,
-            seasonal = p[Seasonal] ?: defaults.seasonal
+            seasonal = p[Seasonal] ?: defaults.seasonal,
+            sounds = p[Sounds] ?: defaults.sounds
         )
     }
 
@@ -104,6 +107,7 @@ class CompanionSettingsStore(
     override suspend fun setOnRecordButton(on: Boolean) { store.edit { it[OnRecordButton] = on } }
     override suspend fun setQuietSermons(on: Boolean) { store.edit { it[QuietSermons] = on } }
     override suspend fun setCreateSuggest(on: Boolean) { store.edit { it[CreateSuggest] = on } }
+    override suspend fun setSounds(on: Boolean) { store.edit { it[Sounds] = on } }
 
     private companion object {
         val Form = stringPreferencesKey("companion.form")
@@ -114,5 +118,6 @@ class CompanionSettingsStore(
         val QuietSermons = booleanPreferencesKey("companion.quietSermons")
         val CreateSuggest = booleanPreferencesKey("companion.createSuggest")
         val Seasonal = booleanPreferencesKey("companion.seasonal")
+        val Sounds = booleanPreferencesKey("companion.sounds")
     }
 }

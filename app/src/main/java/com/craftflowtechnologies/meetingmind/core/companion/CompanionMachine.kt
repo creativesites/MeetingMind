@@ -122,18 +122,12 @@ object CompanionReducer {
             is CompanionEvent.NoteReady -> {
                 val cleared = s.copy(processing = false, retrying = false, caption = null, failure = null)
                 val celebrationAllowed = canOneShot && !event.sensitive && !ctx.goodFriday
+                // The note's big moment (First Keep, Unveil, nod) plays on the note screen, planned by
+                // MomentPlanner when the note is opened, which owns and records those caps (signature
+                // moments §3.3, §8). Here the slot only reacts, and records nothing, so nothing is counted twice.
                 val shot = when {
                     !celebrationAllowed -> null
-                    event.isFirstEver && ctx.ledger.allows(Moment.FirstRecordingPeak, ctx.clock) -> {
-                        moments += Moment.FirstRecordingPeak
-                        moments += Moment.FullCelebration
-                        OneShotKind.CELEBRATING
-                    }
-                    s.retrying -> OneShotKind.NOD
-                    ctx.ledger.allows(Moment.FullCelebration, ctx.clock) -> {
-                        moments += Moment.FullCelebration
-                        OneShotKind.CELEBRATING
-                    }
+                    event.isFirstEver && !s.retrying && ctx.ledger.allows(Moment.FirstRecordingPeak, ctx.clock) -> OneShotKind.CELEBRATING
                     else -> OneShotKind.NOD
                 }
                 cleared.copy(oneShot = shot?.let(::oneShot) ?: cleared.oneShot)

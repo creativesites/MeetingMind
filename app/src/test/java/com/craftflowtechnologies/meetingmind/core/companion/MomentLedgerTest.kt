@@ -55,4 +55,45 @@ class MomentLedgerTest {
         assertEquals(15, LocalClock(noon, 3 * hour).hourOfDay)
         assertEquals(7, LocalClock(noon, -5 * hour).hourOfDay)
     }
+
+    @Test fun `daily budget - two a day, three hours apart`() {
+        val u = Moment.Unveil
+        var l = MomentLedger()
+        assertTrue(l.allows(u, LocalClock(noon)))
+        l = l.record(u, LocalClock(noon - 6 * hour))
+        assertTrue(l.allows(u, LocalClock(noon - 3 * hour)))
+        assertFalse(l.allows(u, LocalClock(noon - 3 * hour - 1)))
+        l = l.record(u, LocalClock(noon - 3 * hour))
+        assertFalse("two today already", l.allows(u, LocalClock(noon + 5 * hour)))
+        assertEquals(listOf(noon - 6 * hour, noon - 3 * hour), l.history[u.key])
+    }
+
+    @Test fun `daily budget - rolls over at local midnight and keeps only the last two`() {
+        val u = Moment.Unveil
+        val l = MomentLedger().record(u, LocalClock(noon + 9 * hour)).record(u, LocalClock(noon + 11 * hour + 30 * 60_000))
+        // 23:30 UTC; the next local day starts at 00:00, but the 3 h gap still holds until 02:30.
+        assertFalse(l.allows(u, LocalClock(noon + 13 * hour)))
+        assertTrue(l.allows(u, LocalClock(noon + 14 * hour + 30 * 60_000)))
+        val three = l.record(u, LocalClock(noon + 15 * hour))
+        assertEquals(2, three.history[u.key]!!.size)
+        // UTC+3: 21:00 UTC is 00:00 local, the first play of that local day; 3 h later there is room for one more.
+        val east = MomentLedger().record(u, LocalClock(noon + 9 * hour, 3 * hour))
+        assertTrue(east.allows(u, LocalClock(noon + 12 * hour, 3 * hour)))
+    }
+
+    @Test fun `daily budget - a ledger with only the last time still works`() {
+        val u = Moment.Unveil
+        val legacy = MomentLedger(last = mapOf(u.key to noon - hour))
+        assertFalse(legacy.allows(u, LocalClock(noon)))
+        assertTrue(legacy.allows(u, LocalClock(noon + 2 * hour)))
+        assertEquals(listOf(noon - hour, noon + 2 * hour), legacy.record(u, LocalClock(noon + 2 * hour)).history[u.key])
+    }
+
+    @Test fun `the hello first keep has its own key`() {
+        val l = MomentLedger().record(Moment.FirstKeepHello, LocalClock(noon))
+        assertFalse(l.allows(Moment.FirstKeepHello, LocalClock(noon + 400 * day)))
+        assertTrue(l.allows(Moment.FirstRecordingPeak, LocalClock(noon)))
+        assertEquals("peak.first.hello", Moment.FirstKeepHello.key)
+        assertEquals("unveil", Moment.Unveil.key)
+    }
 }

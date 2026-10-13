@@ -125,5 +125,10 @@ data class CompanionSettings(
     val onRecordButton: Boolean = false,
     val quietSermons: Boolean = true,
     val createSuggest: Boolean = false,
-    val seasonal: Boolean = true
+    val seasonal: Boolean = true,
+    /**
+     * Settings → Companion → Advanced → "Sounds" (signature moments §2.5): the First Keep chime, on by
+     * default. The only sound any moment makes.
+     */
+    val sounds: Boolean = true
 )

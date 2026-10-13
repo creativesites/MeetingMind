@@ -28,4 +28,19 @@ object CompanionFlags {
      * `assets/companion/` renders through Rive; otherwise everything renders on Canvas.
      */
     const val rive: Boolean = true
+
+    /**
+     * Signature moments, founder decision 9 (2026-10-12): the First Keep plays on every successful note
+     * that arrives (its ticket is consumed), quiet in Faith or for a sermon. While on, the daily Unveil
+     * budget and the back-to-back guard don't apply to arrivals. The chime still plays only on the two
+     * once-ever First Keeps. Off restores the §3.3 ladder (the First Keep once ever, Unveils rationed).
+     */
+    const val firstKeepEveryNote: Boolean = true
+
+    /**
+     * Signature moments, founder decision 10 (2026-10-12): every fresh open of a note (a new navigation
+     * entry, see `OpenSession`) gets the next Unveil rotation variant, with no daily budget. Off restores
+     * the ticket rule: a note is unveiled once, on its first open within 24 h, within `Cap.DailyBudget(2, 3 h)`.
+     */
+    const val unveilOnEveryOpen: Boolean = true
 }
