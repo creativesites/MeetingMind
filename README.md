@@ -1,7 +1,7 @@
 # MeetingMind dev build
 
-****MeetingMind-Dev-0c91d9d-arm64-v8a.apk**: "MeetingMind Dev" built from commit `0c91d9d` on `ccr-5dc13c30-a5eqgv` (includes the Zuri companion moments, the notes polish, recording markers and Read to Me through Stage D). Not yet tested on a device.
-(arm64-v8a, 70 MB). It installs beside the tester app (`com.craftflowtechnologies.meetingmind.dev`) and keeps its own data.
+**MeetingMind-Dev-0c91d9d-arm64-v8a.apk**: "MeetingMind Dev" built from commit `0c91d9d` on `ccr-5dc13c30-a5eqgv` (includes the Zuri companion moments, the notes polish, recording markers and Read to Me through Stage D). Not yet tested on a device.
+(arm64-v8a, 69 MB; the armeabi-v7a build is not on this branch). It installs beside the tester app (`com.craftflowtechnologies.meetingmind.dev`) and keeps its own data.
 
 New in this build:
 - **Devotionals never empty:** Morning and Evening and Faith's Checkbook are bundled; a reading fills today with no network. The day is written at 00:01.
