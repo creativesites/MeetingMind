@@ -107,6 +107,8 @@ import com.craftflowtechnologies.meetingmind.feature.today.home.BentoActions
 import com.craftflowtechnologies.meetingmind.feature.today.home.BentoData
 import com.craftflowtechnologies.meetingmind.feature.today.home.HomeBento
 import com.craftflowtechnologies.meetingmind.feature.today.home.HomeSections
+import com.craftflowtechnologies.meetingmind.feature.today.home.StoryCardData
+import com.craftflowtechnologies.meetingmind.feature.today.home.StoryCards
 import com.craftflowtechnologies.meetingmind.feature.today.home.PlanLine
 import java.util.Date
 
@@ -230,7 +232,6 @@ fun TodayScreen(
     val bentoFmt = timeFormat()
     val bentoData = BentoData(
         weekCount = stats.weekCount,
-        weekLabel = stats.weekLabel,
         devotionalTitle = devotional?.devotional?.title ?: "A word for your day",
         devotionalSub = devotional?.devotional?.scripture?.firstOrNull()?.display() ?: "Scripture, a reflection and a prayer",
         devotionalNew = !devOpened,
@@ -350,8 +351,33 @@ fun TodayScreen(
                 }
             }
 
-            if (storyKinds.isNotEmpty() && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.STORIES)) item(key = "stories") {
-                StoryRings(storyKinds, onOpenStories)
+            // Stories from today: three shareable cards drawn from the devotional.
+            val dev = devotional?.devotional
+            if (dev != null && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.STORIES)) item(key = "stories") {
+                val cards = listOf(
+                    StoryCardData(
+                        reference = dev.scripture.firstOrNull()?.display() ?: "Today",
+                        headline = dev.keyText ?: dev.title,
+                        body = dev.reflection.firstOrNull().orEmpty(),
+                        caption = dev.title,
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.DEVOTIONAL) }
+                    ),
+                    StoryCardData(
+                        reference = "Reflection",
+                        headline = dev.liveItToday ?: "One thing to do today",
+                        body = dev.reflection.getOrNull(1).orEmpty(),
+                        caption = "Live it today",
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.WORD) }
+                    ),
+                    StoryCardData(
+                        reference = "Prayer",
+                        headline = dev.prayer ?: "Lord, shape this day",
+                        body = dev.question.orEmpty(),
+                        caption = dev.insight?.author ?: "Prayer",
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.PRAYER) }
+                    )
+                )
+                StoryCards(cards, onShareAll = { onOpenStories(null) }, modifier = Modifier.padding(top = 20.dp))
             }
 
             // Calendar controls.

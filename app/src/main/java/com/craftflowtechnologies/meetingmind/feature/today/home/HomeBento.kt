@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -22,6 +23,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -62,12 +66,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.feature.today.InterFamily
 import com.craftflowtechnologies.meetingmind.feature.today.OutfitFamily
-import com.craftflowtechnologies.meetingmind.ui.theme.BentoColors
-import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
-import com.craftflowtechnologies.meetingmind.ui.theme.Ink
-import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
-import com.craftflowtechnologies.meetingmind.ui.theme.Line
-import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import kotlinx.coroutines.delay
 
 /** One line of "Today's plan": a scheduled item, opened on tap. */
@@ -76,7 +74,6 @@ data class PlanLine(val title: String, val time: String, val onOpen: () -> Unit)
 /** What the bento shows. Everything here comes from data Home already loads; nothing is invented. */
 data class BentoData(
     val weekCount: Int,
-    val weekLabel: String,
     val devotionalTitle: String,
     val devotionalSub: String,
     val devotionalNew: Boolean,
@@ -97,6 +94,10 @@ data class BentoActions(
     val onNextUp: () -> Unit,
     val onJournal: () -> Unit
 )
+
+private val Ink = Color(0xFF1C1F2A)
+private val InkSoft = Color(0xFF4A4560)
+private val Paper = Color(0xFFFFFFFF)
 
 /**
  * The Today home's tiles, laid out for the person's spaces: all three (faith, work, personal),
@@ -146,58 +147,58 @@ private fun CreateAndCircles(onCreate: () -> Unit, onCircles: () -> Unit, index:
 
 @Composable
 private fun FaithTile(data: BentoData, onClick: () -> Unit, index: Int) {
-    SceneTile(index, SunriseScene, height = 196.dp, scrim = BentoColors.Paper.copy(alpha = 0.6f), tag = "bento_faith", onClick = onClick) {
-        TileHeader(Icons.Filled.Church, "Faith", BentoColors.Ink)
+    val days = data.weekCount.coerceIn(0, 7)
+    SceneTile(index, SunriseScene, height = 196.dp, scrim = Paper.copy(alpha = 0.6f), tag = "bento_faith", onClick = onClick) {
+        TileHeader(Icons.Filled.Church, "Faith", Ink)
+        Text("$days of 7 days kept this week", color = InkSoft, fontFamily = InterFamily, fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp))
+        SegmentBar(days / 7f, Color(0xFF6D5FD0), Color(0xFF6D5FD0).copy(alpha = 0.18f), modifier = Modifier.padding(top = 10.dp))
         Spacer(Modifier.weight(1f))
-        Text("Your week in faith", color = BentoColors.Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
-        Text(data.weekLabel, color = BentoColors.InkSoft, fontFamily = InterFamily, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
-        SegmentBar(data.weekCount / 7f, BentoColors.Violet, BentoColors.Violet.copy(alpha = 0.18f))
     }
 }
 
 @Composable
 private fun DevotionalTile(data: BentoData, onClick: () -> Unit, index: Int, modifier: Modifier = Modifier) {
-    SceneTile(index, PaperLightScene, height = 208.dp, scrim = BentoColors.Paper.copy(alpha = 0.45f), tag = "bento_devotional", onClick = onClick, modifier = modifier) {
-        TileHeader(Icons.Filled.MenuBook, "Devotional", BentoColors.GoldInk)
+    SceneTile(index, PaperLightScene, height = 208.dp, scrim = Paper.copy(alpha = 0.45f), tag = "bento_devotional", onClick = onClick, modifier = modifier) {
+        TileHeader(Icons.Filled.MenuBook, "Devotional", Color(0xFF7A4F24))
         Spacer(Modifier.weight(1f))
-        Text(data.devotionalTitle, color = BentoColors.Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(data.devotionalSub, color = BentoColors.GoldText, fontFamily = InterFamily, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
-        Pill(if (data.devotionalNew) "New" else "Read", FixedWhite, BentoColors.GoldPill, Modifier.padding(top = 10.dp))
+        Text(data.devotionalTitle, color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(data.devotionalSub, color = Color(0xFF6B5A44), fontFamily = InterFamily, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
+        Pill(if (data.devotionalNew) "New" else "Read", Color.White, Color(0xFF5B3F1F), Modifier.padding(top = 10.dp))
     }
 }
 
 @Composable
 private fun PrayerTile(onClick: () -> Unit, index: Int, modifier: Modifier = Modifier) {
-    val light = FixedWhite
-    SceneTile(index, NightPrayerScene, height = 208.dp, scrim = BentoColors.PrayerScrim.copy(alpha = 0.5f), tag = "bento_prayer", onClick = onClick, modifier = modifier) {
+    val light = Color.White
+    SceneTile(index, NightPrayerScene, height = 208.dp, scrim = Color(0xFF1C1A44).copy(alpha = 0.5f), tag = "bento_prayer", onClick = onClick, modifier = modifier) {
         TileHeader(Icons.Filled.Favorite, "Prayer", light)
         Spacer(Modifier.weight(1f))
         Text("Pray with me", color = light, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
         Text("Requests and answers", color = light.copy(alpha = 0.8f), fontFamily = InterFamily, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
-        Pill("Pray now", FixedWhite.copy(alpha = 0.2f), light, Modifier.padding(top = 10.dp))
+        Pill("Pray now", Color.White.copy(alpha = 0.2f), light, Modifier.padding(top = 10.dp))
     }
 }
 
 @Composable
 private fun CreateTile(onClick: () -> Unit, index: Int, modifier: Modifier = Modifier) {
-    SceneTile(index, WatercolorScene, height = 182.dp, scrim = BentoColors.Paper.copy(alpha = 0.5f), tag = "bento_create", onClick = onClick, modifier = modifier) {
-        TileHeader(Icons.Filled.Palette, "Create", BentoColors.ClayInk)
+    SceneTile(index, WatercolorScene, height = 182.dp, scrim = Paper.copy(alpha = 0.5f), tag = "bento_create", onClick = onClick, modifier = modifier) {
+        TileHeader(Icons.Filled.Palette, "Create", Color(0xFF7A4F3A))
         Spacer(Modifier.weight(1f))
-        Text("Start a card", color = BentoColors.Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-        Text("Share what you're learning", color = BentoColors.ClayText, fontFamily = InterFamily, fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.padding(top = 2.dp))
+        Text("Start a card", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+        Text("Share what you're learning", color = Color(0xFF5D5249), fontFamily = InterFamily, fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.padding(top = 2.dp))
     }
 }
 
 @Composable
 private fun CircleTile(onClick: () -> Unit, index: Int, modifier: Modifier = Modifier) {
-    SceneTile(index, CircleRingsScene, height = 182.dp, scrim = BentoColors.Paper.copy(alpha = 0.5f), tag = "bento_circles", onClick = onClick, modifier = modifier) {
-        TileHeader(Icons.Filled.Groups, "Circles", BentoColors.TealInk)
+    SceneTile(index, CircleRingsScene, height = 182.dp, scrim = Paper.copy(alpha = 0.5f), tag = "bento_circles", onClick = onClick, modifier = modifier) {
+        TileHeader(Icons.Filled.Groups, "Circles", Color(0xFF2F6F6A))
         Spacer(Modifier.weight(1f))
-        Text("Your circles", color = BentoColors.Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-        Text("Share and pray together", color = BentoColors.TealText, fontFamily = InterFamily, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp))
+        Text("Your circles", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+        Text("Share and pray together", color = Color(0xFF355E5A), fontFamily = InterFamily, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp))
         Row {
-            listOf(BentoColors.CircleGold, BentoColors.CircleLilac, BentoColors.CircleMint).forEach { c ->
-                Box(Modifier.size(26.dp).clip(CircleShape).background(c).border(2.dp, BentoColors.Paper, CircleShape))
+            listOf(Color(0xFFF5C86B), Color(0xFFC9BDE6), Color(0xFF9FD1C9)).forEach { c ->
+                Box(Modifier.size(26.dp).clip(CircleShape).background(c).border(2.dp, Paper, CircleShape))
                 Spacer(Modifier.width(4.dp))
             }
         }
@@ -207,12 +208,12 @@ private fun CircleTile(onClick: () -> Unit, index: Int, modifier: Modifier = Mod
 @Composable
 private fun WorkTile(data: BentoData, onClick: () -> Unit, index: Int) {
     SceneTile(index, WorkGridScene, height = 150.dp, scrim = Color.Transparent, tag = "bento_work", onClick = onClick) {
-        TileHeader(Icons.Filled.Work, "Work & projects", BentoColors.IndigoInk)
+        TileHeader(Icons.Filled.Work, "Work & projects", Color(0xFF3F3A74))
         Spacer(Modifier.weight(1f))
-        Text("Executive pulse", color = BentoColors.Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
+        Text("Executive pulse", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
         Text(
             if (data.todayCount == 0) "Nothing on your calendar today" else "${data.todayCount} on your calendar today",
-            color = BentoColors.InkSoft, fontFamily = InterFamily, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp).fillMaxWidth(0.6f)
+            color = InkSoft, fontFamily = InterFamily, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp).fillMaxWidth(0.6f)
         )
     }
 }
@@ -220,14 +221,14 @@ private fun WorkTile(data: BentoData, onClick: () -> Unit, index: Int) {
 @Composable
 private fun EveningTile(data: BentoData, onClick: () -> Unit, index: Int) {
     SceneTile(index, WindowHomeScene, height = 176.dp, scrim = Color.Transparent, tag = "bento_evening", onClick = onClick) {
-        TileHeader(Icons.Filled.Home, "Personal", BentoColors.BrownInk)
+        TileHeader(Icons.Filled.Home, "Personal", Color(0xFF6B4A3A))
         Spacer(Modifier.weight(1f))
         Column(Modifier.fillMaxWidth(0.6f)) {
-            Text(data.nextTitle, color = BentoColors.Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, lineHeight = 23.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(data.nextWhen, color = BentoColors.BrownText, fontFamily = InterFamily, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
+            Text(data.nextTitle, color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, lineHeight = 23.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(data.nextWhen, color = Color(0xFF6B5A4E), fontFamily = InterFamily, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
             Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Plan my day", color = BentoColors.Violet, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = BentoColors.Violet, modifier = Modifier.size(16.dp))
+                Text("Plan my day", color = Color(0xFF6D5FD0), fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Color(0xFF6D5FD0), modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -236,10 +237,10 @@ private fun EveningTile(data: BentoData, onClick: () -> Unit, index: Int) {
 @Composable
 private fun JournalTile(onClick: () -> Unit, index: Int) {
     SceneTile(index, RuledPaperScene, height = 150.dp, scrim = Color.Transparent, tag = "bento_journal", onClick = onClick) {
-        TileHeader(Icons.Filled.EditNote, "Journal", BentoColors.BrownInk)
+        TileHeader(Icons.Filled.EditNote, "Journal", Color(0xFF6B4A3A))
         Spacer(Modifier.weight(1f))
-        Text("Write today's entry", color = BentoColors.Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-        Text("Notes from your day", color = BentoColors.BrownText, fontFamily = InterFamily, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+        Text("Write today's entry", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+        Text("Notes from your day", color = Color(0xFF6B5A4E), fontFamily = InterFamily, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
     }
 }
 
@@ -247,23 +248,23 @@ private fun JournalTile(onClick: () -> Unit, index: Int) {
 private fun PlanCard(plan: List<PlanLine>, index: Int) {
     Reveal(index) {
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(SurfaceBase)
-                .border(1.dp, Line, RoundedCornerShape(28.dp)).padding(16.dp).testTag("bento_plan"),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Paper)
+                .border(1.dp, Color(0xFFECEBF3), RoundedCornerShape(28.dp)).padding(16.dp).testTag("bento_plan"),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Today's plan", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                Text(if (plan.isEmpty()) "" else "${plan.size} today", color = InkSecondary, fontFamily = InterFamily, fontSize = 12.sp)
+                Text(if (plan.isEmpty()) "" else "${plan.size} today", color = InkSoft, fontFamily = InterFamily, fontSize = 12.sp)
             }
             if (plan.isEmpty()) {
-                Text("Nothing scheduled. Record something, or write a note for today.", color = InkSecondary, fontFamily = InterFamily, fontSize = 13.sp, lineHeight = 18.sp)
+                Text("Nothing scheduled. Record something, or write a note for today.", color = InkSoft, fontFamily = InterFamily, fontSize = 13.sp, lineHeight = 18.sp)
             }
             plan.take(4).forEach { line ->
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = line.onOpen), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(20.dp).clip(RoundedCornerShape(7.dp)).border(1.5.dp, Line, RoundedCornerShape(7.dp)))
+                    Box(Modifier.size(20.dp).clip(RoundedCornerShape(7.dp)).border(1.5.dp, Color(0xFFC9C4E3), RoundedCornerShape(7.dp)))
                     Spacer(Modifier.width(12.dp))
                     Text(line.title, color = Ink, fontFamily = InterFamily, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    Text(line.time, color = InkSecondary, fontFamily = InterFamily, fontSize = 12.sp, maxLines = 1)
+                    Text(line.time, color = InkSoft, fontFamily = InterFamily, fontSize = 12.sp, maxLines = 1)
                 }
             }
         }
@@ -286,9 +287,9 @@ private fun SceneTile(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val time = rememberSceneTime()
-    Reveal(index) {
+    Reveal(index, modifier) {
         Box(
-            modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(28.dp))
+            Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(28.dp))
                 .bentoPress(onClick).testTag(tag)
         ) {
             Canvas(Modifier.matchParentSize()) { scene(time.value) }
@@ -304,7 +305,7 @@ private fun SceneTile(
 private fun TileHeader(icon: ImageVector, label: String, ink: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
-            Modifier.size(34.dp).clip(RoundedCornerShape(12.dp)).background(FixedWhite.copy(alpha = 0.72f)),
+            Modifier.size(34.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.72f)),
             contentAlignment = Alignment.Center
         ) { Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp)) }
         Spacer(Modifier.width(8.dp))
@@ -321,7 +322,7 @@ private fun Pill(label: String, background: Color, ink: Color, modifier: Modifie
 
 /** A thin progress track that fills from empty when it first appears. */
 @Composable
-private fun SegmentBar(fraction: Float, color: Color, track: Color) {
+private fun SegmentBar(fraction: Float, color: Color, track: Color, modifier: Modifier = Modifier) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val fill by animateFloatAsState(
@@ -329,7 +330,7 @@ private fun SegmentBar(fraction: Float, color: Color, track: Color) {
         animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
         label = "bento_bar"
     )
-    Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(track)) {
+    Box(modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(track)) {
         Box(Modifier.fillMaxWidth(fill).fillMaxHeight().background(color))
     }
 }
@@ -338,7 +339,7 @@ private fun SegmentBar(fraction: Float, color: Color, track: Color) {
  * Enters with a short stagger: fades up 26 dp. Reduced motion shows it at once.
  */
 @Composable
-private fun Reveal(index: Int, content: @Composable () -> Unit) {
+private fun Reveal(index: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val reduced = rememberHomeReducedMotion()
     val progress = remember { Animatable(if (reduced) 1f else 0f) }
     val density = LocalDensity.current.density
@@ -348,7 +349,7 @@ private fun Reveal(index: Int, content: @Composable () -> Unit) {
             progress.animateTo(1f, spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow))
         }
     }
-    Box(Modifier.graphicsLayer {
+    Box(modifier.graphicsLayer {
         alpha = progress.value
         translationY = (1f - progress.value) * 26f * density
     }) { content() }
@@ -368,4 +369,69 @@ private fun Modifier.bentoPress(onClick: () -> Unit): Modifier {
         scaleX = scale
         scaleY = scale
     }.clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
+}
+
+/** One shareable story card, drawn from today's devotional. */
+data class StoryCardData(
+    val reference: String,
+    val headline: String,
+    val body: String,
+    val caption: String,
+    val onOpen: () -> Unit
+)
+
+/**
+ * "Stories from today": three 9:16 cards with their own scenes. Tap one to open it; "Share" sends it out.
+ */
+@Composable
+fun StoryCards(cards: List<StoryCardData>, onShareAll: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Stories from today", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, modifier = Modifier.weight(1f))
+            Text(
+                "Share as image ›", color = Color(0xFF6D5FD0), fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onShareAll).padding(4.dp)
+            )
+        }
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(top = 14.dp)
+        ) {
+            itemsIndexed(cards) { i, card -> StoryCardTile(i, card) }
+        }
+    }
+}
+
+@Composable
+private fun StoryCardTile(index: Int, card: StoryCardData) {
+    val time = rememberSceneTime()
+    // Each card has its own scene: sunrise, night sky, then the sage rings.
+    val scene: Scene = when (index % 3) {
+        0 -> SunriseScene
+        1 -> NightPrayerScene
+        else -> CircleRingsScene
+    }
+    val onNight = index % 3 == 1
+    val ink = if (onNight) Color.White else Ink
+    Reveal(index) {
+        Box(
+            Modifier.width(220.dp).aspectRatio(9f / 16f).clip(RoundedCornerShape(30.dp)).bentoPress(card.onOpen)
+        ) {
+            Canvas(Modifier.matchParentSize()) { scene(time.value) }
+            Column(Modifier.fillMaxSize().padding(22.dp)) {
+                Text(card.reference.uppercase(), color = ink.copy(alpha = 0.8f), fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.sp)
+                Spacer(Modifier.weight(1f))
+                Text(card.headline, color = ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 26.sp, lineHeight = 30.sp, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                if (card.body.isNotBlank()) {
+                    Text(card.body, color = ink.copy(alpha = 0.85f), fontFamily = InterFamily, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp))
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(card.caption, color = ink.copy(alpha = 0.9f), fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Pill("Share", if (onNight) Color.White.copy(alpha = 0.22f) else Color.White, ink)
+                }
+            }
+        }
+    }
 }
