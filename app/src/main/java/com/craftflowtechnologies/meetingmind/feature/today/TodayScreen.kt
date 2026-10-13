@@ -103,6 +103,11 @@ import com.craftflowtechnologies.meetingmind.core.timeline.Rhythms
 import com.craftflowtechnologies.meetingmind.core.timeline.TimelineDays
 import com.craftflowtechnologies.meetingmind.core.timeline.TimelineItem
 import com.craftflowtechnologies.meetingmind.core.timeline.TimelineLayer
+import com.craftflowtechnologies.meetingmind.feature.today.home.BentoActions
+import com.craftflowtechnologies.meetingmind.feature.today.home.BentoData
+import com.craftflowtechnologies.meetingmind.feature.today.home.HomeBento
+import com.craftflowtechnologies.meetingmind.feature.today.home.HomeSections
+import com.craftflowtechnologies.meetingmind.feature.today.home.PlanLine
 import java.util.Date
 
 private val InkNavy: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Ink
@@ -128,6 +133,7 @@ fun TodayScreen(
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit = {},
     onOpenFaith: () -> Unit = {},
     onOpenWork: () -> Unit = {},
+    onOpenCircles: () -> Unit = {},
     onOpenPrayer: () -> Unit = {},
     onOpenWord: () -> Unit = {},
     onOpenTestimonies: () -> Unit = {},
@@ -170,6 +176,7 @@ fun TodayScreen(
     val calendarOn by viewModel.calendarOn.collectAsState()
     val promptDismissed by viewModel.calendarPromptDismissed.collectAsState()
     val now by viewModel.now.collectAsState()
+    val todayItems by viewModel.today.collectAsState()
 
     val listState = rememberLazyListState()
     var quick by remember { mutableStateOf<TimelineItem?>(null) }
@@ -216,6 +223,27 @@ fun TodayScreen(
     }
     val inboxCount = jobs.size + (if (rhythm != null) 1 else 0) + (if ((upNext as? UpNextTile.Event)?.prep != null) 1 else 0) + (if (memories.isNotEmpty()) 1 else 0)
     val switchTo = when (focus) { TodayFocus.ALL -> TodayFocus.FAITH; TodayFocus.FAITH -> TodayFocus.WORK; TodayFocus.WORK -> TodayFocus.ALL }
+
+    // The Today home: the sections for the spaces this person chose, and the data its tiles read.
+    val sections = HomeSections.of(identity, focus)
+    val devOpened = devotional?.note?.metadata?.get(com.craftflowtechnologies.meetingmind.core.devotional.DevotionalNotes.META_OPENED) != null
+    val bentoFmt = timeFormat()
+    val bentoData = BentoData(
+        weekCount = stats.weekCount,
+        weekLabel = stats.weekLabel,
+        devotionalTitle = devotional?.devotional?.title ?: "A word for your day",
+        devotionalSub = devotional?.devotional?.scripture?.firstOrNull()?.display() ?: "Scripture, a reflection and a prayer",
+        devotionalNew = !devOpened,
+        todayCount = todayItems.size,
+        nextTitle = tile.title,
+        nextWhen = tile.label,
+        plan = todayItems.take(4).map { entry -> PlanLine(entry.title, timeLabel(entry, bentoFmt)) { open(entry) } }
+    )
+    val bentoActions = BentoActions(
+        onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
+        onCreate = { create.open() }, onCircles = onOpenCircles, onWork = onOpenWork,
+        onNextUp = tile.onClick, onJournal = onNewNote
+    )
 
     // The setup card nags until setup is done; "thinking only" can't be snoozed — it's a real problem.
     val showSetup = setup != null && (setup.needsAttention || setup.thinkingOnly || setup.downloading) && (!setupSnoozed || setup.thinkingOnly || setup.downloading)
@@ -294,17 +322,12 @@ fun TodayScreen(
                 }
             }
 
+            item(key = "bento") {
+                HomeBento(sections, bentoData, bentoActions, modifier = Modifier.padding(top = 20.dp))
+            }
+
             // For you: rhythms, memories, the week, recordings in progress, the calendar invitation.
             val forYou = buildList<@Composable () -> Unit> {
-                if (identity.showsFaith && focus != TodayFocus.WORK) add {
-                    val d = devotional?.devotional
-                    ForYouCard(
-                        Icons.Filled.WbSunny, Color(0xFFB7791F).forTheme(), "Today's devotional",
-                        d?.title ?: "A word for your day",
-                        d?.let { listOfNotNull(it.scripture.firstOrNull()?.display(), if (devotional?.note?.metadata?.get(com.craftflowtechnologies.meetingmind.core.devotional.DevotionalNotes.META_OPENED) == null) "New" else "Read").joinToString(" · ") }
-                            ?: "Scripture, a reflection and a prayer"
-                    ) { onOpenDevotional() }
-                }
                 jobs.forEach { job -> add { ForYouCard(Icons.Filled.Sync, look.accent, "Processing · ${job.progressPercent}%", job.meetingTitle, job.currentStep) { onOpenProcessing(job.meetingId) } } }
                 rhythm?.let { r -> add { ForYouCard(Icons.Filled.Mic, Color(0xFFE11D48).forTheme(), "Your rhythm", "Record ${r.type.displayName.lowercase()}?", Rhythms.describe(r)) { onRecordType(r.type) } } }
                 memories.firstOrNull()?.let { m -> add { ForYouCard(Icons.Filled.History, Color(0xFF8B5CF6).forTheme(), "On this day", m.title, m.subtitle ?: "") { open(m) } } }
@@ -320,13 +343,6 @@ fun TodayScreen(
                         calendarPermission.launch(android.Manifest.permission.READ_CALENDAR)
                     }
                 }
-                if (focus != TodayFocus.FAITH) add {
-                    ForYouCard(
-                        Icons.Filled.Work, Color(0xFF6366F1).forTheme(), "Work & Projects",
-                        "Executive pulse & tasks",
-                        "Tap to open your professional workspace"
-                    ) { onOpenWork() }
-                }
             }
             if (forYou.isNotEmpty() && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.FOR_YOU)) item(key = "foryou") {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 20.dp)) {
@@ -336,19 +352,6 @@ fun TodayScreen(
 
             if (storyKinds.isNotEmpty() && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.STORIES)) item(key = "stories") {
                 StoryRings(storyKinds, onOpenStories)
-            }
-            item(key = "quick_access") {
-                HomeQuickAccessRow(
-                    onOpenFaith = onOpenFaith,
-                    onOpenWork = onOpenWork,
-                    onOpenDevotional = onOpenDevotional,
-                    onOpenPrayer = onOpenPrayer,
-                    onOpenWord = onOpenWord,
-                    onOpenTestimonies = onOpenTestimonies,
-                    onOpenCreate = { create.open() },
-                    showWork = false,
-                    modifier = Modifier.padding(top = 20.dp)
-                )
             }
 
             // Calendar controls.

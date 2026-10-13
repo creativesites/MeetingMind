@@ -478,6 +478,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
