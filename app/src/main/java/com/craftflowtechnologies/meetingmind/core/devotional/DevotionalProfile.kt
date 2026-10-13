@@ -94,7 +94,8 @@ object DevotionalTopics {
  * person who never opens the settings still gets a good devotional.
  */
 data class DevotionalProfile(
-    val enabled: Boolean = false,
+    /** On by default: the written day and its notification at the set time are the promise (founder, 2026-10-11). */
+    val enabled: Boolean = true,
     /** A plan by default: a new install has a devotional on day one, with no network and no key. */
     val source: DevotionalSource = DevotionalSource.CLASSIC,
     /** Which bundled plan [DevotionalSource.CLASSIC] reads from, and the fallback for the other sources. */

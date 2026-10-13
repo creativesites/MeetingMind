@@ -1,9 +1,11 @@
 package com.craftflowtechnologies.meetingmind.core.devotional
 
 import android.content.Context
+import android.util.Log
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser
 import org.json.JSONArray
+import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.time.LocalDate
 import java.util.zip.GZIPInputStream
@@ -45,7 +47,17 @@ class ClassicDevotionals(private val readings: List<ClassicReading>, val plan: D
 
     val size get() = readings.size
 
+    /** False when the plan's text could not be read on this phone (see [unreadableMessage]). */
+    val readable get() = readings.isNotEmpty()
+
+    /** The plain line the page shows when there is no reading to show, rather than a blank page. */
+    fun unreadableMessage(): String =
+        "$title couldn't be read from the app on this phone, so today's reading isn't there yet. " +
+            "Try again; if it keeps happening, reinstall MeetingMind."
+
     companion object {
+        private const val TAG = "ClassicDevotionals"
+
         /** The default plan's asset, kept for callers that mean "the bundled classic". */
         val ASSET get() = DevotionalPlans.default.asset!!
 
@@ -69,9 +81,29 @@ class ClassicDevotionals(private val readings: List<ClassicReading>, val plan: D
         private fun load(context: Context, plan: DevotionalPlan): ClassicDevotionals? {
             val asset = plan.asset ?: return null
             return synchronized(this) {
-                cache[plan.id] ?: runCatching { context.assets.open(asset).use { parse(GZIPInputStream(it), plan) } }
-                    .getOrNull()?.takeIf { it.size > 0 }?.also { cache[plan.id] = it }
+                cache[plan.id]?.let { return it }
+                // A failure is logged, not hidden: the caller then says so on the page instead of showing nothing.
+                val classics = runCatching { openBundled(context, asset).use { parse(it, plan) } }
+                    .onFailure { Log.e(TAG, "Bundled reading plan ${plan.id} ($asset) could not be read", it) }
+                    .getOrNull()
+                if (classics != null && classics.size == 0) Log.e(TAG, "Bundled reading plan ${plan.id} ($asset) has no readings")
+                classics?.takeIf { it.size > 0 }?.also { cache[plan.id] = it }
             }
+        }
+
+        /**
+         * The bundled text as plain JSON, whatever the packaged file is called or stored as. The source is
+         * `*.json.gz`, but the build may ship it decompressed under the `.json` name (it does for the debug
+         * merge), so both names are tried, and gzip is only undone when the bytes really are gzip.
+         */
+        internal fun openBundled(context: Context, asset: String): InputStream {
+            val raw = try {
+                context.assets.open(asset).use { it.readBytes() }
+            } catch (e: java.io.IOException) {
+                context.assets.open(asset.removeSuffix(".gz")).use { it.readBytes() }
+            }
+            val gzip = raw.size >= 2 && raw[0] == 0x1f.toByte() && raw[1] == 0x8b.toByte()
+            return if (gzip) GZIPInputStream(ByteArrayInputStream(raw)) else ByteArrayInputStream(raw)
         }
 
         /** For tests, where app assets aren't packaged: replaces the default plan's cached readings (null clears all). */

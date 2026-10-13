@@ -149,10 +149,10 @@ class DevotionalEngine(
             else -> profile.source
         }
         val writer = ask?.writer ?: DevotionalWriter.AUTO
-        if (writer == DevotionalWriter.CLASSIC) return anyClassic(date, evening, profile, variant) ?: throw DevotionalUnavailable("No classic reading is available for today.")
+        if (writer == DevotionalWriter.CLASSIC) return classicOrSay(date, evening, profile, variant)
         if (writer == DevotionalWriter.AUTO) {
             // An evening Examen is written when asked for; otherwise the evening reading is a classic.
-            if (source == DevotionalSource.CLASSIC || evening && !profile.eveningExamen) return anyClassic(date, evening, profile, variant) ?: mine(date, profile)
+            if (source == DevotionalSource.CLASSIC || evening && !profile.eveningExamen) return classicOrSay(date, evening, profile, variant)
             if (source == DevotionalSource.MINE) return mine(date, profile)
         }
 
@@ -222,7 +222,7 @@ class DevotionalEngine(
         if (pool.isNotEmpty() && (ask?.keepToAi == true || ask?.aiOnly == true)) throw DevotionalUnavailable(lastFallbackReason ?: "The AI couldn't write one just now.")
         if (pool.isEmpty() && ask?.aiOnly == true) throw DevotionalUnavailable("No AI is set up yet. Add a Gemini key in Settings, or download the on-device model in Setup.")
         if (lastFallbackReason == null) lastFallbackReason = "No AI model is set up, so today's reading is from ${classics.title}."
-        return anyClassic(date, false, profile, variant) ?: mine(date, profile)
+        return classicOrSay(date, false, profile, variant)
     }
 
     /**
@@ -312,6 +312,13 @@ class DevotionalEngine(
     }
 
     /** The day's classic, or — for "a different one" — the evening reading, then readings from nearby days. */
+    /**
+     * The plan's reading for [date]. When the bundled plan can't be read at all, this says so in plain words
+     * (the page shows it with Try again) instead of filing a blank devotional for the person to write.
+     */
+    private fun classicOrSay(date: LocalDate, evening: Boolean, profile: DevotionalProfile, variant: Int): Devotional =
+        anyClassic(date, evening, profile, variant) ?: throw DevotionalUnavailable(classics.unreadableMessage())
+
     /**
      * The chosen plan's entry for [date], looking further afield rather than ever falling back to a blank page.
      * It needs no network, no key and no model, so it is what is written first, before any AI is tried.
