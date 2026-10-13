@@ -3,7 +3,7 @@ package com.craftflowtechnologies.meetingmind.ai.voice.read
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiError
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiErrorKind
 
-enum class Recovery { RETRY, RETRY_LATER, SWITCH_TO_PHONE_VOICE, FIX_API_KEY, CHECK_PLAN, CHECK_CONNECTION }
+enum class Recovery { RETRY, RETRY_LATER, SWITCH_TO_PHONE_VOICE, FIX_API_KEY, CHECK_PLAN, CHECK_CONNECTION, INSTALL_VOICE_DATA }
 
 /** What to tell the person and what they can do, when the Gemini voice fails part-way. */
 data class RecoveryPlan(val message: String, val options: List<Recovery>)
