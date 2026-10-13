@@ -125,15 +125,24 @@ fun Companion(
     }
 
     val onScreen = rememberOnScreenTracker()
+    // T1 volume layer and parallax (Z-14, §4.2): behind CompanionFlags.volumeLayer.
+    val volumeOn = LocalCompanionVolume.current ?: CompanionFlags.volumeLayer
+    val volume = CompanionParallaxGate.volume(volumeOn, tier)
+    val parallax = CompanionParallaxGate.parallax(volumeOn, tier, durationScale)
+    val look = remember { CompanionLook() }
+    val resumed = lifecycleAtLeast(Lifecycle.State.RESUMED)
+    CompanionTiltEffect(CompanionParallaxGate.gyro(volumeOn, tier, durationScale, onScreen.isOnScreen, resumed))
+    val lookModifier = if (parallax) look.touchModifier().then(look.scrollModifier()) else Modifier
     val semantics = if (contentDescription == null) Modifier.clearAndSetSemantics { }
     else Modifier.semantics { this.contentDescription = contentDescription }
 
-    Box(modifier.size(size).then(onScreen.modifier).then(semantics)) {
+    Box(modifier.size(size).then(onScreen.modifier).then(lookModifier).then(semantics)) {
         val riveBytes = bytes
         if (choice.renderer == CompanionRenderer.RIVE && riveBytes != null) {
             RiveCompanion(
                 form = form, bytes = riveBytes, visual = visual, variant = variant, palette = palette, level = level,
-                active = onScreen.isOnScreen && lifecycleAtLeast(Lifecycle.State.RESUMED),
+                active = onScreen.isOnScreen && resumed,
+                look = if (parallax) look else null,
                 onFailure = { why -> CompanionDiagnostics.lastRiveFailure = "${form.name}: $why"; riveFailed = true },
                 modifier = Modifier.fillMaxSize()
             )
@@ -141,7 +150,8 @@ fun Companion(
             CanvasCompanion(
                 form = form, visual = visual, variant = variant, palette = palette, size = size, tier = tier,
                 level = level, durationScale = durationScale,
-                visible = onScreen.isOnScreen && lifecycleAtLeast(Lifecycle.State.STARTED)
+                visible = onScreen.isOnScreen && lifecycleAtLeast(Lifecycle.State.STARTED),
+                volume = volume, look = if (parallax) look else null
             )
         }
     }
@@ -162,6 +172,8 @@ internal fun CanvasCompanion(
     level: () -> Float,
     durationScale: Float,
     visible: Boolean,
+    volume: Boolean = false,
+    look: CompanionLook? = null,
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     val spec = ZuriMotion.spec(visual, variant)
@@ -208,6 +220,13 @@ internal fun CanvasCompanion(
         frame.level = l
         frame.reduced = static
         frame.lod = lod
+        frame.volume = volume && lod
+        if (look != null) {
+            // State reads in the draw phase: a finger, a tilt or a scroll redraws without recomposing.
+            frame.lookX = look.x; frame.lookY = look.y; frame.lightX = look.lightX; frame.lightY = look.lightY
+        } else {
+            frame.lookX = 0f; frame.lookY = 0f; frame.lightX = 0f; frame.lightY = 0f
+        }
         drawCompanion(kit, frame, drawer, palette)
         CompanionDiagnostics.frameEnd(diag)
     }
@@ -230,6 +249,7 @@ private class PoseMemory {
 /** Draws [frame] scaled from the 100-unit box to this scope's size. */
 internal fun DrawScope.drawCompanion(kit: CompanionDrawKit, frame: CompanionFrame, drawer: FormDrawer, palette: CompanionPalette) {
     kit.ensure(palette)
+    if (frame.volume) kit.volume.ensure(palette)
     scale(size.minDimension / 100f, pivot = Offset.Zero) {
         with(drawer) { draw(kit, frame, palette) }
     }

@@ -21,11 +21,18 @@ object NasDrawer : FormDrawer {
         val pose = f.pose
         val lod = f.lod
         shadow(f, p, 93f)
-        body(pose, 91f) {
+        body(pose, 91f, bodyShift(f)) {
             rotate(-35f - pose.tail, Offset(64f, 76f)) {
                 drawRoundRect(p.deep, topLeft = Offset(63f, 72f), size = Size(16f, 6.5f), cornerRadius = CornerRadius(3.25f))
             }
             oval(nasBody, 50f, 77f, 17.5f, 13.5f)
+            if (f.volume) {
+                // The head sits on the body: occlusion under the chin, moving with the head.
+                volumeLayer(kit, f, Silhouette.NAS_BODY, volume.path(Silhouette.NAS_BODY), 42f, 72f, 6f) { v ->
+                    occlusion(v, 50f, 64.5f + pose.headDy, 13f, 4.5f)
+                }
+            }
+            // The belly stays a flat light patch on top of the shading.
             if (lod) oval(p.light, 50f, 80f, 9f, 8f, alpha = 0.85f)
             if (!pose.hands) {
                 oval(p.light, 42.5f, 89f, 5.6f, 3.4f)
@@ -34,6 +41,13 @@ object NasDrawer : FormDrawer {
             translate(0f, pose.headDy) {
                 rotate(pose.headTilt, Offset(50f, 60f)) {
                     drawCircle(nasHead, radius = 21f, center = Offset(50f, 42f))
+                    if (f.volume) {
+                        // Ears hang from the crown: occlusion at their roots.
+                        volumeLayer(kit, f, Silhouette.NAS_HEAD, volume.path(Silhouette.NAS_HEAD), 42f, 32f, 8f) { v ->
+                            occlusion(v, 32f, 34f, 6f, 7f)
+                            occlusion(v, 68f, 34f, 6f, 7f)
+                        }
+                    }
                     if (lod) oval(p.deep, 59f, 40f, 7f, 6.5f, alpha = 0.28f)
                     rotatedOval(p.deep, 30.5f, 44f, 7.6f, 14.5f, pose.ear, Offset(33f, 31f))
                     rotatedOval(p.deep, 69.5f, 44f, 7.6f, 14.5f, -pose.ear, Offset(67f, 31f))

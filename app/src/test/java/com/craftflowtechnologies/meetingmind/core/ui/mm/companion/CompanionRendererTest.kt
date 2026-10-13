@@ -27,6 +27,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RendererI
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionRendererSelector
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionRiveBudget
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.LocalCompanionRiveBudget
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RiveSafety
 import com.craftflowtechnologies.meetingmind.ui.theme.MMAccent
 import com.craftflowtechnologies.meetingmind.ui.theme.MeetMindTheme
 import com.craftflowtechnologies.meetingmind.ui.theme.companionPalette
@@ -47,6 +48,9 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [34])
 class CompanionRendererTest {
     @get:Rule val rule = createComposeRule()
+
+    /** The crash guard is process-wide: start every test with it armed. */
+    @org.junit.Before fun guard() = RiveSafety.reset(ApplicationProvider.getApplicationContext())
 
     @Test fun `all four riv files are bundled, so a 96 dp animated slot is Rive-ready`() {
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()

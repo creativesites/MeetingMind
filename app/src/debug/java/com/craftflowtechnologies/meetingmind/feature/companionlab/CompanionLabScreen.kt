@@ -47,6 +47,9 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SegmentedControl
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.Companion
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionVolume
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.CompanionTilt
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionFlags
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionAssets
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionRiveContract
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RendererChoice
@@ -71,6 +74,7 @@ fun CompanionLabScreen(liveStats: Boolean = true) {
     var accentIndex by rememberSaveable { mutableIntStateOf(0) }
     var dark by rememberSaveable { mutableStateOf(false) }
     var reduced by rememberSaveable { mutableStateOf(false) }
+    var volume by rememberSaveable { mutableStateOf(true) }
     var wobble by rememberSaveable { mutableStateOf(true) }
     var level by remember { mutableFloatStateOf(0.55f) }
     var replay by remember { mutableIntStateOf(0) }
@@ -93,7 +97,10 @@ fun CompanionLabScreen(liveStats: Boolean = true) {
     }
 
     MeetMindTheme(darkTheme = dark, accent = MMAccent.entries[accentIndex]) {
-        CompositionLocalProvider(LocalCompanionReducedMotion provides if (reduced) true else null) {
+        CompositionLocalProvider(
+            LocalCompanionReducedMotion provides if (reduced) true else null,
+            LocalCompanionVolume provides volume
+        ) {
             Column(
                 Modifier.fillMaxSize().background(MM.colors.background).safeDrawingPadding()
                     .verticalScroll(rememberScrollState()).padding(horizontal = MM.space.l),
@@ -154,6 +161,7 @@ fun CompanionLabScreen(liveStats: Boolean = true) {
                     if (dark) 1 else 0, onSelect = { dark = it == 1 }
                 )
                 ToggleRow(stringResource(R.string.companion_lab_reduced), reduced) { reduced = it }
+                ToggleRow(stringResource(R.string.companion_lab_volume, CompanionFlags.volumeLayer.toString()), volume) { volume = it }
 
                 SectionHeader(stringResource(R.string.companion_lab_ladder))
                 val choices = remember { mutableStateMapOf<Int, RendererChoice>() }
@@ -199,11 +207,13 @@ private fun LabStats() {
     var text by remember { mutableStateOf("") }
     val drawFmt = stringResource(R.string.companion_lab_stats)
     val na = stringResource(R.string.companion_lab_stats_na)
+    val lookFmt = stringResource(R.string.companion_lab_stats_tilt)
     LaunchedEffect(drawFmt) {
         while (true) {
             val d = CompanionDiagnostics
             val allocs = if (d.allocsAvg < 0f) na else "%.1f".format(d.allocsAvg)
-            text = drawFmt.format(d.drawNsAvg / 1_000_000f, allocs, d.frames, d.liveRive.get())
+            text = drawFmt.format(d.drawNsAvg / 1_000_000f, allocs, d.frames, d.liveRive.get()) + "\n" +
+                lookFmt.format(CompanionTilt.x, CompanionTilt.y, if (CompanionTilt.registered) 1 else 0, CompanionTilt.holders)
             delay(500)
         }
     }

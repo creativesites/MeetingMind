@@ -38,6 +38,14 @@ class CompanionFrame {
     var reduced: Boolean = false
     /** Full detail (≥ 32 dp). False is LOD-0: silhouette and eyes only (§2.4). */
     var lod: Boolean = true
+    /** Draw the T1 volume layer (Z-14): ≥ 48 dp and the flag on. */
+    var volume: Boolean = false
+    /** Parallax look, −1..1: moves the eyes (×0.7 / ×0.5 units) and the body (×1.2 units on x). */
+    var lookX: Float = 0f
+    var lookY: Float = 0f
+    /** Parallax for the light (look plus scroll position): the shading field, specular, rim, contact shadow. */
+    var lightX: Float = 0f
+    var lightY: Float = 0f
 }
 
 /** Below this [Pose.talk] the mouth or beak stays closed. */
@@ -73,6 +81,8 @@ class CompanionDrawKit {
 
     var palette: CompanionPalette? = null
         private set
+    /** The volume layer's brushes and silhouettes, built on first use. */
+    val volume: VolumeKit by lazy(LazyThreadSafetyMode.NONE) { VolumeKit() }
     lateinit var orbBody: Brush; private set
     lateinit var orbHalo: Brush; private set
     lateinit var wrenBody: Brush; private set
@@ -114,12 +124,17 @@ class CompanionDrawKit {
         rotate(deg, pivot) { oval(color, cx, cy, rx, ry) }
 
     /** The ground shadow; shrinks during a hop. */
-    fun DrawScope.shadow(f: CompanionFrame, p: CompanionPalette, y: Float) =
+    fun DrawScope.shadow(f: CompanionFrame, p: CompanionPalette, y: Float) {
         oval(p.shadow, 50f, y, 18f * (1f - f.pose.hop * 0.35f), 2.6f)
+        if (f.volume) contactShadow(volume, f, y)
+    }
+
+    /** The body's parallax shift on x (the reference's `bodyT` with the 3D look on): 1.2 units at full look. */
+    fun bodyShift(f: CompanionFrame): Float = if (f.volume) f.lookX * 1.2f else 0f
 
     /** The prototype's bodyT: translate(0, dy), rotate(tilt) and scale(sx, sy) about the foot. */
-    inline fun DrawScope.body(pose: Pose, foot: Float, block: DrawScope.() -> Unit) {
-        translate(0f, pose.dy) {
+    inline fun DrawScope.body(pose: Pose, foot: Float, ox: Float = 0f, block: DrawScope.() -> Unit) {
+        translate(ox, pose.dy) {
             rotate(pose.tilt, Offset(50f, foot)) {
                 scale(pose.sx, pose.sy, Offset(50f, foot)) { block() }
             }
@@ -139,8 +154,8 @@ class CompanionDrawKit {
         val pose = f.pose
         val rx = rx0 * pose.eyeScale
         val ry = ry0 * pose.eyeScale
-        val x = cx + pose.lookX * look
-        val y = cy + pose.lookY * look
+        val x = cx + (if (f.lookX == 0f) pose.lookX else pose.lookX + f.lookX * 0.7f) * look
+        val y = cy + (if (f.lookY == 0f) pose.lookY else pose.lookY + f.lookY * 0.5f) * look
         when (pose.eyes) {
             Eyes.HAPPY -> {
                 val path = path(0)

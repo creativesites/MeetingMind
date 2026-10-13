@@ -29,7 +29,7 @@ object PageDrawer : FormDrawer {
         val visual = f.visual
         val fold = pose.fold
         shadow(f, p, 95f)
-        body(pose, 84f) {
+        body(pose, 84f, bodyShift(f)) {
             rotate(pose.pageLean, Offset(50f, 84f)) {
                 val ribbon = path(6)
                 ribbon.moveTo(36f, 78f); ribbon.lineTo(44f, 78f); ribbon.lineTo(44f, 94f); ribbon.lineTo(40f, 90f); ribbon.lineTo(36f, 94f); ribbon.close()
@@ -40,6 +40,12 @@ object PageDrawer : FormDrawer {
                 page.lineTo(28f, 24f); page.quadraticTo(28f, 20f, 32f, 20f); page.close()
                 drawPath(page, p.paper)
                 drawPath(page, p.paperLine, style = stroke(1.4f))
+                if (f.volume) {
+                    // The folded corner shades the page under it.
+                    volumeLayer(kit, f, Silhouette.PAGE, page, 38f, 30f, 9f, strength = 0.55f) { v ->
+                        occlusion(v, 72f - fold * 0.55f, 20f + fold * 0.55f, fold * 0.55f, fold * 0.28f, 45f)
+                    }
+                }
                 val corner = path(8)
                 corner.moveTo(72f - fold, 20f); corner.lineTo(72f - fold, 20f + fold - 3f)
                 corner.quadraticTo(72f - fold, 20f + fold, 72f - fold + 3f, 20f + fold); corner.lineTo(72f, 20f + fold); corner.close()

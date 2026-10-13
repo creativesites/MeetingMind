@@ -49,7 +49,7 @@ class CompanionDrawPerfTest {
         val size = Size(px.toFloat(), px.toFloat())
         val density = Density(3f)
         val kit = CompanionDrawKit()
-        val frame = CompanionFrame().apply { lod = true }
+        val frame = CompanionFrame().apply { lod = true; this.volume = volume }
         val pose = Pose()
         val drawer = FormDrawer.of(form)
         val palette = companionPalette(MMAccent.Indigo, false)
@@ -61,6 +61,7 @@ class CompanionDrawPerfTest {
         val level = 0.5f + 0.4f * kotlin.math.sin(t * 7f)
         CompanionPoses.poseInto(pose, form, visual, t, level, false)
         frame.pose = pose; frame.visual = visual; frame.t = t; frame.level = level; frame.reduced = false
+        frame.lookX = 0.3f * kotlin.math.sin(t); frame.lookY = 0.2f; frame.lightX = frame.lookX; frame.lightY = 0.4f
         scope.draw(density, LayoutDirection.Ltr, canvas, size) { drawCompanion(kit, frame, drawer, palette) }
     }
 
@@ -73,8 +74,8 @@ class CompanionDrawPerfTest {
         // The measuring call itself: calibrate it away.
         val c0 = allocatedBytes(); val c1 = allocatedBytes(); val overhead = c1 - c0
         // Warm the whole path first (class loading and JIT of every branch), then measure.
-        for (form in CompanionForm.entries) { val rig = Rig(form, false); for (v in visuals) repeat(300) { rig.frame(form, v, it) } }
-        for (volume in listOf(false)) for (form in CompanionForm.entries) {
+        for (form in CompanionForm.entries) { val rig = Rig(form, true); for (v in visuals) repeat(300) { rig.frame(form, v, it) } }
+        for (volume in listOf(false, true)) for (form in CompanionForm.entries) {
             val rig = Rig(form, volume)
             for (v in visuals) {
                 repeat(120) { rig.frame(form, v, it) }   // warm: brushes, strokes, shaders, JIT
@@ -92,7 +93,7 @@ class CompanionDrawPerfTest {
     @Test fun `draw time per frame, each form, volume off and on`() {
         val lines = mutableListOf("form       volume  mean µs/frame (host CPU, 288 px, Robolectric native canvas)")
         val visualsTimed = listOf(CompanionState.IDLE, CompanionState.LISTENING, CompanionState.THINKING, CompanionState.CELEBRATING)
-        for (form in CompanionForm.entries) for (volume in listOf(false)) {
+        for (form in CompanionForm.entries) for (volume in listOf(false, true)) {
             val rig = Rig(form, volume)
             repeat(600) { i -> rig.frame(form, visualsTimed[i % visualsTimed.size], i) }
             val n = 2_000

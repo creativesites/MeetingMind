@@ -45,7 +45,7 @@ object CompanionRiveContract {
         const val Nod = "nod"
         /** Trigger: one blink. Optional (the file may blink on its own timer). */
         const val Blink = "blink"
-        /** Numbers −100..100: parallax look. Optional. */
+        /** Numbers −100..100: parallax look (Z-14), sent when the volume layer is on. Optional. */
         const val LookX = "lookX"
         const val LookY = "lookY"
         /** Boolean: sermon quiet (Peaceful pose, no level reaction, no rings). Required. */
@@ -89,6 +89,9 @@ object CompanionRiveContract {
     }
 
     fun calmValue(variant: CompanionVariant): Boolean = variant == CompanionVariant.Quiet
+
+    /** Parallax look −1..1 to the `lookX`/`lookY` inputs' −100..100. */
+    fun lookValue(look: Float): Float = look.coerceIn(-1f, 1f) * 100f
 
     /** Mic level 0..1 to the `level` input's 0–100. */
     fun levelValue(level: Float): Float = (level.coerceIn(0f, 1f) * 100f)

@@ -21,6 +21,7 @@ import com.craftflowtechnologies.meetingmind.core.companion.CompanionVariant
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionVisual
 import com.craftflowtechnologies.meetingmind.core.companion.CreateMode
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.CompanionDiagnostics
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.CompanionLook
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LevelSmoother
 import com.craftflowtechnologies.meetingmind.ui.theme.CompanionPalette
 import kotlinx.coroutines.android.awaitFrame
@@ -61,6 +62,7 @@ internal fun RiveCompanion(
     palette: CompanionPalette,
     level: () -> Float,
     active: Boolean,
+    look: CompanionLook? = null,
     onFailure: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -102,6 +104,9 @@ internal fun RiveCompanion(
                     val sm = view.controller.stateMachines.firstOrNull() ?: return@runCatching "no state machine"
                     val missing = CompanionRiveContract.Inputs.required.filter { name -> sm.inputs.none { it.name == name } }
                     if (missing.isNotEmpty()) return@runCatching "missing inputs $missing"
+                    // lookX/lookY are optional: files built before Z-14 simply don't get parallax.
+                    holder.hasLook = sm.inputs.any { it.name == CompanionRiveContract.Inputs.LookX } &&
+                        sm.inputs.any { it.name == CompanionRiveContract.Inputs.LookY }
                     holder.viewModel = sm.viewModelInstance ?: return@runCatching "no view model bound"
                     null
                 }.getOrElse { it.message ?: it.javaClass.simpleName }
@@ -143,7 +148,7 @@ internal fun RiveCompanion(
     }
 
     // Play only while visible and resumed; feed the smoothed level each frame while playing.
-    LaunchedEffect(holder, active) {
+    LaunchedEffect(holder, active, look) {
         val view = holder.view ?: return@LaunchedEffect
         if (!active) { view.pause(); return@LaunchedEffect }
         view.play()
@@ -151,6 +156,8 @@ internal fun RiveCompanion(
         var last = 0L
         var playingSince = 0L
         var sent = -1f
+        var sentX = 0f
+        var sentY = 0f
         while (true) {
             val now = awaitFrame()
             val dt = if (last == 0L) 16f else (now - last) / 1_000_000f
@@ -163,6 +170,17 @@ internal fun RiveCompanion(
                 runCatching { view.setNumberState(CompanionRiveContract.StateMachine, CompanionRiveContract.Inputs.Level, v) }
                 sent = v
             }
+            if (look != null && holder.hasLook) {
+                val lx = CompanionRiveContract.lookValue(look.x)
+                val ly = CompanionRiveContract.lookValue(look.y)
+                if (abs(lx - sentX) >= 1f || abs(ly - sentY) >= 1f) {
+                    runCatching {
+                        view.setNumberState(CompanionRiveContract.StateMachine, CompanionRiveContract.Inputs.LookX, lx)
+                        view.setNumberState(CompanionRiveContract.StateMachine, CompanionRiveContract.Inputs.LookY, ly)
+                    }
+                    sentX = lx; sentY = ly
+                }
+            }
         }
     }
 }
@@ -173,6 +191,7 @@ private const val HealthyAfterNs = 500_000_000L
 private class RiveHolder {
     var framesPlayed = 0
     var counted = false
+    var hasLook = false
     var view: RiveAnimationView? = null
     var viewModel: ViewModelInstance? = null
 

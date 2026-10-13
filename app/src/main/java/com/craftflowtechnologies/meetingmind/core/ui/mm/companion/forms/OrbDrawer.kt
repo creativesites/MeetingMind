@@ -38,7 +38,7 @@ object OrbDrawer : FormDrawer {
             }
         }
         shadow(f, p, 93f)
-        body(pose, 88f) {
+        body(pose, 88f, bodyShift(f)) {
             // The sprout, behind the body.
             rotate(pose.sproutLean, Offset(50f, 30f)) {
                 for (i in 0..2) {
@@ -47,7 +47,13 @@ object OrbDrawer : FormDrawer {
                 }
             }
             drawCircle(orbBody, radius = 30f, center = Offset(50f, 58f))
-            if (lod) rotate(-35f, Offset(39f, 44f)) { oval(p.shine, 39f, 44f, 8.5f, 4.6f) }
+            if (f.volume) {
+                // T1 volume (Z-14) replaces the flat shine, as in the reference's 3D look. AO where the
+                // sprout enters the body.
+                volumeLayer(kit, f, Silhouette.ZURI_BODY, volume.path(Silhouette.ZURI_BODY), 39f, 43f, 10f) { v ->
+                    occlusion(v, 50f, 28.5f, 11f, 3.2f)
+                }
+            } else if (lod) rotate(-35f, Offset(39f, 44f)) { oval(p.shine, 39f, 44f, 8.5f, 4.6f) }
             if (lod && !pose.brows) {
                 oval(p.blush, 33.5f, 65f, 4.2f, 2.5f)
                 oval(p.blush, 66.5f, 65f, 4.2f, 2.5f)

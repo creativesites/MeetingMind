@@ -33,7 +33,7 @@ object WrenDrawer : FormDrawer {
             }
         }
         shadow(f, p, 92f)
-        body(pose, 88f) {
+        body(pose, 88f, bodyShift(f)) {
             rotate(pose.tail, Offset(34f, 54f)) {
                 val tail = path(7)
                 tail.moveTo(32f, 58f); tail.quadraticTo(16f, 44f, 15f, 24f); tail.quadraticTo(24f, 27f, 40f, 48f); tail.close()
@@ -43,9 +43,20 @@ object WrenDrawer : FormDrawer {
             legs.moveTo(45f, 80f); legs.lineTo(43.5f, 89f); legs.moveTo(55f, 80f); legs.lineTo(56f, 89f)
             drawPath(legs, p.deep, style = stroke(2.4f))
             drawCircle(wrenBody, radius = 25f, center = Offset(49f, 60f))
+            if (f.volume) {
+                // Occlusion where the head meets the body, and under the wing.
+                volumeLayer(kit, f, Silhouette.WREN_BODY, volume.path(Silhouette.WREN_BODY), 40f, 50f, 8f) { v ->
+                    occlusion(v, 61f, 52f + pose.headDy, 12f, 6f)
+                    rotate(pose.wing, Offset(40f, 57f)) { occlusion(v, 46f, 65f, 17f, 5f, -12f) }
+                }
+            }
             translate(0f, pose.headDy) {
                 rotate(pose.headTilt, Offset(58f, 50f)) {
                     drawCircle(p.bodyTop, radius = 15.5f, center = Offset(62f, 40f))
+                    if (f.volume) {
+                        // The head's own soft highlight, sliding against the light (the reference's 3D look).
+                        drawCircle(p.catchLight, radius = 4.5f, center = Offset(57f - f.lightX * 2f, 33f - f.lightY * 2f), alpha = 0.35f)
+                    }
                     val beak = path(9)
                     if (pose.talk > TalkMin && pose.mouth != Mouth.OPEN) {
                         // Reading aloud: the lower beak opens with the voice, hinged at the head.
