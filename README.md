@@ -1,14 +1,16 @@
 # MeetingMind dev build
 
-**MeetingMind-Dev-0c91d9d-arm64-v8a.apk**: "MeetingMind Dev" built from commit `0c91d9d` on `ccr-5dc13c30-a5eqgv` (includes the Zuri companion moments, the notes polish, recording markers and Read to Me through Stage D). Not yet tested on a device.
-(arm64-v8a, 69 MB; the armeabi-v7a build is not on this branch). It installs beside the tester app (`com.craftflowtechnologies.meetingmind.dev`) and keeps its own data.
+**MeetingMind-Dev-ed6dd73.apk**: "MeetingMind Dev" built from commit `ed6dd73` on `claude/meetingmind-mvp-planning-7dgowm`
+(arm64-v8a, 73 MB). It installs beside the tester app (`com.craftflowtechnologies.meetingmind.dev`) and keeps its own data.
 
-New in this build:
-- **Devotionals never empty:** Morning and Evening and Faith's Checkbook are bundled; a reading fills today with no network. The day is written at 00:01.
-- **Write one with AI:** a separate devotional labelled "Written with AI"; the plan reading stays in the archive.
-- **Choose how you read:** onboarding step (Faith users) and Settings.
-- **Circles:** create a circle (testing in progress).
-- **Notes library:** new home with greeting, search, filters, and the companion.
-- **One Bible place**, Settings in 8 groups, devotional journal, Faith home rebuilt (from earlier builds).
+Everything merged from the last two days:
+- **Zuri signature moments:** First Keep on every note-ready arrival (once-ever chime on the hello sample and first recording); Unveil on every fresh note open; the moment planner and volume layer (3D volume off until a device check).
+- **Read to Me:** note-to-speech core, editor menu, Read to Me sheet, queue controls in the player.
+- **Companion states:** Curious, Proud and Reading.
+- **Sample-first onboarding** and a companion pick step.
+- **Today home:** illustrated feature tiles per mode and a larger companion.
+- **Notes:** hero tiles from real note data, recording markers, migration 25.
+- **Devotionals:** Morning and Evening and Faith's Checkbook bundled; a reading fills today offline; "Write one with AI" is labelled as such.
+- **Circles:** creation still uses the old encrypted code; the migration to the Worker is pending (see the Circles note).
 
 Install: allow installs from unknown sources, then open the APK. Only the latest build is kept on this branch.
