@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -81,44 +82,6 @@ data class SharedTestimony(
     val noteId: String? = null
 )
 
-/**
- * Curated uplifting starter testimonies to inspire faith immediately.
- */
-val CuratedTestimonies = listOf(
-    SharedTestimony(
-        id = "t-1",
-        title = "Miraculous Peace & Healing",
-        author = "Grace M.",
-        dateText = "Answered Prayer",
-        text = "After weeks of anxiety following unexpected medical tests, I surrendered the worry in prayer. The follow-up scan came back completely clear! God's peace guarded my heart when fear felt overwhelming.",
-        scripture = "Philippians 4:6-7"
-    ),
-    SharedTestimony(
-        id = "t-2",
-        title = "Provision at Just the Right Time",
-        author = "David K.",
-        dateText = "Answered Prayer",
-        text = "Our family faced an unexpected shortfall right as tuition was due. We prayed together around the table. That exact week, an old client reached out with an unexpected contract that covered everything to the dollar.",
-        scripture = "Philippians 4:19"
-    ),
-    SharedTestimony(
-        id = "t-3",
-        title = "Reconciliation & Restored Joy",
-        author = "Sarah B.",
-        dateText = "Answered Prayer",
-        text = "A two-year silence with my sister felt impossible to mend. During morning devotional prayer, God prompted me to send a gentle message without demands. We spoke on the phone that evening and wept together in forgiveness.",
-        scripture = "Ephesians 4:32"
-    ),
-    SharedTestimony(
-        id = "t-4",
-        title = "Open Doors in Career Direction",
-        author = "Michael T.",
-        dateText = "Answered Prayer",
-        text = "After feeling stagnant and praying for clear guidance, an opportunity opened up in a role where I can truly use my gifts to serve others. God's timing was so much better than my initial rush.",
-        scripture = "Proverbs 3:5-6"
-    )
-)
-
 @Composable
 fun TestimoniesFeedScreen(
     viewModel: FaithViewModel,
@@ -145,9 +108,8 @@ fun TestimoniesFeedScreen(
         }
     }
 
-    val allTestimonies = remember(userTestimonies) {
-        userTestimonies + CuratedTestimonies
-    }
+    // Only the user's own testimonies are shown. There are no placeholder or sample stories.
+    val allTestimonies = userTestimonies
 
     Scaffold(
         containerColor = SurfaceBase,
@@ -201,6 +163,12 @@ fun TestimoniesFeedScreen(
                 TestimoniesHeroBanner(onNewTestimony = onNewTestimony)
             }
 
+            if (allTestimonies.isEmpty()) {
+                item(key = "testimonies_empty") {
+                    TestimoniesEmptyState(modifier = Modifier.testTag("testimonies_empty"))
+                }
+            }
+
             items(allTestimonies, key = { it.id }) { testimony ->
                 val isRejoiced = rejoiced[testimony.id] == true
                 TestimonyCard(
@@ -228,6 +196,31 @@ fun TestimoniesFeedScreen(
                 Spacer(Modifier.height(72.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun TestimoniesEmptyState(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            "No testimonies yet",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Ink
+        )
+        Text(
+            "When you record a testimony, or mark a prayer as answered, your story will be kept here.",
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            color = InkSecondary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp)
+        )
     }
 }
 

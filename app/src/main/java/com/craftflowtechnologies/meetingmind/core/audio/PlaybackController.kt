@@ -17,8 +17,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionEvent
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -108,10 +112,38 @@ object PlaybackController {
 
     private data class PlayRequest(val recordingId: String, val title: String, val uri: Uri, val seekToMs: Long?)
 
+    // --- queue (a reading made of several parts) ---
+    private data class QueueRequest(val queueId: String, val items: List<QueueItem>, val startIndex: Int, val startPositionMs: Long, val expectedCount: Int)
+    private var queueId: String? = null
+    private var queueItems: List<QueueItem> = emptyList()
+    private var queueExpected = 0
+    private var pendingQueueRequest: QueueRequest? = null
+    private var lastProgressSavedAt = 0L
+    private var wasReading = false
+
+    /** Told where a queue was left: on pause, on moving between parts, on stop, and every few seconds while playing. */
+    @Volatile var progressListener: ((QueueProgress) -> Unit)? = null
+
+    private val _readAloudEvents = MutableSharedFlow<CompanionEvent>(extraBufferCapacity = 8)
+    /** [CompanionEvent.ReadAloudStarted] / [CompanionEvent.ReadAloudStopped] for `read:` queues. Nothing in the app hosts the companion machine yet; whoever does can collect this. */
+    val readAloudEvents: SharedFlow<CompanionEvent> = _readAloudEvents.asSharedFlow()
+
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             refreshFromPlayer()
-            if (isPlaying) startProgressLoop() else stopProgressLoop()
+            if (isPlaying) startProgressLoop() else { stopProgressLoop(); saveProgress(force = true) }
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val controller = mediaController ?: return
+            if (queueId == null) return
+            val previous = queueItems.getOrNull(controller.currentMediaItemIndex - 1)
+            if (QueueLogic.pauseOnTransition(previous?.pauseAfter, reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)) {
+                controller.pause()
+                _state.value = _state.value.copy(queue = _state.value.queue?.copy(pausedAfterQuestion = true))
+            }
+            saveProgress(force = true)
+            refreshFromPlayer()
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -150,6 +182,10 @@ object PlaybackController {
                     pendingPlayRequest?.let { req ->
                         pendingPlayRequest = null
                         playInternal(req.recordingId, req.title, req.uri, req.seekToMs)
+                    }
+                    pendingQueueRequest?.let { req ->
+                        pendingQueueRequest = null
+                        playQueueInternal(req)
                     }
                 } catch (e: Exception) {
                     _state.value = _state.value.copy(phase = PlaybackPhase.ERROR, errorMessage = "Could not connect to playback service.")
@@ -210,6 +246,8 @@ object PlaybackController {
 
     private fun playInternal(recordingId: String, title: String, uri: Uri, seekToMs: Long?) {
         val controller = mediaController ?: return
+        stopAtMs = null
+        clearQueue()
         pendingSeekMs = seekToMs
         _state.value = PlaybackState(phase = PlaybackPhase.LOADING, recordingId = recordingId, title = title)
         val mediaItem = MediaItem.Builder()
@@ -227,6 +265,136 @@ object PlaybackController {
         }
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Queue: a reading made of several parts, played one after another on the same player.
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * Loads [items] as one queue named [queueId] (for a reading: `read:<noteId>`) and plays from
+     * [startIndex] at [startPositionMs]. If the same audio is already loaded it only seeks. More parts can
+     * arrive later with [appendItem]; [expectedCount] says how many there will be, so running out of
+     * available parts reads as "preparing the next one", not "finished".
+     */
+    fun playQueue(context: Context, queueId: String, items: List<QueueItem>, startIndex: Int = 0, startPositionMs: Long = 0L, expectedCount: Int = items.size) {
+        if (items.isEmpty()) return
+        ensureConnected(context)
+        val request = QueueRequest(queueId, items, startIndex, startPositionMs, maxOf(expectedCount, items.size))
+        if (mediaController == null) {
+            pendingQueueRequest = request
+            val idx = QueueLogic.clampIndex(startIndex, items.size)
+            _state.value = PlaybackState(phase = PlaybackPhase.LOADING, recordingId = queueId, title = items[idx].title, queue = queueInfo(items, idx, request.expectedCount, waiting = false, paused = false))
+            return
+        }
+        playQueueInternal(request)
+    }
+
+    private fun playQueueInternal(r: QueueRequest) {
+        val controller = mediaController ?: return
+        stopAtMs = null
+        pendingSeekMs = null
+        val index = QueueLogic.clampIndex(r.startIndex, r.items.size)
+        val reuse = _state.value.recordingId == r.queueId &&
+            controller.mediaItemCount == r.items.size &&
+            QueueLogic.canReuse(queueItems.map { it.mediaId }, r.items.map { it.mediaId })
+        queueId = r.queueId
+        queueItems = r.items
+        queueExpected = r.expectedCount
+        if (reuse) {
+            controller.seekTo(index, r.startPositionMs.coerceAtLeast(0))
+            controller.play()
+            refreshFromPlayer()
+            return
+        }
+        _state.value = PlaybackState(phase = PlaybackPhase.LOADING, recordingId = r.queueId, title = r.items[index].title, queue = queueInfo(r.items, index, r.expectedCount, waiting = false, paused = false))
+        controller.setMediaItems(r.items.map(::toMediaItem), index, r.startPositionMs.coerceAtLeast(0))
+        controller.prepare()
+        controller.play()
+    }
+
+    /** Adds a part to the loaded queue as it becomes ready. If playback had run out of parts, it carries on into this one. */
+    fun appendItem(item: QueueItem) {
+        queueItems = queueItems + item
+        queueExpected = maxOf(queueExpected, queueItems.size)
+        pendingQueueRequest = pendingQueueRequest?.copy(items = pendingQueueRequest!!.items + item, expectedCount = queueExpected)
+        val controller = mediaController ?: return
+        if (queueId == null || pendingQueueRequest != null) return
+        val wasWaiting = _state.value.queue?.waitingForNext == true
+        controller.addMediaItem(toMediaItem(item))
+        if (wasWaiting) {
+            controller.seekTo(queueItems.lastIndex, 0)
+            controller.play()
+        }
+        refreshFromPlayer()
+    }
+
+    /** The queue's final size once known, so the end of the last part is the end of the reading. */
+    fun setExpectedCount(count: Int) {
+        queueExpected = maxOf(count, queueItems.size)
+        refreshFromPlayer()
+    }
+
+    fun next() {
+        val controller = mediaController ?: return
+        QueueLogic.nextIndex(controller.currentMediaItemIndex, queueItems.size)?.let { controller.seekTo(it, 0); controller.play() }
+    }
+
+    fun previous() {
+        val controller = mediaController ?: return
+        controller.seekTo(QueueLogic.previousTarget(controller.currentMediaItemIndex, controller.currentPosition), 0)
+        controller.play()
+    }
+
+    fun skipTo(index: Int) {
+        val controller = mediaController ?: return
+        if (queueItems.isEmpty()) return
+        controller.seekTo(QueueLogic.clampIndex(index, queueItems.size), 0)
+        controller.play()
+    }
+
+    private fun clearQueue() {
+        queueId = null
+        queueItems = emptyList()
+        queueExpected = 0
+    }
+
+    private fun toMediaItem(item: QueueItem): MediaItem = MediaItem.Builder()
+        .setMediaId(item.mediaId)
+        .setUri(item.uri)
+        .setMediaMetadata(MediaMetadata.Builder().setTitle(item.title).build())
+        .build()
+
+    private fun queueInfo(items: List<QueueItem>, index: Int, expected: Int, waiting: Boolean, paused: Boolean) = QueueInfo(
+        titles = items.map { it.title },
+        index = index,
+        expectedCount = expected,
+        waitingForNext = waiting,
+        blockIds = items.map { it.blockIds },
+        pausedAfterQuestion = paused
+    )
+
+    private fun saveProgress(force: Boolean) {
+        val id = queueId ?: return
+        val controller = mediaController ?: return
+        val listener = progressListener ?: return
+        val now = System.currentTimeMillis()
+        if (!force && !QueueLogic.progressDue(lastProgressSavedAt, now)) return
+        val index = QueueLogic.clampIndex(controller.currentMediaItemIndex, queueItems.size)
+        val item = queueItems.getOrNull(index) ?: return
+        lastProgressSavedAt = now
+        val completed = _state.value.phase == PlaybackPhase.COMPLETED
+        listener(QueueProgress(id, item.mediaId, index, if (completed) 0L else controller.currentPosition.coerceAtLeast(0L), completed))
+    }
+
+    private fun announceReadAloud() {
+        val reading = ReadAloudSignals.isReading(_state.value)
+        when (ReadAloudSignals.transition(wasReading, reading)) {
+            ReadAloudSignals.Signal.STARTED -> _readAloudEvents.tryEmit(CompanionEvent.ReadAloudStarted)
+            ReadAloudSignals.Signal.STOPPED -> _readAloudEvents.tryEmit(CompanionEvent.ReadAloudStopped)
+            null -> Unit
+        }
+        wasReading = reading
+    }
+
     fun togglePlayPause() {
         stopAtMs = null
         val controller = mediaController ?: return
@@ -239,12 +407,17 @@ object PlaybackController {
 
     fun stop() {
         val controller = mediaController
+        saveProgress(force = true)
         controller?.stop()
         controller?.clearMediaItems()
         pendingSeekMs = null
         pendingPlayRequest = null
+        pendingQueueRequest = null
+        stopAtMs = null
+        clearQueue()
         stopProgressLoop()
         _state.value = PlaybackState()
+        announceReadAloud()
     }
 
     /** Plain seek against an already-loaded item — safe only when the caller already knows
@@ -307,7 +480,7 @@ object PlaybackController {
         val controller = mediaController ?: return
         if (controller.mediaItemCount == 0) return
         val isBuffering = controller.playbackState == Player.STATE_BUFFERING
-        val phase = computePlaybackPhase(
+        var phase = computePlaybackPhase(
             playbackState = controller.playbackState,
             isPlaying = controller.isPlaying,
             playWhenReady = controller.playWhenReady,
@@ -322,15 +495,31 @@ object PlaybackController {
         val activeSegment = if (segmentsRecordingId == _state.value.recordingId) {
             findActiveTranscriptSegment(segments, positionMs)
         } else null
+        var queue: QueueInfo? = null
+        var title = _state.value.title
+        if (queueId != null && queueItems.isNotEmpty()) {
+            val index = QueueLogic.clampIndex(controller.currentMediaItemIndex, queueItems.size)
+            val ended = controller.playbackState == Player.STATE_ENDED
+            val waiting = QueueLogic.isWaitingForNext(ended, index, queueItems.size, queueExpected)
+            if (waiting) phase = PlaybackPhase.LOADING
+            val paused = (_state.value.queue?.pausedAfterQuestion == true) && !controller.isPlaying
+            queue = queueInfo(queueItems, index, queueExpected, waiting, paused)
+            title = queueItems[index].title
+        }
         _state.value = _state.value.copy(
             phase = phase,
+            title = title,
             durationMs = controller.duration.coerceAtLeast(0L),
             positionMs = positionMs,
             canSeek = controller.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
             isBuffering = isBuffering,
             currentSegmentId = activeSegment?.id,
-            currentSpeakerId = activeSegment?.speakerId
+            currentSpeakerId = activeSegment?.speakerId,
+            queue = queue
         )
+        if (phase == PlaybackPhase.PLAYING) saveProgress(force = false)
+        if (phase == PlaybackPhase.COMPLETED) saveProgress(force = true)
+        announceReadAloud()
     }
 
     private fun startProgressLoop() {
