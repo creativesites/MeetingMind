@@ -124,8 +124,24 @@ fun WrapUpScreen(
     val unnamed = viewModel.unnamed(speakers)
     val project = notebooks.firstOrNull { it.id == note?.notebookId }
 
+    // Signature moments (Z-16/Z-33): the same ladder as the note screen, crisp in Work. The character stays in
+    // the header zone at 48 dp or less and never crosses decisions or tasks; the First Keep plays over the page.
+    val noteMoment = com.craftflowtechnologies.meetingmind.feature.moments.rememberNoteMoment(viewModel.meetingId, refreshKey = meeting?.status)
+    val momentForm = com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings().value.form
+    val createController = com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController()
+    val momentTitle = meeting?.title.orEmpty()
+
+    Box(Modifier.fillMaxSize()) {
+    com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.NoteUnveil(
+        plan = noteMoment.plan,
+        form = momentForm,
+        announcement = com.craftflowtechnologies.meetingmind.feature.moments.noteReadyAnnouncement(momentTitle),
+        modifier = Modifier.fillMaxSize().background(SurfaceBase),
+        key = "unveil:${viewModel.meetingId}",
+        titleWords = momentTitle.split(' ').count { it.isNotBlank() }.coerceAtLeast(1)
+    ) {
     Scaffold(
-        containerColor = SurfaceBase,
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             Surface(color = SurfaceBase, shadowElevation = 8.dp) {
@@ -147,13 +163,17 @@ fun WrapUpScreen(
                     IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Ink) }
                     Text("Wrap-up", fontSize = 13.sp, color = InkMuted, fontWeight = FontWeight.SemiBold)
                 }
-                Column(Modifier.padding(horizontal = 20.dp)) {
+                Column(Modifier.padding(horizontal = 20.dp).momentLayer(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.StageTarget.HEADER)) {
                     Text(meeting?.title.orEmpty(), fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                     meeting?.let { m ->
                         Text(dayLabel(m.createdAt) + " · " + (m.durationMs / 60000).coerceAtLeast(1) + " min", fontSize = 13.sp, color = InkSecondary)
                     }
                 }
-                Surface(shape = RoundedCornerShape(18.dp), color = SurfaceSunk, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                com.craftflowtechnologies.meetingmind.feature.moments.NoteStatus(
+                    outcome = noteMoment.facts?.outcome,
+                    onRetry = { onPlay(null) }, onRedoOnline = { onPlay(null) }, onPlay = { onPlay(null) }
+                )
+                Surface(shape = RoundedCornerShape(18.dp), color = SurfaceSunk, modifier = Modifier.fillMaxWidth().padding(16.dp).momentLayer(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.StageTarget.BODY, 0)) {
                     Column(Modifier.padding(14.dp)) {
                         MetaRow(terms.project) {
                             Chip(project?.name ?: "Choose", project != null) { projectPicker = true }
@@ -248,6 +268,18 @@ fun WrapUpScreen(
             }
         }
     }
+    }
+    com.craftflowtechnologies.meetingmind.feature.moments.NoteFirstKeep(
+        state = noteMoment,
+        meta = meeting?.let { m -> dayLabel(m.createdAt) + " · " + (m.durationMs / 60000).coerceAtLeast(1) + " min" }.orEmpty(),
+        keyPoints = (decisions + tasksAll).map { it.text }.filter { it.isNotBlank() },
+        actionCount = tasksAll.size,
+        onShare = {
+            createController.open(com.craftflowtechnologies.meetingmind.core.create.CreateSeed(com.craftflowtechnologies.meetingmind.core.create.CreateSourceKind.SELECTED_TEXT, text = momentTitle))
+        }
+    )
+    }
+    com.craftflowtechnologies.meetingmind.feature.create.CreateHost(createController)
 
     editing?.let { current ->
         val i = items.firstOrNull { it.id == current.id } ?: current
