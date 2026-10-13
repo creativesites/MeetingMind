@@ -478,6 +478,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
@@ -1255,6 +1256,18 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             bottomOffset = if (currentRoute in routesWithNav) 72.dp else 0.dp
         )
     }
+
+    // "{title} is ready." with Open and a nod; notes that finish during a recording wait for the stop
+    // (signature moments §3.2, §4). Not for the note the person is already watching or reading.
+    com.craftflowtechnologies.meetingmind.feature.moments.NoteReadySnackbarHost(
+        suppressed = { id ->
+            prefsState?.onboardingCompleted != true ||
+                (currentRoute in setOf(Routes.PROCESSING, Routes.MEETING_DETAIL, Routes.WRAP_UP) && currentBackStackEntry?.arguments?.getString("meetingId") == id)
+        },
+        onOpen = { id -> navController.navigate(Routes.meetingDetailRoute(id)) },
+        onShowAll = { navController.navigate(Routes.NOTES) { popUpTo(Routes.HOME) { saveState = true }; launchSingleTop = true; restoreState = true } },
+        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (currentRoute in routesWithNav) 72.dp else 0.dp)
+    )
 
     recoveryEntry?.let { entry ->
         AlertDialog(

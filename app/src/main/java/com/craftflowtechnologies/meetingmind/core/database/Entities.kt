@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.core.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -7,7 +8,10 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "meetings",
-    indices = [Index(value = ["createdAt"]), Index(value = ["title"]), Index(value = ["noteId"])]
+    indices = [
+        Index(value = ["createdAt"]), Index(value = ["title"]), Index(value = ["noteId"]),
+        Index(value = ["noteId", "recordingOrder"])
+    ]
 )
 data class MeetingEntity(
     @PrimaryKey val id: String,
@@ -46,7 +50,13 @@ data class MeetingEntity(
      * delete audio, so [com.craftflowtechnologies.meetingmind.core.repository.NoteRepository.deleteNote] decides. */
     val noteId: String? = null,
     /** When its findings were confirmed in the Wrap-up (schema 17). Null: not reviewed yet. */
-    val reviewedAt: Long? = null
+    val reviewedAt: Long? = null,
+    /**
+     * This recording's place among the parts of its note (schema 25), counted from 0. Only
+     * meaningful while [noteId] is set. Set on attach and backfilled by creation time; reordering
+     * changes note-wide positions only, never this recording's local timestamps.
+     */
+    @ColumnInfo(defaultValue = "0") val recordingOrder: Int = 0
 )
 
 @Entity(

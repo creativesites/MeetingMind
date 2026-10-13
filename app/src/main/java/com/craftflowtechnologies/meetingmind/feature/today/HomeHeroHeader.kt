@@ -58,6 +58,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -98,6 +99,7 @@ import com.craftflowtechnologies.meetingmind.core.identity.LocalAppLook
 import com.craftflowtechnologies.meetingmind.core.timeline.TimeOfDaySky
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionVolume
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
 import kotlinx.coroutines.launch
@@ -120,6 +122,9 @@ val OutfitFamily = FontFamily(
 private val InkNavy: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Ink
 private val Slate: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = InkMuted
 private val Hairline: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Line
+
+/** The companion's size in the hero sky: large enough for its 3D look to read. */
+private val HeroCompanionSize = 150.dp
 
 /** What the floating tile under the hero shows. */
 data class HeroTile(val label: String, val title: String, val subtitle: String, val icon: ImageVector, val accent: Color, val onClick: () -> Unit)
@@ -367,25 +372,31 @@ private fun HeroStage(
             // The companion leads the greeting (§5.3); when it is filtered out the greeting keeps its old width.
             val companionShown = rememberCompanionVisible(CompanionPage.HOME)
             val lateNight = now.get(Calendar.HOUR_OF_DAY).let { it >= 22 || it < 5 }
-            Column(Modifier.align(Alignment.TopStart).fillMaxWidth(if (companionShown) 0.72f else 0.62f).padding(start = 24.dp, top = 30.dp)) {
-                Row(verticalAlignment = Alignment.Top) {
-                    ZuriSlot(
-                        CompanionPage.HOME, 56.dp, state = if (lateNight) CompanionState.SLEEPY else CompanionState.IDLE,
-                        endGap = 12.dp, offerShow = true
-                    )
-                    Text(
-                        greeting, color = OnSky, fontFamily = if (identity.faithFirst) look.headingFont else OutfitFamily,
-                        fontWeight = FontWeight.Medium, fontSize = 27.sp, lineHeight = 32.sp, letterSpacing = (-0.6).sp, maxLines = 3,
-                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
-                    )
-                }
+            Column(Modifier.align(Alignment.TopStart).fillMaxWidth(if (companionShown) 0.58f else 0.62f).padding(start = 24.dp, top = 30.dp)) {
+                Text(
+                    greeting, color = OnSky, fontFamily = if (identity.faithFirst) look.headingFont else OutfitFamily,
+                    fontWeight = FontWeight.Medium, fontSize = 27.sp, lineHeight = 32.sp, letterSpacing = (-0.6).sp, maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
                 if (contextLine != null) {
                     Spacer(Modifier.height(8.dp))
                     Text(contextLine, color = Color.White.copy(alpha = 0.78f), fontFamily = InterFamily, fontSize = 13.sp, lineHeight = 18.sp)
                 }
             }
 
-            val dayOfYear = remember { Calendar.getInstance().get(Calendar.DAY_OF_YEAR) }
+            // The companion, large and in the sky: it leans toward a touch or the phone's tilt (the 3D layer).
+            Box(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 6.dp)) {
+                CompositionLocalProvider(LocalCompanionVolume provides true) {
+                    ZuriSlot(
+                        CompanionPage.HOME, HeroCompanionSize,
+                        state = if (lateNight) CompanionState.SLEEPY else CompanionState.IDLE,
+                        offerShow = true
+                    )
+                }
+            }
+
+            // From the same clock as the sky, so a fixed [at] (previews, goldens) gives a fixed verse and quote.
+            val dayOfYear = now.get(Calendar.DAY_OF_YEAR)
             val fallbackVerse = remember(dayOfYear) { DailyInspirations.verses[dayOfYear % DailyInspirations.verses.size] }
             val fallbackQuote = remember(dayOfYear) { DailyInspirations.quotes[dayOfYear % DailyInspirations.quotes.size] }
 

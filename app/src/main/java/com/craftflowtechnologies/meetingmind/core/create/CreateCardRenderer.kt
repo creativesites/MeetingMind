@@ -114,7 +114,8 @@ object CreateCardRenderer {
         val unit = min(f.width, f.height) / 1080f
         val s = safe(f)
         val width = (f.width * (1 - 2 * s.side)).toInt()
-        val availableH = f.height * (1 - s.top - s.bottom) - 130f * unit - (if (input.design.includeCompanion) f.width * 0.2f else 0f)
+        val availableH = f.height * (1 - s.top - s.bottom) - 130f * unit -
+            (if (input.design.includeCompanion) CompanionPlacement.reservedHeight(f, f.width.toFloat(), f.height.toFloat(), input.design.companionAnchor) else 0f)
         val b = blocks(context, input, width, availableH, unit, Color.WHITE, Color.WHITE, Layout.Alignment.ALIGN_CENTER)
         return !b.overflow
     }
@@ -158,9 +159,11 @@ object CreateCardRenderer {
         val soft = Color.argb(205, Color.red(ink), Color.green(ink), Color.blue(ink))
         val accent = if (darkInk) Color.rgb(122, 78, 15) else Color.rgb(246, 211, 101)
 
-        val companionSize = if (d.includeCompanion && companion != null) w * 0.2f else 0f
-        val footH = 100f * unit
-        val availableH = (bottom - top) - footH - companionSize - (if (companionSize > 0f) 24f * unit else 0f)
+        // The companion's place (§5.2): one rule for the renderer, the editor's reveal and the tests.
+        val withCompanion = d.includeCompanion && companion != null
+        val footH = CompanionPlacement.FootUnits * unit
+        val reserved = if (withCompanion) CompanionPlacement.reservedHeight(f, w.toFloat(), h.toFloat(), d.companionAnchor) else 0f
+        val availableH = (bottom - top) - footH - reserved
         val b = blocks(context, input, textWidth, availableH, unit, ink, accent, align)
 
         val eyebrowH = if (input.eyebrow != null) 64f * unit else 0f
@@ -177,11 +180,15 @@ object CreateCardRenderer {
         b.verse?.let { canvas.save(); canvas.translate(left, y); it.draw(canvas); canvas.restore(); y += it.height + (if (b.main == null) b.gap else 0f) }
         b.reference?.let { canvas.save(); canvas.translate(left, y); it.draw(canvas); canvas.restore() }
 
-        if (companion != null && companionSize > 0f) {
-            val cx = if (d.centered) (w - companionSize) / 2f else left
-            val cy = bottom - footH - companionSize
-            canvas.drawBitmap(companion, null, android.graphics.RectF(cx, cy, cx + companionSize, cy + companionSize), Paint(Paint.FILTER_BITMAP_FLAG))
+        if (withCompanion && companion != null) {
+            // The exact static export pose, rendered at 2× and downsampled here for clean edges (§5.5).
+            val r = CompanionPlacement.place(f, w.toFloat(), h.toFloat(), d.centered, d.companionAnchor)
+            canvas.drawBitmap(companion, null, android.graphics.RectF(r.left, r.top, r.right, r.bottom), Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
         }
+        // With the corner anchor the foot text keeps to the start side, clear of the companion.
+        val footInset = if (withCompanion) CompanionPlacement.footInset(f, w.toFloat(), h.toFloat(), d.companionAnchor) else 0f
+        val footWidth = (textWidth - footInset).toInt().coerceAtLeast(1)
+        val footAlign = if (footInset > 0f) Layout.Alignment.ALIGN_NORMAL else align
 
         // Foot: the translation's attribution is always printed; the watermark only if asked for.
         val sans = ShareCardRenderer.typeface(context, com.craftflowtechnologies.meetingmind.core.share.ShareFont.INTER)
@@ -189,13 +196,13 @@ object CreateCardRenderer {
         var footY = bottom
         if (d.watermark) {
             val mark = TextPaint(footPaint).apply { textSize = 23f * unit; typeface = Typeface.create(sans, Typeface.BOLD); letterSpacing = 0.06f }
-            val l = layout("Made with MeetingMind", mark, textWidth, align, 1f, 1)
+            val l = layout("Made with MeetingMind", mark, footWidth, footAlign, 1f, 1)
             footY -= l.height
             canvas.save(); canvas.translate(left, footY); l.draw(canvas); canvas.restore()
             footY -= 10f * unit
         }
         input.verse?.attribution?.takeIf { it.isNotBlank() }?.let { a ->
-            val l = layout(a, footPaint, textWidth, align, 1.1f, 3)
+            val l = layout(a, footPaint, footWidth, footAlign, 1.1f, 3)
             canvas.save(); canvas.translate(left, footY - l.height); l.draw(canvas); canvas.restore()
         }
         return bitmap

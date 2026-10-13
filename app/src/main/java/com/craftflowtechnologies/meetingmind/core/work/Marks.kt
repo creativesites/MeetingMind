@@ -4,10 +4,10 @@ import com.craftflowtechnologies.meetingmind.core.database.ActionItemEntity
 import com.craftflowtechnologies.meetingmind.core.database.DecisionEntity
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.database.QuestionEntity
+import com.craftflowtechnologies.meetingmind.core.database.RecordingMarkerEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
-import org.json.JSONObject
 import java.util.UUID
 import kotlin.math.abs
 
@@ -15,7 +15,9 @@ import kotlin.math.abs
 enum class MarkKind(val label: String) {
     KEY("Key moment"), ACTION("Action"), QUESTION("Question"),
     // R-1: the buttons that depend on what is being recorded. Stored in the same list.
-    DECISION("Decision"), SCRIPTURE("Scripture"), NOTE("Note"), PRAYER("Prayer point")
+    DECISION("Decision"), SCRIPTURE("Scripture"), NOTE("Note"), PRAYER("Prayer point"),
+    // Schema 25. Appended last: stored by name, so the seven above keep their stored values.
+    IDEA("Idea")
 }
 
 /** A tap at [atMs] into the recording, with the words the person typed for it, if any. */
@@ -28,37 +30,57 @@ data class Mark(val kind: MarkKind, val atMs: Long, val text: String? = null)
  * person flagged is missed. Key moments stay on the note to jump back to.
  */
 object Marks {
-    const val KEY = "marks"
     /** How far from a mark a finding can be and still be the same thing. */
     private const val WINDOW_MS = 45_000L
 
+    /**
+     * Saves the marks tapped in one recording, to that recording. Each mark is a row owned by its
+     * recording (recording_markers), so reconciling or displaying one recording can never reach
+     * another's marks. Stage 2 moves the write to tap time; until then this runs once, at stop.
+     */
     suspend fun save(database: MeetMindDatabase, meetingId: String, marks: List<Mark>) = withContext(Dispatchers.IO) {
         if (marks.isEmpty()) return@withContext
-        val noteId = database.meetingDao().getMeetingById(meetingId)?.noteId ?: return@withContext
-        val note = database.noteDao().getById(noteId) ?: return@withContext
-        val meta = runCatching { JSONObject(note.metadataJson) }.getOrDefault(JSONObject())
-        val list = runCatching { JSONArray(meta.optString(KEY, "[]")) }.getOrDefault(JSONArray())
-        marks.forEach { list.put(JSONObject().put("kind", it.kind.name).put("at", it.atMs).apply { it.text?.let { t -> put("text", t) } }) }
-        meta.put(KEY, list.toString())
-        database.noteDao().upsert(note.copy(metadataJson = meta.toString()))
+        if (database.meetingDao().getMeetingById(meetingId) == null) return@withContext
+        val dao = database.recordingMarkerDao()
+        val first = dao.nextSequence(meetingId)
+        val now = System.currentTimeMillis()
+        dao.insertAll(marks.mapIndexed { i, m ->
+            RecordingMarkerEntity(
+                id = UUID.randomUUID().toString(),
+                meetingId = meetingId,
+                sequence = first + i,
+                timestampMs = m.atMs,
+                kind = m.kind.name,
+                text = m.text,
+                createdAt = now,
+                updatedAt = now
+            )
+        })
     }
 
-    fun read(metadataJson: String?): List<Mark> = runCatching {
-        val a = JSONArray(JSONObject(metadataJson ?: "{}").optString(KEY, "[]"))
-        (0 until a.length()).map { i -> a.getJSONObject(i).let { Mark(enumOr(it.optString("kind"), MarkKind.KEY), it.optLong("at"), it.optString("text").ifBlank { null }) } }
-    }.getOrDefault(emptyList())
+    /**
+     * The marks this recording owns, in timestamp order. A stored kind this build does not know is
+     * skipped here, and stays in the table untouched.
+     */
+    suspend fun forMeeting(database: MeetMindDatabase, meetingId: String): List<Mark> = withContext(Dispatchers.IO) {
+        database.recordingMarkerDao().forMeeting(meetingId).mapNotNull { row ->
+            MarkKind.entries.firstOrNull { it.name == row.kind }?.let { Mark(it, row.timestampMs, row.text) }
+        }
+    }
 
-    fun keyMoments(metadataJson: String?): List<Long> = read(metadataJson).filter { it.kind == MarkKind.KEY }.map { it.atMs }
+    /** The highlights this recording owns, for jumping back to them. */
+    suspend fun keyMoments(database: MeetMindDatabase, meetingId: String): List<Long> =
+        forMeeting(database, meetingId).filter { it.kind == MarkKind.KEY }.map { it.atMs }
 
     /** The marks that become (or confirm) findings; the rest become note sections ([MarkerNote]). */
     private val RECONCILED = setOf(MarkKind.ACTION, MarkKind.QUESTION, MarkKind.DECISION)
 
     data class Segment(val id: String, val startMs: Long, val endMs: Long, val speakerId: String?, val text: String)
 
-    /** Runs after extraction has written the recording's findings. */
+    /** Runs after extraction has written the recording's findings. Only this recording's own marks are reconciled. */
     suspend fun reconcile(database: MeetMindDatabase, meetingId: String, segments: List<Segment>) = withContext(Dispatchers.IO) {
-        val noteId = database.meetingDao().getMeetingById(meetingId)?.noteId ?: return@withContext
-        val marks = read(database.noteDao().getById(noteId)?.metadataJson).filter { it.kind in RECONCILED }
+        // Only this recording's own marks. An orphan recording (no note) is reconciled too.
+        val marks = forMeeting(database, meetingId).filter { it.kind in RECONCILED }
         if (marks.isEmpty()) return@withContext
         val starts = segments.associate { it.id to it.startMs }
         fun startOf(json: String) = idList(json).firstNotNullOfOrNull { starts[it] }

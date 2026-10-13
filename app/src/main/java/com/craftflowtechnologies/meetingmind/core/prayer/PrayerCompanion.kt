@@ -108,7 +108,7 @@ object PrayerCompanion {
         appendLine()
         appendLine(timeContext(now))
         appendLine()
-        appendLine(SINGING)
+        appendLine("If asked to sing, be honest that you cannot sing a melody yet. Offer to pray together or share a hymn's words instead; do not claim to sing or hum.")
         appendLine()
         appendLine("How to pray this time: ${s.mode.instruction}")
         s.persona?.let { appendLine("Your voice and manner: $it. Keep that manner in how you speak and pray.") }

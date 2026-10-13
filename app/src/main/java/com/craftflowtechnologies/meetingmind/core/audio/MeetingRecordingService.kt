@@ -125,6 +125,14 @@ class MeetingRecordingService : Service() {
          * [startRecording] is what actually begins capture and promotes it to foreground; binding
          * on its own just gets a caller a reference to call that with. */
         fun bindIntent(context: Context): Intent = Intent(context, MeetingRecordingService::class.java)
+
+        private val _capturing = MutableStateFlow(false)
+        /**
+         * True while a recording is being captured (preparing, recording, paused or stopping), for code
+         * that isn't bound to the service: a note that finishes meanwhile waits, and its moment and
+         * snackbar come after the stop (signature moments §3.3 row 4).
+         */
+        val capturing: StateFlow<Boolean> = _capturing.asStateFlow()
     }
 
     override fun onCreate() {
@@ -134,6 +142,9 @@ class MeetingRecordingService : Service() {
         journalStore = RecordingJournalStore(applicationContext)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         createNotificationChannel()
+        scope.launch {
+            _state.collect { _capturing.value = it == RecordingState.PREPARING || it == RecordingState.RECORDING || it == RecordingState.PAUSED || it == RecordingState.STOPPING }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -157,6 +168,7 @@ class MeetingRecordingService : Service() {
     }
 
     override fun onDestroy() {
+        _capturing.value = false
         releaseWakeLock()
         super.onDestroy()
     }

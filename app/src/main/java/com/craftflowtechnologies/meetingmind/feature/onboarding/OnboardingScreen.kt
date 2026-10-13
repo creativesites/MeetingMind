@@ -113,7 +113,9 @@ enum class SetupChoice { OFFLINE_PACK, INTERNET, LATER }
 
 class OnboardingViewModel(
     application: Application,
-    private val companionSettings: CompanionSettingsSource
+    private val companionSettings: CompanionSettingsSource,
+    /** The moments ledger for the hello First Keep; null is the app's store (tests pass their own). */
+    private val momentStore: com.craftflowtechnologies.meetingmind.core.companion.MomentLedgerStore? = null
 ) : AndroidViewModel(application) {
     constructor(application: Application) : this(application, CompanionSettingsStore(application))
 
@@ -197,6 +199,40 @@ class OnboardingViewModel(
     }
     fun setSampleKind(kind: SampleKind) { _sampleKind.value = kind }
     fun markSampleViewed() { viewModelScope.launch { prefs.setSampleViewed(true) } }
+
+    /**
+     * The hello First Keep (signature moments §2.2, decision 1): when the example's notes first appear, the
+     * sample note gets its own once-ever First Keep (ledger key `peak.first.hello`), so the person learns the
+     * gesture before it matters. Nothing is recorded. It plays at most once per onboarding.
+     */
+    private val _hello = MutableStateFlow<com.craftflowtechnologies.meetingmind.core.companion.moment.MomentPlan.FirstKeep?>(null)
+    val hello: StateFlow<com.craftflowtechnologies.meetingmind.core.companion.moment.MomentPlan.FirstKeep?> = _hello.asStateFlow()
+    private var helloPlanned = false
+
+    fun playHello(kind: SampleKind) {
+        if (helloPlanned) return
+        helloPlanned = true
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            val plan = runCatching {
+                val now = System.currentTimeMillis()
+                val clock = com.craftflowtechnologies.meetingmind.core.companion.LocalClock(now, java.util.TimeZone.getDefault().getOffset(now).toLong())
+                val space = if (kind == SampleKind.SERMON) com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH else com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK
+                val store = momentStore ?: com.craftflowtechnologies.meetingmind.core.companion.MomentLedgerStore(app)
+                store.issueTicket(com.craftflowtechnologies.meetingmind.core.companion.moment.UnveilTicket.hello(SampleNoteId, now, space).copy(sermon = kind == SampleKind.SERMON))
+                store.planOpen(SampleNoteId, clock) { ticket, ledger, rotation ->
+                    com.craftflowtechnologies.meetingmind.core.companion.moment.MomentFacts(
+                        noteId = SampleNoteId, ticket = ticket, space = space, sermon = kind == SampleKind.SERMON,
+                        device = com.craftflowtechnologies.meetingmind.core.companion.moment.MomentEnvironment.read(app),
+                        companionShown = _companion.value != null, clock = clock, ledger = ledger, rotation = rotation
+                    )
+                }.plan
+            }.getOrNull()
+            _hello.value = plan as? com.craftflowtechnologies.meetingmind.core.companion.moment.MomentPlan.FirstKeep
+        }
+    }
+
+    fun closeHello() { _hello.value = null }
 
     fun next(steps: List<OnboardingStep>, finish: () -> Unit) {
         if (_step.value == OnboardingStep.COMPANION) commitCompanion()
@@ -410,7 +446,8 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                         OnboardingStep.WELCOME -> Welcome()
                         OnboardingStep.COMPANION -> CompanionPickStep(companion, viewModel::setCompanion)
                         OnboardingStep.SAMPLE -> SampleStep(
-                            kind = sampleKind, onKind = viewModel::setSampleKind, onViewed = viewModel::markSampleViewed,
+                            kind = sampleKind, onKind = viewModel::setSampleKind,
+                            onViewed = { viewModel.markSampleViewed(); viewModel.playHello(sampleKind) },
                             onRecordInstead = { forward = true; viewModel.startRecordNow() }
                         )
                         OnboardingStep.GOALS -> GoalsStep(
@@ -456,8 +493,28 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                 }
             }
         }
+        val hello by viewModel.hello.collectAsState()
+        hello?.let { plan ->
+            val sample = SampleContent.of(sampleKind)
+            com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.FirstKeepOverlay(
+                plan = plan,
+                form = companion,
+                note = com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.FirstKeepNote(sample.title, "${sample.length} · ${stringResource(R.string.companion_moment_hello_example)}", sample.actions.take(3)),
+                headline = stringResource(R.string.companion_moment_hello_headline),
+                subline = stringResource(R.string.companion_moment_hello_sub),
+                openLabel = stringResource(R.string.companion_moment_open_note),
+                shareLabel = stringResource(R.string.companion_moment_hello_record),
+                announcement = stringResource(R.string.companion_moment_hello_headline),
+                key = "firstkeep:$SampleNoteId",
+                onOpen = viewModel::closeHello,
+                onShare = { viewModel.closeHello(); forward = true; viewModel.startRecordNow() }
+            )
+        }
     }
 }
+
+/** The onboarding example's id for the moments ledger and ticket. It is never a real note. */
+internal const val SampleNoteId = "onboarding.sample"
 
 @Composable
 private fun GradientButton(label: String, tag: String, onClick: () -> Unit) {

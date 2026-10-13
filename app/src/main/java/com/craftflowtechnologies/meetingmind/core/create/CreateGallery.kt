@@ -54,6 +54,8 @@ object CreateCardCodec {
         put("font", d.fontPair.name)
         put("centered", d.centered)
         put("companion", d.includeCompanion)
+        d.companionPose?.let { put("pose", it.name) }
+        put("anchor", d.companionAnchor.name)
         put("watermark", d.watermark)
         put("scale", d.textScale.toDouble())
     }
@@ -67,6 +69,8 @@ object CreateCardCodec {
             fontPair = CreateFontPair.entries.firstOrNull { it.name == o.optString("font") } ?: CreateFontPair.CLASSIC,
             centered = o.optBoolean("centered", true),
             includeCompanion = o.optBoolean("companion", false),
+            companionPose = com.craftflowtechnologies.meetingmind.core.companion.CreateMode.entries.firstOrNull { it.name == o.optString("pose") },
+            companionAnchor = CompanionAnchor.entries.firstOrNull { it.name == o.optString("anchor") } ?: CompanionAnchor.BELOW,
             watermark = o.optBoolean("watermark", false),
             textScale = o.optDouble("scale", 1.0).toFloat().coerceIn(0.7f, 1.4f)
         )

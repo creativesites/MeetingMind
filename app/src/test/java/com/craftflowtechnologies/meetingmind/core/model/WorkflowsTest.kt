@@ -35,6 +35,16 @@ class WorkflowsTest {
         assertEquals(NotebookSpace.WORK, Workflows.space(RecordingType.MEETING))
     }
 
+    /** Golden: a workflow's section order is what markers and generated content are grouped under. Changing it is a deliberate act. */
+    @Test
+    fun `template section order is fixed for the sermon and meeting workflows`() {
+        assertEquals(
+            listOf("main_scripture", "key_message", "key_points", "quotes", "application", "prayer_points", "reflection_questions", "my_notes", "my_response", "my_prayer"),
+            Workflows.template(RecordingType.SERMON).sections.map { it.key }
+        )
+        assertEquals(listOf("agenda", "my_notes", "decisions", "next_steps"), Workflows.template(RecordingType.MEETING).sections.map { it.key })
+    }
+
     @Test
     fun `sermon template keeps prayer private and splits AI from user sections`() {
         val t = Workflows.template(RecordingType.SERMON)

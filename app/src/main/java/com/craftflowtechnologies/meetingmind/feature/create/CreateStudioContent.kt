@@ -45,6 +45,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
+import com.craftflowtechnologies.meetingmind.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -111,8 +116,22 @@ data class CreateActions(
     val onSend: (() -> Unit)? = null
 ) { companion object { val None = CreateActions() } }
 
-/** The companion offered on the card: its name, and the pose its mood maps to. Null hides the switch. */
-data class CompanionOffer(val name: String, val poseLabel: String)
+/**
+ * The companion offered on the card (§5.3). Null hides the switch. [allowed] are the only poses offered
+ * (disallowed ones are hidden, not greyed); [mode] is the pose drawn and exported; [fellBack] is an override
+ * the card no longer allows, shown as a quiet line.
+ */
+data class CompanionOffer(
+    val name: String,
+    val poseLabel: String,
+    val form: com.craftflowtechnologies.meetingmind.core.companion.CompanionForm? = null,
+    val mode: com.craftflowtechnologies.meetingmind.core.companion.CreateMode? = null,
+    val suggested: com.craftflowtechnologies.meetingmind.core.companion.CreateMode? = null,
+    val allowed: List<com.craftflowtechnologies.meetingmind.core.companion.CreateMode> = emptyList(),
+    val fellBack: com.craftflowtechnologies.meetingmind.core.companion.CreateMode? = null,
+    val prayerRequest: Boolean = false,
+    val sacred: Boolean = false
+)
 
 /**
  * The studio, stateless: a live card above, four steps below (Words, Format, Design, Share).
@@ -125,9 +144,13 @@ fun CreateStudioContent(
     fits: Boolean,
     companion: CompanionOffer?,
     actions: CreateActions,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Drawn over the preview in card pixels × [scale] (the companion's reveal). */
+    previewOverlay: @Composable (scale: Float) -> Unit = {}
 ) {
     val c = MM.colors
+    // The platform chrome on each format, shown on the preview while designing (§5.2).
+    var safeZones by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     Column(modifier.fillMaxSize().background(MM.colors.background).statusBarsPadding().navigationBarsPadding()) {
         ScreenHeader(
             title = "Create",
@@ -147,6 +170,11 @@ fun CreateStudioContent(
                 else Box(Modifier.fillMaxSize().background(MM.colors.surfaceSunk), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(Modifier.size(MMSize.icon), strokeWidth = 2.dp, color = c.inkMuted)
                 }
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val scale = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.toPx() } / ui.card.format.width
+                    previewOverlay(scale)
+                    if (safeZones && ui.step == CreateStep.DESIGN) SafeZones(ui.card.format, ui.card.design.includeCompanion && ui.card.design.companionAnchor == com.craftflowtechnologies.meetingmind.core.create.CompanionAnchor.CORNER_END)
+                }
             }
         }
         Column(Modifier.fillMaxWidth().clip(MM.radius.sheet).background(MM.colors.surfaceRaised)) {
@@ -164,7 +192,7 @@ fun CreateStudioContent(
                 when (ui.step) {
                     CreateStep.WORDS -> WordsStep(ui, actions)
                     CreateStep.FORMAT -> FormatStep(ui, fits, actions)
-                    CreateStep.DESIGN -> DesignStep(ui, companion, actions)
+                    CreateStep.DESIGN -> DesignStep(ui, companion, actions, safeZones) { safeZones = it }
                     CreateStep.SHARE -> ShareStep(ui, companion != null, actions)
                 }
             }
@@ -269,7 +297,7 @@ private fun FormatStep(ui: CreateUi, fits: Boolean, a: CreateActions) {
 // ───────────────────────────── Design ─────────────────────────────
 
 @Composable
-private fun DesignStep(ui: CreateUi, companion: CompanionOffer?, a: CreateActions) {
+private fun DesignStep(ui: CreateUi, companion: CompanionOffer?, a: CreateActions, safeZones: Boolean = false, onSafeZones: (Boolean) -> Unit = {}) {
     val d = ui.card.design
     SectionLabel("Background")
     LazyRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
@@ -299,7 +327,80 @@ private fun DesignStep(ui: CreateUi, companion: CompanionOffer?, a: CreateAction
         )
     }
     if (companion != null) {
-        ToggleRow("Include ${companion.name}", "Suggested pose: ${companion.poseLabel}. Off unless you want it.", d.includeCompanion) { a.onDesign(d.copy(includeCompanion = it)) }
+        ToggleRow(
+            stringResource(R.string.companion_moment_card_include, companion.name),
+            if (d.includeCompanion) poseLine(companion) else stringResource(R.string.companion_moment_card_suggested, companion.suggested?.label() ?: companion.poseLabel),
+            d.includeCompanion
+        ) { a.onDesign(d.copy(includeCompanion = it)) }
+        if (d.includeCompanion) CompanionChoices(ui, companion, a)
+    }
+    ToggleRow(stringResource(R.string.companion_moment_card_safe_zones), ui.card.format.hint, safeZones, onSafeZones)
+}
+
+/** "Suggested: Peaceful", or "Suggested: Peaceful · you chose Reflective" after an override (§5.3). */
+@Composable
+private fun poseLine(o: CompanionOffer): String {
+    val suggested = o.suggested ?: return o.poseLabel
+    val mode = o.mode ?: suggested
+    return if (mode == suggested) stringResource(R.string.companion_moment_card_suggested, suggested.label())
+    else stringResource(R.string.companion_moment_card_suggested_chose, suggested.label(), mode.label())
+}
+
+/**
+ * The pose chips (only the allowed poses: the rest are hidden, not greyed), the restriction line when the set
+ * is restricted, the quiet fallback line, the anchor chips, and on a prayer request the words promise.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun CompanionChoices(ui: CreateUi, o: CompanionOffer, a: CreateActions) {
+    val d = ui.card.design
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+        o.allowed.forEach { m ->
+            MMChip(
+                m.label(), selected = o.mode == m,
+                // Choosing the suggestion clears the override, so the pose follows the vibe again.
+                onClick = { a.onDesign(d.copy(companionPose = if (m == o.suggested) null else m)) },
+                modifier = Modifier.testTag("pose_${m.name}")
+            )
+        }
+    }
+    val restriction = when {
+        o.prayerRequest -> stringResource(R.string.companion_moment_card_prayer_only)
+        o.sacred && o.allowed.size < com.craftflowtechnologies.meetingmind.core.companion.CreateMode.entries.size -> stringResource(R.string.companion_moment_card_scripture_calm, o.name)
+        else -> null
+    }
+    restriction?.let { Text(it, style = MM.type.caption, color = MM.colors.inkMuted) }
+    o.fellBack?.let { Text(stringResource(R.string.companion_moment_card_not_offered, it.label()), style = MM.type.caption, color = MM.colors.inkMuted) }
+    if (o.prayerRequest) Text(stringResource(R.string.companion_moment_card_words_promise), style = MM.type.caption, color = MM.colors.inkMuted)
+    Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+        com.craftflowtechnologies.meetingmind.core.create.CompanionPlacement.anchors(ui.card.format).forEach { anchor ->
+            MMChip(
+                stringResource(if (anchor == com.craftflowtechnologies.meetingmind.core.create.CompanionAnchor.BELOW) R.string.companion_moment_card_anchor_below else R.string.companion_moment_card_anchor_corner),
+                selected = d.companionAnchor == anchor, onClick = { a.onDesign(d.copy(companionAnchor = anchor)) },
+                modifier = Modifier.testTag("anchor_${anchor.name}")
+            )
+        }
+    }
+}
+
+/** The safe-zone overlay: the platform chrome bands (§5.2), drawn over the preview. Decorative. */
+@Composable
+private fun SafeZones(format: com.craftflowtechnologies.meetingmind.core.create.CreateFormat, corner: Boolean) {
+    val band = MM.colors.danger.copy(alpha = 0.16f)
+    val edge = MM.colors.danger.copy(alpha = 0.55f)
+    Canvas(Modifier.fillMaxSize().testTag("safe_zones")) {
+        val r = com.craftflowtechnologies.meetingmind.core.create.CompanionPlacement.safeRect(
+            format, size.width, size.height,
+            if (corner) com.craftflowtechnologies.meetingmind.core.create.CompanionAnchor.CORNER_END else com.craftflowtechnologies.meetingmind.core.create.CompanionAnchor.BELOW
+        )
+        drawRect(band, size = androidx.compose.ui.geometry.Size(size.width, r.top))
+        drawRect(band, topLeft = androidx.compose.ui.geometry.Offset(0f, r.bottom), size = androidx.compose.ui.geometry.Size(size.width, size.height - r.bottom))
+        drawRect(band, topLeft = androidx.compose.ui.geometry.Offset(0f, r.top), size = androidx.compose.ui.geometry.Size(r.left, r.height))
+        drawRect(band, topLeft = androidx.compose.ui.geometry.Offset(r.right, r.top), size = androidx.compose.ui.geometry.Size(size.width - r.right, r.height))
+        drawRect(
+            edge, topLeft = androidx.compose.ui.geometry.Offset(r.left, r.top), size = androidx.compose.ui.geometry.Size(r.width, r.height),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 6f)))
+        )
     }
 }
 

@@ -208,7 +208,7 @@ internal fun PraySessionContent(viewModel: PrayWithMeViewModel, ui: PrayUi, onCl
 
             if (ended) EndedCard(ui, elapsed, onSave = { ui.savedNoteId?.let(onOpenNote) ?: viewModel.save() }, onAgain = { viewModel.reset() }, onClose = onClose)
             else {
-                QuickAsks(ui, onSing = { viewModel.sing() }, onAsk = viewModel::ask)
+                QuickAsks(ui, onAsk = viewModel::ask)
                 Composer(ui, you, onSend = viewModel::say, onMute = { viewModel.toggleMute() }, onAmen = { viewModel.end() })
             }
         }
@@ -342,9 +342,8 @@ private fun Conversation(lines: List<PrayLine>, modifier: Modifier) {
 
 /** One-tap things to ask for, so nobody has to find the words. */
 @Composable
-private fun QuickAsks(ui: PrayUi, onSing: () -> Unit, onAsk: (String) -> Unit) {
+private fun QuickAsks(ui: PrayUi, onAsk: (String) -> Unit) {
     val asks = buildList<Pair<String, () -> Unit>> {
-        add("♪  Sing with me" to onSing)
         if (ui.mode == PrayMode.TALK_IT_THROUGH) {
             add("Ask me a question" to { onAsk("Please ask me one good question about today's reading.") })
             add("Pray about this" to { onAsk("Let's pray about what we've talked about. Please lead a short prayer.") })

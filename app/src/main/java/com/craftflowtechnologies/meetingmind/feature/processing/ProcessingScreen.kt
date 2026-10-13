@@ -206,7 +206,12 @@ class ProcessingViewModel(application: Application) : AndroidViewModel(applicati
                 return@launch
             }
 
-            val meetingTitle = database.meetingDao().getMeetingById(meetingId)?.title ?: "Recording"
+            val existing = database.meetingDao().getMeetingById(meetingId)
+            val meetingTitle = existing?.title ?: "Recording"
+            // Running again after a failure, a model download or for a redo: its arrival nods (signature moments §4).
+            if (existing?.status in setOf(MeetingStatus.ERROR.name, MeetingStatus.MODEL_REQUIRED.name, MeetingStatus.READY.name)) {
+                com.craftflowtechnologies.meetingmind.feature.moments.RetriedNotes.mark(getApplication(), meetingId)
+            }
             _uiState.value = ProcessingUiState(recordingTitle = meetingTitle)
             lastMeetingId = meetingId
             val id = com.craftflowtechnologies.meetingmind.ai.pipeline.ProcessingScheduler.enqueue(

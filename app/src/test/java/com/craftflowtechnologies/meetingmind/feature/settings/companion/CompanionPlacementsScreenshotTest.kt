@@ -163,7 +163,7 @@ class CompanionPlacementsScreenshotTest {
                             streakLabel = "12 days", weekLabel = "9 this week", inboxCount = 2, showSwitch = false, switchLabel = "Faith",
                             tile = HeroTile("Up next · In 25 min", "Design review", "Last time: Q3 planning", HeroTiles.eventIcon(), AppLook.of(identity.look).accent) {},
                             listState = rememberLazyListState(), onAvatar = {}, onSearch = {}, onInbox = {}, onSwitch = {},
-                            at = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, hour); set(Calendar.MINUTE, 20) }
+                            at = Calendar.getInstance().apply { set(2026, Calendar.OCTOBER, 13, hour, 20, 0); set(Calendar.MILLISECOND, 0) } // a fixed day, so the goldens never drift
                         )
                     }
                 }
