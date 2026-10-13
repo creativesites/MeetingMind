@@ -31,7 +31,9 @@ data class PlaybackState(
      * `loopRange.last`. Used by review-style UI that wants to replay a short window on repeat
      * (e.g. "loop the few seconds around this flagged word") without the screen polling position
      * itself to detect the boundary. */
-    val loopRange: LongRange? = null
+    val loopRange: LongRange? = null,
+    /** Set while a multi-part reading is loaded (see [PlaybackController.playQueue]); null for a single recording. */
+    val queue: QueueInfo? = null
 ) {
     val isPlaying: Boolean get() = phase == PlaybackPhase.PLAYING
     val isPaused: Boolean get() = phase == PlaybackPhase.PAUSED
