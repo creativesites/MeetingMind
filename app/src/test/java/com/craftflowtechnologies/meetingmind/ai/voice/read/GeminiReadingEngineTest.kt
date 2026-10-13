@@ -43,7 +43,8 @@ class GeminiReadingEngineTest {
         work = tmp.newFolder()
     }
 
-    @After fun tearDown() { server.shutdown() }
+    // The credential DataStore is process-wide: don't leave the test key behind for other test classes.
+    @After fun tearDown() { server.shutdown(); runBlocking { credentials.clear() } }
 
     private fun engine(permission: CloudPermission = CloudPermission.Allowed): GeminiReadingEngine {
         val interactions = GeminiInteractions(credentials, GeminiInteractions.mediaClient(), server.url("/").toString().trimEnd('/'))

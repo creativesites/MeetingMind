@@ -57,7 +57,8 @@ class GeminiSpeechClientTest {
         runBlocking { credentials.setApiKey("test-key") }
     }
 
-    @After fun tearDown() { server.shutdown() }
+    // The credential DataStore is process-wide: don't leave the test key behind for other test classes.
+    @After fun tearDown() { server.shutdown(); runBlocking { credentials.clear() } }
 
     private fun interactions(client: OkHttpClient = GeminiInteractions.mediaClient()) =
         GeminiInteractions(credentials, client, server.url("/").toString().trimEnd('/'))
