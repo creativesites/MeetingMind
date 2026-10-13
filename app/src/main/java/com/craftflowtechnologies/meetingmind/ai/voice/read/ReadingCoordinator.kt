@@ -3,6 +3,10 @@ package com.craftflowtechnologies.meetingmind.ai.voice.read
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
 import com.craftflowtechnologies.meetingmind.ai.common.ReadToMeLog
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.LearningRules
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.Promotion
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadCategory
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -17,7 +21,8 @@ data class LoadedNote(
     val space: NotebookSpace?,
     val source: SpeechSource,
     val facts: NoteFacts,
-    val language: String?
+    val language: String?,
+    val category: ReadCategory = ReadCategory.OTHER
 )
 
 /** Everything the coordinator needs from the phone, so the state machine can be tested with fakes. */
@@ -28,6 +33,8 @@ interface ReadingHost {
     suspend fun environment(): Environment
     fun settings(): ReadToMeSettings
     fun updateSettings(change: (ReadToMeSettings) -> ReadToMeSettings): ReadToMeSettings
+    fun profile(): ReadToMeProfile
+    fun updateProfile(change: (ReadToMeProfile) -> ReadToMeProfile): ReadToMeProfile
     /** The phone's voice. [requireOffline] when the voice must not use the network. */
     fun localVoice(settings: ReadToMeSettings, requireOffline: Boolean): SectionVoice
     /** The Gemini voice; every request is checked again against [routeAllowsCloud] and the live settings. */
@@ -84,6 +91,15 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
 
     private val _state = MutableStateFlow<ReadingUiState>(ReadingUiState.Idle)
     val state: StateFlow<ReadingUiState> = _state.asStateFlow()
+
+    private val _promotions = MutableStateFlow<List<Promotion>>(emptyList())
+    /** Defaults just learned from the person's repeated choices, for "…will now start with X. Undo." */
+    val promotions: StateFlow<List<Promotion>> = _promotions.asStateFlow()
+
+    fun undoPromotion(p: Promotion) {
+        host.updateProfile { LearningRules.undo(it, p) }
+        _promotions.value = _promotions.value - p
+    }
 
     private var job: Job? = null
     private var lastRequest: Request? = null
@@ -192,6 +208,12 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
             is Prepared.NeedsDisclosure -> _state.value = ReadingUiState.NeedsDisclosure(request.noteId, prepared.usingBuiltInKey, prepared.keyTier)
             is Prepared.Ready -> {
                 ReadToMeLog.d("route provider=${prepared.decision.provider} blocks=${prepared.decision.cloudBlocks} sections=${prepared.source.sections.size}")
+                // Learned defaults fill in only what the person left on Automatic; explicit choices always win.
+                val explicit = settings
+                val settings = LearningRules.apply(explicit, note.category, host.profile())
+                val learnedNow = LearningRules.recordUse(host.profile(), note.category, LearningRules.deliberate(explicit))
+                if (learnedNow.profile != host.profile()) host.updateProfile { learnedNow.profile }
+                _promotions.value = learnedNow.promotions
                 val source = ReadingPlan.fromSection(prepared.source, request.startSectionId)
                 val parts = ReadingPlan.parts(source, settings.pauseAfterQuestion == PauseAfterQuestion.UNTIL_RESUME)
                 val delivery = DeliveryResolver.resolve(settings, note.space)

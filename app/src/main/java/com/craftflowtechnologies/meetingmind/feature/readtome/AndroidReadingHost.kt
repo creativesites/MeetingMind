@@ -93,7 +93,8 @@ class AndroidReadingHost(context: Context) : ReadingHost {
                 workPrivacyOffline = !notebookConfidential && WorkPrivacy.mustStayOnDevice(app, noteId = noteId),
                 faithLocked = faithLocked
             ),
-            language = null
+            language = null,
+            category = com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadCategory.of(note.workflow)
         )
     }
 
@@ -126,6 +127,10 @@ class AndroidReadingHost(context: Context) : ReadingHost {
         keyTier = if (credentials.keyPlanConfirmedPaid()) GeminiKeyTier.PAID else GeminiKeyTier.UNKNOWN,
         usingBuiltInKey = credentials.usingSystemKey()
     )
+
+    private val profileStore = com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfileStore(app)
+    override fun profile() = profileStore.load()
+    override fun updateProfile(change: (com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile) -> com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile) = profileStore.update(change)
 
     override fun settings(): ReadToMeSettings = settingsStore.load()
 

@@ -68,11 +68,14 @@ fun ReadToMeSheet(noteId: String, onDismiss: () -> Unit) {
     var offer by remember { mutableStateOf<ReadOffer?>(null) }
     var startFrom by remember { mutableStateOf<String?>(null) }
     var started by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    val promotions by coordinator.promotions.collectAsState()
     val state by coordinator.state.collectAsState()
 
     LaunchedEffect(noteId, settings.prefersLocal, settings.disclosureAccepted) { offer = coordinator.offer(noteId) }
 
     fun change(update: (ReadToMeSettings) -> ReadToMeSettings) { settings = settingsStore.update(update) }
+    if (showSettings) ReadToMeSettingsSheet(onDismiss = { showSettings = false })
 
     ModalBottomSheet(
         onDismissRequest = { coordinator.dismiss(); onDismiss() },
@@ -89,9 +92,12 @@ fun ReadToMeSheet(noteId: String, onDismiss: () -> Unit) {
             val own = started || state.noteId() == noteId
             val shown = if (own) state else ReadingUiState.Idle
             when (shown) {
-                is ReadingUiState.Idle -> SetupContent(offer, settings, startFrom, { startFrom = it }, ::change) { resume ->
-                    started = true
-                    coordinator.start(noteId, startFrom, resume = resume)
+                is ReadingUiState.Idle -> {
+                    SetupContent(offer, settings, startFrom, { startFrom = it }, ::change) { resume ->
+                        started = true
+                        coordinator.start(noteId, startFrom, resume = resume)
+                    }
+                    TextAction("Read to Me settings", onClick = { showSettings = true })
                 }
                 is ReadingUiState.Working -> {
                     var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -119,6 +125,9 @@ fun ReadToMeSheet(noteId: String, onDismiss: () -> Unit) {
                     StatusLine(StatusKind.Info, "Playing with ${if (shown.provider == SpeechProvider.GEMINI) "the Gemini voice" else "your phone's voice"}. The player at the bottom has the controls.")
                     if (shown.switchedToPhone) StatusLine(StatusKind.Warning, "Part of this reading uses your phone's voice because you switched.")
                     shown.note?.let { StatusLine(StatusKind.Info, it) }
+                    promotions.forEach { p ->
+                        StatusLine(StatusKind.Info, p.message, actionLabel = "Undo", onAction = { coordinator.undoPromotion(p) })
+                    }
                     ChangesSection(noteId)
                     PrimaryButton("Done", onClick = { coordinator.dismiss(); onDismiss() }, modifier = Modifier.fillMaxWidth())
                 }
@@ -232,7 +241,7 @@ private fun SetupContent(
             MMChip(preset.label, selected = settings.preset == preset, onClick = { change { it.copy(preset = preset) } })
         }
     }
-    if (settings.preset == DeliveryPreset.AUTO) Text("Automatic picks a plain, neutral style for this kind of note.", style = MM.type.caption, color = MM.colors.inkMuted)
+    if (settings.preset == DeliveryPreset.AUTO) Text("Automatic uses the style you usually pick for this kind of note, or a plain, neutral one.", style = MM.type.caption, color = MM.colors.inkMuted)
     SegmentedControl(PACES.map { it.second }, paceIndex(settings.pace), { i -> change { it.copy(pace = PACES[i].first) } })
 
     if (faith) {

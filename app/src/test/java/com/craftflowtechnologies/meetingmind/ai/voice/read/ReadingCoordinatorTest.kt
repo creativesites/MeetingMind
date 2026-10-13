@@ -57,6 +57,9 @@ private class CHost(
     override suspend fun loadNote(noteId: String, options: ExtractOptions) = note
     override suspend fun environment() = env
     override fun settings() = settings
+    var profile = com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile()
+    override fun profile() = profile
+    override fun updateProfile(change: (com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile) -> com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile): com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile { profile = change(profile); return profile }
     override fun updateSettings(change: (ReadToMeSettings) -> ReadToMeSettings): ReadToMeSettings { settings = change(settings); return settings }
     override fun localVoice(settings: ReadToMeSettings, requireOffline: Boolean): SectionVoice { localOffline = requireOffline; return local }
     var shaperAllowCloud: Boolean? = null
