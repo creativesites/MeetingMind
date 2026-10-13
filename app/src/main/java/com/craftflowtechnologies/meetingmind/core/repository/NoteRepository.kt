@@ -270,6 +270,8 @@ class NoteRepository(
         }
         attachments.forEach { runCatching { File(it.path).delete() } }
         attachmentsDir(noteId).delete()
+        // A saved Read to Me reading belongs to the note and goes with it.
+        runCatching { com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore.get(context).delete(noteId) }
         recordings
     }
 

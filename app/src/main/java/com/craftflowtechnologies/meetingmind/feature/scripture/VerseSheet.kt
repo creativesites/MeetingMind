@@ -101,12 +101,14 @@ fun ScriptureCard(
     /** Text the person typed for this passage; shown instead of fetching. */
     userText: String? = null,
     userLabel: String? = null,
+    /** The translation this passage was saved with; null shows the person's default. Matches what export and Read to Me use. */
+    versionId: Int? = null,
     /** Extra controls in the card's header (copy and share, say), given the passage once it has loaded. */
     trailing: (@Composable (com.craftflowtechnologies.meetingmind.core.scripture.Passage?) -> Unit)? = null,
     /** Lets the text be long-pressed and selected. */
     selectable: Boolean = false
 ) {
-    val result = if (userText.isNullOrBlank()) rememberPassage(reference)
+    val result = if (userText.isNullOrBlank()) rememberPassage(reference, versionId)
         else PassageResult.Found(com.craftflowtechnologies.meetingmind.core.scripture.Passage(reference, userText, 0, userLabel ?: "Your text", "Typed by you"))
     Column(
         modifier

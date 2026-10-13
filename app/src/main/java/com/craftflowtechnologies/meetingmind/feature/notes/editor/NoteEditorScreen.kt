@@ -1025,9 +1025,11 @@ private fun BlockContent(
             if (ref == null) ScriptureBlock(block) else {
                 val meetingId = block.payload[NoteBlock.PAYLOAD_MEETING_ID]
                 val at = block.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()
+                val pinned by viewModel.scriptureVersions.collectAsState()
                 com.craftflowtechnologies.meetingmind.feature.scripture.ScriptureCard(
                     reference = ref,
                     heardAtMs = at,
+                    versionId = block.payload[NoteBlock.PAYLOAD_SCRIPTURE_REF_ID]?.let { pinned[it] },
                     userText = block.payload[NoteBlock.PAYLOAD_USER_TEXT],
                     userLabel = block.payload[NoteBlock.PAYLOAD_USER_LABEL],
                     onOpen = { onOpenScripture(block) },
