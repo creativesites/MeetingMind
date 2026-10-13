@@ -97,8 +97,12 @@ class GeminiCredentialStore(private val context: Context) {
          */
         const val SYSTEM_KEY_CONFIRMED_PAID = false
 
-        /** The tester key compiled into this build, or null when none was supplied. */
-        val systemKey: String? = com.craftflowtechnologies.meetingmind.BuildConfig.SYSTEM_GEMINI_API_KEY.trim().takeIf { it.isNotEmpty() }
+        /**
+         * The tester key compiled into this build, or null when none was supplied. Unit tests set it to null
+         * (and restore it) so "no AI set up" holds whatever key the build machine's environment carried.
+         */
+        var systemKey: String? = com.craftflowtechnologies.meetingmind.BuildConfig.SYSTEM_GEMINI_API_KEY.trim().takeIf { it.isNotEmpty() }
+            internal set
         private const val VISIBLE_SUFFIX = 4
     }
 }

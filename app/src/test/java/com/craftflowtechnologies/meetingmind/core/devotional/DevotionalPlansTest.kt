@@ -8,6 +8,7 @@ import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.workDataOf
 import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk
 import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalUnavailable
+import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiCredentialStore
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import kotlinx.coroutines.flow.first
@@ -34,8 +35,10 @@ import java.util.zip.GZIPInputStream
 class DevotionalPlansTest {
     private lateinit var db: MeetMindDatabase
     private val context = ApplicationProvider.getApplicationContext<Context>()
-    private val date = LocalDate.of(2026, 10, 12)
+    // Today: changing plan rewrites *today's* reading (setProfile uses the clock), so the test day must be today.
+    private val date = LocalDate.now()
     private val day = LocalDay.of(date)
+    private var builtInKey: String? = null
 
     private fun load(plan: DevotionalPlan): ClassicDevotionals =
         File("src/main/assets/${plan.asset}").inputStream().use { ClassicDevotionals.parse(GZIPInputStream(it), plan) }
@@ -45,9 +48,13 @@ class DevotionalPlansTest {
         MeetMindDatabase.setInstanceForTest(db)
         // App assets aren't packaged in unit tests: hand the loader the bundled files directly.
         DevotionalPlans.available.forEach { ClassicDevotionals.useForTest(load(it)) }
+        // These tests are about a phone with no AI set up. A tester key built into the app would make AI available.
+        builtInKey = GeminiCredentialStore.systemKey
+        GeminiCredentialStore.systemKey = null
     }
 
     @After fun tearDown() {
+        GeminiCredentialStore.systemKey = builtInKey
         MeetMindDatabase.setInstanceForTest(null); db.close(); ClassicDevotionals.useForTest(null)
         runBlocking { UserPreferencesManager(context).setDevotionalProfile(DevotionalProfile()) }
     }
