@@ -1246,6 +1246,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     when {
                         id.startsWith("devotional:") -> navController.navigate(Routes.devotionalRoute()) { launchSingleTop = true }
                         id.startsWith("preview") -> Unit
+                        id.startsWith("read:") -> com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore.noteIdOf(id)?.let { navController.navigate(Routes.noteRoute(it)) }
                         else -> navController.navigate(Routes.meetingDetailRoute(id))
                     }
                 }

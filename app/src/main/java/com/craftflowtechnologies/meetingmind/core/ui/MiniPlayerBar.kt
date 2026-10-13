@@ -25,6 +25,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.GraphicEq
@@ -73,10 +78,13 @@ import com.craftflowtechnologies.meetingmind.core.common.Formatters
 /** What's playing, as the player shows it: a devotional's voice, a preview, or a recording. */
 private data class Artwork(val icon: ImageVector, val colors: List<Color>, val kind: String)
 
+private val voiceArtwork = Artwork(Icons.Filled.GraphicEq, listOf(Color(0xFF3A2A1A), Color(0xFFB7791F)), "Voice")
+
 private fun artworkFor(state: PlaybackState): Artwork = when {
     state.recordingId?.startsWith("devotional:") == true -> Artwork(Icons.Filled.WbSunny, listOf(Color(0xFF1B1530), Color(0xFFB7791F)), "Today's devotional")
     state.recordingId?.startsWith("preview") == true -> Artwork(Icons.Filled.GraphicEq, listOf(Color(0xFF312E81), Color(0xFF7C3AED)), "Voice preview")
-    state.recordingId?.startsWith("media:") == true -> Artwork(Icons.Filled.GraphicEq, listOf(Color(0xFF3A2A1A), Color(0xFFB7791F)), "Voice")
+    state.recordingId?.startsWith("media:") == true -> voiceArtwork
+    state.recordingId?.startsWith("read:") == true -> voiceArtwork.copy(kind = "Read to Me")
     else -> Artwork(Icons.Filled.Mic, listOf(Color(0xFF1E1B4B), Color(0xFFE11D48)), "Recording")
 }
 
@@ -177,12 +185,20 @@ private fun NowPlayingSheet(state: PlaybackState, art: Artwork, onTogglePlayPaus
                 Text("−" + Formatters.formatDurationHms((state.durationMs - state.positionMs).coerceAtLeast(0)), fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
             }
             Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                val queue = state.queue
+                if (queue != null) IconButton(onClick = { PlaybackController.previous() }, enabled = queue.hasPrevious || state.positionMs > 3_000) {
+                    Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous part", tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(32.dp))
+                }
                 IconButton(onClick = { PlaybackController.seekBy(-10_000) }) { Icon(Icons.Filled.Replay10, contentDescription = "Back 10 seconds", tint = Color.White, modifier = Modifier.size(32.dp)) }
                 Box(Modifier.size(76.dp).clip(CircleShape).background(Color.White).clickable(onClick = onTogglePlayPause), contentAlignment = Alignment.Center) {
                     Icon(if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (state.isPlaying) "Pause" else "Play", tint = Ink, modifier = Modifier.size(38.dp))
                 }
                 IconButton(onClick = { PlaybackController.seekBy(10_000) }) { Icon(Icons.Filled.Forward10, contentDescription = "Forward 10 seconds", tint = Color.White, modifier = Modifier.size(32.dp)) }
+                if (queue != null) IconButton(onClick = { PlaybackController.next() }, enabled = queue.index < queue.count - 1) {
+                    Icon(Icons.Filled.SkipNext, contentDescription = "Next part", tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(32.dp))
+                }
             }
+            state.queue?.let { QueueList(it) }
             Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(0.8f, 1f, 1.25f, 1.5f).forEach { s ->
                     Surface(onClick = { PlaybackController.setSpeed(s) }, shape = RoundedCornerShape(50), color = if (speed == s) Color.White else Color.White.copy(alpha = 0.1f)) {
@@ -198,6 +214,25 @@ private fun NowPlayingSheet(state: PlaybackState, art: Artwork, onTogglePlayPaus
                     Text("Stop", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 22.dp, vertical = 11.dp))
                 }
             }
+        }
+    }
+}
+
+/** The parts of a reading: tap one to jump to it. Parts still being made show as "Preparing". */
+@Composable
+private fun QueueList(queue: com.craftflowtechnologies.meetingmind.core.audio.QueueInfo) {
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(max = 180.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        queue.titles.forEachIndexed { i, title ->
+            val current = i == queue.index
+            Text(
+                title.ifBlank { "Part ${i + 1}" }, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp,
+                fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+                color = Color.White.copy(alpha = if (current) 1f else 0.7f),
+                modifier = Modifier.fillMaxWidth().clickable { PlaybackController.skipTo(i) }.padding(vertical = 8.dp)
+            )
+        }
+        if (queue.expectedCount > queue.count) {
+            Text("Preparing ${queue.expectedCount - queue.count} more…", fontSize = 13.sp, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.padding(vertical = 8.dp))
         }
     }
 }

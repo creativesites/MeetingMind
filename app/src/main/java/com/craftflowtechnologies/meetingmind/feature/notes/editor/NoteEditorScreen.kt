@@ -6,6 +6,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.platform.testTag
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
@@ -188,6 +189,7 @@ fun NoteEditorScreen(
     ) { uri -> if (uri != null) viewModel.setCover(uri) }
     val aiJobs by viewModel.aiJobs.collectAsState()
     var showAiMenu by remember { mutableStateOf(false) }
+    var showReadToMe by remember { mutableStateOf(false) }
     var showAsk by remember { mutableStateOf(false) }
     var aiSheetOpen by remember { mutableStateOf(false) }
     var related by remember { mutableStateOf<List<Pair<com.craftflowtechnologies.meetingmind.core.model.Note, com.craftflowtechnologies.meetingmind.ai.notes.RelatedNote>>?>(null) }
@@ -338,6 +340,9 @@ fun NoteEditorScreen(
                         })
                         DropdownMenuItem(text = { Text("Assistant") }, leadingIcon = { Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent) }, onClick = { showMenu = false; showAssistant = true })
                         DropdownMenuItem(text = { Text("AI tools") }, leadingIcon = { Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent) }, onClick = { showMenu = false; showAiMenu = true })
+                        if (note?.plainText?.isNotBlank() == true && com.craftflowtechnologies.meetingmind.ai.voice.read.ReadToMeFlags.enabled(androidx.compose.ui.platform.LocalContext.current)) {
+                            DropdownMenuItem(text = { Text("Read to me") }, leadingIcon = { Icon(androidx.compose.material.icons.Icons.Filled.GraphicEq, null) }, onClick = { showMenu = false; showReadToMe = true })
+                        }
                         DropdownMenuItem(text = { Text("Share as a picture") }, leadingIcon = { Icon(Icons.Filled.Image, null) }, onClick = {
                             showMenu = false
                             note?.let { n ->
@@ -721,6 +726,7 @@ fun NoteEditorScreen(
         onDismiss = { showScriptureEntry = false },
         onOpenBible = { search -> showScriptureEntry = false; bibleDialog = search }
     )
+    if (showReadToMe) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(viewModel.noteId, onDismiss = { showReadToMe = false })
     if (showAiMenu) com.craftflowtechnologies.meetingmind.feature.notes.ai.NoteAiMenu(
         forNotebook = false,
         isFaithOrSermon = note?.let { it.workflow in com.craftflowtechnologies.meetingmind.core.model.Workflows.faith } == true,
