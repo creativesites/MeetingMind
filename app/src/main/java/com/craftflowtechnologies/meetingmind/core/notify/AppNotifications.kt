@@ -339,14 +339,20 @@ object AppNotifications {
 
     fun processingFinished(context: Context, meetingId: String, title: String, outcome: Outcome, detail: String? = null) {
         val (heading, text, link) = when (outcome) {
-            Outcome.READY -> Triple("Transcript ready", "“$title” is ready to read.", DeepLink.Recording(meetingId))
+            Outcome.READY -> Triple("$title is ready.", null, DeepLink.Recording(meetingId))
             Outcome.NEEDS_MODEL -> Triple("Recording saved", "Install the speech model to transcribe “$title”.", DeepLink.Models)
             Outcome.FAILED -> Triple("Couldn’t finish “$title”", detail ?: "Tap to try again.", DeepLink.Processing(meetingId))
         }
         post(
             context, ID_DONE_BASE + (meetingId.hashCode() and 0xFFF),
             NotificationCompat.Builder(context, CHANNEL_DONE)
-                .setSmallIcon(if (outcome == Outcome.FAILED) android.R.drawable.stat_notify_error else android.R.drawable.stat_sys_download_done)
+                .setSmallIcon(
+                    when (outcome) {
+                        Outcome.FAILED -> android.R.drawable.stat_notify_error
+                        Outcome.READY -> com.craftflowtechnologies.meetingmind.R.drawable.ic_zuri_glyph
+                        Outcome.NEEDS_MODEL -> android.R.drawable.stat_sys_download_done
+                    }
+                )
                 .setContentTitle(heading)
                 .setContentText(text)
                 .setAutoCancel(true)
@@ -357,6 +363,51 @@ object AppNotifications {
     }
 
     enum class Outcome { READY, NEEDS_MODEL, FAILED }
+
+    /**
+     * What a note-ready notification says (signature moments §9, ZURI_EXPERIENCE §5.8). [voiced] is the one
+     * companion-voiced notification a day, outside quiet hours: it may use the sermon line and alerts. Beyond
+     * the cap the plain status still posts, quietly, because status is never withheld. A prayer request or a
+     * grief tag always gets the plain title line. The user's name never appears here.
+     */
+    data class NoteReadyCopy(val title: String, val text: String?, val alert: Boolean) {
+        companion object {
+            fun of(
+                noteTitle: String, sermon: Boolean, sensitive: Boolean, onDevice: Boolean, voiced: Boolean,
+                ready: (String) -> String, sermonReady: String, tapToOpen: String, madeOnPhone: String
+            ): NoteReadyCopy {
+                val title = if (voiced && sermon && !sensitive) sermonReady else ready(noteTitle)
+                val text = when {
+                    onDevice -> madeOnPhone
+                    voiced -> tapToOpen
+                    else -> null
+                }
+                return NoteReadyCopy(title, text, alert = voiced)
+            }
+        }
+    }
+
+    /**
+     * The note-ready notification (Z-34): the neutral `ic_zuri_glyph` small icon, never a character drawing,
+     * and a tap opens the note itself, where its ticket plays the First Keep. Replaces the old
+     * "Transcript ready" status notification.
+     */
+    fun noteReady(context: Context, meetingId: String, copy: NoteReadyCopy) {
+        post(
+            context, ID_DONE_BASE + (meetingId.hashCode() and 0xFFF),
+            NotificationCompat.Builder(context, CHANNEL_DONE)
+                .setSmallIcon(com.craftflowtechnologies.meetingmind.R.drawable.ic_zuri_glyph)
+                .setContentTitle(copy.title)
+                .apply { copy.text?.let { setContentText(it) } }
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setSilent(!copy.alert)
+                .setPriority(if (copy.alert) NotificationCompat.PRIORITY_DEFAULT else NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Recording(meetingId)))
+                .build()
+        )
+    }
 
     fun downloadId(modelId: String) = ID_DOWNLOAD_BASE + (modelId.hashCode() and 0x3FF)
 

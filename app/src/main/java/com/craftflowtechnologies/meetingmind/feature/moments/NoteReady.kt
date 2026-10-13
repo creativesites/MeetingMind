@@ -199,5 +199,32 @@ suspend fun onNoteProcessed(
     return facts
 }
 
+/**
+ * Posts the note-ready notification (Z-34) for a note that finished. The companion-voiced version (the
+ * sermon line, an alert) is capped by `MomentLedger`'s `CompanionNotification`: once a day, none in quiet
+ * hours, none while a recording runs in Faith; beyond it the plain status still posts quietly.
+ */
+suspend fun postNoteReadyNotification(
+    context: Context,
+    facts: NoteFacts,
+    nowMs: Long = System.currentTimeMillis(),
+    store: MomentLedgerStore = MomentLedgerStore(context)
+) {
+    val clock = com.craftflowtechnologies.meetingmind.core.companion.LocalClock(nowMs, java.util.TimeZone.getDefault().getOffset(nowMs).toLong())
+    val faithRecording = recordingActive() && facts.space == NotebookSpace.FAITH
+    val ledger = runCatching { store.ledger.first() }.getOrNull()
+    val voiced = ledger?.allows(com.craftflowtechnologies.meetingmind.core.companion.Moment.CompanionNotification, clock, faithRecording) == true
+    if (voiced) runCatching { store.record(com.craftflowtechnologies.meetingmind.core.companion.Moment.CompanionNotification, clock) }
+    val r = context.resources
+    val copy = com.craftflowtechnologies.meetingmind.core.notify.AppNotifications.NoteReadyCopy.of(
+        noteTitle = facts.title, sermon = facts.sermon, sensitive = facts.sensitive, onDevice = facts.onDevice, voiced = voiced,
+        ready = { r.getString(com.craftflowtechnologies.meetingmind.R.string.companion_moment_ready, it) },
+        sermonReady = r.getString(com.craftflowtechnologies.meetingmind.R.string.companion_moment_sermon_ready),
+        tapToOpen = r.getString(com.craftflowtechnologies.meetingmind.R.string.companion_moment_notify_text),
+        madeOnPhone = r.getString(com.craftflowtechnologies.meetingmind.R.string.companion_moment_notify_on_device)
+    )
+    com.craftflowtechnologies.meetingmind.core.notify.AppNotifications.noteReady(context, facts.noteId, copy)
+}
+
 /** True while a recording is being captured anywhere in the app. */
 fun recordingActive(): Boolean = MeetingRecordingService.capturing.value

@@ -115,10 +115,17 @@ class MeetingProcessingWorker(
                 else -> AppNotifications.Outcome.FAILED
             }
             // Signature moments: a ready note gets its ticket and the companion's NoteReady (Z-16/Z-33).
-            if (outcome == AppNotifications.Outcome.READY) {
-                runCatching { com.craftflowtechnologies.meetingmind.feature.moments.onNoteProcessed(applicationContext, meetingId) }
+            // The note-ready notification (Z-34) replaces the old "Transcript ready" one; it falls back to
+            // the plain status if the facts can't be read.
+            val readyFacts = if (outcome == AppNotifications.Outcome.READY) {
+                runCatching { com.craftflowtechnologies.meetingmind.feature.moments.onNoteProcessed(applicationContext, meetingId) }.getOrNull()
+            } else null
+            if (readyFacts != null) {
+                runCatching { com.craftflowtechnologies.meetingmind.feature.moments.postNoteReadyNotification(applicationContext, readyFacts) }
+                    .onFailure { AppNotifications.processingFinished(applicationContext, meetingId, recordingTitle, outcome) }
+            } else {
+                AppNotifications.processingFinished(applicationContext, meetingId, recordingTitle, outcome)
             }
-            AppNotifications.processingFinished(applicationContext, meetingId, recordingTitle, outcome)
             Result.success(
                 workDataOf(
                     KEY_RESULT_MEETING_ID to resultMeeting.id,
