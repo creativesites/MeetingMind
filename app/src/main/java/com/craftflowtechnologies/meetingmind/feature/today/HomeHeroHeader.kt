@@ -385,7 +385,8 @@ private fun HeroStage(
                 }
             }
 
-            val dayOfYear = remember { Calendar.getInstance().get(Calendar.DAY_OF_YEAR) }
+            // From the same clock as the sky, so a fixed [at] (previews, goldens) gives a fixed verse and quote.
+            val dayOfYear = now.get(Calendar.DAY_OF_YEAR)
             val fallbackVerse = remember(dayOfYear) { DailyInspirations.verses[dayOfYear % DailyInspirations.verses.size] }
             val fallbackQuote = remember(dayOfYear) { DailyInspirations.quotes[dayOfYear % DailyInspirations.quotes.size] }
 
