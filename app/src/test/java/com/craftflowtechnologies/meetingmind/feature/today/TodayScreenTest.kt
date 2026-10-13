@@ -89,6 +89,7 @@ class TodayScreenTest {
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/today_full.png")
         assertEquals(setOf("Product sync", "Grace that holds", "Ideas for Q4", "Follow-up with design"), vm.items.value.map { it.title }.toSet())
+        scrollToView("view_day")
         compose.onNodeWithTag("view_day").performClick()
         settle { vm.view.value == CalendarView.DAY && vm.items.value.isNotEmpty() }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/today_day.png")
