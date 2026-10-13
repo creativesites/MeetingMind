@@ -235,8 +235,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     val prefsManager = remember { UserPreferencesManager(context) }
     val prefsState by prefsManager.preferencesFlow.collectAsState(initial = null)
 
-    // Permissions are asked in context, never at launch: onboarding's permission step asks once,
-    // and the recording screen asks for the microphone when the user starts recording.
+    // No permission is requested here. The microphone is asked for in context (the recorder, or the
+    // last onboarding step) and notifications on that same step, each after saying why.
 
     if (prefsState == null) return
 
@@ -392,6 +392,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     navController.navigate(Routes.HOME) {
                         popUpTo(Routes.ONBOARDING) { inclusive = true }
                     }
+                },
+                // "Record something now": Home underneath, the recorder on top, so Back lands on Home.
+                onRecordNow = {
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                    navController.navigate(Routes.recordTypeRoute(RecordingType.MEETING)) { launchSingleTop = true }
                 }
             )
         }

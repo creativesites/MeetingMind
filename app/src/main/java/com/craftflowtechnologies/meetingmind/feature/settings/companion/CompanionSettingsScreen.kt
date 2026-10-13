@@ -83,6 +83,8 @@ interface CompanionSettingsActions {
     fun setOnRecordButton(on: Boolean)
     fun setQuietSermons(on: Boolean)
     fun setCreateSuggest(on: Boolean)
+    /** "Sounds": the First Keep chime (signature moments §2.5). On by default. */
+    fun setSounds(on: Boolean) {}
 }
 
 /** Settings → Companion, wired to the real settings store. */
@@ -99,6 +101,7 @@ fun CompanionSettingsScreen(onNavigateBack: () -> Unit) {
             override fun setOnRecordButton(on: Boolean) { scope.launch { source.setOnRecordButton(on) } }
             override fun setQuietSermons(on: Boolean) { scope.launch { source.setQuietSermons(on) } }
             override fun setCreateSuggest(on: Boolean) { scope.launch { source.setCreateSuggest(on) } }
+            override fun setSounds(on: Boolean) { scope.launch { source.setSounds(on) } }
         }
     }
     CompanionSettingsContent(settings, actions, onNavigateBack)
@@ -106,7 +109,7 @@ fun CompanionSettingsScreen(onNavigateBack: () -> Unit) {
 
 /**
  * The page itself. Basic: form (each shown live, tap to cycle its poses), name, how often.
- * Advanced: record button, quiet during sermons, Create suggestions (§7.1).
+ * Advanced: record button, quiet during sermons, Create suggestions (§7.1), and Sounds (signature moments §2.5).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -201,6 +204,10 @@ fun CompanionSettingsContent(
                         stringResource(R.string.companion_advanced_create_suggest, activeName ?: stringResource(R.string.companion_settings_none_title)),
                         stringResource(R.string.companion_advanced_create_suggest_body),
                         settings.createSuggest && form != null, enabled = form != null, onChange = actions::setCreateSuggest, tag = "companion_create_suggest"
+                    )
+                    SwitchRow(
+                        stringResource(R.string.companion_advanced_sounds), stringResource(R.string.companion_advanced_sounds_body),
+                        settings.sounds, enabled = true, onChange = actions::setSounds, tag = "companion_sounds"
                     )
                 }
             }

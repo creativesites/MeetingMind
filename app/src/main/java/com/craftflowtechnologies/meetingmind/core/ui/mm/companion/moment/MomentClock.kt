@@ -23,6 +23,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
  */
 val LocalMomentTime = staticCompositionLocalOf<Int?> { null }
 
+/**
+ * Companion Lab's speed control: when set, replaces the system animator scale for moments below
+ * (4 = a quarter speed). Null uses the system scale.
+ */
+val LocalMomentDurationScale = staticCompositionLocalOf<Float?> { null }
+
 /** Real time → moment time, pure, for tests: elapsed / animator scale, clamped to the moment's length. */
 object MomentTimeline {
     /** Played ms at [frameNanos] for a moment that started at [startNanos]. Scale 0 (animations off) is the end. */

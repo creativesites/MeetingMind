@@ -78,6 +78,7 @@ fun CompanionLabScreen(liveStats: Boolean = true) {
     var wobble by rememberSaveable { mutableStateOf(true) }
     var level by remember { mutableFloatStateOf(0.55f) }
     var replay by remember { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
 
     val roster = CompanionRoster.enabled
     val form = roster[formIndex.coerceIn(0, roster.lastIndex)]
@@ -107,6 +108,11 @@ fun CompanionLabScreen(liveStats: Boolean = true) {
                 verticalArrangement = Arrangement.spacedBy(MM.space.l)
             ) {
                 ScreenHeader(stringResource(R.string.companion_lab_title))
+                SegmentedControl(
+                    listOf(stringResource(R.string.companion_lab_tab_companion), stringResource(R.string.companion_lab_tab_moments)),
+                    tab, onSelect = { tab = it }
+                )
+                if (tab == 1) MomentsLab() else {
 
                 // The hero: the chosen form at 160 dp, keyed on replay so one-shots play again.
                 val heroChoice = remember { mutableStateOf<RendererChoice?>(null) }
@@ -189,6 +195,7 @@ fun CompanionLabScreen(liveStats: Boolean = true) {
                     style = MM.type.secondary, color = MM.colors.inkSecondary,
                     modifier = Modifier.padding(bottom = MM.space.xl)
                 )
+                }
             }
         }
     }
