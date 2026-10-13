@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -94,6 +95,9 @@ class WrapUpViewModel(
     val meeting: StateFlow<MeetingEntity?> = database.meetingDao().getMeetingByIdFlow(meetingId).stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val speakers: StateFlow<List<Speaker>> = transcripts.getSpeakers(meetingId).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val note: StateFlow<Note?> = meeting.flatMapLatest { m -> m?.noteId?.let { notesRepo.observeNote(it) } ?: flowOf(null) }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    /** This recording's own highlights. Only its own: a part's time would play the wrong audio. */
+    val keyMoments: StateFlow<List<Long>> = flow { emit(com.craftflowtechnologies.meetingmind.core.work.Marks.keyMoments(database, meetingId)) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val projects: StateFlow<List<Notebook>> = database.workDao().observeProjects().map { l -> l.map { with(NoteCodec) { it.toDomain() } } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val settings: StateFlow<WorkSettings> = prefs.workSettings.stateIn(viewModelScope, SharingStarted.Eagerly, WorkSettings())
 

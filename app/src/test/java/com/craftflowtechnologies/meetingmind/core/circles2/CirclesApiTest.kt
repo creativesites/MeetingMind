@@ -21,7 +21,7 @@ import java.io.IOException
 /** The HTTP client is exercised through an in-process interceptor: no socket is ever opened. */
 @RunWith(RobolectricTestRunner::class)
 class CirclesApiTest {
-    private class Canned(val status: Int = 200, val body: String = """{"ok":true}""", val fail: IOException? = null) : Interceptor {
+    private class Canned(val status: Int = 200, val body: String = """{"ok":true}""", val fail: IOException? = null, val requestId: String? = null) : Interceptor {
         var request: Request? = null
         var sent: String = ""
         override fun intercept(chain: Interceptor.Chain): Response {
@@ -30,6 +30,7 @@ class CirclesApiTest {
             sent = Buffer().also { b -> r.body?.writeTo(b) }.readUtf8()
             if (fail != null) throw fail
             return Response.Builder().request(r).protocol(Protocol.HTTP_1_1).code(status).message("x")
+                .apply { if (requestId != null) header("X-Request-Id", requestId) }
                 .body(body.toResponseBody("application/json".toMediaType())).build()
         }
     }
@@ -83,6 +84,16 @@ class CirclesApiTest {
         assertEquals("That code has expired. Ask for a new one.", f?.message)
         assertEquals("expired", f?.code)
         assertEquals(FailureKind.Rejected, f?.kind)
+    }
+
+    @Test fun `create request carries stable idempotency key and errors preserve request correlation`() = runBlocking {
+        val key = "8d1333a4-6d8c-4d4e-92db-09f708916ccd"
+        val request = CreateCircleRequest("Cell", "custom", "Circle", "Ann", CircleSettings(listOf(PostType.Prayer)), key)
+        val c = Canned(503, """{"ok":false,"error":{"code":"service_misconfigured","message":"Circles service is temporarily unavailable."},"requestId":"ray-123"}""", requestId = "ray-123")
+        val failure = api(c).createCircle(request).failureOrNull
+        assertEquals(key, JSONObject(c.sent).getString("requestId"))
+        assertEquals("ray-123", failure?.requestId)
+        assertEquals(503, failure?.httpStatus)
     }
 
     @Test fun `status codes map to kinds`() = runBlocking {

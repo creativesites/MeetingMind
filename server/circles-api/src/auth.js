@@ -60,7 +60,7 @@ export function maxAge(cacheControl) {
 }
 
 async function refresh(fetchImpl, nowMs) {
-  const res = await fetchImpl(JWKS_URL);
+  const res = await Reflect.apply(fetchImpl, globalThis, [JWKS_URL]);
   if (!res.ok) throw new Error("jwks fetch failed");
   const { keys } = await res.json();
   const map = new Map();

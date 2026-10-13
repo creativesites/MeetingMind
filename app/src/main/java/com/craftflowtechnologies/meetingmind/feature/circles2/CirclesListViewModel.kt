@@ -72,6 +72,7 @@ data class CreateUiState(
     val types: List<PostType> = CircleTemplate.all.first().types,
     val prayerApproval: Boolean = true,
     val whoCanInvite: WhoCanInvite = WhoCanInvite.Admins,
+    val requestId: String? = null,
     val busy: Boolean = false,
     val error: String? = null
 ) {
@@ -82,16 +83,16 @@ class CreateCircleViewModel(private val repo: CirclesRepository) : ViewModel() {
     private val _state = MutableStateFlow(CreateUiState(displayName = repo.displayName))
     val state: StateFlow<CreateUiState> = _state
 
-    fun pickTemplate(t: CircleTemplate) = _state.update { it.copy(template = t, vocab = t.vocab.first(), types = t.types, error = null) }
-    fun setName(v: String) = _state.update { it.copy(name = v.take(60), error = null) }
-    fun setVocab(v: String) = _state.update { it.copy(vocab = v.take(40)) }
-    fun setDisplayName(v: String) = _state.update { it.copy(displayName = v.take(40), error = null) }
+    fun pickTemplate(t: CircleTemplate) = _state.update { it.copy(template = t, vocab = t.vocab.first(), types = t.types, error = null, requestId = null) }
+    fun setName(v: String) = _state.update { it.copy(name = v.take(60), error = null, requestId = null) }
+    fun setVocab(v: String) = _state.update { it.copy(vocab = v.take(40), requestId = null) }
+    fun setDisplayName(v: String) = _state.update { it.copy(displayName = v.take(40), error = null, requestId = null) }
     fun toggleType(t: PostType) = _state.update { s ->
         val next = if (t in s.types) s.types - t else s.types + t
-        s.copy(types = PostType.entries.filter { it in next })
+        s.copy(types = PostType.entries.filter { it in next }, requestId = null)
     }
-    fun setApproval(on: Boolean) = _state.update { it.copy(prayerApproval = on) }
-    fun setWhoCanInvite(w: WhoCanInvite) = _state.update { it.copy(whoCanInvite = w) }
+    fun setApproval(on: Boolean) = _state.update { it.copy(prayerApproval = on, requestId = null) }
+    fun setWhoCanInvite(w: WhoCanInvite) = _state.update { it.copy(whoCanInvite = w, requestId = null) }
 
     fun create(onCreated: (String) -> Unit) {
         val s = _state.value
@@ -99,11 +100,12 @@ class CreateCircleViewModel(private val repo: CirclesRepository) : ViewModel() {
         if (s.name.isBlank()) { _state.update { it.copy(error = "Give your ${s.vocab.ifBlank { "circle" }.lowercase()} a name.") }; return }
         if (s.displayName.isBlank()) { _state.update { it.copy(error = "Add the name people will see.") }; return }
         if (s.types.isEmpty()) { _state.update { it.copy(error = "Choose at least one kind of post.") }; return }
-        _state.update { it.copy(busy = true, error = null) }
+        val requestId = s.requestId ?: java.util.UUID.randomUUID().toString()
+        _state.update { it.copy(busy = true, error = null, requestId = requestId) }
         val settings = CircleSettings(allowedTypes = s.types, whoCanInvite = s.whoCanInvite, prayerApproval = s.prayerApproval)
         viewModelScope.launch {
-            repo.createCircle(s.name, s.template.id, s.vocab.ifBlank { s.template.vocab.first() }, s.displayName, settings).fold(
-                onOk = { id -> _state.update { it.copy(busy = false) }; onCreated(id) },
+            repo.createCircle(s.name, s.template.id, s.vocab.ifBlank { s.template.vocab.first() }, s.displayName, settings, requestId).fold(
+                onOk = { id -> _state.update { it.copy(busy = false, requestId = null) }; onCreated(id) },
                 onErr = { f -> _state.update { it.copy(busy = false, error = f.message) } }
             )
         }

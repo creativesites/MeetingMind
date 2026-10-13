@@ -21,7 +21,7 @@ data class CreatePostRequest(
 )
 
 data class CreatedPost(val postId: String, val pending: Boolean)
-data class CreateCircleRequest(val name: String, val template: String, val vocab: String, val displayName: String, val settings: CircleSettings)
+data class CreateCircleRequest(val name: String, val template: String, val vocab: String, val displayName: String, val settings: CircleSettings, val requestId: String = java.util.UUID.randomUUID().toString())
 
 /** The Worker's endpoints (server/circles-api). Every call returns a result: nothing here throws to the UI. */
 interface CirclesApi {
@@ -121,7 +121,7 @@ object CirclesJson {
 
     fun createCircle(r: CreateCircleRequest): JSONObject = JSONObject()
         .put("name", r.name).put("template", r.template).put("vocab", r.vocab)
-        .put("displayName", r.displayName).put("settings", settings(r.settings))
+        .put("displayName", r.displayName).put("settings", settings(r.settings)).put("requestId", r.requestId)
 }
 
 /**
@@ -160,7 +160,7 @@ class HttpCirclesApi(
                 val text = res.body?.string().orEmpty()
                 val obj = try { JSONObject(text) } catch (e: JSONException) { null }
                 if (res.isSuccessful && obj != null && obj.optBoolean("ok", false)) CirclesResult.Ok(obj)
-                else CirclesResult.Err(failureFrom(res.code, obj))
+                else CirclesResult.Err(failureFrom(res.code, obj, res.header("X-Request-Id") ?: obj?.optString("requestId")?.takeIf { it.isNotBlank() }))
             }
         } catch (e: IOException) {
             CirclesFailure.offline.asResult()
@@ -169,7 +169,7 @@ class HttpCirclesApi(
         }
     }
 
-    private fun failureFrom(status: Int, obj: JSONObject?): CirclesFailure {
+    private fun failureFrom(status: Int, obj: JSONObject?, requestId: String?): CirclesFailure {
         val err = obj?.optJSONObject("error")
         val code = err?.optString("code")?.takeIf { it.isNotBlank() }
         val message = err?.optString("message")?.takeIf { it.isNotBlank() }
@@ -185,7 +185,7 @@ class HttpCirclesApi(
             FailureKind.RateLimited -> "You're doing that too fast. Please wait a bit and try again."
             else -> CirclesFailure.server().message
         }
-        return CirclesFailure(kind, message ?: fallback, code)
+        return CirclesFailure(kind, message ?: fallback, code, requestId, status)
     }
 
     private suspend fun unit(endpoint: String, body: JSONObject): CirclesResult<Unit> = call(endpoint, body).map { }

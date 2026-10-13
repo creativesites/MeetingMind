@@ -303,7 +303,7 @@ class NoteRepository(
                     val keep = existing.toDomain().let { it.copy(metadata = it.metadata - NoteContent.DRAFT - NoteContent.DRAFT_TITLE) }
                     noteDao.upsert(keep.toEntity())
                 }
-                noteDao.attachMeeting(meetingId, existing.id)
+                noteDao.attachMeetingAsLastPart(meetingId, existing.id)
                 noteDao.replaceBlocks(existing.id, updated.mapIndexed { i, b -> b.copy(position = i).toEntity(now) })
                 noteDao.touch(existing.id, now, existing.plainText)
             }
@@ -331,7 +331,7 @@ class NoteRepository(
             val starting = listOf(recordingBlock(noteId, meetingId)) +
                 com.craftflowtechnologies.meetingmind.core.model.Workflows.startingBlocks(workflow, noteId, forRecording = true)
             noteDao.replaceBlocks(noteId, starting.mapIndexed { i, b -> b.copy(position = i).toEntity(now) })
-            noteDao.attachMeeting(meetingId, noteId)
+            noteDao.attachMeetingAsLastPart(meetingId, noteId)
         }
         noteId
     }

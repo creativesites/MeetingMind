@@ -102,7 +102,6 @@ fun PraySetupContent(ui: PrayUi, startMode: PrayMode?, onNavigateBack: () -> Uni
     var withDevotional by rememberSaveable { mutableStateOf(startMode == PrayMode.TALK_IT_THROUGH) }
     var voiceStyle by rememberSaveable { mutableStateOf(PreacherStyle.GENTLE_FRIEND) }
     var gender by rememberSaveable { mutableStateOf(VoiceGender.FEMALE) }
-    var worship by rememberSaveable { mutableStateOf<String?>(null) }
     val talk = mode == PrayMode.TALK_IT_THROUGH
 
     fun begin() {
@@ -110,7 +109,7 @@ fun PraySetupContent(ui: PrayUi, startMode: PrayMode?, onNavigateBack: () -> Uni
             mode = mode, style = style, about = about,
             requests = ui.requests.filter { it.first in chosen }.map { it.second },
             devotional = if (withDevotional || talk) listOfNotNull(ui.devotional, ui.devotionalPrayer?.let { "Its prayer: $it" }).joinToString("\n").ifBlank { null } else null,
-            worship = if (talk) null else worship,
+            worship = null,
             persona = voiceStyle.style
         )
         onStart(setup, if (gender == VoiceGender.MALE) voiceStyle.male else voiceStyle.female)
@@ -167,15 +166,6 @@ fun PraySetupContent(ui: PrayUi, startMode: PrayMode?, onNavigateBack: () -> Uni
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).clickable { withDevotional = !withDevotional }, verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = withDevotional, onCheckedChange = { withDevotional = it }, colors = CheckboxDefaults.colors(checkedColor = Gold, uncheckedColor = Color.White.copy(alpha = 0.5f), checkmarkColor = Night))
                     Text("Pray from today's devotional", fontSize = 15.sp, color = Color.White)
-                }
-            }
-            if (!talk) {
-                Label("Begin with worship? (optional)")
-                Text("Sing a hymn together first, or start your own song and it follows you.", fontSize = 13.sp, lineHeight = 18.sp, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(bottom = 10.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("pray_worship")) {
-                    DarkChip("No, straight to prayer", worship == null) { worship = null }
-                    DarkChip("♪ " + com.craftflowtechnologies.meetingmind.core.prayer.WorshipSongs.THEIR_OWN, worship == com.craftflowtechnologies.meetingmind.core.prayer.WorshipSongs.THEIR_OWN) { worship = com.craftflowtechnologies.meetingmind.core.prayer.WorshipSongs.THEIR_OWN }
-                    com.craftflowtechnologies.meetingmind.core.prayer.WorshipSongs.hymns.forEach { h -> DarkChip(h, worship == h) { worship = h } }
                 }
             }
             Label("Voice")

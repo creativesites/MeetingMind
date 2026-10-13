@@ -27,7 +27,9 @@ class CompanionLabTest {
             .filter { it.readText().contains("CompanionLab") || it.readText().contains("companion_lab") }.toList()
         assertTrue("main must not reference the lab: $offenders", offenders.isEmpty())
         assertFalse(File("src/release").walkTopDown().any { it.isFile && it.readText().contains("CompanionLab") })
-        assertTrue(File("src/debug/AndroidManifest.xml").readText().contains(".companionlab.CompanionLabActivity"))
+        val debugManifest = File("src/debug/AndroidManifest.xml").readText()
+        assertFalse(debugManifest.contains(".companionlab.CompanionLabActivity"))
+        assertFalse(debugManifest.contains("android.intent.category.LAUNCHER"))
     }
 
     @Test fun `the lab renders`() {

@@ -22,11 +22,11 @@ export async function getAccessToken(env, fetchImpl = fetch) {
       const head = b64urlEncode(JSON.stringify({ alg: "RS256", typ: "JWT", kid: sa.private_key_id }));
       const claims = b64urlEncode(JSON.stringify({ iss: sa.client_email, scope: SCOPES, aud: "https://oauth2.googleapis.com/token", iat, exp: iat + 3600 }));
       const sig = await signRs256(await importPkcs8(sa.private_key), `${head}.${claims}`);
-      const res = await fetchImpl("https://oauth2.googleapis.com/token", {
+      const res = await Reflect.apply(fetchImpl, globalThis, ["https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: `grant_type=${encodeURIComponent("urn:ietf:params:oauth:grant-type:jwt-bearer")}&assertion=${head}.${claims}.${sig}`,
-      });
+      }]);
       if (!res.ok) throw new Error(`token exchange failed: ${res.status}`);
       const j = await res.json();
       cached.token = j.access_token;

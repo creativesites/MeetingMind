@@ -36,6 +36,7 @@ object DevotionalScheduler {
     private const val RUN = "devotional-scheduled"
     private const val NOTIFY_RUN = "devotional-announce"
     private const val NOW = "devotional-now"
+    private const val SEED = "devotional-seed-classic"
     private const val EXTRAS = "devotional-extras"
     const val ALARM_WRITE = "devotional-write"
     const val ALARM_NOTIFY = "devotional-notify"
@@ -47,6 +48,7 @@ object DevotionalScheduler {
         runCatching { WorkManager.getInstance(context) }.getOrNull()?.let { wm ->
             wm.cancelUniqueWork(LEGACY_DAILY); wm.cancelUniqueWork(LEGACY_NOTIFY)
         }
+        seedUpcoming(context)
         if (!profile.enabled) {
             DailyAlarms.cancel(context, ALARM_WRITE); DailyAlarms.cancel(context, ALARM_NOTIFY)
             return
@@ -56,6 +58,14 @@ object DevotionalScheduler {
         // Missed the writing time today (phone off, app killed)? Write it now. A devotional that
         // already exists is kept, so this costs nothing on a normal day.
         if (isPastWriteTime(LocalDateTime.now(), profile.deliveryMinutes)) scheduledWrite(context)
+    }
+
+    /** Pre-write a month from the bundled plan on first launch, with no network or model dependency. */
+    private fun seedUpcoming(context: Context) {
+        val request = OneTimeWorkRequestBuilder<DevotionalWorker>()
+            .setInputData(workDataOf(DevotionalWorker.KEY_MODE to DevotionalWorker.MODE_SEED))
+            .build()
+        runCatching { WorkManager.getInstance(context).enqueueUniqueWork(SEED, ExistingWorkPolicy.KEEP, request) }
     }
 
     fun onAlarm(context: Context, key: String) {
@@ -75,13 +85,13 @@ object DevotionalScheduler {
     }
 
     /**
-     * Today's devotional as the timetable writes it: ahead of time, once there's a network, retried
-     * with growing waits until delivery. Announced once it's due and ready.
+     * Today's devotional is written ahead of time. AI is preferred, with the bundled plan as an
+     * offline fallback, so it never waits on network before the notification.
      */
     internal fun scheduledWrite(context: Context, replace: Boolean = false) {
         val request = OneTimeWorkRequestBuilder<DevotionalWorker>()
             .setInputData(workDataOf(DevotionalWorker.KEY_MODE to DevotionalWorker.MODE_WRITE))
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            // Classic bundled content is a guaranteed fallback; scheduling must not wait for network.
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, DevotionalDelivery.BACKOFF_SECONDS, TimeUnit.SECONDS)
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
@@ -206,6 +216,15 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
         val repo = DevotionalRepository(applicationContext)
         val profile = UserPreferencesManager(applicationContext).devotionalProfile.first()
         return when (inputData.getString(KEY_MODE)) {
+            MODE_SEED -> {
+                val classic = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk(
+                    writer = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter.CLASSIC
+                )
+                for (offset in 0..30) {
+                    repo.ensure(LocalDate.now().plusDays(offset.toLong()), ask = classic)
+                }
+                Result.success()
+            }
             MODE_NOTIFY -> { deliver(repo, profile); Result.success() }
             MODE_EXTRAS -> {
                 val today = repo.find(LocalDay.today()) ?: return Result.success()
@@ -220,8 +239,8 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
                 // Asked for now: it's read now, so it knows whether it's afternoon or evening.
                 val base = asked ?: com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk()
                 val ask = if (onDemand) base.copy(hour = java.time.LocalTime.now().hour, keepToAi = fromNotice)
-                // The timetable's own write: if the AI fails, retry — don't file a classic as today's.
-                else base.copy(keepToAi = true)
+                // Scheduled text must always exist before delivery; AI is preferred, bundled classic is fallback.
+                else base.copy(keepToAi = false)
                 when (val r = attempt(repo, replace, ask)) {
                     is Attempt.Failed -> {
                         DevotionalScheduler.setLastError(applicationContext, r.message)
@@ -264,7 +283,7 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
         )
         var action = DevotionalDelivery.atDelivery(state)
         if (action is DeliveryAction.TryWriteNow) {
-            val ask = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk(keepToAi = true)
+            val ask = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk(keepToAi = false)
             val r = attempt(repo, false, ask)
             today = (r as? Attempt.Written)?.daily ?: repo.find(LocalDay.today())
             state = state.copy(
@@ -297,6 +316,7 @@ class DevotionalWorker(context: Context, params: WorkerParameters) : CoroutineWo
         const val MODE_WRITE = "write"
         const val MODE_NOTIFY = "notify"
         const val MODE_EXTRAS = "extras"
+        const val MODE_SEED = "seed"
         const val KEY_ERROR = "error"
         const val WRITE_TIMEOUT_MS = 150_000L
         const val EXTRA_TIMEOUT_MS = 90_000L

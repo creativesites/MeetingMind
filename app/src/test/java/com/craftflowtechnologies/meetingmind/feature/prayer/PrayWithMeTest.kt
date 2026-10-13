@@ -176,14 +176,12 @@ class PrayWithMeTest {
         assertTrue(gate.decide(0.12f, true)) // and keeps it through softer words
     }
 
-    @Test fun `worship first, a persona, and singing only what may be sung`() {
-        val s = PraySetup(worship = "Amazing Grace", persona = "a passionate African Pentecostal preacher")
+    @Test fun `prayer prompt is honest about singing and keeps the chosen persona`() {
+        val s = PraySetup(persona = "a passionate African Pentecostal preacher")
         val sys = PrayerCompanion.systemInstruction(s)
-        assertTrue(sys.contains("Pentecostal preacher") && sys.contains("public-domain hymns") && sys.contains("don't sing out its full lyrics"))
-        assertTrue(PrayerCompanion.opening(s).contains("sing \"Amazing Grace\""))
-        assertTrue(PrayerCompanion.opening(s.copy(worship = com.craftflowtechnologies.meetingmind.core.prayer.WorshipSongs.THEIR_OWN)).contains("follow me"))
-        assertTrue(PrayerCompanion.singNow(null).contains("follow me"))
-        assertTrue(com.craftflowtechnologies.meetingmind.core.prayer.WorshipSongs.hymns.none { it.contains("Great Is Thy Faithfulness") })
+        assertTrue(sys.contains("Pentecostal preacher"))
+        assertTrue(sys.contains("cannot sing a melody yet"))
+        assertFalse(sys.contains("you may sing"))
     }
 
     @Test fun `church voices include Pentecostal with a Zambian accent, Catholic, and more`() {

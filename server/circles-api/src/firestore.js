@@ -53,7 +53,7 @@ const SAFE_FIELD = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 
 export class Firestore {
   constructor({ projectId, env, fetchImpl = fetch }) {
-    this.projectId = projectId; this.env = env; this.fetch = fetchImpl;
+    this.projectId = projectId; this.env = env; this.fetch = (...args) => Reflect.apply(fetchImpl, globalThis, args);
     this.root = `projects/${projectId}/databases/(default)/documents`;
     this.base = `https://firestore.googleapis.com/v1/${this.root}`;
   }

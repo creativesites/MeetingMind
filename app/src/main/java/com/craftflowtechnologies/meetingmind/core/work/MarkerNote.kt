@@ -29,7 +29,12 @@ object MarkerNote {
     const val KEY_SCRIPTURE = "marker_scripture"
     const val KEY_NOTES = "marker_notes"
     const val KEY_PRAYER = "marker_prayer"
-    val keys = setOf(KEY_MOMENTS, KEY_SCRIPTURE, KEY_NOTES, KEY_PRAYER)
+    /** Markers with no section of their own. Explicit, so a marker is never dropped for lack of one. */
+    const val KEY_OTHER = "marker_other_moments"
+    val keys = setOf(KEY_MOMENTS, KEY_SCRIPTURE, KEY_NOTES, KEY_PRAYER, KEY_OTHER)
+
+    /** Kinds that have a section above, or become findings through [Marks.reconcile]. Everything else lands in [KEY_OTHER]. */
+    private val PLACED = setOf(MarkKind.KEY, MarkKind.SCRIPTURE, MarkKind.NOTE, MarkKind.PRAYER, MarkKind.ACTION, MarkKind.QUESTION, MarkKind.DECISION)
 
     /** Highlights are pressed just after the thing is said, so look back further than forward. */
     private const val LOOK_BACK_MS = 20_000L
@@ -93,6 +98,15 @@ object MarkerNote {
         lines(MarkKind.NOTE, KEY_NOTES, "Your notes", NoteBlockType.PARAGRAPH)
         lines(MarkKind.PRAYER, KEY_PRAYER, "Prayer points", NoteBlockType.BULLET)
 
+        val other = sorted.filter { it.kind !in PLACED }
+        if (other.isNotEmpty()) {
+            heading(KEY_OTHER, "Other moments")
+            other.forEach { m ->
+                val text = m.text.orEmpty().ifBlank { "${m.kind.label} at ${stamp(m.atMs)}" }
+                blocks += NoteBlock(id(m), noteId, 0, NoteBlockType.PARAGRAPH, RichText.plain(text), payload = at(m.atMs), source = BlockSource.USER, sectionKey = KEY_OTHER)
+            }
+        }
+
         return GeneratedSections(blocks, refs, keys)
     }
 
@@ -101,7 +115,7 @@ object MarkerNote {
     /** Runs after processing has written the note's own sections. Does nothing when nothing was marked for the note. */
     suspend fun apply(context: Context, database: MeetMindDatabase, meetingId: String, segments: List<Marks.Segment>) {
         val noteId = database.meetingDao().getMeetingById(meetingId)?.noteId ?: return
-        val marks = Marks.read(database.noteDao().getById(noteId)?.metadataJson)
+        val marks = Marks.forMeeting(database, meetingId)
         val generated = build(noteId, meetingId, marks, segments)
         if (generated.blocks.isEmpty()) return
         NoteRepository(context, database).applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys)

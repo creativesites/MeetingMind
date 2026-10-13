@@ -12,7 +12,20 @@
           "package_name": "com.craftflowtechnologies.meetingmind"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1045479699328-uaaqokubj0d2n51fkr0c2iqik2srdhi0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.craftflowtechnologies.meetingmind",
+            "certificate_hash": "63bac345079d35472a0cddbe718a90d9ed17c726"
+          }
+        },
+        {
+          "client_id": "1045479699328-o5q3t2hgtokh6b52jujv6edb8g7gmqvk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAANBVlA9haWWASnvl_zJ30PA_D0d0wM78"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1045479699328-o5q3t2hgtokh6b52jujv6edb8g7gmqvk.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
@@ -31,7 +49,12 @@
           "package_name": "com.craftflowtechnologies.meetingmind.dev"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1045479699328-o5q3t2hgtokh6b52jujv6edb8g7gmqvk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAANBVlA9haWWASnvl_zJ30PA_D0d0wM78"
@@ -39,7 +62,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1045479699328-o5q3t2hgtokh6b52jujv6edb8g7gmqvk.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
