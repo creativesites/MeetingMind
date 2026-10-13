@@ -1255,6 +1255,18 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         )
     }
 
+    // "{title} is ready." with Open and a nod; notes that finish during a recording wait for the stop
+    // (signature moments §3.2, §4). Not for the note the person is already watching or reading.
+    com.craftflowtechnologies.meetingmind.feature.moments.NoteReadySnackbarHost(
+        suppressed = { id ->
+            prefsState?.onboardingCompleted != true ||
+                (currentRoute in setOf(Routes.PROCESSING, Routes.MEETING_DETAIL, Routes.WRAP_UP) && currentBackStackEntry?.arguments?.getString("meetingId") == id)
+        },
+        onOpen = { id -> navController.navigate(Routes.meetingDetailRoute(id)) },
+        onShowAll = { navController.navigate(Routes.NOTES) { popUpTo(Routes.HOME) { saveState = true }; launchSingleTop = true; restoreState = true } },
+        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (currentRoute in routesWithNav) 72.dp else 0.dp)
+    )
+
     recoveryEntry?.let { entry ->
         AlertDialog(
             onDismissRequest = { /* Never auto-dismiss into a silent discard — spec §3.7. Back
