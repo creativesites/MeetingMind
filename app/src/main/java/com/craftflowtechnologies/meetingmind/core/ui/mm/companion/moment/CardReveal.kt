@@ -71,7 +71,7 @@ fun CardReveal(
     }
     val reduced = when (LocalCompanionReducedMotion.current) { true -> true; false -> false; null -> MM.motion.reduced }
     val settled by rememberUpdatedState(onSettled)
-    val clock = rememberMomentClock(key = "card/$playKey/$form", playedMs = moment.playedMs, durationScale = MM.motion.durationScale, onEnd = { settled() })
+    val clock = rememberMomentClock(key = "card/$playKey/$form", playedMs = moment.playedMs, durationScale = if (reduced) 0f else LocalMomentDurationScale.current ?: MM.motion.durationScale, onEnd = { settled() })
     val exportPose = remember(form, mode) { CompanionPoses.pose(form, mode, 0f, StaticLevel, reduced = true) }
     // A mode change: crossfade from the previous static pose plus the new mode's Signature.
     val modeAnim = remember { Animatable(1f) }

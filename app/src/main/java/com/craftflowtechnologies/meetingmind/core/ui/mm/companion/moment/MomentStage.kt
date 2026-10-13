@@ -166,6 +166,9 @@ internal class StageGeometry {
  * }
  * ```
  *
+ * Dawn's glow draws **behind** the content: put the screen's background outside the stage (or on the
+ * stage's modifier), not on the header block, or the glow is hidden.
+ *
  * @param key stable across recreation (e.g. `"unveil:$noteId"`): a played moment never replays under it.
  * @param titleWords the title's word count (Inkline keeps its Signature in time with the words).
  * @param haptics false turns them off (they are already off in Faith and after a skip, and only fire when
@@ -248,7 +251,7 @@ fun MomentStage(
 internal fun rememberMomentEngine(moment: ResolvedMoment, key: String, haptics: Boolean, sounds: Boolean, onEnd: () -> Unit): MomentClock {
     val view = LocalView.current
     val context = LocalContext.current
-    val durationScale = when (LocalCompanionReducedMotion.current) { true -> 0f; false -> 1f; null -> MM.motion.durationScale }
+    val durationScale = when (LocalCompanionReducedMotion.current) { true -> 0f; false -> LocalMomentDurationScale.current ?: 1f; null -> LocalMomentDurationScale.current ?: MM.motion.durationScale }
     val chimeAt = FirstKeepChime.AtBaseMs * moment.timeScale
     return rememberMomentClock(
         key = key, playedMs = moment.playedMs, durationScale = durationScale,
