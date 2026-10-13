@@ -14,6 +14,7 @@ import com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiReadingEngine
 import com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiSectionVoice
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LibraryScriptureSource
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LoadedNote
+import com.craftflowtechnologies.meetingmind.ai.voice.read.MainThreadReadPlayer
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LocalSectionVoice
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LocalSpeechEngine
 import com.craftflowtechnologies.meetingmind.ai.voice.read.NoteFacts
@@ -54,18 +55,22 @@ class AndroidReadingHost(context: Context) : ReadingHost {
 
     override val store: ReadingStore = ReadingStore.get(app)
 
-    override val player = object : ReadPlayer {
+    override val player: ReadPlayer = MainThreadReadPlayer(object : ReadPlayer {
         override fun play(queueId: String, items: List<QueueItem>, startIndex: Int, startPositionMs: Long, expected: Int) =
             PlaybackController.playQueue(app, queueId, items, startIndex, startPositionMs, expected)
         override fun append(item: QueueItem) = PlaybackController.appendItem(item)
         override fun setExpected(count: Int) = PlaybackController.setExpectedCount(count)
-    }
+    }, post = { r -> mainHandler.post(r) })
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     override suspend fun loadNote(noteId: String, options: ExtractOptions): LoadedNote? {
         val db = MeetMindDatabase.getInstance(app)
         val doc = NoteRepository(app, db).getDocument(noteId) ?: return null
         val note = doc.note
-        val resolved = ScriptureResolver(LibraryScriptureSource(ScriptureService(app))).resolve(doc.blocks, doc.scriptureRefs)
+        // A slow or offline Bible lookup must not hold the reading: passages that don't arrive in time read as unavailable.
+        val resolved = kotlinx.coroutines.withTimeoutOrNull(SCRIPTURE_TIMEOUT_MS) {
+            ScriptureResolver(LibraryScriptureSource(ScriptureService(app))).resolve(doc.blocks, doc.scriptureRefs)
+        } ?: emptyMap()
         val source = NoteSpeechExtractor.extract(
             noteTitle = note.title, notePrivate = note.isPrivate, blocks = doc.blocks,
             privateKeys = Workflows.template(note.workflow).privateKeys,
@@ -107,10 +112,14 @@ class AndroidReadingHost(context: Context) : ReadingHost {
 
     override fun geminiVoice(settings: ReadToMeSettings, delivery: DeliverySpec, routeAllowsCloud: Boolean): SectionVoice {
         val gate = CloudGate(routeAllowsCloud, { prefs.preferencesFlow.first().processingProfile })
-        val client = GeminiSpeechClient(GeminiInteractions(credentials), gate)
+        // One request may not hold a reading for minutes: it times out and is retried or reported.
+        val http = GeminiInteractions.mediaClient().newBuilder().callTimeout(90, java.util.concurrent.TimeUnit.SECONDS).readTimeout(80, java.util.concurrent.TimeUnit.SECONDS).build()
+        val client = GeminiSpeechClient(GeminiInteractions(credentials, http), gate)
         return GeminiSectionVoice(GeminiReadingEngine(client, File(app.cacheDir, "read_to_me_work").apply { mkdirs() }), settings.geminiVoice, delivery)
     }
 }
+
+private const val SCRIPTURE_TIMEOUT_MS = 10_000L
 
 /** The one coordinator for the app, like the player it feeds. */
 object ReadToMe {

@@ -30,11 +30,12 @@ private class CPlayer : ReadPlayer {
     override fun setExpected(count: Int) = Unit
 }
 
-private class CVoice(override val provider: SpeechProvider, val failOn: MutableSet<String> = mutableSetOf()) : SectionVoice {
+private class CVoice(override val provider: SpeechProvider, val failOn: MutableSet<String> = mutableSetOf(), val hang: kotlinx.coroutines.CompletableDeferred<Unit>? = null) : SectionVoice {
     override val fingerprintModel = "fake"
     override val voiceId = "v"
     val made = mutableListOf<String>()
     override suspend fun synthesize(partId: String, fingerprint: String, chunks: List<SpeechChunk>, onProgress: (Float) -> Unit): VoiceResult {
+        hang?.await()
         if (partId in failOn) return VoiceResult.Failed("down", RecoveryPlan("Gemini voice isn't available right now.", listOf(Recovery.RETRY)))
         made += partId
         return VoiceResult.Done(Pcm(ShortArray(12000) { (it % 40).toShort() }, 24000))
@@ -49,7 +50,7 @@ private class CHost(
     var env: Environment,
     var settings: ReadToMeSettings = ReadToMeSettings(disclosureAccepted = true)
 ) : ReadingHost {
-    val gemini = CVoice(SpeechProvider.GEMINI)
+    var gemini = CVoice(SpeechProvider.GEMINI)
     val local = CVoice(SpeechProvider.LOCAL)
     var geminiCreatedWithCloudAllowed: Boolean? = null
     var localOffline: Boolean? = null
@@ -210,5 +211,17 @@ class ReadingCoordinatorTest {
         assertEquals(listOf("h1" to "One", "h2" to "Two"), offer.sections)
         assertEquals(SpeechProvider.GEMINI, offer.provider)
         assertTrue(host.gemini.made.isEmpty())
+    }
+
+    @Test fun `a hung Gemini request can be left for the phone voice by the person`() = scope.runTest {
+        host.gemini = CVoice(SpeechProvider.GEMINI, hang = kotlinx.coroutines.CompletableDeferred())
+        go { coordinator.start("n1") }
+        val working = coordinator.state.value as ReadingUiState.Working
+        assertEquals(SpeechProvider.GEMINI, working.provider)
+        assertEquals(0, working.done)
+        go { coordinator.choosePhoneVoice() }
+        val done = coordinator.state.value as ReadingUiState.Finished
+        assertEquals(SpeechProvider.LOCAL, done.provider)
+        assertEquals(listOf("h1", "h2"), host.local.made)
     }
 }

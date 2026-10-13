@@ -46,6 +46,8 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 
+private const val SLOW_AFTER_SECONDS = 25
+
 private val PACES = listOf(0.9f to "Slower", 1.0f to "Normal", 1.15f to "Faster")
 
 /** Pace to the nearest of the three offered. */
@@ -92,10 +94,24 @@ fun ReadToMeSheet(noteId: String, onDismiss: () -> Unit) {
                     coordinator.start(noteId, startFrom, resume = resume)
                 }
                 is ReadingUiState.Working -> {
-                    val fraction = if (shown.total == 0) 0f else shown.done.toFloat() / shown.total
-                    Text(if (shown.total == 0) "Getting ready…" else if (shown.done == 0) "Preparing the first part…" else "Preparing ${minOf(shown.done + 1, shown.total)} of ${shown.total}", style = MM.type.body, color = MM.colors.ink)
+                    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+                    LaunchedEffect(shown.startedAtMs) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(1_000) } }
+                    val waited = if (shown.startedAtMs > 0) ((now - shown.startedAtMs) / 1000).coerceAtLeast(0) else 0
+                    val fraction = if (shown.total == 0) 0f else ((shown.done + shown.partFraction) / shown.total).coerceIn(0f, 1f)
+                    Text(
+                        when {
+                            shown.total == 0 -> "Getting ready…"
+                            shown.done == 0 -> "Preparing the first part… ${waited}s"
+                            else -> "Preparing ${minOf(shown.done + 1, shown.total)} of ${shown.total} · ${waited}s"
+                        },
+                        style = MM.type.body, color = MM.colors.ink
+                    )
                     LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth(), color = MM.colors.accent, trackColor = MM.colors.track)
                     shown.note?.let { StatusLine(StatusKind.Info, it) }
+                    if (shown.provider == SpeechProvider.GEMINI && shown.done == 0 && waited >= SLOW_AFTER_SECONDS) {
+                        StatusLine(StatusKind.Warning, "Gemini is taking a while. You can keep waiting or use your phone's voice instead.")
+                        SecondaryButton("Use my phone's voice", onClick = coordinator::choosePhoneVoice, modifier = Modifier.fillMaxWidth())
+                    }
                     Text("Playing starts after the first part. You can close this; the rest keeps getting ready.", style = MM.type.caption, color = MM.colors.inkMuted)
                     SecondaryButton("Stop preparing", onClick = { coordinator.cancel(); started = false }, modifier = Modifier.fillMaxWidth())
                 }

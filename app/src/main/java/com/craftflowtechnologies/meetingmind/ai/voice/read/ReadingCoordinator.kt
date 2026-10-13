@@ -2,6 +2,7 @@ package com.craftflowtechnologies.meetingmind.ai.voice.read
 
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
+import com.craftflowtechnologies.meetingmind.ai.common.ReadToMeLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -36,7 +37,13 @@ interface ReadingHost {
 sealed interface ReadingUiState {
     data object Idle : ReadingUiState
     /** Making parts and playing as they arrive. [done] parts are ready out of [total]. */
-    data class Working(val noteId: String, val provider: SpeechProvider, val done: Int, val total: Int, val note: String?) : ReadingUiState
+    data class Working(
+        val noteId: String, val provider: SpeechProvider, val done: Int, val total: Int, val note: String?,
+        /** How far the part being made has got, 0 to 1. */
+        val partFraction: Float = 0f,
+        /** When this run started, so the sheet can say how long it has been waiting. */
+        val startedAtMs: Long = 0L
+    ) : ReadingUiState
     /** Every part is made; playback carries on in the player. */
     data class Finished(val noteId: String, val provider: SpeechProvider, val total: Int, val note: String?, val switchedToPhone: Boolean) : ReadingUiState
     data class NeedsChoice(val noteId: String, val message: String) : ReadingUiState
@@ -66,7 +73,7 @@ data class ReadOffer(
  * [ReadingRunner], and reports a single [ReadingUiState]. A reading keeps one provider from start to
  * end: a failure offers retry or an explicit switch to the phone's voice, never a silent change.
  */
-class ReadingCoordinator(private val host: ReadingHost, private val scope: CoroutineScope) {
+class ReadingCoordinator(private val host: ReadingHost, private val scope: CoroutineScope, private val clock: () -> Long = System::currentTimeMillis) {
 
     private data class Request(val noteId: String, val startSectionId: String?, val choice: ReadChoice, val resume: Boolean)
 
@@ -153,7 +160,8 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
         job = scope.launch {
             try { begin(request) } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                _state.value = ReadingUiState.Failed(request.noteId, 0, 0, "Read to Me couldn't start. ${e.message.orEmpty()}".trim(), listOf(Recovery.RETRY), SpeechProvider.LOCAL)
+                ReadToMeLog.w("begin failed: ${e::class.simpleName}: ${e.message}")
+                _state.value = ReadingUiState.Failed(request.noteId, 0, 0, "Read to Me couldn't start (${e::class.simpleName}). ${e.message.orEmpty()}".trim(), listOf(Recovery.RETRY), SpeechProvider.LOCAL)
             }
         }
     }
@@ -164,7 +172,8 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
         job = scope.launch {
             try { execute(s.request, s.plan, voice, s.decision, s.index, s.note, switched) } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                _state.value = ReadingUiState.Failed(s.request.noteId, s.index, s.plan.parts.size, "Read to Me stopped. ${e.message.orEmpty()}".trim(), listOf(Recovery.RETRY), voice.provider)
+                ReadToMeLog.w("resume failed: ${e::class.simpleName}: ${e.message}")
+                _state.value = ReadingUiState.Failed(s.request.noteId, s.index, s.plan.parts.size, "Read to Me stopped (${e::class.simpleName}). ${e.message.orEmpty()}".trim(), listOf(Recovery.RETRY), voice.provider)
             }
         }
     }
@@ -180,6 +189,7 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
             is Prepared.NeedsChoice -> _state.value = ReadingUiState.NeedsChoice(request.noteId, prepared.message)
             is Prepared.NeedsDisclosure -> _state.value = ReadingUiState.NeedsDisclosure(request.noteId, prepared.usingBuiltInKey, prepared.keyTier)
             is Prepared.Ready -> {
+                ReadToMeLog.d("route provider=${prepared.decision.provider} blocks=${prepared.decision.cloudBlocks} sections=${prepared.source.sections.size}")
                 val source = ReadingPlan.fromSection(prepared.source, request.startSectionId)
                 val parts = ReadingPlan.parts(source, settings.pauseAfterQuestion == PauseAfterQuestion.UNTIL_RESUME)
                 val delivery = DeliveryResolver.resolve(settings, note.space)
@@ -201,11 +211,20 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
         val total = plan.parts.size
         val resume = if (request.resume && alreadyQueued == 0) resumeTarget(plan) else null
         val provider = voice.provider
-        _state.value = ReadingUiState.Working(request.noteId, provider, alreadyQueued, total, note)
+        val startedAt = clock()
+        var doneParts = alreadyQueued
+        _state.value = ReadingUiState.Working(request.noteId, provider, alreadyQueued, total, note, 0f, startedAt)
+        ReadToMeLog.d("run start provider=$provider parts=$total alreadyQueued=$alreadyQueued")
         val runner = ReadingRunner(host.store, host.player)
-        when (val outcome = runner.run(plan, voice, resume, alreadyQueued) { done, all ->
-            _state.value = ReadingUiState.Working(request.noteId, provider, done, all, note)
-        }) {
+        val outcome = runner.run(plan, voice, resume, alreadyQueued, onProgress = { done, all ->
+            doneParts = done
+            ReadToMeLog.d("part ready $done/$all after ${clock() - startedAt} ms")
+            _state.value = ReadingUiState.Working(request.noteId, provider, done, all, note, 0f, startedAt)
+        }, onPartProgress = { f ->
+            _state.value = ReadingUiState.Working(request.noteId, provider, doneParts, total, note, f, startedAt)
+        })
+        ReadToMeLog.d("run end ${outcome::class.simpleName} after ${clock() - startedAt} ms")
+        when (outcome) {
             is RunOutcome.Completed -> _state.value = ReadingUiState.Finished(request.noteId, provider, total, note, switched || host.store.load(request.noteId)?.switchedToPhoneAtSection != null)
             is RunOutcome.Failed -> {
                 stalled = Stalled(request, plan, voice, decision, outcome.partIndex, note)
