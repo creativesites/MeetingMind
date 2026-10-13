@@ -28,3 +28,5 @@ local.properties
 
 # Release signing material and API keys — never committed
 release-secrets/
+
+firebase-debug.log

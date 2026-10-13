@@ -7,7 +7,6 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
-import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.core.model.Meeting
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -48,8 +47,7 @@ sealed interface AuthAvailability {
  *
  * Authentication is entirely optional and never blocks local recording/processing — see
  * docs/ARCHITECTURE.md "Local-First Authentication Policy". If Firebase is not configured
- * (no google-services.json) or no web client ID has been set (see
- * res/values/strings.xml:google_sign_in_web_client_id), sign-in honestly reports
+ * (no google-services.json) or no web client ID is present in generated resources, sign-in honestly reports
  * [AuthAvailability.NotConfigured] instead of fabricating a signed-in user.
  */
 class FirebaseAuthManager(private val context: Context) {
@@ -64,7 +62,11 @@ class FirebaseAuthManager(private val context: Context) {
 
     private val webClientId: String by lazy {
         try {
-            context.getString(R.string.google_sign_in_web_client_id)
+            // The Google Services Gradle plugin generates this from the type-3 OAuth client
+            // in google-services.json. Look it up dynamically so local/offline builds without
+            // that file still compile and report sign-in as unavailable.
+            val id = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+            if (id == 0) "" else context.getString(id)
         } catch (e: Exception) {
             ""
         }

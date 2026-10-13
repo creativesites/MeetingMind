@@ -132,7 +132,7 @@ class WorkOnMainTest {
         Marks.reconcile(db, "m1", segs)
         assertTrue((db.actionItemDao().getActionItemsForMeetingDirect("m1").first { it.id == "a1" }.confidence ?: 0f) >= 0.95f)
         assertEquals("Who owns the launch plan?", db.questionDao().getQuestionsForMeetingDirect("m1").single().text)
-        assertEquals(listOf(12_000L), Marks.keyMoments(db.noteDao().getById("n1")!!.metadataJson))
+        assertEquals(listOf(12_000L), Marks.keyMoments(db, "m1"))
     }
 
     @Test

@@ -19,6 +19,8 @@ import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,9 +34,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesFailure
@@ -69,6 +73,10 @@ fun CirclesListScreen(
     val accountState by account.state.collectAsState()
     val askNotifications = rememberNotificationAsk()
     var showJoin by rememberSaveable { mutableStateOf(false) }
+    var showDiagnostics by rememberSaveable { mutableStateOf(false) }
+    var diagnostics by rememberSaveable { mutableStateOf("Not run") }
+    var checking by rememberSaveable { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(initialCode) {
         if (initialCode != null) { vm.onPaste(initialCode); showJoin = true; onInitialCodeHandled() }
     }
@@ -80,8 +88,40 @@ fun CirclesListScreen(
         // The first circle is when "tell me when something happens" makes sense, so that is when we ask.
         onJoin = { vm.join { id -> showJoin = false; vm.resetJoin(); if (repo.isFirstCircle()) askNotifications { onOpenCircle(id) } else onOpenCircle(id) } },
         onRefresh = vm::refresh,
+        onDiagnostics = { showDiagnostics = true },
         account = accountState, onLink = account::link, onSwitch = account::switchAccount, onDismissConflict = account::dismissConflict
     )
+    if (showDiagnostics) {
+        val firebaseProject = remember { runCatching { com.google.firebase.FirebaseApp.getInstance().options.projectId }.getOrNull() ?: "Firebase not initialized" }
+        AlertDialog(
+            onDismissRequest = { showDiagnostics = false },
+            title = { Text("Circles diagnostics") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    Text("API: ${com.craftflowtechnologies.meetingmind.BuildConfig.CIRCLES_API_URL.ifBlank { "not configured" }}")
+                    Text("Firebase project: $firebaseProject")
+                    Text("Account: ${repo.auth.currentUid?.let { if (repo.auth.isAnonymous) "anonymous · ${it.take(8)}…" else "signed in · ${it.take(8)}…" } ?: "not signed in"}")
+                    Text("Check: $diagnostics")
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !checking, onClick = {
+                    checking = true; diagnostics = "Checking Firebase sign-in and Circles API…"
+                    scope.launch {
+                        diagnostics = when (val signed = repo.uid()) {
+                            is com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult.Err -> "Firebase sign-in failed: ${signed.failure.code ?: signed.failure.kind}: ${signed.failure.message}"
+                            is com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult.Ok -> when (val result = repo.api.myCircles()) {
+                                is com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult.Ok -> "PASS · authenticated API responded (${result.value.size} circles)"
+                                is com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult.Err -> "API failed: ${result.failure.code ?: result.failure.kind}: ${result.failure.message}${result.failure.httpStatus?.let { " (HTTP $it)" } ?: ""}${result.failure.requestId?.let { " · request $it" } ?: ""}"
+                            }
+                        }
+                        checking = false
+                    }
+                }) { Text(if (checking) "Checking…" else "Run check") }
+            },
+            dismissButton = { TextButton(onClick = { showDiagnostics = false }) { Text("Close") } }
+        )
+    }
 }
 
 @Composable
@@ -101,14 +141,18 @@ fun CirclesListContent(
     account: AccountUiState? = null,
     onLink: (android.content.Context) -> Unit = {},
     onSwitch: () -> Unit = {},
-    onDismissConflict: () -> Unit = {}
+    onDismissConflict: () -> Unit = {},
+    onDiagnostics: () -> Unit = {}
 ) {
     val canAct = state !is CirclesListState.NotConnected
     Column(Modifier.fillMaxSize().background(MM.colors.background).statusBarsPadding()) {
         ScreenHeader(
             "Circles", Modifier.padding(horizontal = MM.space.s),
             leading = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.inkSecondary) } },
-            actions = { if (canAct) TextAction("Join", onShowJoin) }
+            actions = {
+                if (com.craftflowtechnologies.meetingmind.BuildConfig.DEBUG) TextAction("Debug", onDiagnostics)
+                if (canAct) TextAction("Join", onShowJoin)
+            }
         )
         when (state) {
             CirclesListState.NotConnected -> EmptyState(

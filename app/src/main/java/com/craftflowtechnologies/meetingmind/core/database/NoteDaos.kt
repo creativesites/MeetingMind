@@ -292,6 +292,14 @@ interface NoteDao {
     @Query("UPDATE meetings SET noteId = :noteId WHERE id = :meetingId")
     suspend fun attachMeeting(meetingId: String, noteId: String?)
 
+    /** Files a recording under [noteId] as its last part: its order is one past the note's current highest. */
+    @Query(
+        "UPDATE meetings SET noteId = :noteId, recordingOrder = " +
+            "(SELECT COALESCE(MAX(m2.recordingOrder) + 1, 0) FROM meetings AS m2 WHERE m2.noteId = :noteId) " +
+            "WHERE id = :meetingId"
+    )
+    suspend fun attachMeetingAsLastPart(meetingId: String, noteId: String)
+
     // ---- the Notes library (U-2): bounded, keyset-paged, never SELECT * into the UI ----
 
     /** By last edit (sortMode 0) or note date (1), newest first, pinned first when [pinFirst] = 1: ORDER BY key DESC, id DESC. */

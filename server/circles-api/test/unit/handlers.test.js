@@ -11,7 +11,7 @@ function world() {
   return { db, kv, fcm, call, err };
 }
 async function circle(W, extra = {}) {
-  const { circleId } = await W.call("owner", "createCircle", { name: "Cell", template: "small_group", settings: extra, displayName: "Olive" });
+  const { circleId } = await W.call("owner", "createCircle", { name: "Cell", template: "small_group", settings: extra, displayName: "Olive", requestId: crypto.randomUUID() });
   return circleId;
 }
 async function joinAs(W, uid, circleId, name = uid) {
@@ -24,9 +24,19 @@ test("create circle: owner member, 10 circle cap", async () => {
   const id = await circle(W);
   assert.equal(W.db.dump(`circles/${id}/members/owner`).role, "owner");
   W.kv.m.clear();
-  for (let i = 1; i < 10; i++) { W.kv.m.clear(); await W.call("owner", "createCircle", { name: "c" + i, template: "custom" }); }
+  for (let i = 1; i < 10; i++) { W.kv.m.clear(); await W.call("owner", "createCircle", { name: "c" + i, template: "custom", requestId: crypto.randomUUID() }); }
   W.kv.m.clear();
-  assert.equal((await W.err("owner", "createCircle", { name: "x", template: "custom" })).code, "too_many_circles");
+  assert.equal((await W.err("owner", "createCircle", { name: "x", template: "custom", requestId: crypto.randomUUID() })).code, "too_many_circles");
+});
+
+test("create circle retry with the same request ID returns the original circle", async () => {
+  const W = world();
+  const request = { name: "Retry safe", template: "custom", requestId: "8d1333a4-6d8c-4d4e-92db-09f708916ccd" };
+  const first = await W.call("owner", "createCircle", request);
+  const second = await W.call("owner", "createCircle", request);
+  assert.equal(second.circleId, first.circleId);
+  assert.equal(W.db.dump("userMeta/owner").circleCount, 1);
+  assert.equal(W.db.dump(`circles/${first.circleId}`).memberCount, 1);
 });
 
 test("join: pasted message, replay, already_member, 50 cap, expiry, revoke", async () => {
@@ -231,7 +241,7 @@ test("celebrate: self only; answered needs a named, answered request you wrote; 
 
 test("myCircles lists the caller's circles and forgets left ones", async () => {
   const W = world();
-  const a = await circle(W); const b = (await W.call("owner", "createCircle", { name: "Two", template: "custom" })).circleId;
+  const a = await circle(W); const b = (await W.call("owner", "createCircle", { name: "Two", template: "custom", requestId: crypto.randomUUID() })).circleId;
   await joinAs(W, "ann", a, "Ann");
   assert.deepEqual((await W.call("owner", "myCircles", {})).circleIds.sort(), [a, b].sort());
   assert.deepEqual((await W.call("ann", "myCircles", {})).circleIds, [a]);

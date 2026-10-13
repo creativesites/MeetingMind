@@ -55,8 +55,7 @@ class MarkActionsTest {
             MarkActions.handle(MarkActions.KEY_ACTION, 61_000)
             MarkActions.handle(MarkActions.QUESTION_ACTION, 120_000)
             runBlocking { Marks.save(f.db, "m1", RecordingMarks.take()) }
-            val note = runBlocking { f.db.noteDao().getById("n1")!! }
-            assertEquals(listOf(Mark(MarkKind.KEY, 61_000), Mark(MarkKind.QUESTION, 120_000)), Marks.read(note.metadataJson))
+            assertEquals(listOf(Mark(MarkKind.KEY, 61_000), Mark(MarkKind.QUESTION, 120_000)), runBlocking { Marks.forMeeting(f.db, "m1") })
             assertEquals(emptyList<Mark>(), RecordingMarks.marks.value) // taken: the next recording starts clean
         } finally { f.db.close() }
     }

@@ -84,6 +84,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
 import com.craftflowtechnologies.meetingmind.core.model.Notebook
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.OfferedNotebookSpaces
@@ -190,6 +191,13 @@ fun NotesScreen(
     val latestMeeting = remember(state.items) {
         state.items.filter { it.hasRecording && Workflows.space(it.note.workflow) == NotebookSpace.WORK }
             .maxByOrNull { it.note.eventDate ?: it.note.createdAt }
+    }
+    val companionShown = rememberCompanionVisible(CompanionPage.HOME)
+    val heroBlocks by viewModel.heroBlocks.collectAsState()
+    LaunchedEffect(showHero, latestMeeting?.id) { viewModel.watchHero(if (showHero) latestMeeting?.id else null) }
+    // Tiles come from the hero note's blocks, so they follow edits to that note.
+    val heroTiles = remember(heroBlocks, latestMeeting) {
+        latestMeeting?.let { meetingTiles(heroBlocks, aiAvailable = it.note.plainText.isNotBlank()) }.orEmpty()
     }
 
     val snackbar = remember { SnackbarHostState() }
@@ -320,14 +328,20 @@ fun NotesScreen(
                                 archived = archivedCount, trash = trashCount, onArchive = onOpenArchive, onTrash = onOpenTrash
                             )
                         }
-                        item(key = "home-greeting") {
-                            NotesGreeting(
-                                hasLatest = showHero && latestMeeting != null,
-                                onBubbleClick = { latestMeeting?.let { onOpenNote(it.id) } }
-                            )
-                        }
-                        if (showHero && latestMeeting != null) item(key = "home-hero") {
-                            LatestMeetingCard(latestMeeting, onOpen = { onOpenNote(latestMeeting.id) }, modifier = Modifier.padding(top = MM.space.l))
+                        val hero = latestMeeting.takeIf { showHero }
+                        if (hero != null && companionShown) item(key = "home-hero-block") {
+                            // Zuri sits partly behind the hero card: one item, so the card can cover Zuri's lower body.
+                            HomeHeroBlock(hero, heroTiles, onOpen = { onOpenNote(hero.id) }, onTile = { onOpenNote(hero.id) })
+                        } else {
+                            item(key = "home-greeting") {
+                                NotesGreeting(hasLatest = hero != null, onBubbleClick = { hero?.let { onOpenNote(it.id) } })
+                            }
+                            if (hero != null) item(key = "home-hero") {
+                                LatestMeetingCard(
+                                    hero, heroTiles, onOpen = { onOpenNote(hero.id) }, onTile = { onOpenNote(hero.id) },
+                                    modifier = Modifier.padding(top = MM.space.l)
+                                )
+                            }
                         }
                         if (searchOpen || searchText.isNotBlank()) item(key = "home-search") {
                             WorkTextField(
