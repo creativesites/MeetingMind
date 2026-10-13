@@ -109,19 +109,20 @@ val PaperLightScene: Scene = { t ->
     }
     drawPath(beam, Color(0xFFFFF8EA), alpha = 0.55f + 0.1f * sin(a))
     val stroke = Stroke(width = 1.6.dp.toPx())
-    val book = Color(0xFFA7784A).copy(alpha = 0.55f)
+    // The open book sits bottom-right, below the subtitle, so the text never runs through it.
+    val book = Color(0xFFA7784A).copy(alpha = 0.45f)
     val left = Path().apply {
-        moveTo(w * 0.18f, h * 0.66f)
-        quadraticBezierTo(w * 0.34f, h * 0.60f, w * 0.48f, h * 0.66f)
-        lineTo(w * 0.48f, h * 0.86f)
-        quadraticBezierTo(w * 0.34f, h * 0.80f, w * 0.18f, h * 0.86f)
+        moveTo(w * 0.60f, h * 0.84f)
+        quadraticBezierTo(w * 0.68f, h * 0.80f, w * 0.76f, h * 0.84f)
+        lineTo(w * 0.76f, h * 0.96f)
+        quadraticBezierTo(w * 0.68f, h * 0.92f, w * 0.60f, h * 0.96f)
         close()
     }
     val right = Path().apply {
-        moveTo(w * 0.52f, h * 0.66f)
-        quadraticBezierTo(w * 0.66f, h * 0.60f, w * 0.82f, h * 0.66f)
-        lineTo(w * 0.82f, h * 0.86f)
-        quadraticBezierTo(w * 0.66f, h * 0.80f, w * 0.52f, h * 0.86f)
+        moveTo(w * 0.76f, h * 0.84f)
+        quadraticBezierTo(w * 0.84f, h * 0.80f, w * 0.92f, h * 0.84f)
+        lineTo(w * 0.92f, h * 0.96f)
+        quadraticBezierTo(w * 0.84f, h * 0.92f, w * 0.76f, h * 0.96f)
         close()
     }
     drawPath(left, book, style = stroke)

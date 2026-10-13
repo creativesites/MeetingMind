@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -22,6 +23,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -70,7 +74,6 @@ data class PlanLine(val title: String, val time: String, val onOpen: () -> Unit)
 /** What the bento shows. Everything here comes from data Home already loads; nothing is invented. */
 data class BentoData(
     val weekCount: Int,
-    val weekLabel: String,
     val devotionalTitle: String,
     val devotionalSub: String,
     val devotionalNew: Boolean,
@@ -144,12 +147,12 @@ private fun CreateAndCircles(onCreate: () -> Unit, onCircles: () -> Unit, index:
 
 @Composable
 private fun FaithTile(data: BentoData, onClick: () -> Unit, index: Int) {
+    val days = data.weekCount.coerceIn(0, 7)
     SceneTile(index, SunriseScene, height = 196.dp, scrim = Paper.copy(alpha = 0.6f), tag = "bento_faith", onClick = onClick) {
         TileHeader(Icons.Filled.Church, "Faith", Ink)
+        Text("$days of 7 days kept this week", color = InkSoft, fontFamily = InterFamily, fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp))
+        SegmentBar(days / 7f, Color(0xFF6D5FD0), Color(0xFF6D5FD0).copy(alpha = 0.18f), modifier = Modifier.padding(top = 10.dp))
         Spacer(Modifier.weight(1f))
-        Text("Your week in faith", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
-        Text(data.weekLabel, color = InkSoft, fontFamily = InterFamily, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
-        SegmentBar(data.weekCount / 7f, Color(0xFF6D5FD0), Color(0xFF6D5FD0).copy(alpha = 0.18f))
     }
 }
 
@@ -284,9 +287,9 @@ private fun SceneTile(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val time = rememberSceneTime()
-    Reveal(index) {
+    Reveal(index, modifier) {
         Box(
-            modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(28.dp))
+            Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(28.dp))
                 .bentoPress(onClick).testTag(tag)
         ) {
             Canvas(Modifier.matchParentSize()) { scene(time.value) }
@@ -319,7 +322,7 @@ private fun Pill(label: String, background: Color, ink: Color, modifier: Modifie
 
 /** A thin progress track that fills from empty when it first appears. */
 @Composable
-private fun SegmentBar(fraction: Float, color: Color, track: Color) {
+private fun SegmentBar(fraction: Float, color: Color, track: Color, modifier: Modifier = Modifier) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val fill by animateFloatAsState(
@@ -327,7 +330,7 @@ private fun SegmentBar(fraction: Float, color: Color, track: Color) {
         animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
         label = "bento_bar"
     )
-    Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(track)) {
+    Box(modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(track)) {
         Box(Modifier.fillMaxWidth(fill).fillMaxHeight().background(color))
     }
 }
@@ -336,7 +339,7 @@ private fun SegmentBar(fraction: Float, color: Color, track: Color) {
  * Enters with a short stagger: fades up 26 dp. Reduced motion shows it at once.
  */
 @Composable
-private fun Reveal(index: Int, content: @Composable () -> Unit) {
+private fun Reveal(index: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val reduced = rememberHomeReducedMotion()
     val progress = remember { Animatable(if (reduced) 1f else 0f) }
     val density = LocalDensity.current.density
@@ -346,7 +349,7 @@ private fun Reveal(index: Int, content: @Composable () -> Unit) {
             progress.animateTo(1f, spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow))
         }
     }
-    Box(Modifier.graphicsLayer {
+    Box(modifier.graphicsLayer {
         alpha = progress.value
         translationY = (1f - progress.value) * 26f * density
     }) { content() }
@@ -366,4 +369,69 @@ private fun Modifier.bentoPress(onClick: () -> Unit): Modifier {
         scaleX = scale
         scaleY = scale
     }.clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
+}
+
+/** One shareable story card, drawn from today's devotional. */
+data class StoryCardData(
+    val reference: String,
+    val headline: String,
+    val body: String,
+    val caption: String,
+    val onOpen: () -> Unit
+)
+
+/**
+ * "Stories from today": three 9:16 cards with their own scenes. Tap one to open it; "Share" sends it out.
+ */
+@Composable
+fun StoryCards(cards: List<StoryCardData>, onShareAll: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Stories from today", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, modifier = Modifier.weight(1f))
+            Text(
+                "Share as image ›", color = Color(0xFF6D5FD0), fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onShareAll).padding(4.dp)
+            )
+        }
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(top = 14.dp)
+        ) {
+            itemsIndexed(cards) { i, card -> StoryCardTile(i, card) }
+        }
+    }
+}
+
+@Composable
+private fun StoryCardTile(index: Int, card: StoryCardData) {
+    val time = rememberSceneTime()
+    // Each card has its own scene: sunrise, night sky, then the sage rings.
+    val scene: Scene = when (index % 3) {
+        0 -> SunriseScene
+        1 -> NightPrayerScene
+        else -> CircleRingsScene
+    }
+    val onNight = index % 3 == 1
+    val ink = if (onNight) Color.White else Ink
+    Reveal(index) {
+        Box(
+            Modifier.width(220.dp).aspectRatio(9f / 16f).clip(RoundedCornerShape(30.dp)).bentoPress(card.onOpen)
+        ) {
+            Canvas(Modifier.matchParentSize()) { scene(time.value) }
+            Column(Modifier.fillMaxSize().padding(22.dp)) {
+                Text(card.reference.uppercase(), color = ink.copy(alpha = 0.8f), fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.sp)
+                Spacer(Modifier.weight(1f))
+                Text(card.headline, color = ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 26.sp, lineHeight = 30.sp, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                if (card.body.isNotBlank()) {
+                    Text(card.body, color = ink.copy(alpha = 0.85f), fontFamily = InterFamily, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp))
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(card.caption, color = ink.copy(alpha = 0.9f), fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Pill("Share", if (onNight) Color.White.copy(alpha = 0.22f) else Color.White, ink)
+                }
+            }
+        }
+    }
 }
