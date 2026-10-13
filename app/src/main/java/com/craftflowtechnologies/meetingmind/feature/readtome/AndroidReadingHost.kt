@@ -64,6 +64,7 @@ class AndroidReadingHost(context: Context) : ReadingHost {
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     override suspend fun loadNote(noteId: String, options: ExtractOptions): LoadedNote? {
+        if (noteId.startsWith(PASSAGE_PREFIX)) return loadPassage(noteId, options)
         val db = MeetMindDatabase.getInstance(app)
         val doc = NoteRepository(app, db).getDocument(noteId) ?: return null
         val note = doc.note
@@ -93,6 +94,28 @@ class AndroidReadingHost(context: Context) : ReadingHost {
         )
     }
 
+    /** One passage on its own (from the verse sheet or the Study workspace), read in the translation it was opened in. */
+    private suspend fun loadPassage(id: String, options: ExtractOptions): LoadedNote? {
+        val rest = id.removePrefix(PASSAGE_PREFIX)
+        val version = rest.substringBefore(':').toIntOrNull()?.takeIf { it > 0 }
+        val reference = com.craftflowtechnologies.meetingmind.core.scripture.YouVersionScriptureProvider.parsePassageId(rest.substringAfter(':')) ?: return null
+        val ref = com.craftflowtechnologies.meetingmind.core.model.ScriptureRef(
+            id = "r", noteId = id, blockId = "b", bookUsfm = reference.book.usfm, chapter = reference.chapter,
+            verseStart = reference.verseStart, verseEnd = reference.verseEnd, versionId = version,
+            origin = com.craftflowtechnologies.meetingmind.core.model.ScriptureOrigin.USER, createdAt = 0L
+        )
+        val block = com.craftflowtechnologies.meetingmind.core.model.NoteBlock(
+            id = "b", noteId = id, position = 0, type = com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.SCRIPTURE,
+            payload = mapOf(com.craftflowtechnologies.meetingmind.core.model.NoteBlock.PAYLOAD_SCRIPTURE_REF_ID to "r", "reference" to reference.display()),
+            source = com.craftflowtechnologies.meetingmind.core.model.BlockSource.SCRIPTURE
+        )
+        val resolved = kotlinx.coroutines.withTimeoutOrNull(SCRIPTURE_TIMEOUT_MS) {
+            ScriptureResolver(LibraryScriptureSource(ScriptureService(app))).resolve(listOf(block), listOf(ref))
+        } ?: emptyMap()
+        val source = NoteSpeechExtractor.extract(reference.display(), false, listOf(block), emptySet(), ScriptureLookup { resolved[it.id] }, options)
+        return LoadedNote(reference.display(), NotebookSpace.FAITH, source, NoteFacts(false, false, false, false), null)
+    }
+
     override suspend fun environment(): Environment = Environment(
         profile = prefs.preferencesFlow.first().processingProfile,
         geminiConfigured = credentials.getApiKey() != null,
@@ -120,9 +143,13 @@ class AndroidReadingHost(context: Context) : ReadingHost {
 }
 
 private const val SCRIPTURE_TIMEOUT_MS = 10_000L
+private const val PASSAGE_PREFIX = "passage:"
 
 /** The one coordinator for the app, like the player it feeds. */
 object ReadToMe {
+    /** The reading id for one passage in one translation; [ReadToMeSheet] and the coordinator take it where a note id goes. */
+    fun passageId(reference: com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference, versionId: Int?) = "passage:${versionId ?: 0}:${reference.passageId()}"
+
     @Volatile private var shared: ReadingCoordinator? = null
 
     fun coordinator(context: Context): ReadingCoordinator = shared ?: synchronized(this) {

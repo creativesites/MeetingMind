@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -275,6 +276,14 @@ private fun PassagePane(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                 IconButton(onClick = { if (r.chapter > 1) onOpenPassage(ScriptureReference(r.book, r.chapter - 1)) }) { Icon(Icons.Filled.ChevronLeft, contentDescription = "Previous chapter", tint = InkSecondary) }
                 Text("${r.book.name} ${r.chapter}", fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
+                val listenContext = androidx.compose.ui.platform.LocalContext.current
+                var listenOpen by remember { mutableStateOf(false) }
+                if (chapter != null && com.craftflowtechnologies.meetingmind.ai.voice.read.ReadToMeFlags.enabled(listenContext)) {
+                    IconButton(onClick = { listenOpen = true }) { Icon(Icons.Filled.GraphicEq, contentDescription = "Listen to this chapter", tint = InkSecondary) }
+                }
+                if (listenOpen) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(
+                    com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.passageId(ScriptureReference(r.book, r.chapter), null), onDismiss = { listenOpen = false }
+                )
                 IconButton(onClick = { if (r.chapter < r.book.chapterCount) onOpenPassage(ScriptureReference(r.book, r.chapter + 1)) }) { Icon(Icons.Filled.ChevronRight, contentDescription = "Next chapter", tint = InkSecondary) }
             }
             chapter?.let { Text("${it.abbreviation} · tap a verse to add it to your notes · long-press to highlight", fontSize = 11.5.sp, color = InkMuted) }
