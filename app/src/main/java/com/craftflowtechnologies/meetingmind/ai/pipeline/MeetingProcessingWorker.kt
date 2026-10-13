@@ -114,6 +114,10 @@ class MeetingProcessingWorker(
                 MeetingStatus.MODEL_REQUIRED.name -> AppNotifications.Outcome.NEEDS_MODEL
                 else -> AppNotifications.Outcome.FAILED
             }
+            // Signature moments: a ready note gets its ticket and the companion's NoteReady (Z-16/Z-33).
+            if (outcome == AppNotifications.Outcome.READY) {
+                runCatching { com.craftflowtechnologies.meetingmind.feature.moments.onNoteProcessed(applicationContext, meetingId) }
+            }
             AppNotifications.processingFinished(applicationContext, meetingId, recordingTitle, outcome)
             Result.success(
                 workDataOf(
