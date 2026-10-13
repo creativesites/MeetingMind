@@ -76,7 +76,7 @@ class CirclesRepository(
         }
     }
 
-    suspend fun createCircle(name: String, template: String, vocab: String, displayName: String, settings: CircleSettings, requestId: String = java.util.UUID.randomUUID().toString()): CirclesResult<String> {
+    suspend fun createCircle(name: String, template: String, vocab: String, displayName: String, settings: CircleSettings, requestId: String): CirclesResult<String> {
         if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
         val signedIn = uid()
         if (signedIn is CirclesResult.Err) return signedIn

@@ -54,11 +54,6 @@ import androidx.room.migration.Migration
         LearningActivityEntity::class,
         ActivityAttemptEntity::class,
         ReviewScheduleEntity::class,
-        CircleEntity::class,
-        CircleMemberEntity::class,
-        CirclePrayerEntity::class,
-        CircleTestimonyEntity::class,
-        CircleSermonEntity::class,
         CreateCardEntity::class,
         RecordingMarkerEntity::class,
         LegacyNoteMarkEntity::class
@@ -104,7 +99,6 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun learningActivityDao(): LearningActivityDao
     abstract fun activityAttemptDao(): ActivityAttemptDao
     abstract fun reviewScheduleDao(): ReviewScheduleDao
-    abstract fun circleDao(): CircleDao
 
     companion object {
         @Volatile
@@ -574,6 +568,25 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Schema 26: Circles v1 is retired (docs/CIRCLES_DECISIONS.md, decision 10). Its tables only ever
+         * existed on development builds, so they are dropped with no data migration (FAITH_V2 §6, decision 6).
+         * Circles v2 keeps its data in Firestore and the Worker, not in this database.
+         */
+        val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_25_26_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_25_26_SQL: List<String> = listOf(
+            "DROP TABLE IF EXISTS `circle_sermons`",
+            "DROP TABLE IF EXISTS `circle_testimonies`",
+            "DROP TABLE IF EXISTS `circle_prayers`",
+            "DROP TABLE IF EXISTS `circle_members`",
+            "DROP TABLE IF EXISTS `circles`",
+        )
+
         internal val MIGRATION_24_25_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `recording_markers` (`id` TEXT NOT NULL, `meetingId` TEXT NOT NULL, `sequence` INTEGER NOT NULL, `timestampMs` INTEGER NOT NULL, `kind` TEXT NOT NULL, `text` TEXT, `sectionKey` TEXT, `resolvedSegmentId` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `createdDuringRecording` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
             "CREATE INDEX IF NOT EXISTS `index_recording_markers_meetingId_timestampMs` ON `recording_markers` (`meetingId`, `timestampMs`)",
@@ -587,7 +600,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
         )
 
         /** Every step from schema 1 to [VERSION]; the app and the migration tests open the database with the same list. */
-        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
+        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26)
 
         internal val MIGRATION_21_22_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `learning_sessions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `meetingId` TEXT, `title` TEXT NOT NULL, `courseName` TEXT, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `lastStudiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
@@ -751,7 +764,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 25
+        const val VERSION = 26
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {

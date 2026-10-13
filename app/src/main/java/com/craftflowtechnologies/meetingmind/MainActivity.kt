@@ -85,7 +85,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.handle(intent)
-        com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.handle(intent)
+        com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.handle(intent)
         // Something shared into the app: it becomes a Work Inbox item, and only on a fresh launch (not a rotation).
         if (savedInstanceState == null && com.craftflowtechnologies.meetingmind.core.work.ShareIn.isShare(intent)) {
             com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
@@ -206,7 +206,7 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         // A notification tapped while the app is already open.
         com.craftflowtechnologies.meetingmind.core.notify.DeepLinks.handle(intent)
-        com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.handle(intent)
+        com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.handle(intent)
         if (com.craftflowtechnologies.meetingmind.core.work.ShareIn.isShare(intent)) {
             com.craftflowtechnologies.meetingmind.core.work.ShareIn.handleInBackground(applicationContext, intent, lifecycleScope)
         }
@@ -262,19 +262,19 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
     // People is built from history, once, after the work schema arrives (PLAN_PROFESSIONAL.md §5.1).
     LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.core.work.WorkStartup.run(context) }
-    val pendingCircleInvite by com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.pendingCode.collectAsState()
+    val pendingCircleInvite by com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.pendingCode.collectAsState()
     LaunchedEffect(pendingCircleInvite) {
         if (pendingCircleInvite != null) {
             navController.navigate(Routes.FELLOWSHIP)
         }
     }
     // A tapped Circles notification: open that circle (the circle screen picks the tab and post), or the list.
-    val pendingCircleTarget by com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.pendingTarget.collectAsState()
+    val pendingCircleTarget by com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.pendingTarget.collectAsState()
     LaunchedEffect(pendingCircleTarget) {
         val t = pendingCircleTarget ?: return@LaunchedEffect
         navController.navigate(Routes.FELLOWSHIP)
         if (t.circleId != null) navController.navigate(Routes.circleDetailRoute(t.circleId))
-        if (t.circleId == null) com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.consumeTarget()
+        if (t.circleId == null) com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.consumeTarget()
     }
     val playbackState by PlaybackController.state.collectAsState()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
@@ -582,13 +582,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         }
         // Circles v2 (docs/mvp/FAITH_V2.md): the Fellowship entry points open the new Circles list.
         composable(Routes.FELLOWSHIP) {
-            val inviteCode by com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.pendingCode.collectAsState()
+            val inviteCode by com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.pendingCode.collectAsState()
             com.craftflowtechnologies.meetingmind.feature.circles2.CirclesListScreen(
                 onBack = { navController.popBackStack() },
                 onOpenCircle = { circleId -> navController.navigate(Routes.circleDetailRoute(circleId)) },
                 onCreate = { navController.navigate(Routes.CIRCLE_CREATE) },
                 initialCode = inviteCode,
-                onInitialCodeHandled = { com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.consume() }
+                onInitialCodeHandled = { com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.consume() }
             )
         }
         composable(Routes.CIRCLE_CREATE) {

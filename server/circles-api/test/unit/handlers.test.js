@@ -290,3 +290,36 @@ test("commentAsAuthor: hidden author comments without authorUid; others and name
   const named = await W.call("bob", "createPost", { circleId: id, type: "testimony", body: "Hi", anonymous: false });
   assert.equal((await W.err("bob", "commentAsAuthor", { circleId: id, postId: named.postId, body: "x" })).code, "bad_request");
 });
+
+test("create circle: a failed attempt does not use up the hourly allowance", async () => {
+  const W = world();
+  const realRunTx = W.db.runTx.bind(W.db);
+  W.db.runTx = async () => { throw new Error("transient commit failure"); };
+  for (let i = 0; i < 6; i++) {
+    await W.err("owner", "createCircle", { name: "Flaky", template: "custom", requestId: crypto.randomUUID() });
+  }
+  assert.equal(W.kv.m.get("rl:createCircle:owner"), undefined, "failed attempts must not be counted");
+  W.db.runTx = realRunTx;
+  await W.call("owner", "createCircle", { name: "Works now", template: "custom", requestId: crypto.randomUUID() });
+  assert.equal(W.kv.m.get("rl:createCircle:owner"), "1", "a successful create is counted");
+});
+
+test("create circle: the sixth successful create in an hour is rate limited", async () => {
+  const W = world();
+  for (let i = 0; i < 5; i++) {
+    await W.call("owner", "createCircle", { name: "c" + i, template: "custom", requestId: crypto.randomUUID() });
+  }
+  assert.equal((await W.err("owner", "createCircle", { name: "x", template: "custom", requestId: crypto.randomUUID() })).code, "rate_limited");
+});
+
+test("userMeta writes merge: create and join keep unrelated fields", async () => {
+  const W = world();
+  W.db.seed("userMeta/owner", { pushTokens: ["tok-1"] });
+  const id = await circle(W);
+  assert.deepEqual(W.db.dump("userMeta/owner").pushTokens, ["tok-1"]);
+  assert.equal(W.db.dump("userMeta/owner").circleCount, 1);
+  W.db.seed("userMeta/friend", { pushTokens: ["tok-2"] });
+  await joinAs(W, "friend", id);
+  assert.deepEqual(W.db.dump("userMeta/friend").pushTokens, ["tok-2"]);
+  assert.equal(W.db.dump("userMeta/friend").circleCount, 1);
+});

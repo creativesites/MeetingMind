@@ -77,14 +77,14 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     LaunchedEffect(home) { home.messages.collect { snackbar.showSnackbar(it) } }
     LaunchedEffect(chat) { chat.notices.collect { snackbar.showSnackbar(it) } }
     // A tapped notification for this circle: land on the right tab, and open the post it is about.
-    val target by com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.pendingTarget.collectAsState()
+    val target by com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.pendingTarget.collectAsState()
     LaunchedEffect(target) {
         val t = target ?: return@LaunchedEffect
         if (t.circleId != circleId) return@LaunchedEffect
         showSettings = false
         tab = if (t.destination == com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat) HomeTab.Chat else HomeTab.Feed
         t.postId?.let(home::openThread)
-        com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks.consumeTarget()
+        com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.consumeTarget()
     }
     LaunchedEffect(tab, chatState.messages.size) { if (tab == HomeTab.Chat) chat.markRead() }
     BackHandler(showSettings) { showSettings = false }

@@ -22,7 +22,7 @@ class Migration23To24Test {
     private lateinit var context: Context
     private val dbName = "migration-23-24-test.db"
     private var migrated: MeetMindDatabase? = null
-    private val tables = listOf("people", "tasks", "meetings", "notebooks", "notes", "decisions", "items", "inbox_items", "circles", "learning_sessions")
+    private val tables = listOf("people", "tasks", "meetings", "notebooks", "notes", "decisions", "items", "inbox_items", "learning_sessions")  // "circles" is retired at schema 26 (Migration25To26Test), so it cannot be checked at the end of the chain
 
     @Before fun setup() {
         context = ApplicationProvider.getApplicationContext()

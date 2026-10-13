@@ -171,9 +171,9 @@ class Migration24To25Test {
     }
 
     @Test
-    fun theDatabaseOpensAtSchemaTwentyFiveWithTheNewTables() {
-        assertEquals(25, MeetMindDatabase.VERSION)
-        assertEquals(25, db.openHelper.readableDatabase.version)
+    fun theDatabaseOpensWithTheNewTables() {
+        assertTrue(MeetMindDatabase.VERSION >= 25)
+        assertTrue(db.openHelper.readableDatabase.version >= 25)
         assertTrue(rows("SELECT name FROM sqlite_master WHERE name = 'recording_markers'") { it.getString(0) }.isNotEmpty())
     }
 }

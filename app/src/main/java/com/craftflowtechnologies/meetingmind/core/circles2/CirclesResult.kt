@@ -47,3 +47,18 @@ sealed interface DataState<out T> {
 }
 
 fun <T> DataState<T>.valueOr(default: T): T = (this as? DataState.Ready)?.value ?: default
+
+/**
+ * Maps a failed anonymous sign-in to one plain sentence. Only the Firebase error code is used, so no user data
+ * reaches the UI or the log. Codes arrive either as `ERROR_OPERATION_NOT_ALLOWED` or as `operation-not-allowed`;
+ * both are matched.
+ */
+fun anonymousSignInFailure(errorCode: String?): CirclesFailure {
+    val code = errorCode?.uppercase()?.removePrefix("ERROR_")?.replace('-', '_')
+    return when (code) {
+        "NETWORK_REQUEST_FAILED" -> CirclesFailure.offline
+        "OPERATION_NOT_ALLOWED", "ADMIN_RESTRICTED_OPERATION" ->
+            CirclesFailure(FailureKind.SignedOut, "Circles isn't set up to open accounts yet. Please try again later.", code = errorCode)
+        else -> CirclesFailure(FailureKind.SignedOut, CirclesFailure.signedOut.message, code = errorCode)
+    }
+}
