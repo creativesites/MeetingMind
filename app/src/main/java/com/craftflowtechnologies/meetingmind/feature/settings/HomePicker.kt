@@ -30,9 +30,9 @@ import com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
-/** The order the picker lists the homes in: the default first, then the one the app had, then the rest. */
+/** The order the picker lists the homes in: the default first, then the rest. Everyday and Focus are not offered. */
 val HomePickerOrder: List<HomeStyle> =
-    listOf(HomeStyle.EVERYDAY, HomeStyle.TODAY, HomeStyle.PROFESSIONAL, HomeStyle.CALM, HomeStyle.FOCUS)
+    listOf(HomeStyle.TODAY, HomeStyle.PROFESSIONAL, HomeStyle.CALM)
 
 /** "Everyday (default)", "Today", "Work"… */
 fun homePickerLabel(style: HomeStyle): String =

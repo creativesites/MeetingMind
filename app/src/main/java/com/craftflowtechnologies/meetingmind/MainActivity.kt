@@ -411,9 +411,10 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val setupState by setupVm.state.collectAsState()
             val setupSnoozedUntil by setupVm.snoozedUntil.collectAsState()
             val homeStyle = com.craftflowtechnologies.meetingmind.ui.theme.LocalAppearance.current.homeStyle
-            // The Circles tile exists only on the Today home. Other homes never load circles, so no sign-in happens for them.
+            // The Circles card is on the Today and Work homes. Other homes never load circles, so no sign-in happens for them.
             val homeCirclesVm: com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel? =
-                if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) viewModel<com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel>(
+                if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY ||
+                    homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.PROFESSIONAL) viewModel<com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel>(
                     factory = com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel.Factory(
                         com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(context)
                     )
@@ -450,6 +451,10 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
+                homeCircles = homeCircles,
+                onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
+                onStartCircle = { navController.navigate(Routes.CIRCLE_CREATE) },
+                onRetryCircles = { homeCirclesVm?.retry() },
                 onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
                 onOpenWrapUp = { id, compose -> navController.navigate(Routes.wrapUpRoute(id, compose)) },
                 onOpenProject = { navController.navigate(Routes.projectRoute(it)) },

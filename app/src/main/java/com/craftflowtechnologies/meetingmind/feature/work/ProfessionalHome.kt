@@ -108,6 +108,11 @@ fun ProfessionalHome(
     onOpenMeeting: (String, Long?) -> Unit,
     onOpenDevotional: () -> Unit,
     onOpenCircles: () -> Unit = {},
+    /** What the Circles card shows; the caller loads it (see HomeCirclesViewModel). */
+    homeCircles: com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles = com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles.Loading,
+    onOpenCircle: (String) -> Unit = {},
+    onStartCircle: () -> Unit = {},
+    onRetryCircles: () -> Unit = {},
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit,
     onOpenWork: () -> Unit,
     onOpenFaith: () -> Unit = {},
@@ -205,9 +210,19 @@ fun ProfessionalHome(
                     inboxCount = inboxCount, onSearch = onSearch, onInbox = onOpenInbox, onOpenDevotional = onOpenDevotional
                 )
             }
+            // The same Circles card as the Today home, in place of the old text link.
+            item {
+                com.craftflowtechnologies.meetingmind.feature.today.home.CirclesCard(
+                    circles = homeCircles,
+                    onOpenCircles = onOpenCircles,
+                    onOpenCircle = onOpenCircle,
+                    onStartCircle = onStartCircle,
+                    onRetry = onRetryCircles,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).testTag("professional_circles")
+                )
+            }
             item {
                 Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    QuietLink("Circles", onOpenCircles)
                     QuietLink("Customize home", onCustomize, modifier = Modifier.testTag("professional_customize"))
                 }
             }

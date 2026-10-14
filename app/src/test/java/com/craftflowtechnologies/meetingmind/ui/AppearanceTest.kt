@@ -15,7 +15,7 @@ import org.junit.Test
 
 class AppearanceTest {
     @Test fun roundTripsEveryChoice() {
-        val a = Appearance(AccentChoice.ROSE, TextSize.LARGE, HomeStyle.FOCUS, setOf(HomeSection.STORIES, HomeSection.FOR_YOU))
+        val a = Appearance(AccentChoice.ROSE, TextSize.LARGE, HomeStyle.CALM, setOf(HomeSection.STORIES, HomeSection.FOR_YOU))
         assertEquals(a, Appearance.decode(a.encode()))
         assertEquals(Appearance(), Appearance.decode(Appearance().encode()))
     }
@@ -26,7 +26,8 @@ class AppearanceTest {
         val partial = Appearance.decode("TEAL|HUGE|FOCUS|STORIES,NOPE")
         assertEquals(AccentChoice.TEAL, partial.accent)
         assertEquals(TextSize.DEFAULT, partial.textSize)
-        assertEquals(HomeStyle.FOCUS, partial.homeStyle)
+        // Focus is no longer offered, so a stored Focus opens Today.
+        assertEquals(HomeStyle.TODAY, partial.homeStyle)
         assertEquals(setOf(HomeSection.STORIES), partial.hidden)
     }
 
@@ -34,12 +35,15 @@ class AppearanceTest {
         // Nothing stored for the home: an install that finished onboarding earlier keeps Today.
         assertEquals(HomeStyle.TODAY, Appearance.decode(null, existingInstall = true).homeStyle)
         assertEquals(HomeStyle.TODAY, Appearance.decode("TEAL|DEFAULT||", existingInstall = true).homeStyle)
-        assertEquals(HomeStyle.EVERYDAY, Appearance.decode(null, existingInstall = false).homeStyle)
-        assertEquals(HomeStyle.EVERYDAY, Appearance.decode(null).homeStyle)
-        // A stored choice always wins, in both cases.
-        val stored = Appearance(homeStyle = HomeStyle.FOCUS).encode()
-        assertEquals(HomeStyle.FOCUS, Appearance.decode(stored, existingInstall = true).homeStyle)
-        assertEquals(HomeStyle.FOCUS, Appearance.decode(stored, existingInstall = false).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode(null, existingInstall = false).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode(null).homeStyle)
+        // A stored choice wins, in both cases, when it is still offered.
+        val stored = Appearance(homeStyle = HomeStyle.CALM).encode()
+        assertEquals(HomeStyle.CALM, Appearance.decode(stored, existingInstall = true).homeStyle)
+        assertEquals(HomeStyle.CALM, Appearance.decode(stored, existingInstall = false).homeStyle)
+        // Everyday and Focus are no longer offered: a stored one opens Today.
+        assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.EVERYDAY).encode()).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.FOCUS).encode()).homeStyle)
         assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.TODAY).encode()).homeStyle)
     }
 
@@ -55,9 +59,9 @@ class AppearanceTest {
         assertNotEquals(AccentChoice.ROSE.on(GraphiteColors).accent, AccentChoice.INDIGO.on(GraphiteColors).accent)
     }
 
-    @Test fun defaultIsEverydayWithEverythingShown() {
+    @Test fun defaultIsTodayWithEverythingShown() {
         val a = Appearance()
-        assertEquals(HomeStyle.EVERYDAY, a.homeStyle)
+        assertEquals(HomeStyle.TODAY, a.homeStyle)
         assertTrue(HomeSection.entries.all { a.shows(it) })
         assertFalse(a.copy(hidden = setOf(HomeSection.TIMELINE)).shows(HomeSection.TIMELINE))
     }

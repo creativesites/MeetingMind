@@ -155,7 +155,10 @@ fun HomeBento(
 private fun CreateAndCircles(actions: BentoActions, circles: HomeCircles, index: Int) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         CreateTile(actions.onCreate, index = index, modifier = Modifier.weight(1f))
-        CircleTile(actions, circles, index = index + 1, modifier = Modifier.weight(1f))
+        CircleTile(
+            circles, onOpenCircles = actions.onCircles, onRetry = actions.onRetryCircles, onStart = actions.onStartCircle,
+            onOpenCircle = actions.onOpenCircle, index = index + 1, modifier = Modifier.weight(1f)
+        )
     }
 }
 
@@ -208,8 +211,16 @@ private fun CreateTile(onClick: () -> Unit, index: Int, modifier: Modifier = Mod
  * an empty line with Start and Join, or the first circles, each of which opens. The tile body opens the Circles list.
  */
 @Composable
-private fun CircleTile(actions: BentoActions, circles: HomeCircles, index: Int, modifier: Modifier = Modifier) {
-    SceneTile(index, CircleRingsScene, height = 182.dp, scrim = Paper.copy(alpha = 0.5f), tag = "bento_circles", onClick = actions.onCircles, modifier = modifier) {
+private fun CircleTile(
+    circles: HomeCircles,
+    onOpenCircles: () -> Unit,
+    onRetry: () -> Unit,
+    onStart: () -> Unit,
+    onOpenCircle: (String) -> Unit,
+    index: Int,
+    modifier: Modifier = Modifier
+) {
+    SceneTile(index, CircleRingsScene, height = 182.dp, scrim = Paper.copy(alpha = 0.5f), tag = "bento_circles", onClick = onOpenCircles, modifier = modifier) {
         TileHeader(Icons.Filled.Groups, "Circles", BentoColors.TealInk)
         Spacer(Modifier.height(10.dp))
         when (circles) {
@@ -217,20 +228,20 @@ private fun CircleTile(actions: BentoActions, circles: HomeCircles, index: Int, 
             HomeCircles.NotConnected -> CircleNote("Circles isn't connected in this build.", "bento_circles_offline")
             is HomeCircles.Failed -> {
                 CircleNote(circles.failure.message, "bento_circles_failed")
-                CircleLink("Try again", actions.onRetryCircles, "bento_circles_retry", Modifier.padding(top = 4.dp))
+                CircleLink("Try again", onRetry, "bento_circles_retry", Modifier.padding(top = 4.dp))
             }
             HomeCircles.Empty -> {
                 Text("No circles yet", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.testTag("bento_circles_empty"))
                 Column(Modifier.padding(top = 4.dp)) {
-                    CircleLink("Start a circle", actions.onStartCircle, "bento_circles_start")
-                    CircleLink("Join a circle", actions.onCircles, "bento_circles_join")
+                    CircleLink("Start a circle", onStart, "bento_circles_start")
+                    CircleLink("Join a circle", onOpenCircles, "bento_circles_join")
                 }
             }
             is HomeCircles.Loaded -> {
                 circles.circles.take(HomeCircles.SHOWN).forEachIndexed { i, c ->
                     val dot = listOf(BentoColors.CircleGold, BentoColors.CircleLilac, BentoColors.CircleMint)[i % 3]
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { actions.onOpenCircle(c.id) }
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onOpenCircle(c.id) }
                             .padding(vertical = 5.dp).testTag("bento_circle_${c.id}"),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -239,11 +250,27 @@ private fun CircleTile(actions: BentoActions, circles: HomeCircles, index: Int, 
                         Text(c.name, color = Ink, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     }
                 }
-                circles.note?.let { CircleLink("Couldn't refresh. Try again.", actions.onRetryCircles, "bento_circles_retry") }
+                circles.note?.let { CircleLink("Couldn't refresh. Try again.", onRetry, "bento_circles_retry") }
             }
         }
         Spacer(Modifier.weight(1f))
     }
+}
+
+/**
+ * The Circles card, as the Today home shows it. The Work home uses the same card, so a person sees one design.
+ * Loading, empty, failed and loaded states all come from [circles]; the caller loads it.
+ */
+@Composable
+fun CirclesCard(
+    circles: HomeCircles,
+    onOpenCircles: () -> Unit,
+    onOpenCircle: (String) -> Unit,
+    onStartCircle: () -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    CircleTile(circles, onOpenCircles, onRetry, onStartCircle, onOpenCircle, index = 0, modifier = modifier)
 }
 
 @Composable

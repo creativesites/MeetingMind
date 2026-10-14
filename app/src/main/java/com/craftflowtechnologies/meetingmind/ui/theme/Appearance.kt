@@ -26,16 +26,18 @@ enum class TextSize(val label: String, val scale: Float) {
 }
 
 /** Which home to open: everything on one page, or one calm page with what matters now. */
-enum class HomeStyle(val label: String, val description: String) {
-    EVERYDAY("Everyday", "What's next, what needs you, your recent notes and today, built from the app's design system"),
+enum class HomeStyle(val label: String, val description: String, val offered: Boolean = true) {
+    /** Hidden from the home picker. Kept so the code and its tests still compile; a stored Everyday opens Today. */
+    EVERYDAY("Everyday", "What's next, what needs you, your recent notes and today, built from the app's design system", offered = false),
     TODAY("Today", "The day, your calendar and timeline, and everything you've captured"),
     CALM("Calm", "Quiet and simple, with your stories and your recent recordings and notes"),
-    FOCUS("Focus", "One page only: what's next, what's due, and Record"),
+    /** Hidden from the home picker. A stored Focus opens Today. */
+    FOCUS("Focus", "One page only: what's next, what's due, and Record", offered = false),
     PROFESSIONAL("Work", "A briefing for the working day: next meeting and prep, what needs you, your schedule, tasks, projects and people — with everything else still here");
 
     companion object {
-        /** The home a new install opens. People who finished onboarding before it existed keep [TODAY]. */
-        val DEFAULT_FOR_NEW_INSTALLS = EVERYDAY
+        /** The home a new install opens. Today carries the Circles tile, so new installs see it. */
+        val DEFAULT_FOR_NEW_INSTALLS = TODAY
     }
 }
 
@@ -62,8 +64,8 @@ data class Appearance(
         /**
          * Unreadable or future values fall back to the defaults, one field at a time.
          *
-         * [existingInstall] is true when onboarding finished before the Everyday home existed: nothing
-         * was stored for the home, so that person keeps Today. A new install gets Everyday.
+         * A home that is no longer offered (Everyday, Focus) falls back to Today. [existingInstall] is kept for
+         * callers; both kinds of install now open Today when nothing usable is stored.
          */
         fun decode(raw: String?, existingInstall: Boolean = false): Appearance {
             val homeFallback = if (existingInstall) HomeStyle.TODAY else HomeStyle.DEFAULT_FOR_NEW_INSTALLS
@@ -72,7 +74,7 @@ data class Appearance(
             return Appearance(
                 accent = at(0) { runCatching { AccentChoice.valueOf(it) }.getOrNull() } ?: AccentChoice.INDIGO,
                 textSize = at(1) { runCatching { TextSize.valueOf(it) }.getOrNull() } ?: TextSize.DEFAULT,
-                homeStyle = at(2) { runCatching { HomeStyle.valueOf(it) }.getOrNull() } ?: homeFallback,
+                homeStyle = at(2) { runCatching { HomeStyle.valueOf(it) }.getOrNull()?.takeIf { s -> s.offered } } ?: homeFallback,
                 hidden = p.getOrNull(3)?.split(",")?.mapNotNull { runCatching { HomeSection.valueOf(it) }.getOrNull() }?.toSet().orEmpty()
             )
         }
