@@ -32,7 +32,7 @@ class GeminiPlanTest {
         assertFalse(store.keyPlanConfirmedPaid())
     }
 
-    @Test fun `the built-in tester key is not assumed to be on a paid plan`() {
-        assertFalse(GeminiCredentialStore.SYSTEM_KEY_CONFIRMED_PAID)
+    @Test fun `the built-in key is the owner's billed key`() {
+        assertTrue(GeminiCredentialStore.SYSTEM_KEY_CONFIRMED_PAID)
     }
 }

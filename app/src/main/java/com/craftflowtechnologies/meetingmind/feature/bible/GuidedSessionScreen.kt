@@ -192,13 +192,15 @@ fun GuidedSessionContent(ui: GuidedUi, listening: Boolean, actions: SessionActio
 private fun MethodChooser(actions: SessionActions, modifier: Modifier) {
     val c = MM.colors
     Column(modifier.padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
-        Text("Walk me through it", style = MM.type.title, color = c.ink)
-        Text("Choose a way in. You can write as you go, or just read and think.", style = MM.type.secondary, color = c.inkSecondary)
+        Text("How do you want to study this?", style = MM.type.title, color = c.ink)
+        Text("Pick a way in. Write as you go, or just read and think.", style = MM.type.secondary, color = c.inkSecondary)
         MMCard(onClick = { actions.onChooseMethod(SessionKind.SOAP) }, modifier = Modifier.testTag("method_soap")) {
-            Text("SOAP", style = MM.type.heading, color = c.ink)
-            Text("Scripture, Observation, Application, Prayer. Four short steps.", style = MM.type.secondary, color = c.inkSecondary)
+            Text("SOAP · about 10 min", style = MM.type.caption, color = c.accent)
+            Text("Scripture, Observation, Application, Prayer", style = MM.type.heading, color = c.ink)
+            Text("Four short steps, each with one question you can skip.", style = MM.type.secondary, color = c.inkSecondary)
         }
         MMCard(onClick = { actions.onChooseMethod(SessionKind.VERSE_BY_VERSE) }, modifier = Modifier.testTag("method_verses")) {
+            Text("Verse by verse · about 20 min", style = MM.type.caption, color = c.accent)
             Text("Verse by verse", style = MM.type.heading, color = c.ink)
             Text("One verse at a time, with the original words, commentary and cross-references a tap away.", style = MM.type.secondary, color = c.inkSecondary)
         }
@@ -245,6 +247,12 @@ private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, rea
     val c = MM.colors
     val request = ui.request!!
     val help = ui.help["${step.type}-${step.verse ?: 0}"]
+    if (step.type != StepType.CLOSE) {
+        Text(
+            "STEP ${session.index + 1} OF ${session.steps.size}", style = MM.type.caption, color = c.accent,
+            modifier = Modifier.testTag("session_step_count")
+        )
+    }
     when (step.type) {
         StepType.WHY -> {
             Text("Why it matters", style = MM.type.heading, color = c.ink)
@@ -338,8 +346,16 @@ private fun Close(ui: GuidedUi, session: SessionState, actions: SessionActions) 
     val c = MM.colors
     Text(if (session.touched) "Well done" else "That's the reading", style = MM.type.title, color = c.ink)
     if (session.touched) {
-        StatusLine(StatusKind.Info, "Saved to your study journal.", modifier = Modifier.testTag("session_saved"))
+        MMCard(modifier = Modifier.testTag("session_complete_card")) {
+            Text(ui.request?.passage?.display().orEmpty(), style = MM.type.heading, color = c.ink)
+            Text("Saved to your study journal, with the passage.", style = MM.type.secondary, color = c.inkSecondary, modifier = Modifier.testTag("session_saved"))
+        }
         ui.addedTo?.let { StatusLine(StatusKind.Info, "Added to $it.") }
+        var listening by remember { mutableStateOf(false) }
+        ui.savedNoteId?.let { id ->
+            SecondaryButton("Listen to my study", onClick = { listening = true }, modifier = Modifier.testTag("session_listen"))
+            if (listening) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(id, onDismiss = { listening = false })
+        }
         SecondaryButton("Add to an existing note", onClick = actions.onAddToNote, modifier = Modifier.testTag("session_add_to_note"))
         TextAction("Copy my notes", onClick = actions.onCopyNotes)
     } else {

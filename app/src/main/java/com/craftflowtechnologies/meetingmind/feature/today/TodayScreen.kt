@@ -278,6 +278,8 @@ fun TodayScreen(
                     showSwitch = viewModel.canSwitchFocus(identity),
                     switchLabel = switchTo.label,
                     tile = tile,
+                    // The floating "Up next" card is hidden on the Today home; the layout reads cleaner without it.
+                    showTile = false,
                     listState = listState,
                     onAvatar = { avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     onSearch = onSearch,
@@ -292,10 +294,13 @@ fun TodayScreen(
                     onOpenDevotional = onOpenDevotional
                 )
             }
-            if (focus != TodayFocus.ALL) item(key = "focus") {
-                Surface(onClick = { viewModel.setFocus(TodayFocus.ALL) }, shape = CircleShape, color = look.accentSoft, modifier = Modifier.padding(start = 20.dp, top = 6.dp)) {
-                    Text("Showing ${focus.label} · tap for everything", color = look.accent, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                }
+            if (viewModel.canSwitchFocus(identity)) item(key = "focus") {
+                com.craftflowtechnologies.meetingmind.feature.today.home.HomeModeSwitch(
+                    home = ModeHome.TODAY, current = focus,
+                    offered = HomeModes.offered(ModeHome.TODAY, identity.showsFaith),
+                    onSelect = { viewModel.setFocus(it) },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
 
             if (appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.CAPTURE)) item(key = "capture") {
