@@ -191,7 +191,8 @@ fun FaithScreen(
         entryCount = notes.size,
         scripturePassages = allScripture.map { it.bookUsfm to it.chapter }.distinct().size,
         collections = collections.size,
-        recent = notes.take(8)
+        recent = notes.take(8),
+        week = FaithWeek.lastSevenDays(notes.map { it.createdAt }, System.currentTimeMillis())
     )
     val actions = FaithHomeActions(
         onBack = onNavigateBack,
