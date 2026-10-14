@@ -1,16 +1,9 @@
 <resources>
     <string name="app_name">MeetingMind</string>
-    <!--
-      Firebase/Google Sign-In "Web client ID" (OAuth client, type "Web application") from the
-      Firebase console — this is a public identifier, not a secret, and is safe to commit.
-      Leave this blank to build and run fully offline with Google Sign-In reported as
-      unavailable rather than fabricating a signed-in user. See docs/AI_ARCHITECTURE.md and
-      docs/ARCHITECTURE.md for how authentication degrades when this (or google-services.json)
-      is not configured.
-    -->
-    <string name="google_sign_in_web_client_id" translatable="false"></string>
     <string name="widget_verse_description">Verse of the day, on a picture</string>
     <string name="widget_today_description">Your next event and today\'s devotional</string>
+    <string name="widget_next_meeting_description">Your next meeting, a countdown, and Record</string>
+    <string name="widget_next_meeting_label">Next meeting</string>
     <string name="widget_verse_label">Verse of the day</string>
     <string name="widget_today_label">Today</string>
 
@@ -18,6 +11,7 @@
     <string name="app_lock_title">MeetingMind is locked</string>
     <string name="app_lock_body">Your notes and recordings are protected. Unlock with your fingerprint, face or screen lock.</string>
     <string name="app_lock_unlock">Unlock MeetingMind</string>
+    <string name="app_lock_unlock_with_pin">Unlock with phone PIN or screen lock</string>
     <string name="app_lock_open_security_settings">Set up a screen lock</string>
     <string name="app_lock_turn_off">Turn off App Lock</string>
     <string name="app_lock_prompt_unlock_title">Unlock MeetingMind</string>

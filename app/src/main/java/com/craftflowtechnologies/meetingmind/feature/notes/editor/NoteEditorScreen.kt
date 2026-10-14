@@ -6,6 +6,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.platform.testTag
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
@@ -179,6 +180,7 @@ fun NoteEditorScreen(
     var showExport by remember { mutableStateOf(false) }
     var showCopyAs by remember { mutableStateOf(false) }
     var showExcerpts by remember { mutableStateOf(false) }
+    var recordingPick by remember { mutableStateOf<NoteEditorViewModel.RecordingContent?>(null) }
     var showNoteLinks by remember { mutableStateOf(false) }
     var showScriptureEntry by remember { mutableStateOf(false) }
     var showPrayerUpdate by remember { mutableStateOf(false) }
@@ -187,6 +189,7 @@ fun NoteEditorScreen(
     ) { uri -> if (uri != null) viewModel.setCover(uri) }
     val aiJobs by viewModel.aiJobs.collectAsState()
     var showAiMenu by remember { mutableStateOf(false) }
+    var showReadToMe by remember { mutableStateOf(false) }
     var showAsk by remember { mutableStateOf(false) }
     var aiSheetOpen by remember { mutableStateOf(false) }
     var related by remember { mutableStateOf<List<Pair<com.craftflowtechnologies.meetingmind.core.model.Note, com.craftflowtechnologies.meetingmind.ai.notes.RelatedNote>>?>(null) }
@@ -270,6 +273,10 @@ fun NoteEditorScreen(
             InsertAction.AUDIO -> pickAudio.launch("audio/*")
             InsertAction.RECORD -> scope.launch { viewModel.flush(); onRecordHere(viewModel.noteId) }
             InsertAction.EXCERPT -> showExcerpts = true
+            InsertAction.SUMMARY, InsertAction.TRANSCRIPT -> {
+                val what = if (action == InsertAction.SUMMARY) NoteEditorViewModel.RecordingContent.SUMMARY else NoteEditorViewModel.RecordingContent.TRANSCRIPT
+                recordings.values.singleOrNull()?.let { viewModel.insertFromRecording(it.meetingId, what) } ?: run { recordingPick = what }
+            }
             InsertAction.NOTE_LINK -> showNoteLinks = true
             InsertAction.SCRIPTURE -> showScriptureEntry = true
         }
@@ -333,15 +340,32 @@ fun NoteEditorScreen(
                         })
                         DropdownMenuItem(text = { Text("Assistant") }, leadingIcon = { Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent) }, onClick = { showMenu = false; showAssistant = true })
                         DropdownMenuItem(text = { Text("AI tools") }, leadingIcon = { Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, null, tint = Accent) }, onClick = { showMenu = false; showAiMenu = true })
+                        if (note?.plainText?.isNotBlank() == true && com.craftflowtechnologies.meetingmind.ai.voice.read.ReadToMeFlags.enabled(androidx.compose.ui.platform.LocalContext.current)) {
+                            DropdownMenuItem(text = { Text("Read to me") }, leadingIcon = { Icon(androidx.compose.material.icons.Icons.Filled.GraphicEq, null) }, onClick = { showMenu = false; showReadToMe = true })
+                        }
                         DropdownMenuItem(text = { Text("Share as a picture") }, leadingIcon = { Icon(Icons.Filled.Image, null) }, onClick = {
                             showMenu = false
                             note?.let { n ->
                                 val body = n.plainText.lineSequence().map { it.trim() }
                                     .filter { it.isNotEmpty() && it != n.title.trim() && it !in com.craftflowtechnologies.meetingmind.core.model.Workflows.template(n.workflow).sections.map { s -> s.title } }
                                     .joinToString(" ").take(300).ifBlank { n.title }
+                                val eyebrow = when (n.workflow) {
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.TESTIMONY -> "TESTIMONY"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.PRAYER_REQUEST -> "PRAYER REQUEST"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.PRAYER -> "PRAYER"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON -> "SERMON NOTE"
+                                    else -> n.workflow.displayName
+                                }
+                                val theme = when (n.workflow) {
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.TESTIMONY -> "praise report, celebration and answered prayer: ${n.title.ifBlank { body.take(120) }}"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.PRAYER_REQUEST -> "prayer request, hope, faith and trust: ${n.title.ifBlank { body.take(120) }}"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.PRAYER -> "prayer, quiet reflection and peace: ${n.title.ifBlank { body.take(120) }}"
+                                    com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON -> "sermon, reverence, scripture and worship: ${n.title.ifBlank { body.take(120) }}"
+                                    else -> n.title.ifBlank { body.take(120) }
+                                }
                                 onShareCard(com.craftflowtechnologies.meetingmind.feature.share.ShareRequest(
-                                    com.craftflowtechnologies.meetingmind.core.share.ShareCardContent(n.workflow.displayName, body, n.title.takeIf { it.isNotBlank() && it != body }, null, quoted = false),
-                                    theme = n.title.ifBlank { body.take(120) }
+                                    com.craftflowtechnologies.meetingmind.core.share.ShareCardContent(eyebrow, body, n.title.takeIf { it.isNotBlank() && it != body }, null, quoted = false),
+                                    theme = theme
                                 ))
                             }
                         })
@@ -471,6 +495,12 @@ fun NoteEditorScreen(
                     ),
                     onDetails = { if (currentNote.workflow == com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON) showDetails = true }
                 )
+            }
+            // A work meeting made from a calendar event: prepare for it from what's on record.
+            if (currentNote.metadata[com.craftflowtechnologies.meetingmind.core.repository.NoteRepository.CALENDAR_EVENT_KEY] != null &&
+                com.craftflowtechnologies.meetingmind.core.model.Workflows.space(currentNote.workflow) == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK
+            ) item(key = "prepare") {
+                com.craftflowtechnologies.meetingmind.feature.work.NotePrepareRow(currentNote.title, currentNote.metadata, onOpenRecording)
             }
             aiJobs.firstOrNull()?.let { job ->
                 if (!aiSheetOpen) item(key = "ai-banner") {
@@ -674,6 +704,14 @@ fun NoteEditorScreen(
         },
         onDismiss = { showExport = false }
     )
+    recordingPick?.let { what ->
+        RecordingPickerSheet(
+            title = if (what == NoteEditorViewModel.RecordingContent.SUMMARY) "Insert summary from" else "Insert transcript from",
+            recordings = recordings.values.toList(),
+            onPick = { viewModel.insertFromRecording(it.meetingId, what); recordingPick = null },
+            onDismiss = { recordingPick = null }
+        )
+    }
     if (showExcerpts) ExcerptPickerSheet(load = { viewModel.excerptCandidates() }, onPick = { viewModel.insertExcerpt(it); showExcerpts = false }, onDismiss = { showExcerpts = false })
     if (showDetails) note?.let { n ->
         SermonDetailsDialog(
@@ -688,8 +726,10 @@ fun NoteEditorScreen(
         onDismiss = { showScriptureEntry = false },
         onOpenBible = { search -> showScriptureEntry = false; bibleDialog = search }
     )
+    if (showReadToMe) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(viewModel.noteId, onDismiss = { showReadToMe = false })
     if (showAiMenu) com.craftflowtechnologies.meetingmind.feature.notes.ai.NoteAiMenu(
         forNotebook = false,
+        isFaithOrSermon = note?.let { it.workflow in com.craftflowtechnologies.meetingmind.core.model.Workflows.faith } == true,
         onPick = { tool ->
             showAiMenu = false
             if (tool == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.ASK) showAsk = true else { viewModel.runAi(tool); aiSheetOpen = true }
@@ -991,9 +1031,11 @@ private fun BlockContent(
             if (ref == null) ScriptureBlock(block) else {
                 val meetingId = block.payload[NoteBlock.PAYLOAD_MEETING_ID]
                 val at = block.payload[NoteBlock.PAYLOAD_START_MS]?.toLongOrNull()
+                val pinned by viewModel.scriptureVersions.collectAsState()
                 com.craftflowtechnologies.meetingmind.feature.scripture.ScriptureCard(
                     reference = ref,
                     heardAtMs = at,
+                    versionId = block.payload[NoteBlock.PAYLOAD_SCRIPTURE_REF_ID]?.let { pinned[it] },
                     userText = block.payload[NoteBlock.PAYLOAD_USER_TEXT],
                     userLabel = block.payload[NoteBlock.PAYLOAD_USER_LABEL],
                     onOpen = { onOpenScripture(block) },

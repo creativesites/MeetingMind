@@ -1,0 +1,332 @@
+package com.craftflowtechnologies.meetingmind.ai.voice.read
+
+import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
+import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
+import com.craftflowtechnologies.meetingmind.ai.common.ReadToMeLog
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.LearningRules
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.Promotion
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadCategory
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile
+import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+/** A note as Read to Me needs it: what to say and what is known about its privacy. */
+data class LoadedNote(
+    val title: String,
+    val space: NotebookSpace?,
+    val source: SpeechSource,
+    val facts: NoteFacts,
+    val language: String?,
+    val category: ReadCategory = ReadCategory.OTHER
+)
+
+/** Everything the coordinator needs from the phone, so the state machine can be tested with fakes. */
+interface ReadingHost {
+    val store: ReadingStore
+    val player: ReadPlayer
+    suspend fun loadNote(noteId: String, options: ExtractOptions): LoadedNote?
+    suspend fun environment(): Environment
+    fun settings(): ReadToMeSettings
+    fun updateSettings(change: (ReadToMeSettings) -> ReadToMeSettings): ReadToMeSettings
+    fun profile(): ReadToMeProfile
+    fun updateProfile(change: (ReadToMeProfile) -> ReadToMeProfile): ReadToMeProfile
+    /** The phone's voice. [requireOffline] when the voice must not use the network. */
+    fun localVoice(settings: ReadToMeSettings, requireOffline: Boolean): SectionVoice
+    /** The Gemini voice; every request is checked again against [routeAllowsCloud] and the live settings. */
+    fun geminiVoice(settings: ReadToMeSettings, delivery: DeliverySpec, routeAllowsCloud: Boolean): SectionVoice
+    /** Smart Read's wording step for [noteId]'s reading; [allowCloud] says whether a text model may be used at all. */
+    fun shaper(noteId: String, allowCloud: Boolean, passages: List<String>): com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper
+}
+
+sealed interface ReadingUiState {
+    data object Idle : ReadingUiState
+    /** Making parts and playing as they arrive. [done] parts are ready out of [total]. */
+    data class Working(
+        val noteId: String, val provider: SpeechProvider, val done: Int, val total: Int, val note: String?,
+        /** How far the part being made has got, 0 to 1. */
+        val partFraction: Float = 0f,
+        /** When this run started, so the sheet can say how long it has been waiting. */
+        val startedAtMs: Long = 0L
+    ) : ReadingUiState
+    /** Every part is made; playback carries on in the player. */
+    data class Finished(val noteId: String, val provider: SpeechProvider, val total: Int, val note: String?, val switchedToPhone: Boolean) : ReadingUiState
+    data class NeedsChoice(val noteId: String, val message: String) : ReadingUiState
+    data class NeedsDisclosure(val noteId: String, val usingBuiltInKey: Boolean, val keyTier: GeminiKeyTier) : ReadingUiState
+    data class Failed(val noteId: String, val partIndex: Int, val total: Int, val message: String, val options: List<Recovery>, val provider: SpeechProvider) : ReadingUiState
+    data object Locked : ReadingUiState
+    data object Empty : ReadingUiState
+    data object NotFound : ReadingUiState
+}
+
+/** What the sheet shows before the person starts. */
+data class ReadOffer(
+    val title: String,
+    val sections: List<Pair<String, String>>,
+    val provider: SpeechProvider?,
+    val reason: String?,
+    val locked: Boolean,
+    val empty: Boolean,
+    val hasSavedPlace: Boolean,
+    val skippedCount: Int,
+    val space: NotebookSpace?,
+    /** Parts of the saved reading that are current for the settings now, out of all parts; and when it was last made. */
+    val savedReady: Int = 0,
+    val savedTotal: Int = 0,
+    val savedMadeAt: Long? = null
+)
+
+/**
+ * Runs readings for the whole app (one at a time, like the player they feed). It decides the voice
+ * through [ReadingPreparation], asks the person when a choice is needed, makes the parts with a
+ * [ReadingRunner], and reports a single [ReadingUiState]. A reading keeps one provider from start to
+ * end: a failure offers retry or an explicit switch to the phone's voice, never a silent change.
+ */
+class ReadingCoordinator(private val host: ReadingHost, private val scope: CoroutineScope, private val clock: () -> Long = System::currentTimeMillis) {
+
+    private data class Request(val noteId: String, val startSectionId: String?, val choice: ReadChoice, val resume: Boolean, val silent: Boolean = false)
+
+    /** What a failure needs to continue from. */
+    private data class Stalled(val request: Request, val plan: ReadPlan, val voice: SectionVoice, val decision: RouteDecision, val index: Int, val note: String?)
+
+    private val _state = MutableStateFlow<ReadingUiState>(ReadingUiState.Idle)
+    val state: StateFlow<ReadingUiState> = _state.asStateFlow()
+
+    private val _promotions = MutableStateFlow<List<Promotion>>(emptyList())
+    /** Defaults just learned from the person's repeated choices, for "…will now start with X. Undo." */
+    val promotions: StateFlow<List<Promotion>> = _promotions.asStateFlow()
+
+    fun undoPromotion(p: Promotion) {
+        host.updateProfile { LearningRules.undo(it, p) }
+        _promotions.value = _promotions.value - p
+    }
+
+    private var job: Job? = null
+    private var lastRequest: Request? = null
+    private var stalled: Stalled? = null
+
+    /** What to show in the sheet for [noteId], without generating anything. */
+    suspend fun offer(noteId: String): ReadOffer? {
+        val settings = host.settings()
+        val note = host.loadNote(noteId, settings.extractOptions()) ?: return null
+        val prepared = ReadingPreparation.prepare(note.source, note.facts, host.environment(), settings, ReadChoice.DEFAULT)
+        val (provider, reason) = when (prepared) {
+            is Prepared.Ready -> prepared.decision.provider to prepared.explanation
+            is Prepared.NeedsDisclosure -> SpeechProvider.GEMINI to null
+            is Prepared.NeedsChoice -> null to prepared.message
+            else -> null to null
+        }
+        val manifest = host.store.load(noteId)
+        val saved = savedSummary(noteId, note.source, provider, settings, note.space, note.language, manifest)
+        return ReadOffer(
+            title = note.title,
+            sections = note.source.sections.map { it.id to it.title },
+            provider = provider,
+            reason = reason,
+            locked = prepared is Prepared.Locked,
+            empty = prepared is Prepared.Empty,
+            hasSavedPlace = manifest?.progress?.let { !it.completed } == true,
+            skippedCount = note.source.skipped.size,
+            space = note.space,
+            savedReady = saved.first,
+            savedTotal = saved.second,
+            savedMadeAt = saved.third
+        )
+    }
+
+    /**
+     * Makes the whole reading for [noteId] without playing it, for a background worker. Parts are saved as they
+     * are made, so a later "Listen" plays them at once. Returns how it ended.
+     */
+    suspend fun generateInBackground(noteId: String): ReadingUiState {
+        begin(Request(noteId, null, ReadChoice.DEFAULT, resume = false, silent = true))
+        return _state.value
+    }
+
+    /**
+     * Reads a passage (the whole chapter, from [fromVerse] to its end when given) without a note. The reader follows
+     * the verse being read through the queue: each part is one verse, or a few verses in a long chapter.
+     */
+    fun startPassage(reference: ScriptureReference, versionId: Int?, fromVerse: Int? = null) =
+        start(PassageSpeech.passageId(ScriptureReference(reference.book, reference.chapter), versionId), startSectionId = fromVerse?.let { "v$it" })
+
+    fun start(noteId: String, startSectionId: String? = null, choice: ReadChoice = ReadChoice.DEFAULT, resume: Boolean = false) =
+        launch(Request(noteId, startSectionId, choice, resume))
+
+    fun chooseCloudWithoutSensitive() = relaunch { it.copy(choice = ReadChoice.CLOUD_WITHOUT_SENSITIVE) }
+
+    fun choosePhoneVoice() = relaunch { it.copy(choice = ReadChoice.PHONE_VOICE) }
+
+    /** The person accepted what the cloud voice sends; remembered, then the reading goes ahead. */
+    fun acceptDisclosure() {
+        host.updateSettings { it.copy(disclosureAccepted = true) }
+        relaunch { it }
+    }
+
+    fun retry() {
+        val s = stalled ?: return relaunch { it }
+        launchResume(s, s.voice)
+    }
+
+    /** After a Gemini failure: finish the reading with the phone's voice, only the parts not yet made. */
+    fun switchToPhoneVoice() {
+        val s = stalled ?: return
+        val settings = host.settings()
+        launchResume(s, host.localVoice(settings, requireOffline = true), switched = true)
+    }
+
+    fun cancel() {
+        job?.cancel()
+        job = null
+        stalled = null
+        _state.value = ReadingUiState.Idle
+    }
+
+    fun dismiss() {
+        if (_state.value !is ReadingUiState.Working) _state.value = ReadingUiState.Idle
+    }
+
+    private fun relaunch(change: (Request) -> Request) {
+        val r = lastRequest ?: return
+        launch(change(r))
+    }
+
+    private fun launch(request: Request) {
+        job?.cancel()
+        stalled = null
+        lastRequest = request
+        job = scope.launch {
+            try { begin(request) } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                ReadToMeLog.w("begin failed: ${e::class.simpleName}: ${e.message}")
+                _state.value = ReadingUiState.Failed(request.noteId, 0, 0, "Read to Me couldn't start (${e::class.simpleName}). ${e.message.orEmpty()}".trim(), listOf(Recovery.RETRY), SpeechProvider.LOCAL)
+            }
+        }
+    }
+
+    private fun launchResume(s: Stalled, voice: SectionVoice, switched: Boolean = false) {
+        job?.cancel()
+        stalled = null
+        job = scope.launch {
+            try { execute(s.request, s.plan, voice, s.decision, s.index, s.note, switched) } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                ReadToMeLog.w("resume failed: ${e::class.simpleName}: ${e.message}")
+                _state.value = ReadingUiState.Failed(s.request.noteId, s.index, s.plan.parts.size, "Read to Me stopped (${e::class.simpleName}). ${e.message.orEmpty()}".trim(), listOf(Recovery.RETRY), voice.provider)
+            }
+        }
+    }
+
+    private suspend fun begin(request: Request) {
+        _state.value = ReadingUiState.Working(request.noteId, SpeechProvider.LOCAL, 0, 0, null)
+        val settings = host.settings()
+        val note = host.loadNote(request.noteId, settings.extractOptions()) ?: run { _state.value = ReadingUiState.NotFound; return }
+        val env = host.environment()
+        when (val prepared = ReadingPreparation.prepare(note.source, note.facts, env, settings, request.choice)) {
+            is Prepared.Locked -> _state.value = ReadingUiState.Locked
+            is Prepared.Empty -> _state.value = ReadingUiState.Empty
+            is Prepared.NeedsChoice -> _state.value = ReadingUiState.NeedsChoice(request.noteId, prepared.message)
+            is Prepared.NeedsDisclosure -> _state.value = ReadingUiState.NeedsDisclosure(request.noteId, prepared.usingBuiltInKey, prepared.keyTier)
+            is Prepared.Ready -> {
+                ReadToMeLog.d("route provider=${prepared.decision.provider} blocks=${prepared.decision.cloudBlocks} sections=${prepared.source.sections.size}")
+                // Learned defaults fill in only what the person left on Automatic; explicit choices always win.
+                val explicit = settings
+                val settings = LearningRules.apply(explicit, note.category, host.profile())
+                val learnedNow = LearningRules.recordUse(host.profile(), note.category, LearningRules.deliberate(explicit))
+                if (learnedNow.profile != host.profile()) host.updateProfile { learnedNow.profile }
+                _promotions.value = learnedNow.promotions
+                val passage = PassageSpeech.isPassage(request.noteId)
+                val source = if (passage) SpeechSource(PassageSpeech.fromVerse(prepared.source.sections, PassageSpeech.firstVerse(request.startSectionId)))
+                else ReadingPlan.fromSection(prepared.source, request.startSectionId)
+                val parts = if (passage) source.sections else ReadingPlan.parts(source, settings.pauseAfterQuestion == PauseAfterQuestion.UNTIL_RESUME)
+                val delivery = DeliveryResolver.resolve(settings, note.space)
+                // Smart Read may use a text model only where the same rules allow the cloud: licensed Bible text is never
+                // sent (it is locked), so it alone doesn't stop the rewrite of the plain prose around it.
+                val smart = settings.smartRead
+                val cloudRewrite = smart && settings.disclosureAccepted && !settings.prefersLocal && env.profile == ProcessingProfile.INTERNET &&
+                    env.geminiConfigured && env.entitled && (prepared.decision.cloudBlocks - CloudBlock.LICENSED_SCRIPTURE).isEmpty()
+                val shaper = if (smart) host.shaper(request.noteId, cloudRewrite, source.sections.flatMap { it.units }.filter { it.role == SpeechRole.SCRIPTURE && !it.unavailable }.map { it.text }) else null
+                val shapeFn: (suspend (SpeechSection) -> SpeechSection)? = if (shaper == null) null else { part -> shaper.shape(part) }
+                val plan = ReadPlan(
+                    noteId = request.noteId, parts = parts, mode = if (smart) MODE_SMART else MODE_EXACT, delivery = delivery, language = note.language,
+                    genericTitle = note.facts.genericTitle, ephemeral = prepared.decision.ephemeralAudio, settings = settings,
+                    shape = shapeFn,
+                    scriptVersion = if (smart) com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper.SCRIPT_VERSION else 1
+                )
+                val voice = if (prepared.decision.provider == SpeechProvider.GEMINI) host.geminiVoice(settings, delivery, prepared.decision.cloudAllowed)
+                else host.localVoice(settings, requireOffline = mustStayOffline(env, note.facts))
+                execute(request, plan, voice, prepared.decision, alreadyQueued = 0, note = prepared.explanation, switched = false)
+            }
+        }
+    }
+
+    /** How much of the saved reading is current for these settings, as parts; the same fingerprint the runner uses. */
+    private fun savedSummary(noteId: String, source: SpeechSource, provider: SpeechProvider?, settings: ReadToMeSettings, space: NotebookSpace?, language: String?, manifest: ReadingManifest?): Triple<Int, Int, Long?> {
+        if (manifest == null) return Triple(0, 0, null)
+        val chosen = provider ?: return Triple(0, 0, manifest.updatedAt)
+        val smart = settings.smartRead
+        val fs = FingerprintSettings(
+            mode = if (smart) MODE_SMART else MODE_EXACT,
+            provider = chosen,
+            model = if (chosen == SpeechProvider.GEMINI) "gemini-tts" else "device-tts",
+            voiceId = if (chosen == SpeechProvider.GEMINI) settings.geminiVoice else (settings.localVoice ?: "default"),
+            delivery = DeliveryResolver.resolve(settings, space).canonical(),
+            language = language,
+            scriptVersion = if (smart) com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper.SCRIPT_VERSION else 1
+        )
+        val parts = if (PassageSpeech.isPassage(noteId)) source.sections else ReadingPlan.parts(source, settings.pauseAfterQuestion == PauseAfterQuestion.UNTIL_RESUME)
+        val ready = parts.count { part ->
+            val fingerprint = ReadFingerprint.section(part, fs)
+            manifest.sections.any { it.sectionId == part.id && it.status == SectionStatus.READY && it.fingerprint == fingerprint && host.store.audioFile(noteId, it) != null }
+        }
+        return Triple(ready, parts.size, manifest.updatedAt)
+    }
+
+    private fun mustStayOffline(env: Environment, facts: NoteFacts) =
+        env.profile != ProcessingProfile.INTERNET || facts.notePrivate || facts.notebookConfidential || facts.workPrivacyOffline
+
+    private suspend fun execute(request: Request, plan: ReadPlan, voice: SectionVoice, decision: RouteDecision, alreadyQueued: Int, note: String?, switched: Boolean) {
+        val total = plan.parts.size
+        val resume = if (request.resume && alreadyQueued == 0) resumeTarget(plan) else null
+        val provider = voice.provider
+        val startedAt = clock()
+        var doneParts = alreadyQueued
+        _state.value = ReadingUiState.Working(request.noteId, provider, alreadyQueued, total, note, 0f, startedAt)
+        ReadToMeLog.d("run start provider=$provider parts=$total alreadyQueued=$alreadyQueued")
+        val runner = ReadingRunner(host.store, if (request.silent) SilentReadPlayer else host.player)
+        val outcome = runner.run(plan, voice, resume, alreadyQueued, onProgress = { done, all ->
+            doneParts = done
+            ReadToMeLog.d("part ready $done/$all after ${clock() - startedAt} ms")
+            _state.value = ReadingUiState.Working(request.noteId, provider, done, all, note, 0f, startedAt)
+        }, onPartProgress = { f ->
+            _state.value = ReadingUiState.Working(request.noteId, provider, doneParts, total, note, f, startedAt)
+        })
+        ReadToMeLog.d("run end ${outcome::class.simpleName} after ${clock() - startedAt} ms")
+        when (outcome) {
+            is RunOutcome.Completed -> _state.value = ReadingUiState.Finished(request.noteId, provider, total, note, switched || host.store.load(request.noteId)?.switchedToPhoneAtSection != null)
+            is RunOutcome.Failed -> {
+                stalled = Stalled(request, plan, voice, decision, outcome.partIndex, note)
+                // Offered after any cloud failure, never after a phone-voice one: the reading has nowhere else to go.
+                val options = if (provider == SpeechProvider.GEMINI) (outcome.recovery.options + Recovery.SWITCH_TO_PHONE_VOICE).distinct()
+                else outcome.recovery.options.filter { it != Recovery.SWITCH_TO_PHONE_VOICE }
+                _state.value = ReadingUiState.Failed(request.noteId, outcome.partIndex, total, outcome.recovery.message, options, provider)
+            }
+        }
+    }
+
+    private fun resumeTarget(plan: ReadPlan): ResumeTarget? {
+        val progress = host.store.load(plan.noteId)?.progress ?: return null
+        if (progress.completed) return null
+        val index = progress.mediaId?.let { id -> plan.parts.indexOfFirst { id.contains(":${it.id}:") } }?.takeIf { it >= 0 } ?: progress.sectionIndex
+        return if (index in plan.parts.indices) ResumeTarget(index, progress.positionMs) else null
+    }
+
+    companion object {
+        const val MODE_EXACT = "exact"
+        const val MODE_SMART = "smart"
+    }
+}

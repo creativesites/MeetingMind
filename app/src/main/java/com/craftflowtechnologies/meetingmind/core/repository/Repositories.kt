@@ -284,6 +284,23 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
         val existing = speakerDao.getSpeakersForMeetingDirect(meetingId).find { it.id == speakerId }
         if (existing != null) {
             speakerDao.updateSpeaker(existing.copy(customName = newName))
+            // Names are dynamic: the summary, findings, tasks, note and AI results follow the
+            // transcript (docs/PLAN_PROFESSIONAL.md §5.5).
+            propagateName(meetingId, existing, newName)
+            // A real name is a person: linked, so renaming them later renames them everywhere.
+            com.craftflowtechnologies.meetingmind.core.work.WorkPeople(database).linkSpeaker(meetingId, speakerId, newName)
+        }
+    }
+
+    /**
+     * Carries a speaker's new name into everything derived from the recording. The diarization
+     * label ("Speaker 1") is replaced too, since text written before any rename still uses it.
+     */
+    private suspend fun propagateName(meetingId: String, speaker: SpeakerEntity, newName: String) {
+        val previous = speaker.customName.ifBlank { speaker.originalLabel }
+        com.craftflowtechnologies.meetingmind.core.work.SpeakerNames.propagate(database, meetingId, previous, newName, speaker.id)
+        if (speaker.originalLabel != previous && com.craftflowtechnologies.meetingmind.core.work.SpeakerNames.isGenericLabel(speaker.originalLabel)) {
+            com.craftflowtechnologies.meetingmind.core.work.SpeakerNames.propagate(database, meetingId, speaker.originalLabel, newName, speaker.id)
         }
     }
 
@@ -453,7 +470,16 @@ class TranscriptRepository(private val database: MeetMindDatabase) {
             .filter { it.speakerId == sourceSpeakerId }
             .map { it.id }
         movedSegmentIds.forEach { segId -> transcriptDao.reassignSegmentSpeaker(segId, target.id, target.customName) }
+        val source = existingSpeakers.first { it.id == sourceSpeakerId }
+        // What the removed speaker owns is now the kept speaker's.
+        database.actionItemDao().getActionItemsForMeetingDirect(meetingId).filter { it.assigneeSpeakerId == sourceSpeakerId }.forEach {
+            database.actionItemDao().updateActionItem(it.copy(assigneeSpeakerId = target.id, assigneeName = target.customName))
+        }
+        database.workDao().tasksForMeeting(meetingId).filter { it.ownerSpeakerId == sourceSpeakerId }.forEach {
+            database.taskDao().upsert(it.copy(ownerSpeakerId = target.id, updatedAt = System.currentTimeMillis()))
+        }
         speakerDao.deleteSpeakerById(sourceSpeakerId)
+        propagateName(meetingId, source, target.customName.ifBlank { target.originalLabel })
     }
 
     fun getDecisions(meetingId: String): Flow<List<Decision>> = decisionDao.getDecisionsForMeeting(meetingId).map { list ->

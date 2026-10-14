@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
@@ -100,9 +101,15 @@ fun ScriptureCard(
     modifier: Modifier = Modifier,
     /** Text the person typed for this passage; shown instead of fetching. */
     userText: String? = null,
-    userLabel: String? = null
+    userLabel: String? = null,
+    /** The translation this passage was saved with; null shows the person's default. Matches what export and Read to Me use. */
+    versionId: Int? = null,
+    /** Extra controls in the card's header (copy and share, say), given the passage once it has loaded. */
+    trailing: (@Composable (com.craftflowtechnologies.meetingmind.core.scripture.Passage?) -> Unit)? = null,
+    /** Lets the text be long-pressed and selected. */
+    selectable: Boolean = false
 ) {
-    val result = if (userText.isNullOrBlank()) rememberPassage(reference)
+    val result = if (userText.isNullOrBlank()) rememberPassage(reference, versionId)
         else PassageResult.Found(com.craftflowtechnologies.meetingmind.core.scripture.Passage(reference, userText, 0, userLabel ?: "Your text", "Typed by you"))
     Column(
         modifier
@@ -117,6 +124,7 @@ fun ScriptureCard(
             Spacer(Modifier.width(8.dp))
             Text(reference.display(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
             (result as? PassageResult.Found)?.let { Text(it.passage.versionAbbreviation, fontSize = 11.sp, color = InkMuted, fontWeight = FontWeight.Medium) }
+            trailing?.invoke((result as? PassageResult.Found)?.passage)
             if (onPlay != null && heardAtMs != null) {
                 Spacer(Modifier.width(8.dp))
                 Surface(onClick = onPlay, shape = RoundedCornerShape(50), color = AccentWash) {
@@ -133,10 +141,13 @@ fun ScriptureCard(
                 // Long passages open in place: no need to leave the note to read them all.
                 var open by remember(reference) { mutableStateOf(false) }
                 val long = result.passage.text.length > 420
-                Text(
-                    result.passage.text, fontSize = 15.sp, lineHeight = 23.sp, color = InkSecondary, fontFamily = FontFamily.Serif,
-                    maxLines = if (open || !long) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp)
-                )
+                val body: @Composable () -> Unit = {
+                    Text(
+                        result.passage.text, fontSize = 15.sp, lineHeight = 23.sp, color = InkSecondary, fontFamily = FontFamily.Serif,
+                        maxLines = if (open || !long) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                if (selectable) androidx.compose.foundation.text.selection.SelectionContainer { body() } else body()
                 if (long) Text(
                     if (open) "Show less" else "Read the whole passage", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(vertical = 4.dp)
@@ -167,6 +178,7 @@ fun VerseSheet(
     val result = versionId?.let { rememberPassage(reference, it) }
     var showCollections by remember { mutableStateOf(false) }
     var readChapter by remember { mutableStateOf(false) }
+    var listenOpen by remember { mutableStateOf(false) }
     // The translations this app is licensed for, from the service; the built-in list until it answers.
     var versions by remember { mutableStateOf(BibleVersions.common.filter { it.id == BibleVersions.DEFAULT_ID }) }
     LaunchedEffect(Unit) {
@@ -210,6 +222,9 @@ fun VerseSheet(
                     SheetAction("Play", Icons.Filled.PlayArrow, primary = true, modifier = Modifier.weight(1f)) { onPlay(); onDismiss() }
                 }
                 SheetAction("Read", Icons.AutoMirrored.Filled.MenuBook, modifier = Modifier.weight(1f)) { readChapter = true }
+                if (result is PassageResult.Found && com.craftflowtechnologies.meetingmind.ai.voice.read.ReadToMeFlags.enabled(context)) {
+                    SheetAction("Listen", Icons.Filled.GraphicEq, modifier = Modifier.weight(1f)) { listenOpen = true }
+                }
                 SheetAction("Save", Icons.Filled.BookmarkAdd, modifier = Modifier.weight(1f)) { showCollections = true }
                 SheetAction("Copy", Icons.Filled.ContentCopy, modifier = Modifier.weight(1f)) {
                     val found = result as? PassageResult.Found
@@ -223,6 +238,9 @@ fun VerseSheet(
             }
         }
     }
+    if (listenOpen) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(
+        com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.passageId(reference, versionId), onDismiss = { listenOpen = false }
+    )
     if (readChapter) {
         com.craftflowtechnologies.meetingmind.feature.bible.BibleDialog(initialReference = reference, onDismiss = { readChapter = false })
     }

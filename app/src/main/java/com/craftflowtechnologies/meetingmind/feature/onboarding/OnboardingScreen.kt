@@ -3,7 +3,12 @@ package com.craftflowtechnologies.meetingmind.feature.onboarding
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import android.Manifest
 import android.app.Application
+import android.app.Activity
+import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -76,15 +81,21 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.core.common.DeviceCapabilityDetector
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionForm
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionRoster
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionSettingsSource
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionSettingsStore
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.model.DeviceCapabilities
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
@@ -100,8 +111,26 @@ import kotlinx.coroutines.launch
 /** How the person wants the app's AI to run, chosen on the setup step. */
 enum class SetupChoice { OFFLINE_PACK, INTERNET, LATER }
 
-class OnboardingViewModel(application: Application) : AndroidViewModel(application) {
+class OnboardingViewModel(
+    application: Application,
+    private val companionSettings: CompanionSettingsSource,
+    /** The moments ledger for the hello First Keep; null is the app's store (tests pass their own). */
+    private val momentStore: com.craftflowtechnologies.meetingmind.core.companion.MomentLedgerStore? = null
+) : AndroidViewModel(application) {
+    constructor(application: Application) : this(application, CompanionSettingsStore(application))
+
     private val prefs = UserPreferencesManager(application)
+
+    /** Who keeps the person company (Z-15). Zuri is pre-selected; null is "No companion". Saved on Continue. */
+    private val _companion = MutableStateFlow<CompanionForm?>(CompanionForm.ZURI)
+    val companion: StateFlow<CompanionForm?> = _companion.asStateFlow()
+    fun setCompanion(form: CompanionForm?) { _companion.value = form }
+
+    /** Writes the companion choice to the settings store; runs when the step's Continue is pressed. */
+    fun commitCompanion() {
+        val form = _companion.value
+        viewModelScope.launch { companionSettings.setForm(form) }
+    }
     val deviceCapabilities: DeviceCapabilities = DeviceCapabilityDetector.detect(application)
 
     private val _selectedModel = MutableStateFlow(deviceCapabilities.recommendedAsrModelId)
@@ -115,8 +144,120 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     fun selectModel(modelId: String) { _selectedModel.value = modelId }
     fun setUserName(name: String) { _userName.value = name }
 
+    // Where the person is in the flow. Saved on every move, so a killed app resumes here.
+    private val _step = MutableStateFlow(OnboardingStep.WELCOME)
+    val step: StateFlow<OnboardingStep> = _step.asStateFlow()
+    private val _route = MutableStateFlow(EntryRoute.SAMPLE)
+    val route: StateFlow<EntryRoute> = _route.asStateFlow()
+    private val _goals = MutableStateFlow<Set<CaptureGoal>>(emptySet())
+    val goals: StateFlow<Set<CaptureGoal>> = _goals.asStateFlow()
+    private val _outcomes = MutableStateFlow<Set<DesiredOutcome>>(emptySet())
+    val outcomes: StateFlow<Set<DesiredOutcome>> = _outcomes.asStateFlow()
+    private val _sampleKind = MutableStateFlow(SampleKind.MEETING)
+    val sampleKind: StateFlow<SampleKind> = _sampleKind.asStateFlow()
+    private var moved = false
+
+    private fun restore() {
+        viewModelScope.launch {
+            val saved = prefs.preferencesFlow.first()
+            // Only resume an unfinished flow of this design, and never after the person has already moved.
+            if (saved.onboardingCompleted || moved || saved.onboardingVersion != ONBOARDING_VERSION) return@launch
+            _route.value = EntryRoute.entries.firstOrNull { it.name == saved.onboardingEntryRoute } ?: EntryRoute.SAMPLE
+            _goals.value = CaptureGoal.entries.filter { it.name in saved.onboardingGoals }.toSet()
+            _outcomes.value = DesiredOutcome.entries.filter { it.name in saved.onboardingOutcomes }.toSet()
+            _spaces.value = spacesFor(_goals.value)
+            val resumed = restoredStep(saved.onboardingStep, saved.onboardingVersion)
+            val steps = stepsFor(_route.value, _spaces.value)
+            _step.value = if (resumed in steps) resumed else OnboardingStep.WELCOME
+            // Past the companion step, the pick was already saved on its Continue: show that one again.
+            if (steps.indexOf(_step.value) > steps.indexOf(OnboardingStep.COMPANION)) {
+                _companion.value = runCatching { companionSettings.settings.first().form }.getOrDefault(_companion.value)
+            }
+        }
+    }
+
+    private fun goTo(step: OnboardingStep) { moved = true; _step.value = step; persist() }
+
+    private fun persist() {
+        val step = _step.value.name
+        val route = _route.value.name
+        val goals = _goals.value.map { it.name }.toSet()
+        val outcomes = _outcomes.value.map { it.name }.toSet()
+        viewModelScope.launch { prefs.saveOnboardingProgress(ONBOARDING_VERSION, step, route, goals, outcomes) }
+    }
+
+    /** "Explore a sample": pick a companion first (step 1), then the example. */
+    fun startSample() { _route.value = EntryRoute.SAMPLE; goTo(OnboardingStep.COMPANION) }
+    /**
+     * "Record something now": pick a companion (unless that's done already, as when leaving the example),
+     * then the AI choice, then the recorder.
+     */
+    fun startRecordNow() {
+        val pickedAlready = _step.value != OnboardingStep.WELCOME && _step.value != OnboardingStep.COMPANION
+        _route.value = EntryRoute.RECORD
+        goTo(if (pickedAlready) OnboardingStep.SETUP else OnboardingStep.COMPANION)
+    }
+    fun setSampleKind(kind: SampleKind) { _sampleKind.value = kind }
+    fun markSampleViewed() { viewModelScope.launch { prefs.setSampleViewed(true) } }
+
+    /**
+     * The hello First Keep (signature moments §2.2, decision 1): when the example's notes first appear, the
+     * sample note gets its own once-ever First Keep (ledger key `peak.first.hello`), so the person learns the
+     * gesture before it matters. Nothing is recorded. It plays at most once per onboarding.
+     */
+    private val _hello = MutableStateFlow<com.craftflowtechnologies.meetingmind.core.companion.moment.MomentPlan.FirstKeep?>(null)
+    val hello: StateFlow<com.craftflowtechnologies.meetingmind.core.companion.moment.MomentPlan.FirstKeep?> = _hello.asStateFlow()
+    private var helloPlanned = false
+
+    fun playHello(kind: SampleKind) {
+        if (helloPlanned) return
+        helloPlanned = true
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            val plan = runCatching {
+                val now = System.currentTimeMillis()
+                val clock = com.craftflowtechnologies.meetingmind.core.companion.LocalClock(now, java.util.TimeZone.getDefault().getOffset(now).toLong())
+                val space = if (kind == SampleKind.SERMON) com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.FAITH else com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK
+                val store = momentStore ?: com.craftflowtechnologies.meetingmind.core.companion.MomentLedgerStore(app)
+                store.issueTicket(com.craftflowtechnologies.meetingmind.core.companion.moment.UnveilTicket.hello(SampleNoteId, now, space).copy(sermon = kind == SampleKind.SERMON))
+                store.planOpen(SampleNoteId, clock) { ticket, ledger, rotation ->
+                    com.craftflowtechnologies.meetingmind.core.companion.moment.MomentFacts(
+                        noteId = SampleNoteId, ticket = ticket, space = space, sermon = kind == SampleKind.SERMON,
+                        device = com.craftflowtechnologies.meetingmind.core.companion.moment.MomentEnvironment.read(app),
+                        companionShown = _companion.value != null, clock = clock, ledger = ledger, rotation = rotation
+                    )
+                }.plan
+            }.getOrNull()
+            _hello.value = plan as? com.craftflowtechnologies.meetingmind.core.companion.moment.MomentPlan.FirstKeep
+        }
+    }
+
+    fun closeHello() { _hello.value = null }
+
+    fun next(steps: List<OnboardingStep>, finish: () -> Unit) {
+        if (_step.value == OnboardingStep.COMPANION) commitCompanion()
+        val i = steps.indexOf(_step.value)
+        if (i < 0 || i >= steps.lastIndex) completeOnboarding(finish) else goTo(steps[i + 1])
+    }
+
+    fun back(steps: List<OnboardingStep>) {
+        val i = steps.indexOf(_step.value)
+        if (i > 0) goTo(steps[i - 1])
+    }
+
+    fun toggleGoal(goal: CaptureGoal) {
+        _goals.value = _goals.value.let { if (goal in it) it - goal else it + goal }
+        setSpaces(spacesFor(_goals.value))
+        persist()
+    }
+
+    fun toggleOutcome(outcome: DesiredOutcome) {
+        _outcomes.value = _outcomes.value.let { if (outcome in it) it - outcome else it + outcome }
+        persist()
+    }
+
     /** What the app is for, and how it feels (PLAN_V2 F0). Everything on by default. */
-    private val _spaces = MutableStateFlow(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.entries.toSet())
+    private val _spaces = MutableStateFlow(com.craftflowtechnologies.meetingmind.core.model.OfferedNotebookSpaces.toSet())
     val spaces: StateFlow<Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>> = _spaces.asStateFlow()
     private val _look = MutableStateFlow(com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel.PROFESSIONAL)
     val look: StateFlow<com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel> = _look.asStateFlow()
@@ -131,7 +272,12 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setLook(look: com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel) { lookTouched = true; _look.value = look }
 
-    /** The offline pack by default: most people want it to just work, privately. */
+    /** What kind of work, when Work is picked: sets the words, sections and privacy defaults. */
+    private val _workProfile = MutableStateFlow<com.craftflowtechnologies.meetingmind.core.work.WorkProfile?>(null)
+    val workProfile: StateFlow<com.craftflowtechnologies.meetingmind.core.work.WorkProfile?> = _workProfile.asStateFlow()
+    fun setWorkProfile(profile: com.craftflowtechnologies.meetingmind.core.work.WorkProfile) { _workProfile.value = profile }
+
+    /** Internet mode (Gemini) by default; the offline pack is the on-device alternative (decision D2). */
     private val _setup = MutableStateFlow(SetupChoice.INTERNET)
     val setup: StateFlow<SetupChoice> = _setup.asStateFlow()
     fun setSetup(choice: SetupChoice) { _setup.value = choice }
@@ -160,17 +306,51 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    /**
+     * How the person wants to read their devotional: a plan's id, or [PlanChoice.AI]. Morning and Evening until they pick.
+     * Untouched means skipped, and a skipped step writes nothing, so the default stands.
+     */
+    private val _reading = MutableStateFlow(com.craftflowtechnologies.meetingmind.core.devotional.DevotionalPlans.DEFAULT_ID)
+    val reading: StateFlow<String> = _reading.asStateFlow()
+    private val _readingTouched = MutableStateFlow(false)
+    val readingTouched: StateFlow<Boolean> = _readingTouched.asStateFlow()
+    fun setReading(id: String) { _reading.value = id; _readingTouched.value = true }
+
+    /** The plans on offer with a taste of each one's first entry; loaded off the main thread. */
+    private val _planChoices = MutableStateFlow<List<PlanChoice>>(emptyList())
+    val planChoices: StateFlow<List<PlanChoice>> = _planChoices.asStateFlow()
+    fun loadPlans() {
+        if (_planChoices.value.isNotEmpty()) return
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val plans = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.craftflowtechnologies.meetingmind.core.devotional.DevotionalPlans.available.mapIndexed { i, p ->
+                    PlanChoice.of(com.craftflowtechnologies.meetingmind.core.devotional.ClassicDevotionals.get(app, p.id), recommended = i == 0)
+                }
+            }
+            _planChoices.value = plans + PlanChoice.ai()
+        }
+    }
+
     /** What the offline pack is on this phone: each job's model and size. */
     val pack = SetupPart.entries.map { it to SetupGuide.modelsFor(it, deviceCapabilities.totalRamGb) }
     val packBytes: Long = pack.sumOf { (_, models) -> models.sumOf { it.sizeBytes } }
 
     fun completeOnboarding(onCompleted: () -> Unit) {
         viewModelScope.launch {
+            companionSettings.setForm(_companion.value)
             prefs.setSelectedAsrModel(_selectedModel.value)
             prefs.setUserName(_userName.value)
             prefs.setSpaces(_spaces.value)
             prefs.setLook(_look.value)
+            if (com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in _spaces.value) {
+                prefs.setWorkSettings(com.craftflowtechnologies.meetingmind.core.work.WorkSettings.forProfile(_workProfile.value ?: com.craftflowtechnologies.meetingmind.core.work.WorkProfile.GENERAL))
+            }
             prefs.setWifiOnlyDownload(_wifiOnly.value)
+            if (_readingTouched.value) {
+                val current = prefs.devotionalProfile.first()
+                prefs.setDevotionalProfile(commitReading(current, _reading.value))
+            }
             _bible.value?.let { t ->
                 // Becomes the reading Bible now, and downloads in the background for offline use.
                 prefs.setBibleVersionId(t.intId)
@@ -193,28 +373,49 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
             onCompleted()
         }
     }
+
+    // Last, so every field it fills is already initialised.
+    init { restore() }
 }
 
-private const val STEPS = 7
+/**
+ * What the "Choose how you read" step does to the devotional profile: a plan sets the source to a plan and its id;
+ * "Write one with AI" sets the source to AI (Morning and Evening stays as the fallback). Nothing else changes.
+ */
+fun commitReading(profile: com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile, choice: String) =
+    if (choice == PlanChoice.AI) profile.copy(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI)
+    else profile.copy(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.CLASSIC, planId = choice)
 
 /**
- * First run: a warm welcome in the brand's navy, then five short steps — what it does, your name,
- * what it's for, how the AI runs (the offline pack is explained as three jobs so nobody stops at
- * one model), and the two permissions that matter. Everything can be changed later.
+ * First run: a welcome that offers an example or the recorder, then step 1 of both routes, "Pick who keeps
+ * you company" (ZURI_EXPERIENCE §5.1). On the example route come the example itself (with the hello First
+ * Keep), what the person captures, how the AI runs, the Bible and reading steps for Faith, and the two
+ * permissions that matter. The record route goes from the companion to the AI choice and then the
+ * recorder. Every move is saved, so a killed app resumes where it was. Everything can be changed later.
  */
 @Composable
-fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> Unit) {
-    var step by rememberSaveable { mutableIntStateOf(0) }
+fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> Unit, onRecordNow: () -> Unit = onFinishOnboarding) {
+    val step by viewModel.step.collectAsState()
+    val route by viewModel.route.collectAsState()
     var forward by remember { mutableStateOf(true) }
     val userName by viewModel.userName.collectAsState()
     val spaces by viewModel.spaces.collectAsState()
-    val look by viewModel.look.collectAsState()
+    val goals by viewModel.goals.collectAsState()
+    val outcomes by viewModel.outcomes.collectAsState()
+    val sampleKind by viewModel.sampleKind.collectAsState()
+    val workProfile by viewModel.workProfile.collectAsState()
     val setup by viewModel.setup.collectAsState()
     val wifiOnly by viewModel.wifiOnly.collectAsState()
     val bible by viewModel.bible.collectAsState()
-
-    fun next() { forward = true; if (step < STEPS - 1) step++ else viewModel.completeOnboarding(onFinishOnboarding) }
-    fun back() { forward = false; if (step > 0) step-- }
+    val companion by viewModel.companion.collectAsState()
+    val reading by viewModel.reading.collectAsState()
+    val readingTouched by viewModel.readingTouched.collectAsState()
+    val planChoices by viewModel.planChoices.collectAsState()
+    val steps = stepsFor(route, spaces)
+    val index = steps.indexOf(step).coerceAtLeast(0)
+    val finish = if (route == EntryRoute.RECORD) onRecordNow else onFinishOnboarding
+    fun next() { forward = true; viewModel.next(steps, finish) }
+    fun back() { forward = false; viewModel.back(steps) }
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Brand.Navy, Brand.NavyLift, Brand.Navy))).testTag("onboarding")) {
         // The icon's light, softly behind everything.
@@ -224,11 +425,11 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
             .background(Brush.radialGradient(listOf(Brand.Cyan.copy(alpha = 0.14f), Color.Transparent)), CircleShape))
 
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-            if (step > 0) {
+            if (step != OnboardingStep.WELCOME) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    repeat(STEPS - 1) { i ->
+                    repeat((steps.size - 1).coerceAtLeast(1)) { i ->
                         Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp))
-                            .background(if (i < step) Brush.horizontalGradient(Brand.sweep) else Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.15f)))))
+                            .background(if (i < index) Brush.horizontalGradient(Brand.sweep) else Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.15f)))))
                     }
                 }
             }
@@ -242,30 +443,86 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
             ) { s ->
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
                     when (s) {
-                        0 -> Welcome()
-                        1 -> WhatItDoes()
-                        2 -> NameStep(userName, viewModel::setUserName)
-                        3 -> SpacesStep(spaces, viewModel::setSpaces, look, viewModel::setLook)
-                        4 -> SetupStep(viewModel, setup, viewModel::setSetup, wifiOnly, viewModel::setWifiOnly)
-                        5 -> BibleStep(viewModel)
-                        else -> PermissionsStep()
-                    }
-                }
-            }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (step > 0) Text("Back", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { back() }.padding(vertical = 12.dp, horizontal = 4.dp).testTag("onboarding_back_btn"))
-                Spacer(Modifier.weight(1f))
-                Surface(onClick = { next() }, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = Modifier.testTag("onboarding_next_btn")) {
-                    Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            when (step) { 0 -> "Get started"; STEPS - 1 -> "Start using MeetingMind"; 2 -> if (userName.isBlank()) "Skip" else "Continue"; 5 -> if (bible == null) "Skip for now" else "Download and continue"; else -> "Continue" },
-                            color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp
+                        OnboardingStep.WELCOME -> Welcome()
+                        OnboardingStep.COMPANION -> CompanionPickStep(companion, viewModel::setCompanion)
+                        OnboardingStep.SAMPLE -> SampleStep(
+                            kind = sampleKind, onKind = viewModel::setSampleKind,
+                            onViewed = { viewModel.markSampleViewed(); viewModel.playHello(sampleKind) },
+                            onRecordInstead = { forward = true; viewModel.startRecordNow() }
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        OnboardingStep.GOALS -> GoalsStep(
+                            goals, viewModel::toggleGoal, outcomes, viewModel::toggleOutcome,
+                            com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in spaces, workProfile, viewModel::setWorkProfile,
+                            userName, viewModel::setUserName,
+                            nameTitle = companion?.let { stringResource(R.string.companion_onboarding_step3_title, stringResource(CompanionRoster.displayName(it))) }
+                        )
+                        OnboardingStep.SETUP -> SetupStep(viewModel, setup, viewModel::setSetup, wifiOnly, viewModel::setWifiOnly)
+                        OnboardingStep.BIBLE -> BibleStep(viewModel)
+                        OnboardingStep.PLAN -> {
+                            androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.loadPlans() }
+                            PlanStep(planChoices, reading, viewModel::setReading)
+                        }
+                        OnboardingStep.PERMISSIONS -> PermissionsStep()
                     }
                 }
             }
+            if (step == OnboardingStep.WELCOME) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    GradientButton("Explore a sample", "onboarding_next_btn") { forward = true; viewModel.startSample() }
+                    Text(
+                        "Record something now", color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).clickable { forward = true; viewModel.startRecordNow() }.padding(horizontal = 16.dp, vertical = 12.dp).testTag("onboarding_record_now_btn")
+                    )
+                }
+            } else {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Back", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { back() }.padding(vertical = 12.dp, horizontal = 4.dp).testTag("onboarding_back_btn"))
+                    Spacer(Modifier.weight(1f))
+                    val last = index >= steps.lastIndex
+                    GradientButton(
+                        when {
+                            step == OnboardingStep.SAMPLE -> "Make it mine"
+                            step == OnboardingStep.BIBLE -> if (bible == null) "Skip for now" else "Download and continue"
+                            step == OnboardingStep.PLAN -> if (readingTouched) "Continue" else "Skip for now"
+                            last && route == EntryRoute.RECORD -> "Start recording"
+                            last -> "Start using MeetingMind"
+                            else -> "Continue"
+                        },
+                        "onboarding_next_btn"
+                    ) { next() }
+                }
+            }
+        }
+        val hello by viewModel.hello.collectAsState()
+        hello?.let { plan ->
+            val sample = SampleContent.of(sampleKind)
+            com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.FirstKeepOverlay(
+                plan = plan,
+                form = companion,
+                note = com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.FirstKeepNote(sample.title, "${sample.length} · ${stringResource(R.string.companion_moment_hello_example)}", sample.actions.take(3)),
+                headline = stringResource(R.string.companion_moment_hello_headline),
+                subline = stringResource(R.string.companion_moment_hello_sub),
+                openLabel = stringResource(R.string.companion_moment_open_note),
+                shareLabel = stringResource(R.string.companion_moment_hello_record),
+                announcement = stringResource(R.string.companion_moment_hello_headline),
+                key = "firstkeep:$SampleNoteId",
+                onOpen = viewModel::closeHello,
+                onShare = { viewModel.closeHello(); forward = true; viewModel.startRecordNow() }
+            )
+        }
+    }
+}
+
+/** The onboarding example's id for the moments ledger and ticket. It is never a real note. */
+internal const val SampleNoteId = "onboarding.sample"
+
+@Composable
+private fun GradientButton(label: String, tag: String, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = Modifier.testTag(tag)) {
+        Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -274,17 +531,17 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
 private fun Welcome() {
     val t = rememberInfiniteTransition(label = "glow")
     val glow by t.animateFloat(0.85f, 1.12f, infiniteRepeatable(tween(2600), RepeatMode.Reverse), label = "g")
-    Column(Modifier.fillMaxWidth().padding(top = 72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(220.dp)) {
-            Box(Modifier.size(220.dp).graphicsLayer { scaleX = glow; scaleY = glow }.background(Brush.radialGradient(listOf(Brand.Indigo.copy(alpha = 0.45f), Color.Transparent)), CircleShape))
-            Image(painterResource(R.drawable.brand_mark), contentDescription = "MeetingMind", modifier = Modifier.size(width = 150.dp, height = 128.dp))
+    Column(Modifier.fillMaxWidth().padding(top = 56.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(200.dp)) {
+            Box(Modifier.size(200.dp).graphicsLayer { scaleX = glow; scaleY = glow }.background(Brush.radialGradient(listOf(Brand.Indigo.copy(alpha = 0.45f), Color.Transparent)), CircleShape))
+            Image(painterResource(R.drawable.brand_mark), contentDescription = "MeetingMind", modifier = Modifier.size(width = 138.dp, height = 118.dp))
         }
-        Text("MeetingMind", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp, modifier = Modifier.padding(top = 18.dp))
+        Text("Your thoughts deserve to be remembered.", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.6).sp, lineHeight = 36.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 18.dp))
         Text(
-            "Remember every conversation.\nPrivately, on your phone.",
-            color = Color.White.copy(alpha = 0.72f), fontSize = 18.sp, lineHeight = 26.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp)
+            "Turn conversations, ideas and lessons into knowledge you can return to.",
+            color = Color.White.copy(alpha = 0.72f), fontSize = 17.sp, lineHeight = 25.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp)
         )
-        Row(Modifier.padding(top = 36.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.padding(top = 32.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Pill(Icons.Filled.Lock, "Private")
             Pill(Icons.Filled.PhoneAndroid, "Works offline")
             Pill(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, "AI notes")
@@ -302,59 +559,9 @@ private fun Pill(icon: ImageVector, label: String) {
 }
 
 @Composable
-private fun StepTitle(title: String, line: String) {
+internal fun StepTitle(title: String, line: String) {
     Text(title, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.6).sp, lineHeight = 34.sp, modifier = Modifier.padding(top = 12.dp))
     Text(line, color = Color.White.copy(alpha = 0.7f), fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
-}
-
-@Composable
-private fun WhatItDoes() {
-    StepTitle("Here's what it does", "Press record. MeetingMind listens, writes it all down, and hands you what matters.")
-    Feature(Icons.Filled.Mic, "Record anything", "Meetings, lectures, sermons, calls, voice notes — even with the screen off.")
-    Feature(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, "Transcripts and summaries", "Who said what, the decisions, the action items. Ask questions about any recording.")
-    Feature(Icons.Filled.EditNote, "Notes that connect", "Write, add photos and scripture. Recordings become notes you can share or export.")
-    Feature(Icons.Filled.CalendarMonth, "Your day at a glance", "Today shows what's next, preps you for meetings and keeps everything on a timeline.")
-}
-
-@Composable
-private fun Feature(icon: ImageVector, title: String, line: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Brand.Blue, Brand.Violet))), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-        }
-        Spacer(Modifier.width(14.dp))
-        Column {
-            Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Text(line, color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 2.dp))
-        }
-    }
-}
-
-@Composable
-private fun NameStep(name: String, onName: (String) -> Unit) {
-    StepTitle("What should we call you?", "For greetings, and so Ask AI can address you. Optional, and it stays on this phone.")
-    OutlinedTextField(
-        value = name, onValueChange = onName, singleLine = true,
-        placeholder = { Text("Your first name", color = Color.White.copy(alpha = 0.35f)) },
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Brand.Cyan, unfocusedBorderColor = Color.White.copy(alpha = 0.2f), cursorColor = Brand.Cyan,
-            focusedTextColor = Color.White, unfocusedTextColor = Color.White
-        ),
-        shape = RoundedCornerShape(16.dp), textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp),
-        modifier = Modifier.fillMaxWidth().testTag("onboarding_name_field")
-    )
-}
-
-@Composable
-private fun SpacesStep(
-    spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>, onSpaces: (Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace>) -> Unit,
-    look: com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel, onLook: (com.craftflowtechnologies.meetingmind.core.identity.LookAndFeel) -> Unit
-) {
-    StepTitle("What's it for?", "Pick what you'll use it for — the app shows only those. Change it any time in Settings.")
-    com.craftflowtechnologies.meetingmind.core.identity.SpacesPicker(spaces, onSpaces)
-    Text("How should it feel?", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
-    com.craftflowtechnologies.meetingmind.core.identity.LookPicker(look, onLook)
-    Spacer(Modifier.height(12.dp))
 }
 
 @Composable
@@ -363,7 +570,7 @@ private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (S
     ChoiceCard(
         selected = choice == SetupChoice.INTERNET, onClick = { onChoice(SetupChoice.INTERNET) },
         icon = Icons.Filled.Cloud, title = "Internet mode", badge = "Recommended",
-        line = "Best quality, nothing big to download — Google's Gemini does the work. Needs a connection; recordings are sent to Google.",
+        line = "Fast, accurate notes with Google's Gemini. Needs a connection: recordings are sent to Google Gemini for processing.",
         tag = "setup_choice_internet"
     ) {
         if (choice == SetupChoice.INTERNET) {
@@ -389,7 +596,7 @@ private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (S
     ChoiceCard(
         selected = choice == SetupChoice.OFFLINE_PACK, onClick = { onChoice(SetupChoice.OFFLINE_PACK) },
         icon = Icons.Filled.PhoneAndroid, title = "Offline pack", badge = "Most private",
-        line = "Private and free. Three pieces, one download (${SetupGuide.formatBytes(vm.packBytes)}) that keeps going in the background.",
+        line = "Everything stays on the phone. Three pieces, one download (${SetupGuide.formatBytes(vm.packBytes)}) that keeps going in the background.",
         tag = "setup_choice_offline"
     ) {
         Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -439,7 +646,7 @@ private fun ChoiceCard(selected: Boolean, onClick: () -> Unit, icon: ImageVector
 }
 
 /** Text on the onboarding's navy: always white, whatever the app theme. */
-private val OnNavy = Color.White.copy(alpha = 1f)
+internal val OnNavy = Color.White.copy(alpha = 1f)
 
 /** Pick a Bible to keep offline: a few well-known ones first, then a search across the whole catalogue. */
 @Composable
@@ -507,14 +714,25 @@ private fun PermissionsStep() {
     var mic by remember { mutableStateOf(granted(Manifest.permission.RECORD_AUDIO)) }
     val needsNotify = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     var notify by remember { mutableStateOf(!needsNotify || granted(Manifest.permission.POST_NOTIFICATIONS)) }
-    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { mic = it }
-    val notifyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notify = it }
+    // Android reports "don't ask again" only as "no rationale to show" right after a refusal, so a
+    // refusal with no rationale means the system will not show the dialog again: send them to settings.
+    var micDenied by remember { mutableStateOf(false) }
+    var notifyDenied by remember { mutableStateOf(false) }
+    val activity = context.findActivity()
+    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        mic = it
+        micDenied = !it && activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO)
+    }
+    val notifyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        notify = it
+        notifyDenied = !it && activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.POST_NOTIFICATIONS)
+    }
 
     StepTitle("Two quick permissions", "So recording and reminders work when you need them. You can change these in Android settings.")
-    PermissionRow(Icons.Filled.Mic, "Microphone", "To record. Audio stays on this phone unless you choose Internet mode.", mic, "perm_mic") {
+    PermissionRow(Icons.Filled.Mic, "Microphone", "To record. In Internet mode, recordings are sent to Google Gemini; the offline pack keeps audio on this phone.", mic, "perm_mic", micDenied) {
         micLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
-    PermissionRow(Icons.Filled.Notifications, "Notifications", "To tell you when a transcript is ready, setup has finished, or your devotional arrives.", notify, "perm_notify") {
+    PermissionRow(Icons.Filled.Notifications, "Notifications", "To tell you when a transcript is ready, setup has finished, or your devotional arrives.", notify, "perm_notify", notifyDenied) {
         if (needsNotify) notifyLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
     Text(
@@ -523,8 +741,14 @@ private fun PermissionsStep() {
     )
 }
 
+private tailrec fun android.content.Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @Composable
-private fun PermissionRow(icon: ImageVector, title: String, line: String, granted: Boolean, tag: String, onAllow: () -> Unit) {
+private fun PermissionRow(icon: ImageVector, title: String, line: String, granted: Boolean, tag: String, permanentlyDenied: Boolean, onAllow: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceBase.copy(alpha = 0.06f)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Brand.Blue, Brand.Violet))), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
@@ -537,6 +761,18 @@ private fun PermissionRow(icon: ImageVector, title: String, line: String, grante
         Spacer(Modifier.width(8.dp))
         if (granted) Box(Modifier.size(30.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
             Icon(Icons.Filled.Check, contentDescription = "Allowed", tint = Color.White, modifier = Modifier.size(18.dp))
-        } else Text("Allow", color = Brand.Cyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(50)).border(1.dp, Brand.Cyan.copy(alpha = 0.6f), RoundedCornerShape(50)).clickable(onClick = onAllow).padding(horizontal = 14.dp, vertical = 7.dp).testTag(tag))
+        } else {
+            val context = LocalContext.current
+            // Once permanently denied, Allow would do nothing: open this app's settings page instead.
+            val label = if (permanentlyDenied) "Open settings" else "Allow"
+            val action: () -> Unit = if (permanentlyDenied) {
+                {
+                    runCatching {
+                        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+                    }
+                }
+            } else onAllow
+            Text(label, color = Brand.Cyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(50)).border(1.dp, Brand.Cyan.copy(alpha = 0.6f), RoundedCornerShape(50)).clickable(onClick = action).padding(horizontal = 14.dp, vertical = 7.dp).testTag(tag))
+        }
     }
 }

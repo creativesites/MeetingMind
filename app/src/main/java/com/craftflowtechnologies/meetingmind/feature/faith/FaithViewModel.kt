@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -47,6 +48,12 @@ class FaithViewModel(application: Application) : AndroidViewModel(application) {
             .kotlinx_catch()
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val scripture = ScriptureService(application)
+
+    /** How the person reads their devotional (their plan), for the line under Today's devotional. */
+    val devotionalProfile: kotlinx.coroutines.flow.StateFlow<com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile> =
+        com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(application).devotionalProfile
+            .catch { }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, com.craftflowtechnologies.meetingmind.core.devotional.DevotionalProfile())
 
     val faithNotes: StateFlow<List<Note>> = notes.observeNotesForWorkflows(Workflows.faith)
         .map { list -> list.sortedByDescending { it.eventDate ?: it.createdAt } }
@@ -128,10 +135,6 @@ class FaithViewModel(application: Application) : AndroidViewModel(application) {
         onCreated(notes.createNote(workflow = type, draft = true).id)
     }
 
-    fun startStudy(template: com.craftflowtechnologies.meetingmind.core.faith.StudyTemplate, onCreated: (String) -> Unit) = viewModelScope.launch {
-        onCreated(notes.startStudy(template, null).id)
-    }
-
     fun startDevotional(reference: ScriptureReference, onCreated: (String) -> Unit) = viewModelScope.launch {
         onCreated(notes.startDevotional(reference).id)
     }
@@ -143,6 +146,14 @@ class FaithViewModel(application: Application) : AndroidViewModel(application) {
 
     fun notesMatching(theme: String): List<Note> = faithNotes.value.filter {
         it.title.contains(theme, ignoreCase = true) || it.plainText.contains(theme, ignoreCase = true)
+    }
+
+    fun trashNote(id: String) = viewModelScope.launch {
+        notes.archiveNote(id)
+    }
+
+    fun deleteNoteForever(id: String) = viewModelScope.launch {
+        notes.deleteNote(id)
     }
 
     companion object {

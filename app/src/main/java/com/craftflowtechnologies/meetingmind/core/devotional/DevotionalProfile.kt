@@ -5,10 +5,11 @@ import org.json.JSONObject
 
 /** Where each day's devotional comes from. */
 enum class DevotionalSource(val label: String, val description: String) {
-    AI("Written for you", "A fresh devotional each day, shaped by what you're walking through. Labelled as AI-written."),
-    CLASSIC("A classic", "Spurgeon's Morning and Evening — a reading for every morning and evening of the year."),
+    AI("Written with AI", "A fresh devotional each day, a different passage and theme each time. Labelled as written with AI. If no AI is available, your reading plan fills in."),
+    /** "A reading plan": a bundled devotional book chosen by [DevotionalProfile.planId]. Works with no network and no key. */
+    CLASSIC("A reading plan", "A bundled devotional book with a reading for every day of the year. Works offline."),
     MINE("My own", "A guided page each morning with a verse to start from, for you to write."),
-    MIX("A mix", "Written for you in the week, a classic on Sundays.")
+    MIX("A mix", "Written with AI in the week, a reading from your plan on Sundays.")
 }
 
 /** Shapes wording and calendar awareness; never doctrine the person hasn't chosen. */
@@ -26,11 +27,51 @@ enum class Tradition(val label: String) {
 
 /** The voice the devotional is written in (and later, spoken in). */
 enum class DevotionalTone(val label: String, val guidance: String) {
-    PASTOR("Warm pastor", "a warm, unhurried pastor who knows and loves the reader"),
+    PASTOR("Warm pastor", "a warm, unhurried pastor who cares for the reader"),
     FRIEND("Gentle friend", "a gentle friend sitting across the table — plain words, honest, kind"),
     TEACHER("Calm teacher", "a calm Bible teacher who opens up the passage's context and meaning"),
     POET("Poet", "a contemplative writer — vivid images, short lines, room to breathe"),
     SCHOLAR("Scholar", "a careful scholar — historical and literary insight, still devotional in heart")
+}
+
+/**
+ * How much of what the person has shared (about me, topics, life season, name, sermons, prayer list)
+ * may shape their devotionals. Generic by default, personal by invitation (founder rule, 2026-10-09).
+ */
+enum class PersonalTouch(val label: String, val description: String) {
+    OFF("Off", "Devotionals for anyone, a surprise each day"),
+    NOW_AND_THEN("Now and then", "About once a week, drawing on what you've shared"),
+    ALWAYS("Always", "Every devotional considers what you've shared");
+
+    /**
+     * Whether what the person shared may inform the devotional of [date]. NOW_AND_THEN picks one day
+     * in each week from the date alone, and never the last day of a week, so two personal days are
+     * never next to each other (and the same date always answers the same).
+     */
+    fun appliesOn(date: java.time.LocalDate?): Boolean = when (this) {
+        OFF -> false
+        ALWAYS -> true
+        NOW_AND_THEN -> date != null && personalDay(date.toEpochDay())
+    }
+
+    /**
+     * Whether topics and "more of" may gently weight the day's passage and quote: never when OFF,
+     * on the personal day for NOW_AND_THEN, and about one day in four for ALWAYS.
+     */
+    fun weightsOn(date: java.time.LocalDate): Boolean = when (this) {
+        OFF -> false
+        NOW_AND_THEN -> personalDay(date.toEpochDay())
+        ALWAYS -> Math.floorMod(date.toEpochDay() * 3 + 1, 4L) == 0L
+    }
+
+    companion object {
+        private fun personalDay(epochDay: Long): Boolean {
+            val week = Math.floorDiv(epochDay, 7L)
+            val h = (week * 2654435761L) xor (week ushr 3)
+            val offset = Math.floorMod(h, 6L)            // 0..5: the seventh day is never personal
+            return Math.floorMod(epochDay, 7L) == offset
+        }
+    }
 }
 
 /** Topics a person can ask to hear more about. */
@@ -54,15 +95,22 @@ object DevotionalTopics {
  */
 data class DevotionalProfile(
     val enabled: Boolean = false,
-    val source: DevotionalSource = DevotionalSource.AI,
+    /** A plan by default: a new install has a devotional on day one, with no network and no key. */
+    val source: DevotionalSource = DevotionalSource.CLASSIC,
+    /** Which bundled plan [DevotionalSource.CLASSIC] reads from, and the fallback for the other sources. */
+    val planId: String = DevotionalPlans.DEFAULT_ID,
     val tradition: Tradition = Tradition.NON_DENOMINATIONAL,
     /** Reading time: 3, 7 or 12 minutes. */
     val minutes: Int = 3,
     val tone: DevotionalTone = DevotionalTone.PASTOR,
+    /** Used only when [personalTouch] is on, plus as gentle weights for the passage. */
     val topics: Set<String> = emptySet(),
+    /** Used only when [personalTouch] is on. */
     val season: String? = null,
-    /** A sentence or two the person writes about themselves. Theirs to edit or clear. */
+    /** A sentence or two the person writes about themselves. Used only when [personalTouch] is on. */
     val aboutMe: String = "",
+    /** Whether the above (and name, sermons, prayer list) may shape devotionals. Off unless invited. */
+    val personalTouch: PersonalTouch = PersonalTouch.OFF,
     val includePrayer: Boolean = true,
     val includeMotivation: Boolean = true,
     val includeInsight: Boolean = true,
@@ -102,8 +150,23 @@ data class DevotionalProfile(
 ) {
     val words: Int get() = when { minutes <= 3 -> 280; minutes <= 7 -> 650; else -> 1100 }
 
+    /** The plan this profile reads from (the default plan when [planId] is unknown or unavailable). */
+    val plan: DevotionalPlan get() = DevotionalPlans.resolve(planId)
+
+    /** Whether the AI writes the devotional of [date] (the AI source, or a mix on every day but Sunday). */
+    fun writesWithAiOn(date: java.time.LocalDate): Boolean =
+        source == DevotionalSource.AI || source == DevotionalSource.MIX && date.dayOfWeek != java.time.DayOfWeek.SUNDAY
+
+    /** What the person is reading, in a few words, for "Reading: …". */
+    val readingName: String get() = when (source) {
+        DevotionalSource.CLASSIC -> plan.title
+        DevotionalSource.AI -> "Written with AI"
+        DevotionalSource.MINE -> "Your own page"
+        DevotionalSource.MIX -> "Written with AI, and ${plan.title}"
+    }
+
     fun toJson(): String = JSONObject().apply {
-        put("enabled", enabled); put("source", source.name); put("tradition", tradition.name); put("minutes", minutes)
+        put("enabled", enabled); put("source", source.name); put("planId", planId); put("tradition", tradition.name); put("minutes", minutes)
         put("tone", tone.name); put("topics", JSONArray(topics.toList())); season?.let { put("season", it) }
         put("aboutMe", aboutMe); put("prayer", includePrayer); put("motivation", includeMotivation)
         put("insight", includeInsight); put("question", includeQuestion); put("delivery", deliveryMinutes)
@@ -113,7 +176,7 @@ data class DevotionalProfile(
         put("autoImage", autoImage); put("imageStyle", imageStyle)
         put("formats", JSONArray(formats.map { it.name })); put("rotate", rotateFormats); fixedFormat?.let { put("fixedFormat", it.name) }
         put("audience", audience.name); put("readingLevel", readingLevel.name); put("exclusionDays", passageExclusionDays)
-        put("examen", eveningExamen); preset?.let { put("preset", it.name) }; put("language", language)
+        put("personalTouch", personalTouch.name); put("examen", eveningExamen); preset?.let { put("preset", it.name) }; put("language", language)
         series?.let { sp -> put("series", JSONObject().put("id", sp.seriesId).put("title", sp.title).put("passages", JSONArray(sp.passages)).put("start", sp.startedEpochDay)) }
     }.toString()
 
@@ -127,6 +190,8 @@ data class DevotionalProfile(
             return DevotionalProfile(
                 enabled = o.optBoolean("enabled", d.enabled),
                 source = runCatching { DevotionalSource.valueOf(o.getString("source")) }.getOrDefault(d.source),
+                // A profile saved before plans existed has no planId: its "classic" was Morning and Evening.
+                planId = o.optString("planId").takeIf { it.isNotBlank() } ?: DevotionalPlans.DEFAULT_ID,
                 tradition = runCatching { Tradition.valueOf(o.getString("tradition")) }.getOrDefault(d.tradition),
                 minutes = o.optInt("minutes", d.minutes).coerceIn(2, 15),
                 tone = runCatching { DevotionalTone.valueOf(o.getString("tone")) }.getOrDefault(d.tone),
@@ -156,6 +221,8 @@ data class DevotionalProfile(
                 audience = runCatching { DevotionalAudience.valueOf(o.getString("audience")) }.getOrDefault(d.audience),
                 readingLevel = runCatching { ReadingLevel.valueOf(o.getString("readingLevel")) }.getOrDefault(d.readingLevel),
                 passageExclusionDays = o.optInt("exclusionDays", d.passageExclusionDays).coerceIn(0, 365),
+                // A profile saved before the setting existed has no field: that means Off.
+                personalTouch = runCatching { PersonalTouch.valueOf(o.getString("personalTouch")) }.getOrDefault(PersonalTouch.OFF),
                 eveningExamen = o.optBoolean("examen", d.eveningExamen),
                 series = o.optJSONObject("series")?.let { so ->
                     val ps = so.optJSONArray("passages")

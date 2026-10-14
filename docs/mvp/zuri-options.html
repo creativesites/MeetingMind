@@ -1,0 +1,1397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meet Zuri</title>
+<meta name="description" content="Zuri, MeetingMind's companion, v2: four selectable forms (Zuri, Wren, Page, Nas), six live states, Create modes, a 3D look, the assistant role and wild ideas.">
+<style>
+:root{
+  --bg:#FAFAF9; --surface:#FFFFFF; --sunk:#F5F5F4; --track:#EDEDEB;
+  --ink:#18181B; --ink2:#52525B; --muted:#8B8B93; --faint:#C8C8CD;
+  --line:#E5E5E3;
+  --accent:#5B5BD6; --wash:rgba(91,91,214,.10); --onAccent:#FFFFFF;
+  --success:#16A34A; --danger:#DC2626; --gold:#B7791F; --rec:#E5484D;
+  --shadow:0 8px 24px rgba(24,24,27,.08);
+  --phone:#18181B; --scrim:rgba(0,0,0,.32);
+  --display:"Outfit","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --body:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --serif:"Literata",Georgia,"Times New Roman",serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0C111B; --surface:#121A27; --sunk:#080D15; --track:#202C3C;
+    --ink:#F0F3F8; --ink2:#B7C0CF; --muted:#8995A8; --faint:#536176;
+    --line:#2A3749; --success:#4ADE80; --danger:#F87171; --gold:#E0B25A; --rec:#FF6369;
+    --shadow:0 8px 24px rgba(0,0,0,.35); --phone:#05080F; --scrim:rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0C111B; --surface:#121A27; --sunk:#080D15; --track:#202C3C;
+  --ink:#F0F3F8; --ink2:#B7C0CF; --muted:#8995A8; --faint:#536176;
+  --line:#2A3749; --success:#4ADE80; --danger:#F87171; --gold:#E0B25A; --rec:#FF6369;
+  --shadow:0 8px 24px rgba(0,0,0,.35); --phone:#05080F; --scrim:rgba(0,0,0,.55);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/22px var(--body);overflow-x:hidden;transition:background .25s,color .25s}
+h1,h2,h3{margin:0;font-family:var(--display);font-weight:600;letter-spacing:-.01em}
+h1{font-size:clamp(32px,5vw,46px);line-height:1.08}
+h2{font-size:clamp(24px,3.4vw,30px);line-height:1.2}
+h3{font-family:var(--body);font-size:13px;line-height:18px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px}
+p{margin:0 0 12px}
+ul{margin:0;padding-left:18px}
+li{margin:0 0 6px;color:var(--ink2)}
+li b,li strong,p b{color:var(--ink);font-weight:600}
+a{color:var(--accent)}
+code{font-size:13px;background:var(--sunk);padding:1px 5px;border-radius:4px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
+.eyebrow{font:600 11px/14px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.lede{font-size:17px;line-height:27px;color:var(--ink2);max-width:740px}
+.sublede{font-size:15px;line-height:23px;color:var(--ink2);max-width:760px;margin-bottom:22px}
+.top{padding:56px 0 28px}
+.top h1{margin-bottom:16px}
+.badge{display:inline-flex;align-items:center;gap:6px;background:var(--wash);color:var(--accent);border-radius:999px;padding:3px 10px;font:600 11px/16px var(--body);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.idea{display:inline-flex;align-items:center;gap:5px;border:1px dashed var(--muted);color:var(--ink2);border-radius:999px;padding:1px 8px;font:600 10px/16px var(--body);letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;vertical-align:2px}
+.tag{display:inline-block;border-radius:6px;padding:1px 7px;font:600 11px/16px var(--body);background:var(--track);color:var(--ink2);margin:0 4px 4px 0}
+.tag.local{background:rgba(22,163,74,.12);color:var(--success)}
+.tag.online{background:var(--wash);color:var(--accent)}
+.tag.faith{background:rgba(183,121,31,.14);color:var(--gold)}
+section{margin:0 0 64px;scroll-margin-top:96px}
+.sr{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+
+/* Controls */
+.controls{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.controls .wrap{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;padding-top:10px;padding-bottom:10px}
+.ctl{display:flex;align-items:center;gap:8px;min-height:36px}
+.ctl-label{font:500 12px/16px var(--body);color:var(--muted)}
+.seg{display:inline-flex;background:var(--track);border-radius:999px;padding:3px}
+.seg button{border:0;background:transparent;color:var(--ink2);font:500 12px/16px var(--body);padding:6px 11px;border-radius:999px;cursor:pointer;min-height:30px}
+.seg button[aria-pressed="true"],.seg button[aria-checked="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.swatches{display:flex;gap:6px;flex-wrap:wrap}
+.sw{width:24px;height:24px;border-radius:50%;border:0;cursor:pointer;position:relative;padding:0;background:var(--c)}
+.sw[aria-pressed="true"]::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--ink)}
+button:focus-visible,.stage:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.toggle{display:inline-flex;align-items:center;gap:8px;border:0;background:none;color:var(--ink2);font:500 12px/16px var(--body);cursor:pointer;padding:4px 0;min-height:30px}
+.knob{width:34px;height:20px;border-radius:999px;background:var(--track);position:relative;transition:background .2s;flex:none;display:inline-block}
+.knob::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s}
+[aria-pressed="true"] > .knob,[aria-checked="true"] > .knob{background:var(--accent)}
+[aria-pressed="true"] > .knob::after,[aria-checked="true"] > .knob::after{transform:translateX(14px)}
+input[type=range]{accent-color:var(--accent);width:110px}
+.meter{width:36px;height:6px;border-radius:3px;background:var(--track);overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--accent);border-radius:3px}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px}
+:root[data-theme="dark"] .card,:root[data-theme="dark"] .tile{border-color:transparent}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .card,:root:not([data-theme="light"]) .tile{border-color:transparent}}
+.hero{background:var(--wash);border:0;border-radius:16px}
+.summary{display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:center;padding:24px}
+.summary h2{font-size:24px;margin:8px 0 10px}
+.summary ul{columns:2;column-gap:28px}
+.summary li{break-inside:avoid;font-size:14px;line-height:20px}
+
+/* Options */
+.option{padding-top:8px;border-top:1px solid var(--line)}
+.opt-head{display:grid;grid-template-columns:220px 1fr;gap:32px;align-items:start;padding-top:32px}
+.opt-hero{display:flex;flex-direction:column;align-items:center;gap:8px;position:sticky;top:96px}
+.opt-hero .stage{width:200px;height:200px;border-radius:24px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;cursor:pointer}
+.opt-hero small{color:var(--muted);font-size:12px}
+.essence{font-family:var(--display);font-size:19px;line-height:28px;color:var(--ink);margin:8px 0 20px;max-width:660px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:20px}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0}
+.facts div{background:var(--sunk);border-radius:8px;padding:12px}
+.facts dt{font:600 12px/16px var(--body);color:var(--muted);margin-bottom:4px}
+.facts dd{margin:0;font-size:13px;line-height:19px;color:var(--ink2)}
+.states{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:28px 0 14px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px 8px 12px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;min-width:0}
+.tile .stage{width:96px;height:96px}
+.tile strong{font:600 13px/18px var(--body);display:block}
+.tile span{font-size:12px;line-height:16px;color:var(--muted);display:block}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;font:500 12px/16px var(--body);padding:6px 11px;cursor:pointer;min-height:32px}
+.chip.accent{background:var(--wash);border-color:transparent;color:var(--accent)}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--onAccent);border-color:var(--accent)}
+.chip[aria-disabled="true"]{opacity:.4;cursor:not-allowed;text-decoration:line-through}
+.ladder{display:flex;flex-wrap:wrap;align-items:flex-end;gap:18px 22px;background:var(--sunk);border-radius:16px;padding:18px}
+.rung{display:flex;flex-direction:column;align-items:center;gap:6px}
+.rung span{font:500 11px/14px var(--body);color:var(--muted)}
+.duo{display:flex;gap:10px;margin-left:auto}
+.duo .panel{border-radius:12px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.duo .panel span{font:500 11px/14px var(--body)}
+.panel.paper{background:#FAFAF9;border:1px solid #E5E5E3}
+.panel.paper span{color:#8B8B93}
+.panel.graphite{background:#0C111B;border:1px solid #0C111B}
+.panel.graphite span{color:#8995A8}
+.lod{font-size:12px;color:var(--muted);margin:10px 2px 0}
+
+/* Compare */
+.compare table{width:100%;border-collapse:collapse;font-size:13px}
+.compare th,.compare td{padding:10px 6px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle}
+.compare th:first-child,.compare td:first-child{text-align:left;color:var(--ink2);font-weight:500}
+.compare thead th{font:600 12px/16px var(--body);color:var(--ink)}
+.compare thead .stage{width:40px;height:40px;margin:0 auto 4px}
+.dots{display:inline-flex;gap:3px}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--track)}
+.dots i.on{background:var(--accent)}
+.compare tr.total td{font-weight:600;color:var(--ink);border-bottom:0}
+.compare .rec-col{background:var(--wash)}
+.note{font-size:13px;line-height:19px;color:var(--muted)}
+
+/* Phones */
+.phones{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:start}
+.phones.three{grid-template-columns:1fr 1fr 1fr}
+.phone-col h3{margin-bottom:8px}
+.phone-col > p{color:var(--ink2);font-size:14px;line-height:21px;max-width:440px}
+.phone{width:320px;max-width:100%;margin:16px auto 0;background:var(--phone);border-radius:40px;padding:10px;box-shadow:var(--shadow)}
+.screen{background:var(--bg);border-radius:31px;overflow:hidden;padding:12px 18px 20px;display:flex;flex-direction:column;min-height:640px;position:relative}
+.sbar{display:flex;justify-content:space-between;font:600 12px/16px var(--body);color:var(--ink);padding:2px 6px 14px}
+.sbar i{display:inline-block;width:16px;height:9px;border:1.5px solid var(--ink);border-radius:3px;margin-left:4px;vertical-align:-1px;position:relative}
+.sbar i::after{content:"";position:absolute;inset:1px 4px 1px 1px;background:var(--ink);border-radius:1px}
+.prog{display:flex;align-items:center;gap:8px;margin-bottom:22px}
+.prog .bars{display:flex;gap:4px;flex:1}
+.prog .bars b{height:4px;flex:1;border-radius:2px;background:var(--track)}
+.prog .bars b.on{background:var(--accent)}
+.prog span{font:500 12px/16px var(--body);color:var(--muted)}
+.screen h4{font:600 24px/30px var(--display);margin:0 0 8px;letter-spacing:-.01em}
+.screen .sub{font-size:14px;line-height:20px;color:var(--ink2);margin-bottom:12px}
+.preview{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:150px;margin:2px 0 8px}
+.preview .stage{width:112px;height:112px}
+.preview .cap{font:500 13px/18px var(--body);color:var(--ink);margin-top:2px;text-align:center}
+.preview .cap small{display:block;color:var(--muted);font-weight:400;font-size:12px;line-height:16px;min-height:32px}
+.picks{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
+.pick{border:1.5px solid var(--line);background:var(--surface);border-radius:16px;padding:8px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:var(--ink);font:500 12px/16px var(--body);min-height:48px;position:relative}
+.pick .stage{width:44px;height:44px}
+.pick[aria-checked="true"]{border-color:var(--accent);background:var(--wash)}
+.pick[aria-checked="true"]::after{content:"";position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.pick.wide{flex-direction:row;justify-content:flex-start;gap:12px;padding:10px 14px;width:100%;grid-column:1/-1;text-align:left}
+.pick.wide .ic{width:28px;height:28px;border-radius:50%;background:var(--track);display:grid;place-items:center;flex:none}
+.pick.wide small{display:block;color:var(--muted);font-weight:400}
+.pick .def{position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--onAccent);font:600 9px/14px var(--body);letter-spacing:.05em;text-transform:uppercase;padding:0 6px;border-radius:999px}
+.later{font-size:12px;line-height:16px;color:var(--muted);text-align:center;margin:12px 0}
+.btn{border:0;border-radius:999px;background:var(--accent);color:var(--onAccent);font:600 15px/20px var(--body);padding:14px 20px;width:100%;cursor:pointer;min-height:48px;margin-top:auto}
+.field-label{font:500 12px/16px var(--body);color:var(--muted);margin:12px 0 8px}
+.screen .seg{display:flex;width:100%}
+.screen .seg button{flex:1;padding:8px 4px}
+
+/* Home + sheet mock */
+.home-head{display:flex;align-items:center;gap:10px;margin:6px 0 16px}
+.home-head .stage{width:44px;height:44px;flex:none;border-radius:50%;position:relative}
+.home-head h5{margin:0;font:600 22px/28px var(--display)}
+.home-head small{display:block;color:var(--muted);font-size:12px}
+.ghost{background:var(--wash);border-radius:16px;height:110px;margin-bottom:12px}
+.ghost-row{height:44px;border-radius:12px;background:var(--sunk);margin-bottom:8px}
+.press-ring{position:absolute;inset:-6px;border-radius:50%;border:2px solid var(--accent);opacity:.6}
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:16px 16px 0 0;padding:10px 16px 18px;box-shadow:0 -8px 24px rgba(0,0,0,.12)}
+.sheet .handle{width:36px;height:4px;border-radius:2px;background:var(--faint);margin:0 auto 12px}
+.sheet h5{margin:0 0 10px;font:600 17px/24px var(--body)}
+.sheet .picks{gap:6px}
+.sheet .pick .stage{width:36px;height:36px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px;border-top:1px solid var(--line);font-size:14px}
+.row small{display:block;color:var(--muted);font-size:12px;line-height:16px}
+.row input{font:500 14px/20px var(--body);color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:6px 10px;width:110px}
+.row .linkish{border:0;background:none;color:var(--accent);font:600 13px/18px var(--body);cursor:pointer;min-height:40px}
+
+/* Recording mock */
+.rec-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.rec-dot{display:inline-flex;align-items:center;gap:6px;font:600 12px/16px var(--body);color:var(--rec)}
+.rec-dot::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--rec)}
+.timer{font:600 44px/52px var(--display);letter-spacing:-.02em;text-align:center;margin:18px 0 4px;font-variant-numeric:tabular-nums}
+.wave{display:flex;align-items:center;justify-content:center;gap:3px;height:56px;margin:8px 0 6px}
+.wave i{width:3px;border-radius:2px;background:var(--accent);opacity:.75}
+.rec-zuri{display:flex;flex-direction:column;align-items:center;min-height:132px;justify-content:center}
+.rec-zuri .stage{transition:transform .3s}
+.local-chip{align-self:center;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;font:500 12px/16px var(--body);padding:7px 12px;cursor:pointer;min-height:36px}
+.stopbar{display:flex;justify-content:center;gap:28px;align-items:center;margin-top:auto}
+.stop{width:64px;height:64px;border-radius:50%;background:var(--rec);border:0;display:grid;place-items:center}
+.stop i{width:20px;height:20px;border-radius:5px;background:#fff;display:block}
+.round-ic{width:44px;height:44px;border-radius:50%;background:var(--track);border:0}
+
+/* Settings mock */
+.settings{padding:14px 16px}
+.settings .row:first-of-type{border-top:0}
+.switch{border:0;background:none;cursor:pointer;padding:0;min-height:40px;display:flex;align-items:center}
+.bbar{display:flex;justify-content:space-around;align-items:center;background:var(--sunk);border-radius:16px;padding:8px 6px;margin-top:10px}
+.bbar span{font:500 11px/14px var(--body);color:var(--muted);text-align:center;width:52px}
+.bbar .stage{width:56px;height:56px;position:relative}
+.badge-mini{position:absolute;right:-4px;top:-4px;width:24px;height:24px;border-radius:50%;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+
+/* Spark mock */
+.spark-card{border-radius:20px;aspect-ratio:4/5;position:relative;overflow:hidden;padding:22px 20px;display:flex;flex-direction:column;justify-content:center;color:#fff;margin-bottom:12px;transition:background .3s}
+.spark-card .q{font:400 21px/30px var(--serif);margin:0 0 10px;letter-spacing:.005em}
+.spark-card .src{font:500 12px/16px var(--body);opacity:.8}
+.spark-card .zslot{position:absolute;right:12px;bottom:10px;width:64px;height:64px}
+.spark-card .brand{position:absolute;left:20px;bottom:16px;font:600 10px/14px var(--body);letter-spacing:.08em;text-transform:uppercase;opacity:.6}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips .chip{border-radius:999px;padding:5px 10px;min-height:32px}
+.ai-line{font-size:12px;line-height:16px;color:var(--muted);margin:6px 0 8px}
+.modes{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.modes .tile .stage{width:80px;height:80px}
+
+/* 3D */
+.three-grid{display:grid;grid-template-columns:300px 1fr;gap:32px;align-items:start}
+.gl-wrap{background:radial-gradient(120% 90% at 50% 20%,var(--wash),transparent 70%),var(--surface);border:1px solid var(--line);border-radius:24px;padding:16px;display:flex;flex-direction:column;align-items:center;gap:8px}
+#glHero{width:240px;height:240px;display:block;touch-action:none}
+.gl-wrap small{color:var(--muted);font-size:12px;text-align:center;line-height:16px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px;line-height:18px}
+.tbl th,.tbl td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.tbl th{font:600 12px/16px var(--body);color:var(--muted)}
+.tbl td:first-child{color:var(--ink);font-weight:600}
+.tbl td{color:var(--ink2)}
+.scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.scroll-x .tbl{min-width:680px}
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0}
+.tier{padding:16px}
+.tier b{display:block;font:600 15px/20px var(--body);margin:4px 0 6px}
+.tier p{font-size:13px;line-height:19px;color:var(--ink2);margin:0}
+
+/* Assistant */
+.caps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0 28px}
+.cap{padding:14px 16px}
+.cap b{display:block;font:600 15px/20px var(--body);margin:6px 0 4px}
+.cap p{font-size:13px;line-height:19px;color:var(--ink2);margin:0}
+.cap .ex{display:block;margin-top:8px;font-size:12px;line-height:17px;color:var(--muted);font-style:italic}
+.ask-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.ask-head .stage{width:40px;height:40px;flex:none}
+.ask-head b{font:600 17px/22px var(--body);flex:1}
+.privacy{border:0;border-radius:999px;font:600 11px/14px var(--body);padding:6px 10px;cursor:pointer;min-height:32px}
+.privacy.local{background:rgba(22,163,74,.12);color:var(--success)}
+.privacy.online{background:var(--wash);color:var(--accent)}
+.thread{flex:1;display:flex;flex-direction:column;gap:10px;overflow:hidden;justify-content:flex-end;min-height:330px}
+.bub{max-width:85%;font-size:13px;line-height:19px;border-radius:16px;padding:9px 12px}
+.bub.me{align-self:flex-end;background:var(--accent);color:var(--onAccent);border-bottom-right-radius:6px}
+.bub.z{align-self:flex-start;background:var(--surface);border:1px solid var(--line);color:var(--ink);border-bottom-left-radius:6px}
+.bub.z ul{padding-left:16px;margin:4px 0}
+.bub.z li{color:var(--ink);font-size:13px;margin-bottom:3px}
+.srcs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.srcs span{font:500 11px/14px var(--body);background:var(--sunk);color:var(--ink2);border-radius:6px;padding:3px 7px}
+.foot{font-size:11px;color:var(--muted);margin-top:6px}
+.sugg{display:flex;gap:6px;overflow-x:auto;padding:8px 0 8px;scrollbar-width:none}
+.sugg::-webkit-scrollbar{display:none}
+.sugg .chip{white-space:nowrap;border-radius:999px}
+.inputbar{display:flex;gap:8px;align-items:center;background:var(--sunk);border-radius:999px;padding:6px 6px 6px 14px;font-size:13px;color:var(--muted)}
+.inputbar span{flex:1}
+.inputbar i{width:36px;height:36px;border-radius:50%;background:var(--accent);display:block;position:relative}
+.inputbar i::after{content:"";position:absolute;left:14px;top:9px;width:8px;height:13px;border-radius:4px;background:var(--onAccent)}
+.crazy{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.crazy li{list-style:none;margin:0;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:16px}
+.crazy li b{display:block;margin:6px 0 4px;font-size:15px}
+.crazy li span:not(.idea){display:block;font-size:13px;line-height:19px;color:var(--ink2)}
+.crazy li em{display:block;font-style:normal;font-size:12px;line-height:17px;color:var(--muted);margin-top:6px}
+.crazy{padding:0;margin:0}
+.tension{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px}
+.tension .card{padding:16px}
+.tension p{font-size:14px;line-height:21px;color:var(--ink2);margin:0}
+.qs ol{padding-left:20px;margin:0}
+.qs li{margin-bottom:10px}
+footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px solid var(--line)}
+
+@media (max-width: 1000px){
+  .states{grid-template-columns:repeat(3,1fr)}
+  .modes{grid-template-columns:repeat(3,1fr)}
+  .phones,.phones.three,.three-grid{grid-template-columns:1fr}
+  .caps{grid-template-columns:1fr 1fr}
+  .tiers{grid-template-columns:1fr}
+}
+@media (max-width: 720px){
+  .controls{position:static}
+  .opt-head{grid-template-columns:1fr;gap:16px}
+  .opt-hero{position:static}
+  .cols,.facts,.caps,.crazy,.tension{grid-template-columns:1fr}
+  .states{grid-template-columns:repeat(2,1fr)}
+  .summary{grid-template-columns:1fr;justify-items:start}
+  .summary ul{columns:1}
+  .duo{margin-left:0}
+  .top{padding-top:36px}
+  .compare th,.compare td{padding:8px 3px}
+  .compare td:first-child{font-size:12px}
+  .dots{gap:2px}.dots i{width:5px;height:5px}
+  .gl-wrap{max-width:320px;margin:0 auto}
+}
+@media (max-width: 360px){ .picks{grid-template-columns:repeat(2,1fr)} .modes{grid-template-columns:repeat(2,1fr)} }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <p class="eyebrow">MeetingMind · Companion · v2, still brainstorming</p>
+    <h1>Meet Zuri, and friends.</h1>
+    <p class="lede"><b>Zuri</b> means "beautiful, good" in Swahili. It is MeetingMind's companion and the brand name of the whole family. People choose a form (Zuri, Wren, Page or Nas the puppy) during onboarding or later in Settings, and can rename it. All four forms run on one shared rig and state machine and are drawn from simple primitives, so Compose can build them. They take any accent and work on Paper and Graphite. Below the forms: Create modes, a "3D look", Zuri as an assistant, and some wild ideas. Anything marked <span class="idea">Idea</span> is a brainstorm, not a commitment.</p>
+  </div>
+</header>
+
+<div class="controls" role="region" aria-label="Preview controls">
+  <div class="wrap">
+    <div class="ctl"><span class="ctl-label" id="lbl-theme">Theme</span>
+      <div class="seg" role="group" aria-labelledby="lbl-theme" id="themeSeg">
+        <button data-theme-set="auto" aria-pressed="true">Auto</button>
+        <button data-theme-set="light" aria-pressed="false">Paper</button>
+        <button data-theme-set="dark" aria-pressed="false">Graphite</button>
+      </div>
+    </div>
+    <div class="ctl"><span class="ctl-label" id="lbl-acc">Accent</span>
+      <div class="swatches" role="group" aria-labelledby="lbl-acc" id="accentRow"></div>
+    </div>
+    <div class="ctl"><button class="toggle" id="threeToggle" aria-pressed="false"><span class="knob"></span>3D look</button></div>
+    <div class="ctl"><button class="toggle" id="rmToggle" aria-pressed="false"><span class="knob"></span>Reduce motion</button></div>
+    <div class="ctl"><label class="ctl-label" for="micLevel">Mic level</label>
+      <input type="range" id="micLevel" min="0" max="100" value="55">
+      <span class="meter" aria-hidden="true"><i id="meterFill"></i></span>
+      <button class="toggle" id="voiceToggle" aria-pressed="true"><span class="knob"></span>Live voice</button>
+    </div>
+  </div>
+</div>
+
+<main class="wrap" style="padding-top:32px">
+
+  <section class="card hero summary" aria-labelledby="sum-h">
+    <div class="stage" data-mount data-char="orb" data-state="idle" data-size="120" data-hero tabindex="0" role="button" aria-label="Zuri. Tap to celebrate."></div>
+    <div>
+      <span class="badge">Settled in v2</span>
+      <h2 id="sum-h">Zuri is the family name. People pick a form; Zuri, the Orb, is the default.</h2>
+      <ul>
+        <li><b>Selectable forms</b> in onboarding and Settings. Long-press the companion anywhere to change form, presence or name, or to hide it for now.</li>
+        <li><b>Zuri (the Orb) is pre-selected.</b> It shares the brand's name, it belongs to the record button's family, and it is the most readable at 24&nbsp;dp and the most faith-neutral.</li>
+        <li><b>Record button stays plain</b> by default. "Zuri on the record button" is an Advanced toggle.</li>
+        <li><b>Quiet during sermons</b> by default, adjustable in Advanced settings and on the recording screen.</li>
+        <li><b>Create</b> (formerly Spark): users can choose to add Zuri to a card. AI suggests a mode and the user can change it. Faith rules apply.</li>
+        <li><b>One rig for every form,</b> and notifications use one neutral Zuri glyph, so the brand stays consistent whichever form people pick.</li>
+      </ul>
+    </div>
+  </section>
+
+  <div id="options"></div>
+
+  <section class="compare" aria-labelledby="cmp-h">
+    <p class="eyebrow">Side by side</p>
+    <h2 id="cmp-h" style="margin-bottom:16px">How the four forms compare</h2>
+    <div class="card" style="padding:8px 12px 4px"><table id="cmpTable"></table></div>
+    <p class="note" style="margin-top:10px">My judgement, out of 5 (higher is better). Now that choice is settled, this table no longer picks a winner. It shows where each form needs the most design care. "Compose cost" scores high when a form is cheap to build. Zuri is highlighted because it's the default.</p>
+  </section>
+
+  <section aria-labelledby="ph-h">
+    <p class="eyebrow">Choosing, changing, and staying out of the way</p>
+    <h2 id="ph-h" style="margin-bottom:8px">How people pick, and change their mind</h2>
+    <p class="sublede">Mock A is the main onboarding flow. Mock B is the long-press quick sheet, which works anywhere the companion appears. Mock C is a Faith sermon recording, showing the "quiet during sermons" default and its local override. All three share one selection, so pick Nas in A and it follows you everywhere.</p>
+    <div class="phones three">
+      <div class="phone-col">
+        <h3>A · Onboarding, step 1 of 5</h3>
+        <p>Four forms plus "No companion". Zuri is pre-selected. Choosing a form gives a small hello.</p>
+        <div class="phone" aria-label="Phone mock: choose your companion">
+          <div class="screen">
+            <div class="sbar"><span>9:41</span><span>5G <i></i></span></div>
+            <div class="prog"><div class="bars"><b class="on"></b><b></b><b></b><b></b><b></b></div><span>1 of 5</span></div>
+            <h4>Pick who keeps you company</h4>
+            <p class="sub">They listen when you record, keep you posted while your note is written, and cheer when it's ready. Never inside your notes.</p>
+            <div class="preview">
+              <div class="stage" id="pickPreview" data-mount data-char="orb" data-state="idle" data-size="112" data-bound></div>
+              <div class="cap" aria-live="polite"><span id="pickName">Zuri</span><small id="pickLine">The record button, awake. Our name, and the default.</small></div>
+            </div>
+            <div class="picks" role="radiogroup" aria-label="Companion" id="pickGroup"></div>
+            <p class="later">You can change this any time in Settings → Companion, or just long-press your companion.</p>
+            <button class="btn" id="pickContinue">Continue with Zuri</button>
+          </div>
+        </div>
+      </div>
+      <div class="phone-col">
+        <h3>B · Long-press, anywhere</h3>
+        <p>Long-press the companion (here, the Home greeting) to get the quick sheet: change form, presence, rename, or hide until tomorrow.</p>
+        <div class="phone" aria-label="Phone mock: long-press quick sheet">
+          <div class="screen">
+            <div class="sbar"><span>9:41</span><span>5G <i></i></span></div>
+            <div class="home-head"><div class="stage" id="homeZ" data-mount data-char="orb" data-state="idle" data-size="44" data-bound><span class="press-ring"></span></div><div><h5>Good morning, Grace</h5><small>Everyday · Tuesday</small></div></div>
+            <div class="ghost"></div><div class="ghost-row"></div><div class="ghost-row"></div><div class="ghost-row"></div>
+            <div class="scrim"></div>
+            <div class="sheet" role="dialog" aria-label="Companion quick sheet">
+              <div class="handle"></div>
+              <h5>Your companion</h5>
+              <div class="picks" role="radiogroup" aria-label="Form" id="sheetPicks"></div>
+              <div class="row"><span>Presence</span>
+                <div class="seg" role="radiogroup" aria-label="Presence" id="presenceSeg" style="width:auto">
+                  <button role="radio" data-p="around" aria-checked="true">Around</button>
+                  <button role="radio" data-p="moments" aria-checked="false">Moments</button>
+                  <button role="radio" data-p="off" aria-checked="false">Off</button>
+                </div>
+              </div>
+              <div class="row"><label for="renameInput">Name<small>What should we call it?</small></label><input id="renameInput" value="Zuri" maxlength="14" autocomplete="off"></div>
+              <div class="row"><span>Hide for now<small id="hideLine">Back tomorrow morning</small></span><button class="linkish" id="hideBtn">Hide</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-col">
+        <h3>C · Recording a sermon</h3>
+        <p>Faith default: the companion stays small and calm for the whole sermon. There are no ripples or reactions, just presence. A local chip overrides it for this recording only.</p>
+        <div class="phone" aria-label="Phone mock: sermon recording">
+          <div class="screen">
+            <div class="sbar"><span>10:52</span><span>5G <i></i></span></div>
+            <div class="rec-top"><span class="rec-dot">Recording</span><span class="tag faith">Faith · Sermon</span></div>
+            <div class="timer" id="recTimer">24:13</div>
+            <p class="note" style="text-align:center;margin:0">Sunday service · Grace Chapel</p>
+            <div class="wave" id="wave" aria-hidden="true"></div>
+            <div class="rec-zuri"><div class="stage" id="recZ" data-mount data-char="orb" data-state="peaceful" data-size="56" data-bound></div></div>
+            <button class="local-chip" id="sermonChip" aria-pressed="true">Quiet during sermon · tap to change</button>
+            <p class="later" id="sermonLine">Default for Faith recordings. Change in Settings → Companion → Advanced.</p>
+            <div class="stopbar"><button class="round-ic" aria-label="Bookmark"></button><button class="stop" aria-label="Stop"><i></i></button><button class="round-ic" aria-label="Pause"></button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card settings" style="max-width:520px;margin:36px auto 0" aria-label="Mock: Advanced settings for Zuri">
+      <p class="eyebrow" style="margin-bottom:4px">Settings → Companion → Advanced</p>
+      <div class="row" style="border-top:0"><span>Zuri on the record button<small>Off by default. The button stays a plain button.</small></span><button class="switch" id="onBtnToggle" role="switch" aria-checked="false" aria-label="Zuri on the record button"><span class="knob"></span></button></div>
+      <div class="bbar" aria-label="Bottom bar preview"><span>Home</span><span>Notes</span><div class="stage" id="bbarBtn" data-mount data-char="orb" data-state="idle" data-size="56"><span class="badge-mini" id="bbarBadge" hidden><span data-mount data-char="orb" data-state="idle" data-size="24" data-bound id="bbarMini"></span></span></div><span>Spaces</span><span>Search</span></div>
+      <p class="note" style="margin:8px 0 4px">With Wren, Page or Nas, the orb keeps its shape and wears a small badge of your form, so the button never stops looking like a button.</p>
+      <div class="row"><span>Quiet during sermons<small>Small and still while a sermon records. On by default for Faith.</small></span><button class="switch" id="sermonToggle" role="switch" aria-checked="true" aria-label="Quiet during sermons"><span class="knob"></span></button></div>
+      <div class="row"><span>Create: suggest Zuri on cards<small>Off by default. The AI suggests a mode; you choose.</small></span><button class="switch" role="switch" aria-checked="false" aria-label="Suggest Zuri on Create cards" data-simple><span class="knob"></span></button></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="sp-h">
+    <p class="eyebrow">Create studio (Spark v2)</p>
+    <h2 id="sp-h" style="margin-bottom:8px">Create modes: six poses for shared cards</h2>
+    <p class="sublede">Create modes live outside the six app states and appear only when the user adds the companion to a card. The AI suggests a mode based on what the card says, and the user can change it. The faith rules hold: <b>Prayerful</b> means paws or hands folded, eyes closed and still. On a prayer request only Prayerful and Peaceful are offered, and on scripture or sermon quotes Joyful and Celebratory are switched off. The companion never prays <i>for</i> anyone. It sits quietly beside the user's own words.</p>
+    <div class="phones">
+      <div class="phone-col">
+        <h3>Create: design step</h3>
+        <div class="phone" aria-label="Phone mock: Create card editor">
+          <div class="screen">
+            <div class="sbar"><span>9:41</span><span>5G <i></i></span></div>
+            <div class="seg" role="radiogroup" aria-label="Card content" id="sparkType" style="margin-bottom:12px">
+              <button role="radio" data-t="quote" aria-checked="true">Quote</button>
+              <button role="radio" data-t="request" aria-checked="false">Prayer</button>
+              <button role="radio" data-t="answered" aria-checked="false">Answered</button>
+              <button role="radio" data-t="study" aria-checked="false">Study</button>
+            </div>
+            <div class="spark-card" id="sparkCard">
+              <p class="q" id="sparkQ"></p>
+              <p class="src" id="sparkSrc"></p>
+              <div class="zslot" id="sparkZ" data-mount data-char="orb" data-state="peaceful" data-size="64" data-bound data-force="dark"></div>
+              <span class="brand">MeetingMind</span>
+            </div>
+            <div class="row" style="border-top:0;min-height:40px"><span>Include your companion<small style="display:block;color:var(--muted);font-size:12px">Off by default. Try it.</small></span><button class="switch" id="sparkInclude" role="switch" aria-checked="false" aria-label="Include your companion on the card"><span class="knob"></span></button></div>
+            <p class="ai-line" id="sparkAI"></p>
+            <div class="chips" role="radiogroup" aria-label="Companion mode" id="sparkModes"></div>
+            <button class="btn" style="margin-top:14px">Share</button>
+          </div>
+        </div>
+      </div>
+      <div class="phone-col">
+        <h3>All six Create modes, on your current form</h3>
+        <p>When the AI suggests a mode, it is choosing between poses, not writing anything. It never adds words to the card. Each mode below has a static version for reduced motion and for the exported image.</p>
+        <div class="modes" id="modeTiles" role="list" style="margin-top:16px"></div>
+        <ul style="margin-top:18px">
+          <li><b>Quote from a sermon or scripture</b> → Peaceful or Reflective. Never Joyful or Celebratory.</li>
+          <li><b>Prayer request</b> → Prayerful only (Peaceful allowed). Never Joyful or Celebratory.</li>
+          <li><b>Answered prayer or testimony</b> → Grateful</li>
+          <li><b>Study win</b> → Celebratory or Joyful</li>
+          <li>The companion is <b>off by default</b> on every card. Adding it is always the user's choice.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="td-h" id="three">
+    <p class="eyebrow">Question 1 · 3D and lifelike motion</p>
+    <h2 id="td-h" style="margin-bottom:8px">How alive can Zuri feel on a mid-range Android phone?</h2>
+    <p class="sublede">Switch on <b>3D look</b> in the controls bar. Every character on this page then gets rim light, a soft specular highlight, ambient occlusion and pointer parallax (gyro on phones). It's all done with layered gradients, which Compose Canvas can draw the same way. The hero on the left goes further: a real-time raymarched 3D Zuri in WebGL, to show where the ceiling is. Drag across it.</p>
+    <div class="three-grid">
+      <div class="gl-wrap">
+        <canvas id="glHero" width="240" height="240" role="img" aria-label="Zuri rendered in real-time 3D"></canvas>
+        <div id="glFallback" hidden><div data-mount data-char="orb" data-state="listening" data-size="200" data-force-three></div></div>
+        <small id="glNote">Real-time SDF raymarch: one fragment shader, no assets. The sprout follows the mic level. It renders only while on screen.</small>
+      </div>
+      <div>
+        <h3>My recommendation: tiered, cheapest first</h3>
+        <p><b>Ship Compose pseudo-3D now</b> (what the 3D toggle shows) for every form and every size. <b>Evaluate Rive</b> only for hero moments, after P-2 ships and once we can measure it. Use <b>pre-rendered 3D</b> only for store art and Create export stills. <b>No real-time 3D in the app.</b> The WebGL hero is a reference for the feel, not a plan to ship it.</p>
+        <div class="tiers">
+          <div class="card tier"><span class="tag">Tier 0 · 24–40 dp</span><b>Flat vector, still</b><p>Rows, chips, the long-press target and the 24 dp glyph. It changes only on state changes, with a 150 ms crossfade and no idle animation.</p></div>
+          <div class="card tier"><span class="tag">Tier 1 · 56–120 dp</span><b>Compose pseudo-3D</b><p>Home greeting, recording, processing, empty states. Layered radial gradients, rim, specular and contact AO. Parallax comes from scroll and touch; gyro only on screen and at about 30 Hz.</p></div>
+          <div class="card tier"><span class="tag">Tier 2 · 160 dp+ heroes</span><b>Rive, if it earns it</b><p>Onboarding hello, the first-recording peak, note ready. Rive adds secondary motion (ear flop, wing settle, squash) through a state machine with inputs for state, mic level and mode. If the size budget says no, Tier 1 already looks good.</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="card scroll-x" style="padding:8px 12px;margin-top:8px">
+      <table class="tbl" aria-label="Animation technology comparison">
+        <thead><tr><th>Approach</th><th>APK size (ballpark)</th><th>minSdk 24 / low-end</th><th>Battery</th><th>Live mic + any accent</th><th>Pipeline</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td>Compose pseudo-3D</td><td>+0</td><td>Yes. A single Canvas per character, well under 1 ms a frame (est.)</td><td>Draws only while visible and only for the state's motion</td><td>Yes / yes, natively</td><td>Kotlin only, poses as data</td><td><b>Ship now (Tier 0–1)</b></td></tr>
+          <tr><td>Rive</td><td>Native runtime, roughly 2–4 MB per ABI after splits. <i>Check the current release.</i> Files are tens of KB.</td><td>Yes (API 21+). Keep it to one live instance on screen.</td><td>Frame-driven, so it must be paused when hidden</td><td>Number inputs drive the mic; colours via runtime properties</td><td>Rive editor plus a motion designer</td><td><b>Evaluate for Tier 2</b></td></tr>
+          <tr><td>Pre-rendered 3D (Blender → Lottie, sprite sheets, video)</td><td>Lottie library about 0.4 MB; each clip 50–500 KB × forms × states</td><td>Decoding is cheap but memory-heavy for sprites. Video alpha is unreliable on Android.</td><td>Fine for short clips</td><td>No live mic (only scrubbing). Accent needs mask layers.</td><td>3D artist plus a render farm, re-rendered for every change</td><td><b>Marketing and Create stills only</b></td></tr>
+          <tr><td>Real-time 3D (Filament / SceneView, glTF)</td><td>About 4–8 MB or more (renderer, gltfio, materials)</td><td>Needs GLES 3; shader warm-up hitches and thermals on low-end</td><td>Continuous GPU use, the worst of the four</td><td>Yes / yes</td><td>3D modelling, rigging and glTF</td><td><b>No.</b> Too heavy for a companion.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:8px">Sizes are ballpark figures from public releases and should be verified before deciding. Battery is the deciding factor: in every tier, nothing animates when not visible, idle stops after one breath cycle on Home, and the system "remove animations" setting gives the static poses.</p>
+
+    <h3 style="margin-top:28px">Modes per page, so Zuri feels alive without being busy</h3>
+    <div class="card scroll-x" style="padding:8px 12px">
+      <table class="tbl">
+        <thead><tr><th>Page</th><th>Zuri's mode</th><th>What it does</th><th>Motion budget</th></tr></thead>
+        <tbody>
+          <tr><td>Home</td><td>Greeting</td><td>One breath and a blink when Home opens, then still. It looks up when you scroll back to the top.</td><td>Tier 1 · about 3 s, then 0 fps</td></tr>
+          <tr><td>Recording</td><td>Listening</td><td>Sprout, ears or tail follow the mic level. A head tilt when speech starts after silence.</td><td>Tier 1 · 60 fps while visible (the one continuous animation)</td></tr>
+          <tr><td>Processing</td><td>Thinking</td><td>Narrates real stages: "Listening for voices… 3 so far", "Finding the scripture…". The pose changes per stage.</td><td>Tier 1 · 30 fps loop</td></tr>
+          <tr><td>Note ready</td><td>Celebrating</td><td>One hop (Nas: a soft wag), then settles beside the title. Once per note.</td><td>Tier 2 candidate · 1.6 s one-shot</td></tr>
+          <tr><td>Faith</td><td>Gentle</td><td>All timings ×1.3, no hops, warm gold rim. Quiet during sermons. Never on prayer lists or scripture text.</td><td>Tier 1 · slower, lower amplitude</td></tr>
+          <tr><td>Work</td><td>Crisp</td><td>Smaller (40 dp), timings ×0.8, no cheeks. Appears for the pre-meeting brief and the weekly review.</td><td>Tier 0–1</td></tr>
+          <tr><td>Study</td><td>Curious</td><td>Leans in during quizzes, nods on a correct answer, stays calm on a wrong one (never sad at you).</td><td>Tier 1 · one-shots</td></tr>
+          <tr><td>Read-aloud</td><td>Reading</td><td>Eyes follow the reading line. The mouth or sprout moves with TTS amplitude.</td><td>Tier 1 · 30 fps while playing</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="as-h" id="assistant">
+    <p class="eyebrow">Question 2 · Zuri as an assistant</p>
+    <h2 id="as-h" style="margin-bottom:8px">From companion to assistant, without getting in the way</h2>
+    <div class="tension">
+      <div class="card"><h3>Companion vs assistant</h3><p><b>Zuri is pulled, not pushed.</b> The character stays small and quiet. The assistant appears when you ask (Ask Zuri, a long-press, voice) or at moments you scheduled yourself (a brief before a meeting, the Friday review). In an answer, Zuri is a small avatar at the top and <i>the answer is the hero</i>. Zuri never interrupts a recording and never writes into a note unless you tap "Add to note".</p></div>
+      <div class="card"><h3>Private vs online</h3><p><b>Every answer says where it was computed.</b> <span class="tag local">On-device</span>: local search over your notes plus the small local model. It answers with citations; short and slower. <span class="tag online">Online</span>: Gemini for synthesis, drafts and briefs. Only the relevant snippets are sent. Prayer lists and Circles can be marked on-device only. When the notes don't contain an answer, Zuri says "I couldn't find that in your notes" and never makes one up.</p></div>
+    </div>
+    <div class="caps" id="caps"></div>
+    <div class="phones">
+      <div class="phone-col">
+        <h3>Ask Zuri</h3>
+        <p>Answers with sources that jump to the moment in the audio, and offers next actions. Try the suggestions, and switch On-device / Online.</p>
+        <div class="phone" aria-label="Phone mock: Ask Zuri">
+          <div class="screen">
+            <div class="sbar"><span>2:41</span><span>5G <i></i></span></div>
+            <div class="ask-head"><div class="stage" id="askZ" data-mount data-char="orb" data-state="idle" data-size="40" data-bound></div><b id="askTitle">Ask Zuri</b><button class="privacy local" id="privBtn" aria-pressed="false">On-device</button></div>
+            <div class="thread" id="thread" aria-live="polite"></div>
+            <div class="sugg" id="sugg"></div>
+            <div class="inputbar"><span>Ask about anything you've recorded…</span><i aria-hidden="true"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-col">
+        <h3>Crazy ideas <span class="idea">Ideas only</span></h3>
+        <p>Wild ones, each with a one-line sanity check. None of them are commitments.</p>
+        <ul class="crazy" id="crazy" style="margin-top:16px"></ul>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="mit-h">
+    <p class="eyebrow">Choice, made affordable</p>
+    <h2 id="mit-h" style="margin-bottom:16px">Keeping four forms cheap and on-brand</h2>
+    <div class="caps" style="margin-top:0">
+      <div class="card cap"><b>One rig, one state machine</b><p>Every form takes the same <code>Pose</code> (offset, squash, tilt, eyes, look, mouth, brows, hop) from one function. Each form is only a drawing plus a few parameters. This page runs all four forms on one pose engine.</p></div>
+      <div class="card cap"><b>One brand family</b><p>"Zuri and friends." Copy says your companion's name; the system, the store and marketing say Zuri. Each form keeps Zuri's eyes and cheeks, so they read as one family.</p></div>
+      <div class="card cap"><b>A neutral glyph outside the app</b><p>Notifications, the widget and the launcher shortcut use the three-bar Zuri sprout glyph whatever form is chosen, so the brand stays consistent where it's seen most.</p></div>
+      <div class="card cap"><b>Golden tests, bounded</b><p>Per form: 6 states + 6 Create modes × 2 themes × (full, 24&nbsp;dp) = 48 golden images. Four forms make 192. They are generated from one parameterised test, so adding a form adds data, not test code.</p></div>
+      <div class="card cap"><b>Build order</b><p>Zuri first (P-2, about 6–8 days). Each further form is about 3–5 days on the shared rig. Ship Zuri and Nas at launch and add Wren and Page as fast follows if the schedule is tight.</p></div>
+      <div class="card cap"><b>Smart default</b><p>Zuri is pre-selected for every space. A user who skips the choice gets the brand, the record-button family and the most faith-neutral form.</p></div>
+    </div>
+  </section>
+
+  <section class="qs" aria-labelledby="q-h">
+    <p class="eyebrow">New open questions</p>
+    <h2 id="q-h" style="margin-bottom:14px">For the founder</h2>
+    <div class="card" style="padding:18px 20px"><ol>
+      <li><b>When someone picks Nas, do notifications say "Nas" or "Zuri"?</b> I suggest the user's chosen name in the message text and the Zuri glyph as the icon.</li>
+      <li><b>Check the name "Nas".</b> It is a well-known rapper's name, and in Arabic "an-Nās" ("mankind") is the title of the Qur'an's final surah. That's probably fine, but worth checking with your audience, as is the fact that some households consider dogs unclean.</li>
+      <li><b>Launch set:</b> all four forms at once, or Zuri + Nas first with Wren and Page as fast follows?</li>
+      <li><b>Size budget:</b> would you accept roughly 2–4 MB per ABI for Rive in Tier 2 hero moments, or should we stay pure Compose?</li>
+      <li><b>What counts as a sermon?</b> Should "Quiet during sermons" apply to recordings typed Sermon only, or to every Faith-space recording?</li>
+      <li><b>Ask Zuri on Free:</b> is on-device only (slower, shorter answers) acceptable, or is Ask a Pro feature?</li>
+      <li><b>Live in-meeting whisper:</b> is it on the roadmap at all, given recording-consent laws and how it would feel to the other people in the room?</li>
+      <li><b>Create:</b> should the companion ever be suggested by default on a card type (for example study wins), or always start off?</li>
+      <li><b>Circles:</b> can members see each other's companions (for example on a shared prayer list), or does the companion stay private to each person?</li>
+    </ol></div>
+  </section>
+
+  <footer>Zuri v2 directions. Everything is drawn live from primitives and runs on one shared pose engine, the same shape a Compose <code>Companion(form, state, size, accent)</code> would take. Items marked Idea are brainstorms. The build spec is docs/mvp/ZURI_EXPERIENCE.md.</footer>
+</main>
+
+<script>
+(function(){
+"use strict";
+/* ---------- data ---------- */
+/* The design system's 6 accents (DESIGN_SYSTEM.md §2). */
+var ACC=[
+  {k:'indigo',n:'Indigo',l:'#5B5BD6',d:'#9B9CF6'},
+  {k:'ocean',n:'Ocean',l:'#0E7490',d:'#5CC8DD'},
+  {k:'forest',n:'Forest',l:'#15803D',d:'#5FD08A'},
+  {k:'gold',n:'Gold (Faith)',l:'#B7791F',d:'#E0B25A'},
+  {k:'rose',n:'Rose',l:'#BE185D',d:'#F27AAE'},
+  {k:'graphite',n:'Graphite',l:'#3F3F46',d:'#C9CDD6'}
+];
+var STATES=[
+  {k:'idle',n:'Idle',d:'Home greeting'},
+  {k:'listening',n:'Listening',d:'Recording · follows the mic'},
+  {k:'thinking',n:'Thinking',d:'Writing your note'},
+  {k:'celebrating',n:'Celebrating',d:'Note ready'},
+  {k:'worried',n:'Worried',d:'Something failed'},
+  {k:'sleepy',n:'Sleepy',d:'Models missing · late'}
+];
+var MODES=[
+  {k:'prayerful',n:'Prayerful',d:'Hands folded, eyes closed'},
+  {k:'peaceful',n:'Peaceful',d:'Still, soft smile'},
+  {k:'grateful',n:'Grateful',d:'Small bow, warm heart'},
+  {k:'joyful',n:'Joyful',d:'Gentle bounce'},
+  {k:'reflective',n:'Reflective',d:'Looking up, thinking'},
+  {k:'celebratory',n:'Celebratory',d:'The full hop'}
+];
+var CHARS=[
+ {key:'orb',short:'Zuri',name:'Zuri, the Orb',def:true,line:'The record button, awake. Our name, and the default.',
+  essence:'The thing that listens is the thing that cares: the record button grows a face, a voice-shaped tuft and a heart. This is Zuri.',
+  why:['<b>It <i>is</i> the product.</b> "A recording is the source." Zuri is literally the object that listened, so processing reads as care (labor illusion).',
+       '<b>The brand mark.</b> The default form shares the family\'s name and the record button\'s shape, so even the 24 dp glyph is Zuri.',
+       '<b>Perfect at 24 dp.</b> A circle, two eyes and a three-bar sprout read at any size.',
+       '<b>The easiest "Off".</b> The face sleeps and the orb remains a plain button.'],
+  risks:['<b>The "AI blob" trope.</b> Many assistants are glowing orbs. The sprout silhouette and motion personality are what make it ours.',
+         '<b>No limbs.</b> Emotion comes from eyes, squash and the sprout. For the Create mode "Prayerful", two small folded hands appear only in that mode.',
+         '<b>Least cuddly</b> of the four, which is exactly why the other forms exist.'],
+  faith:'Neutral, with no symbolic baggage. Glow sits behind and below Zuri, never as a ring above the head (no halo). Prayerful: small folded hands, closed eyes, sprout bowed.',
+  compose:'Easiest of the four: circles, rounded rects and arcs, reusing RecordOrb\'s gradient. Est. 6–8 days, including the shared rig.'},
+ {key:'wren',short:'Wren',name:'Wren',line:'A small songbird who keeps what matters.',
+  essence:'A small, round songbird who hears everything, tilts its head when you speak, and keeps what matters.',
+  why:['<b>The most legible listening gesture</b> after Nas\'s ears: a head tilt.',
+       '<b>Warmth and range.</b> A hop, a wing flick and a perky tail.',
+       '<b>Humble and small,</b> a companion rather than an authority.'],
+  risks:['<b>Finch</b> (the self-care app) has a bird companion, and the old Twitter bird lingers.',
+         '<b>Profile view, one eye,</b> so it has fewer facial expressions.',
+         '<b>Pale gold on Paper</b> can drift toward dove imagery. Keep the tail cocked and the colour warm.'],
+  faith:'Deliberately not a dove. Prayerful: wing folded in front, head bowed, eye closed.',
+  compose:'Moderate: about six short paths plus circles, with pivots for head, wing and tail. About 4–5 days on the shared rig.'},
+ {key:'folio',short:'Page',name:'Page',line:'Your note, come to life.',
+  essence:'A folded page that writes itself while you listen: "The Note is the workspace", made into a character.',
+  why:['<b>The best labor illusion.</b> You watch it write your note line by line.',
+       '<b>Listening is literal.</b> Its lines become your waveform.',
+       '<b>Feels like stationery,</b> in keeping with the paper-and-ink system.'],
+  risks:['<b>Clippy.</b> Expect people to say so.',
+         '<b>It looks like content.</b> Keep it away from note lists so it is never mistaken for a document icon.',
+         '<b>Weakest at 24 dp,</b> where it reads as a file icon.'],
+  faith:'Must never sit beside scripture text, where a talking page could read as "the Bible speaking". Prayerful: small folded hands in front of the lines.',
+  compose:'Easy: one path with a fold, plus polylines. About 3–4 days on the shared rig.'},
+ {key:'nas',short:'Nas',name:'Nas, the puppy',line:'A calm little puppy, glad you\'re here.',
+  essence:'A calm little puppy whose ears lift when you speak, who tilts his head to listen, and who is quietly glad you came back.',
+  why:['<b>Ears that hear.</b> Floppy ears lifting with your voice are the most natural "I\'m listening" signal anyone knows.',
+       '<b>Loyalty = "keeps what matters".</b> A dog remembers you, which is the emotional promise of the product.',
+       '<b>The most lovable at first sight,</b> and the strongest emotional hook for retention (Finch-level warmth).',
+       '<b>Calm by design.</b> He wags only at real peaks, his timings are slower, and he never jumps around.'],
+  risks:['<b>Too lovable can pull focus.</b> Nas gets the strictest motion budget (timings ×1.2, no idle wag).',
+         '<b>Dog mascots are common</b> in pet and kids\' apps. The calm, patched-eye design keeps it grown-up.',
+         '<b>Culture:</b> some Muslim households consider dogs unclean, and "Nas" has its own meanings (see open questions).',
+         '<b>The ears need care at 24 dp.</b> The simplified version keeps ears, eyes and nose only.'],
+  faith:'No Christian symbolism either way. Prayerful: paws together under his chin, eyes closed, ears softly down. He never wags on a prayer request.',
+  compose:'Moderate: head and body circles, two ear ellipses on pivots, a tail capsule and a snout. About 4–5 days on the shared rig.'}
+];
+
+/* ---------- colour ---------- */
+function hex(h){h=h.replace('#','');return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)];}
+function mix(a,b,t){var A=hex(a),B=hex(b);return '#'+[0,1,2].map(function(i){var v=Math.round(A[i]*(1-t)+B[i]*t);return ('0'+v.toString(16)).slice(-2);}).join('');}
+function rgba(h,a){var c=hex(h);return 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')';}
+function pal(acc,dark){
+  var a=dark?acc.d:acc.l;
+  return {a:a,dark:dark,
+    body1:dark?mix(a,'#ffffff',.22):mix(a,'#ffffff',.5),
+    body2:dark?mix(a,'#0C111B',.1):mix(a,'#ffffff',.12),
+    deep:dark?mix(a,'#0C111B',.42):mix(a,'#18181B',.25),
+    light:dark?mix(a,'#ffffff',.62):mix(a,'#ffffff',.8),
+    rim:dark?mix(a,'#ffffff',.6):mix(a,'#ffffff',.55),
+    eye:'#151827', cheek:'rgba(244,114,138,.34)',
+    spark:dark?mix(a,'#ffffff',.25):a, gold:dark?'#E0B25A':'#D69E2E',
+    mute:dark?'#8995A8':'#8B8B93', shadow:dark?'rgba(0,0,0,.4)':'rgba(24,24,27,.09)',
+    paper:dark?mix(a,'#EEF0F5',.9):mix(a,'#FFFFFF',.95),
+    paperLine:dark?mix(a,'#0C111B',.3):mix(a,'#D4D4D8',.72),
+    lines:dark?mix(a,'#ffffff',.1):mix(a,'#ffffff',.25),
+    solid1:dark?mix(a,'#ffffff',.12):mix(a,'#ffffff',.14), solid2:dark?a:mix(a,'#000000',.08),
+    onA:dark?'#111113':'#FFFFFF'};
+}
+
+/* ---------- state ---------- */
+var S={accent:ACC[0],theme:'auto',rm:false,three:false,level:.55,voice:true,presence:'around',form:'orb',
+  names:{orb:'Zuri',wren:'Wren',folio:'Page',nas:'Nas'},px:0,py:0,tx:0,ty:0,onBtn:false,sermonQuiet:true,hidden:false};
+var mql=window.matchMedia?window.matchMedia('(prefers-color-scheme: dark)'):null;
+var rml=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
+S.rm=!!(rml&&rml.matches); if(S.rm) S.voice=false;
+function isDark(){return S.theme==='dark'||(S.theme==='auto'&&!!(mql&&mql.matches));}
+function charOf(k){return CHARS.filter(function(x){return x.key===k;})[0];}
+function nameOf(k){return S.names[k]||charOf(k).short;}
+
+/* ---------- drawing helpers ---------- */
+function R(n){return Math.round(n*100)/100;}
+var TAU=Math.PI*2;
+function el(tag,attrs){var s='<'+tag;for(var k in attrs){if(attrs[k]!==undefined&&attrs[k]!==null)s+=' '+k+'="'+(typeof attrs[k]==='number'?R(attrs[k]):attrs[k])+'"';}return s+'/>';}
+function sparkle(x,y,s,col,op){var c=s*.16;return '<path d="M'+R(x)+' '+R(y-s)+' Q'+R(x+c)+' '+R(y-c)+' '+R(x+s)+' '+R(y)+' Q'+R(x+c)+' '+R(y+c)+' '+R(x)+' '+R(y+s)+' Q'+R(x-c)+' '+R(y+c)+' '+R(x-s)+' '+R(y)+' Q'+R(x-c)+' '+R(y-c)+' '+R(x)+' '+R(y-s)+'Z" fill="'+col+'" opacity="'+R(op)+'"/>';}
+function heart(x,y,s,col,op){return '<path d="M'+R(x)+' '+R(y+s)+' C'+R(x-s*1.7)+' '+R(y)+' '+R(x-s*.7)+' '+R(y-s*1.2)+' '+R(x)+' '+R(y-s*.35)+' C'+R(x+s*.7)+' '+R(y-s*1.2)+' '+R(x+s*1.7)+' '+R(y)+' '+R(x)+' '+R(y+s)+'Z" fill="'+col+'" opacity="'+R(op)+'"/>';}
+
+function pose(state,t,L,rm){
+  if(state==='celebratory'){var c=pose('celebrating',t,L,rm);c.mode='celebratory';return c;}
+  var p={by:0,sx:1,sy:1,rot:0,blink:0,eye:'open',lookX:0,lookY:0,mouth:'smile',brows:false,hop:0,eyeScale:1,state:state,t:t,L:L,rm:rm,hands:false};
+  var ph,b;
+  function blinkAt(period){if(rm)return 0;var q=t%period;return q<.16?Math.sin(q/.16*Math.PI):0;}
+  function breath(per,amp){var v=rm?0:Math.sin(t*TAU/per);p.sx=1-amp*.55*v;p.sy=1+amp*v;}
+  switch(state){
+    case 'idle': breath(3.4,.022); p.blink=blinkAt(4.6); break;
+    case 'listening': b=rm?0:Math.sin(t*TAU/2.2); p.sy=1+.035*L+.01*b; p.sx=1+.014*L; p.rot=rm?-5:(-5+Math.sin(t*1.3)*2); p.eye='soft'; p.lookX=.6; break;
+    case 'thinking': p.rot=rm?3:Math.sin(t*1.5)*3; p.lookX=1.1; p.lookY=-1.5; p.mouth='o'; p.blink=blinkAt(3.1); break;
+    case 'celebrating': p.eye='happy'; p.mouth='open';
+      if(rm){p.by=-5;p.sy=1.04;p.sx=.97;p.hop=.6;}
+      else{var P=1.15;ph=(t%P)/P;
+        if(ph<.55){var h=Math.sin(ph/.55*Math.PI);p.by=-9*h;p.hop=h;p.sy=1+.05*h;p.sx=1-.03*h;}
+        else if(ph<.75){var s=Math.sin((ph-.55)/.2*Math.PI)*.08;p.sx=1+s;p.sy=1-s;}}
+      break;
+    case 'worried': p.sx=1.03;p.sy=.95;p.by=1.5;p.rot=rm?0:Math.sin(t*.9)*1.5;p.brows=true;p.mouth='wobble';p.lookY=.7;p.eyeScale=.88;p.blink=blinkAt(3.8); break;
+    case 'sleepy': breath(5.5,.025); p.sy-=.03; p.by=2; p.rot=6; p.eye='closed'; p.mouth='none'; break;
+    case 'prayerful': breath(6,.008); p.by=1; p.eye='closed'; p.mouth='none'; p.hands=true; break;
+    case 'peaceful': breath(6,.015); p.eye='closed'; p.mouth='smile'; break;
+    case 'grateful': breath(4.5,.012); p.eye='happy'; p.mouth='smile'; p.rot=rm?4:4+Math.sin(t*.8); break;
+    case 'joyful': p.eye='happy'; p.mouth='open'; p.by=rm?-2:-Math.abs(Math.sin(t*2.6))*3; break;
+    case 'reflective': breath(4.5,.012); p.lookX=-1; p.lookY=-1.5; p.rot=-3; p.blink=blinkAt(4.2); break;
+  }
+  if(S.three&&!rm){p.lookX+=S.px*.7;p.lookY+=S.py*.5;}
+  return p;
+}
+function bodyT(p,foot){var ox=S.three&&!p.rm?S.px*1.2:0;return 'translate('+R(ox)+' '+R(p.by)+') rotate('+R(p.rot)+' 50 '+foot+') translate(50 '+foot+') scale('+R(p.sx)+' '+R(p.sy)+') translate(-50 -'+foot+')';}
+function eyes(pts,p,o){
+  var s='',rx=o.rx*p.eyeScale,ry=o.ry*p.eyeScale,sw=o.sw||rx*.8,lk=o.look||1;
+  pts.forEach(function(q){
+    var x=q[0]+p.lookX*lk,y=q[1]+p.lookY*lk;
+    if(p.eye==='happy') s+='<path d="M'+R(x-rx*1.15)+' '+R(y+ry*.35)+' Q'+R(x)+' '+R(y-ry*1.25)+' '+R(x+rx*1.15)+' '+R(y+ry*.35)+'" fill="none" stroke="'+o.col+'" stroke-width="'+R(sw)+'" stroke-linecap="round"/>';
+    else if(p.eye==='closed') s+='<path d="M'+R(x-rx*1.15)+' '+R(y)+' Q'+R(x)+' '+R(y+ry*.95)+' '+R(x+rx*1.15)+' '+R(y)+'" fill="none" stroke="'+o.col+'" stroke-width="'+R(sw)+'" stroke-linecap="round"/>';
+    else{
+      var ery=ry*(p.eye==='soft'?.6:1)*(1-p.blink*.88),ey=y+(p.eye==='soft'?ry*.28:0);
+      s+=el('ellipse',{cx:x,cy:ey,rx:rx,ry:ery,fill:o.col});
+      if(o.lod&&p.blink<.4) s+=el('circle',{cx:x-rx*.3,cy:ey-ery*.42,r:rx*.36,fill:'#fff',opacity:.92});
+    }
+  });
+  return s;
+}
+function brows(pts,o){
+  var s='',rx=o.rx,ry=o.ry;
+  pts.forEach(function(q,i){var x=q[0],y=q[1],d;
+    if(i===0) d='M'+R(x-rx*1.4)+' '+R(y-ry*1.35)+' L'+R(x+rx*1.1)+' '+R(y-ry*1.95);
+    else d='M'+R(x-rx*1.1)+' '+R(y-ry*1.95)+' L'+R(x+rx*1.4)+' '+R(y-ry*1.35);
+    s+='<path d="'+d+'" stroke="'+o.col+'" stroke-width="'+R(o.sw||1.6)+'" stroke-linecap="round" fill="none"/>';});
+  return s;
+}
+function mouth(x,y,w,p,P,lod){
+  if(!lod) return '';
+  switch(p.mouth){
+    case 'smile': return '<path d="M'+R(x-w)+' '+R(y)+' Q'+R(x)+' '+R(y+w*.85)+' '+R(x+w)+' '+R(y)+'" fill="none" stroke="'+P.eye+'" stroke-width="'+R(w*.5)+'" stroke-linecap="round"/>';
+    case 'open': return '<path d="M'+R(x-w*1.15)+' '+R(y-.4)+' Q'+R(x)+' '+R(y+w*2)+' '+R(x+w*1.15)+' '+R(y-.4)+' Z" fill="'+P.eye+'"/>'+el('ellipse',{cx:x,cy:y+w*.75,rx:w*.55,ry:w*.3,fill:'#F47A8A'});
+    case 'o': return el('ellipse',{cx:x+1,cy:y+.4,rx:w*.42,ry:w*.5,fill:P.eye});
+    case 'wobble': return '<path d="M'+R(x-w)+' '+R(y+.8)+' Q'+R(x-w/2)+' '+R(y-.7)+' '+R(x)+' '+R(y+.3)+' Q'+R(x+w/2)+' '+R(y+1.2)+' '+R(x+w)+' '+R(y-.1)+'" fill="none" stroke="'+P.eye+'" stroke-width="'+R(w*.45)+'" stroke-linecap="round"/>';
+  }
+  return '';
+}
+function hands(x,y,P,s){s=s||1;return '<g stroke="'+P.deep+'" stroke-width=".9" fill="'+P.body1+'">'+
+  '<ellipse cx="'+R(x-2.6*s)+'" cy="'+R(y)+'" rx="'+R(3.6*s)+'" ry="'+R(6.4*s)+'" transform="rotate(18 '+R(x-2.6*s)+' '+R(y)+')"/>'+
+  '<ellipse cx="'+R(x+2.6*s)+'" cy="'+R(y)+'" rx="'+R(3.6*s)+'" ry="'+R(6.4*s)+'" transform="rotate(-18 '+R(x+2.6*s)+' '+R(y)+')"/></g>';}
+function shadow(p,P,y){var s=el('ellipse',{cx:50,cy:y||93,rx:18*(1-p.hop*.35),ry:2.6,fill:P.shadow});
+  if(S.three) s+=el('ellipse',{cx:50+(p.rm?0:-S.px*2),cy:(y||93)-.4,rx:10*(1-p.hop*.4),ry:1.6,fill:P.dark?'rgba(0,0,0,.45)':'rgba(24,24,27,.16)'});
+  return s;}
+/* volumetric layer (3D look): shading field, specular and rim, clipped to the silhouette */
+function vol(shapes,rimShape,P,o,p,spec){
+  if(!o.three||!o.lod) return '';
+  var id=o.id,px=p.rm?0:S.px,py=p.rm?0:S.py;
+  return '<defs><clipPath id="c'+id+'">'+shapes+'</clipPath>'+
+   '<radialGradient id="v'+id+'" gradientUnits="userSpaceOnUse" cx="'+R(40-px*8)+'" cy="'+R(36-py*8)+'" r="60"><stop offset="0" stop-color="#fff" stop-opacity="'+(P.dark?.16:.26)+'"/><stop offset=".42" stop-color="#fff" stop-opacity="0"/><stop offset=".78" stop-color="#000" stop-opacity="'+(P.dark?.2:.12)+'"/><stop offset="1" stop-color="#000" stop-opacity="'+(P.dark?.42:.28)+'"/></radialGradient>'+
+   '<radialGradient id="h'+id+'"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".5" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>'+
+   '<linearGradient id="r'+id+'" x1="'+R(.15+px*.2)+'" y1="'+R(.1+py*.2)+'" x2="'+R(.95+px*.2)+'" y2="1"><stop offset=".55" stop-color="'+P.rim+'" stop-opacity="0"/><stop offset="1" stop-color="'+P.rim+'" stop-opacity="1"/></linearGradient></defs>'+
+   '<g clip-path="url(#c'+id+')"><rect x="0" y="0" width="100" height="100" fill="url(#v'+id+')"/>'+
+   '<ellipse cx="'+R(spec[0]-px*4)+'" cy="'+R(spec[1]-py*4)+'" rx="'+spec[2]+'" ry="'+R(spec[2]*.6)+'" fill="url(#h'+id+')" transform="rotate(-32 '+spec[0]+' '+spec[1]+')"/>'+
+   '<g fill="none" stroke="url(#r'+id+')" stroke-width="3.4">'+rimShape+'</g></g>';
+}
+function fx(p,P,o){
+  var s='',t=p.t,st=p.mode==='celebratory'?'celebrating':p.state;
+  if(st==='celebrating'&&o.sp) o.sp.forEach(function(q,i){var k=p.rm?1:(.55+.45*Math.sin(t*5+i*1.9));s+=sparkle(q[0],q[1],q[2]*k,i%2?P.gold:P.spark,p.rm?1:.45+.55*k);});
+  if(st==='joyful'&&o.sp) o.sp.slice(0,2).forEach(function(q,i){var k=p.rm?.8:(.5+.4*Math.sin(t*3+i*2));s+=sparkle(q[0],q[1],q[2]*k,i?P.gold:P.spark,.8);});
+  if(st==='grateful'&&o.sp){var hy=p.rm?0:Math.sin(t*1.6)*1.5;s+=heart(o.sp[1][0]-2,o.sp[1][1]+4+hy,3.6,'#F47A8A',.9);}
+  if(st==='thinking'&&o.dots){for(var i=0;i<3;i++){var dy=p.rm?(i===1?-2.5:0):-Math.max(0,Math.sin(t*4.2-i*.7))*3.2;s+=el('circle',{cx:o.dots[0]+i*6.5,cy:o.dots[1]+dy,r:2.1,fill:P.spark,opacity:p.rm?.8:(.45+.55*(-dy/3.2))});}}
+  if(st==='sleepy'&&o.z){var phs=p.rm?[.3,.68]:[0,1,2].map(function(i){return (t/2.6+i/3)%1;});
+    phs.forEach(function(q){var op=p.rm?.85:Math.sin(q*Math.PI);s+='<text x="'+R(o.z[0]+q*10)+'" y="'+R(o.z[1]-q*16)+'" font-family="Outfit,Inter,system-ui,sans-serif" font-weight="700" font-size="'+R(6+q*5)+'" fill="'+P.mute+'" opacity="'+R(op)+'">z</text>';});}
+  return s;
+}
+function stOf(p){return p.mode==='celebratory'?'celebrating':p.state;}
+
+/* ---------- forms ---------- */
+var DRAW={};
+DRAW.orb=function(p,P,o){
+  var s='',id=o.id,L=p.L,t=p.t,lod=o.lod,st=stOf(p);
+  s+='<defs><radialGradient id="b'+id+'" cx=".36" cy=".3" r=".85"><stop offset="0" stop-color="'+(o.faceless?P.solid1:P.body1)+'"/><stop offset="1" stop-color="'+(o.faceless?P.solid2:P.body2)+'"/></radialGradient>'+
+     '<radialGradient id="g'+id+'"><stop offset=".55" stop-color="'+P.a+'" stop-opacity="'+(P.dark?.32:.2)+'"/><stop offset="1" stop-color="'+P.a+'" stop-opacity="0"/></radialGradient></defs>';
+  if(lod) s+=el('circle',{cx:50,cy:60+p.by*.5,r:44,fill:'url(#g'+id+')'});
+  if(st==='listening'&&!o.faceless&&!o.calm){
+    var ks=p.rm?[.45]:[0,1].map(function(i){return (t/1.5+i/2)%1;});
+    ks.forEach(function(k){s+=el('circle',{cx:50,cy:58,r:31*(1+k*.42*(.45+L)),fill:'none',stroke:P.a,'stroke-width':1.4,opacity:(1-k)*(.18+.55*L)});});
+  }
+  s+=shadow(p,P);
+  s+='<g transform="'+bodyT(p,88)+'">';
+  if(!o.faceless){
+    var hs,lean=0;
+    switch(st){
+      case 'listening': hs=[0,1,2].map(function(i){return p.rm?[6,11,7][i]*(.5+L):3.5+L*(7+5*Math.sin(t*9+i*1.9))+(i===1?2:0);});break;
+      case 'thinking': hs=[0,1,2].map(function(i){return p.rm?[4,7,4][i]:4+2.5*Math.max(0,Math.sin(t*4.2-i*.7));});break;
+      case 'celebrating': hs=[8,12,8];break;
+      case 'joyful': hs=[0,1,2].map(function(i){return p.rm?[6,10,6][i]:6+2*Math.sin(t*5+i);});break;
+      case 'worried': case 'sleepy': hs=[3,4,3];lean=14;break;
+      case 'prayerful': hs=[3,5,3];lean=10;break;
+      case 'peaceful': hs=[4,6,4];lean=6;break;
+      default: hs=[5,8,5];
+    }
+    s+='<g transform="rotate('+lean+' 50 30)">';
+    [43.5,50,56.5].forEach(function(x,i){var h=Math.max(2.5,hs[i]);s+=el('rect',{x:x-2.2,y:30-h,width:4.4,height:h+4,rx:2.2,fill:P.deep});});
+    s+='</g>';
+  }
+  var body='<circle cx="50" cy="58" r="30"/>';
+  s+=el('circle',{cx:50,cy:58,r:30,fill:'url(#b'+id+')'});
+  if(lod&&!o.three) s+='<ellipse cx="39" cy="44" rx="8.5" ry="4.6" fill="#fff" opacity="'+(P.dark?.28:.42)+'" transform="rotate(-35 39 44)"/>';
+  s+=vol(body,body,P,o,p,[39,43,10]);
+  if(o.faceless){
+    var mc=P.onA;
+    s+=el('rect',{x:45.5,y:43,width:9,height:15,rx:4.5,fill:mc});
+    s+='<path d="M40.5 53 Q40.5 64 50 64 Q59.5 64 59.5 53" fill="none" stroke="'+mc+'" stroke-width="2.6" stroke-linecap="round"/>'+el('rect',{x:48.7,y:64,width:2.6,height:5,rx:1.3,fill:mc});
+  } else {
+    if(lod&&st!=='worried') s+=el('ellipse',{cx:33.5,cy:65,rx:4.2,ry:2.5,fill:P.cheek})+el('ellipse',{cx:66.5,cy:65,rx:4.2,ry:2.5,fill:P.cheek});
+    var E=[[41,56],[59,56]];
+    s+=eyes(E,p,{rx:lod?3.3:4.4,ry:lod?4.6:5.8,col:P.eye,lod:lod,sw:lod?2.4:3.2});
+    if(p.brows) s+=brows(E,{rx:3.3,ry:4.6,col:P.eye,sw:1.8});
+    s+=mouth(50,65,3,p,P,lod);
+    if(p.hands&&lod) s+=hands(50,76,P);
+  }
+  s+='</g>';
+  if(!o.faceless) s+=fx(p,P,{sp:[[16,30,5],[84,24,4],[88,62,3.5],[12,64,3.5]],dots:[67,20],z:[70,32]});
+  return s;
+};
+DRAW.wren=function(p,P,o){
+  var s='',id=o.id,L=p.L,t=p.t,lod=o.lod,st=stOf(p);
+  s+='<defs><radialGradient id="b'+id+'" cx=".4" cy=".3" r=".9"><stop offset="0" stop-color="'+P.body1+'"/><stop offset="1" stop-color="'+P.body2+'"/></radialGradient></defs>';
+  if(st==='listening'&&!o.calm){
+    var ks=p.rm?[.4]:[0,1,2].map(function(i){return (t/1.2+i/3)%1;});
+    ks.forEach(function(k){var x=95-k*9;s+='<path d="M'+R(x)+' 26 Q'+R(x-6)+' 36 '+R(x)+' 46" fill="none" stroke="'+P.a+'" stroke-width="1.6" stroke-linecap="round" opacity="'+R(Math.sin(k*Math.PI)*(.15+.7*L))+'"/>';});
+  }
+  s+=shadow(p,P,92);
+  var tail=0,wing=0,headDy=0,headR=0;
+  switch(st){
+    case 'idle': tail=p.rm?0:Math.sin(t*TAU/3.4)*2;break;
+    case 'listening': tail=p.rm?6:6+Math.sin(t*7)*L*10;headR=-6;break;
+    case 'thinking': tail=4;headR=-4;break;
+    case 'reflective': tail=2;headR=-8;break;
+    case 'celebrating': tail=12;wing=p.rm?-40:-30-Math.abs(Math.sin(t*11))*25*(.3+p.hop);break;
+    case 'joyful': tail=p.rm?10:8+Math.sin(t*6)*5;wing=-12;break;
+    case 'worried': tail=-26;wing=6;headDy=2;break;
+    case 'sleepy': tail=-18;headDy=5;headR=10;break;
+    case 'prayerful': tail=-8;headDy=3;headR=14;wing=-16;break;
+    case 'peaceful': tail=-4;headR=6;break;
+    case 'grateful': tail=4;headR=10;headDy=1;break;
+  }
+  s+='<g transform="'+bodyT(p,88)+'">';
+  s+='<path d="M32 58 Q16 44 15 24 Q24 27 40 48 Z" fill="'+P.deep+'" transform="rotate('+R(tail)+' 34 54)"/>';
+  s+='<path d="M45 80 L43.5 89 M55 80 L56 89" stroke="'+P.deep+'" stroke-width="2.4" stroke-linecap="round"/>';
+  s+=el('circle',{cx:49,cy:60,r:25,fill:'url(#b'+id+')'});
+  s+=vol('<circle cx="49" cy="60" r="25"/>','<circle cx="49" cy="60" r="25"/>',P,o,p,[40,50,8]);
+  s+='<g transform="translate(0 '+R(headDy)+') rotate('+R(headR)+' 58 50)">';
+  s+=el('circle',{cx:62,cy:40,r:15.5,fill:P.body1});
+  if(o.three&&lod) s+='<circle cx="'+R(57-(p.rm?0:S.px)*2)+'" cy="'+R(33-(p.rm?0:S.py)*2)+'" r="4.5" fill="#fff" opacity=".35"/>';
+  if(st==='celebrating'||st==='joyful') s+='<path d="M76 37.5 L86.5 39.8 L76 42 Z" fill="'+P.deep+'"/><path d="M76 43 L84 46.5 L76 47 Z" fill="'+P.deep+'"/>';
+  else s+='<path d="M76 38 L87 41.8 L76 45.5 Z" fill="'+P.deep+'"/>';
+  s+=eyes([[68,37]],p,{rx:lod?2.8:3.8,ry:lod?3.4:4.4,col:P.eye,lod:lod,sw:lod?2:2.8,look:.8});
+  if(p.brows) s+='<path d="M63.5 30.5 L71.5 33" stroke="'+P.eye+'" stroke-width="1.7" stroke-linecap="round"/>';
+  if(lod&&st!=='worried') s+=el('ellipse',{cx:70,cy:45.5,rx:3.2,ry:1.9,fill:P.cheek});
+  s+='</g>';
+  if(lod) s+=el('ellipse',{cx:57,cy:69,rx:13,ry:10.5,fill:P.light,opacity:.9});
+  s+='<path d="M28 60 Q42 45 63 59 Q47 73 28 60 Z" fill="'+P.deep+'" transform="rotate('+R(wing)+' 40 57)"/>';
+  s+='</g>';
+  s+=fx(p,P,{sp:[[14,30,4.5],[88,22,4],[90,66,3.5],[12,72,3]],dots:[70,14],z:[74,26]});
+  return s;
+};
+DRAW.folio=function(p,P,o){
+  var s='',L=p.L,t=p.t,lod=o.lod,st=stOf(p);
+  s+=shadow(p,P,95);
+  var F=12,lean=0;
+  if(st==='celebrating') F=p.rm?15:12+Math.sin(t*12)*3;
+  if(st==='worried'){F=17;lean=-4;}
+  if(st==='sleepy') lean=4;
+  if(st==='prayerful'||st==='grateful') lean=3;
+  s+='<g transform="'+bodyT(p,84)+' rotate('+lean+' 50 84)">';
+  s+='<path d="M36 78 H44 V94 L40 90 L36 94 Z" fill="'+P.a+'"/>';
+  var page='M32 20 H'+R(72-F)+' L72 '+R(20+F)+' V78 Q72 82 68 82 H32 Q28 82 28 78 V24 Q28 20 32 20 Z';
+  s+='<path d="'+page+'" fill="'+P.paper+'" stroke="'+P.paperLine+'" stroke-width="1.4" stroke-linejoin="round"/>';
+  s+=vol('<path d="'+page+'"/>','<path d="'+page+'"/>',P,o,p,[38,30,9]);
+  s+='<path d="M'+R(72-F)+' 20 V'+R(20+F-3)+' Q'+R(72-F)+' '+R(20+F)+' '+R(72-F+3)+' '+R(20+F)+' H72 Z" fill="'+P.light+'" stroke="'+P.paperLine+'" stroke-width="1.4" stroke-linejoin="round"/>';
+  var E=[[42,40],[56,40]];
+  if(lod&&st!=='worried') s+=el('ellipse',{cx:36.5,cy:47,rx:3.2,ry:2,fill:P.cheek})+el('ellipse',{cx:61.5,cy:47,rx:3.2,ry:2,fill:P.cheek});
+  s+=eyes(E,p,{rx:lod?2.9:3.8,ry:lod?3.9:5,col:P.eye,lod:lod,sw:lod?2.1:2.8});
+  if(p.brows) s+=brows(E,{rx:2.9,ry:3.9,col:P.eye,sw:1.6});
+  s+=mouth(49,47.5,2.6,p,P,lod);
+  if(lod){
+    var Ys=[58,65,72],lens=[28,22,15],lc=P.lines,sw=2.2;
+    if(p.hands){ s+=hands(49,66,P,.9); }
+    else if(st==='listening'){
+      Ys.forEach(function(y,i){var d='';for(var x=35;x<=63.01;x+=1.4){var env=Math.sin(Math.PI*(x-35)/28);var a=p.rm?(.6*L*3.4):(L*3.4*(.6+.4*Math.sin(t*3+i)));if(o.calm)a*=.25;var yy=y+Math.sin(x*.55+(p.rm?0:t*8)+i*1.3)*a*env;d+=(d?' L':'M')+R(x)+' '+R(yy);}s+='<path d="'+d+'" fill="none" stroke="'+lc+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-linejoin="round"/>';});
+    } else if(st==='thinking'){
+      var total=p.rm?44:((t*16)%80),rem=total,cx=35,cy=58;
+      Ys.forEach(function(y,i){var l=Math.max(0,Math.min(lens[i],rem));rem-=lens[i];if(l>0){s+=el('line',{x1:35,y1:y,x2:35+l,y2:y,stroke:lc,'stroke-width':sw,'stroke-linecap':'round'});cx=35+l;cy=y;}});
+      s+=el('rect',{x:cx+2,y:cy-3.2,width:1.6,height:6.4,rx:.8,fill:P.a,opacity:p.rm?1:(Math.floor(t*3)%2?1:.25)});
+    } else {
+      var op=st==='sleepy'?.35:(st==='worried'?.55:1);
+      Ys.forEach(function(y,i){s+='<line x1="35" y1="'+y+'" x2="'+(35+lens[i])+'" y2="'+y+'" stroke="'+lc+'" stroke-width="'+sw+'" stroke-linecap="round" opacity="'+op+'"'+(st==='worried'?' stroke-dasharray="3 3.5"':'')+'/>';});
+    }
+  }
+  s+='</g>';
+  s+=fx(p,P,{sp:[[16,26,4.5],[86,20,4],[88,60,3.5],[14,66,3]],dots:[68,10],z:[74,22]});
+  return s;
+};
+DRAW.nas=function(p,P,o){
+  var s='',id=o.id,L=p.L,t=p.t,lod=o.lod,st=stOf(p),rm=p.rm;
+  s+='<defs><radialGradient id="b'+id+'" cx=".4" cy=".3" r=".9"><stop offset="0" stop-color="'+P.body1+'"/><stop offset="1" stop-color="'+P.body2+'"/></radialGradient></defs>';
+  s+=shadow(p,P,93);
+  var headR=0,headDy=0,ear=12,tail=0;
+  switch(st){
+    case 'idle': tail=rm?0:Math.sin(t*1.1)*5; ear=12+(rm?0:Math.sin(t*TAU/3.4)*1.5); break;
+    case 'listening': headR=rm?-10:-10+Math.sin(t*1.3)*2; ear=12+(o.calm?.3:1)*L*(rm?16:16+Math.sin(t*10)*4); break;
+    case 'thinking': headR=8; ear=16; break;
+    case 'reflective': headR=-6; ear=14; break;
+    case 'celebrating': ear=24+(rm?0:Math.sin(t*9)*6); tail=rm?24:Math.sin(t*14)*28; break;
+    case 'joyful': ear=18; tail=rm?14:Math.sin(t*8)*16; break;
+    case 'worried': ear=2; headDy=2; tail=35; break;
+    case 'sleepy': ear=4; headDy=4; headR=8; tail=20; break;
+    case 'prayerful': ear=5; headDy=2; break;
+    case 'peaceful': ear=8; headR=4; break;
+    case 'grateful': ear=10; headR=6; headDy=1; tail=rm?6:Math.sin(t*3)*6; break;
+  }
+  s+='<g transform="'+bodyT(p,91)+'">';
+  s+='<rect x="63" y="72" width="16" height="6.5" rx="3.25" fill="'+P.deep+'" transform="rotate('+R(-35-tail)+' 64 76)"/>';
+  s+=el('ellipse',{cx:50,cy:77,rx:17.5,ry:13.5,fill:'url(#b'+id+')'});
+  if(lod) s+=el('ellipse',{cx:50,cy:80,rx:9,ry:8,fill:P.light,opacity:.85});
+  s+=vol('<ellipse cx="50" cy="77" rx="17.5" ry="13.5"/>','<ellipse cx="50" cy="77" rx="17.5" ry="13.5"/>',P,o,p,[42,72,6]);
+  if(!p.hands) s+=el('ellipse',{cx:42.5,cy:89,rx:5.6,ry:3.4,fill:P.light})+el('ellipse',{cx:57.5,cy:89,rx:5.6,ry:3.4,fill:P.light});
+  s+='<g transform="translate(0 '+R(headDy)+') rotate('+R(headR)+' 50 60)">';
+  s+=el('circle',{cx:50,cy:42,r:21,fill:'url(#b'+id+')'});
+  s+=vol('<circle cx="50" cy="42" r="21"/>','<circle cx="50" cy="42" r="21"/>',P,o,p,[42,32,8]);
+  if(lod) s+=el('ellipse',{cx:59,cy:40,rx:7,ry:6.5,fill:P.deep,opacity:.28});
+  s+='<ellipse cx="30.5" cy="44" rx="7.6" ry="14.5" fill="'+P.deep+'" transform="rotate('+R(ear)+' 33 31)"/>';
+  s+='<ellipse cx="69.5" cy="44" rx="7.6" ry="14.5" fill="'+P.deep+'" transform="rotate('+R(-ear)+' 67 31)"/>';
+  s+=el('ellipse',{cx:50,cy:51,rx:9.5,ry:7,fill:P.light});
+  var E=[[42,40],[58,40]];
+  if(lod&&st!=='worried') s+=el('ellipse',{cx:37.5,cy:49,rx:3.4,ry:2.1,fill:P.cheek})+el('ellipse',{cx:62.5,cy:49,rx:3.4,ry:2.1,fill:P.cheek});
+  s+=eyes(E,p,{rx:lod?3.1:4.2,ry:lod?3.8:5,col:P.eye,lod:lod,sw:lod?2.2:3});
+  if(p.brows) s+=brows(E,{rx:3.1,ry:3.8,col:P.eye,sw:1.7});
+  s+=el('ellipse',{cx:50,cy:47.6,rx:lod?3.6:4.6,ry:lod?2.6:3.2,fill:P.eye});
+  if(lod){
+    s+=el('ellipse',{cx:48.9,cy:46.8,rx:1.1,ry:.6,fill:'#fff',opacity:.7});
+    if(p.mouth==='open') s+='<path d="M46.5 52.5 Q50 55.5 53.5 52.5" fill="none" stroke="'+P.eye+'" stroke-width="1.1" stroke-linecap="round"/>'+el('ellipse',{cx:50,cy:55.6,rx:2.4,ry:2.6,fill:'#F47A8A'});
+    else if(p.mouth==='wobble') s+='<path d="M50 50.2 V52 M46.8 54.2 Q50 52 53.2 54.2" fill="none" stroke="'+P.eye+'" stroke-width="1.1" stroke-linecap="round"/>';
+    else if(p.mouth!=='none') s+='<path d="M50 50.2 V52.4 M46.6 52.4 Q48.3 54.6 50 52.4 Q51.7 54.6 53.4 52.4" fill="none" stroke="'+P.eye+'" stroke-width="1.1" stroke-linecap="round"/>';
+    else s+='<path d="M50 50.2 V52.2" stroke="'+P.eye+'" stroke-width="1.1" stroke-linecap="round"/>';
+  }
+  s+='</g>';
+  if(p.hands) s+='<g fill="'+P.light+'" stroke="'+P.deep+'" stroke-width=".9"><ellipse cx="47.2" cy="64" rx="4" ry="6.2" transform="rotate(14 47.2 64)"/><ellipse cx="52.8" cy="64" rx="4" ry="6.2" transform="rotate(-14 52.8 64)"/></g>';
+  s+='</g>';
+  s+=fx(p,P,{sp:[[12,26,4.5],[88,20,4],[92,64,3.5],[9,66,3]],dots:[68,10],z:[76,22]});
+  return s;
+};
+
+/* ---------- mounts ---------- */
+var mounts=[],uid=0;
+var io=('IntersectionObserver' in window)?new IntersectionObserver(function(es){es.forEach(function(e){if(e.target._m){e.target._m.visible=e.isIntersecting;e.target._m.dirty=true;}});},{rootMargin:'80px'}):null;
+function mount(node,opts){
+  var size=+(node.getAttribute('data-size')||96);
+  var f=node.getAttribute('data-force');
+  var m={node:node,char:node.getAttribute('data-char')||'orb',state:node.getAttribute('data-state')||'idle',size:size,id:'m'+(uid++),
+    forceDark:f==='dark'?true:(f==='light'?false:undefined),forceThree:node.hasAttribute('data-force-three'),bound:node.hasAttribute('data-bound'),
+    faceless:false,calm:false,seq:null,visible:true,dirty:true,last:'',t0:performance.now()/1000-Math.random()*3};
+  var svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('width',size);svg.setAttribute('height',size);
+  svg.setAttribute('role','img');svg.setAttribute('focusable','false');svg.style.display='block';svg.style.overflow='visible';
+  node.insertBefore(svg,node.firstChild);
+  m.svg=svg;mounts.push(m);if(io)io.observe(node);node._m=m;return m;
+}
+function effState(m,now){
+  if(m.seq){var e=now-m.seq.start,acc=0;
+    for(var i=0;i<m.seq.steps.length;i++){acc+=m.seq.steps[i][1];if(e<acc)return m.seq.steps[i][0];}
+    var done=m.seq;m.seq=null;if(done.end)done.end(m);}
+  return m.state;
+}
+function play(m,steps,end){m.seq={steps:steps,start:performance.now()/1000,end:end};m.dirty=true;}
+function stateName(st){var a=STATES.concat(MODES).filter(function(x){return x.k===st;})[0];return a?a.n.toLowerCase():st;}
+function render(m,now){
+  var st=effState(m,now);
+  var ch=m.bound?S.form:m.char;
+  var three=S.three||m.forceThree;
+  if(S.rm&&!m.dirty&&m.last===st+ch) return;
+  if(!S.rm&&!three&&m.static&&!m.dirty&&m.last===st+ch) return;
+  var dark=m.forceDark===undefined?isDark():m.forceDark;
+  var P=pal(S.accent,dark);
+  var p=pose(st,now-m.t0,S.level,S.rm);
+  var drawChar=m.faceless?'orb':ch;
+  m.svg.innerHTML=DRAW[drawChar](p,P,{id:m.id,lod:m.size>=32,faceless:m.faceless,three:three,calm:m.calm});
+  if(m.last!==st+ch||m.dirty) m.svg.setAttribute('aria-label',m.faceless?'Record button, no companion':nameOf(ch)+', '+stateName(st));
+  m.last=st+ch;m.dirty=false;
+}
+function markAll(){mounts.forEach(function(m){m.dirty=true;});}
+
+/* ---------- build option sections ---------- */
+function optionHTML(c,i){
+  var tiles=STATES.map(function(st){
+    return '<div class="tile" role="listitem"><div class="stage" data-mount data-char="'+c.key+'" data-state="'+st.k+'" data-size="96"></div>'+
+      '<div><strong>'+st.n+'</strong><span data-cap>'+st.d+'</span></div>'+
+      (st.k==='worried'?'<button class="chip accent" data-retry>Retry</button>':'')+'</div>';
+  }).join('');
+  var ladder=[24,40,64,96,160].map(function(z){return '<div class="rung"><div data-mount data-char="'+c.key+'" data-state="idle" data-size="'+z+'"></div><span>'+z+' dp</span></div>';}).join('');
+  return '<section class="option" id="opt-'+c.key+'" aria-labelledby="h-'+c.key+'">'+
+   '<div class="opt-head"><div class="opt-hero"><div class="stage" data-mount data-hero data-char="'+c.key+'" data-state="idle" data-size="160" tabindex="0" role="button" aria-label="'+c.name+'. Tap to celebrate."></div><small>Tap to say hi</small></div>'+
+   '<div><p class="eyebrow">Form '+(i+1)+' of 4'+(c.def?' &nbsp;<span class="badge">Default pre-selection</span>':'')+(c.key==='nas'?' &nbsp;<span class="badge">New in v2</span>':'')+'</p><h2 id="h-'+c.key+'">'+c.name+'</h2>'+
+   '<p class="essence">'+c.essence+'</p>'+
+   '<div class="cols"><div><h3>Why it fits</h3><ul>'+c.why.map(function(x){return '<li>'+x+'</li>';}).join('')+'</ul></div>'+
+   '<div><h3>Risks and mitigations</h3><ul>'+c.risks.map(function(x){return '<li>'+x+'</li>';}).join('')+'</ul></div></div>'+
+   '<dl class="facts"><div><dt>Faith sensitivity</dt><dd>'+c.faith+'</dd></div><div><dt>Compose drawability</dt><dd>'+c.compose+'</dd></div></dl>'+
+   '</div></div>'+
+   '<div class="states" role="list" aria-label="'+c.short+' states">'+tiles+'</div>'+
+   '<div class="ladder" aria-label="'+c.short+' size ladder">'+ladder+
+   '<div class="duo"><div class="panel paper"><div data-mount data-char="'+c.key+'" data-state="idle" data-size="64" data-force="light"></div><span>Paper</span></div>'+
+   '<div class="panel graphite"><div data-mount data-char="'+c.key+'" data-state="idle" data-size="64" data-force="dark"></div><span>Graphite</span></div></div></div>'+
+   '<p class="lod">At 24 dp the small details drop out (cheeks, mouth, shine'+(c.key==='folio'?', text lines':'')+(c.key==='nas'?', snout mouth, eye patch, belly':'')+'). The silhouette'+(c.key==='nas'?', ears':'')+' and eyes carry it.</p>'+
+   '</section>';
+}
+document.getElementById('options').innerHTML=CHARS.map(optionHTML).join('');
+
+/* compare */
+var ROWS=[['Readable at 24 dp',[5,4,3,4]],['Emotional range',[3,5,3,5]],['Lovable at first sight',[3,4,2,5]],['Faith-safe',[5,4,4,4]],['Ownable (not another app\'s)',[3,3,2,3]],['Expresses the product',[5,4,5,4]],['Compose cost',[5,3,4,3]],['"Off" / quiet story',[5,3,3,3]]];
+(function(){
+  var h='<thead><tr><th scope="col"><span class="sr">Criterion</span></th>'+CHARS.map(function(c,i){return '<th scope="col"'+(i===0?' class="rec-col"':'')+'><div class="stage" data-mount data-char="'+c.key+'" data-state="idle" data-size="40"></div>'+c.short+'</th>';}).join('')+'</tr></thead><tbody>';
+  var tot=[0,0,0,0];
+  ROWS.forEach(function(r){h+='<tr><td>'+r[0]+'</td>'+r[1].map(function(v,i){tot[i]+=v;var d='';for(var k=0;k<5;k++)d+='<i'+(k<v?' class="on"':'')+'></i>';return '<td'+(i===0?' class="rec-col"':'')+' aria-label="'+v+' of 5"><span class="dots">'+d+'</span></td>';}).join('')+'</tr>';});
+  h+='<tr class="total"><td>Total / 40</td>'+tot.map(function(v,i){return '<td'+(i===0?' class="rec-col"':'')+'>'+v+'</td>';}).join('')+'</tr></tbody>';
+  document.getElementById('cmpTable').innerHTML=h;
+})();
+
+/* pickers */
+function picksHTML(withNone,size){
+  return CHARS.map(function(c,i){return '<button class="pick" role="radio" aria-checked="'+(i===0)+'" data-pick="'+c.key+'" tabindex="'+(i===0?0:-1)+'">'+(c.def&&withNone?'<span class="def">Default</span>':'')+'<div class="stage" data-mount data-char="'+c.key+'" data-state="idle" data-size="'+size+'"></div><span data-pname="'+c.key+'">'+nameOf(c.key)+'</span></button>';}).join('')+
+  (withNone?'<button class="pick wide" role="radio" aria-checked="false" data-pick="none" tabindex="-1"><span class="ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3 L11 11 M11 3 L3 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span>No companion<small>Just the app, quietly. Status shows as plain text.</small></span></button>':'');
+}
+var pickGroup=document.getElementById('pickGroup'),sheetPicks=document.getElementById('sheetPicks');
+pickGroup.innerHTML=picksHTML(true,44);sheetPicks.innerHTML=picksHTML(false,36);
+
+/* Spark mode tiles */
+document.getElementById('modeTiles').innerHTML=MODES.map(function(md){return '<div class="tile" role="listitem"><div class="stage" data-mount data-char="orb" data-bound data-state="'+md.k+'" data-size="80"></div><div><strong>'+md.n+'</strong><span>'+md.d+'</span></div></div>';}).join('');
+
+/* capabilities */
+var CAPS=[
+ ['Ask Zuri, across everything','Questions over all your notes and transcripts, answered with sources that jump to the moment in the audio.','"What did we decide about the Q4 launch date?"',['Work','Faith','Study'],'local'],
+ ['Pre-meeting brief','Ten minutes before a calendar event, a short brief from past notes with the same people: open promises, their open questions, last decisions.','"Last time with Acme you promised a revised quote by Friday. It\'s still open."',['Work'],'online'],
+ ['Follow-up email, drafted','Turns the note\'s decisions and action items into an email in your tone, ready to edit. Never sent automatically.','"Draft the follow-up to Tom and Sarah."',['Work'],'online'],
+ ['Chase my action items','A calm list of what you promised, who is waiting, and what\'s overdue. Reminders only at the time you choose, and no guilt.','"3 promised this week · 1 overdue."',['Work','Study'],'local'],
+ ['"What did I commit to this week?"','Commitments pulled from everything you said, not just tasks you typed.','"You said you\'d call back Pastor James. No date was set."',['Work','Faith'],'local'],
+ ['Weekly review','Friday, 4 pm, if you turn it on: decisions, open loops, people waiting on you, and one highlight. Two minutes, then done.','"5 meetings · 3 decisions · 2 loops to close."',['Work'],'online'],
+ ['Talk to Zuri <span class="idea">Idea</span>','Push-to-talk voice questions with on-device ASR. Answers are spoken back with read-aloud.','"Hey, what did the lecturer say about enzymes?"',['Work','Study'],'local'],
+ ['Devotional companion','Today\'s reading, alongside what you noted last time you read it, and what your pastor said about it, quoted and attributed. Zuri retrieves and never interprets.','"Last time you read Psalm 23 you wrote: \'Still waters, not no waters.\'"',['Faith'],'local'],
+ ['Prayer list follow-up','Gently asks whether to mark a prayer as answered, in your own words. Zuri never prays for you and never adds content.','"You added Mum\'s surgery 3 weeks ago. Mark it answered?"',['Faith'],'local'],
+ ['Quiz me · exam prep','Questions from what the lecturer stressed, using spaced review. Explains again more simply when you\'re stuck.','"Dr. Okafor stressed this twice: what limits glycolysis?"',['Study'],'online'],
+ ['People memory <span class="idea">Idea</span>','"Who is Sarah?": context from your meetings with her (role, topics, open items). It stays on your phone, and you can forget any person.','"Sarah Lee · Acme procurement · asked about volume pricing twice."',['Work'],'local'],
+ ['Live whisper <span class="idea">Idea</span>','During a meeting, through earbuds only: "They just asked about pricing. Last time you said 12% for 50+ seats."','Needs consent, latency and battery checks. See the crazy ideas.',['Work'],'local']
+];
+document.getElementById('caps').innerHTML=CAPS.map(function(c){
+  return '<div class="card cap">'+c[3].map(function(v){return '<span class="tag'+(v==='Faith'?' faith':'')+'">'+v+'</span>';}).join('')+'<span class="tag '+c[4]+'">'+(c[4]==='local'?'On-device':'Online')+'</span><b>'+c[0]+'</b><p>'+c[1]+'</p><span class="ex">'+c[2]+'</span></div>';}).join('');
+
+/* crazy ideas */
+var CRAZY=[
+ ['The drive-home debrief','Call Zuri hands-free after a long day: "What should I remember from today?" Then dictate tomorrow\'s plan.','Sanity: voice-first needs solid on-device ASR and Android Auto rules. A great Pro feature.'],
+ ['Whisper mode','A live in-meeting whisper in one earbud, recalling what you said last time on the same topic.','Sanity: recording-consent laws and social trust. Headphones only, on-device only, opt-in each time.'],
+ ['Zuri grows with you','The sprout gets a leaf at 50 notes and a tiny flower after a year. Purely cosmetic, and nothing is ever lost.','Sanity: safe only if it never becomes a streak to protect. Never shrink, never wilt.'],
+ ['Memory lane','On the anniversary of a sermon or a big meeting, Zuri brings back one line you highlighted.','Sanity: grief risk. Opt-in, highlights only, never from notes marked private or sad.'],
+ ['Circle companion','A shared companion for a Fellowship Circle that gently shows answered prayers the group chose to share.','Sanity: must never become a spiritual scoreboard. No counts and no rankings, testimonies only.'],
+ ['Sermon to 5-day devotional','Zuri turns one sermon into a 5-day plan built only from the pastor\'s own words and the verses they cited.','Sanity: must quote, never invent, with pastor attribution. A strong church-tier hook.'],
+ ['Teach-back','After a lecture, you explain it back to Zuri out loud, and it tells you what you missed.','Sanity: real learning science (the Feynman technique). The local model may be too weak, so Online is needed.'],
+ ['A widget that sleeps','A home-screen Zuri that sleeps when nothing\'s due and wakes 10 minutes before your next meeting with a one-line brief.','Sanity: Glance widgets update rarely, so this means state changes only. Easy and cheap.'],
+ ['Tap-to-record plush','A small Zuri plush with an NFC tag: tap it to your phone and recording starts. Merch for churches and teams.','Sanity: NFC tags are cheap and Android supports them natively. It\'s a merch question, not a tech one.'],
+ ['Bump to share','After a meeting, two phones bump, the notes are swapped with consent, and both companions wave to each other.','Sanity: Nearby Share or QR does the work. Delightful for Circles, but the privacy prompts must be crystal clear.'],
+ ['Zuri\'s sketchbook','The meeting\'s decisions redrawn as one hand-drawn page in Zuri\'s style, ready to share.','Sanity: image generation must stay faithful to the note, never decorative fiction. Online only.'],
+ ['Mood weather','Zuri notices a tense meeting from the tone of voices and offers a two-minute breather afterwards.','Sanity: emotion inference is creepy and often wrong. Probably never, at most a strict opt-in.']
+];
+document.getElementById('crazy').innerHTML=CRAZY.map(function(c){return '<li><span class="idea">Idea</span><b>'+c[0]+'</b><span>'+c[1]+'</span><em>'+c[2]+'</em></li>';}).join('');
+
+/* mount everything */
+Array.prototype.forEach.call(document.querySelectorAll('[data-mount]'),function(n){mount(n);});
+
+/* hero taps */
+function hi(m){if(m)play(m,[['celebrating',1.7]]);}
+Array.prototype.forEach.call(document.querySelectorAll('[data-hero]'),function(n){
+  n.style.cursor='pointer';
+  n.addEventListener('click',function(){hi(n._m);});
+  n.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();hi(n._m);}});
+});
+/* retry chips */
+Array.prototype.forEach.call(document.querySelectorAll('[data-retry]'),function(b){
+  b.addEventListener('click',function(){
+    var tile=b.closest('.tile'),m=tile.querySelector('[data-mount]')._m,cap=tile.querySelector('[data-cap]');
+    b.disabled=true;b.textContent='Retrying…';cap.textContent='Trying again';cap.setAttribute('aria-live','polite');
+    play(m,[['thinking',2.4],['celebrating',1.8]],function(){b.disabled=false;b.textContent='Retry';cap.textContent='Something failed';});
+    setTimeout(function(){if(m.seq)cap.textContent='Fixed. Note ready';},2400);
+  });
+});
+
+/* selection shared across mocks */
+var prev=document.getElementById('pickPreview')._m,pickName=document.getElementById('pickName'),pickLine=document.getElementById('pickLine'),pickBtn=document.getElementById('pickContinue');
+var boundMounts=function(){return mounts.filter(function(m){return m.bound;});};
+function syncPicks(key){
+  [pickGroup,sheetPicks].forEach(function(g){Array.prototype.forEach.call(g.querySelectorAll('.pick'),function(b){var on=b.getAttribute('data-pick')===key;b.setAttribute('aria-checked',on);b.tabIndex=on?0:-1;});});
+}
+function setForm(key,celebrate){
+  if(key==='none'){S.none=true;prev.faceless=true;prev.seq=null;prev.dirty=true;pickName.textContent='No companion';pickLine.textContent='The record button stays a plain button. Everything still works.';pickBtn.textContent='Continue';syncPicks('none');applyPresence();return;}
+  S.none=false;S.form=key;prev.faceless=false;
+  var c=charOf(key);pickName.textContent=nameOf(key);pickLine.textContent=c.line;pickBtn.textContent='Continue with '+nameOf(key);
+  document.getElementById('renameInput').value=nameOf(key);
+  document.getElementById('askTitle').textContent='Ask '+nameOf(key);
+  syncPicks(key);
+  boundMounts().forEach(function(m){m.dirty=true;});
+  if(celebrate){play(prev,[['celebrating',1.4]]);var hz=document.getElementById('homeZ')._m;play(hz,[['celebrating',1.2]]);}
+  applyPresence();updateBbar();
+}
+function pickKeys(g,e){
+  var keys=['ArrowRight','ArrowDown','ArrowLeft','ArrowUp'];if(keys.indexOf(e.key)<0)return;e.preventDefault();
+  var btns=Array.prototype.slice.call(g.querySelectorAll('.pick')),i=btns.indexOf(document.activeElement);if(i<0)return;
+  var n=(i+(e.key==='ArrowRight'||e.key==='ArrowDown'?1:-1)+btns.length)%btns.length;setForm(btns[n].getAttribute('data-pick'),true);btns[n].focus();
+}
+[pickGroup,sheetPicks].forEach(function(g){
+  g.addEventListener('click',function(e){var b=e.target.closest('.pick');if(b)setForm(b.getAttribute('data-pick'),true);});
+  g.addEventListener('keydown',function(e){pickKeys(g,e);});
+});
+/* presence, rename, hide */
+var homeZ=document.getElementById('homeZ')._m,hideLine=document.getElementById('hideLine');
+function applyPresence(){
+  var off=S.presence==='off'||S.none||S.hidden;
+  homeZ.dirty=true;homeZ.node.style.visibility=off?'hidden':'visible';
+}
+function setPresence(k){S.presence=k;Array.prototype.forEach.call(document.querySelectorAll('#presenceSeg button'),function(b){var on=b.getAttribute('data-p')===k;b.setAttribute('aria-checked',on);b.tabIndex=on?0:-1;});applyPresence();}
+document.getElementById('presenceSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(b)setPresence(b.getAttribute('data-p'));});
+document.getElementById('presenceSeg').addEventListener('keydown',function(e){if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;e.preventDefault();var ks=['around','moments','off'],i=ks.indexOf(S.presence);var n=ks[(i+(e.key==='ArrowRight'?1:2))%3];setPresence(n);document.querySelector('#presenceSeg [data-p="'+n+'"]').focus();});
+document.getElementById('renameInput').addEventListener('input',function(e){
+  var v=e.target.value.trim()||charOf(S.form).short;S.names[S.form]=v;
+  Array.prototype.forEach.call(document.querySelectorAll('[data-pname="'+S.form+'"]'),function(n){n.textContent=v;});
+  if(!S.none){pickName.textContent=v;pickBtn.textContent='Continue with '+v;}
+  document.getElementById('askTitle').textContent='Ask '+v;markAll();
+});
+document.getElementById('hideBtn').addEventListener('click',function(e){S.hidden=!S.hidden;e.target.textContent=S.hidden?'Show':'Hide';hideLine.textContent=S.hidden?'Hidden until tomorrow, 8:00':'Back tomorrow morning';applyPresence();});
+setPresence('around');
+
+/* recording mock */
+var recZ=document.getElementById('recZ')._m,sermonChip=document.getElementById('sermonChip'),sermonLine=document.getElementById('sermonLine'),localQuiet=true;
+recZ.calm=true;
+function applySermon(){
+  var quiet=localQuiet;
+  recZ.state=quiet?'peaceful':'listening';recZ.calm=quiet;recZ.dirty=true;
+  recZ.node.style.transform=quiet?'scale(1)':'scale(1.6)';
+  sermonChip.setAttribute('aria-pressed',quiet);
+  sermonChip.textContent=quiet?'Quiet during sermon · tap to change':'Around for this recording · tap to quiet';
+  sermonLine.textContent=quiet?'Default for Faith recordings. Change in Settings → Companion → Advanced.':'Only for this recording. Next sermon starts quiet again.';
+}
+sermonChip.addEventListener('click',function(){localQuiet=!localQuiet;applySermon();});
+var wave=document.getElementById('wave');for(var wi=0;wi<34;wi++){var bar=document.createElement('i');bar.style.height='8px';wave.appendChild(bar);}
+var recStart=24*60+13;
+
+/* settings mock */
+var bbarBtn=document.getElementById('bbarBtn')._m,bbarBadge=document.getElementById('bbarBadge');
+function setSwitch(btn,v){btn.setAttribute('aria-checked',v);}
+function updateBbar(){bbarBtn.faceless=!S.onBtn;bbarBtn.dirty=true;bbarBtn.static=true;bbarBadge.hidden=!(S.onBtn&&S.form!=='orb'&&!S.none);if(S.onBtn&&(S.form!=='orb'||S.none))bbarBtn.faceless=true;}
+document.getElementById('onBtnToggle').addEventListener('click',function(e){S.onBtn=!S.onBtn;setSwitch(e.currentTarget,S.onBtn);updateBbar();});
+document.getElementById('sermonToggle').addEventListener('click',function(e){S.sermonQuiet=!S.sermonQuiet;setSwitch(e.currentTarget,S.sermonQuiet);localQuiet=S.sermonQuiet;applySermon();});
+Array.prototype.forEach.call(document.querySelectorAll('[data-simple]'),function(b){b.addEventListener('click',function(){setSwitch(b,b.getAttribute('aria-checked')!=='true');});});
+updateBbar();applySermon();
+
+/* Spark mock */
+var SPARK={
+  quote:{q:'"Be still, and know that I am God."',src:'Psalm 46:10 · Sunday sermon, Grace Chapel',ai:'peaceful',bg:'gold',block:['joyful','celebratory']},
+  request:{q:'Please pray for my mum\'s surgery on Thursday.',src:'Prayer request · Grace Circle',ai:'prayerful',bg:'gold',block:['joyful','celebratory','grateful','reflective']},
+  answered:{q:'Mum\'s surgery went well. Thank you for praying with us.',src:'Answered prayer · Grace Circle',ai:'grateful',bg:'gold',block:[]},
+  study:{q:'All 120 Organic Chemistry flashcards done.',src:'Study · Revise today',ai:'celebratory',bg:'accent',block:[]}
+};
+var sparkT='quote',sparkMode='peaceful',sparkOn=false;
+var sparkZ=document.getElementById('sparkZ')._m,sparkCard=document.getElementById('sparkCard'),sparkModesEl=document.getElementById('sparkModes');
+sparkModesEl.innerHTML=MODES.map(function(md){return '<button class="chip" role="radio" data-m="'+md.k+'" aria-checked="false" aria-pressed="false">'+md.n+'</button>';}).join('');
+function renderSpark(){
+  var d=SPARK[sparkT];
+  document.getElementById('sparkQ').textContent=d.q;document.getElementById('sparkSrc').textContent=d.src;
+  var dark=true,a=S.accent.l;
+  sparkCard.style.background=d.bg==='gold'?'linear-gradient(160deg,#8A5A16 0%,#3B2A12 55%,#1A140C 100%)':'linear-gradient(160deg,'+mix(a,'#0C111B',.15)+' 0%,'+mix(a,'#0C111B',.6)+' 60%,#0C111B 100%)';
+  Array.prototype.forEach.call(sparkModesEl.querySelectorAll('.chip'),function(c){var k=c.getAttribute('data-m'),blocked=d.block.indexOf(k)>=0;
+    c.setAttribute('aria-disabled',blocked);c.title=blocked?'Not offered for this kind of card':'';c.setAttribute('aria-pressed',k===sparkMode);c.setAttribute('aria-checked',k===sparkMode);});
+  var modeName=MODES.filter(function(x){return x.k===sparkMode;})[0].n;
+  document.getElementById('sparkAI').textContent=sparkOn?('AI suggests: '+MODES.filter(function(x){return x.k===d.ai;})[0].n+(sparkMode!==d.ai?' · you chose '+modeName:'')+(d.block.length?' · '+(sparkT==='request'?'on prayer requests, only Prayerful or Peaceful':'no Joyful or Celebratory on scripture'):'')):'Your companion is not on this card. Switch it on to see the suggested mode.';
+  sparkZ.state=sparkMode;sparkZ.dirty=true;sparkZ.node.style.visibility=sparkOn?'visible':'hidden';
+  sparkModesEl.style.opacity=sparkOn?1:.4;
+}
+document.getElementById('sparkType').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;sparkT=b.getAttribute('data-t');
+  Array.prototype.forEach.call(document.querySelectorAll('#sparkType button'),function(x){x.setAttribute('aria-checked',x===b);});sparkMode=SPARK[sparkT].ai;renderSpark();});
+sparkModesEl.addEventListener('click',function(e){var c=e.target.closest('.chip');if(!c||c.getAttribute('aria-disabled')==='true'||!sparkOn)return;sparkMode=c.getAttribute('data-m');renderSpark();});
+document.getElementById('sparkInclude').addEventListener('click',function(e){sparkOn=!sparkOn;setSwitch(e.currentTarget,sparkOn);renderSpark();});
+
+/* Ask Zuri */
+var thread=document.getElementById('thread'),askZ=document.getElementById('askZ')._m,privBtn=document.getElementById('privBtn'),online=false;
+var ANS={
+ acme:{q:'What did I promise Acme last time?',a:'In the <b>Acme sync on 12 Sep</b> you promised two things:<ul><li>A revised quote by Friday. <b>Still open.</b></li><li>An intro from Sarah to your support lead. Done 13 Sep.</li></ul>',src:['Acme sync · 12 Sep · 14:32 ▶','Acme sync · 12 Sep · 31:05 ▶'],act:['Draft follow-up','Add to tasks']},
+ brief:{q:'Brief me for my 3 pm',a:'<b>3:00 pm · Acme pricing review</b> with Sarah Lee and Tom Reyes.<ul><li>Open from you: the revised quote (due Friday).</li><li>Tom raised onboarding time twice last call.</li><li>Sarah\'s open question: a discount above 50 seats.</li></ul>',src:['Calendar · 3:00 pm','Acme sync · 12 Sep','Acme intro · 28 Aug'],act:['Open the note','Start recording at 3']},
+ week:{q:'What did I commit to this week?',a:'<b>4 commitments, 1 overdue:</b><ul><li>Revised quote to Acme (Fri). <b>Overdue.</b></li><li>Send the deck to Lina. Done.</li><li>Review the Q4 budget (Thu).</li><li>Call back Pastor James. No date set.</li></ul>',src:['Acme sync ▶','Team standup · Mon ▶','Sunday notes ▶'],act:['Add dates','Weekly review']},
+ quiz:{q:'Quiz me on Biochem',a:'From Tuesday\'s lecture. Dr. Okafor stressed this twice:<br><b>Which enzyme catalyses the rate-limiting step of glycolysis?</b>',src:['Biochem L7 · 41:05 ▶'],act:['Hexokinase','PFK-1','Pyruvate kinase']},
+ none:{q:'What did Henderson say about budget?',a:'I couldn\'t find "Henderson" in your notes or transcripts. Did you record that meeting under another name?',src:[],act:['Search transcripts for "budget"']}
+};
+function addBubble(cls,html){var d=document.createElement('div');d.className='bub '+cls;d.innerHTML=html;thread.appendChild(d);while(thread.children.length>3)thread.removeChild(thread.firstChild);return d;}
+function ask(k,instant){
+  var A=ANS[k];addBubble('me',A.q);
+  var go=function(){
+    var where=online?'Answered online (Gemini) from '+Math.max(1,A.src.length)+' notes · snippets only':'Answered on-device · nothing left your phone';
+    addBubble('z',A.a+(A.src.length?'<div class="srcs">'+A.src.map(function(s){return '<span>'+s+'</span>';}).join('')+'</div>':'')+
+      '<div class="srcs" style="margin-top:8px">'+A.act.map(function(s){return '<span style="background:var(--wash);color:var(--accent)">'+s+'</span>';}).join('')+'</div><div class="foot">'+where+'</div>');
+  };
+  if(instant){go();return;}
+  play(askZ,[['thinking',1.3],['idle',.1]]);
+  var wait=addBubble('z','<span style="color:var(--muted)">Looking through your notes…</span>');
+  setTimeout(function(){if(wait.parentNode)thread.removeChild(wait);go();},S.rm?200:1300);
+}
+var sugg=document.getElementById('sugg');
+sugg.innerHTML=['brief','week','quiz','none'].map(function(k){return '<button class="chip" data-ask="'+k+'">'+ANS[k].q+'</button>';}).join('');
+sugg.addEventListener('click',function(e){var b=e.target.closest('[data-ask]');if(b)ask(b.getAttribute('data-ask'));});
+privBtn.addEventListener('click',function(){online=!online;privBtn.className='privacy '+(online?'online':'local');privBtn.textContent=online?'Online':'On-device';privBtn.setAttribute('aria-pressed',online);});
+ask('acme',true);
+
+/* ---------- controls ---------- */
+function swatchRow(node){
+  node.innerHTML=ACC.map(function(a){return '<button class="sw" data-acc="'+a.k+'" aria-label="'+a.n+'" title="'+a.n+'" aria-pressed="false"></button>';}).join('');
+  node.addEventListener('click',function(e){var b=e.target.closest('.sw');if(b)setAccent(b.getAttribute('data-acc'));});
+}
+swatchRow(document.getElementById('accentRow'));
+function paintSwatches(){var dark=isDark();Array.prototype.forEach.call(document.querySelectorAll('.sw'),function(b){var a=ACC.filter(function(x){return x.k===b.getAttribute('data-acc');})[0];b.style.setProperty('--c',dark?a.d:a.l);b.setAttribute('aria-pressed',a===S.accent);});}
+function applyColors(){
+  var dark=isDark(),a=dark?S.accent.d:S.accent.l,r=document.documentElement.style;
+  r.setProperty('--accent',a);r.setProperty('--wash',rgba(a,dark?.15:.10));r.setProperty('--onAccent',dark?'#111113':'#FFFFFF');
+  paintSwatches();markAll();renderSpark();gl.update();
+}
+function setAccent(k){S.accent=ACC.filter(function(x){return x.k===k;})[0]||ACC[0];applyColors();}
+function setTheme(k){S.theme=k;if(k==='auto')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',k);
+  Array.prototype.forEach.call(document.querySelectorAll('[data-theme-set]'),function(b){b.setAttribute('aria-pressed',b.getAttribute('data-theme-set')===k);});applyColors();}
+document.getElementById('themeSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(b)setTheme(b.getAttribute('data-theme-set'));});
+if(mql&&mql.addEventListener) mql.addEventListener('change',function(){if(S.theme==='auto')applyColors();});
+var rmBtn=document.getElementById('rmToggle'),voiceBtn=document.getElementById('voiceToggle'),threeBtn=document.getElementById('threeToggle'),slider=document.getElementById('micLevel'),meterFill=document.getElementById('meterFill');
+function setRM(v){S.rm=v;rmBtn.setAttribute('aria-pressed',v);if(v)setVoice(false);markAll();gl.update();}
+function setVoice(v){S.voice=v;voiceBtn.setAttribute('aria-pressed',v);}
+rmBtn.addEventListener('click',function(){setRM(!S.rm);});
+threeBtn.addEventListener('click',function(){S.three=!S.three;threeBtn.setAttribute('aria-pressed',S.three);markAll();});
+voiceBtn.addEventListener('click',function(){setVoice(!S.voice);if(S.voice&&S.rm)setRM(false);});
+slider.addEventListener('input',function(){setVoice(false);S.level=slider.value/100;meterFill.style.width=slider.value+'%';markAll();gl.update();});
+if(rml&&rml.addEventListener) rml.addEventListener('change',function(){setRM(rml.matches);});
+/* parallax sources */
+window.addEventListener('pointermove',function(e){S.tx=Math.max(-1,Math.min(1,(e.clientX/window.innerWidth-.5)*2));S.ty=Math.max(-1,Math.min(1,(e.clientY/window.innerHeight-.5)*2));},{passive:true});
+window.addEventListener('deviceorientation',function(e){if(e.gamma==null)return;S.tx=Math.max(-1,Math.min(1,e.gamma/30));S.ty=Math.max(-1,Math.min(1,((e.beta||45)-45)/30));},{passive:true});
+
+/* ---------- WebGL hero ---------- */
+var gl=(function(){
+  var api={update:function(){}};
+  var cv=document.getElementById('glHero'),fb=document.getElementById('glFallback'),note=document.getElementById('glNote');
+  function fallback(why){cv.hidden=true;fb.hidden=false;note.textContent='Showing the Compose-style 3D look ('+why+').';var m=fb.querySelector('[data-mount]')._m;if(m)m.dirty=true;}
+  var g=null;
+  try{g=cv.getContext('webgl',{premultipliedAlpha:true,alpha:true,antialias:false})||cv.getContext('experimental-webgl');}catch(e){g=null;}
+  if(!g){fallback('WebGL unavailable');return api;}
+  var VS='attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+  var FS=[
+  'precision highp float;',
+  'uniform vec2 uRes;uniform float uT;uniform vec3 uBody;uniform vec3 uBody2;uniform vec3 uDeep;uniform vec3 uRim;uniform vec2 uPar;uniform float uL;uniform float uBlink;uniform float uDark;',
+  'float sy;',
+  'float smin(float a,float b,float k){float h=clamp(.5+.5*(b-a)/k,0.,1.);return mix(b,a,h)-k*h*(1.-h);}',
+  'float cap(vec3 p,vec3 a,vec3 b,float r){vec3 pa=p-a,ba=b-a;float h=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);return length(pa-ba*h)-r;}',
+  'vec2 map(vec3 p){',
+  '  float ds=(length(vec3(p.x,(p.y+1.)/sy-1.,p.z))-1.)*min(sy,1.);',
+  '  float top=-1.+2.*sy;float db=1e5;',
+  '  for(int i=0;i<3;i++){float fi=float(i);float x=(fi-1.)*.24;',
+  '    float h=.16+uL*(.28+.2*sin(uT*9.+fi*1.9))+(i==1?.1:0.);',
+  '    db=min(db,cap(p,vec3(x,top-.12,0.),vec3(x,top+.04+h*.85,0.),.1));}',
+  '  float d=smin(ds,db,.07);return vec2(d,db<ds?1.:0.);}',
+  'vec3 nrm(vec3 p){vec2 e=vec2(.002,0.);return normalize(vec3(map(p+e.xyy).x-map(p-e.xyy).x,map(p+e.yxy).x-map(p-e.yxy).x,map(p+e.yyx).x-map(p-e.yyx).x));}',
+  'float ao(vec3 p,vec3 n){float o=0.,w=1.;for(int i=1;i<5;i++){float h=.04*float(i);o+=(h-map(p+n*h).x)*w;w*=.6;}return clamp(1.-2.5*o,0.,1.);}',
+  'void main(){',
+  '  vec2 uv=(gl_FragCoord.xy-.5*uRes)/uRes.y;',
+  '  sy=1.+.025*sin(uT*1.85)+.05*uL;',
+  '  float ya=uPar.x*.5+sin(uT*.35)*.06;',
+  '  vec3 ro=vec3(3.6*sin(ya),.35-uPar.y*.7,3.6*cos(ya));vec3 ta=vec3(0.,.3,0.);',
+  '  vec3 ww=normalize(ta-ro),uu=normalize(cross(ww,vec3(0.,1.,0.))),vv=cross(uu,ww);',
+  '  vec3 rd=normalize(uv.x*uu+uv.y*vv+1.25*ww);',
+  '  float t=0.;vec2 h=vec2(1.,0.);bool hit=false;',
+  '  for(int i=0;i<72;i++){h=map(ro+rd*t);if(h.x<.0015){hit=true;break;}t+=h.x;if(t>8.)break;}',
+  '  if(!hit){float tg=(-1.03-ro.y)/rd.y;float sh=0.;if(tg>0.){vec3 q=ro+rd*tg;sh=exp(-dot(q.xz,q.xz)*2.2)*(.22+.2*uDark);}gl_FragColor=vec4(0.,0.,0.,sh);return;}',
+  '  vec3 p=ro+rd*t;vec3 n=nrm(p);vec3 v=-rd;',
+  '  vec3 base=h.y>.5?uDeep:mix(uBody,uBody2,clamp(.5-.5*p.y,0.,1.));',
+  '  float spw=40.,sps=.55;',
+  '  if(h.y<.5&&p.z>.2){',
+  '    vec2 e=vec2(abs(p.x)-.34,p.y-.06);',
+  '    if(length(e/vec2(.1,.15*(1.-uBlink*.9)))<1.){base=vec3(.012,.014,.03);spw=90.;sps=1.1;}',
+  '    vec2 c=vec2(abs(p.x)-.57,p.y+.24);if(length(c/vec2(.13,.075))<1.)base=mix(base,vec3(.95,.38,.5),.45);',
+  '    float r=length(vec2(p.x,p.y+.03))-.13;if(abs(r)<.02&&p.y<-.11&&abs(p.x)<.11)base=vec3(.012,.014,.03);',
+  '  }',
+  '  vec3 l=normalize(vec3(-.55,.75,.85));',
+  '  float dif=pow(clamp(dot(n,l)*.5+.5,0.,1.),1.6);',
+  '  float occ=ao(p,n);',
+  '  vec3 amb=mix(vec3(.35,.33,.36),vec3(.9,.92,1.),n.y*.5+.5)*.32;',
+  '  vec3 col=base*(amb+dif*.95)*occ;',
+  '  col+=pow(max(dot(reflect(-l,n),v),0.),spw)*sps;',
+  '  col+=uRim*pow(1.-max(dot(n,v),0.),3.)*(.55+.35*uDark)*clamp(-n.x*.6+.6-n.y*.3,0.,1.);',
+  '  col=pow(col,vec3(1./2.2));',
+  '  gl_FragColor=vec4(col,1.);}'
+  ].join('\n');
+  function sh(type,src){var s=g.createShader(type);g.shaderSource(s,src);g.compileShader(s);if(!g.getShaderParameter(s,g.COMPILE_STATUS)){return null;}return s;}
+  var vs=sh(g.VERTEX_SHADER,VS),fs=sh(g.FRAGMENT_SHADER,FS);
+  if(!vs||!fs){fallback('shader not supported');return api;}
+  var pr=g.createProgram();g.attachShader(pr,vs);g.attachShader(pr,fs);g.linkProgram(pr);
+  if(!g.getProgramParameter(pr,g.LINK_STATUS)){fallback('shader not supported');return api;}
+  g.useProgram(pr);
+  var b=g.createBuffer();g.bindBuffer(g.ARRAY_BUFFER,b);g.bufferData(g.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),g.STATIC_DRAW);
+  var la=g.getAttribLocation(pr,'a');g.enableVertexAttribArray(la);g.vertexAttribPointer(la,2,g.FLOAT,false,0,0);
+  var U={};['uRes','uT','uBody','uBody2','uDeep','uRim','uPar','uL','uBlink','uDark'].forEach(function(k){U[k]=g.getUniformLocation(pr,k);});
+  var dpr=Math.min(window.devicePixelRatio||1,1.75);cv.width=Math.round(240*dpr);cv.height=Math.round(240*dpr);g.viewport(0,0,cv.width,cv.height);
+  function lin(h){return hex(h).map(function(c){return Math.pow(c/255,2.2);});}
+  var visible=true,dragX=null,par=[0,0],dirty=true,t0=performance.now()/1000;
+  if(io){new IntersectionObserver(function(es){visible=es[0].isIntersecting;dirty=true;}).observe(cv);}
+  cv.addEventListener('pointerdown',function(e){dragX=[e.clientX,e.clientY,par[0],par[1]];try{cv.setPointerCapture(e.pointerId);}catch(_){}});
+  cv.addEventListener('pointermove',function(e){if(!dragX)return;par[0]=Math.max(-1,Math.min(1,dragX[2]+(e.clientX-dragX[0])/120));par[1]=Math.max(-.8,Math.min(.8,dragX[3]+(e.clientY-dragX[1])/160));dirty=true;});
+  cv.addEventListener('pointerup',function(){dragX=null;});cv.addEventListener('pointercancel',function(){dragX=null;});
+  api.update=function(){dirty=true;};
+  api.draw=function(now){
+    if(!visible) return;
+    if(S.rm&&!dirty) return;
+    var P=pal(S.accent,isDark()),t=S.rm?0:now-t0;
+    var px=dragX?par[0]:(S.rm?0:par[0]*.9+S.px*.6),py=dragX?par[1]:(S.rm?0:par[1]*.9+S.py*.4);
+    if(!dragX){par[0]*=.97;par[1]*=.97;}
+    g.uniform2f(U.uRes,cv.width,cv.height);g.uniform1f(U.uT,t);
+    var b1=lin(P.body1),b2=lin(P.body2),dp=lin(P.deep),rm=lin(P.rim);
+    g.uniform3f(U.uBody,b1[0],b1[1],b1[2]);g.uniform3f(U.uBody2,b2[0],b2[1],b2[2]);g.uniform3f(U.uDeep,dp[0],dp[1],dp[2]);g.uniform3f(U.uRim,rm[0],rm[1],rm[2]);
+    g.uniform2f(U.uPar,px,py);g.uniform1f(U.uL,S.level);
+    var q=t%4.6;g.uniform1f(U.uBlink,S.rm?0:(q<.16?Math.sin(q/.16*Math.PI):0));g.uniform1f(U.uDark,isDark()?1:0);
+    g.clearColor(0,0,0,0);g.clear(g.COLOR_BUFFER_BIT);g.drawArrays(g.TRIANGLES,0,3);
+    dirty=false;cv.setAttribute('data-ok','1');
+  };
+  return api;
+})();
+
+setRM(S.rm);setVoice(S.voice);meterFill.style.width=slider.value+'%';
+setForm('orb',false);
+applyColors();
+
+/* ---------- loop ---------- */
+var lastSlider=0,lastWave=0;
+function voice(t){var v=.18+.38*Math.abs(Math.sin(t*5.1+Math.sin(t*1.3)*2))*(.55+.45*Math.sin(t*.9))+.22*Math.abs(Math.sin(t*13.7));if(Math.sin(t*.45)>.82)v*=.15;return Math.max(0,Math.min(1,v));}
+function frame(ms){
+  var now=ms/1000;
+  if(S.voice&&!S.rm){S.level+=(voice(now)-S.level)*.25;
+    if(now-lastSlider>.08){slider.value=Math.round(S.level*100);meterFill.style.width=slider.value+'%';lastSlider=now;}}
+  if(!S.rm){S.px+=(S.tx-S.px)*.08;S.py+=(S.ty-S.py)*.08;}
+  for(var i=0;i<mounts.length;i++){var m=mounts[i];if(m.visible)render(m,now);}
+  if(gl.draw)gl.draw(now);
+  if(now-lastWave>.09&&!S.rm){lastWave=now;var bars=wave.children;for(var j=0;j<bars.length;j++){bars[j].style.height=Math.round(6+44*S.level*Math.abs(Math.sin(now*3+j*.7))*(.5+.5*Math.sin(j*.9+now)))+'px';}
+    var secs=recStart+Math.floor(now);document.getElementById('recTimer').textContent=Math.floor(secs/60)+':'+('0'+secs%60).slice(-2);}
+  requestAnimationFrame(frame);
+}
+mounts.forEach(function(m){render(m,performance.now()/1000);});
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

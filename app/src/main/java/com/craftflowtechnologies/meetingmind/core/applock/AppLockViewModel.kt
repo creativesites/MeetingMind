@@ -48,6 +48,13 @@ class AppLockViewModel(application: Application) : AndroidViewModel(application)
     /** Recovery when the phone can no longer authenticate its owner: switch the lock off. */
     fun turnOffWithoutAuthentication(availability: AppLockAvailability) {
         if (!availability.hasNoOwnerCredential) return
+        controller.onPreferenceLoaded(false)
+        viewModelScope.launch { prefs.setAppLockEnabled(false) }
+    }
+
+    /** Disables app lock after the owner verified their credentials (e.g. via device PIN/pattern). */
+    fun turnOffVerified() {
+        controller.onPreferenceLoaded(false)
         viewModelScope.launch { prefs.setAppLockEnabled(false) }
     }
 }

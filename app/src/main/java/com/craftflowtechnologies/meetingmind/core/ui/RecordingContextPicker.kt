@@ -45,6 +45,8 @@ fun RecordingTypeGrid(
             .filter { it != RecordingType.GENERAL && com.craftflowtechnologies.meetingmind.core.model.Workflows.isRecordable(it) }
             // Only the spaces this person uses (Settings → Personalize); the selected type always shows.
             .filter { identity.allows(it) || it == selected }
+            // Learning is hidden until it is rebuilt (MVP S-7); its types stay only while selected.
+            .filter { com.craftflowtechnologies.meetingmind.core.model.Workflows.space(it) in com.craftflowtechnologies.meetingmind.core.model.OfferedNotebookSpaces || it == selected }
             .groupBy { com.craftflowtechnologies.meetingmind.core.model.Workflows.space(it) }
         com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.entries.forEach { space ->
             val types = bySpace[space].orEmpty()
@@ -113,7 +115,8 @@ private fun RecordingTypeChip(
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                text = type.displayName,
+                // A start action: "Bible study" alone reads like a template (ONE_PLACE §3.4).
+                text = if (type == RecordingType.BIBLE_STUDY) "Record a Bible study" else type.displayName,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                 color = if (isSelected) IndigoPrimaryLight else MaterialTheme.colorScheme.onSurface

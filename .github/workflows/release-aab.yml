@@ -1,0 +1,114 @@
+name: Release AAB (Play Store)
+
+# Builds the Play Store bundle, signed with the upload key, and attaches it to a DRAFT GitHub release.
+#
+# Why this runs on GitHub: the upload key is a secret that lives only in this repository's secrets,
+# never in a chat, a branch or a developer's machine. The bundle is far over the 100 MB file limit
+# for a commit, so it is published as a release asset instead.
+#
+# To run it: push a tag that starts with "aab-" (for example aab-v41) on the commit to release, or
+# push a commit to the branch below whose message contains [build-aab]. The release is then named
+# aab-v<versionCode>. Secrets needed (Settings > Secrets and variables > Actions):
+#   KEYSTORE_BASE64    the upload keystore file, base64-encoded (base64 -w0 upload.jks)
+#   KEYSTORE_PASSWORD  its store password
+#   KEY_PASSWORD       the password of the key "upload" inside it
+#   SYSTEM_GEMINI_API_KEY    the built-in key testers use for Internet mode (required)
+# Optional: SYSTEM_DEEPSEEK_API_KEY (built-in fallback key), YOUVERSION_APP_KEY, DEEPSEEK_PROXY_URL.
+#
+# THE BUNDLE THIS MAKES CONTAINS THE BUILT-IN API KEYS. It is attached to a draft release, which only
+# people with access to the repository can see, and is never committed. Download it, upload it to
+# Play, then DELETE the release so the keys are not left lying around.
+on:
+  push:
+    tags:
+      - 'aab-*'
+    branches:
+      - ccr-5e66b00c-btultn
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    # An ordinary push to the branch does nothing; only a tag or a [build-aab] commit builds.
+    if: startsWith(github.ref, 'refs/tags/aab-') || contains(github.event.head_commit.message, '[build-aab]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Work out the release name
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/aab-* ]]; then tag="$GITHUB_REF_NAME"
+          else tag="aab-v$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)"; fi
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+
+      - name: Check the signing secrets exist
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SYSTEM_GEMINI_API_KEY: ${{ secrets.SYSTEM_GEMINI_API_KEY }}
+        run: |
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_PASSWORD SYSTEM_GEMINI_API_KEY; do
+            if [ -z "${!name}" ]; then echo "::error::Secret $name is not set"; exit 1; fi
+          done
+
+      - name: Run unit tests
+        # A release that fails its own tests is not a release.
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build the signed bundle
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SYSTEM_GEMINI_API_KEY: ${{ secrets.SYSTEM_GEMINI_API_KEY }}
+          SYSTEM_DEEPSEEK_API_KEY: ${{ secrets.SYSTEM_DEEPSEEK_API_KEY }}
+          YOUVERSION_APP_KEY: ${{ secrets.YOUVERSION_APP_KEY }}
+          DEEPSEEK_PROXY_URL: ${{ secrets.DEEPSEEK_PROXY_URL }}
+        run: |
+          set -euo pipefail
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          export KEYSTORE_PATH="$RUNNER_TEMP/upload.jks"
+          ./gradlew bundleRelease
+          rm -f "$RUNNER_TEMP/upload.jks"
+
+      - name: Check the built-in key is in the bundle
+        # The opposite of the public APK check: for this bundle the key is meant to be there, and a
+        # bundle without it would ship to testers with Internet mode broken. The key is never printed.
+        run: |
+          set -euo pipefail
+          aab="$(ls app/build/outputs/bundle/release/*.aab)"
+          if unzip -p "$aab" 'base/dex/*' | strings | grep -qE 'AIzaSy[0-9A-Za-z_-]{33}|AQ\.[0-9A-Za-z_-]{20,}'; then
+            echo "The built-in Gemini key is in the bundle."
+          else
+            echo "::error::the built-in Gemini key is not in the bundle"; exit 1
+          fi
+
+      - name: Name the bundle
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/bundle/release/*.aab "dist/MeetingMind-${RELEASE_TAG#aab-}.aab"
+          ls -la dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: MeetingMind Play bundle ${{ env.RELEASE_TAG }}
+          # A draft is visible only to people with access to the repository: this repository is
+          # public, and the bundle should not be handed out before it goes to Play.
+          draft: true
+          prerelease: true
+          body: |
+            **This bundle contains the built-in API keys.** Download it, upload it to Play Console, then delete this release.
+          files: dist/*.aab

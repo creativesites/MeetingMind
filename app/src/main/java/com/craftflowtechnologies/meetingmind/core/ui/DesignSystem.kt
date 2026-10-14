@@ -206,6 +206,23 @@ fun PrimaryCircleButton(
     }
 }
 
+/**
+ * The MeetingMind logo mark (R.drawable.ic_logo_mark: transparent background, full colour). Not tinted, so it reads the
+ * same on light and dark. Decorative by default: pass a [contentDescription] only when it stands alone.
+ */
+@Composable
+fun MeetingMindMark(
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 32.dp,
+    contentDescription: String? = null
+) {
+    androidx.compose.foundation.Image(
+        painter = androidx.compose.ui.res.painterResource(com.craftflowtechnologies.meetingmind.R.drawable.ic_logo_mark),
+        contentDescription = contentDescription,
+        modifier = modifier.size(size)
+    )
+}
+
 /** The app's wordmark for screen headers: logo mark + name, replacing generic Material icon placeholders. */
 @Composable
 fun AppHeaderBrand(
@@ -217,11 +234,7 @@ fun AppHeaderBrand(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        androidx.compose.foundation.Image(
-            painter = androidx.compose.ui.res.painterResource(com.craftflowtechnologies.meetingmind.R.drawable.ic_logo_mark),
-            contentDescription = null,
-            modifier = Modifier.size(markSize)
-        )
+        MeetingMindMark(size = markSize)
         Text(
             text = "MeetingMind",
             style = MaterialTheme.typography.titleMedium,

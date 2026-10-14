@@ -12,6 +12,7 @@ import com.craftflowtechnologies.meetingmind.MainActivity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /** Where a notification tap should land. */
 sealed interface DeepLink {
@@ -24,6 +25,16 @@ sealed interface DeepLink {
     data object ReadingPlans : DeepLink
     data object Home : DeepLink
     data object Tasks : DeepLink
+    /** The Work Inbox (a share landed, or the morning Pulse mentions it). */
+    data object Inbox : DeepLink
+    /** The Work space. */
+    data object WorkSpace : DeepLink
+    /** Prepare for a calendar event. */
+    data class Prepare(val eventKey: String, val title: String, val begin: Long, val end: Long, val people: String, val emails: String) : DeepLink
+    /** "Starting now — record?": the recorder with the workflow and title filled in. */
+    data class RecordEvent(val eventKey: String, val title: String, val workflow: String) : DeepLink
+    /** The weekly review. */
+    data object WeeklyReview : DeepLink
 }
 
 /**
@@ -39,6 +50,9 @@ object DeepLinks {
 
     fun consume(): DeepLink? = _pending.value.also { _pending.value = null }
 
+    /** Opens a link from inside the app (a share landing), the same way a notification tap does. */
+    fun open(link: DeepLink) { _pending.value = link }
+
     fun handle(intent: Intent?) {
         val target = intent?.getStringExtra(EXTRA_TARGET) ?: return
         val meeting = intent.getStringExtra(EXTRA_MEETING)
@@ -52,6 +66,11 @@ object DeepLinks {
             "plans" -> DeepLink.ReadingPlans
             "home" -> DeepLink.Home
             "tasks" -> DeepLink.Tasks
+            "inbox" -> DeepLink.Inbox
+            "work" -> DeepLink.WorkSpace
+            "review" -> DeepLink.WeeklyReview
+            "prepare" -> DeepLink.Prepare(intent.getStringExtra("k").orEmpty(), intent.getStringExtra("t").orEmpty(), intent.getLongExtra("b", 0), intent.getLongExtra("e", 0), intent.getStringExtra("p").orEmpty(), intent.getStringExtra("m").orEmpty())
+            "record_event" -> DeepLink.RecordEvent(intent.getStringExtra("k").orEmpty(), intent.getStringExtra("t").orEmpty(), intent.getStringExtra("w").orEmpty())
             else -> null
         }
         intent.removeExtra(EXTRA_TARGET)
@@ -68,11 +87,23 @@ object DeepLinks {
             DeepLink.ReadingPlans -> "plans" to null
             DeepLink.Home -> "home" to null
             DeepLink.Tasks -> "tasks" to null
+            DeepLink.Inbox -> "inbox" to null
+            DeepLink.WorkSpace -> "work" to null
+            DeepLink.WeeklyReview -> "review" to null
+            is DeepLink.Prepare -> "prepare" to link.eventKey
+            is DeepLink.RecordEvent -> "record_event" to link.eventKey
         }
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra(EXTRA_TARGET, target)
-            .apply { meeting?.let { putExtra(EXTRA_MEETING, it) } }
+            .apply {
+                meeting?.let { putExtra(EXTRA_MEETING, it) }
+                when (link) {
+                    is DeepLink.Prepare -> { putExtra("k", link.eventKey); putExtra("t", link.title); putExtra("b", link.begin); putExtra("e", link.end); putExtra("p", link.people); putExtra("m", link.emails) }
+                    is DeepLink.RecordEvent -> { putExtra("k", link.eventKey); putExtra("t", link.title); putExtra("w", link.workflow) }
+                    else -> Unit
+                }
+            }
         // A distinct request code per destination, so one notification's tap target never
         // replaces another's.
         return PendingIntent.getActivity(
@@ -94,6 +125,8 @@ object AppNotifications {
     const val CHANNEL_DONE = "meetmind_finished"
     const val CHANNEL_DEVOTIONAL = "meetmind_devotional"
     private const val ID_DEVOTIONAL = 5001
+    const val ID_DEVOTIONAL_WORK = 5002
+    const val CHANNEL_DEVOTIONAL_WORK = "meetmind_devotional_work"
 
     const val ID_PROCESSING = 2001
     private const val ID_DOWNLOAD_BASE = 3000
@@ -117,6 +150,12 @@ object AppNotifications {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_DEVOTIONAL, "Daily devotional", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Tells you when today's devotional is ready"
+            }
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_DEVOTIONAL_WORK, "Writing the devotional", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Shows briefly while today's devotional is being written"
+                setShowBadge(false)
             }
         )
         manager.createNotificationChannel(
@@ -146,7 +185,89 @@ object AppNotifications {
         )
     }
 
+    /**
+     * Delivery time came and there is no devotional. Says so, says why, and offers the two things
+     * that help: write it now, or read a classic. Replaced by [devotionalReady] if one arrives.
+     */
+    fun devotionalNotReady(context: Context, reason: com.craftflowtechnologies.meetingmind.core.devotional.NotReadyReason) {
+        post(
+            context, ID_DEVOTIONAL,
+            NotificationCompat.Builder(context, CHANNEL_DEVOTIONAL)
+                .setSmallIcon(android.R.drawable.ic_menu_day)
+                .setContentTitle(NOT_READY_TITLE)
+                .setContentText(reason.line)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(reason.line))
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Devotional))
+                .addAction(android.R.drawable.ic_popup_sync, ACTION_WRITE_NOW, devotionalAction(context, DevotionalActionReceiver.WRITE_NOW))
+                .addAction(android.R.drawable.ic_menu_view, ACTION_CLASSIC, devotionalAction(context, DevotionalActionReceiver.CLASSIC))
+                .build()
+        )
+    }
+
+    /** Shown in place of the "isn't ready" notice while a write that was asked for runs. */
+    fun devotionalWritingNow(context: Context) {
+        post(context, ID_DEVOTIONAL, devotionalWriting(context))
+    }
+
+    /** "Writing today's devotional…" — also the foreground notification of the write itself. */
+    fun devotionalWriting(context: Context): android.app.Notification {
+        ensureChannels(context)
+        return NotificationCompat.Builder(context, CHANNEL_DEVOTIONAL_WORK)
+            .setSmallIcon(android.R.drawable.ic_menu_day)
+            .setContentTitle("Writing today's devotional…")
+            .setProgress(0, 0, true)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Devotional))
+            .build()
+    }
+
+    /** Clears the devotional notification (it was opened, or is no longer true). */
+    fun clearDevotional(context: Context) {
+        runCatching { NotificationManagerCompat.from(context).cancel(ID_DEVOTIONAL) }
+    }
+
+    private fun devotionalAction(context: Context, action: String): PendingIntent =
+        PendingIntent.getBroadcast(
+            context, action.hashCode(),
+            Intent(context, DevotionalActionReceiver::class.java).setAction(action),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+    const val NOT_READY_TITLE = "Today's devotional isn't ready yet"
+    const val ACTION_WRITE_NOW = "Write it now"
+    const val ACTION_CLASSIC = "Read a classic instead"
+
     const val CHANNEL_REMINDERS = "meetmind_reminders"
+    const val CHANNEL_WORK_RHYTHM = "meetmind_work_rhythm"
+
+    /**
+     * A Work nudge: the morning line, Prep, "Starting now" or the weekly review. The words come
+     * from `WorkNotices`, which already leaves out titles and names for a sensitive profile.
+     */
+    fun workNotice(context: Context, n: com.craftflowtechnologies.meetingmind.core.work.WorkNotice) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+                NotificationChannel(CHANNEL_WORK_RHYTHM, "Work rhythm", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "Your morning line, meeting prep, \"starting now\" and the weekly review, on your working days and hours"
+                }
+            )
+        }
+        post(
+            context, n.id,
+            NotificationCompat.Builder(context, CHANNEL_WORK_RHYTHM)
+                .setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setContentTitle(n.title)
+                .setContentText(n.text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(n.text))
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(DeepLinks.pendingIntent(context, n.link))
+                .build()
+        )
+    }
 
     /** A gentle reminder: prayer times, today's reading, evening reflection, a meeting soon. */
     fun faithReminder(context: Context, id: Int, title: String, text: String, link: DeepLink) {
@@ -218,14 +339,20 @@ object AppNotifications {
 
     fun processingFinished(context: Context, meetingId: String, title: String, outcome: Outcome, detail: String? = null) {
         val (heading, text, link) = when (outcome) {
-            Outcome.READY -> Triple("Transcript ready", "“$title” is ready to read.", DeepLink.Recording(meetingId))
+            Outcome.READY -> Triple("$title is ready.", null, DeepLink.Recording(meetingId))
             Outcome.NEEDS_MODEL -> Triple("Recording saved", "Install the speech model to transcribe “$title”.", DeepLink.Models)
             Outcome.FAILED -> Triple("Couldn’t finish “$title”", detail ?: "Tap to try again.", DeepLink.Processing(meetingId))
         }
         post(
             context, ID_DONE_BASE + (meetingId.hashCode() and 0xFFF),
             NotificationCompat.Builder(context, CHANNEL_DONE)
-                .setSmallIcon(if (outcome == Outcome.FAILED) android.R.drawable.stat_notify_error else android.R.drawable.stat_sys_download_done)
+                .setSmallIcon(
+                    when (outcome) {
+                        Outcome.FAILED -> android.R.drawable.stat_notify_error
+                        Outcome.READY -> com.craftflowtechnologies.meetingmind.R.drawable.ic_zuri_glyph
+                        Outcome.NEEDS_MODEL -> android.R.drawable.stat_sys_download_done
+                    }
+                )
                 .setContentTitle(heading)
                 .setContentText(text)
                 .setAutoCancel(true)
@@ -236,6 +363,51 @@ object AppNotifications {
     }
 
     enum class Outcome { READY, NEEDS_MODEL, FAILED }
+
+    /**
+     * What a note-ready notification says (signature moments §9, ZURI_EXPERIENCE §5.8). [voiced] is the one
+     * companion-voiced notification a day, outside quiet hours: it may use the sermon line and alerts. Beyond
+     * the cap the plain status still posts, quietly, because status is never withheld. A prayer request or a
+     * grief tag always gets the plain title line. The user's name never appears here.
+     */
+    data class NoteReadyCopy(val title: String, val text: String?, val alert: Boolean) {
+        companion object {
+            fun of(
+                noteTitle: String, sermon: Boolean, sensitive: Boolean, onDevice: Boolean, voiced: Boolean,
+                ready: (String) -> String, sermonReady: String, tapToOpen: String, madeOnPhone: String
+            ): NoteReadyCopy {
+                val title = if (voiced && sermon && !sensitive) sermonReady else ready(noteTitle)
+                val text = when {
+                    onDevice -> madeOnPhone
+                    voiced -> tapToOpen
+                    else -> null
+                }
+                return NoteReadyCopy(title, text, alert = voiced)
+            }
+        }
+    }
+
+    /**
+     * The note-ready notification (Z-34): the neutral `ic_zuri_glyph` small icon, never a character drawing,
+     * and a tap opens the note itself, where its ticket plays the First Keep. Replaces the old
+     * "Transcript ready" status notification.
+     */
+    fun noteReady(context: Context, meetingId: String, copy: NoteReadyCopy) {
+        post(
+            context, ID_DONE_BASE + (meetingId.hashCode() and 0xFFF),
+            NotificationCompat.Builder(context, CHANNEL_DONE)
+                .setSmallIcon(com.craftflowtechnologies.meetingmind.R.drawable.ic_zuri_glyph)
+                .setContentTitle(copy.title)
+                .apply { copy.text?.let { setContentText(it) } }
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setSilent(!copy.alert)
+                .setPriority(if (copy.alert) NotificationCompat.PRIORITY_DEFAULT else NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setContentIntent(DeepLinks.pendingIntent(context, DeepLink.Recording(meetingId)))
+                .build()
+        )
+    }
 
     fun downloadId(modelId: String) = ID_DOWNLOAD_BASE + (modelId.hashCode() and 0x3FF)
 
@@ -305,4 +477,46 @@ object AppNotifications {
     }
 
     private fun mb(bytes: Long) = if (bytes >= 1_000_000_000) "%.1f GB".format(bytes / 1e9) else "${bytes / 1_000_000} MB"
+}
+
+/**
+ * The two buttons on the "isn't ready yet" notification. Neither opens a screen from here (Android
+ * forbids that from a broadcast); both do their work, then replace the notification with the
+ * result, which opens the devotional when tapped.
+ */
+class DevotionalActionReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val app = context.applicationContext
+        when (intent.action) {
+            WRITE_NOW -> {
+                AppNotifications.devotionalWritingNow(app)
+                com.craftflowtechnologies.meetingmind.core.devotional.DevotionalScheduler.writeNow(app, fromNotice = true)
+            }
+            CLASSIC -> {
+                AppNotifications.devotionalWritingNow(app)
+                val pending = goAsync()
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {
+                    try {
+                        val repo = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalRepository(app)
+                        val classic = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk(writer = com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter.CLASSIC)
+                        val daily = repo.ensure(java.time.LocalDate.now(), ask = classic)
+                        if (daily != null) {
+                            com.craftflowtechnologies.meetingmind.core.widget.Widgets.refresh(app)
+                            com.craftflowtechnologies.meetingmind.core.devotional.DevotionalScheduler.announce(app, daily)
+                        } else AppNotifications.devotionalNotReady(app, com.craftflowtechnologies.meetingmind.core.devotional.NotReadyReason.AI_UNAVAILABLE)
+                    } catch (e: Exception) {
+                        android.util.Log.w("DevotionalAction", "Classic could not be put out: ${e.message}", e)
+                        AppNotifications.devotionalNotReady(app, com.craftflowtechnologies.meetingmind.core.devotional.NotReadyReason.AI_UNAVAILABLE)
+                    } finally {
+                        pending.finish()
+                    }
+                }
+            }
+        }
+    }
+
+    companion object {
+        const val WRITE_NOW = "com.craftflowtechnologies.meetingmind.DEVOTIONAL_WRITE_NOW"
+        const val CLASSIC = "com.craftflowtechnologies.meetingmind.DEVOTIONAL_CLASSIC"
+    }
 }

@@ -50,10 +50,10 @@ class HomeStartTest {
         var setUp = 0
         val thinkingOnly = SetupGuide.compute(8f, { it == com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.qwen25_1_5bInstruct.id })
         compose.setContent {
-            MeetMindTheme {
+            MeetMindTheme { androidx.compose.runtime.CompositionLocalProvider(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true, com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion provides true) {
                 TodayScreen(vm, onOpenNote = {}, onOpenProcessing = {}, onRecord = { recorded++ }, onRecordType = {}, onRecordEvent = { _, _, _, _ -> },
                     onSearch = {}, onNavigateBottomNav = {}, setup = thinkingOnly, onSetUp = { setUp++ })
-            }
+            }}
         }
         settle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/home_new_user.png")
@@ -66,10 +66,10 @@ class HomeStartTest {
     @Test fun `the tour spotlights record first, and finishing it is remembered`() {
         val vm = TodayViewModel(app)
         compose.setContent {
-            MeetMindTheme {
+            MeetMindTheme { androidx.compose.runtime.CompositionLocalProvider(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true, com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion provides true) {
                 TodayScreen(vm, onOpenNote = {}, onOpenProcessing = {}, onRecord = {}, onRecordType = {}, onRecordEvent = { _, _, _, _ -> },
                     onSearch = {}, onNavigateBottomNav = {}, setup = SetupGuide.compute(8f, { false }), tourEnabled = true)
-            }
+            }}
         }
         settle()
         compose.mainClock.advanceTimeBy(1500)
@@ -80,6 +80,14 @@ class HomeStartTest {
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/home_tour_new.png")
         compose.onNodeWithTag("coach_skip").performClick()
         settle()
-        runBlocking { assertTrue(UserPreferencesManager(app).preferencesFlow.first().tourCompleted) }
+        // The skip is saved on Dispatchers.IO and posts back to the paused looper; idle it until the save lands.
+        runBlocking {
+            repeat(100) {
+                if (UserPreferencesManager(app).preferencesFlow.first().tourCompleted) return@repeat
+                org.robolectric.shadows.ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS)
+                Thread.sleep(50)
+            }
+            assertTrue(UserPreferencesManager(app).preferencesFlow.first().tourCompleted)
+        }
     }
 }

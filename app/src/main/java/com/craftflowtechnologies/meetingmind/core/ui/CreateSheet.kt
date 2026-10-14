@@ -38,6 +38,9 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
+import com.craftflowtechnologies.meetingmind.ui.theme.Accent
+import com.craftflowtechnologies.meetingmind.ui.theme.OnAccent
+import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
 
 enum class CreateAction { RECORD, NOTE, MEDIA, IMPORT }
 
@@ -52,15 +55,15 @@ fun CreateSheet(onPick: (CreateAction) -> Unit, onDismiss: () -> Unit) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding()) {
             Text("Create", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, letterSpacing = (-0.3).sp)
             Spacer(Modifier.height(14.dp))
-            Surface(onClick = { onPick(CreateAction.RECORD) }, shape = RoundedCornerShape(20.dp), color = Ink, modifier = Modifier.fillMaxWidth()) {
+            Surface(onClick = { onPick(CreateAction.RECORD) }, shape = RoundedCornerShape(20.dp), color = Accent, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = CircleShape, color = Color.White.copy(alpha = 0.14f), modifier = Modifier.size(46.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp)) }
+                    Surface(shape = CircleShape, color = OnAccent.copy(alpha = 0.16f), modifier = Modifier.size(46.dp)) {
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Mic, contentDescription = null, tint = OnAccent, modifier = Modifier.size(22.dp)) }
                     }
                     Spacer(Modifier.width(14.dp))
                     Column {
-                        Text("Record", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                        Text("A meeting, sermon, lecture or thought", fontSize = 13.sp, color = Color.White.copy(alpha = 0.72f))
+                        Text("Record", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = OnAccent)
+                        Text("A meeting, sermon, lecture or thought", fontSize = 13.sp, color = OnAccent.copy(alpha = 0.72f))
                     }
                 }
             }
@@ -82,7 +85,7 @@ fun CreateSheet(onPick: (CreateAction) -> Unit, onDismiss: () -> Unit) {
 private fun CreateTile(label: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
     Surface(onClick = onClick, shape = RoundedCornerShape(18.dp), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = modifier) {
         Column(Modifier.padding(vertical = 16.dp, horizontal = 12.dp)) {
-            Icon(icon, contentDescription = null, tint = Ink, modifier = Modifier.size(22.dp))
+            Icon(icon, contentDescription = null, tint = Accent, modifier = Modifier.size(22.dp))
             Spacer(Modifier.height(10.dp))
             Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = InkSecondary)
         }

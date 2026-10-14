@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Signature moments copy (docs/mvp/ZURI_SIGNATURE_MOMENTS.md section 9).
+  Name rule: the user's name appears only in the First Keep headline, and only when they gave one.
+  The prayer emoji appears only in the sermon snackbar and notification.
+-->
+<resources>
+    <!-- First Keep -->
+    <string name="companion_moment_first_keep_headline">Your first note is ready.</string>
+    <!-- %1$s: the user's own name. -->
+    <string name="companion_moment_first_keep_headline_named">%1$s, your first note is ready.</string>
+    <string name="companion_moment_first_keep_headline_sermon">Your first sermon notes are ready.</string>
+    <!-- Every-note First Keep (founder decision 9): a later note, not the first one. -->
+    <string name="companion_moment_keep_headline">Your note is ready.</string>
+    <string name="companion_moment_keep_headline_sermon">Your sermon notes are ready.</string>
+    <string name="companion_moment_first_keep_sub">Everything you said, kept.</string>
+    <string name="companion_moment_first_keep_sub_faith">Every word, kept.</string>
+    <string name="companion_moment_first_keep_sub_study">Ready when you are to revise.</string>
+    <plurals name="companion_moment_first_keep_sub_actions">
+        <item quantity="one">%d action item, kept.</item>
+        <item quantity="other">%d action items, kept.</item>
+    </plurals>
+    <string name="companion_moment_first_keep_companion_line">I kept every word.</string>
+    <string name="companion_moment_open_note">Open note</string>
+    <string name="companion_moment_share">Share a moment</string>
+    <!-- %1$s: note title. -->
+    <string name="companion_moment_first_keep_announcement">Your first note is ready. %1$s.</string>
+    <!-- The onboarding sample (hello) First Keep. -->
+    <string name="companion_moment_hello_headline">Here\'s what a note looks like.</string>
+    <string name="companion_moment_hello_example">Example</string>
+    <string name="companion_moment_hello_record">Record your own</string>
+    <string name="companion_moment_hello_sub">Everything said, kept. Yours will look like this.</string>
+
+    <!-- Unveil, nod and plain opens. %1$s: note title. -->
+    <string name="companion_moment_ready">%1$s is ready.</string>
+    <string name="companion_moment_sermon_ready">Your sermon notes are ready 🙏</string>
+    <string name="companion_moment_open">Open</string>
+    <string name="companion_moment_show">Show</string>
+    <plurals name="companion_moment_queued_ready">
+        <item quantity="one">%d note is ready.</item>
+        <item quantity="other">%d notes are ready.</item>
+    </plurals>
+
+    <!-- Honest fallbacks on the note screen (section 4). -->
+    <string name="companion_moment_partial">The transcript is ready. The summary didn\'t finish.</string>
+    <string name="companion_moment_try_again">Try again</string>
+    <string name="companion_moment_no_speech">We didn\'t hear anyone speaking. Your recording is safe.</string>
+    <string name="companion_moment_play_it">Play it</string>
+
+    <!-- Notification (section 9). -->
+    <string name="companion_moment_notify_text">Tap to open your note.</string>
+    <string name="companion_moment_notify_on_device">Made on your phone.</string>
+
+    <!-- Create (section 5). %1$s: companion name. -->
+    <string name="companion_moment_card_include">Include %1$s</string>
+    <!-- %1$s: mode. -->
+    <string name="companion_moment_card_suggested">Suggested: %1$s</string>
+    <!-- %1$s: suggested mode. %2$s: the mode the user chose. -->
+    <string name="companion_moment_card_suggested_chose">Suggested: %1$s · you chose %2$s</string>
+    <string name="companion_moment_card_prayer_only">On prayer requests, only Prayerful or Peaceful.</string>
+    <!-- %1$s: companion name. -->
+    <string name="companion_moment_card_scripture_calm">On scripture, %1$s stays calm.</string>
+    <string name="companion_moment_card_caption">This is how it\'ll look when shared.</string>
+    <string name="companion_moment_card_words_promise">Your words stay exactly as you wrote them.</string>
+    <string name="companion_moment_card_anchor_below">Below the words</string>
+    <string name="companion_moment_card_anchor_corner">Corner</string>
+    <!-- %1$s: mode. -->
+    <string name="companion_moment_card_not_offered">%1$s isn\'t offered on this kind of card.</string>
+    <string name="companion_moment_card_safe_zones">Show safe zones</string>
+    <!-- %1$s: companion name. %2$s: mode. -->
+    <string name="companion_moment_card_added">%1$s added. %2$s pose.</string>
+    <!-- %1$s: mode. -->
+    <string name="companion_moment_card_pose">%1$s pose.</string>
+</resources>

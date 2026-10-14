@@ -27,7 +27,7 @@ import java.time.LocalDate
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = "w411dp-h2600dp-xxhdpi", sdk = [34])
+@Config(qualifiers = "w411dp-h2000dp-xxhdpi", sdk = [34])
 class DevotionalScreenshotTest {
     @get:Rule val compose = createComposeRule()
 
@@ -40,9 +40,9 @@ class DevotionalScreenshotTest {
         return DailyDevotional(note, d, NoteDocument(note, blocks, emptyList(), emptyList(), refs))
     }
 
-    private fun capture(state: DevotionalUiState, name: String) {
+    private fun capture(state: DevotionalUiState, name: String, dark: Boolean = true) {
         compose.setContent {
-            MeetMindTheme { DevotionalContent(state, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, liveScripture = false) }
+            MeetMindTheme(darkTheme = dark) { DevotionalContent(state, {}, {}, {}, {}, {}, { _, _ -> }, { _, _ -> }, liveScripture = false) }
         }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
@@ -64,6 +64,28 @@ class DevotionalScreenshotTest {
             label = DevotionalLabels.CLOUD, engine = "gemini"
         )
         capture(DevotionalUiState(loading = false, today = daily(d), season = LiturgicalCalendar.dayOf(date), date = date), "devotional_ai")
+    }
+
+    @Test fun `Live it today and the reflection written under the question`() {
+        val d = Devotional(
+            day = LocalDay.of(date), origin = DevotionalOrigin.CLOUD_AI, title = "Rest for the weary",
+            scripture = listOf(ScriptureReferenceParser.parse("Matthew 11:28-30")!!),
+            reflection = listOf(
+                "Jesus doesn't wait for the tired to tidy themselves up. He calls them as they are.",
+                "Rest, in his hands, isn't a reward for finishing. It's where the work begins."
+            ),
+            liveItToday = "Put your phone down for ten quiet minutes and breathe slowly.",
+            prayer = "Lord Jesus, I come tired. Teach me your pace today, and let me find rest in walking with you. Amen.",
+            question = "Where are you trying to earn rest instead of receiving it?",
+            label = DevotionalLabels.CLOUD, engine = "gemini"
+        )
+        capture(
+            DevotionalUiState(
+                loading = false, today = daily(d), season = LiturgicalCalendar.dayOf(date), date = date,
+                reflection = "In the mornings, mostly. I keep thinking I have to finish the list before I'm allowed to stop.\nMaybe the yoke is the list I was never asked to carry."
+            ),
+            "devotional_live_reflection", dark = false
+        )
     }
 
     @Test fun `before it's written there's an invitation`() {

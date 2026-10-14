@@ -28,7 +28,13 @@ class ProcessingScreenshotTest {
 
     private fun capture(state: ProcessingUiState, name: String) {
         compose.setContent {
-            MeetMindTheme { ProcessingRunning(state, ProcessingProfile.INTERNET, rows, {}, {}, {}, {}, {}) }
+            MeetMindTheme {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionSettingsSource provides com.craftflowtechnologies.meetingmind.feature.settings.companion.FakeCompanionSettings(),
+                    com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion provides true,
+                    com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true
+                ) { ProcessingRunning(state, ProcessingProfile.INTERNET, rows, {}, {}, {}, {}, {}) }
+            }
         }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
@@ -51,7 +57,8 @@ class ProcessingScreenshotTest {
                 error = "Google's AI couldn't transcribe this recording. Transcribing failed: your Gemini API key was rejected."),
             "processing_failed"
         )
-        compose.onNodeWithText("Try again").assertIsDisplayed()
+        compose.onNodeWithText("Retry").assertIsDisplayed()
+        compose.onNodeWithText("Try again").assertDoesNotExist() // one primary action: the companion line carries it
     }
 
     @Test

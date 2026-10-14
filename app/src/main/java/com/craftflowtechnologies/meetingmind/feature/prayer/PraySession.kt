@@ -78,6 +78,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
+import com.craftflowtechnologies.meetingmind.ui.theme.PrayRoomColors
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -94,20 +96,22 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val Ink = Color(0xFF07060F)
-private val Gold = Color(0xFFF6D365)
-private val Amber = Color(0xFFE8A33A)
-private val Cyan = Color(0xFF5EE7FF)
-private val Indigo = Color(0xFF6366F1)
-private val Violet = Color(0xFFA78BFA)
-private val Rose = Color(0xFFF472B6)
+private val Ink = PrayRoomColors.Ink
+private val Gold = PrayRoomColors.Gold
+private val Amber = PrayRoomColors.Amber
+private val Cyan = PrayRoomColors.Cyan
+private val Indigo = PrayRoomColors.Indigo
+private val Violet = PrayRoomColors.Violet
+private val Rose = PrayRoomColors.Rose
 
 /** What the room feels like right now: who has the floor, and whether we're singing. */
-private enum class Mood { CONNECTING, LISTENING, SPEAKING, SINGING, PAUSED, ENDED }
+private enum class Mood { CONNECTING, LISTENING, THINKING, SPEAKING, SINGING, PAUSED, RECONNECTING, ENDED }
 
 private fun moodOf(ui: PrayUi) = when {
     ui.state == LiveVoiceState.ENDED || ui.state == LiveVoiceState.FAILED -> Mood.ENDED
     ui.state == LiveVoiceState.CONNECTING -> Mood.CONNECTING
+    ui.state == LiveVoiceState.RECONNECTING -> Mood.RECONNECTING
+    ui.state == LiveVoiceState.THINKING -> Mood.THINKING
     ui.singing && ui.state == LiveVoiceState.SPEAKING -> Mood.SINGING
     ui.state == LiveVoiceState.SPEAKING -> Mood.SPEAKING
     ui.state == LiveVoiceState.PAUSED -> Mood.PAUSED
@@ -115,12 +119,13 @@ private fun moodOf(ui: PrayUi) = when {
 }
 
 private fun palette(m: Mood): List<Color> = when (m) {
-    Mood.CONNECTING -> listOf(Indigo, Violet, Color(0xFF1E1B4B))
-    Mood.LISTENING -> listOf(Cyan, Indigo, Color(0xFF0EA5E9))
+    Mood.CONNECTING -> listOf(Indigo, Violet, PrayRoomColors.Night)
+    Mood.LISTENING -> listOf(Cyan, Indigo, PrayRoomColors.Sky)
     Mood.SPEAKING -> listOf(Gold, Amber, Rose)
     Mood.SINGING -> listOf(Violet, Gold, Rose)
-    Mood.PAUSED -> listOf(Color(0xFF64748B), Color(0xFF334155), Indigo)
-    Mood.ENDED -> listOf(Gold, Violet, Color(0xFF1E1B4B))
+    Mood.PAUSED, Mood.RECONNECTING -> listOf(PrayRoomColors.Slate, PrayRoomColors.SlateDeep, Indigo)
+    Mood.THINKING -> listOf(Violet, Indigo, PrayRoomColors.Night)
+    Mood.ENDED -> listOf(Gold, Violet, PrayRoomColors.Night)
 }
 
 /**
@@ -137,6 +142,12 @@ internal fun PraySessionContent(viewModel: PrayWithMeViewModel, ui: PrayUi, onCl
     var captions by rememberSaveable { mutableStateOf(true) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(ended) { while (!ended) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(1000) } }
+    // The screen stays awake for the whole conversation, and is let go when it ends.
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(ended) {
+        view.keepScreenOn = !ended
+        onDispose { view.keepScreenOn = false }
+    }
     val elapsed = if (ui.startedAt > 0) ((now - ui.startedAt) / 1000).coerceAtLeast(0) else 0
 
     Box(Modifier.fillMaxSize().background(Ink).testTag("pray_session")) {
@@ -144,21 +155,21 @@ internal fun PraySessionContent(viewModel: PrayWithMeViewModel, ui: PrayUi, onCl
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
             // Top: close, what we're doing and for how long, captions.
             Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close", tint = Color.White) }
+                IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close", tint = FixedWhite) }
                 Spacer(Modifier.weight(1f))
                 Row(
-                    Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(50))
+                    Modifier.clip(RoundedCornerShape(50)).background(FixedWhite.copy(alpha = 0.08f)).border(1.dp, FixedWhite.copy(alpha = 0.1f), RoundedCornerShape(50))
                         .padding(horizontal = 14.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (ended) Color.White.copy(alpha = 0.4f) else palette(mood).first()))
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (ended) FixedWhite.copy(alpha = 0.4f) else palette(mood).first()))
                     Spacer(Modifier.width(8.dp))
                     Text("${if (ui.mode == PrayMode.TALK_IT_THROUGH) "Talking it through" else ui.mode.label} · ${"%d:%02d".format(elapsed / 60, elapsed % 60)}",
-                        color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        color = FixedWhite.copy(alpha = 0.85f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 }
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = { captions = !captions }, modifier = Modifier.testTag("pray_captions")) {
-                    Icon(if (captions) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled, contentDescription = if (captions) "Hide words" else "Show words", tint = Color.White.copy(alpha = 0.8f))
+                    Icon(if (captions) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled, contentDescription = if (captions) "Hide words" else "Show words", tint = FixedWhite.copy(alpha = 0.8f))
                 }
             }
 
@@ -166,26 +177,38 @@ internal fun PraySessionContent(viewModel: PrayWithMeViewModel, ui: PrayUi, onCl
             val compact = captions && ui.lines.size > 1
             val orbSize by animateFloatAsState(if (compact) 150f else 230f, spring(dampingRatio = 0.8f, stiffness = 120f), label = "orb")
             Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
-                LivingOrb(mood, ai, you, Modifier.size(orbSize.dp))
+                LivingOrb(mood, ai, you, Modifier.size(orbSize.dp).then(
+                    if (mood == Mood.SPEAKING || mood == Mood.SINGING) Modifier.clip(CircleShape).clickable(onClickLabel = "Interrupt", onClick = viewModel::interrupt) else Modifier))
                 if (mood == Mood.SINGING) Notes(Modifier.size((orbSize + 60).dp))
             }
             AnimatedContent(targetState = statusLine(mood, ui), transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(200)) }, label = "status",
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) { line ->
-                Text(line, color = Color.White, fontSize = 21.sp, fontFamily = FontFamily.Serif, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().testTag("pray_status"))
+                Text(line, color = FixedWhite, fontSize = 21.sp, fontFamily = FontFamily.Serif, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().testTag("pray_status"))
             }
-            if (ui.state == LiveVoiceState.CONNECTING && ui.stage.isNotBlank()) Text(ui.stage, fontSize = 13.sp, color = Color.White.copy(alpha = 0.55f), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("pray_stage"))
-            ui.error?.let { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFFFCA5A5), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 6.dp)) }
+            if (!ended && ui.state != LiveVoiceState.CONNECTING) {
+                val hint = if ((mood == Mood.SPEAKING || mood == Mood.SINGING) && !ui.voiceInterrupt) "Tap the circle to interrupt" else null
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Interrupt by voice · ${if (ui.voiceInterrupt) "On" else "Off"}", color = FixedWhite.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(FixedWhite.copy(alpha = 0.08f)).border(1.dp, FixedWhite.copy(alpha = 0.12f), RoundedCornerShape(50))
+                            .clickable(onClickLabel = "Change whether your voice interrupts", onClick = viewModel::toggleVoiceInterrupt).padding(horizontal = 12.dp, vertical = 6.dp).testTag("pray_interrupt_toggle")
+                    )
+                }
+                if (hint != null) Text(hint, color = FixedWhite.copy(alpha = 0.5f), fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+            }
+            if (ui.state == LiveVoiceState.CONNECTING && ui.stage.isNotBlank()) Text(ui.stage, fontSize = 13.sp, color = FixedWhite.copy(alpha = 0.55f), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("pray_stage"))
+            ui.error?.let { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = PrayRoomColors.Blush, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 6.dp)) }
 
             // The conversation, fading out at the top like a page scrolling away.
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (captions) Conversation(ui.lines, Modifier.fillMaxSize())
-                else Text("Words are hidden. Just pray — the companion is listening.", color = Color.White.copy(alpha = 0.45f), fontSize = 14.sp, fontStyle = FontStyle.Italic,
+                else Text("Words are hidden. Just pray — the companion is listening.", color = FixedWhite.copy(alpha = 0.45f), fontSize = 14.sp, fontStyle = FontStyle.Italic,
                     textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center).padding(32.dp))
             }
 
             if (ended) EndedCard(ui, elapsed, onSave = { ui.savedNoteId?.let(onOpenNote) ?: viewModel.save() }, onAgain = { viewModel.reset() }, onClose = onClose)
             else {
-                QuickAsks(ui, onSing = { viewModel.sing() }, onAsk = viewModel::ask)
+                QuickAsks(ui, onAsk = viewModel::ask)
                 Composer(ui, you, onSend = viewModel::say, onMute = { viewModel.toggleMute() }, onAmen = { viewModel.end() })
             }
         }
@@ -198,6 +221,8 @@ private fun statusLine(m: Mood, ui: PrayUi): String = when (m) {
     Mood.SPEAKING -> if (ui.mode == PrayMode.TALK_IT_THROUGH) "Speaking…" else "Praying…"
     Mood.SINGING -> "Singing…"
     Mood.PAUSED -> "Microphone off"
+    Mood.THINKING -> "Thinking…"
+    Mood.RECONNECTING -> "Reconnecting…"
     Mood.ENDED -> if (ui.state == LiveVoiceState.FAILED) "The connection stopped" else "Amen"
 }
 
@@ -235,7 +260,7 @@ private fun LivingOrb(mood: Mood, ai: Float, you: Float, modifier: Modifier) {
     val speaking = mood == Mood.SPEAKING || mood == Mood.SINGING
     val level by animateFloatAsState(if (speaking) ai else if (mood == Mood.LISTENING) you else 0f, tween(120), label = "lvl")
     val colors = palette(mood)
-    val ringColor by animateColorAsState(if (speaking) colors[0] else if (mood == Mood.LISTENING) Cyan else Color.White.copy(alpha = 0.4f), tween(500), label = "ring")
+    val ringColor by animateColorAsState(if (speaking) colors[0] else if (mood == Mood.LISTENING) Cyan else FixedWhite.copy(alpha = 0.4f), tween(500), label = "ring")
     val coreA by animateColorAsState(colors[0], tween(900), label = "ca")
     val coreB by animateColorAsState(colors[1], tween(900), label = "cb")
 
@@ -262,7 +287,7 @@ private fun LivingOrb(mood: Mood, ai: Float, you: Float, modifier: Modifier) {
         rotate(spin, c) {
             drawCircle(Brush.sweepGradient(listOf(coreA, coreB, colors[2], coreA), center = c), radius = r, center = c)
         }
-        drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.55f), Color.Transparent), center = Offset(c.x - r * 0.35f, c.y - r * 0.4f), radius = r * 0.9f), radius = r, center = c)
+        drawCircle(Brush.radialGradient(listOf(FixedWhite.copy(alpha = 0.55f), Color.Transparent), center = Offset(c.x - r * 0.35f, c.y - r * 0.4f), radius = r * 0.9f), radius = r, center = c)
         drawCircle(Brush.radialGradient(listOf(Color.Transparent, Ink.copy(alpha = 0.35f)), center = c, radius = r), radius = r, center = c)
     }
 }
@@ -302,13 +327,13 @@ private fun Conversation(lines: List<PrayLine>, modifier: Modifier) {
             val latest = i >= lines.size - 2
             if (l.mine) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Text(
-                    l.text, color = Color.White.copy(alpha = if (latest) 0.95f else 0.6f), fontSize = 15.sp, lineHeight = 21.sp,
+                    l.text, color = FixedWhite.copy(alpha = if (latest) 0.95f else 0.6f), fontSize = 15.sp, lineHeight = 21.sp,
                     modifier = Modifier.padding(start = 48.dp).clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 6.dp))
-                        .background(Color.White.copy(alpha = 0.10f)).border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 6.dp))
+                        .background(FixedWhite.copy(alpha = 0.10f)).border(1.dp, FixedWhite.copy(alpha = 0.08f), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 6.dp))
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 )
             } else Text(
-                l.text, color = Color.White.copy(alpha = if (latest) 1f else 0.5f), fontSize = if (latest) 21.sp else 18.sp, lineHeight = if (latest) 30.sp else 26.sp,
+                l.text, color = FixedWhite.copy(alpha = if (latest) 1f else 0.5f), fontSize = if (latest) 21.sp else 18.sp, lineHeight = if (latest) 30.sp else 26.sp,
                 fontFamily = FontFamily.Serif, modifier = Modifier.fillMaxWidth().padding(end = 12.dp)
             )
         }
@@ -317,9 +342,8 @@ private fun Conversation(lines: List<PrayLine>, modifier: Modifier) {
 
 /** One-tap things to ask for, so nobody has to find the words. */
 @Composable
-private fun QuickAsks(ui: PrayUi, onSing: () -> Unit, onAsk: (String) -> Unit) {
+private fun QuickAsks(ui: PrayUi, onAsk: (String) -> Unit) {
     val asks = buildList<Pair<String, () -> Unit>> {
-        add("♪  Sing with me" to onSing)
         if (ui.mode == PrayMode.TALK_IT_THROUGH) {
             add("Ask me a question" to { onAsk("Please ask me one good question about today's reading.") })
             add("Pray about this" to { onAsk("Let's pray about what we've talked about. Please lead a short prayer.") })
@@ -333,8 +357,8 @@ private fun QuickAsks(ui: PrayUi, onSing: () -> Unit, onAsk: (String) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp).testTag("pray_quick")) {
         items(asks.size) { i ->
             val (label, action) = asks[i]
-            Text(label, color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp, fontWeight = FontWeight.Medium,
-                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
+            Text(label, color = FixedWhite.copy(alpha = 0.9f), fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.clip(RoundedCornerShape(50)).background(FixedWhite.copy(alpha = 0.08f)).border(1.dp, FixedWhite.copy(alpha = 0.12f), RoundedCornerShape(50))
                     .clickable(enabled = ui.state != LiveVoiceState.CONNECTING, onClick = action).padding(horizontal = 14.dp, vertical = 8.dp))
         }
     }
@@ -351,27 +375,27 @@ private fun Composer(ui: PrayUi, you: Float, onSend: (String) -> Unit, onMute: (
     Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.Bottom) {
         Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
             Box(Modifier.size((46 + ring * 18).dp).clip(CircleShape).background(Cyan.copy(alpha = if (ui.muted) 0f else 0.10f + ring * 0.35f)))
-            Surface(onClick = onMute, shape = CircleShape, color = if (ui.muted) Color(0xFFEF4444).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f), modifier = Modifier.size(46.dp).testTag("pray_mute")) {
+            Surface(onClick = onMute, shape = CircleShape, color = if (ui.muted) PrayRoomColors.Red.copy(alpha = 0.85f) else FixedWhite.copy(alpha = 0.12f), modifier = Modifier.size(46.dp).testTag("pray_mute")) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(if (ui.muted) Icons.Filled.MicOff else Icons.Filled.Mic, contentDescription = if (ui.muted) "Unmute" else "Mute", tint = Color.White)
+                    Icon(if (ui.muted) Icons.Filled.MicOff else Icons.Filled.Mic, contentDescription = if (ui.muted) "Unmute" else "Mute", tint = FixedWhite)
                 }
             }
         }
         Spacer(Modifier.width(8.dp))
         BasicTextField(
             value = draft, onValueChange = { draft = it.take(1000) },
-            textStyle = TextStyle(color = Color.White, fontSize = 16.sp, lineHeight = 22.sp),
+            textStyle = TextStyle(color = FixedWhite, fontSize = 16.sp, lineHeight = 22.sp),
             cursorBrush = SolidColor(Gold), maxLines = 5,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { if (draft.isNotBlank()) { onSend(draft); draft = "" } }),
             modifier = Modifier.weight(1f).heightIn(min = 46.dp).testTag("pray_input"),
             decorationBox = { inner ->
                 Box(
-                    Modifier.clip(RoundedCornerShape(24.dp)).background(Color.White.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(24.dp))
+                    Modifier.clip(RoundedCornerShape(24.dp)).background(FixedWhite.copy(alpha = 0.08f)).border(1.dp, FixedWhite.copy(alpha = 0.14f), RoundedCornerShape(24.dp))
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    if (draft.isEmpty()) Text("Type a prayer…", color = Color.White.copy(alpha = 0.4f), fontSize = 16.sp, maxLines = 1)
+                    if (draft.isEmpty()) Text("Type a prayer…", color = FixedWhite.copy(alpha = 0.4f), fontSize = 16.sp, maxLines = 1)
                     inner()
                 }
             }
@@ -393,22 +417,22 @@ private fun Composer(ui: PrayUi, you: Float, onSend: (String) -> Unit, onMute: (
 private fun EndedCard(ui: PrayUi, elapsed: Long, onSave: () -> Unit, onAgain: () -> Unit, onClose: () -> Unit) {
     AnimatedVisibility(visible = true, enter = fadeIn(tween(500)) + slideInVertically { it / 3 }) {
         Column(
-            Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(28.dp)).background(Color.White.copy(alpha = 0.08f))
+            Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(28.dp)).background(FixedWhite.copy(alpha = 0.08f))
                 .border(1.dp, Brush.linearGradient(listOf(Gold.copy(alpha = 0.6f), Violet.copy(alpha = 0.4f))), RoundedCornerShape(28.dp)).padding(20.dp)
                 .testTag("pray_ended"),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(if (ui.state == LiveVoiceState.FAILED) "We got cut off" else "Go in peace", color = Color.White, fontSize = 22.sp, fontFamily = FontFamily.Serif)
-            Text("${elapsed / 60} min ${elapsed % 60} s together" + if (ui.lines.isNotEmpty()) " · ${ui.lines.size} ${if (ui.lines.size == 1) "moment" else "moments"}" else "", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+            Text(if (ui.state == LiveVoiceState.FAILED) "We got cut off" else "Go in peace", color = FixedWhite, fontSize = 22.sp, fontFamily = FontFamily.Serif)
+            Text("${elapsed / 60} min ${elapsed % 60} s together" + if (ui.lines.isNotEmpty()) " · ${ui.lines.size} ${if (ui.lines.size == 1) "moment" else "moments"}" else "", color = FixedWhite.copy(alpha = 0.6f), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (ui.lines.isNotEmpty()) Surface(onClick = onSave, shape = RoundedCornerShape(50), color = Gold) {
                     Text(if (ui.savedNoteId != null) "Open saved prayer" else "Keep as a note", color = Ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 11.dp))
                 }
-                Surface(onClick = onAgain, shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.12f)) {
-                    Text(if (ui.state == LiveVoiceState.FAILED) "Try again" else "Pray again", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 11.dp))
+                Surface(onClick = onAgain, shape = RoundedCornerShape(50), color = FixedWhite.copy(alpha = 0.12f)) {
+                    Text(if (ui.state == LiveVoiceState.FAILED) "Try again" else "Pray again", color = FixedWhite, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 11.dp))
                 }
             }
-            Text("Close", color = Color.White.copy(alpha = 0.55f), fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onClose).padding(8.dp))
+            Text("Close", color = FixedWhite.copy(alpha = 0.55f), fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onClose).padding(8.dp))
         }
     }
 }

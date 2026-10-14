@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Companion Lab (debug builds only). Not user-facing copy: the companion strings live in
+     res/values/strings_companion.xml (Z-18). -->
+<resources>
+    <string name="companion_lab_title">Companion Lab</string>
+    <string name="companion_lab_form">Form</string>
+    <string name="companion_lab_state">State</string>
+    <string name="companion_lab_mode">Create mode</string>
+    <string name="companion_lab_mode_none">None</string>
+    <string name="companion_lab_variant">Variant</string>
+    <string name="companion_lab_level">Level (mic, or the voice while Reading) %1$d%%</string>
+    <string name="companion_lab_level_wobble">Simulate speech</string>
+    <string name="companion_lab_accent">Accent</string>
+    <string name="companion_lab_theme_light">Light</string>
+    <string name="companion_lab_theme_dark">Dark</string>
+    <string name="companion_lab_reduced">Reduced motion (static poses)</string>
+    <string name="companion_lab_replay">Replay</string>
+    <string name="companion_lab_ladder">Size ladder</string>
+    <string name="companion_lab_renderer">Renderer: %1$s (%2$s)</string>
+    <string name="companion_lab_size_renderer">%1$d dp · %2$s</string>
+    <string name="companion_lab_assets">Bundled .riv files</string>
+    <string name="companion_lab_assets_none">None yet: every form draws on Canvas. Drop zuri.riv, nas.riv, wren.riv or page.riv into app/src/main/assets/companion/.</string>
+    <string name="companion_lab_contract">Contract: artboard \"%1$s\", state machine \"%2$s\", view model \"%3$s\"</string>
+    <string name="companion_lab_reason_ready">ready</string>
+    <string name="companion_lab_reason_too_small">under 48 dp: the T0 glyph</string>
+    <string name="companion_lab_reason_reduced">reduced motion</string>
+    <string name="companion_lab_reason_no_asset">no asset</string>
+    <string name="companion_lab_reason_budget">over the live-Rive budget</string>
+    <string name="companion_lab_reason_flag">flag off</string>
+    <string name="companion_lab_reason_guard">disabled by crash guard for this version</string>
+    <string name="companion_lab_reason_forced">forced Canvas</string>
+    <string name="companion_lab_reason_failed">Rive file failed its check</string>
+    <string name="companion_lab_guard_ok">Rive crash guard: armed, Rive allowed</string>
+    <string name="companion_lab_guard_version">Rive crash guard: TRIPPED. An earlier run of this version stopped while Rive was starting, so Rive is off for this version. See adb logcat -s Companion.</string>
+    <string name="companion_lab_guard_process">Rive crash guard: Rive\'s native runtime failed in this process; off until restart.</string>
+    <string name="companion_lab_rive_failure">Last Rive failure: %1$s</string>
+    <string name="companion_lab_reset_guard">Reset Rive guard</string>
+    <string name="companion_lab_stats">Canvas frame: %1$.2f ms draw · %2$s allocations · %3$d frames measured · live Rive views: %4$d</string>
+    <string name="companion_lab_stats_na">n/a</string>
+    <string name="companion_lab_volume">3D volume layer and parallax (Z-14; the app flag is %1$s)</string>
+    <string name="companion_lab_stats_tilt">Tilt: x %1$.2f, y %2$.2f · sensor listeners: %3$d (held by %4$d heroes ≥ 144 dp)</string>
+    <string name="companion_lab_tab_companion">Companion</string>
+    <string name="companion_lab_tab_moments">Moments</string>
+    <string name="companion_lab_moment">Moment</string>
+    <string name="companion_lab_space">Space</string>
+    <string name="companion_lab_plays">Times this variant has played (familiarity)</string>
+    <string name="companion_lab_play">Play</string>
+    <string name="companion_lab_moment_reset">Reset</string>
+    <string name="companion_lab_moment_time">%1$.2f / %2$.2f s · tap the preview to skip</string>
+    <string name="companion_lab_planner">Planner (founder flags)</string>
+    <string name="companion_lab_flag_first_keep">First Keep on every note</string>
+    <string name="companion_lab_flag_every_open">Unveil on every open</string>
+    <string name="companion_lab_arrival">This open is an arrival (the note has a ticket)</string>
+    <string name="companion_lab_open_note">Open a note</string>
+    <string name="companion_lab_next_picks">Next picks in this space: %1$s</string>
+</resources>

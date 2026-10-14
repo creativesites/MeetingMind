@@ -171,7 +171,12 @@ class MeetingProcessingPipelineIntegrationTest {
                     ActionItem(id = UUID.randomUUID().toString(), meetingId = transcript.meetingId, task = "Notify customers", assigneeName = "Speaker 1", sourceSegmentIds = listOf("seg1"))
                 ),
                 questions = emptyList(),
-                followUps = emptyList()
+                followUps = emptyList(),
+                signals = listOf(
+                    com.craftflowtechnologies.meetingmind.core.model.Signal(
+                        id = "sig1", meetingId = transcript.meetingId, kind = "DEADLINE", text = "Ship on Friday", sourceSegmentIds = listOf("seg1", "seg2"), value = "Friday", confidence = 0.9f
+                    )
+                )
             )
         )
 
@@ -241,6 +246,23 @@ class MeetingProcessingPipelineIntegrationTest {
         val actionItems = database.actionItemDao().getActionItemsForMeetingDirect(meetingId)
         assertEquals(1, actionItems.size)
         assertEquals("Speaker 1", actionItems[0].assigneeName)
+    }
+
+    @Test
+    fun `signals are persisted one row per cited paragraph, and a second run replaces them`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        val pipeline = buildPipeline()
+
+        pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+        pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+
+        val rows = database.signalDao().forMeeting(meetingId)
+        assertEquals(listOf("seg1", "seg2"), rows.map { it.segmentId }.sorted())
+        assertEquals(setOf("DEADLINE"), rows.map { it.kind }.toSet())
+        assertEquals("Friday", rows.first().value)
+        assertEquals("Ship on Friday", rows.first().text)
+        assertEquals(1, rows.map { it.signalId }.distinct().size)
     }
 
     @Test

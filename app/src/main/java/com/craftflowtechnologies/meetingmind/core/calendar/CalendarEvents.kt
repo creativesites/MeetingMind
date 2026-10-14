@@ -152,7 +152,11 @@ object UpNext {
             has("interview", "screening") -> RecordingType.INTERVIEW
             has("lecture", "class", "seminar", "course", "lesson", "tutorial") -> RecordingType.LECTURE
             has("brainstorm", "workshop", "ideation") -> RecordingType.BRAINSTORM
-            has("1:1", "1-1", "one on one", "one-on-one", "catch up", "catch-up", "coffee") -> RecordingType.CONVERSATION
+            has("1:1", "1-1", "1on1", "one on one", "one-on-one") -> RecordingType.ONE_ON_ONE
+            has("standup", "stand-up", "stand up", "daily scrum", "scrum") -> RecordingType.STANDUP
+            has("consultation", "consult", "appointment", "patient", "clinic", "attendance note") -> RecordingType.CONSULTATION
+            has("client", "customer", "discovery", "demo", "sales call", "pitch", "kickoff", "kick-off") -> RecordingType.CLIENT_CALL
+            has("catch up", "catch-up", "coffee") -> RecordingType.CONVERSATION
             else -> RecordingType.MEETING
         }
     }

@@ -45,6 +45,20 @@ class GeminiCredentialStore(private val context: Context) {
 
     suspend fun getApiKey(): String? = apiKeyFlow.first()
 
+    /** Whether the person says their own key is on a paid plan. Only they know; the app can't see it. */
+    val paidPlanConfirmedFlow: Flow<Boolean> = context.geminiDataStore.data.map { it[PAID_PLAN] == true }
+
+    suspend fun setPaidPlanConfirmed(confirmed: Boolean) {
+        context.geminiDataStore.edit { it[PAID_PLAN] = confirmed }
+    }
+
+    /**
+     * What is known about the plan behind the key requests will use: the built-in tester key follows
+     * [SYSTEM_KEY_CONFIRMED_PAID]; the person's own key follows their confirmation.
+     */
+    suspend fun keyPlanConfirmedPaid(): Boolean =
+        if (usingSystemKey()) SYSTEM_KEY_CONFIRMED_PAID else paidPlanConfirmedFlow.first()
+
     suspend fun getUserKey(): String? = userKeyFlow.first()
 
     /** Whether requests are running on the built-in tester key rather than the person's own. */
@@ -74,6 +88,16 @@ class GeminiCredentialStore(private val context: Context) {
 
     companion object {
         private val API_KEY = stringPreferencesKey("gemini_api_key")
+        private val PAID_PLAN = androidx.datastore.preferences.core.booleanPreferencesKey("paid_plan_confirmed")
+
+        /**
+         * Whether the built-in key is on a Google Cloud project with active billing (a paid service under
+         * Google's Gemini API terms). Owner decision (2026-10-14): it is the owner's billed key, used for Pro
+         * users in Play Store builds. Read to Me only applies the tier gate in those builds (see
+         * [com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiKeyTierPolicy]). Flip this to false if that
+         * changes.
+         */
+        const val SYSTEM_KEY_CONFIRMED_PAID = true
 
         /** The tester key compiled into this build, or null when none was supplied. */
         val systemKey: String? = com.craftflowtechnologies.meetingmind.BuildConfig.SYSTEM_GEMINI_API_KEY.trim().takeIf { it.isNotEmpty() }

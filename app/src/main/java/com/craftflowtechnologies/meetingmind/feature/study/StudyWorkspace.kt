@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -275,6 +276,14 @@ private fun PassagePane(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                 IconButton(onClick = { if (r.chapter > 1) onOpenPassage(ScriptureReference(r.book, r.chapter - 1)) }) { Icon(Icons.Filled.ChevronLeft, contentDescription = "Previous chapter", tint = InkSecondary) }
                 Text("${r.book.name} ${r.chapter}", fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
+                val listenContext = androidx.compose.ui.platform.LocalContext.current
+                var listenOpen by remember { mutableStateOf(false) }
+                if (chapter != null && com.craftflowtechnologies.meetingmind.ai.voice.read.ReadToMeFlags.enabled(listenContext)) {
+                    IconButton(onClick = { listenOpen = true }) { Icon(Icons.Filled.GraphicEq, contentDescription = "Listen to this chapter", tint = InkSecondary) }
+                }
+                if (listenOpen) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(
+                    com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.passageId(ScriptureReference(r.book, r.chapter), null), onDismiss = { listenOpen = false }
+                )
                 IconButton(onClick = { if (r.chapter < r.book.chapterCount) onOpenPassage(ScriptureReference(r.book, r.chapter + 1)) }) { Icon(Icons.Filled.ChevronRight, contentDescription = "Next chapter", tint = InkSecondary) }
             }
             chapter?.let { Text("${it.abbreviation} · tap a verse to add it to your notes · long-press to highlight", fontSize = 11.5.sp, color = InkMuted) }
@@ -415,24 +424,3 @@ private fun SermonTranscript(s: SermonStudy?, onPlay: (Long) -> Unit) {
 }
 
 @Suppress("unused") private val dot = CircleShape
-
-/** Choose a study method; each makes an ordinary Bible-study note. */
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-@Composable
-fun StudyTemplateSheet(passage: ScriptureReference?, onPick: (com.craftflowtechnologies.meetingmind.core.faith.StudyTemplate) -> Unit, onDismiss: () -> Unit) {
-    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = LocalMMColors.current.surface) {
-        LazyColumn(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
-            item {
-                Text(passage?.let { "Study ${it.display()}" } ?: "Start a Bible study", fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
-                Text("Choose a method. It becomes a normal note you can change freely, with the passage open beside it.", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
-            }
-            items(com.craftflowtechnologies.meetingmind.core.faith.StudyTemplate.entries) { t ->
-                Column(Modifier.fillMaxWidth().clickable { onPick(t) }.padding(vertical = 12.dp).testTag("study_template_${t.name}")) {
-                    Text(t.label, fontSize = 16.sp, color = Ink, fontWeight = FontWeight.Medium)
-                    Text(t.description, fontSize = 13.sp, color = InkSecondary)
-                }
-                HorizontalDivider(color = LineSoft, thickness = 0.5.dp)
-            }
-        }
-    }
-}

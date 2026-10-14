@@ -48,6 +48,33 @@ data class NameCount(val name: String, val count: Int)
 
 data class NoteTagName(val noteId: String, val name: String)
 
+/**
+ * The Notes library's one filter (U-2). [mode]: 0 = active, 1 = archived, 2 = trash. Space chips (Work, Faith, Bible)
+ * are OR-ed with each other ([spaceAny] = 1 turns them on); Recordings and Pinned narrow further; [anyType] narrows to
+ * [types]. A Work-workflow note is Work wherever it sits (the W-3 rule), so it is never Faith. [hideLocked] = 1 leaves
+ * out private notes and Faith-workflow notes (the Faith lock is on and still locked).
+ */
+private const val LIBRARY_SCOPE = """(
+    (:mode = 0 AND n.archivedAt IS NULL AND n.deletedAt IS NULL AND n.isDraft = 0)
+    OR (:mode = 1 AND n.archivedAt IS NOT NULL AND n.deletedAt IS NULL AND n.isDraft = 0)
+    OR (:mode = 2 AND n.deletedAt IS NOT NULL))
+    AND (:notebookId IS NULL OR n.notebookId = :notebookId)
+    AND (:spaceAny = 0
+        OR (:inWork = 1 AND (n.workflow IN (:workTypes) OR n.notebookId IN (SELECT id FROM notebooks WHERE space = 'WORK')))
+        OR (:inFaith = 1 AND n.workflow NOT IN (:workTypes) AND (n.workflow IN (:faithTypes) OR n.notebookId IN (SELECT id FROM notebooks WHERE space = 'FAITH')))
+        OR (:inBible = 1 AND n.workflow = 'BIBLE_STUDY'))
+    AND (:onlyRecordings = 0 OR EXISTS (SELECT 1 FROM meetings rm WHERE rm.noteId = n.id))
+    AND (:onlyPinned = 0 OR n.pinned = 1)
+    AND (:anyType = 0 OR n.workflow IN (:types))
+    AND (:tagId IS NULL OR n.id IN (SELECT nt.noteId FROM note_tags nt WHERE nt.tagId = :tagId))
+    AND (:hideLocked = 0 OR (n.isPrivate = 0 AND n.workflow NOT IN (:faithTypes)))"""
+
+/** Pinned notes float above everything else by this much (far above any epoch-millis timestamp). */
+const val LIBRARY_PIN_BOOST = 1_152_921_504_606_846_976L
+
+private const val LIBRARY_KEY = """(CASE :sortMode WHEN 1 THEN COALESCE(n.eventDate, n.createdAt) ELSE n.updatedAt END
+    + CASE WHEN :pinFirst = 1 AND n.pinned = 1 THEN 1152921504606846976 ELSE 0 END)"""
+
 @Dao
 interface NoteDao {
     /** Notes the person wrote (not drafts, not the daily devotional) — for "getting started". */
@@ -56,6 +83,10 @@ interface NoteDao {
 
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
     fun observeActive(): Flow<List<NoteEntity>>
+
+    /** The latest [limit] notes by last edit, for Home's "Recent notes" (the daily devotional has its own place). */
+    @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND workflow != 'DEVOTIONAL' ORDER BY updatedAt DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<NoteEntity>>
 
     @Query("SELECT * FROM notes WHERE archivedAt IS NULL AND isDraft = 0 AND deletedAt IS NULL AND notebookId = :notebookId ORDER BY pinned DESC, updatedAt DESC")
     fun observeInNotebook(notebookId: String): Flow<List<NoteEntity>>
@@ -260,6 +291,68 @@ interface NoteDao {
 
     @Query("UPDATE meetings SET noteId = :noteId WHERE id = :meetingId")
     suspend fun attachMeeting(meetingId: String, noteId: String?)
+
+    /** Files a recording under [noteId] as its last part: its order is one past the note's current highest. */
+    @Query(
+        "UPDATE meetings SET noteId = :noteId, recordingOrder = " +
+            "(SELECT COALESCE(MAX(m2.recordingOrder) + 1, 0) FROM meetings AS m2 WHERE m2.noteId = :noteId) " +
+            "WHERE id = :meetingId"
+    )
+    suspend fun attachMeetingAsLastPart(meetingId: String, noteId: String)
+
+    // ---- the Notes library (U-2): bounded, keyset-paged, never SELECT * into the UI ----
+
+    /** By last edit (sortMode 0) or note date (1), newest first, pinned first when [pinFirst] = 1: ORDER BY key DESC, id DESC. */
+    @Query("""SELECT n.* FROM notes n WHERE $LIBRARY_SCOPE
+        AND ($LIBRARY_KEY < :sortKey OR ($LIBRARY_KEY = :sortKey AND n.id < :id))
+        ORDER BY $LIBRARY_KEY DESC, n.id DESC LIMIT :limit""")
+    suspend fun libraryByDate(
+        mode: Int, notebookId: String?, spaceAny: Int, inWork: Int, inFaith: Int, inBible: Int,
+        onlyRecordings: Int, onlyPinned: Int, anyType: Int, types: List<String>, tagId: String?, hideLocked: Int,
+        workTypes: List<String>, faithTypes: List<String>, sortMode: Int, pinFirst: Int, sortKey: Long, id: String, limit: Int
+    ): List<NoteEntity>
+
+    /** A to Z, case-insensitive; untitled last. [hasCursor] 0 = first page. Pinned first is not applied to a title sort. */
+    @Query("""SELECT n.* FROM notes n WHERE $LIBRARY_SCOPE
+        AND (:hasCursor = 0 OR n.title COLLATE NOCASE > :sortKey COLLATE NOCASE
+             OR (n.title COLLATE NOCASE = :sortKey COLLATE NOCASE AND n.id > :id))
+        ORDER BY n.title COLLATE NOCASE ASC, n.id ASC LIMIT :limit""")
+    suspend fun libraryByTitle(
+        mode: Int, notebookId: String?, spaceAny: Int, inWork: Int, inFaith: Int, inBible: Int,
+        onlyRecordings: Int, onlyPinned: Int, anyType: Int, types: List<String>, tagId: String?, hideLocked: Int,
+        workTypes: List<String>, faithTypes: List<String>, hasCursor: Int, sortKey: String, id: String, limit: Int
+    ): List<NoteEntity>
+
+    /**
+     * Ranked full-text search over notes_fts: a title hit ranks above a body hit, then pinned, then most recently
+     * edited. With [withTranscripts] = 1 a hit in the note's recording transcript counts too (ranked last). FTS4 has
+     * no keyset-able rank, so this alone pages by OFFSET; the repository caps offset + limit.
+     */
+    @Query("""SELECT n.* FROM notes n WHERE $LIBRARY_SCOPE
+        AND (n.rowid IN (SELECT docid FROM notes_fts WHERE notes_fts MATCH :match)
+             OR (:withTranscripts = 1 AND n.id IN (SELECT rm2.noteId FROM transcript_fts
+                  JOIN transcript_segments ts ON ts.rowid = transcript_fts.rowid
+                  JOIN meetings rm2 ON rm2.id = ts.meetingId
+                  WHERE transcript_fts MATCH :match AND rm2.noteId IS NOT NULL)))
+        ORDER BY CASE WHEN n.rowid IN (SELECT docid FROM notes_fts WHERE title MATCH :match) THEN 0
+                      WHEN n.rowid IN (SELECT docid FROM notes_fts WHERE notes_fts MATCH :match) THEN 1 ELSE 2 END,
+                 n.pinned DESC, n.updatedAt DESC, n.id DESC
+        LIMIT :limit OFFSET :offset""")
+    suspend fun librarySearch(
+        mode: Int, notebookId: String?, spaceAny: Int, inWork: Int, inFaith: Int, inBible: Int,
+        onlyRecordings: Int, onlyPinned: Int, anyType: Int, types: List<String>, tagId: String?, hideLocked: Int,
+        workTypes: List<String>, faithTypes: List<String>, match: String, withTranscripts: Int, limit: Int, offset: Int
+    ): List<NoteEntity>
+
+    @Query("SELECT COUNT(*) FROM notes WHERE archivedAt IS NOT NULL AND deletedAt IS NULL AND isDraft = 0")
+    fun observeArchivedCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM notes WHERE deletedAt IS NOT NULL")
+    fun observeTrashedCount(): Flow<Int>
+
+    /** Fires on every write to notes, so the library knows to reload; the value itself is not used. */
+    @Query("SELECT COUNT(*) FROM notes")
+    fun observeNoteChanges(): Flow<Int>
 }
 
 @Dao

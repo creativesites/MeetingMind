@@ -202,9 +202,24 @@ class NoteRepository(
 
     suspend fun setPinned(noteId: String, pinned: Boolean) = mutate(noteId) { it.copy(pinned = pinned) }
 
-    suspend fun setPrivate(noteId: String, isPrivate: Boolean) = mutate(noteId) { it.copy(isPrivate = isPrivate) }
+    suspend fun setPrivate(noteId: String, isPrivate: Boolean) {
+        mutate(noteId) { it.copy(isPrivate = isPrivate) }
+        if (isPrivate) purgeCloudReadToMe(noteId)
+    }
 
-    suspend fun moveToNotebook(noteId: String, notebookId: String?) = mutate(noteId) { it.copy(notebookId = notebookId) }
+    suspend fun moveToNotebook(noteId: String, notebookId: String?) {
+        mutate(noteId) { it.copy(notebookId = notebookId) }
+        purgeCloudReadToMe(noteId)
+    }
+
+    /** A note that now stays on the phone must not keep Gemini-made audio of itself (see ReadingPurge). */
+    private suspend fun purgeCloudReadToMe(noteId: String) {
+        runCatching {
+            val stayOnPhone = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.mustStayOnDevice(context, noteId = noteId) ||
+                noteDao.getById(noteId)?.isPrivate == true
+            if (stayOnPhone) com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore.get(context).purgeCloudReading(noteId)
+        }
+    }
 
     suspend fun archiveNote(noteId: String) = mutate(noteId) { it.copy(archivedAt = clock()) }
 
@@ -270,6 +285,8 @@ class NoteRepository(
         }
         attachments.forEach { runCatching { File(it.path).delete() } }
         attachmentsDir(noteId).delete()
+        // A saved Read to Me reading belongs to the note and goes with it.
+        runCatching { com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore.get(context).delete(noteId) }
         recordings
     }
 
@@ -303,7 +320,7 @@ class NoteRepository(
                     val keep = existing.toDomain().let { it.copy(metadata = it.metadata - NoteContent.DRAFT - NoteContent.DRAFT_TITLE) }
                     noteDao.upsert(keep.toEntity())
                 }
-                noteDao.attachMeeting(meetingId, existing.id)
+                noteDao.attachMeetingAsLastPart(meetingId, existing.id)
                 noteDao.replaceBlocks(existing.id, updated.mapIndexed { i, b -> b.copy(position = i).toEntity(now) })
                 noteDao.touch(existing.id, now, existing.plainText)
             }
@@ -331,7 +348,7 @@ class NoteRepository(
             val starting = listOf(recordingBlock(noteId, meetingId)) +
                 com.craftflowtechnologies.meetingmind.core.model.Workflows.startingBlocks(workflow, noteId, forRecording = true)
             noteDao.replaceBlocks(noteId, starting.mapIndexed { i, b -> b.copy(position = i).toEntity(now) })
-            noteDao.attachMeeting(meetingId, noteId)
+            noteDao.attachMeetingAsLastPart(meetingId, noteId)
         }
         noteId
     }
@@ -365,7 +382,9 @@ class NoteRepository(
         noteId: String,
         generated: List<NoteBlock>,
         refs: List<ScriptureRef>,
-        keys: Set<String>
+        keys: Set<String>,
+        /** Sections in [keys] that belong at the end of the note (the sermon transcript). */
+        endKeys: Set<String> = emptySet()
     ) = withContext(Dispatchers.IO) {
         val current = noteDao.getBlocks(noteId).map { it.toDomain() }
         if (noteDao.getById(noteId) == null) return@withContext
@@ -374,7 +393,8 @@ class NoteRepository(
         val kept = current.filterNot { it.sectionKey in keys && it.sectionKey !in editedKeys }
         val fresh = generated.filter { it.sectionKey !in editedKeys }
         val insertAt = kept.indexOfLast { it.type == NoteBlockType.RECORDING }.let { if (it < 0) 0 else it + 1 }
-        val merged = kept.toMutableList().apply { addAll(insertAt, fresh) }
+        val (freshAtEnd, freshAfterRecording) = fresh.partition { it.sectionKey in endKeys }
+        val merged = kept.toMutableList().apply { addAll(insertAt, freshAfterRecording); addAll(freshAtEnd) }
         val keptRefIds = kept.mapNotNull { it.payload[NoteBlock.PAYLOAD_SCRIPTURE_REF_ID] }.toSet()
         val freshBlockIds = fresh.map { it.id }.toSet()
         database.withTransaction {
@@ -440,7 +460,9 @@ class NoteRepository(
         val escaped = key.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         noteDao.findByMetadata("%\"$CALENDAR_EVENT_KEY\":\"$escaped\"%")?.toDomain()?.let { return@withContext it }
         val people = event.otherPeople
-        createNote(
+        val emails = event.attendees.filter { !it.isSelf && !it.email.isNullOrBlank() }
+            .associate { it.name.ifBlank { it.email.orEmpty() } to it.email!! }
+        val note = createNote(
             workflow = workflow,
             title = event.title,
             eventDate = event.begin,
@@ -452,8 +474,17 @@ class NoteRepository(
                 if (people.isNotEmpty()) put("participants", people.joinToString(", "))
                 event.location?.let { put("location", it) }
                 event.calendarName?.let { put("calendar", it) }
+                if (emails.isNotEmpty()) put(com.craftflowtechnologies.meetingmind.core.work.WorkPeople.ATTENDEE_EMAILS, org.json.JSONObject(emails).toString())
             }
         )
+        // Guests become People, with the address they were invited at (PLAN_PROFESSIONAL.md §5.1).
+        runCatching {
+            val people = com.craftflowtechnologies.meetingmind.core.work.WorkPeople(database)
+            event.attendees.filter { !it.isSelf }.forEach { a ->
+                people.resolve(a.name.ifBlank { null }, a.email)?.let { p -> people.addToNote(note.id, p.id) }
+            }
+        }
+        note
     }
 
     /**
@@ -579,10 +610,12 @@ class NoteRepository(
         name: String,
         space: NotebookSpace,
         colorHex: String? = null,
-        icon: String? = null
+        icon: String? = null,
+        isProject: Boolean = false,
+        propertiesJson: String = "{}"
     ): Notebook = withContext(Dispatchers.IO) {
         val now = clock()
-        val notebook = Notebook(newId("notebook"), name.trim(), space, colorHex, icon, now, now)
+        val notebook = Notebook(newId("notebook"), name.trim(), space, colorHex, icon, now, now, isProject = isProject, propertiesJson = propertiesJson)
         notebookDao.upsert(notebook.toEntity())
         notebook
     }

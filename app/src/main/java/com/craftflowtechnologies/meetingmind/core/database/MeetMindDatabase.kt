@@ -39,13 +39,42 @@ import androidx.room.migration.Migration
         TaskEntity::class,
         NotePersonCrossRef::class,
         NoteFtsEntity::class,
-        TranscriptFtsEntity::class
+        TranscriptFtsEntity::class,
+        ItemEntity::class,
+        ItemEvidenceEntity::class,
+        ItemLinkEntity::class,
+        ItemEventEntity::class,
+        ProjectMemberEntity::class,
+        SegmentSignalEntity::class,
+        BriefEntity::class,
+        MemoryStoryEntity::class,
+        InboxItemEntity::class,
+        LearningSessionEntity::class,
+        LearningConceptEntity::class,
+        LearningActivityEntity::class,
+        ActivityAttemptEntity::class,
+        ReviewScheduleEntity::class,
+        CircleEntity::class,
+        CircleMemberEntity::class,
+        CirclePrayerEntity::class,
+        CircleTestimonyEntity::class,
+        CircleSermonEntity::class,
+        CreateCardEntity::class,
+        RecordingMarkerEntity::class,
+        LegacyNoteMarkEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
 )
 abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun meetingDao(): MeetingDao
+    abstract fun workDao(): WorkDao
+    abstract fun itemDao(): ItemDao
+    abstract fun signalDao(): SignalDao
+    abstract fun briefDao(): BriefDao
+    abstract fun inboxDao(): InboxDao
+    abstract fun createCardDao(): CreateCardDao
+    abstract fun memoryStoryDao(): MemoryStoryDao
     abstract fun transcriptDao(): TranscriptDao
     abstract fun speakerDao(): SpeakerDao
     abstract fun actionItemDao(): ActionItemDao
@@ -66,8 +95,16 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun peopleDao(): PeopleDao
     abstract fun taskDao(): TaskDao
     abstract fun searchDao(): SearchDao
+    abstract fun recordingMarkerDao(): RecordingMarkerDao
+    abstract fun legacyNoteMarkDao(): LegacyNoteMarkDao
     abstract fun noteAiJobDao(): NoteAiJobDao
     abstract fun noteVersionDao(): NoteVersionDao
+    abstract fun learningSessionDao(): LearningSessionDao
+    abstract fun learningConceptDao(): LearningConceptDao
+    abstract fun learningActivityDao(): LearningActivityDao
+    abstract fun activityAttemptDao(): ActivityAttemptDao
+    abstract fun reviewScheduleDao(): ReviewScheduleDao
+    abstract fun circleDao(): CircleDao
 
     companion object {
         @Volatile
@@ -434,6 +471,212 @@ abstract class MeetMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Work (docs/PLAN_PROFESSIONAL.md §10): people gain organisations, contact details, aliases
+         * and privacy; tasks can be owed by someone else; speakers point at people; notebooks can
+         * be projects; recordings remember their Wrap-up. Columns only — nothing is rewritten.
+         */
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_16_17_SQL.forEach { db.execSQL(it) }
+                // Findings from before the Wrap-up existed don't ask to be reviewed.
+                db.execSQL("UPDATE meetings SET reviewedAt = updatedAt WHERE status = 'READY'")
+            }
+        }
+
+        /**
+         * Direction v2's context model: items with their evidence, links and change log, project
+         * members, and an organisation's domains, description, URLs, logo and properties. New
+         * tables and columns only — nothing is dropped or rebuilt.
+         */
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_17_18_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        /** Signals with evidence, per paragraph (docs/PLAN_PROFESSIONAL.md D6). A new table and its indices only. */
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_18_19_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        /** Cached brief prose and monthly memory stories (docs/PLAN_PROFESSIONAL.md D5). Two new tables and an index only. */
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_19_20_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        /** The Work Inbox (docs/PLAN_PROFESSIONAL.md D7). A new table and its index only. */
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_20_21_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        /** Create (Spark v2): the "My creations" gallery. A new table and its indexes only. */
+        val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_23_24_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_23_24_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `create_cards` (`id` TEXT NOT NULL, `source` TEXT NOT NULL, `sourceText` TEXT NOT NULL, `sourceRef` TEXT, `vibe` TEXT NOT NULL, `text` TEXT NOT NULL, `scriptureRef` TEXT, `scriptureVersionId` INTEGER, `format` TEXT NOT NULL, `designJson` TEXT NOT NULL, `versionsJson` TEXT NOT NULL, `pinned` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_create_cards_updatedAt` ON `create_cards` (`updatedAt`)",
+            "CREATE INDEX IF NOT EXISTS `index_create_cards_pinned` ON `create_cards` (`pinned`)"
+        )
+
+        /** Fellowship Circles: Tier 2 (docs/PLAN_V2.md §F8). Circles, members, prayers, testimonies, sermons. */
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_22_23_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_22_23_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `circles` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL DEFAULT '', `avatarEmoji` TEXT NOT NULL DEFAULT '🕊️', `inviteCode` TEXT NOT NULL, `encryptionKeyBase64` TEXT NOT NULL, `createdByMemberId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `memberCount` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_circles_createdAt` ON `circles` (`createdAt`)",
+            "CREATE TABLE IF NOT EXISTS `circle_members` (`id` TEXT NOT NULL, `circleId` TEXT NOT NULL, `displayName` TEXT NOT NULL, `role` TEXT NOT NULL DEFAULT 'MEMBER', `joinedAt` INTEGER NOT NULL, `isSelf` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`), FOREIGN KEY(`circleId`) REFERENCES `circles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_circle_members_circleId` ON `circle_members` (`circleId`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_members_isSelf` ON `circle_members` (`isSelf`)",
+            "CREATE TABLE IF NOT EXISTS `circle_prayers` (`id` TEXT NOT NULL, `circleId` TEXT NOT NULL, `authorName` TEXT NOT NULL, `authorId` TEXT NOT NULL, `requestText` TEXT NOT NULL, `isUrgent` INTEGER NOT NULL DEFAULT 0, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `prayerCount` INTEGER NOT NULL DEFAULT 0, `prayedByMe` INTEGER NOT NULL DEFAULT 0, `answeredAt` INTEGER, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`circleId`) REFERENCES `circles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_circle_prayers_circleId` ON `circle_prayers` (`circleId`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_prayers_status` ON `circle_prayers` (`status`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_prayers_createdAt` ON `circle_prayers` (`createdAt`)",
+            "CREATE TABLE IF NOT EXISTS `circle_testimonies` (`id` TEXT NOT NULL, `circleId` TEXT NOT NULL, `authorName` TEXT NOT NULL, `authorId` TEXT NOT NULL, `title` TEXT NOT NULL, `storyText` TEXT NOT NULL, `scriptureRef` TEXT, `prayerRequestId` TEXT, `praiseCount` INTEGER NOT NULL DEFAULT 0, `praisedByMe` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`circleId`) REFERENCES `circles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_circle_testimonies_circleId` ON `circle_testimonies` (`circleId`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_testimonies_createdAt` ON `circle_testimonies` (`createdAt`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_testimonies_prayerRequestId` ON `circle_testimonies` (`prayerRequestId`)",
+            "CREATE TABLE IF NOT EXISTS `circle_sermons` (`id` TEXT NOT NULL, `circleId` TEXT NOT NULL, `title` TEXT NOT NULL, `preacher` TEXT, `scripturePassage` TEXT, `sermonDate` TEXT, `discussionGuideJson` TEXT NOT NULL DEFAULT '', `transcriptSummary` TEXT NOT NULL DEFAULT '', `audioDurationSec` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`circleId`) REFERENCES `circles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_circle_sermons_circleId` ON `circle_sermons` (`circleId`)",
+            "CREATE INDEX IF NOT EXISTS `index_circle_sermons_createdAt` ON `circle_sermons` (`createdAt`)"
+        )
+
+        /** Learning vertical: Release 1 (docs/PLAN_LEARNING.md). Sessions, concepts, activities, attempts, schedules. */
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_21_22_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        /**
+         * Source-owned recording markers (schema 25). Additive only: two new tables, one column on
+         * meetings, and the legacy note-level marks copied out by [LegacyMarkMigration]. The notes'
+         * own metadataJson is left as it was, so nothing is lost if this migration is reverted.
+         */
+        val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_24_25_SQL.forEach { db.execSQL(it) }
+                LegacyMarkMigration.run(db)
+            }
+        }
+
+        internal val MIGRATION_24_25_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `recording_markers` (`id` TEXT NOT NULL, `meetingId` TEXT NOT NULL, `sequence` INTEGER NOT NULL, `timestampMs` INTEGER NOT NULL, `kind` TEXT NOT NULL, `text` TEXT, `sectionKey` TEXT, `resolvedSegmentId` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `createdDuringRecording` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
+            "CREATE INDEX IF NOT EXISTS `index_recording_markers_meetingId_timestampMs` ON `recording_markers` (`meetingId`, `timestampMs`)",
+            "CREATE INDEX IF NOT EXISTS `index_recording_markers_meetingId_sequence` ON `recording_markers` (`meetingId`, `sequence`)",
+            "CREATE TABLE IF NOT EXISTS `legacy_note_marks` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `status` TEXT NOT NULL, `rawKind` TEXT, `atMs` INTEGER, `text` TEXT, `rawJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_legacy_note_marks_noteId` ON `legacy_note_marks` (`noteId`)",
+            "ALTER TABLE `meetings` ADD COLUMN `recordingOrder` INTEGER NOT NULL DEFAULT 0",
+            "CREATE INDEX IF NOT EXISTS `index_meetings_noteId_recordingOrder` ON `meetings` (`noteId`, `recordingOrder`)",
+            // Backfill: each recording's place is the count of earlier recordings on the same note, by creation time, then id.
+            "UPDATE meetings SET recordingOrder = (SELECT COUNT(*) FROM meetings AS earlier WHERE earlier.noteId = meetings.noteId AND (earlier.createdAt < meetings.createdAt OR (earlier.createdAt = meetings.createdAt AND earlier.id < meetings.id))) WHERE noteId IS NOT NULL"
+        )
+
+        /** Every step from schema 1 to [VERSION]; the app and the migration tests open the database with the same list. */
+        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
+
+        internal val MIGRATION_21_22_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `learning_sessions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `meetingId` TEXT, `title` TEXT NOT NULL, `courseName` TEXT, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `lastStudiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE INDEX IF NOT EXISTS `index_learning_sessions_noteId` ON `learning_sessions` (`noteId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_sessions_meetingId` ON `learning_sessions` (`meetingId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_sessions_status` ON `learning_sessions` (`status`)",
+            "CREATE TABLE IF NOT EXISTS `learning_concepts` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `name` TEXT NOT NULL, `definition` TEXT NOT NULL, `emphasis` TEXT, `relationshipsJson` TEXT NOT NULL DEFAULT '[]', `evidenceJson` TEXT NOT NULL DEFAULT '[]', `state` TEXT NOT NULL DEFAULT 'NEW', `isUserEdited` INTEGER NOT NULL DEFAULT 0, `isDismissed` INTEGER NOT NULL DEFAULT 0, `isStale` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_learning_concepts_sessionId` ON `learning_concepts` (`sessionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_concepts_state` ON `learning_concepts` (`state`)",
+            "CREATE TABLE IF NOT EXISTS `learning_activities` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `conceptId` TEXT, `type` TEXT NOT NULL, `prompt` TEXT NOT NULL, `expectedAnswer` TEXT NOT NULL, `optionsJson` TEXT NOT NULL DEFAULT '[]', `difficulty` TEXT NOT NULL DEFAULT 'MEDIUM', `evidenceJson` TEXT NOT NULL DEFAULT '[]', `isDiagnostic` INTEGER NOT NULL DEFAULT 0, `isDismissed` INTEGER NOT NULL DEFAULT 0, `isStale` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`conceptId`) REFERENCES `learning_concepts`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE INDEX IF NOT EXISTS `index_learning_activities_sessionId` ON `learning_activities` (`sessionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_activities_conceptId` ON `learning_activities` (`conceptId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_activities_type` ON `learning_activities` (`type`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_activities_isDiagnostic` ON `learning_activities` (`isDiagnostic`)",
+            "CREATE TABLE IF NOT EXISTS `activity_attempts` (`id` TEXT NOT NULL, `activityId` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `conceptId` TEXT, `userResponse` TEXT NOT NULL, `isCorrect` INTEGER NOT NULL, `selfRating` TEXT, `feedback` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`activityId`) REFERENCES `learning_activities`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_activity_attempts_activityId` ON `activity_attempts` (`activityId`)",
+            "CREATE INDEX IF NOT EXISTS `index_activity_attempts_sessionId` ON `activity_attempts` (`sessionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_activity_attempts_conceptId` ON `activity_attempts` (`conceptId`)",
+            "CREATE INDEX IF NOT EXISTS `index_activity_attempts_createdAt` ON `activity_attempts` (`createdAt`)",
+            "CREATE TABLE IF NOT EXISTS `review_schedules` (`id` TEXT NOT NULL, `activityId` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `conceptId` TEXT, `dueAt` INTEGER NOT NULL, `intervalDays` INTEGER NOT NULL DEFAULT 0, `repetitionCount` INTEGER NOT NULL DEFAULT 0, `easeFactor` REAL NOT NULL DEFAULT 2.5, `isPaused` INTEGER NOT NULL DEFAULT 0, `snoozedUntil` INTEGER, `lastReviewedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`activityId`) REFERENCES `learning_activities`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`sessionId`) REFERENCES `learning_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_review_schedules_activityId` ON `review_schedules` (`activityId`)",
+            "CREATE INDEX IF NOT EXISTS `index_review_schedules_sessionId` ON `review_schedules` (`sessionId`)",
+            "CREATE INDEX IF NOT EXISTS `index_review_schedules_dueAt` ON `review_schedules` (`dueAt`)",
+            "CREATE INDEX IF NOT EXISTS `index_review_schedules_isPaused` ON `review_schedules` (`isPaused`)"
+        )
+
+        internal val MIGRATION_20_21_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `inbox_items` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `uri` TEXT, `text` TEXT, `title` TEXT, `status` TEXT NOT NULL, `proposedJson` TEXT, `createdAt` INTEGER NOT NULL, `processedAt` INTEGER, `resultRefJson` TEXT, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_inbox_items_status` ON `inbox_items` (`status`)"
+        )
+
+        internal val MIGRATION_19_20_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `briefs` (`id` TEXT NOT NULL, `entityType` TEXT NOT NULL, `entityId` TEXT NOT NULL, `kind` TEXT NOT NULL, `contentJson` TEXT NOT NULL, `citedIdsJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_briefs_entityType_entityId_kind` ON `briefs` (`entityType`, `entityId`, `kind`)",
+            "CREATE TABLE IF NOT EXISTS `memory_stories` (`entityType` TEXT NOT NULL, `entityId` TEXT NOT NULL, `month` TEXT NOT NULL, `text` TEXT NOT NULL, `citedIdsJson` TEXT NOT NULL, `itemCount` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`entityType`, `entityId`, `month`))"
+        )
+
+        internal val MIGRATION_18_19_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `segment_signals` (`id` TEXT NOT NULL, `segmentId` TEXT NOT NULL, `meetingId` TEXT NOT NULL, `kind` TEXT NOT NULL, `entityId` TEXT, `value` TEXT, `confidence` REAL NOT NULL, `text` TEXT NOT NULL DEFAULT '', `signalId` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_segment_signals_meetingId` ON `segment_signals` (`meetingId`)",
+            "CREATE INDEX IF NOT EXISTS `index_segment_signals_meetingId_kind` ON `segment_signals` (`meetingId`, `kind`)",
+            "CREATE INDEX IF NOT EXISTS `index_segment_signals_segmentId` ON `segment_signals` (`segmentId`)"
+        )
+
+        internal val MIGRATION_17_18_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `items` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `status` TEXT NOT NULL, `text` TEXT NOT NULL, `value` TEXT, `ownerPersonId` TEXT, `ownerSpeakerId` TEXT, `counterpartyPersonId` TEXT, `projectId` TEXT, `orgId` TEXT, `meetingId` TEXT, `noteId` TEXT, `dueAt` INTEGER, `dueText` TEXT, `supersedesId` TEXT, `answerText` TEXT, `answeredAt` INTEGER, `answerItemId` TEXT, `taskId` TEXT, `reason` TEXT, `severity` TEXT, `direction` TEXT, `confidence` REAL, `reviewed` INTEGER NOT NULL DEFAULT 0, `source` TEXT NOT NULL DEFAULT 'AI', `sourceFindingId` TEXT, `space` TEXT NOT NULL DEFAULT 'WORK', `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `closedAt` INTEGER, `deletedAt` INTEGER, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_items_kind_status` ON `items` (`kind`, `status`)",
+            "CREATE INDEX IF NOT EXISTS `index_items_projectId` ON `items` (`projectId`)",
+            "CREATE INDEX IF NOT EXISTS `index_items_orgId` ON `items` (`orgId`)",
+            "CREATE INDEX IF NOT EXISTS `index_items_ownerPersonId` ON `items` (`ownerPersonId`)",
+            "CREATE INDEX IF NOT EXISTS `index_items_counterpartyPersonId` ON `items` (`counterpartyPersonId`)",
+            "CREATE INDEX IF NOT EXISTS `index_items_dueAt` ON `items` (`dueAt`)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_items_sourceFindingId` ON `items` (`sourceFindingId`)",
+            "CREATE TABLE IF NOT EXISTS `item_evidence` (`id` TEXT NOT NULL, `itemId` TEXT NOT NULL, `meetingId` TEXT, `noteId` TEXT, `blockId` TEXT, `segmentIdsJson` TEXT NOT NULL, `startMs` INTEGER, `endMs` INTEGER, `quote` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_item_evidence_itemId` ON `item_evidence` (`itemId`)",
+            "CREATE TABLE IF NOT EXISTS `item_links` (`itemId` TEXT NOT NULL, `targetType` TEXT NOT NULL, `targetId` TEXT NOT NULL, `role` TEXT NOT NULL, PRIMARY KEY(`itemId`, `targetType`, `targetId`))",
+            "CREATE INDEX IF NOT EXISTS `index_item_links_targetType_targetId` ON `item_links` (`targetType`, `targetId`)",
+            "CREATE TABLE IF NOT EXISTS `item_events` (`id` TEXT NOT NULL, `itemId` TEXT, `entityType` TEXT NOT NULL, `entityId` TEXT NOT NULL, `type` TEXT NOT NULL, `beforeJson` TEXT, `afterJson` TEXT, `at` INTEGER NOT NULL, `evidenceId` TEXT, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_item_events_at` ON `item_events` (`at`)",
+            "CREATE INDEX IF NOT EXISTS `index_item_events_itemId` ON `item_events` (`itemId`)",
+            "CREATE TABLE IF NOT EXISTS `project_members` (`notebookId` TEXT NOT NULL, `personId` TEXT NOT NULL, `role` TEXT NOT NULL, PRIMARY KEY(`notebookId`, `personId`))",
+            "ALTER TABLE people ADD COLUMN `domainsJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE people ADD COLUMN `description` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE people ADD COLUMN `urlsJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE people ADD COLUMN `logoPath` TEXT",
+            "ALTER TABLE people ADD COLUMN `propertiesJson` TEXT NOT NULL DEFAULT '{}'"
+        )
+
+        internal val MIGRATION_16_17_SQL: List<String> = listOf(
+            "ALTER TABLE people ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'PERSON'",
+            "ALTER TABLE people ADD COLUMN `orgId` TEXT",
+            "ALTER TABLE people ADD COLUMN `emailsJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE people ADD COLUMN `phonesJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE people ADD COLUMN `aliasesJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE people ADD COLUMN `preferredChannel` TEXT",
+            "ALTER TABLE people ADD COLUMN `isSelf` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE people ADD COLUMN `confidential` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE people ADD COLUMN `lastSeenAt` INTEGER",
+            "ALTER TABLE people ADD COLUMN `space` TEXT",
+            "ALTER TABLE tasks ADD COLUMN `waitingOn` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE tasks ADD COLUMN `ownerSpeakerId` TEXT",
+            "ALTER TABLE tasks ADD COLUMN `sourceItemId` TEXT",
+            "ALTER TABLE tasks ADD COLUMN `space` TEXT",
+            "ALTER TABLE speakers ADD COLUMN `personId` TEXT",
+            "ALTER TABLE notebooks ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'NOTEBOOK'",
+            "ALTER TABLE notebooks ADD COLUMN `propertiesJson` TEXT NOT NULL DEFAULT '{}'",
+            "ALTER TABLE meetings ADD COLUMN `reviewedAt` INTEGER"
+        )
+
         internal val MIGRATION_15_16_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `people` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `relationship` TEXT, `notes` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `deletedAt` INTEGER, PRIMARY KEY(`id`))",
             "CREATE INDEX IF NOT EXISTS `index_people_name` ON `people` (`name`)",
@@ -508,7 +751,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 16
+        const val VERSION = 25
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {
@@ -526,7 +769,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
                     MeetMindDatabase::class.java,
                     "meetmind_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                    .addMigrations(*ALL_MIGRATIONS)
                     .build()
                 INSTANCE = instance
                 instance

@@ -7,7 +7,6 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
-import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.core.model.Meeting
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -48,8 +47,7 @@ sealed interface AuthAvailability {
  *
  * Authentication is entirely optional and never blocks local recording/processing — see
  * docs/ARCHITECTURE.md "Local-First Authentication Policy". If Firebase is not configured
- * (no google-services.json) or no web client ID has been set (see
- * res/values/strings.xml:google_sign_in_web_client_id), sign-in honestly reports
+ * (no google-services.json) or no web client ID is present in generated resources, sign-in honestly reports
  * [AuthAvailability.NotConfigured] instead of fabricating a signed-in user.
  */
 class FirebaseAuthManager(private val context: Context) {
@@ -64,7 +62,11 @@ class FirebaseAuthManager(private val context: Context) {
 
     private val webClientId: String by lazy {
         try {
-            context.getString(R.string.google_sign_in_web_client_id)
+            // The Google Services Gradle plugin generates this from the type-3 OAuth client
+            // in google-services.json. Look it up dynamically so local/offline builds without
+            // that file still compile and report sign-in as unavailable.
+            val id = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+            if (id == 0) "" else context.getString(id)
         } catch (e: Exception) {
             ""
         }
@@ -102,17 +104,14 @@ class FirebaseAuthManager(private val context: Context) {
     fun isUserSignedIn(): Boolean = auth?.currentUser != null
 
     /**
-     * Launches the real Credential Manager Google Sign-In flow and completes Firebase Auth.
-     * [activityContext] must be an Activity context (required to present the Credential
-     * Manager UI) — an Application context will not work here.
+     * Shows the Google account picker (Credential Manager) and returns the Google ID token, without touching
+     * Firebase Auth. Sign-in uses it directly; Circles uses it to link an anonymous user to Google.
+     * [activityContext] must be an Activity context.
      */
-    suspend fun signInWithGoogle(activityContext: Context): Result<FirebaseUserModel> = withContext(Dispatchers.Main) {
-        val firebaseAuth = auth
-            ?: return@withContext Result.failure(IllegalStateException("Firebase is not configured for this build."))
+    suspend fun requestGoogleIdToken(activityContext: Context): Result<String> = withContext(Dispatchers.Main) {
         if (webClientId.isBlank()) {
             return@withContext Result.failure(IllegalStateException("Google Sign-In is not configured (no web client ID)."))
         }
-
         try {
             val googleIdOption = GetGoogleIdOption.Builder()
                 .setFilterByAuthorizedAccounts(false)
@@ -131,13 +130,7 @@ class FirebaseAuthManager(private val context: Context) {
             ) {
                 return@withContext Result.failure(IllegalStateException("Unexpected credential type from Credential Manager."))
             }
-
-            val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-            val firebaseCredential = GoogleAuthProvider.getCredential(googleIdTokenCredential.idToken, null)
-            val authResult = firebaseAuth.signInWithCredential(firebaseCredential).await()
-            val user = authResult.user?.toUserModel()
-                ?: return@withContext Result.failure(IllegalStateException("Sign-in succeeded but no user was returned."))
-            Result.success(user)
+            Result.success(GoogleIdTokenCredential.createFrom(credential.data).idToken)
         } catch (e: NoCredentialException) {
             // The common case: no Google account is set up on this device, or the user
             // dismissed the account picker. Distinguished from other Credential Manager
@@ -153,6 +146,29 @@ class FirebaseAuthManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Google sign-in failed", e)
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Launches the real Credential Manager Google Sign-In flow and completes Firebase Auth.
+     * [activityContext] must be an Activity context (required to present the Credential
+     * Manager UI) — an Application context will not work here.
+     */
+    suspend fun signInWithGoogle(activityContext: Context): Result<FirebaseUserModel> {
+        val firebaseAuth = auth
+            ?: return Result.failure(IllegalStateException("Firebase is not configured for this build."))
+        val idToken = requestGoogleIdToken(activityContext).getOrElse { return Result.failure(it) }
+        return withContext(Dispatchers.Main) {
+            try {
+                val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
+                val authResult = firebaseAuth.signInWithCredential(firebaseCredential).await()
+                val user = authResult.user?.toUserModel()
+                    ?: return@withContext Result.failure(IllegalStateException("Sign-in succeeded but no user was returned."))
+                Result.success(user)
+            } catch (e: Exception) {
+                Log.e(TAG, "Google sign-in failed", e)
+                Result.failure(e)
+            }
         }
     }
 

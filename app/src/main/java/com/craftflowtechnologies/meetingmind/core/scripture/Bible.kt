@@ -87,8 +87,22 @@ object BibleLicensing {
     fun offlineAllowed(abbreviation: String, attribution: String?): Boolean {
         val text = attribution.orEmpty().lowercase()
         if (OPEN_WORDING.any { it in text }) return true
-        return abbreviation.uppercase() in OPEN_ABBREVIATIONS
+        return abbreviation.uppercase() in OPEN_ABBREVIATIONS || (KJV_TREATED_AS_OPEN && abbreviation.equals("KJV", ignoreCase = true))
     }
+
+    /**
+     * Whether this translation's text may go to a cloud speech service and be kept as audio. Open text
+     * only: licensed translations are for display on the phone, so Read to Me reads them with the
+     * phone's own voice. Free Use Bible API translations (negative ids, see HelloAo.intId) are open.
+     */
+    fun openForCloud(bibleId: Int, abbreviation: String, attribution: String?): Boolean =
+        bibleId < 0 || offlineAllowed(abbreviation, attribution)
+
+    /**
+     * The KJV is public domain in most places but is not on the open list above, and the owner has not
+     * decided to add it. This one switch is where that decision goes.
+     */
+    const val KJV_TREATED_AS_OPEN = false
 }
 
 /**

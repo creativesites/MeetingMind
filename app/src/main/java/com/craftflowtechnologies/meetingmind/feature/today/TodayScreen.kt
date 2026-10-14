@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,11 +49,15 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FormatQuote
-import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.Church
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Work
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -98,6 +103,13 @@ import com.craftflowtechnologies.meetingmind.core.timeline.Rhythms
 import com.craftflowtechnologies.meetingmind.core.timeline.TimelineDays
 import com.craftflowtechnologies.meetingmind.core.timeline.TimelineItem
 import com.craftflowtechnologies.meetingmind.core.timeline.TimelineLayer
+import com.craftflowtechnologies.meetingmind.feature.today.home.BentoActions
+import com.craftflowtechnologies.meetingmind.feature.today.home.BentoData
+import com.craftflowtechnologies.meetingmind.feature.today.home.HomeBento
+import com.craftflowtechnologies.meetingmind.feature.today.home.HomeSections
+import com.craftflowtechnologies.meetingmind.feature.today.home.StoryCardData
+import com.craftflowtechnologies.meetingmind.feature.today.home.StoryCards
+import com.craftflowtechnologies.meetingmind.feature.today.home.PlanLine
 import java.util.Date
 
 private val InkNavy: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Ink
@@ -121,6 +133,13 @@ fun TodayScreen(
     onNavigateBottomNav: (com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit,
     onOpenDevotional: () -> Unit = {},
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit = {},
+    onOpenFaith: () -> Unit = {},
+    onOpenWork: () -> Unit = {},
+    onOpenCircles: () -> Unit = {},
+    onOpenPrayer: () -> Unit = {},
+    onOpenWord: () -> Unit = {},
+    onOpenTestimonies: () -> Unit = {},
+    onShare: (com.craftflowtechnologies.meetingmind.feature.share.ShareRequest) -> Unit = {},
     onNewNote: () -> Unit = {},
     onImport: () -> Unit = {},
     /** Offline setup; null hides the card (tests, or before it's known). */
@@ -132,8 +151,11 @@ fun TodayScreen(
     /** Runs the first-run tour when it hasn't been seen. */
     tourEnabled: Boolean = false
 ) {
+    val create = com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController()
+    com.craftflowtechnologies.meetingmind.feature.create.CreateHost(create)
     val coachTargets = remember { com.craftflowtechnologies.meetingmind.core.ui.CoachTargets() }
     val tourDone by viewModel.tourCompleted.collectAsState()
+    val heroMode by viewModel.homeHeroDisplayMode.collectAsState()
     val start by viewModel.gettingStarted.collectAsState()
     val storyKinds by viewModel.stories.collectAsState()
     val devotional by viewModel.devotional.collectAsState()
@@ -156,6 +178,7 @@ fun TodayScreen(
     val calendarOn by viewModel.calendarOn.collectAsState()
     val promptDismissed by viewModel.calendarPromptDismissed.collectAsState()
     val now by viewModel.now.collectAsState()
+    val todayItems by viewModel.today.collectAsState()
 
     val listState = rememberLazyListState()
     var quick by remember { mutableStateOf<TimelineItem?>(null) }
@@ -203,6 +226,26 @@ fun TodayScreen(
     val inboxCount = jobs.size + (if (rhythm != null) 1 else 0) + (if ((upNext as? UpNextTile.Event)?.prep != null) 1 else 0) + (if (memories.isNotEmpty()) 1 else 0)
     val switchTo = when (focus) { TodayFocus.ALL -> TodayFocus.FAITH; TodayFocus.FAITH -> TodayFocus.WORK; TodayFocus.WORK -> TodayFocus.ALL }
 
+    // The Today home: the sections for the spaces this person chose, and the data its tiles read.
+    val sections = HomeSections.of(identity, focus)
+    val devOpened = devotional?.note?.metadata?.get(com.craftflowtechnologies.meetingmind.core.devotional.DevotionalNotes.META_OPENED) != null
+    val bentoFmt = timeFormat()
+    val bentoData = BentoData(
+        weekCount = stats.weekCount,
+        devotionalTitle = devotional?.devotional?.title ?: "A word for your day",
+        devotionalSub = devotional?.devotional?.scripture?.firstOrNull()?.display() ?: "Scripture, a reflection and a prayer",
+        devotionalNew = !devOpened,
+        todayCount = todayItems.size,
+        nextTitle = tile.title,
+        nextWhen = tile.label,
+        plan = todayItems.take(4).map { entry -> PlanLine(entry.title, timeLabel(entry, bentoFmt)) { open(entry) } }
+    )
+    val bentoActions = BentoActions(
+        onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
+        onCreate = { create.open() }, onCircles = onOpenCircles, onWork = onOpenWork,
+        onNextUp = tile.onClick, onJournal = onNewNote
+    )
+
     // The setup card nags until setup is done; "thinking only" can't be snoozed — it's a real problem.
     val showSetup = setup != null && (setup.needsAttention || setup.thinkingOnly || setup.downloading) && (!setupSnoozed || setup.thinkingOnly || setup.downloading)
     var tourReady by remember { mutableStateOf(false) }
@@ -221,8 +264,10 @@ fun TodayScreen(
             )
         }
     ) { padding ->
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 28.dp)) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).testTag("today_list"), contentPadding = PaddingValues(bottom = 28.dp)) {
             item(key = "hero") {
+                val devData = devotional?.devotional
+                val scripture = devData?.scripture?.firstOrNull()
                 HomeHeroHeader(
                     identity = identity,
                     greeting = remember(identity, now / 3_600_000) { Greetings.pick(identity) },
@@ -233,31 +278,43 @@ fun TodayScreen(
                     showSwitch = viewModel.canSwitchFocus(identity),
                     switchLabel = switchTo.label,
                     tile = tile,
+                    // The floating "Up next" card is hidden on the Today home; the layout reads cleaner without it.
+                    showTile = false,
                     listState = listState,
                     onAvatar = { avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     onSearch = onSearch,
                     onInbox = { showInbox = true },
-                    onSwitch = { viewModel.setFocus(switchTo) }
+                    onSwitch = { viewModel.setFocus(switchTo) },
+                    displayMode = heroMode,
+                    scriptureReference = scripture?.display(),
+                    scriptureText = devData?.keyText ?: devData?.reflection?.firstOrNull(),
+                    quoteText = devData?.insight?.text,
+                    quoteAuthor = devData?.insight?.author,
+                    onToggleMode = { viewModel.cycleHomeHeroMode() },
+                    onOpenDevotional = onOpenDevotional
                 )
             }
-            if (focus != TodayFocus.ALL) item(key = "focus") {
-                Surface(onClick = { viewModel.setFocus(TodayFocus.ALL) }, shape = CircleShape, color = look.accentSoft, modifier = Modifier.padding(start = 20.dp, top = 6.dp)) {
-                    Text("Showing ${focus.label} · tap for everything", color = look.accent, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                }
+            if (viewModel.canSwitchFocus(identity)) item(key = "focus") {
+                com.craftflowtechnologies.meetingmind.feature.today.home.HomeModeSwitch(
+                    home = ModeHome.TODAY, current = focus,
+                    offered = HomeModes.offered(ModeHome.TODAY, identity.showsFaith),
+                    onSelect = { viewModel.setFocus(it) },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
 
             if (appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.CAPTURE)) item(key = "capture") {
                 QuickCapture(
                     onRecord = onRecord, onNote = onNewNote, onImport = onImport,
                     subtitle = if (identity.showsFaith) "Meeting, sermon, a thought" else "Meeting, class, a thought",
-                    modifier = Modifier.padding(top = 14.dp)
+                    modifier = Modifier.padding(top = 20.dp)
                 )
             }
             if (showSetup) item(key = "setup") {
                 com.craftflowtechnologies.meetingmind.feature.setup.SetupCard(
                     setup!!, onSetUp = onSetUp, onDetails = onOpenSetup,
                     onLater = if (setup.thinkingOnly) null else onSnoozeSetup,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp).coachTarget("setup")
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp).coachTarget("setup")
                 )
             }
             start?.takeIf { it.visible && (it.isNew || it.done < 2) }?.let { st ->
@@ -266,26 +323,17 @@ fun TodayScreen(
                         st, onRecord = onRecord, onNote = onNewNote,
                         onCalendar = { calendarPermission.launch(android.Manifest.permission.READ_CALENDAR) },
                         onDevotional = onOpenDevotional, onDismiss = { viewModel.dismissGettingStarted() },
-                        modifier = Modifier.padding(top = 14.dp)
+                        modifier = Modifier.padding(top = 20.dp)
                     )
                 }
             }
 
-            if (storyKinds.isNotEmpty() && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.STORIES)) item(key = "stories") {
-                StoryRings(storyKinds, onOpenStories)
+            item(key = "bento") {
+                HomeBento(sections, bentoData, bentoActions, modifier = Modifier.padding(top = 20.dp))
             }
 
             // For you: rhythms, memories, the week, recordings in progress, the calendar invitation.
             val forYou = buildList<@Composable () -> Unit> {
-                if (identity.showsFaith && focus != TodayFocus.WORK) add {
-                    val d = devotional?.devotional
-                    ForYouCard(
-                        Icons.Filled.WbSunny, Color(0xFFB7791F).forTheme(), "Today's devotional",
-                        d?.title ?: "A word for your day",
-                        d?.let { listOfNotNull(it.scripture.firstOrNull()?.display(), if (devotional?.note?.metadata?.get(com.craftflowtechnologies.meetingmind.core.devotional.DevotionalNotes.META_OPENED) == null) "New" else "Read").joinToString(" · ") }
-                            ?: "Scripture, a reflection and a prayer"
-                    ) { onOpenDevotional() }
-                }
                 jobs.forEach { job -> add { ForYouCard(Icons.Filled.Sync, look.accent, "Processing · ${job.progressPercent}%", job.meetingTitle, job.currentStep) { onOpenProcessing(job.meetingId) } } }
                 rhythm?.let { r -> add { ForYouCard(Icons.Filled.Mic, Color(0xFFE11D48).forTheme(), "Your rhythm", "Record ${r.type.displayName.lowercase()}?", Rhythms.describe(r)) { onRecordType(r.type) } } }
                 memories.firstOrNull()?.let { m -> add { ForYouCard(Icons.Filled.History, Color(0xFF8B5CF6).forTheme(), "On this day", m.title, m.subtitle ?: "") { open(m) } } }
@@ -303,14 +351,43 @@ fun TodayScreen(
                 }
             }
             if (forYou.isNotEmpty() && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.FOR_YOU)) item(key = "foryou") {
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 10.dp)) {
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 20.dp)) {
                     items(forYou.size) { i -> forYou[i]() }
                 }
             }
 
+            // Stories from today: three shareable cards drawn from the devotional.
+            val dev = devotional?.devotional
+            if (dev != null && appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.STORIES)) item(key = "stories") {
+                val cards = listOf(
+                    StoryCardData(
+                        reference = dev.scripture.firstOrNull()?.display() ?: "Today",
+                        headline = dev.keyText ?: dev.title,
+                        body = dev.reflection.firstOrNull().orEmpty(),
+                        caption = dev.title,
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.DEVOTIONAL) }
+                    ),
+                    StoryCardData(
+                        reference = "Reflection",
+                        headline = dev.liveItToday ?: "One thing to do today",
+                        body = dev.reflection.getOrNull(1).orEmpty(),
+                        caption = "Live it today",
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.WORD) }
+                    ),
+                    StoryCardData(
+                        reference = "Prayer",
+                        headline = dev.prayer ?: "Lord, shape this day",
+                        body = dev.question.orEmpty(),
+                        caption = dev.insight?.author ?: "Prayer",
+                        onOpen = { onOpenStories(com.craftflowtechnologies.meetingmind.feature.stories.StoryKind.PRAYER) }
+                    )
+                )
+                StoryCards(cards, onShareAll = { onOpenStories(null) }, modifier = Modifier.padding(top = 20.dp))
+            }
+
             // Calendar controls.
             if (appearance.shows(com.craftflowtechnologies.meetingmind.ui.theme.HomeSection.TIMELINE)) item(key = "controls") {
-                Column(Modifier.padding(top = 18.dp)) {
+                Column(Modifier.padding(top = 24.dp)) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { viewModel.shift(-1) }) { Icon(Icons.Filled.ChevronLeft, contentDescription = "Earlier", tint = InkNavy) }
                         Text(
@@ -324,7 +401,7 @@ fun TodayScreen(
                         IconButton(onClick = { viewModel.shift(1) }) { Icon(Icons.Filled.ChevronRight, contentDescription = "Later", tint = InkNavy) }
                         IconButton(onClick = { showLayers = true }, modifier = Modifier.testTag("today_layers")) { Icon(Icons.Filled.Layers, contentDescription = "What shows", tint = InkNavy) }
                     }
-                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag("view_chips")) {
                         items(CalendarView.entries) { v ->
                             val on = v == view
                             Surface(onClick = { viewModel.setView(v) }, shape = CircleShape, color = if (on) InkNavy else SurfaceBase, border = if (on) null else BorderStroke(1.dp, Hairline),
@@ -430,14 +507,15 @@ fun TodayScreen(
 
 @Composable
 private fun ForYouCard(icon: ImageVector, tint: Color, label: String, title: String, subtitle: String, onDismiss: (() -> Unit)? = null, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(22.dp), color = SurfaceBase, border = BorderStroke(1.dp, Hairline), shadowElevation = 2.dp,
+    val look = LocalAppLook.current
+    Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = SurfaceBase, border = BorderStroke(1.dp, Hairline), shadowElevation = 0.dp,
         modifier = Modifier.width(250.dp).height(118.dp).testTag("for_you_card")) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.linearGradient(listOf(tint, tint.copy(alpha = 0.6f)))), contentAlignment = Alignment.Center) {
-                    Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                Box(Modifier.size(28.dp).clip(CircleShape).background(look.accentSoft), contentAlignment = Alignment.Center) {
+                    Icon(icon, contentDescription = null, tint = look.accent, modifier = Modifier.size(15.dp))
                 }
-                Text(label, color = tint, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp).weight(1f), maxLines = 1)
+                Text(label, color = Slate, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp).weight(1f), maxLines = 1)
                 if (onDismiss != null) Icon(
                     androidx.compose.material.icons.Icons.Filled.Close, contentDescription = "Not now", tint = Slate,
                     modifier = Modifier.size(18.dp).clip(CircleShape).clickable(onClick = onDismiss)
@@ -557,25 +635,20 @@ internal fun StoryRings(kinds: List<com.craftflowtechnologies.meetingmind.featur
     val seen = remember(kinds) { com.craftflowtechnologies.meetingmind.feature.stories.StoriesSeen.seen(context) }
     androidx.compose.foundation.lazy.LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp),
-        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp).coachTarget("stories").testTag("story_rings")
+        modifier = Modifier.padding(top = 20.dp, bottom = 2.dp).coachTarget("stories").testTag("story_rings")
     ) {
         items(kinds.size) { i ->
             val kind = kinds[i]
             val watched = kind.name in seen
-            val gap = MaterialTheme.colorScheme.background
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { onOpen(kind) }) {
-                // One visual system: the icon's cyan→violet ring means "new", grey means "seen";
-                // every story shares the same deep-navy face, so the row reads as one family.
+                val look = LocalAppLook.current
                 Box(
                     Modifier.size(64.dp).clip(CircleShape)
-                        .background(if (watched) androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant) else Brush.sweepGradient(com.craftflowtechnologies.meetingmind.ui.theme.Brand.ring))
-                        .padding(if (watched) 1.5.dp else 2.5.dp).clip(CircleShape).background(gap).padding(2.dp).clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(com.craftflowtechnologies.meetingmind.ui.theme.Brand.NavyLift, com.craftflowtechnologies.meetingmind.ui.theme.Brand.Navy))),
+                        .border(if (watched) 1.dp else 2.dp, if (watched) Hairline else look.accent, CircleShape)
+                        .padding(5.dp).clip(CircleShape).background(look.accentSoft),
                     contentAlignment = Alignment.Center
                 ) {
-                    // A soft glow of the brand behind the glyph, dimmer once seen.
-                    Box(Modifier.size(40.dp).background(Brush.radialGradient(listOf(com.craftflowtechnologies.meetingmind.ui.theme.Brand.Indigo.copy(alpha = if (watched) 0.18f else 0.45f), Color.Transparent)), CircleShape))
-                    Icon(storyIcon(kind), contentDescription = null, tint = Color.White.copy(alpha = if (watched) 0.7f else 1f), modifier = Modifier.size(24.dp))
+                    Icon(storyIcon(kind), contentDescription = null, tint = if (watched) Slate else look.accent, modifier = Modifier.size(24.dp))
                 }
                 Text(kind.ring, fontSize = 11.5.sp, color = if (watched) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 5.dp), maxLines = 1)
             }

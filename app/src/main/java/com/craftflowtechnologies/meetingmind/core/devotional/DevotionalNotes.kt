@@ -42,6 +42,7 @@ object DevotionalNotes {
     const val S_SCRIPTURE = "daily_scripture"
     const val S_REFLECTION = "daily_reflection"
     const val S_APPLICATION = "daily_application"
+    const val S_LIVE = "daily_live"
     const val S_PRAYER = "daily_prayer"
     const val S_MOTIVATION = "daily_motivation"
     const val S_INSIGHT = "daily_insight"
@@ -53,6 +54,7 @@ object DevotionalNotes {
         S_REFLECTION to "Reflection",
         S_APPLICATION to "Today I will",
         S_PRAYER to "Prayer",
+        S_LIVE to "Live it today",
         S_MOTIVATION to "A word for today",
         S_INSIGHT to "Quote",
         S_QUESTION to "A question to sit with",
@@ -74,7 +76,7 @@ object DevotionalNotes {
         d.format?.let { put(META_FORMAT, it.name) }
         d.scripture.firstOrNull()?.let { put(META_PASSAGE, it.display()) }
         d.reflection.firstOrNull()?.let { put(META_OPENING, firstSentence(it).take(200)) }
-        (d.application.firstOrNull() ?: d.motivation)?.let { put(META_POINT, it.take(200)) }
+        (d.liveItToday ?: d.application.firstOrNull() ?: d.motivation)?.let { put(META_POINT, it.take(200)) }
         d.seriesTitle?.let { put(META_SERIES, it) }
         d.seriesDay?.let { put(META_SERIES_DAY, it.toString()) }
     }
@@ -106,13 +108,12 @@ object DevotionalNotes {
         if (d.reflection.isNotEmpty()) { heading(S_REFLECTION); d.reflection.forEach { add(NoteBlockType.PARAGRAPH, it, S_REFLECTION) } }
         if (d.application.isNotEmpty()) { heading(S_APPLICATION); d.application.forEach { add(NoteBlockType.CHECKLIST, it, S_APPLICATION) } }
         d.prayer?.let { heading(S_PRAYER); add(NoteBlockType.PARAGRAPH, it, S_PRAYER) }
+        d.liveItToday?.let { heading(S_LIVE); add(NoteBlockType.PARAGRAPH, it, S_LIVE) }
         d.motivation?.let { heading(S_MOTIVATION); add(NoteBlockType.PARAGRAPH, it, S_MOTIVATION) }
         d.insight?.let { heading(S_INSIGHT); add(NoteBlockType.QUOTE, it.text, S_INSIGHT, mapOf(PAYLOAD_AUTHOR to it.author, PAYLOAD_SOURCE to it.source), BlockSource.IMPORTED) }
         d.question?.let { heading(S_QUESTION); add(NoteBlockType.PARAGRAPH, it, S_QUESTION) }
-        if (d.origin != DevotionalOrigin.CARE) {
-            add(NoteBlockType.HEADING_2, titles.getValue(S_RESPONSE), S_RESPONSE, src = BlockSource.USER)
-            add(NoteBlockType.PARAGRAPH, "", S_RESPONSE, src = BlockSource.USER)
-        }
+        // The person's reflection is not a placeholder here: it is written into the study journal
+        // (DevotionalJournal), created on the first keystroke, so an untouched devotional leaves nothing.
         return blocks to refs
     }
 
@@ -137,6 +138,7 @@ object DevotionalNotes {
             keyText = blocks.firstOrNull { it.payload[PAYLOAD_KEY_TEXT] == "1" }?.content?.text,
             reflection = texts(S_REFLECTION),
             application = texts(S_APPLICATION),
+            liveItToday = texts(S_LIVE).firstOrNull(),
             prayer = texts(S_PRAYER).joinToString("\n\n").ifBlank { null },
             motivation = texts(S_MOTIVATION).joinToString(" ").ifBlank { null },
             insight = insight,
