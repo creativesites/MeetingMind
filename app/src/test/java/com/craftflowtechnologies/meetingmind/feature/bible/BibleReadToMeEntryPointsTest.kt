@@ -60,8 +60,9 @@ class BibleReadToMeEntryPointsTest {
             request = SessionRequest(SessionKind.TODAY, passage),
             load = SessionLoad.Ready(verses.joinToString(" ") { it.text }, verses, "WEB · Public domain"),
             session = SessionState(SessionKind.TODAY, steps, index = readIndex),
+            canListen = true,
         )
-        rule.setContent { MeetMindTheme(darkTheme = false) { GuidedSessionContent(ui, listening = false, actions = SessionActions()) } }
+        rule.setContent { MeetMindTheme(darkTheme = false) { GuidedSessionContent(ui, reading = ReadAloudState(), actions = SessionActions()) } }
         rule.waitForIdle()
         rule.onNodeWithTag("session_read_aloud").assertIsDisplayed()
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/bible/readtome_session_read_light.png")
@@ -78,10 +79,11 @@ class BibleReadToMeEntryPointsTest {
             load = SessionLoad.Ready(verses.joinToString(" ") { it.text }, verses, "WEB · Public domain"),
             session = session,
             savedNoteId = "note-1",
+            canListen = true,
         )
-        rule.setContent { MeetMindTheme(darkTheme = false) { GuidedSessionContent(ui, listening = false, actions = SessionActions()) } }
+        rule.setContent { MeetMindTheme(darkTheme = false) { GuidedSessionContent(ui, reading = ReadAloudState(), actions = SessionActions()) } }
         rule.waitForIdle()
-        rule.onNodeWithTag("session_read_to_me").assertIsDisplayed()
+        rule.onNodeWithTag("session_listen_study").assertIsDisplayed()
     }
 
     @Test fun verse_sheet_listen_is_displayed_at_360dp_with_all_actions() {
