@@ -91,11 +91,13 @@ class GeminiCredentialStore(private val context: Context) {
         private val PAID_PLAN = androidx.datastore.preferences.core.booleanPreferencesKey("paid_plan_confirmed")
 
         /**
-         * Whether the built-in tester key is on a Google Cloud project with active billing (a paid service
-         * under Google's Gemini API terms). Not knowable from the repository, so false until the owner
-         * confirms it here. While false, Read to Me keeps people's own prayers and reflections on the phone.
+         * Whether the built-in key is on a Google Cloud project with active billing (a paid service under
+         * Google's Gemini API terms). Owner decision (2026-10-14): it is the owner's billed key, used for Pro
+         * users in Play Store builds. Read to Me only applies the tier gate in those builds (see
+         * [com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiKeyTierPolicy]). Flip this to false if that
+         * changes.
          */
-        const val SYSTEM_KEY_CONFIRMED_PAID = false
+        const val SYSTEM_KEY_CONFIRMED_PAID = true
 
         /** The tester key compiled into this build, or null when none was supplied. */
         val systemKey: String? = com.craftflowtechnologies.meetingmind.BuildConfig.SYSTEM_GEMINI_API_KEY.trim().takeIf { it.isNotEmpty() }

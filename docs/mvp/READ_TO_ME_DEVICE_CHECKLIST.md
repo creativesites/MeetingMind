@@ -21,11 +21,11 @@ Everything below was **not** tested by the developer assistant (no device in its
 12. Edit one paragraph, listen again: only that part is made again.
 
 ## Bible Study
-13. Open a Bible study note with scripture: scripture is read word for word with its reference and translation name; commentary, questions, prayer and "your note" are labelled.
+13. Open a Bible study note with scripture: scripture is read word for word with its reference and translation name, by the Gemini voice when Internet mode is on (licensed translations included, by owner decision); commentary, questions, prayer and "your note" are labelled.
 14. Reflection question with "Until I resume": playback pauses after the question and carries on when you press play.
 15. Verse sheet → Listen, and Study workspace chapter → Listen headphone icon.
 16. Smart Read: after a reading, "See what changed" lists reworded text and what was read as written. Scripture and your own prayers must never appear as reworded.
-17. Licensed translation (e.g. NIV): read with the phone voice and the sheet says why.
+17. Licensed translation (e.g. NIV) with Internet mode on: read by the Gemini voice, and the reading is kept on the phone like any other (not for 24 hours). With Read to Me's licence setting turned back to cautious, it reverts to the phone voice and the sheet says why.
 
 ## Settings
 18. Read to Me settings (bottom of the sheet): learning switch, learned defaults and reset, saved audio size and Clear. Pick the same style for the same kind of note three times: "…will now start with X when set to Automatic. Undo."

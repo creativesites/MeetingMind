@@ -91,7 +91,7 @@ class ScriptureResolver(private val source: ScriptureSource) {
                     spokenReference = spoken,
                     translationName = title ?: c.abbreviation,
                     verses = verses.map { ResolvedScripture.Verse(it.number, it.text) },
-                    openForCloud = BibleLicensing.openForCloud(versionId, c.abbreviation, c.attribution)
+                    openForCloud = ReadToMeLicencePolicy.cloudOk(BibleLicensing.openForCloud(versionId, c.abbreviation, c.attribution))
                 )
             }
         }
@@ -101,7 +101,7 @@ class ScriptureResolver(private val source: ScriptureSource) {
                 spokenReference = spoken,
                 translationName = title ?: p.passage.versionAbbreviation,
                 text = p.passage.text,
-                openForCloud = p.passage.openForCloud
+                openForCloud = ReadToMeLicencePolicy.cloudOk(p.passage.openForCloud)
             )
             is PassageResult.Unavailable -> null
         }
