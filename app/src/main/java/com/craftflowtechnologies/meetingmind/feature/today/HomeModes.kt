@@ -1,7 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.today
 
 /** The homes that have modes. Today keeps its own focus chip, so it is not listed here. */
-enum class ModeHome { WORK, CALM }
+enum class ModeHome { WORK, CALM, TODAY }
 
 /**
  * The modes a home offers, and the words that say which one is showing and what a tap does next.
@@ -15,7 +15,7 @@ object HomeModes {
     /** The modes [home] offers, in the order a tap moves through them. */
     fun offered(home: ModeHome, showsFaith: Boolean): List<TodayFocus> = when (home) {
         ModeHome.WORK -> if (showsFaith) listOf(TodayFocus.ALL, TodayFocus.WORK) else listOf(TodayFocus.ALL)
-        ModeHome.CALM -> if (showsFaith) listOf(TodayFocus.ALL, TodayFocus.FAITH, TodayFocus.WORK) else listOf(TodayFocus.ALL, TodayFocus.WORK)
+        ModeHome.CALM, ModeHome.TODAY -> if (showsFaith) listOf(TodayFocus.ALL, TodayFocus.FAITH, TodayFocus.WORK) else listOf(TodayFocus.ALL, TodayFocus.WORK)
     }
 
     /** The mode actually shown: [current] when the home offers it, else the home's first mode. */
@@ -41,7 +41,7 @@ object HomeModes {
             TodayFocus.ALL -> "Work and faith"
             else -> "Work only"
         }
-        ModeHome.CALM -> when (mode) {
+        ModeHome.CALM, ModeHome.TODAY -> when (mode) {
             TodayFocus.ALL -> "Faith, work and personal"
             TodayFocus.FAITH -> "Faith only"
             TodayFocus.WORK -> "Work only"

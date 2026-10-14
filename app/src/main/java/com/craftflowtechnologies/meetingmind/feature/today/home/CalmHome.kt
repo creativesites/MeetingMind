@@ -147,35 +147,46 @@ fun CalmHome(
                 )
             }
 
-            // The next thing, in large type with nothing around it.
+            // The next thing, in large type. Faith mode leads with the devotional instead.
             item {
+                val faithLead = mode == TodayFocus.FAITH
+                val devTitle = devotional?.devotional?.title ?: "A word for your day"
+                val devSub = devotional?.devotional?.scripture?.firstOrNull()?.display() ?: "Today's reading and prayer"
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 24.dp)) {
-                    Text("NEXT", color = InkMuted, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.4.sp)
                     Text(
-                        tile.title, color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 26.sp,
-                        lineHeight = 30.sp, letterSpacing = (-0.4).sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 6.dp).clickable(onClick = tile.onClick)
+                        if (faithLead) "TODAY'S DEVOTIONAL" else "NEXT", color = InkMuted, fontFamily = InterFamily,
+                        fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.4.sp
                     )
-                    Text(tile.subtitle, color = InkSecondary, fontFamily = InterFamily, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
+                    Text(
+                        if (faithLead) devTitle else tile.title, color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 26.sp,
+                        lineHeight = 30.sp, letterSpacing = (-0.4).sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 6.dp).clickable(onClick = if (faithLead) onOpenDevotional else tile.onClick)
+                    )
+                    Text(
+                        if (faithLead) devSub else tile.subtitle, color = InkSecondary, fontFamily = InterFamily, fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
             }
 
-            // The day as a plain list, already filtered to the mode.
-            item {
+            // The day as a plain list, already filtered to the mode. Faith mode leaves it out, as the design does.
+            if (mode != TodayFocus.FAITH) item {
                 Text(
                     "TODAY", color = InkMuted, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp,
                     letterSpacing = 1.4.sp, modifier = Modifier.padding(start = 24.dp, top = 28.dp, bottom = 6.dp)
                 )
             }
-            if (todayItems.isEmpty()) item {
-                Text("Nothing on your calendar today.", color = InkSecondary, fontFamily = InterFamily, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp))
-            }
-            items(todayItems.take(6), key = { "c-" + it.id }) { entry ->
-                CalmRow(entry, fmt) { openItem(entry, today, onOpenNote, onOpenProcessing) }
+            if (mode != TodayFocus.FAITH) {
+                if (todayItems.isEmpty()) item {
+                    Text("Nothing on your calendar today.", color = InkSecondary, fontFamily = InterFamily, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp))
+                }
+                items(todayItems.take(6), key = { "c-" + it.id }) { entry ->
+                    CalmRow(entry, fmt) { openItem(entry, today, onOpenNote, onOpenProcessing) }
+                }
             }
 
             // The faith line, where faith is shown.
-            if (identity.showsFaith && mode != TodayFocus.WORK) item {
+            if (identity.showsFaith && mode == TodayFocus.ALL) item {
                 Column(Modifier.fillMaxWidth().clickable(onClick = onOpenDevotional).padding(horizontal = 24.dp).padding(top = 28.dp)) {
                     Text("TODAY'S DEVOTIONAL", color = InkMuted, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.4.sp)
                     Text(
