@@ -80,7 +80,7 @@ fun rememberNoteMoment(noteId: String, refreshKey: Any? = null): NoteMomentState
     val store = remember(provided, context) { provided ?: MomentLedgerStore(context) }
     val shown by rememberUpdatedState(rememberCompanionVisible(CompanionPage.NOTE_READY))
     LaunchedEffect(noteId, refreshKey) {
-        val facts = readNoteFacts(context, noteId) ?: return@LaunchedEffect
+        val facts = readNoteFacts(context, noteId) ?: readTypedNoteFacts(context, noteId) ?: return@LaunchedEffect
         state.facts = facts
         if (!session.claim()) {
             // Not a fresh open: the note just shows (a moment never replays).
@@ -112,12 +112,13 @@ fun rememberNoteMoment(noteId: String, refreshKey: Any? = null): NoteMomentState
 
 /**
  * The id [rememberNoteMoment] plans for a note editor (`NoteEditorScreen`). The moment's facts come from a
- * recording, so a note plans on its first recording (the recordings list is ordered by creation). It plans
- * nothing (""), and waits, while the note is still loading or behind the Faith lock: a moment is claimed only
- * once it can be shown. A note with no recording has no facts, so it opens plain.
+ * recording, so a note plans on its first recording (the recordings list is ordered by creation). A note with no
+ * recording plans on the note itself (its facts come from the note, see [readTypedNoteFacts]). It plans nothing
+ * (""), and waits, while the note is still loading or behind the Faith lock: a moment is claimed only once it can
+ * be shown.
  */
-fun noteMomentSubject(noteLoaded: Boolean, locked: Boolean, recordingIds: Collection<String>): String =
-    if (!noteLoaded || locked) "" else recordingIds.firstOrNull().orEmpty()
+fun noteMomentSubject(noteLoaded: Boolean, locked: Boolean, recordingIds: Collection<String>, noteId: String): String =
+    if (!noteLoaded || locked) "" else recordingIds.firstOrNull() ?: noteId
 
 /**
  * The First Keep over the already-rendered note (§2.2): the card shows only the note's verbatim title and

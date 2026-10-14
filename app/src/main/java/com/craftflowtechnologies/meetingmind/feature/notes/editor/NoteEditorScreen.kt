@@ -174,10 +174,10 @@ fun NoteEditorScreen(
     val aiEdit by viewModel.aiEdit.collectAsState()
 
     // The Unveil (docs/mvp/ZURI_SIGNATURE_MOMENTS.md §3.2): a fresh open of this note plays the planner's moment,
-    // the same as the meeting detail. Its facts come from the note's first recording; the Faith lock and the
-    // loading note plan nothing yet. A return to this entry (sub-screens, rotation, resume) never replays.
+    // the same as the meeting detail. Its facts come from the note's first recording, or from the note itself
+    // when it has none; the Faith lock and the loading note plan nothing yet. A return to this entry (sub-screens, rotation, resume) never replays.
     val momentSubject = com.craftflowtechnologies.meetingmind.feature.moments.noteMomentSubject(
-        noteLoaded = note != null, locked = lockNeeded && !faithUnlocked, recordingIds = recordings.keys
+        noteLoaded = note != null, locked = lockNeeded && !faithUnlocked, recordingIds = recordings.keys, noteId = viewModel.noteId
     )
     val noteMoment = com.craftflowtechnologies.meetingmind.feature.moments.rememberNoteMoment(momentSubject)
     val momentForm = com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings().value.form

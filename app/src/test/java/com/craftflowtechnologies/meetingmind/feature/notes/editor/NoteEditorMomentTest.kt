@@ -126,12 +126,8 @@ class NoteEditorMomentTest {
         assertTrue("the same moment, not a new one: $lastPlan", lastPlan === first)
     }
 
-    @Test fun `a note with no recording has no moment and opens plain`() {
-        val subject = noteMomentSubject(noteLoaded = true, locked = false, recordingIds = emptyList())
-        assertEquals("", subject)
-        compose.setContent { Harness { Host(subject) } }
-        compose.waitForIdle()
-        assertNull(lastPlan)
-        compose.onNodeWithText("The note underneath").assertExists()
+    @Test fun `a note with no recording plans its moment on the note itself`() {
+        val subject = noteMomentSubject(noteLoaded = true, locked = false, recordingIds = emptyList(), noteId = "n1")
+        assertEquals("n1", subject)
     }
 }

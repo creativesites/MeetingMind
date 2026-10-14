@@ -101,6 +101,29 @@ suspend fun readNoteFacts(context: Context, meetingId: String): NoteFacts? {
     )
 }
 
+/**
+ * Facts for a note with no recording (typed by hand). It has no transcript or audio, so it is complete, and its
+ * moment plays like any other note (founder decision: every note gets its moment).
+ */
+suspend fun readTypedNoteFacts(context: Context, noteId: String): NoteFacts? {
+    val db = MeetMindDatabase.getInstance(context)
+    val n = db.noteDao().getById(noteId) ?: return null
+    val type = runCatching { RecordingType.valueOf(n.workflow) }.getOrDefault(RecordingType.GENERAL)
+    val tags = runCatching { db.noteDao().observeTagsForNote(noteId).first().map { it.name } }.getOrDefault(emptyList())
+    return NoteFacts(
+        noteId = noteId,
+        title = n.title,
+        outcome = NoteOutcome.COMPLETE,
+        type = type,
+        space = Workflows.space(type),
+        sermon = type == RecordingType.SERMON,
+        sensitive = NoteFactsRules.sensitive(type, tags),
+        audioMs = null,
+        transcriptWords = null,
+        onDevice = false
+    )
+}
+
 /** One note that became ready, for the in-app snackbar (§3.2) and the queue while recording (§3.3 row 4). */
 data class NoteReadyEvent(val noteId: String, val title: String, val sermon: Boolean, val sensitive: Boolean, val atMs: Long) {
     /** The companion event the reducer understands (`CompanionMachine` handles its caps). */
