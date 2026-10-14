@@ -143,8 +143,6 @@ private val ZURI_SIZE = 104.dp
 private val ZURI_COLUMN_WIDTH = 132.dp
 
 @Composable
-
-@Composable
 private fun CompanionZuri(lateNight: Boolean) =
     ZuriSlot(CompanionPage.HOME, ZURI_SIZE, state = if (lateNight) CompanionState.SLEEPY else CompanionState.IDLE)
 
