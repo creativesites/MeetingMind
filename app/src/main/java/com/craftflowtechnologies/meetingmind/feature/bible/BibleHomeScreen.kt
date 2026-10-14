@@ -130,7 +130,7 @@ fun BibleHomeContent(state: BibleHomeState, actions: BibleHomeActions) {
                     SectionHeader("Study the Bible")
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         WayTile(
-                            title = "A passage", subtitle = "Pick a reference", icon = Icons.Rounded.AutoStories, enabled = true,
+                            title = EntryPoints.bibleStudyPassage.label, subtitle = "Pick a reference", icon = Icons.Rounded.AutoStories, enabled = true,
                             tag = "bible_home_study", modifier = Modifier.weight(1f), onClick = { studySheet = true }
                         )
                         WayTile(
