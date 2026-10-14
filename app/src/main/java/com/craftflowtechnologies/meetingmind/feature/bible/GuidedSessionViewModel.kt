@@ -35,6 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,6 +49,9 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 /** What an AI suggestion added to a step. [line] is the one honest sentence when it could not. */
+/** How long a step waits for Zuri's suggestions before it shows its own questions only. */
+private const val HELP_TIMEOUT_MS = 20_000L
+
 data class StepHelp(
     val loading: Boolean = false,
     val context: List<CitedLine> = emptyList(),
@@ -194,11 +198,13 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             val text = step.verse?.let { v -> ready.verses.firstOrNull { it.number == v }?.text } ?: ready.passageText
             val brief = SessionBrief(request.passage, text, step.type, step.verse, request.need, profile, LocalDate.now())
-            val outcome = withContext(Dispatchers.Default) { ai.suggest(brief) }
+            // A slow or silent model must not leave the step on "thinking" forever; the step works without it.
+            val outcome = withContext(Dispatchers.Default) { withTimeoutOrNull(HELP_TIMEOUT_MS) { ai.suggest(brief) } }
             setHelp(
                 key, when (outcome) {
                     is SuggestOutcome.Got -> StepHelp(context = outcome.suggestions.context, questions = outcome.suggestions.questions, fromAi = true)
                     is SuggestOutcome.Unavailable -> StepHelp(line = outcome.line)
+                    null -> StepHelp(line = "Zuri didn't answer in time. Your own thoughts are enough for this step.")
                 }
             )
         }
