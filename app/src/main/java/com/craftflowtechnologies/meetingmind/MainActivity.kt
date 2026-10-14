@@ -1051,6 +1051,11 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         onOpenPlans = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) { launchSingleTop = true } }
     )
 
+    // A once-a-period heads-up when the managed cloud allowance is nearly or fully used.
+    com.craftflowtechnologies.meetingmind.feature.paywall.UsageAlertHost(
+        onOpenPlans = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) { launchSingleTop = true } }
+    )
+
     // The minimised processing screen, on the main tabs and in the notes library.
     val showPill = activeProcessing != null && !onProcessingScreen &&
         (currentRoute in routesWithNav || currentRoute == Routes.NOTEBOOK || currentRoute == Routes.MODELS)

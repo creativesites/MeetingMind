@@ -262,6 +262,8 @@ fun SettingsScreen(
     val work by viewModel.workSettings.collectAsState()
     val billing = com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway
     val owned by billing.entitlements.collectAsState()
+    val usage by com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.state.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.refresh(context) }
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showSpaces by remember { mutableStateOf(false) }
@@ -510,7 +512,8 @@ fun SettingsScreen(
                 if (billing.configured) settingsRow {
                     SettingsNavRow(
                         title = "Plan and usage",
-                        subtitle = if (owned.isPaid) "${owned.plan.label} · manage or change your plan" else "Free · see what a plan adds",
+                        subtitle = (if (owned.isPaid) "${owned.plan.label} · manage or change your plan" else "Free · see what a plan adds") +
+                            usage.summary().takeIf { usage.known && it.isNotEmpty() }?.let { "\nThis month: $it" }.orEmpty(),
                         onClick = onOpenSubscription
                     )
                 }

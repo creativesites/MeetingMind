@@ -20,7 +20,7 @@ import java.time.YearMonth
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
-private val Context.deepSeekStore by preferencesDataStore(name = "meetmind_deepseek")
+internal val Context.deepSeekStore by preferencesDataStore(name = "meetmind_deepseek")
 
 /**
  * DeepSeek: the second writer for every AI text feature, used when Gemini can't answer.
