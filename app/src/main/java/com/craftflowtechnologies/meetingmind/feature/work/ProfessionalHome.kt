@@ -61,6 +61,7 @@ import com.craftflowtechnologies.meetingmind.feature.today.HomeModes
 import com.craftflowtechnologies.meetingmind.feature.today.ModeHome
 import com.craftflowtechnologies.meetingmind.feature.today.TodayFocus
 import com.craftflowtechnologies.meetingmind.feature.today.itemIcon
+import com.craftflowtechnologies.meetingmind.feature.today.home.CircleTile
 import com.craftflowtechnologies.meetingmind.feature.today.home.FaithAndStories
 import com.craftflowtechnologies.meetingmind.feature.today.home.HomeModeHeader
 import com.craftflowtechnologies.meetingmind.feature.today.home.faithBentoData
@@ -207,7 +208,6 @@ fun ProfessionalHome(
             }
             item {
                 Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    QuietLink("Circles", onOpenCircles)
                     QuietLink("Customize home", onCustomize, modifier = Modifier.testTag("professional_customize"))
                 }
             }
@@ -271,6 +271,13 @@ fun ProfessionalHome(
                         onImport = onImport,
                         onWork = onOpenWork
                     )
+                }
+            }
+
+            // Circles: the same card the Today home shows.
+            item {
+                Box(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)) {
+                    CircleTile(onClick = onOpenCircles, index = 2, modifier = Modifier.fillMaxWidth())
                 }
             }
 
