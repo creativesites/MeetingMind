@@ -153,10 +153,13 @@ internal data class SkyBodyPlacement(val center: Offset, val radius: Float) {
  * [textFraction] of the width, so the body stays clear of it at any font scale.
  */
 internal fun skyBodyPlacement(size: Size, sky: TimeOfDaySky, textFraction: Float, bobPx: Float = 0f): SkyBodyPlacement {
-    // Left of the card's middle: the companion sits lower on the right, so the body never sits under it.
-    val x = size.width * (0.22f + 0.22f * sky.arc)
-    val horizon = size.height * 0.64f
-    val peak = size.height * 0.24f
+    val textEdge = size.width * textFraction
+    val columnCenter = textEdge + (size.width - textEdge) / 2f
+    val x = columnCenter + size.width * SkyBodySweep * (sky.arc - 0.5f)
+    // The companion sits lower on the right (84 dp down), so the body rides the top of the right column,
+    // above it. Its centre stays high enough that the body clears the companion.
+    val horizon = size.height * 0.19f
+    val peak = size.height * 0.10f
     val y = horizon - (horizon - peak) * sky.elevation
     return SkyBodyPlacement(Offset(x, y + bobPx), size.minDimension * SkyBodyRadius)
 }
