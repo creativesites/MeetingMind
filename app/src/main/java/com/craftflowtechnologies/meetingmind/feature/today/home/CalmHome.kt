@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,11 +33,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.timeline.DeepTarget
 import com.craftflowtechnologies.meetingmind.core.timeline.TimelineItem
+import com.craftflowtechnologies.meetingmind.feature.create.CreateHost
+import com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController
+import com.craftflowtechnologies.meetingmind.feature.stories.StoryKind
 import com.craftflowtechnologies.meetingmind.feature.today.HeroTile
 import com.craftflowtechnologies.meetingmind.feature.today.HomeModes
+import com.craftflowtechnologies.meetingmind.feature.today.HomeQuickAccessRow
 import com.craftflowtechnologies.meetingmind.feature.today.InterFamily
 import com.craftflowtechnologies.meetingmind.feature.today.ModeHome
 import com.craftflowtechnologies.meetingmind.feature.today.OutfitFamily
+import com.craftflowtechnologies.meetingmind.feature.today.StoryRings
 import com.craftflowtechnologies.meetingmind.feature.today.TodayFocus
 import com.craftflowtechnologies.meetingmind.feature.today.TodayViewModel
 import com.craftflowtechnologies.meetingmind.feature.today.UpNextTile
@@ -55,27 +59,39 @@ import java.util.Date
 
 /**
  * The Calm home: one quiet page. The shared header and mode switch, then the next thing, the
- * day as a plain list, a faith line where faith is shown, and two text actions. No cards, no
- * shadows, so the page has room to breathe.
+ * day as a plain list, the faith line where faith is shown, and the stories. Every feature stays
+ * reachable in every mode: the quick-access row carries Faith, Work, devotional, prayer, the word,
+ * testimonies and create, and the actions carry record, note, import, circles and customize.
  */
 @Composable
 fun CalmHome(
     today: TodayViewModel,
     onRecord: () -> Unit,
     onNewNote: () -> Unit,
+    onImport: () -> Unit,
     onSearch: () -> Unit,
     onOpenInbox: () -> Unit,
     onOpenNote: (String) -> Unit,
     onOpenProcessing: (String) -> Unit,
+    onOpenFaith: () -> Unit,
+    onOpenWork: () -> Unit,
     onOpenDevotional: () -> Unit,
+    onOpenPrayer: () -> Unit,
+    onOpenWord: () -> Unit,
+    onOpenTestimonies: () -> Unit,
+    onOpenCircles: () -> Unit,
+    onOpenStories: (StoryKind?) -> Unit,
     onCustomize: () -> Unit,
     onNavigateBottomNav: (com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit
 ) {
+    val create = rememberCreateController()
+    CreateHost(create)
     val identity by today.identity.collectAsState()
     val focus by today.focus.collectAsState()
     val todayItems by today.today.collectAsState()
     val upNext by today.upNext.collectAsState()
     val devotional by today.devotional.collectAsState()
+    val stories by today.stories.collectAsState()
     val offered = HomeModes.offered(ModeHome.CALM, identity.showsFaith)
     val mode = HomeModes.effective(focus, offered)
     val fmt = timeFormat()
@@ -117,9 +133,23 @@ fun CalmHome(
                 )
             }
 
+            // The quick-access row: every home-level feature, in every mode.
+            item {
+                HomeQuickAccessRow(
+                    onOpenFaith = onOpenFaith,
+                    onOpenWork = onOpenWork,
+                    onOpenDevotional = onOpenDevotional,
+                    onOpenPrayer = onOpenPrayer,
+                    onOpenWord = onOpenWord,
+                    onOpenTestimonies = onOpenTestimonies,
+                    onOpenCreate = { create.open() },
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+
             // The next thing, in large type with nothing around it.
             item {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 28.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 24.dp)) {
                     Text("NEXT", color = InkMuted, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.4.sp)
                     Text(
                         tile.title, color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 26.sp,
@@ -134,7 +164,7 @@ fun CalmHome(
             item {
                 Text(
                     "TODAY", color = InkMuted, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp,
-                    letterSpacing = 1.4.sp, modifier = Modifier.padding(start = 24.dp, top = 32.dp, bottom = 6.dp)
+                    letterSpacing = 1.4.sp, modifier = Modifier.padding(start = 24.dp, top = 28.dp, bottom = 6.dp)
                 )
             }
             if (todayItems.isEmpty()) item {
@@ -144,11 +174,9 @@ fun CalmHome(
                 CalmRow(entry, fmt) { openItem(entry, today, onOpenNote, onOpenProcessing) }
             }
 
-            // Faith, when this mode shows it.
+            // The faith line, where faith is shown.
             if (identity.showsFaith && mode != TodayFocus.WORK) item {
-                Column(
-                    Modifier.fillMaxWidth().clickable(onClick = onOpenDevotional).padding(horizontal = 24.dp).padding(top = 32.dp)
-                ) {
+                Column(Modifier.fillMaxWidth().clickable(onClick = onOpenDevotional).padding(horizontal = 24.dp).padding(top = 28.dp)) {
                     Text("TODAY'S DEVOTIONAL", color = InkMuted, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.4.sp)
                     Text(
                         devotional?.devotional?.title ?: "A word for your day", color = Ink, fontFamily = OutfitFamily,
@@ -158,12 +186,22 @@ fun CalmHome(
                 }
             }
 
-            // Two quiet actions.
+            // Stories stay in every mode.
+            if (stories.isNotEmpty()) item {
+                Box(Modifier.fillMaxWidth().padding(top = 24.dp)) { StoryRings(stories, onOpenStories) }
+            }
+
+            // The actions: every one is a route, in every mode.
             item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 36.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 28.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                     CalmAction("Record", onRecord)
                     CalmAction("Write a note", onNewNote)
-                    Spacer(Modifier.weight(1f))
+                    CalmAction("Import", onImport)
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                    CalmAction("Circles", onOpenCircles)
                     CalmAction("Customize", onCustomize)
                 }
             }

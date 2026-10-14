@@ -146,7 +146,7 @@ private fun CreateAndCircles(onCreate: () -> Unit, onCircles: () -> Unit, index:
 }
 
 @Composable
-private fun FaithTile(data: BentoData, onClick: () -> Unit, index: Int) {
+internal fun FaithTile(data: BentoData, onClick: () -> Unit, index: Int) {
     val days = data.weekCount.coerceIn(0, 7)
     SceneTile(index, SunriseScene, height = 196.dp, scrim = Paper.copy(alpha = 0.6f), tag = "bento_faith", onClick = onClick) {
         TileHeader(Icons.Filled.Church, "Faith", Ink)
@@ -157,7 +157,7 @@ private fun FaithTile(data: BentoData, onClick: () -> Unit, index: Int) {
 }
 
 @Composable
-private fun DevotionalTile(data: BentoData, onClick: () -> Unit, index: Int, modifier: Modifier = Modifier) {
+internal fun DevotionalTile(data: BentoData, onClick: () -> Unit, index: Int, modifier: Modifier = Modifier) {
     SceneTile(index, PaperLightScene, height = 208.dp, scrim = Paper.copy(alpha = 0.45f), tag = "bento_devotional", onClick = onClick, modifier = modifier) {
         TileHeader(Icons.Filled.MenuBook, "Devotional", Color(0xFF7A4F24))
         Spacer(Modifier.weight(1f))
@@ -168,7 +168,7 @@ private fun DevotionalTile(data: BentoData, onClick: () -> Unit, index: Int, mod
 }
 
 @Composable
-private fun PrayerTile(onClick: () -> Unit, index: Int, modifier: Modifier = Modifier) {
+internal fun PrayerTile(onClick: () -> Unit, index: Int, modifier: Modifier = Modifier) {
     val light = Color.White
     SceneTile(index, NightPrayerScene, height = 208.dp, scrim = Color(0xFF1C1A44).copy(alpha = 0.5f), tag = "bento_prayer", onClick = onClick, modifier = modifier) {
         TileHeader(Icons.Filled.Favorite, "Prayer", light)

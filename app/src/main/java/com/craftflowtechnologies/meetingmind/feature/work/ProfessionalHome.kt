@@ -60,7 +60,9 @@ import com.craftflowtechnologies.meetingmind.feature.today.HomeModes
 import com.craftflowtechnologies.meetingmind.feature.today.ModeHome
 import com.craftflowtechnologies.meetingmind.feature.today.TodayFocus
 import com.craftflowtechnologies.meetingmind.feature.today.itemIcon
+import com.craftflowtechnologies.meetingmind.feature.today.home.FaithAndStories
 import com.craftflowtechnologies.meetingmind.feature.today.home.HomeModeHeader
+import com.craftflowtechnologies.meetingmind.feature.today.home.faithBentoData
 import com.craftflowtechnologies.meetingmind.feature.today.timeFormat
 import com.craftflowtechnologies.meetingmind.feature.work.home.NeedLine
 import com.craftflowtechnologies.meetingmind.feature.work.home.ScheduleAgendaRow
@@ -104,6 +106,7 @@ fun ProfessionalHome(
     onOpenProcessing: (String) -> Unit,
     onOpenMeeting: (String, Long?) -> Unit,
     onOpenDevotional: () -> Unit,
+    onOpenCircles: () -> Unit = {},
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit,
     onOpenWork: () -> Unit,
     onOpenFaith: () -> Unit = {},
@@ -129,6 +132,8 @@ fun ProfessionalHome(
     val jobs by today.activeJobs.collectAsState()
     val stories by today.stories.collectAsState()
     val devotional by today.devotional.collectAsState()
+    val stats by today.stats.collectAsState()
+    val faithData = faithBentoData(stats.weekCount, devotional)
     val settings by work.settings.collectAsState()
     val myTasks by work.myTasks.collectAsState()
     val waitingOn by work.waitingOn.collectAsState()
@@ -200,7 +205,10 @@ fun ProfessionalHome(
                 )
             }
             item {
-                QuietLink("Customize home", onCustomize, modifier = Modifier.padding(horizontal = 20.dp).testTag("professional_customize"))
+                Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    QuietLink("Circles", onOpenCircles)
+                    QuietLink("Customize home", onCustomize, modifier = Modifier.testTag("professional_customize"))
+                }
             }
 
             // Quick Access icons for Faith, Work, Devotional, Prayer, Word, Testimonies.
@@ -314,6 +322,13 @@ fun ProfessionalHome(
                 }
             }
 
+            if (mode == TodayFocus.ALL) item {
+                FaithAndStories(
+                    showsFaith = identity.showsFaith, data = faithData, stories = stories,
+                    onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
+                    onOpenStories = onOpenStories, index = 7
+                )
+            }
             if (jobs.isNotEmpty()) item {
                 val j = jobs.first()
                 Row(
@@ -421,22 +436,14 @@ fun ProfessionalHome(
                 }
             }
 
-            // The rest of home, still here: Faith, stories.
-            if (identity.showsFaith && mode == TodayFocus.ALL) item {
-                val d = devotional?.devotional
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 22.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceRaised)
-                        .border(1.dp, LineSoft, RoundedCornerShape(18.dp)).clickable(onClick = onOpenDevotional).padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.WbSunny, null, tint = FaithGold, modifier = Modifier.size(20.dp))
-                    Column(Modifier.padding(start = 14.dp).weight(1f)) {
-                        Text("TODAY'S DEVOTIONAL", fontSize = 10.5.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted)
-                        Text(d?.title ?: "A word for your day", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
+            // Work mode keeps the same faith and stories at the end of the page, so they stay reachable.
+            if (mode != TodayFocus.ALL) item {
+                FaithAndStories(
+                    showsFaith = identity.showsFaith, data = faithData, stories = stories,
+                    onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
+                    onOpenStories = onOpenStories, index = 7
+                )
             }
-            if (stories.isNotEmpty() && mode == TodayFocus.ALL) item { Spacer(Modifier.height(10.dp)); com.craftflowtechnologies.meetingmind.feature.today.StoryRings(stories, onOpenStories) }
 
             item {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 22.dp).clip(RoundedCornerShape(18.dp)).background(AccentWash).clickable(onClick = onOpenWork).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
