@@ -153,11 +153,10 @@ internal data class SkyBodyPlacement(val center: Offset, val radius: Float) {
  * [textFraction] of the width, so the body stays clear of it at any font scale.
  */
 internal fun skyBodyPlacement(size: Size, sky: TimeOfDaySky, textFraction: Float, bobPx: Float = 0f): SkyBodyPlacement {
-    val textEdge = size.width * textFraction
-    val columnCenter = textEdge + (size.width - textEdge) / 2f
-    val x = columnCenter + size.width * SkyBodySweep * (sky.arc - 0.5f)
-    val horizon = size.height * 0.44f
-    val peak = size.height * 0.14f
+    // Left of the card's middle: the companion sits lower on the right, so the body never sits under it.
+    val x = size.width * (0.22f + 0.22f * sky.arc)
+    val horizon = size.height * 0.64f
+    val peak = size.height * 0.24f
     val y = horizon - (horizon - peak) * sky.elevation
     return SkyBodyPlacement(Offset(x, y + bobPx), size.minDimension * SkyBodyRadius)
 }
@@ -370,7 +369,8 @@ private fun HeroStage(
     val bottom = Color(sky.skyBottom)
     val stars = remember { List(28) { Triple(Random(it * 31 + 7).nextFloat(), Random(it * 17 + 3).nextFloat() * 0.7f, Random(it).nextFloat()) } }
 
-    Box(Modifier.fillMaxWidth().height(338.dp)) {
+    // The 38 dp under the card is for the floating Up next tile; without it the card sits flush.
+    Box(Modifier.fillMaxWidth().height(if (showTile) 338.dp else 300.dp)) {
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -426,7 +426,7 @@ private fun HeroStage(
             }
 
             // The companion, large and in the sky: it leans toward a touch or the phone's tilt (the 3D layer).
-            Box(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 6.dp)) {
+            Box(Modifier.align(Alignment.TopEnd).padding(top = 84.dp, end = 6.dp)) {
                 CompositionLocalProvider(LocalCompanionVolume provides true) {
                     ZuriSlot(
                         CompanionPage.HOME, HeroCompanionSize,
