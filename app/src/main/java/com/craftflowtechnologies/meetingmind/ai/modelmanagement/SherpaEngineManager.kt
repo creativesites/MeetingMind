@@ -58,24 +58,61 @@ object SherpaEngineManager {
             created
         }
 
+    private val diarizerLock = Any()
+    private var diarizerBusy = false
+
     /**
-     * The segmentation/embedding models load once per [modelId] and are reused; per-meeting
-     * clustering settings (e.g. a user-picked expected speaker count) are applied afterward via
-     * [OfflineSpeakerDiarization.setConfig], which the sherpa-onnx API documents as the only
-     * field it re-reads — it never reloads the underlying models.
+     * Checks out a diarizer for exactly one call. The segmentation/embedding models load once per
+     * [modelId] and are reused (clustering is re-applied via [OfflineSpeakerDiarization.setConfig]).
+     * A busy or detached instance is never handed out twice: if the shared one is mid-call, the
+     * caller gets a private instance. Every checkout must be paired with [checkinDiarizer], which
+     * releases any instance the manager no longer owns.
      */
-    suspend fun getOrCreateDiarizer(modelId: String, config: OfflineSpeakerDiarizationConfig): OfflineSpeakerDiarization =
-        mutex.withLock {
+    fun checkoutDiarizer(modelId: String, config: OfflineSpeakerDiarizationConfig): OfflineSpeakerDiarization =
+        synchronized(diarizerLock) {
             val existing = diarizer
-            if (existing != null && diarizerModelId == modelId) {
-                return@withLock existing
+            if (existing != null && diarizerModelId == modelId && !diarizerBusy) {
+                existing.setConfig(config)
+                diarizerBusy = true
+                return existing
             }
-            existing?.release()
+            if (existing != null && diarizerModelId == modelId) {
+                // Shared instance is mid-call: use a private one rather than share a busy handle.
+                return OfflineSpeakerDiarization(config = config)
+            }
+            existing?.let { if (!diarizerBusy) it.release() }
             val created = OfflineSpeakerDiarization(config = config)
             diarizer = created
             diarizerModelId = modelId
+            diarizerBusy = true
             created
         }
+
+    /** Ends a checkout. Releases [instance] unless it is still the manager's own, idle-again instance. */
+    fun checkinDiarizer(instance: OfflineSpeakerDiarization) {
+        val owned = synchronized(diarizerLock) {
+            if (diarizer === instance) {
+                diarizerBusy = false
+                true
+            } else false
+        }
+        if (!owned) runCatching { instance.release() }
+    }
+
+    /**
+     * Stops owning [instance] because its native call is being abandoned (timeout). From here
+     * [releaseAll] cannot free it mid-call and nobody can reuse it; the abandoned call frees it via
+     * [checkinDiarizer] when it finally returns.
+     */
+    fun detachDiarizer(instance: OfflineSpeakerDiarization) {
+        synchronized(diarizerLock) {
+            if (diarizer === instance) {
+                diarizer = null
+                diarizerModelId = null
+                diarizerBusy = false
+            }
+        }
+    }
 
     /** Releases all native resources. Safe to call even if nothing was ever loaded. */
     suspend fun releaseAll() = mutex.withLock {
@@ -87,8 +124,13 @@ object SherpaEngineManager {
         vad = null
         vadModelId = null
 
-        diarizer?.release()
-        diarizer = null
-        diarizerModelId = null
+        synchronized(diarizerLock) {
+            // A checked-out diarizer is mid-call: freeing it would crash the native code. Drop
+            // ownership instead; its checkin releases it.
+            if (!diarizerBusy) diarizer?.release()
+            diarizer = null
+            diarizerModelId = null
+            diarizerBusy = false
+        }
     }
 }

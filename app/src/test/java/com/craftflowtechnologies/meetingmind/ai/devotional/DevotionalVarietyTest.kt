@@ -63,7 +63,7 @@ class DevotionalVarietyTest {
 
     @Test fun `a passage used within the exclusion window is not chosen again`() = runBlocking {
         val e = engine(Scripted())
-        val profile = DevotionalProfile(topics = setOf("Peace"), passageExclusionDays = 30)
+        val profile = DevotionalProfile(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI, topics = setOf("Peace"), passageExclusionDays = 30)
         val usual = e.passageFor(day, profile)
         val memory = DevotionalMemory(listOf(MemoryEntry(day.minusDays(3).toString(), "Old", usual.display(), null, null, DevotionalFormat.REFLECTION)))
         val fresh = e.freshPassage(day, profile, 0, memory)
@@ -79,7 +79,7 @@ class DevotionalVarietyTest {
             answer("Held in the middle of it", "From your room in Lusaka, the city hums with life.", "Pause before your first meeting"),
             answer("Bread for the road", "Elijah slept under a broom tree.", "Eat something slowly today")
         )
-        val d = engine(model).write(day, DevotionalProfile(), memory = memory)
+        val d = engine(model).write(day, DevotionalProfile(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI), memory = memory)
         assertEquals("Bread for the road", d.title)
         assertEquals(2, model.prompts.size)
         assertTrue(model.prompts[1].contains("previous draft was rejected because"))
@@ -88,7 +88,7 @@ class DevotionalVarietyTest {
 
     @Test fun `the chosen format is in the prompt and recorded on the devotional`() = runBlocking {
         val model = Scripted(answer("Slow reading", "Read it twice.", "Notice one word"))
-        val d = engine(model).write(day, DevotionalProfile(rotateFormats = false, fixedFormat = DevotionalFormat.LECTIO_DIVINA))
+        val d = engine(model).write(day, DevotionalProfile(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI, rotateFormats = false, fixedFormat = DevotionalFormat.LECTIO_DIVINA))
         assertEquals(DevotionalFormat.LECTIO_DIVINA, d.format)
         assertTrue(model.prompts.single().contains("Format — Lectio Divina"))
         assertTrue(model.prompts.single().contains("Benedictine and contemplative"))
@@ -99,7 +99,7 @@ class DevotionalVarietyTest {
         val progress = SeriesProgress(s.id, s.title, s.passages, day.minusDays(2).toEpochDay())
         val memory = DevotionalMemory(listOf(MemoryEntry(day.minusDays(1).toString(), "Joy in chains", "Philippians 1:12-26", "Paul wrote from prison.", "Look for good in a hard place", DevotionalFormat.REFLECTION, series = s.title)))
         val model = Scripted(answer("The mind of Christ", "Humility is strength.", "Serve someone quietly"))
-        val d = engine(model).write(day, DevotionalProfile(series = progress), memory = memory)
+        val d = engine(model).write(day, DevotionalProfile(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI, series = progress), memory = memory)
         assertEquals("Philippians 2:1-11", d.scripture.first().display().replace('–', '-'))
         assertEquals(3, d.seriesDay)
         assertTrue(model.prompts.single().contains("7 Days in Philippians, day 3 of 7"))
@@ -110,7 +110,7 @@ class DevotionalVarietyTest {
         val morning = Devotional(LocalDay.of(day), DevotionalOrigin.CLOUD_AI, "Bread for the road", listOf(ScriptureReferenceParser.parse("1 Kings 19:1-8")!!),
             reflection = listOf("Elijah slept."), application = listOf("Eat something slowly today"), label = "AI")
         val model = Scripted(answer("Looking back", "Where was God today?", "Name one gift"))
-        val d = engine(model).write(day, DevotionalProfile(eveningExamen = true), evening = true, morning = morning)
+        val d = engine(model).write(day, DevotionalProfile(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI, eveningExamen = true), evening = true, morning = morning)
         assertEquals(DevotionalFormat.DAILY_EXAMEN, d.format)
         assertTrue(model.prompts.single().contains("follows this morning's devotional"))
         assertTrue(model.prompts.single().contains("Eat something slowly today"))

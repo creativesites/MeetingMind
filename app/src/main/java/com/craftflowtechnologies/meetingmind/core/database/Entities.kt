@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.core.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -7,7 +8,10 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "meetings",
-    indices = [Index(value = ["createdAt"]), Index(value = ["title"]), Index(value = ["noteId"])]
+    indices = [
+        Index(value = ["createdAt"]), Index(value = ["title"]), Index(value = ["noteId"]),
+        Index(value = ["noteId", "recordingOrder"])
+    ]
 )
 data class MeetingEntity(
     @PrimaryKey val id: String,
@@ -44,7 +48,15 @@ data class MeetingEntity(
      * recordings; a recording belongs to at most one note. Null only for a recording that is
      * still being created. Deliberately not a foreign key: deleting a note must not silently
      * delete audio, so [com.craftflowtechnologies.meetingmind.core.repository.NoteRepository.deleteNote] decides. */
-    val noteId: String? = null
+    val noteId: String? = null,
+    /** When its findings were confirmed in the Wrap-up (schema 17). Null: not reviewed yet. */
+    val reviewedAt: Long? = null,
+    /**
+     * This recording's place among the parts of its note (schema 25), counted from 0. Only
+     * meaningful while [noteId] is set. Set on attach and backfilled by creation time; reordering
+     * changes note-wide positions only, never this recording's local timestamps.
+     */
+    @ColumnInfo(defaultValue = "0") val recordingOrder: Int = 0
 )
 
 @Entity(
@@ -107,7 +119,9 @@ data class SpeakerEntity(
     val originalLabel: String,
     val customName: String,
     val colorHex: String,
-    val confidence: Float? = null
+    val confidence: Float? = null,
+    /** The person this speaker is (schema 17). Renaming the person renames them everywhere. */
+    val personId: String? = null
 )
 
 @Entity(

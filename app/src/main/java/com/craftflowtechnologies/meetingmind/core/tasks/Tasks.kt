@@ -97,7 +97,9 @@ class TaskRepository(
     private val people: PeopleDao,
     private val clock: () -> Long = System::currentTimeMillis,
     /** Called after anything that changes when reminders fire. */
-    private val onRemindersChanged: suspend () -> Unit = {}
+    private val onRemindersChanged: suspend () -> Unit = {},
+    /** Called after a task is ticked or reopened, so a commitment linked to it follows. */
+    private val onTaskDone: suspend (taskId: String, done: Boolean) -> Unit = { _, _ -> }
 ) {
     fun observeTasks(): Flow<List<Task>> = tasks.observeAll().map { l -> l.map { it.toDomain() } }
     fun observeForNote(noteId: String): Flow<List<Task>> = tasks.observeForNote(noteId).map { l -> l.map { it.toDomain() } }
@@ -139,7 +141,7 @@ class TaskRepository(
         }.copy(updatedAt = now)
         tasks.upsert(next.toEntity())
         next
-    }.also { onRemindersChanged() }
+    }.also { onRemindersChanged(); if (it != null) onTaskDone(it.id, it.done) }
 
     suspend fun delete(id: String) { io { tasks.setDeleted(id, clock()) }; onRemindersChanged() }
     suspend fun restore(id: String) { io { tasks.setDeleted(id, null) }; onRemindersChanged() }

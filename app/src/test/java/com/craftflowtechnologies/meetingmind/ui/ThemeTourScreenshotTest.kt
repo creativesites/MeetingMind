@@ -65,7 +65,17 @@ class ThemeTourScreenshotTest {
 
     private fun both(name: String, content: @Composable () -> Unit) {
         val dark = androidx.compose.runtime.mutableStateOf(true)
-        compose.setContent { MeetMindTheme(darkTheme = dark.value) { Surface(color = MaterialTheme.colorScheme.background) { content() } } }
+        compose.setContent {
+            MeetMindTheme(darkTheme = dark.value) {
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    // Companions animate every frame; drawn static, Compose can go idle for the screenshot.
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true,
+                        com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion provides true
+                    ) { content() }
+                }
+            }
+        }
         for (d in listOf(true, false)) {
             dark.value = d
             compose.waitForIdle()

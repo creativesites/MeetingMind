@@ -149,7 +149,7 @@ import java.util.UUID
 
 class MeetingDetailViewModel(
     application: Application,
-    private val meetingId: String
+    val meetingId: String
 ) : AndroidViewModel(application) {
     private val database = MeetMindDatabase.getInstance(application)
     private val meetingRepository = MeetingRepository(application, database)
@@ -178,7 +178,7 @@ class MeetingDetailViewModel(
         // with the local model behind it so a cloud failure still gets an answer. Offline never
         // reaches the cloud engine at all.
         val engine: com.craftflowtechnologies.meetingmind.ai.llm.MeetingIntelligenceEngine =
-            if (prefsNow.processingProfile == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET) {
+            if (com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile) == com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.INTERNET) {
                 com.craftflowtechnologies.meetingmind.ai.llm.FallbackMeetingIntelligenceEngine(
                     primary = com.craftflowtechnologies.meetingmind.ai.cloud.GeminiIntelligenceEngine(
                         com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(getApplication())
@@ -204,6 +204,29 @@ class MeetingDetailViewModel(
         ReprocessTranscriptCleanupUseCase(pipeline, meetingRepository, transcriptRepository)
     }
 
+    /** Re-runs the sermon notes from the stored transcript (no re-transcription). The note's own
+     * line says whether the AI notes are there now, so [onDone] only reports that the run finished. */
+    fun retrySermonNotes(onDone: (message: String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val prefsNow = userPrefs.preferencesFlow.first()
+                val recordingType = meetingRepository.getMeetingByIdDirect(meetingId)?.recordingType ?: return@launch
+                val segments = transcriptRepository.getTranscriptDirect(meetingId).segments
+                if (segments.isEmpty()) {
+                    onDone("There is no transcript to write sermon notes from")
+                    return@launch
+                }
+                pipeline.regenerateFaithNotes(
+                    meetingId, recordingType, segments,
+                    processingProfile = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile)
+                )
+                onDone("Sermon notes updated")
+            } catch (e: Exception) {
+                onDone("Sermon notes failed: ${e.message ?: "unknown error"}")
+            }
+        }
+    }
+
     private val _isReprocessingCleanup = MutableStateFlow(false)
     val isReprocessingCleanup: StateFlow<Boolean> = _isReprocessingCleanup.asStateFlow()
 
@@ -217,7 +240,7 @@ class MeetingDetailViewModel(
             try {
                 val prefsNow = userPrefs.preferencesFlow.first()
                 val mode = prefsNow.transcriptCleanupMode
-                reprocessCleanupUseCase(meetingId, mode, processingProfile = prefsNow.processingProfile)
+                reprocessCleanupUseCase(meetingId, mode, processingProfile = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile))
                 onDone("Transcript re-cleaned (${mode.name.lowercase()} mode)")
             } catch (e: Exception) {
                 onDone("Re-clean failed: ${e.message ?: "unknown error"}")
@@ -263,7 +286,7 @@ class MeetingDetailViewModel(
                     cleanupMode = mode,
                     singleSpeakerMode = meetingNow.speakerCountPreference == 1,
                     onEngineUsed = { engineLabel = it },
-                    processingProfile = prefsNow.processingProfile
+                    processingProfile = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(getApplication(), meetingId, prefsNow.processingProfile)
                 )
                 val elapsed = System.currentTimeMillis() - start
                 // Only segments the tool actually proposes a real change for — a review screen
@@ -763,7 +786,9 @@ fun MeetingDetailScreen(
     /** Opens the note this recording belongs to. */
     onOpenNote: (noteId: String) -> Unit = {},
     /** "Study this sermon": the sermon's timeline, Scripture and transcript beside its note. */
-    onStudy: (noteId: String, meetingId: String) -> Unit = { _, _ -> }
+    onStudy: (noteId: String, meetingId: String) -> Unit = { _, _ -> },
+    /** "✨ Brief" on a work recording: its Intelligence Brief. */
+    onCreateBrief: ((meetingId: String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val meeting by viewModel.meeting.collectAsState()
@@ -910,10 +935,27 @@ fun MeetingDetailScreen(
 
     val audioPath = meeting?.audioFilePath
 
+    // Signature moments (Z-16/Z-33): the First Keep over the note, or the Unveil/nod on its header and
+    // body, planned once per fresh open. The note is laid out and readable underneath from the first frame.
+    val noteMoment = com.craftflowtechnologies.meetingmind.feature.moments.rememberNoteMoment(viewModel.meetingId, refreshKey = meeting?.status)
+    val momentForm = com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings().value.form
+    val createController = com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController()
+    val momentTitle = meeting?.title.orEmpty()
+
     Box(modifier = Modifier.fillMaxSize()) {
+    com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.NoteUnveil(
+        plan = noteMoment.plan,
+        form = momentForm,
+        announcement = com.craftflowtechnologies.meetingmind.feature.moments.noteReadyAnnouncement(momentTitle),
+        // The stage draws Dawn's glow behind the header, so the top bar's colour lives here.
+        modifier = Modifier.fillMaxSize().background(SurfaceBase),
+        key = "unveil:${viewModel.meetingId}",
+        titleWords = momentTitle.split(' ').count { it.isNotBlank() }.coerceAtLeast(1)
+    ) {
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
-            Surface(color = SurfaceBase) {
+            Surface(color = Color.Transparent) {
                 // statusBarsPadding on the content (not the Surface itself) lets this bar's white
                 // background bleed under the status bar while the back button/title/mini dial sit
                 // below it — previously this had zero inset handling and rendered under the status
@@ -943,7 +985,7 @@ fun MeetingDetailScreen(
                         )
                     }
 
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.weight(1f).momentLayer(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.StageTarget.HEADER)) {
                         Text(
                             text = meeting?.title ?: "Recording Details",
                             fontSize = 14.5.sp,
@@ -979,6 +1021,14 @@ fun MeetingDetailScreen(
                                 Icon(Icons.Filled.EditNote, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Note", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                            }
+                        }
+                        if (onCreateBrief != null && meeting?.status == MeetingStatus.READY && meeting?.recordingType?.let { com.craftflowtechnologies.meetingmind.core.model.Workflows.space(it) == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK } == true) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(onClick = { meeting?.id?.let(onCreateBrief) }, shape = RoundedCornerShape(50), color = AccentWash, modifier = Modifier.testTag("meeting_brief_btn")) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("✨ Brief", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                                }
                             }
                         }
                         if (meeting?.recordingType in setOf(RecordingType.SERMON, RecordingType.BIBLE_STUDY, RecordingType.DEVOTIONAL, RecordingType.TESTIMONY) && meeting?.status == MeetingStatus.READY) {
@@ -1034,7 +1084,15 @@ fun MeetingDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .background(MaterialTheme.colorScheme.background)
+                .momentLayer(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.StageTarget.BODY, 0)
         ) {
+            com.craftflowtechnologies.meetingmind.feature.moments.NoteStatus(
+                outcome = noteMoment.facts?.outcome,
+                onRetry = { meeting?.let { m -> m.audioFilePath?.let { onTranscribe(m.id, it, m.durationMs) } } },
+                onRedoOnline = { meeting?.let { m -> m.audioFilePath?.let { onTranscribe(m.id, it, m.durationMs) } } },
+                onPlay = { audioPath?.let { viewModel.playAudio(File(it)) } }
+            )
             // Bento Audio Player Card — reflects the one shared playback session, not a
             // screen-owned player. Only surfaced on long-press of the mini dial now (see
             // showFullPlayer above); shows real live progress only when this recording is the one
@@ -1071,7 +1129,11 @@ fun MeetingDetailScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Column(Modifier.padding(14.dp).fillMaxWidth()) {
-                        Text("This recording wasn't transcribed", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Worried in the failure line's leading slot (signature moments §4); never a celebration.
+                            com.craftflowtechnologies.meetingmind.feature.moments.FailureCompanion(modelsMissing = false)
+                            Text("This recording wasn't transcribed", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
                         Text(
                             processingError ?: "Processing stopped before a transcript was made.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer,
@@ -1120,6 +1182,7 @@ fun MeetingDetailScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
+                        com.craftflowtechnologies.meetingmind.feature.moments.FailureCompanion(modelsMissing = true)
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Speech recognition model required",
@@ -1178,8 +1241,8 @@ fun MeetingDetailScreen(
                     onPlayFrom = { viewModel.jumpToTimestamp(it) },
                     jumpTo = overviewJumpTarget
                 )
-                RecordingDetailTab.TRANSCRIPT -> TranscriptTab(
-                    segments = transcript.segments,
+                RecordingDetailTab.TRANSCRIPT -> com.craftflowtechnologies.meetingmind.feature.work.SignalFilterHost(meeting?.id, transcript.segments) { shownSegments -> TranscriptTab(
+                    segments = shownSegments,
                     speakers = speakers,
                     onJumpToTimestamp = { viewModel.jumpToTimestamp(it) },
                     onRenameSpeaker = { id, name ->
@@ -1209,7 +1272,7 @@ fun MeetingDetailScreen(
                     isAudioPlaying = isThisRecordingActive && playbackState.isPlaying,
                     cleanFillerWords = cleanFillerWords,
                     scenes = remember(meeting?.audioFilePath, meeting?.status) { meeting?.audioFilePath?.let { com.craftflowtechnologies.meetingmind.ai.scene.SceneMap.load(java.io.File(it)) } }
-                )
+                ) }
                 RecordingDetailTab.ASK_AI -> com.craftflowtechnologies.meetingmind.feature.meetingdetail.components.AskAiPanel(
                     chatMessages = chatMessages,
                     allSegments = transcript.segments,
@@ -1232,6 +1295,7 @@ fun MeetingDetailScreen(
             }
         }
     }
+    }
 
     if (menuExpanded) {
         com.craftflowtechnologies.meetingmind.feature.meetingdetail.components.MeetingOptionsSheet(
@@ -1246,6 +1310,13 @@ fun MeetingDetailScreen(
                 }
             },
             reCleanEnabled = !isReprocessingCleanup,
+            onRetrySermonNotes = if (meeting?.recordingType == RecordingType.SERMON && meeting?.status == MeetingStatus.READY) {
+                {
+                    viewModel.retrySermonNotes { message ->
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else null,
             onCopyMarkdownSummary = {
                 val md = viewModel.generateMarkdownExport()
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -1380,6 +1451,23 @@ fun MeetingDetailScreen(
             }
         )
     }
+
+    com.craftflowtechnologies.meetingmind.feature.moments.NoteFirstKeep(
+        state = noteMoment,
+        meta = meeting?.let { "${Formatters.formatDateHeader(it.createdAt)} · ${Formatters.formatDurationHms(it.durationMs)}" }.orEmpty(),
+        keyPoints = (decisions.map { it.text } + actionItems.map { it.task }).filter { it.isNotBlank() },
+        actionCount = actionItems.size,
+        onShare = {
+            val sermon = meeting?.recordingType == RecordingType.SERMON
+            createController.open(
+                com.craftflowtechnologies.meetingmind.core.create.CreateSeed(
+                    if (sermon) com.craftflowtechnologies.meetingmind.core.create.CreateSourceKind.SERMON_NOTE else com.craftflowtechnologies.meetingmind.core.create.CreateSourceKind.SELECTED_TEXT,
+                    text = momentTitle
+                )
+            )
+        }
+    )
+    com.craftflowtechnologies.meetingmind.feature.create.CreateHost(createController)
     }
 
     // Dialogs

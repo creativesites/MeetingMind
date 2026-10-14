@@ -1,0 +1,1349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zuri Signature Moments</title>
+<meta name="description" content="Playable choreography for Zuri's three signature moments: the First Keep, the Unveil system and the Create card, with forms, spaces, accents, reduced motion and a scrubber.">
+<style>
+:root{
+  --bg:#FAFAF9; --surface:#FFFFFF; --sunk:#F5F5F4; --track:#EDEDEB;
+  --ink:#18181B; --ink2:#52525B; --muted:#71717A; --faint:#C8C8CD;
+  --line:#E5E5E3;
+  --accent:#5B5BD6; --wash:rgba(91,91,214,.10); --onAccent:#FFFFFF;
+  --gold:#996515; --danger:#DC2626; --warn:#B45309;
+  --shadow:0 8px 24px rgba(24,24,27,.08); --cardShadow:0 10px 30px rgba(24,24,27,.14);
+  --phone:#18181B;
+  --display:"Outfit","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --body:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --serif:"Literata",Georgia,"Times New Roman",serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0C111B; --surface:#121A27; --sunk:#080D15; --track:#202C3C;
+    --ink:#F0F3F8; --ink2:#B7C0CF; --muted:#8995A8; --faint:#536176;
+    --line:#2A3749; --gold:#E0B25A; --danger:#F87171; --warn:#FBBF24;
+    --shadow:0 8px 24px rgba(0,0,0,.35); --cardShadow:0 10px 30px rgba(0,0,0,.45); --phone:#05080F;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0C111B; --surface:#121A27; --sunk:#080D15; --track:#202C3C;
+  --ink:#F0F3F8; --ink2:#B7C0CF; --muted:#8995A8; --faint:#536176;
+  --line:#2A3749; --gold:#E0B25A; --danger:#F87171; --warn:#FBBF24;
+  --shadow:0 8px 24px rgba(0,0,0,.35); --cardShadow:0 10px 30px rgba(0,0,0,.45); --phone:#05080F;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/22px var(--body);overflow-x:hidden;transition:background .25s,color .25s}
+h1,h2,h3{margin:0;font-family:var(--display);font-weight:600;letter-spacing:-.01em}
+h1{font-size:clamp(32px,5vw,46px);line-height:1.08}
+h2{font-size:clamp(24px,3.4vw,30px);line-height:1.2}
+h3{font-family:var(--body);font-size:13px;line-height:18px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+p{margin:0 0 12px}
+b,strong{font-weight:600}
+code{font-size:13px;background:var(--sunk);padding:1px 5px;border-radius:4px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
+.eyebrow{font:600 11px/14px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.lede{font-size:17px;line-height:27px;color:var(--ink2);max-width:760px}
+.sublede{font-size:15px;line-height:23px;color:var(--ink2);max-width:760px;margin:10px 0 0}
+.top{padding:56px 0 24px}
+.top h1{margin-bottom:16px}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0 0}
+.trio a{display:block;text-decoration:none;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.trio a b{display:block;font:600 16px/22px var(--display);margin:2px 0 4px;color:var(--ink)}
+.trio a span{display:block;font-size:13px;line-height:19px;color:var(--ink2)}
+.trio a small{font:600 11px/14px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+section{margin:0 0 72px;scroll-margin-top:110px}
+.sr{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+
+/* Controls */
+.controls{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.controls .wrap{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding-top:10px;padding-bottom:10px}
+.ctl{display:flex;align-items:center;gap:8px;min-height:36px;flex-wrap:wrap}
+.ctl-label{font:500 12px/16px var(--body);color:var(--muted)}
+.seg{display:inline-flex;background:var(--track);border-radius:999px;padding:3px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;color:var(--ink2);font:500 12px/16px var(--body);padding:6px 11px;border-radius:999px;cursor:pointer;min-height:30px}
+.seg button[aria-pressed="true"],.seg button[aria-checked="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.swatches{display:flex;gap:6px;flex-wrap:wrap}
+.sw{width:24px;height:24px;border-radius:50%;border:0;cursor:pointer;position:relative;padding:0;background:var(--c)}
+.sw[aria-pressed="true"]::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--ink)}
+button:focus-visible,input:focus-visible,.mscreen:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.toggle{display:inline-flex;align-items:center;gap:8px;border:0;background:none;color:var(--ink2);font:500 12px/16px var(--body);cursor:pointer;padding:4px 0;min-height:30px}
+.knob{width:34px;height:20px;border-radius:999px;background:var(--track);position:relative;transition:background .2s;flex:none;display:inline-block}
+.knob::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s}
+[aria-pressed="true"] > .knob,[aria-checked="true"] > .knob{background:var(--accent)}
+[aria-pressed="true"] > .knob::after,[aria-checked="true"] > .knob::after{transform:translateX(14px)}
+
+/* Moment layout */
+.mhead{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;margin-bottom:6px}
+.moment{display:grid;grid-template-columns:340px minmax(0,1fr);gap:36px;align-items:start;margin-top:22px}
+.side{min-width:0}
+.side h3{margin-top:20px}
+.side p{color:var(--ink2);font-size:14px;line-height:21px}
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--wash);color:var(--accent);border-radius:999px;padding:3px 10px;font:600 11px/16px var(--body);letter-spacing:.04em;white-space:nowrap}
+.pill.idea{background:transparent;border:1px dashed var(--muted);color:var(--ink2)}
+.callout{background:var(--sunk);border-radius:12px;padding:12px 14px;font-size:13px;line-height:19px;color:var(--ink2);margin:12px 0}
+.callout b{color:var(--ink)}
+
+/* Transport */
+.transport{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:0 0 12px}
+.tbtn{border:0;border-radius:999px;background:var(--accent);color:var(--onAccent);font:600 13px/18px var(--body);padding:8px 16px;min-height:36px;cursor:pointer}
+.tbtn.tghost{background:var(--sunk);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.tscrub{display:flex;align-items:center;gap:8px;flex:1 1 220px;min-width:0}
+.tscrub input{flex:1;min-width:0;accent-color:var(--accent)}
+.ttime{font:500 12px/16px var(--body);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:84px;text-align:right}
+.hap{font:600 11px/14px var(--body);color:var(--muted);border:1px dashed var(--faint);border-radius:999px;padding:4px 9px;transition:background .12s,color .12s,transform .12s;white-space:nowrap}
+.hap.on{background:var(--accent);color:var(--onAccent);border-color:var(--accent);transform:scale(1.07)}
+.rmnote{font-size:12px;color:var(--muted);width:100%;display:none}
+.rmon .rmnote{display:block}
+.beats{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.beats li{display:grid;grid-template-columns:96px minmax(0,1fr);gap:10px;padding:8px 6px;border-bottom:1px solid var(--line);font-size:13px;line-height:19px;color:var(--ink2);transition:background .12s;border-radius:6px}
+.beats li b{color:var(--ink)}
+.beats li .bt{font:500 12px/19px var(--body);color:var(--muted);font-variant-numeric:tabular-nums}
+.beats li.on{background:var(--wash)}
+.beats li.on .bt{color:var(--accent)}
+.srline{font-size:12px;line-height:17px;color:var(--muted);margin:10px 4px 0;text-align:center}
+.srline b{color:var(--ink2);font-weight:600}
+
+/* Phone */
+.phone{width:320px;margin:0 auto;background:var(--phone);border-radius:40px;padding:10px;box-shadow:var(--shadow)}
+.mscreen{position:relative;width:300px;height:640px;background:var(--bg);border-radius:31px;overflow:hidden;cursor:pointer;-webkit-user-select:none;user-select:none}
+.sbar{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;font:600 12px/16px var(--body);color:var(--ink);padding:12px 24px 0;z-index:9}
+.sbar i{display:inline-block;width:16px;height:9px;border:1.5px solid var(--ink);border-radius:3px;margin-left:4px;vertical-align:-1px;position:relative}
+.sbar i::after{content:"";position:absolute;inset:1px 4px 1px 1px;background:var(--ink);border-radius:1px}
+.skiphint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(24,24,27,.72);color:#fff;font:500 11px/14px var(--body);padding:5px 10px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20;white-space:nowrap}
+.playing .skiphint{opacity:1}
+.toast{position:absolute;left:12px;right:12px;bottom:46px;background:var(--ink);color:var(--bg);font:500 12px/16px var(--body);padding:9px 12px;border-radius:10px;opacity:0;transform:translateY(6px);transition:opacity .2s,transform .2s;pointer-events:none;z-index:21;text-align:center}
+.toast.on{opacity:1;transform:none}
+.abs{position:absolute}
+.btn{border:0;border-radius:999px;background:var(--accent);color:var(--onAccent);font:600 15px/20px var(--body);padding:12px 20px;width:100%;cursor:pointer;min-height:48px}
+.tlink{border:0;background:none;color:var(--accent);font:600 14px/20px var(--body);padding:10px;width:100%;cursor:pointer;min-height:44px}
+
+/* First Keep */
+.fk-bloom{left:150px;top:300px;width:420px;height:420px;margin:-210px 0 0 -210px;border-radius:50%;background:radial-gradient(closest-side,var(--bloom) 0%,transparent 100%);pointer-events:none}
+.fk-halo{left:150px;top:300px;width:170px;height:170px;margin:-85px 0 0 -85px;border-radius:50%;border:2px solid var(--accent);pointer-events:none}
+.fk-ring{left:150px;top:300px;width:150px;height:150px;margin:-75px 0 0 -75px;pointer-events:none}
+.fk-cap{left:0;right:0;top:384px;text-align:center;font:500 13px/18px var(--body);color:var(--ink2)}
+.fk-proc{left:0;right:0;top:64px;text-align:center}
+.fk-proc small{display:block;font:500 12px/16px var(--body);color:var(--muted)}
+.fk-proc b{font:600 18px/24px var(--display)}
+.fk-card{left:32px;top:92px;width:236px;background:var(--surface);border-radius:18px;padding:14px 16px 12px;box-shadow:var(--cardShadow);transform-origin:50% 60%}
+:root[data-theme="dark"] .fk-card{box-shadow:0 10px 30px rgba(0,0,0,.45),inset 0 0 0 1px var(--line)}
+.fk-meta{font:500 11px/14px var(--body);color:var(--muted);margin-bottom:6px}
+.fk-title{font:600 18px/23px var(--display);color:var(--ink);margin-bottom:10px;min-height:46px}
+.w{display:inline-block;will-change:transform,opacity}
+.fk-pts{list-style:none;margin:0;padding:0;position:relative}
+.fk-pts li{position:relative;font-size:12px;line-height:16px;color:var(--ink2);padding:0 0 0 12px;margin:0 0 6px;min-height:16px}
+.fk-pts li::before{content:"";position:absolute;left:0;top:6px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.fk-pts li .sk{position:absolute;left:12px;top:5px;height:7px;border-radius:4px;background:var(--track)}
+.fk-pts li .tx{display:block}
+.fk-char,.fk-mini{left:70px;top:220px;width:160px;height:160px;transform-origin:50% 50%}
+.fk-spark{left:0;top:0;width:300px;height:640px;pointer-events:none}
+.fk-glint{width:22px;height:22px;pointer-events:none}
+.fk-words{left:20px;right:20px;top:428px;text-align:center}
+.fk-hl{margin:0 0 6px;font:600 21px/27px var(--display);color:var(--ink)}
+.fk-sub{margin:0;font-size:14px;line-height:20px;color:var(--ink2)}
+.fk-zline{margin:6px 0 0;font-size:12px;line-height:16px;color:var(--muted)}
+.fk-actions{left:20px;right:20px;top:520px}
+.name-row{display:flex;gap:8px;align-items:center;margin:8px 0 0;flex-wrap:wrap}
+.name-row input{font:500 14px/20px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:170px}
+
+/* Unveil: note screen */
+.u-scene{left:0;top:0;width:300px;height:640px}
+.u-app{left:0;right:0;top:34px;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px}
+.u-ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--ink2)}
+.u-ic svg{width:20px;height:20px}
+.u-right{display:flex;gap:8px}
+.u-head{left:20px;right:20px;top:82px;transform-origin:50% 100%}
+.u-meta{font:500 12px/16px var(--body);color:var(--muted)}
+.u-title{font:600 22px/28px var(--display);color:var(--ink);margin:6px 0 10px;position:relative}
+.u-chips{display:flex;gap:6px;flex-wrap:wrap}
+.u-chips span{font:500 11px/14px var(--body);background:var(--sunk);color:var(--ink2);border-radius:999px;padding:5px 9px}
+.u-chips span.loc{background:rgba(22,163,74,.12);color:#15803D}
+:root[data-theme="dark"] .u-chips span.loc{color:#4ADE80}
+.u-caret{position:absolute;width:2px;height:22px;background:var(--accent);border-radius:1px}
+.u-ul{position:absolute;height:2px;background:var(--accent);border-radius:1px;transform-origin:0 50%}
+.u-glint{position:absolute;width:20px;height:20px;pointer-events:none}
+.u-cur{left:10px;right:10px;top:74px;height:132px;pointer-events:none}
+.u-cur i{position:absolute;top:0;bottom:0;width:50%;background:color-mix(in srgb,var(--accent) 22%,var(--bg))}
+.u-cur i.l{left:0;border-radius:14px 0 0 14px;-webkit-mask-image:linear-gradient(to right,#000 82%,transparent);mask-image:linear-gradient(to right,#000 82%,transparent)}
+.u-cur i.r{right:0;border-radius:0 14px 14px 0;-webkit-mask-image:linear-gradient(to left,#000 82%,transparent);mask-image:linear-gradient(to left,#000 82%,transparent)}
+.u-glow{left:150px;top:146px;width:300px;height:190px;margin:-95px 0 0 -150px;border-radius:50%;background:radial-gradient(closest-side,var(--dawn) 0%,transparent 100%);pointer-events:none}
+.u-body{left:20px;right:20px;top:214px}
+.u-sec{margin:0 0 16px}
+.u-sec h6{margin:0 0 6px;font:600 11px/14px var(--body);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.u-sec p{margin:0;font-size:13px;line-height:19px;color:var(--ink2)}
+.u-sec ul{list-style:none;margin:0;padding:0}
+.u-sec li{position:relative;padding-left:14px;font-size:13px;line-height:19px;color:var(--ink2);margin-bottom:4px}
+.u-sec li::before{content:"";position:absolute;left:2px;top:7px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.u-sec li.ck::before{width:11px;height:11px;left:0;top:4px;border-radius:3px;background:none;border:1.5px solid var(--faint)}
+.u-sec li.ck{padding-left:18px}
+.u-fx{left:0;top:0;width:300px;height:640px;pointer-events:none}
+.u-z{width:72px;height:72px;margin:-36px 0 0 -36px;pointer-events:none}
+/* processing + failure scene */
+.p-title{left:20px;right:20px;top:66px;text-align:center}
+.p-title small{display:block;font:500 12px/16px var(--body);color:var(--muted)}
+.p-title b{font:600 18px/24px var(--display)}
+.p-z{left:102px;top:200px;width:96px;height:96px}
+.p-ring{left:75px;top:173px;width:150px;height:150px}
+.p-cap{left:20px;right:20px;top:340px;text-align:center;font:500 13px/18px var(--body);color:var(--ink2)}
+.status{left:16px;right:16px;top:330px;display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.status .sz{width:32px;height:32px;flex:none}
+.status p{margin:0;flex:1;font-size:13px;line-height:18px;color:var(--ink)}
+.status button{border:0;background:var(--wash);color:var(--accent);font:600 13px/18px var(--body);border-radius:999px;padding:7px 12px;cursor:pointer;min-height:36px}
+/* home + notification */
+.h-greet{left:20px;right:20px;top:74px}
+.h-greet b{display:block;font:600 22px/28px var(--display)}
+.h-greet small{color:var(--muted);font-size:12px}
+.ghost{background:var(--wash);border-radius:16px;height:120px}
+.ghost-row{height:46px;border-radius:12px;background:var(--sunk);margin-top:10px}
+.notif{left:10px;right:10px;top:30px;background:var(--surface);border-radius:18px;padding:11px 12px;box-shadow:0 10px 26px rgba(0,0,0,.18);display:flex;gap:10px;z-index:12}
+:root[data-theme="dark"] .notif{box-shadow:0 10px 26px rgba(0,0,0,.5),inset 0 0 0 1px var(--line)}
+.notif .gl{width:26px;height:26px;border-radius:50%;background:var(--sunk);display:grid;place-items:center;flex:none}
+.notif small{display:block;font:500 11px/14px var(--body);color:var(--muted)}
+.notif b{display:block;font:600 13px/18px var(--body)}
+.notif span{font-size:12px;color:var(--ink2)}
+.tapdot{width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:var(--ink);pointer-events:none;z-index:13}
+
+.vlabel{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 10px}
+.vlabel b{font:600 20px/26px var(--display)}
+.vmeta{font-size:12px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;font:500 12px/16px var(--body);padding:6px 12px;cursor:pointer;min-height:34px}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--onAccent);border-color:var(--accent)}
+.chip:disabled{opacity:.38;cursor:not-allowed}
+.chip .sg{font:600 9px/12px var(--body);letter-spacing:.06em;text-transform:uppercase;margin-left:6px;opacity:.8}
+.rot{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 4px}
+.rot span{font:500 11px/14px var(--body);border-radius:6px;padding:4px 7px;background:var(--sunk);color:var(--ink2)}
+.rot span.past{opacity:.55}
+.rot span.now{background:var(--accent);color:var(--onAccent)}
+.rot span.next{box-shadow:inset 0 0 0 1px var(--line);background:transparent}
+.wtable{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 4px}
+.wtable th,.wtable td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:center}
+.wtable th:first-child,.wtable td:first-child{text-align:left;color:var(--ink2)}
+.wtable th{color:var(--muted);font-weight:600}
+.wtable tr.cur td{background:var(--wash);color:var(--ink)}
+
+/* Create editor */
+.ed{padding:44px 16px 16px;cursor:default;overflow-y:auto}
+.ed-top{display:flex;justify-content:space-between;align-items:center;font:600 15px/20px var(--body);margin-bottom:6px}
+.ed-top span{font:500 13px/18px var(--body);color:var(--ink2)}
+.ed-top .sh{color:var(--accent);font-weight:600}
+.ed-steps{font:500 11px/14px var(--body);color:var(--muted);text-align:center;margin-bottom:10px}
+.ed-steps b{color:var(--accent)}
+.ed-preview{display:flex;justify-content:center;align-items:center;min-height:300px;margin-bottom:6px;position:relative}
+.ed-cap{text-align:center;font:500 11px/14px var(--body);color:var(--muted);min-height:16px;margin-bottom:4px}
+.ed-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px;border-top:1px solid var(--line);font-size:14px}
+.ed-row small{display:block;color:var(--muted);font-size:11px;line-height:15px}
+.ed-ai{font-size:11px;line-height:15px;color:var(--muted);margin:2px 0 6px}
+.ed-note{font-size:11px;line-height:15px;color:var(--ink2);margin:6px 0 0;min-height:15px}
+.ed .chips .chip{padding:5px 10px;min-height:32px}
+.ed-anchor{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;font:500 12px/16px var(--body);color:var(--muted)}
+.ccard{position:relative;border-radius:10px;overflow:hidden;color:#fff;flex:none}
+.ccard .ctext{position:absolute;display:flex;flex-direction:column;justify-content:center;text-align:center}
+.ccard .q{font-family:var(--serif);letter-spacing:.005em}
+.ccard .q.sans{font-family:var(--body);font-weight:600}
+.ccard .foot{position:absolute;display:flex;align-items:flex-end;justify-content:center;text-align:center;opacity:.82;font-family:var(--body)}
+.ccard .foot.start{justify-content:flex-start;text-align:left}
+.ccard .cz{position:absolute}
+.ccard .cz svg{display:block;width:100%;height:100%;overflow:visible}
+.ccard .ring{position:absolute;border:1.5px dashed rgba(255,255,255,.8);border-radius:50%}
+.band{position:absolute;left:0;right:0;background:repeating-linear-gradient(135deg,rgba(255,86,86,.28) 0 6px,rgba(255,86,86,.12) 6px 12px);display:flex;align-items:center;justify-content:center;font:600 8px/10px var(--body);letter-spacing:.04em;color:#fff;text-transform:uppercase;text-align:center;pointer-events:none}
+.vband{position:absolute;top:0;bottom:0;border-left:1.5px dashed rgba(255,214,102,.95);pointer-events:none}
+.vband.r{border-left:0;border-right:1.5px dashed rgba(255,214,102,.95)}
+.vlab{position:absolute;left:50%;transform:translateX(-50%);font:600 8px/10px var(--body);color:#FFD666;background:rgba(0,0,0,.45);padding:2px 5px;border-radius:4px;white-space:nowrap;pointer-events:none}
+.sideband{position:absolute;top:0;bottom:0;background:rgba(255,255,255,.06);pointer-events:none}
+.export{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;margin-top:8px}
+.viewer{background:#0B0B0F;border-radius:22px;padding:8px;width:216px;box-shadow:var(--shadow)}
+.viewer .vin{position:relative;border-radius:14px;overflow:hidden}
+.vtop{position:absolute;left:8px;right:8px;top:6px;z-index:3}
+.vbars{display:flex;gap:3px;margin-bottom:6px}
+.vbars i{flex:1;height:2px;border-radius:1px;background:rgba(255,255,255,.45)}
+.vbars i:first-child{background:#fff}
+.vwho{display:flex;align-items:center;gap:6px;font:600 9px/12px var(--body);color:#fff}
+.vwho i{width:18px;height:18px;border-radius:50%;background:linear-gradient(135deg,#F59E0B,#EC4899);display:block}
+.vbot{position:absolute;left:8px;right:8px;bottom:8px;z-index:3;display:flex;gap:6px;align-items:center}
+.vbot span{flex:1;border:1px solid rgba(255,255,255,.7);border-radius:999px;font:500 9px/12px var(--body);color:#fff;padding:6px 10px}
+.vbot i{width:16px;height:16px;border-radius:50%;border:1.5px solid #fff;display:block}
+.feedh{display:flex;align-items:center;gap:6px;font:600 10px/14px var(--body);color:#E5E7EB;padding:4px 4px 8px}
+.feedh i{width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#F59E0B,#EC4899);display:block}
+.feeda{display:flex;gap:10px;padding:8px 4px 2px}
+.feeda i{width:14px;height:14px;border-radius:4px;border:1.5px solid #E5E7EB;display:block}
+.excap{font-size:12px;line-height:17px;color:var(--muted);max-width:300px}
+.excap b{color:var(--ink)}
+
+table.spec{width:100%;border-collapse:collapse;font-size:13px;line-height:18px}
+table.spec th,table.spec td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+table.spec th{font:600 12px/16px var(--body);color:var(--muted)}
+table.spec td{color:var(--ink2)}
+table.spec td:first-child{color:var(--ink);font-weight:600}
+.scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
+footer{color:var(--muted);font-size:12px;padding:24px 0 48px;border-top:1px solid var(--line)}
+
+@media (max-width: 960px){
+  .moment{grid-template-columns:minmax(0,1fr);gap:24px}
+  .trio{grid-template-columns:1fr}
+}
+@media (max-width: 720px){
+  .controls{position:static}
+  .top{padding-top:36px}
+  .beats li{grid-template-columns:78px minmax(0,1fr)}
+}
+@media (max-width: 352px){
+  .phone{transform:scale(.92);transform-origin:top left}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <p class="eyebrow">MeetingMind · Zuri · Signature moments · prototype</p>
+    <h1>Three moments people remember.</h1>
+    <p class="lede">Zuri <b>listens</b>, <b>keeps</b>, then <b>gives it back</b> and steps aside so your note is the hero. The first time, the handover is a small ceremony. After that it's a quick, varied unveiling that stays fresh at the 50th note. On a card, Zuri is a guest you invited. Press <b>Play</b>, slow it to 0.25× and scrub. Tap any phone to skip, just as in the app.</p>
+    <div class="trio">
+      <a href="#m1"><small>Moment 1 · every note for now · 3.6 s</small><b>The First Keep</b><span>Your note rises from behind Zuri. Plays on every successful note while we love it; variations come later.</span></a>
+      <a href="#m2"><small>Moment 2 · every later note · 1.2–1.8 s</small><b>The Unveil</b><span>Five handovers in a deterministic, non-repeating rotation weighted by space. It steps down to a 0.6 s nod when it should.</span></a>
+      <a href="#m3"><small>Moment 3 · when you invite it</small><b>The Card</b><span>Zuri steps onto your Create card in the pose the AI suggests or you choose, clear of WhatsApp and Instagram chrome.</span></a>
+    </div>
+  </div>
+</header>
+
+<div class="controls" role="region" aria-label="Preview controls">
+  <div class="wrap">
+    <div class="ctl"><span class="ctl-label" id="lbl-form">Form</span>
+      <div class="seg" role="radiogroup" aria-labelledby="lbl-form" id="formSeg"></div>
+    </div>
+    <div class="ctl"><span class="ctl-label" id="lbl-space">Space</span>
+      <div class="seg" role="radiogroup" aria-labelledby="lbl-space" id="spaceSeg"></div>
+    </div>
+    <div class="ctl"><span class="ctl-label" id="lbl-theme">Theme</span>
+      <div class="seg" role="group" aria-labelledby="lbl-theme" id="themeSeg">
+        <button type="button" data-theme-set="auto" aria-pressed="true">Auto</button>
+        <button type="button" data-theme-set="light" aria-pressed="false">Paper</button>
+        <button type="button" data-theme-set="dark" aria-pressed="false">Graphite</button>
+      </div>
+    </div>
+    <div class="ctl"><span class="ctl-label" id="lbl-acc">Accent</span>
+      <div class="swatches" role="group" aria-labelledby="lbl-acc" id="accentRow"></div>
+    </div>
+    <div class="ctl"><button type="button" class="toggle" id="rmToggle" aria-pressed="false"><span class="knob"></span>Reduce motion</button></div>
+  </div>
+</div>
+
+<main class="wrap" style="padding-top:36px">
+
+  <!-- ============ MOMENT 1 ============ -->
+  <section id="m1" aria-labelledby="m1h">
+    <div class="mhead">
+      <p class="eyebrow">Moment 1 · the first-recording celebration</p>
+      <h2 id="m1h">The First Keep</h2>
+      <p class="sublede">The first real note is ready, so the thing that listened hands back what it kept. It plays over the note screen, which is already rendered underneath, so <b>Open note</b> just dismisses the overlay. Once ever, skippable, and it never blocks. Switch the form to see each one's own take: Nas fetches it, Wren perches on it, Page <i>becomes</i> it. Choose the Faith space for the quiet version.</p>
+    </div>
+    <div class="moment">
+      <div>
+        <div class="phone">
+          <div class="mscreen" id="fkScreen" tabindex="0" role="img" aria-label="Phone: the First Keep moment. Tap to skip.">
+            <div class="sbar"><span>9:41</span><span>5G <i></i></span></div>
+            <div class="abs fk-proc" id="fkProc"><small>Processing</small><b id="fkProcT">Acme pricing review</b></div>
+            <div class="abs fk-bloom" id="fkBloom"></div>
+            <div class="abs fk-halo" id="fkHalo"></div>
+            <svg class="abs fk-ring" id="fkRing" viewBox="0 0 150 150" aria-hidden="true"><circle cx="75" cy="75" r="68" fill="none" stroke="var(--track)" stroke-width="4"/><circle id="fkRingArc" cx="75" cy="75" r="68" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round" transform="rotate(-90 75 75)"/></svg>
+            <div class="abs fk-cap" id="fkCap">Putting your note together…</div>
+            <div class="abs fk-card" id="fkCard">
+              <div class="fk-meta" id="fkMeta"></div>
+              <div class="fk-title" id="fkTitle"></div>
+              <ul class="fk-pts" id="fkPts"></ul>
+            </div>
+            <div class="abs fk-char" id="fkChar"></div>
+            <div class="abs fk-mini" id="fkMini"></div>
+            <svg class="abs fk-spark" id="fkSpark" viewBox="0 0 300 640" aria-hidden="true"></svg>
+            <svg class="abs fk-glint" id="fkGlint" viewBox="0 0 20 20" aria-hidden="true"></svg>
+            <div class="abs fk-words" id="fkWords"><h4 class="fk-hl" id="fkHl"></h4><p class="fk-sub" id="fkSub"></p><p class="fk-zline" id="fkZ"></p></div>
+            <div class="abs fk-actions" id="fkAct"><button type="button" class="btn" tabindex="-1">Open note</button><button type="button" class="tlink" tabindex="-1">Share a moment</button></div>
+            <div class="skiphint">Tap to skip</div>
+            <div class="toast" id="fkToast"></div>
+          </div>
+        </div>
+        <p class="srline" id="fkSR"></p>
+      </div>
+      <div class="side">
+        <div id="tr-fk"></div>
+        <ol class="beats" id="fkBeats"></ol>
+        <div class="name-row"><label class="ctl-label" for="nameIn">Name (optional, First Keep only)</label><input id="nameIn" type="text" maxlength="14" placeholder="e.g. Amara" autocomplete="off"></div>
+        <h3>Why it works</h3>
+        <p><b>Peak-end:</b> the first note is the moment the promise is proven, so we design its peak. <b>Labor illusion pays off:</b> the same character that narrated real stages now hands over the result. <b>Reciprocity:</b> value with nothing asked; there's never a rating prompt or upsell here. <b>Von Restorff:</b> the only 160 dp bloom in the app, and it never repeats.</p>
+        <div class="callout"><b>Haptics:</b> a tick at the apex and a confirm when the card lands. None in Faith. <b>Sound:</b> a soft chime at 1.5 s (decided: it ships), never in Faith, and with a "Sounds" switch in Advanced. This page is silent.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MOMENT 2 ============ -->
+  <section id="m2" aria-labelledby="m2h">
+    <div class="mhead">
+      <p class="eyebrow">Moment 2 · every later note</p>
+      <h2 id="m2h">The Unveil</h2>
+      <p class="sublede">A note is unveiled once: the first time it's opened, within 24 hours. Zuri hands over the header, then leaves; it never stays on the note. Press <b>Next unveil</b> a few times to see the rotation: deterministic, never the same twice in a row, and weighted by the space at the top of the page.</p>
+    </div>
+    <div class="moment">
+      <div>
+        <div class="phone">
+          <div class="mscreen" id="uvScreen" tabindex="0" role="img" aria-label="Phone: a note being unveiled. Tap to skip.">
+            <div class="sbar"><span>9:41</span><span>5G <i></i></span></div>
+            <!-- note scene -->
+            <div class="abs u-scene" id="uvNote">
+              <div class="abs u-app"><span class="u-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></span><span class="u-right"><span class="u-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M8 8l4-4 4 4M6 13v5a2 2 0 002 2h8a2 2 0 002-2v-5"/></svg></span><span class="u-ic"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></span></span></div>
+              <div class="abs u-glow" id="uvGlow"></div>
+              <div class="abs u-head" id="uvHead">
+                <div class="u-meta" id="uvMeta"></div>
+                <div class="u-title" id="uvTitle"></div>
+                <div class="u-chips" id="uvChips"></div>
+                <div class="u-caret" id="uvCaret"></div>
+                <div class="u-ul" id="uvUl"></div>
+                <svg class="u-glint" id="uvGlint" viewBox="0 0 20 20" aria-hidden="true"></svg>
+              </div>
+              <div class="abs u-cur" id="uvCur"><i class="l"></i><i class="r"></i></div>
+              <div class="abs u-body" id="uvBody"></div>
+              <svg class="abs u-fx" id="uvFx" viewBox="0 0 300 640" aria-hidden="true"></svg>
+              <div class="abs u-z" id="uvZ"></div>
+            </div>
+            <!-- processing / failure scene -->
+            <div class="abs u-scene" id="uvProc">
+              <div class="abs p-title"><small>Processing</small><b id="uvProcT"></b></div>
+              <svg class="abs p-ring" id="uvPRing" viewBox="0 0 150 150" aria-hidden="true"><circle cx="75" cy="75" r="68" fill="none" stroke="var(--track)" stroke-width="4"/><circle cx="75" cy="75" r="68" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round" stroke-dasharray="427" stroke-dashoffset="64" transform="rotate(-90 75 75)"/></svg>
+              <div class="abs p-z" id="uvPZ"></div>
+              <div class="abs p-cap" id="uvPCap">Putting your note together…</div>
+              <div class="abs status" id="uvStatus"><span class="sz" id="uvSZ"></span><p>That one didn't finish. Your recording is safe.</p><button type="button" id="uvRetry">Retry</button></div>
+            </div>
+            <!-- home + notification scene -->
+            <div class="abs u-scene" id="uvHome">
+              <div class="abs h-greet"><small>Monday</small><b>Good afternoon.</b><div class="ghost" style="margin-top:16px"></div><div class="ghost-row"></div><div class="ghost-row"></div><div class="ghost-row"></div></div>
+              <div class="abs notif" id="uvNotif"><span class="gl"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="5" width="2.4" height="6" rx="1.2" fill="var(--ink)"/><rect x="5.8" y="2" width="2.4" height="9" rx="1.2" fill="var(--ink)"/><rect x="9.6" y="5" width="2.4" height="6" rx="1.2" fill="var(--ink)"/></svg></span><div><small>MeetingMind · now</small><b id="uvNotifT"></b><span>Tap to open your note.</span></div></div>
+              <div class="abs tapdot" id="uvTap"></div>
+            </div>
+            <div class="skiphint">Tap to skip</div>
+            <div class="toast" id="uvToast"></div>
+          </div>
+        </div>
+        <p class="srline" id="uvSR"></p>
+      </div>
+      <div class="side">
+        <div class="vlabel"><b id="uvLabel">Variant 1 of 5 · Lift</b><button type="button" class="tbtn" id="uvNext">Next unveil</button></div>
+        <p class="vmeta" id="uvMetaLine"></p>
+        <div class="chips" id="uvVariants" role="group" aria-label="Pick a variant directly"></div>
+        <h3>Rotation for this space</h3>
+        <div class="rot" id="uvRot" aria-live="polite"></div>
+        <p class="vmeta">Faded: already played. Filled: now. Outlined: the next picks, which are fully determined (smooth weighted round-robin, never the same twice in a row across spaces).</p>
+        <h3>Case</h3>
+        <div class="seg" role="radiogroup" aria-label="Case" id="uvCase"></div>
+        <p class="vmeta" id="uvCaseLine" style="margin-top:8px"></p>
+        <div id="tr-uv" style="margin-top:14px"></div>
+        <ol class="beats" id="uvBeats"></ol>
+        <h3>Weights by space</h3>
+        <div class="scroll-x"><table class="wtable" id="uvWeights"></table></div>
+        <div class="callout"><b>The degrade ladder</b> (the first row that matches wins): failed, partial or models missing → plain + fix · prayer request, grief or Good Friday → plain · first note ever → First Keep · recording in progress → wait · reduced motion → plain · sermon → quiet Dawn · battery saver, low-end phone, a recording under 20 s, or back-to-back → nod · budget left (2 a day, ≥ 3 h apart) → <b>Unveil</b> · otherwise → nod.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MOMENT 3 ============ -->
+  <section id="m3" aria-labelledby="m3h">
+    <div class="mhead">
+      <p class="eyebrow">Moment 3 · Create card with Zuri</p>
+      <h2 id="m3h">The Card</h2>
+      <p class="sublede">Off by default, always the user's choice. The AI suggests a pose and never touches the words. Disallowed poses are hidden, not greyed out. Zuri steps onto the card, does its mode's gesture once, then settles into <b>exactly</b> the pose that gets exported. Press Play, or switch on "Include".</p>
+    </div>
+    <div class="moment">
+      <div>
+        <div class="phone">
+          <div class="mscreen ed" id="edScreen">
+            <div class="sbar"><span>9:41</span><span>5G <i></i></span></div>
+            <div class="ed-top"><span>✕</span>Create<span class="sh">Share</span></div>
+            <div class="ed-steps">What · Vibe · Format · <b>Design</b> · Share</div>
+            <div class="ed-preview" id="edPreview"></div>
+            <div class="ed-cap" id="edCap"></div>
+            <div class="ed-row"><div><span id="edIncLabel">Include Zuri</span><small id="edIncSub"></small></div><button type="button" class="toggle" id="edInc" role="switch" aria-checked="false" aria-labelledby="edIncLabel"><span class="knob"></span></button></div>
+            <div class="ed-ai" id="edAI"></div>
+            <div class="chips" id="edModes" role="radiogroup" aria-label="Pose"></div>
+            <div class="ed-note" id="edNote"></div>
+            <div class="ed-anchor"><span>Position</span><div class="seg" id="edAnchor" role="radiogroup" aria-label="Position"><button type="button" data-a="below" aria-checked="true">Below the words</button><button type="button" data-a="corner" aria-checked="false">Corner</button></div></div>
+            <div class="toast" id="edToast"></div>
+          </div>
+        </div>
+        <p class="srline" id="edSR"></p>
+      </div>
+      <div class="side">
+        <h3 style="margin-top:0">Card content</h3>
+        <div class="seg" role="radiogroup" aria-label="Card content" id="edContent"></div>
+        <h3>Format</h3>
+        <div class="ctl"><div class="seg" role="radiogroup" aria-label="Format" id="edFormat"></div>
+          <button type="button" class="toggle" id="edSafe" aria-pressed="true"><span class="knob"></span>Safe zones</button></div>
+        <div id="tr-ed" style="margin-top:14px"></div>
+        <ol class="beats" id="edBeats"></ol>
+        <h3>Export: a static image</h3>
+        <div class="export">
+          <div class="viewer" id="exViewer"></div>
+          <p class="excap" id="exCap"></p>
+        </div>
+        <div class="callout"><span class="pill idea">Idea, out for now</span> <b>A 2-second animated export</b> (MP4, H.264, 30 fps): draw the card once and redraw only Zuri's rect for 60 frames, then MediaCodec + MediaMuxer. About 1.5–3 s to encode on a mid-range phone, ~0.4–0.9 MB, no new dependency. Animated WebP needs a native encoder (+300–500 KB per ABI), so it isn't worth it. <b>Never offered for prayer requests.</b></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="rulesh">
+    <p class="eyebrow">What these moments deliberately don't do</p>
+    <h2 id="rulesh" style="margin-bottom:12px">Restraint is part of the design</h2>
+    <div class="scroll-x"><table class="spec">
+      <thead><tr><th>Rule</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>The note is underneath from frame 0</td><td>Any tap skips <i>and</i> reaches what it landed on; Back skips; Share and Open never wait.</td></tr>
+        <tr><td>No counts, streaks or guilt</td><td>No "50 notes kept" counter, no "you didn't record today". The 10th note is a Proud milestone, once.</td></tr>
+        <tr><td>Nothing piggybacks on a peak</td><td>No rating prompt, upsell, paywall or share nudge after an unveil. "Share a moment" exists only on the First Keep.</td></tr>
+        <tr><td>Never celebrate a failure</td><td>Failed or partial notes get the honest line and a fix; on-device fallbacks lead with the truth.</td></tr>
+        <tr><td>Sacred stays quiet</td><td>No moment on prayer requests, grief or Good Friday. Faith has no hops. Sermons get a warm glow and a soft nod.</td></tr>
+        <tr><td>Still afterwards</td><td>Every moment ends in a still pose with the clock stopped (0 fps). No idle loops designed to pull attention.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+</main>
+
+<footer><div class="wrap">Spec: <code>docs/mvp/ZURI_SIGNATURE_MOMENTS.md</code>. Character drawing reused from <code>zuri-options.html</code> (the approved pose engine). Every timeline on this page is data, mirroring <code>MomentSpec</code>.</div></footer>
+
+<script>
+(function(){
+"use strict";
+/* =================== data =================== */
+var ACC=[
+  {k:'indigo',n:'Indigo',l:'#5B5BD6',d:'#9B9CF6'},
+  {k:'ocean',n:'Ocean',l:'#0E7490',d:'#5CC8DD'},
+  {k:'forest',n:'Forest',l:'#15803D',d:'#5FD08A'},
+  {k:'gold',n:'Gold',l:'#996515',d:'#E0B25A'},
+  {k:'rose',n:'Rose',l:'#BE185D',d:'#F27AAE'},
+  {k:'graphite',n:'Graphite',l:'#3F3F46',d:'#C9CDD6'}
+];
+var FORMS=[{k:'orb',n:'Zuri'},{k:'nas',n:'Nas'},{k:'wren',n:'Wren'},{k:'folio',n:'Page'}];
+var SPACES=[{k:'everyday',n:'Everyday'},{k:'faith',n:'Faith'},{k:'work',n:'Work'},{k:'study',n:'Study'}];
+var MODES=[{k:'prayerful',n:'Prayerful'},{k:'peaceful',n:'Peaceful'},{k:'grateful',n:'Grateful'},{k:'joyful',n:'Joyful'},{k:'reflective',n:'Reflective'},{k:'celebratory',n:'Celebratory'}];
+var S={form:'orb',space:'everyday',theme:'auto',accent:ACC[0],rm:false,name:''};
+var mql=window.matchMedia?window.matchMedia('(prefers-color-scheme: dark)'):null;
+var rml=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
+S.rm=!!(rml&&rml.matches);
+function isDark(){return S.theme==='dark'||(S.theme==='auto'&&!!(mql&&mql.matches));}
+function formName(){return FORMS.filter(function(f){return f.k===S.form;})[0].n;}
+
+var CONTENT={
+  everyday:{meta:'Note · 18 min · Today, 12:40',title:'Lunch with Grace: plans for June',chips:['2 voices'],
+    pts:['Book the cabin before Friday','Grace brings the van','Keep the trip under 900'],
+    summary:'You and Grace settled the June trip: the cabin, the van and the budget.',acts:['Book the cabin · Fri','Send Grace the dates'],
+    hl:'Your first note is ready.',sub:'Everything you said, kept.',z:'I kept every word.'},
+  work:{meta:'Meeting · 32 min · Today, 14:05',title:'Acme pricing review',chips:['3 speakers','3 action items'],
+    pts:['Revised quote to Acme by Friday','Sarah checks the 50-seat discount','Onboarding time came up twice'],
+    summary:'Acme wants a revised quote; Sarah will check the discount above 50 seats.',acts:['Revised quote to Acme · Fri','Ask Sarah about the discount'],
+    hl:'Your first note is ready.',sub:'3 action items, kept.',z:'I kept every word.'},
+  faith:{meta:'Sermon · 41 min · Sunday, 10:30',title:'Be still: Psalm 46',chips:['Grace Chapel'],
+    pts:['Stillness is trust, not doing nothing','Psalm 46:10 was read twice','This week: pray before planning'],
+    summary:'Pastor James on Psalm 46: stillness as an act of trust.',acts:['Pray before planning','Read Psalm 46 again'],
+    hl:'Your first sermon notes are ready.',sub:'Every word, kept.',z:''},
+  study:{meta:'Lecture · 52 min · Today, 09:00',title:'Biochem L7: Glycolysis',chips:['Dr. Okafor','On your phone'],
+    pts:['PFK-1 sets the pace of glycolysis','Net gain: 2 ATP per glucose','Quiz on Thursday covers L5 to L7'],
+    summary:'Glycolysis, its control point and the energy balance.',acts:['Make flashcards for L7','Revise L5 before Thursday'],
+    hl:'Your first note is ready.',sub:'Ready when you are to revise.',z:'I kept every word.'}
+};
+var SPACE_TS={everyday:1,study:1,faith:1.15,work:.85};
+
+/* =================== colour =================== */
+function hex(h){h=h.replace('#','');return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)];}
+function mix(a,b,t){var A=hex(a),B=hex(b);return '#'+[0,1,2].map(function(i){var v=Math.round(A[i]*(1-t)+B[i]*t);return ('0'+v.toString(16)).slice(-2);}).join('');}
+function rgba(h,a){var c=hex(h);return 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')';}
+function pal(acc,dark){
+  var a=dark?acc.d:acc.l;
+  return {a:a,dark:dark,
+    body1:dark?mix(a,'#ffffff',.22):mix(a,'#ffffff',.5),
+    body2:dark?mix(a,'#0C111B',.1):mix(a,'#ffffff',.12),
+    deep:dark?mix(a,'#0C111B',.42):mix(a,'#18181B',.25),
+    light:dark?mix(a,'#ffffff',.62):mix(a,'#ffffff',.8),
+    rim:dark?mix(a,'#ffffff',.6):mix(a,'#ffffff',.55),
+    eye:'#151827', cheek:'rgba(244,114,138,.34)',
+    spark:dark?mix(a,'#ffffff',.25):a, gold:dark?'#E0B25A':'#D69E2E',
+    mute:dark?'#8995A8':'#8B8B93', shadow:dark?'rgba(0,0,0,.4)':'rgba(24,24,27,.09)',
+    paper:dark?mix(a,'#EEF0F5',.9):mix(a,'#FFFFFF',.95),
+    paperLine:dark?mix(a,'#0C111B',.3):mix(a,'#D4D4D8',.72),
+    lines:dark?mix(a,'#ffffff',.1):mix(a,'#ffffff',.25),
+    onA:dark?'#111113':'#FFFFFF'};
+}
+
+/* =================== pose engine (from zuri-options.html, with moment override hooks) =================== */
+function R(n){return Math.round(n*100)/100;}
+var TAU=Math.PI*2;
+function el(tag,attrs){var s='<'+tag;for(var k in attrs){if(attrs[k]!==undefined&&attrs[k]!==null)s+=' '+k+'="'+(typeof attrs[k]==='number'?R(attrs[k]):attrs[k])+'"';}return s+'/>';}
+function sparkle(x,y,s,col,op){var c=s*.16;return '<path d="M'+R(x)+' '+R(y-s)+' Q'+R(x+c)+' '+R(y-c)+' '+R(x+s)+' '+R(y)+' Q'+R(x+c)+' '+R(y+c)+' '+R(x)+' '+R(y+s)+' Q'+R(x-c)+' '+R(y+c)+' '+R(x-s)+' '+R(y)+' Q'+R(x-c)+' '+R(y-c)+' '+R(x)+' '+R(y-s)+'Z" fill="'+col+'" opacity="'+R(op)+'"/>';}
+function heart(x,y,s,col,op){return '<path d="M'+R(x)+' '+R(y+s)+' C'+R(x-s*1.7)+' '+R(y)+' '+R(x-s*.7)+' '+R(y-s*1.2)+' '+R(x)+' '+R(y-s*.35)+' C'+R(x+s*.7)+' '+R(y-s*1.2)+' '+R(x+s*1.7)+' '+R(y)+' '+R(x)+' '+R(y+s)+'Z" fill="'+col+'" opacity="'+R(op)+'"/>';}
+function pose(state,t,L,rm){
+  if(state==='celebratory'){var c=pose('celebrating',t,L,rm);c.mode='celebratory';return c;}
+  var p={by:0,sx:1,sy:1,rot:0,blink:0,eye:'open',lookX:0,lookY:0,mouth:'smile',brows:false,hop:0,eyeScale:1,state:state,t:t,L:L,rm:rm,hands:false};
+  var ph,b;
+  function blinkAt(period){if(rm)return 0;var q=t%period;return q<.16?Math.sin(q/.16*Math.PI):0;}
+  function breath(per,amp){var v=rm?0:Math.sin(t*TAU/per);p.sx=1-amp*.55*v;p.sy=1+amp*v;}
+  switch(state){
+    case 'idle': breath(3.4,.022); p.blink=blinkAt(4.6); break;
+    case 'listening': b=rm?0:Math.sin(t*TAU/2.2); p.sy=1+.035*L+.01*b; p.sx=1+.014*L; p.rot=rm?-5:(-5+Math.sin(t*1.3)*2); p.eye='soft'; p.lookX=.6; break;
+    case 'thinking': p.rot=rm?3:Math.sin(t*1.5)*3; p.lookX=1.1; p.lookY=-1.5; p.mouth='o'; p.blink=blinkAt(3.1); break;
+    case 'celebrating': p.eye='happy'; p.mouth='open';
+      if(rm){p.by=-5;p.sy=1.04;p.sx=.97;p.hop=.6;}
+      else{var P=1.15;ph=(t%P)/P;
+        if(ph<.55){var h=Math.sin(ph/.55*Math.PI);p.by=-9*h;p.hop=h;p.sy=1+.05*h;p.sx=1-.03*h;}
+        else if(ph<.75){var s=Math.sin((ph-.55)/.2*Math.PI)*.08;p.sx=1+s;p.sy=1-s;}}
+      break;
+    case 'worried': p.sx=1.03;p.sy=.95;p.by=1.5;p.rot=rm?0:Math.sin(t*.9)*1.5;p.brows=true;p.mouth='wobble';p.lookY=.7;p.eyeScale=.88;p.blink=blinkAt(3.8); break;
+    case 'sleepy': breath(5.5,.025); p.sy-=.03; p.by=2; p.rot=6; p.eye='closed'; p.mouth='none'; break;
+    case 'prayerful': breath(6,.008); p.by=1; p.eye='closed'; p.mouth='none'; p.hands=true; break;
+    case 'peaceful': breath(6,.015); p.eye='closed'; p.mouth='smile'; break;
+    case 'grateful': breath(4.5,.012); p.eye='happy'; p.mouth='smile'; p.rot=rm?4:4+Math.sin(t*.8); break;
+    case 'joyful': p.eye='happy'; p.mouth='open'; p.by=rm?-2:-Math.abs(Math.sin(t*2.6))*3; break;
+    case 'reflective': breath(4.5,.012); p.lookX=-1; p.lookY=-1.5; p.rot=-3; p.blink=blinkAt(4.2); break;
+  }
+  return p;
+}
+function bodyT(p,foot){return 'translate(0 '+R(p.by)+') rotate('+R(p.rot)+' 50 '+foot+') translate(50 '+foot+') scale('+R(p.sx)+' '+R(p.sy)+') translate(-50 -'+foot+')';}
+function eyes(pts,p,o){
+  var s='',rx=o.rx*p.eyeScale,ry=o.ry*p.eyeScale,sw=o.sw||rx*.8,lk=o.look||1;
+  pts.forEach(function(q){
+    var x=q[0]+p.lookX*lk,y=q[1]+p.lookY*lk;
+    if(p.eye==='happy') s+='<path d="M'+R(x-rx*1.15)+' '+R(y+ry*.35)+' Q'+R(x)+' '+R(y-ry*1.25)+' '+R(x+rx*1.15)+' '+R(y+ry*.35)+'" fill="none" stroke="'+o.col+'" stroke-width="'+R(sw)+'" stroke-linecap="round"/>';
+    else if(p.eye==='closed') s+='<path d="M'+R(x-rx*1.15)+' '+R(y)+' Q'+R(x)+' '+R(y+ry*.95)+' '+R(x+rx*1.15)+' '+R(y)+'" fill="none" stroke="'+o.col+'" stroke-width="'+R(sw)+'" stroke-linecap="round"/>';
+    else{
+      var ery=ry*(p.eye==='soft'?.6:1)*(1-p.blink*.88),ey=y+(p.eye==='soft'?ry*.28:0);
+      s+=el('ellipse',{cx:x,cy:ey,rx:rx,ry:ery,fill:o.col});
+      if(o.lod&&p.blink<.4) s+=el('circle',{cx:x-rx*.3,cy:ey-ery*.42,r:rx*.36,fill:'#fff',opacity:.92});
+    }
+  });
+  return s;
+}
+function brows(pts,o){
+  var s='',rx=o.rx,ry=o.ry;
+  pts.forEach(function(q,i){var x=q[0],y=q[1],d;
+    if(i===0) d='M'+R(x-rx*1.4)+' '+R(y-ry*1.35)+' L'+R(x+rx*1.1)+' '+R(y-ry*1.95);
+    else d='M'+R(x-rx*1.1)+' '+R(y-ry*1.95)+' L'+R(x+rx*1.4)+' '+R(y-ry*1.35);
+    s+='<path d="'+d+'" stroke="'+o.col+'" stroke-width="'+R(o.sw||1.6)+'" stroke-linecap="round" fill="none"/>';});
+  return s;
+}
+function mouth(x,y,w,p,P,lod){
+  if(!lod) return '';
+  switch(p.mouth){
+    case 'smile': return '<path d="M'+R(x-w)+' '+R(y)+' Q'+R(x)+' '+R(y+w*.85)+' '+R(x+w)+' '+R(y)+'" fill="none" stroke="'+P.eye+'" stroke-width="'+R(w*.5)+'" stroke-linecap="round"/>';
+    case 'open': return '<path d="M'+R(x-w*1.15)+' '+R(y-.4)+' Q'+R(x)+' '+R(y+w*2)+' '+R(x+w*1.15)+' '+R(y-.4)+' Z" fill="'+P.eye+'"/>'+el('ellipse',{cx:x,cy:y+w*.75,rx:w*.55,ry:w*.3,fill:'#F47A8A'});
+    case 'o': return el('ellipse',{cx:x+1,cy:y+.4,rx:w*.42,ry:w*.5,fill:P.eye});
+    case 'wobble': return '<path d="M'+R(x-w)+' '+R(y+.8)+' Q'+R(x-w/2)+' '+R(y-.7)+' '+R(x)+' '+R(y+.3)+' Q'+R(x+w/2)+' '+R(y+1.2)+' '+R(x+w)+' '+R(y-.1)+'" fill="none" stroke="'+P.eye+'" stroke-width="'+R(w*.45)+'" stroke-linecap="round"/>';
+  }
+  return '';
+}
+function hands(x,y,P,s){s=s||1;return '<g stroke="'+P.deep+'" stroke-width=".9" fill="'+P.body1+'">'+
+  '<ellipse cx="'+R(x-2.6*s)+'" cy="'+R(y)+'" rx="'+R(3.6*s)+'" ry="'+R(6.4*s)+'" transform="rotate(18 '+R(x-2.6*s)+' '+R(y)+')"/>'+
+  '<ellipse cx="'+R(x+2.6*s)+'" cy="'+R(y)+'" rx="'+R(3.6*s)+'" ry="'+R(6.4*s)+'" transform="rotate(-18 '+R(x+2.6*s)+' '+R(y)+')"/></g>';}
+function shadow(p,P,y){return el('ellipse',{cx:50,cy:y||93,rx:18*(1-p.hop*.35),ry:2.6,fill:P.shadow});}
+function fx(p,P,o){
+  if(p.noFx) return '';
+  var s='',t=p.t,st=p.mode==='celebratory'?'celebrating':p.state;
+  if(st==='celebrating'&&o.sp) o.sp.forEach(function(q,i){var k=p.rm?1:(.55+.45*Math.sin(t*5+i*1.9));s+=sparkle(q[0],q[1],q[2]*k,i%2?P.gold:P.spark,p.rm?1:.45+.55*k);});
+  if(st==='joyful'&&o.sp) o.sp.slice(0,2).forEach(function(q,i){var k=p.rm?.8:(.5+.4*Math.sin(t*3+i*2));s+=sparkle(q[0],q[1],q[2]*k,i?P.gold:P.spark,.8);});
+  if(st==='grateful'&&o.sp){var hy=p.rm?0:Math.sin(t*1.6)*1.5;s+=heart(o.sp[1][0]-2,o.sp[1][1]+4+hy,3.6,'#F47A8A',.9);}
+  if(st==='thinking'&&o.dots){for(var i=0;i<3;i++){var dy=p.rm?(i===1?-2.5:0):-Math.max(0,Math.sin(t*4.2-i*.7))*3.2;s+=el('circle',{cx:o.dots[0]+i*6.5,cy:o.dots[1]+dy,r:2.1,fill:P.spark,opacity:p.rm?.8:(.45+.55*(-dy/3.2))});}}
+  return s;
+}
+function stOf(p){return p.mode==='celebratory'?'celebrating':p.state;}
+var DRAW={};
+DRAW.orb=function(p,P,o){
+  var s='',id=o.id,L=p.L,t=p.t,lod=o.lod,st=stOf(p);
+  s+='<defs><radialGradient id="b'+id+'" cx=".36" cy=".3" r=".85"><stop offset="0" stop-color="'+P.body1+'"/><stop offset="1" stop-color="'+P.body2+'"/></radialGradient>'+
+     '<radialGradient id="g'+id+'"><stop offset=".55" stop-color="'+P.a+'" stop-opacity="'+(P.dark?.32:.2)+'"/><stop offset="1" stop-color="'+P.a+'" stop-opacity="0"/></radialGradient></defs>';
+  if(lod&&!o.noHalo) s+=el('circle',{cx:50,cy:60+p.by*.5,r:44,fill:'url(#g'+id+')'});
+  s+=shadow(p,P);
+  s+='<g transform="'+bodyT(p,88)+'">';
+  var hs,lean=0;
+  switch(st){
+    case 'listening': hs=[0,1,2].map(function(i){return p.rm?[6,11,7][i]*(.5+L):3.5+L*(7+5*Math.sin(t*9+i*1.9))+(i===1?2:0);});break;
+    case 'thinking': hs=[0,1,2].map(function(i){return p.rm?[4,7,4][i]:4+2.5*Math.max(0,Math.sin(t*4.2-i*.7));});break;
+    case 'celebrating': hs=[8,12,8];break;
+    case 'joyful': hs=[0,1,2].map(function(i){return p.rm?[6,10,6][i]:6+2*Math.sin(t*5+i);});break;
+    case 'worried': case 'sleepy': hs=[3,4,3];lean=14;break;
+    case 'prayerful': hs=[3,5,3];lean=10;break;
+    case 'peaceful': hs=[4,6,4];lean=6;break;
+    default: hs=[5,8,5];
+  }
+  if(p.hsK!=null) hs=hs.map(function(h){return h*p.hsK;});
+  if(p.lean!=null) lean=p.lean;
+  s+='<g transform="rotate('+R(lean)+' 50 30)">';
+  [43.5,50,56.5].forEach(function(x,i){var h=Math.max(2.5,hs[i]);s+=el('rect',{x:x-2.2,y:30-h,width:4.4,height:h+4,rx:2.2,fill:P.deep});});
+  s+='</g>';
+  s+=el('circle',{cx:50,cy:58,r:30,fill:'url(#b'+id+')'});
+  if(lod) s+='<ellipse cx="39" cy="44" rx="8.5" ry="4.6" fill="#fff" opacity="'+(P.dark?.28:.42)+'" transform="rotate(-35 39 44)"/>';
+  if(lod&&st!=='worried') s+=el('ellipse',{cx:33.5,cy:65,rx:4.2,ry:2.5,fill:P.cheek})+el('ellipse',{cx:66.5,cy:65,rx:4.2,ry:2.5,fill:P.cheek});
+  var E=[[41,56],[59,56]];
+  s+=eyes(E,p,{rx:lod?3.3:4.4,ry:lod?4.6:5.8,col:P.eye,lod:lod,sw:lod?2.4:3.2});
+  if(p.brows) s+=brows(E,{rx:3.3,ry:4.6,col:P.eye,sw:1.8});
+  s+=mouth(50,65,3,p,P,lod);
+  if(p.hands&&lod) s+=hands(50,76,P);
+  s+='</g>';
+  s+=fx(p,P,{sp:[[16,30,5],[84,24,4],[88,62,3.5],[12,64,3.5]],dots:[67,20]});
+  return s;
+};
+DRAW.wren=function(p,P,o){
+  var s='',id=o.id,L=p.L,t=p.t,lod=o.lod,st=stOf(p);
+  s+='<defs><radialGradient id="b'+id+'" cx=".4" cy=".3" r=".9"><stop offset="0" stop-color="'+P.body1+'"/><stop offset="1" stop-color="'+P.body2+'"/></radialGradient></defs>';
+  s+=shadow(p,P,92);
+  var tail=0,wing=0,headDy=0,headR=0;
+  switch(st){
+    case 'idle': tail=p.rm?0:Math.sin(t*TAU/3.4)*2;break;
+    case 'thinking': tail=4;headR=-4;break;
+    case 'reflective': tail=2;headR=-8;break;
+    case 'celebrating': tail=12;wing=p.rm?-40:-30-Math.abs(Math.sin(t*11))*25*(.3+p.hop);break;
+    case 'joyful': tail=p.rm?10:8+Math.sin(t*6)*5;wing=-12;break;
+    case 'worried': tail=-26;wing=6;headDy=2;break;
+    case 'sleepy': tail=-18;headDy=5;headR=10;break;
+    case 'prayerful': tail=-8;headDy=3;headR=14;wing=-16;break;
+    case 'peaceful': tail=-4;headR=6;break;
+    case 'grateful': tail=4;headR=10;headDy=1;break;
+  }
+  if(p.wing!=null) wing=p.wing; if(p.headR!=null) headR=p.headR; if(p.tail!=null) tail=p.tail;
+  s+='<g transform="'+bodyT(p,88)+'">';
+  s+='<path d="M32 58 Q16 44 15 24 Q24 27 40 48 Z" fill="'+P.deep+'" transform="rotate('+R(tail)+' 34 54)"/>';
+  s+='<path d="M45 80 L43.5 89 M55 80 L56 89" stroke="'+P.deep+'" stroke-width="2.4" stroke-linecap="round"/>';
+  s+=el('circle',{cx:49,cy:60,r:25,fill:'url(#b'+id+')'});
+  s+='<g transform="translate(0 '+R(headDy)+') rotate('+R(headR)+' 58 50)">';
+  s+=el('circle',{cx:62,cy:40,r:15.5,fill:P.body1});
+  if(st==='celebrating'||st==='joyful') s+='<path d="M76 37.5 L86.5 39.8 L76 42 Z" fill="'+P.deep+'"/><path d="M76 43 L84 46.5 L76 47 Z" fill="'+P.deep+'"/>';
+  else s+='<path d="M76 38 L87 41.8 L76 45.5 Z" fill="'+P.deep+'"/>';
+  s+=eyes([[68,37]],p,{rx:lod?2.8:3.8,ry:lod?3.4:4.4,col:P.eye,lod:lod,sw:lod?2:2.8,look:.8});
+  if(p.brows) s+='<path d="M63.5 30.5 L71.5 33" stroke="'+P.eye+'" stroke-width="1.7" stroke-linecap="round"/>';
+  if(lod&&st!=='worried') s+=el('ellipse',{cx:70,cy:45.5,rx:3.2,ry:1.9,fill:P.cheek});
+  s+='</g>';
+  if(lod) s+=el('ellipse',{cx:57,cy:69,rx:13,ry:10.5,fill:P.light,opacity:.9});
+  s+='<path d="M28 60 Q42 45 63 59 Q47 73 28 60 Z" fill="'+P.deep+'" transform="rotate('+R(wing)+' 40 57)"/>';
+  s+='</g>';
+  s+=fx(p,P,{sp:[[14,30,4.5],[88,22,4],[90,66,3.5],[12,72,3]],dots:[70,14]});
+  return s;
+};
+DRAW.folio=function(p,P,o){
+  var s='',L=p.L,t=p.t,lod=o.lod,st=stOf(p);
+  s+=shadow(p,P,95);
+  var F=12,lean=0;
+  if(st==='celebrating') F=p.rm?15:12+Math.sin(t*12)*3;
+  if(st==='worried'){F=17;lean=-4;}
+  if(st==='sleepy') lean=4;
+  if(st==='prayerful'||st==='grateful') lean=3;
+  if(p.F!=null) F=p.F;
+  s+='<g transform="'+bodyT(p,84)+' rotate('+lean+' 50 84)">';
+  s+='<path d="M36 78 H44 V94 L40 90 L36 94 Z" fill="'+P.a+'"/>';
+  var page='M32 20 H'+R(72-F)+' L72 '+R(20+F)+' V78 Q72 82 68 82 H32 Q28 82 28 78 V24 Q28 20 32 20 Z';
+  s+='<path d="'+page+'" fill="'+P.paper+'" stroke="'+P.paperLine+'" stroke-width="1.4" stroke-linejoin="round"/>';
+  s+='<path d="M'+R(72-F)+' 20 V'+R(20+F-3)+' Q'+R(72-F)+' '+R(20+F)+' '+R(72-F+3)+' '+R(20+F)+' H72 Z" fill="'+P.light+'" stroke="'+P.paperLine+'" stroke-width="1.4" stroke-linejoin="round"/>';
+  var E=[[42,40],[56,40]];
+  if(lod&&st!=='worried') s+=el('ellipse',{cx:36.5,cy:47,rx:3.2,ry:2,fill:P.cheek})+el('ellipse',{cx:61.5,cy:47,rx:3.2,ry:2,fill:P.cheek});
+  s+=eyes(E,p,{rx:lod?2.9:3.8,ry:lod?3.9:5,col:P.eye,lod:lod,sw:lod?2.1:2.8});
+  if(p.brows) s+=brows(E,{rx:2.9,ry:3.9,col:P.eye,sw:1.6});
+  s+=mouth(49,47.5,2.6,p,P,lod);
+  if(lod){
+    var Ys=[58,65,72],lens=[28,22,15],lc=P.lines,sw=2.2;
+    if(p.hands){ s+=hands(49,66,P,.9); }
+    else if(st==='thinking'){
+      var total=p.rm?44:((t*16)%80),rem=total,cx=35,cy=58;
+      Ys.forEach(function(y,i){var l=Math.max(0,Math.min(lens[i],rem));rem-=lens[i];if(l>0){s+=el('line',{x1:35,y1:y,x2:35+l,y2:y,stroke:lc,'stroke-width':sw,'stroke-linecap':'round'});cx=35+l;cy=y;}});
+      s+=el('rect',{x:cx+2,y:cy-3.2,width:1.6,height:6.4,rx:.8,fill:P.a,opacity:p.rm?1:(Math.floor(t*3)%2?1:.25)});
+    } else {
+      var op=st==='sleepy'?.35:(st==='worried'?.55:1);
+      Ys.forEach(function(y,i){s+='<line x1="35" y1="'+y+'" x2="'+(35+lens[i])+'" y2="'+y+'" stroke="'+lc+'" stroke-width="'+sw+'" stroke-linecap="round" opacity="'+op+'"'+(st==='worried'?' stroke-dasharray="3 3.5"':'')+'/>';});
+    }
+  }
+  s+='</g>';
+  s+=fx(p,P,{sp:[[16,26,4.5],[86,20,4],[88,60,3.5],[14,66,3]],dots:[68,10]});
+  return s;
+};
+DRAW.nas=function(p,P,o){
+  var s='',id=o.id,L=p.L,t=p.t,lod=o.lod,st=stOf(p),rm=p.rm;
+  s+='<defs><radialGradient id="b'+id+'" cx=".4" cy=".3" r=".9"><stop offset="0" stop-color="'+P.body1+'"/><stop offset="1" stop-color="'+P.body2+'"/></radialGradient></defs>';
+  s+=shadow(p,P,93);
+  var headR=0,headDy=0,ear=12,tail=0;
+  switch(st){
+    case 'idle': tail=rm?0:Math.sin(t*1.1)*5; ear=12+(rm?0:Math.sin(t*TAU/3.4)*1.5); break;
+    case 'thinking': headR=8; ear=16; break;
+    case 'reflective': headR=-6; ear=14; break;
+    case 'celebrating': ear=24+(rm?0:Math.sin(t*9)*6); tail=rm?24:Math.sin(t*14)*28; break;
+    case 'joyful': ear=18; tail=rm?14:Math.sin(t*8)*16; break;
+    case 'worried': ear=2; headDy=2; tail=35; break;
+    case 'sleepy': ear=4; headDy=4; headR=8; tail=20; break;
+    case 'prayerful': ear=5; headDy=2; break;
+    case 'peaceful': ear=8; headR=4; break;
+    case 'grateful': ear=10; headR=6; headDy=1; tail=rm?6:Math.sin(t*3)*6; break;
+  }
+  if(p.ear!=null) ear=p.ear; if(p.tailOv!=null) tail=p.tailOv; if(p.headR!=null) headR=p.headR;
+  s+='<g transform="'+bodyT(p,91)+'">';
+  s+='<rect x="63" y="72" width="16" height="6.5" rx="3.25" fill="'+P.deep+'" transform="rotate('+R(-35-tail)+' 64 76)"/>';
+  s+=el('ellipse',{cx:50,cy:77,rx:17.5,ry:13.5,fill:'url(#b'+id+')'});
+  if(lod) s+=el('ellipse',{cx:50,cy:80,rx:9,ry:8,fill:P.light,opacity:.85});
+  if(!p.hands) s+=el('ellipse',{cx:42.5,cy:89,rx:5.6,ry:3.4,fill:P.light})+el('ellipse',{cx:57.5,cy:89,rx:5.6,ry:3.4,fill:P.light});
+  s+='<g transform="translate(0 '+R(headDy)+') rotate('+R(headR)+' 50 60)">';
+  s+=el('circle',{cx:50,cy:42,r:21,fill:'url(#b'+id+')'});
+  if(lod) s+=el('ellipse',{cx:59,cy:40,rx:7,ry:6.5,fill:P.deep,opacity:.28});
+  s+='<ellipse cx="30.5" cy="44" rx="7.6" ry="14.5" fill="'+P.deep+'" transform="rotate('+R(ear)+' 33 31)"/>';
+  s+='<ellipse cx="69.5" cy="44" rx="7.6" ry="14.5" fill="'+P.deep+'" transform="rotate('+R(-ear)+' 67 31)"/>';
+  s+=el('ellipse',{cx:50,cy:51,rx:9.5,ry:7,fill:P.light});
+  var E=[[42,40],[58,40]];
+  if(lod&&st!=='worried') s+=el('ellipse',{cx:37.5,cy:49,rx:3.4,ry:2.1,fill:P.cheek})+el('ellipse',{cx:62.5,cy:49,rx:3.4,ry:2.1,fill:P.cheek});
+  s+=eyes(E,p,{rx:lod?3.1:4.2,ry:lod?3.8:5,col:P.eye,lod:lod,sw:lod?2.2:3});
+  if(p.brows) s+=brows(E,{rx:3.1,ry:3.8,col:P.eye,sw:1.7});
+  s+=el('ellipse',{cx:50,cy:47.6,rx:lod?3.6:4.6,ry:lod?2.6:3.2,fill:P.eye});
+  if(lod){
+    s+=el('ellipse',{cx:48.9,cy:46.8,rx:1.1,ry:.6,fill:'#fff',opacity:.7});
+    if(p.mouth==='open') s+='<path d="M46.5 52.5 Q50 55.5 53.5 52.5" fill="none" stroke="'+P.eye+'" stroke-width="1.1" stroke-linecap="round"/>'+el('ellipse',{cx:50,cy:55.6,rx:2.4,ry:2.6,fill:'#F47A8A'});
+    else if(p.mouth==='wobble') s+='<path d="M50 50.2 V52 M46.8 54.2 Q50 52 53.2 54.2" fill="none" stroke="'+P.eye+'" stroke-width="1.1" stroke-linecap="round"/>';
+    else if(p.mouth!=='none') s+='<path d="M50 50.2 V52.4 M46.6 52.4 Q48.3 54.6 50 52.4 Q51.7 54.6 53.4 52.4" fill="none" stroke="'+P.eye+'" stroke-width="1.1" stroke-linecap="round"/>';
+    else s+='<path d="M50 50.2 V52.2" stroke="'+P.eye+'" stroke-width="1.1" stroke-linecap="round"/>';
+  }
+  s+='</g>';
+  if(p.hands) s+='<g fill="'+P.light+'" stroke="'+P.deep+'" stroke-width=".9"><ellipse cx="47.2" cy="64" rx="4" ry="6.2" transform="rotate(14 47.2 64)"/><ellipse cx="52.8" cy="64" rx="4" ry="6.2" transform="rotate(-14 52.8 64)"/></g>';
+  s+='</g>';
+  s+=fx(p,P,{sp:[[12,26,4.5],[88,20,4],[92,64,3.5],[9,66,3]],dots:[68,10]});
+  return s;
+};
+var uid=0,NS='http://www.w3.org/2000/svg';
+function mkSvg(node,size){var svg=document.createElementNS(NS,'svg');svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('width',size);svg.setAttribute('height',size);svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.style.display='block';svg.style.overflow='visible';node.innerHTML='';node.appendChild(svg);svg._id='s'+(uid++);return svg;}
+function drawChar(svg,form,p,opts){opts=opts||{};svg.innerHTML=DRAW[form](p,pal(S.accent,opts.dark==null?isDark():opts.dark),{id:svg._id,lod:true,noHalo:opts.noHalo});}
+
+/* =================== timeline engine (mirrors MomentSpec) =================== */
+function bez(x1,y1,x2,y2){
+  function bx(t){return 3*(1-t)*(1-t)*t*x1+3*(1-t)*t*t*x2+t*t*t;}
+  function by(t){return 3*(1-t)*(1-t)*t*y1+3*(1-t)*t*t*y2+t*t*t;}
+  function dx(t){return 3*(1-t)*(1-t)*x1+6*(1-t)*t*(x2-x1)+3*t*t*(1-x2);}
+  return function(u){if(u<=0)return 0;if(u>=1)return 1;var t=u;for(var i=0;i<8;i++){var d=dx(t);if(Math.abs(d)<1e-6)break;t-=(bx(t)-u)/d;t=Math.min(1,Math.max(0,t));}return by(t);};
+}
+var EASE={lin:function(u){return u;},std:bez(.2,0,0,1),out:bez(0,0,.2,1),'in':bez(.4,0,1,1),io:bez(.4,0,.2,1),
+  back:function(u){if(u>=1)return 1;var s=1.2;return 1+(s+1)*Math.pow(u-1,3)+s*Math.pow(u-1,2);},
+  spring:function(u){if(u>=1)return 1;return 1-Math.exp(-5.5*u)*Math.cos(10.5*u);}};
+function tv(keys,t){
+  if(!keys||!keys.length) return undefined;
+  if(typeof keys[0][1]!=='number'){var v=keys[0][1];for(var i=0;i<keys.length;i++){if(t>=keys[i][0])v=keys[i][1];}return v;}
+  if(t<=keys[0][0]) return keys[0][1];
+  for(var j=1;j<keys.length;j++){if(t<=keys[j][0]){var a=keys[j-1],b=keys[j],span=b[0]-a[0];var u=span>0?(t-a[0])/span:1;return a[1]+(b[1]-a[1])*EASE[b[2]||'std'](u);}}
+  return keys[keys.length-1][1];
+}
+function clone(o){return JSON.parse(JSON.stringify(o));}
+/* merge: base spec + patches (form takes, space patches) */
+function build(base){var sp={dur:base.dur,beats:clone(base.beats),hap:clone(base.hap||[]),tr:clone(base.tr),extra:base.extra||{}};
+  for(var i=1;i<arguments.length;i++){var pt=arguments[i];if(!pt)continue;if(pt.tr)for(var k in pt.tr)sp.tr[k]=clone(pt.tr[k]);if(pt.hap)sp.hap=clone(pt.hap);if(pt.beats)sp.beats=clone(pt.beats);if(pt.extra)for(var e in pt.extra)sp.extra[e]=pt.extra[e];}
+  return sp;}
+function scaleSpec(sp,k){if(k===1)return sp;var o={dur:Math.round(sp.dur*k),beats:sp.beats.map(function(b){return [b[0]*k,b[1]*k,b[2],b[3]];}),hap:sp.hap.map(function(h){return [h[0]*k,h[1]];}),tr:{},extra:sp.extra};
+  for(var key in sp.tr)o.tr[key]=sp.tr[key].map(function(q){var r=q.slice();r[0]=q[0]*k;return r;});return o;}
+function compose(pre,main,off){var o={dur:off+main.dur,beats:pre.beats.concat(main.beats.map(function(b){return [b[0]+off,b[1]+off,b[2],b[3]];})),hap:pre.hap.concat(main.hap.map(function(h){return [h[0]+off,h[1]];})),tr:clone(pre.tr),extra:main.extra};
+  for(var k in main.tr){var sh=main.tr[k].map(function(q){var r=q.slice();r[0]=q[0]+off;return r;});o.tr[k]=o.tr[k]?o.tr[k].concat(sh):sh;}
+  return o;}
+function V(sp,t){return function(k,d){var v=tv(sp.tr[k],t);return v===undefined?d:v;};}
+function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+/* a character pose from a moment's pose tracks */
+function mpose(get,tSec,form){
+  var st=get('p.state','idle');
+  var basis=(st==='celebrating')?'idle':st;
+  var p=pose(basis,tSec,.5,false); p.state=st;
+  if(st==='celebrating'){p.eye='happy';p.mouth='open';p.sx=1;p.sy=1;p.by=0;}
+  ['by','sx','sy','rot','lookX','lookY','blink','hop','hsK','lean','ear','headR','wing','F','tail'].forEach(function(k){var v=get('p.'+k);if(v!==undefined)p[k]=v;});
+  var e=get('p.eye');if(e!==undefined)p.eye=e;
+  var m=get('p.mouth');if(m!==undefined)p.mouth=m;
+  var wag=get('p.wag');if(wag!==undefined&&form==='nas')p.tailOv=Math.sin(tSec*44)*26*wag;
+  p.noFx=(st==='celebrating');
+  return p;
+}
+function lerpPose(a,b,u){var o={};for(var k in a){o[k]=(typeof a[k]==='number'&&typeof b[k]==='number')?a[k]+(b[k]-a[k])*u:(u<.5?a[k]:b[k]);}for(var k2 in b){if(!(k2 in o))o[k2]=b[k2];}return o;}
+
+/* =================== player =================== */
+var players=[];
+function transportHTML(){return '<div class="transport">'+
+ '<button type="button" class="tbtn tplay">Play</button>'+
+ '<button type="button" class="tbtn tghost treplay">Replay</button>'+
+ '<div class="seg tspeed" role="group" aria-label="Speed"><button type="button" data-sp="0.25" aria-pressed="false">0.25×</button><button type="button" data-sp="0.5" aria-pressed="false">0.5×</button><button type="button" data-sp="1" aria-pressed="true">1×</button></div>'+
+ '<div class="tscrub"><input type="range" min="0" max="1000" value="1000" aria-label="Scrub the timeline"><span class="ttime">0.00 s</span></div>'+
+ '<span class="hap" aria-hidden="true">Haptic</span>'+
+ '<span class="rmnote">Reduced motion is on: this shows the static end state (what the app draws when animations are off).</span></div>';}
+function Player(o){
+  var self=this;this.o=o;this.t=0;this.playing=false;this.speed=1;this.auto=false;
+  var host=document.getElementById('tr-'+o.id);host.innerHTML=transportHTML();
+  this.box=host.firstChild;this.bPlay=host.querySelector('.tplay');this.bRe=host.querySelector('.treplay');
+  this.scrub=host.querySelector('input');this.time=host.querySelector('.ttime');this.hap=host.querySelector('.hap');
+  this.bPlay.addEventListener('click',function(){if(self.playing)self.pause();else self.play(false);});
+  this.bRe.addEventListener('click',function(){self.play(true);});
+  Array.prototype.forEach.call(host.querySelectorAll('[data-sp]'),function(b){b.addEventListener('click',function(){self.speed=+b.getAttribute('data-sp');Array.prototype.forEach.call(host.querySelectorAll('[data-sp]'),function(x){x.setAttribute('aria-pressed',x===b);});});});
+  this.scrub.addEventListener('input',function(){var v=+self.scrub.value;self.playing=false;self.btn();self.t=v/1000*self.sp.dur;self.draw();});
+  if(o.screen) o.screen.addEventListener('click',function(e){if(self.playing){self.skip();}});
+  if(o.screen) o.screen.addEventListener('keydown',function(e){if((e.key==='Enter'||e.key===' ')&&self.playing){e.preventDefault();self.skip();}});
+  players.push(this);this.refresh(true);
+}
+Player.prototype.refresh=function(toEnd){this.sp=this.o.spec();if(toEnd||this.t>this.sp.dur)this.t=this.sp.dur;this.renderBeats();this.draw();};
+Player.prototype.renderBeats=function(){if(!this.o.beats)return;var sp=this.sp;this.o.beats.innerHTML=sp.beats.map(function(b,i){return '<li data-i="'+i+'"><span class="bt">'+(b[0]/1000).toFixed(2)+'–'+(b[1]/1000).toFixed(2)+' s</span><span><b>'+b[2]+'</b>. '+b[3]+'</span></li>';}).join('');this.beatEls=this.o.beats.children;};
+Player.prototype.play=function(restart){
+  if(this.o.beforePlay)this.o.beforePlay();
+  this.sp=this.o.spec();this.renderBeats();
+  if(S.rm){this.t=this.sp.dur;this.playing=false;this.draw();this.btn();return;}
+  if(restart||this.t>=this.sp.dur-1)this.t=0;
+  this.playing=true;this.last=performance.now();this.btn();this.draw();
+};
+Player.prototype.pause=function(){this.playing=false;this.btn();this.draw();};
+Player.prototype.skip=function(){this.t=this.sp.dur;this.playing=false;this.btn();this.draw();if(this.o.toast)toast(this.o.toast,this.o.skipText||'Skipped to the end state. The tap still reaches what it landed on.');};
+Player.prototype.btn=function(){this.bPlay.textContent=this.playing?'Pause':'Play';if(this.o.screen)this.o.screen.classList.toggle('playing',this.playing);this.box.classList.toggle('rmon',S.rm);};
+Player.prototype.draw=function(){
+  this.o.render(this.t,this.sp,this.playing);
+  this.scrub.value=Math.round(this.sp.dur?this.t/this.sp.dur*1000:1000);
+  this.time.textContent=(this.t/1000).toFixed(2)+' / '+(this.sp.dur/1000).toFixed(2)+' s';
+  if(this.beatEls){for(var i=0;i<this.beatEls.length;i++){var b=this.sp.beats[i];this.beatEls[i].classList.toggle('on',this.t>=b[0]&&this.t<b[1]+(this.t>=this.sp.dur&&b[1]>=this.sp.dur?1:0));}}
+};
+Player.prototype.tick=function(now){
+  if(!this.playing)return;
+  var dt=(now-this.last)*this.speed;this.last=now;var prev=this.t;this.t=Math.min(this.sp.dur,this.t+dt);
+  var self=this;this.sp.hap.forEach(function(h){if(prev<h[0]&&self.t>=h[0])self.flash(h[1]);});
+  this.draw();
+  if(this.t>=this.sp.dur){this.playing=false;this.btn();if(this.o.onEnd)this.o.onEnd();}
+};
+Player.prototype.flash=function(kind){var h=this.hap;h.textContent='Haptic · '+kind;h.classList.add('on');clearTimeout(this._ht);this._ht=setTimeout(function(){h.classList.remove('on');h.textContent='Haptic';},260/Math.max(.25,this.speed));};
+function toast(node,msg){node.textContent=msg;node.classList.add('on');clearTimeout(node._t);node._t=setTimeout(function(){node.classList.remove('on');},1800);}
+function autoplayWhenVisible(pl,node){
+  if(!('IntersectionObserver' in window))return;
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting&&e.intersectionRatio>.55&&!pl.auto&&!S.rm){pl.auto=true;pl.play(true);io.disconnect();}});},{threshold:[.55]});
+  io.observe(node);
+}
+
+/* =================== MOMENT 1: First Keep =================== */
+var FK={dur:3600,
+ beats:[[0,300,'Complete','The ring closes and the caption fades. Zuri grows from 96 to 160 dp (spring) and the accent bloom opens.'],
+  [300,450,'Anticipate','A small squash (sy 0.92).'],
+  [450,950,'Hop & glow · Signature','A hop to −12 units, with the sprout stretching 10/16/10 like arms lifting. Halo pulse and 6 sparkles at the apex. Haptic tick at 0.70 s.'],
+  [900,1600,'Present','The note rises from behind Zuri (back easing) while Zuri lands and steps down to make room. Haptic confirm at 1.50 s.'],
+  [1500,2300,'Title writes','The title writes in word by word. The key points resolve from skeleton bars into the note’s own words.'],
+  [2100,2900,'Words','The headline, the line, then the actions fade up.'],
+  [2700,3600,'Settle','One blink, the bloom recedes, then still. No idle loop.']],
+ hap:[[700,'tick'],[1500,'confirm']],
+ tr:{
+  'ring.p':[[0,.82],[200,1,'out']],'ring.o':[[0,1],[150,1],[350,0]],
+  'cap.o':[[0,1],[200,0]],'proc.o':[[0,1],[250,0]],
+  'bloom.s':[[0,.2],[100,.2],[600,1,'out']],'bloom.o':[[0,0],[100,0],[600,1,'out'],[2400,1],[3200,.3,'io']],
+  'halo.s':[[0,.8],[700,.8],[1200,1.8,'out']],'halo.o':[[0,0],[699,0],[700,.6],[1200,0,'out']],
+  'spk.p':[[0,0],[700,0],[1700,1,'out']],
+  'card.o':[[0,0],[900,0],[1100,1,'out']],'card.y':[[0,118],[900,118],[1600,0,'std']],'card.x':[[0,0]],
+  'card.s':[[0,.45],[900,.45],[1400,1.03,'out'],[1600,1,'std']],'card.r':[[0,-4],[900,-4],[1600,0,'std']],
+  'title.p':[[0,0],[1500,0],[2300,1,'lin']],'pts.p':[[0,0],[1900,0],[2300,1,'io']],
+  'hl.o':[[0,0],[2100,0],[2500,1,'std']],'hl.y':[[0,8],[2100,8],[2500,0,'std']],
+  'sub.o':[[0,0],[2300,0],[2700,1,'std']],'act.o':[[0,0],[2500,0],[2900,1,'std']],
+  'c.s':[[0,.6],[500,1,'spring'],[1000,1],[1600,.72,'std']],'c.y':[[0,0],[1000,0],[1600,60,'std']],'c.x':[[0,0]],'c.o':[[0,1]],
+  'p.state':[[0,'thinking'],[200,'celebrating'],[2700,'idle']],
+  'p.sy':[[300,1],[450,.92,'in'],[700,1.06,'out'],[950,1,'in'],[1020,.92,'out'],[1250,1,'spring']],
+  'p.sx':[[300,1],[450,1.04,'in'],[700,.97,'out'],[950,1,'in'],[1020,1.08,'out'],[1250,1,'spring']],
+  'p.by':[[450,0],[700,-12,'out'],[950,0,'in']],'p.hop':[[450,0],[700,1,'out'],[950,0,'in']],
+  'p.hsK':[[450,1],[700,1.33,'out'],[2300,1.33],[2700,1]],
+  'p.lookY':[[0,0],[1500,0],[1800,-1.5],[2700,-1.5],[3000,0]],
+  'p.blink':[[2950,0],[3030,1],[3110,0]],
+  'glint.o':[[0,0]]
+ }};
+var FK_FORMS={
+ nas:{tr:{'p.by':[[450,0],[700,-6,'out'],[950,0,'in']],'p.hop':[[450,0],[700,.5,'out'],[950,0,'in']],'p.wag':[[0,0],[450,0],[500,1],[1650,0,'out']],'p.ear':[[0,14],[450,14],[700,24,'out'],[1650,14,'io']],'p.headR':[[0,0],[1500,0],[1800,-8,'std']],
+   'card.x':[[0,40],[900,40],[1600,0,'std']],'card.r':[[0,6],[900,6],[1600,0,'std']]},
+   beats:[[0,300,'Complete','The ring closes; Nas grows to 160 dp and the bloom opens.'],[300,450,'Anticipate','A small squash.'],[450,950,'Proud fetch · Signature','Half a hop, ears up, and a 7 Hz wag that decays over 1.2 s. Haptic tick at 0.70 s.'],[900,1600,'Present','The card slides in from behind-right as if nudged up by his nose. Haptic confirm at 1.50 s.'],[1500,2300,'Title writes','Nas tilts his head at the card while the title writes in.'],[2100,2900,'Words','The headline, the line, then the actions.'],[2700,3600,'Settle','He sits, head still tilted. One blink, then still.']]},
+ wren:{tr:{'p.wing':[[0,0],[450,-20],[600,-55,'out'],[750,-28],[900,-55,'out'],[1050,-28],[1300,-8],[2400,-8],[2550,-55,'out'],[2700,-20],[2850,-55,'out'],[3000,-6,'out']],'p.tail':[[0,0],[450,12,'out']],
+   'c.x':[[0,0],[2400,0],[3000,100,'std']],'c.y':[[0,0],[1000,0],[1600,60,'std'],[2400,60],[3000,-224,'std']],'wd.y':[[0,-92]],'c.s':[[0,.6],[500,1,'spring'],[1000,1],[1600,.72,'std'],[2400,.72],[3000,.45,'std']],
+   'p.by':[[450,0],[700,-12,'out'],[950,0,'in'],[2400,0],[2700,-6,'out'],[3000,0,'in']]},
+   beats:[[0,300,'Complete','The ring closes; Wren grows to 160 dp.'],[300,450,'Anticipate','A small squash.'],[450,1300,'Flutter-lift · Signature','Two wing flaps carry the card up. Haptic tick at 0.70 s.'],[900,1600,'Present','The card rises from behind Wren. Haptic confirm at 1.50 s.'],[1500,2300,'Title writes','The title writes in word by word.'],[2100,2900,'Words','The headline, the line, then the actions.'],[2400,3000,'Perch','Wren flies up and perches on the card’s top corner at 45% size. Still after 3.6 s.']]},
+ folio:{tr:{'c.o':[[0,1],[900,1],[1200,0,'in']],'c.s':[[0,.6],[500,1,'spring'],[900,1],[1200,1.4,'in']],'c.y':[[0,0]],
+   'card.s':[[0,.4],[900,.4],[1400,1.03,'out'],[1600,1,'std']],'wd.y':[[0,-92]],
+   'm.o':[[0,0],[2500,0],[2800,1,'out']],'m.s':[[0,0],[2500,0],[2800,.4,'back']],'m.F':[[0,12],[2500,12],[2650,16],[2800,12],[2950,15],[3100,12]],'m.blink':[[0,0],[3050,0],[3120,1],[3190,0]]},
+   beats:[[0,300,'Complete','The ring closes; Page grows to 160 dp.'],[300,450,'Anticipate','A small squash.'],[450,950,'Hop · Signature','The fold flicks and the hop lifts. Haptic tick at 0.70 s.'],[900,1600,'Become the note','Page grows and dissolves into the card; its three lines are the card’s key-point lines. Haptic confirm at 1.50 s.'],[1500,2300,'Title writes','The title writes in word by word.'],[2100,2900,'Words','The headline, the line, then the actions.'],[2500,3600,'Mini Page','A mini Page pops at the card’s corner, flicks its fold and winks. Then still.']]}
+};
+var FK_QUIET={tr:{'spk.p':[[0,0]],'halo.o':[[0,0]],'p.by':[[0,0]],'p.hop':[[0,0]],'p.wag':[[0,0]],
+  'p.sy':[[300,1],[450,.97,'in'],[800,1.02,'out'],[1100,1,'io']],'p.sx':[[300,1],[450,1.015],[800,.99],[1100,1]],
+  'p.state':[[0,'thinking'],[200,'peaceful'],[1100,'idle']],'p.eye':[[0,'open'],[200,'closed'],[1100,'happy'],[2700,'open']],
+  'glint.o':[[0,0],[1500,0],[1800,1,'out'],[2300,0,'io']]},
+  hap:[],
+  beats:[[0,300,'Complete','The ring closes. Zuri grows to 160 dp and a warm bloom opens.'],[300,450,'Breathe in','A barely-there squash. No hop in Faith.'],[450,1100,'Glow · Signature','Eyes close, the warm light gathers, then the eyes open, glad. No sparkles, no haptics.'],[900,1600,'Present','The note rises slowly from behind (×1.15 time, ×0.7 amplitude).'],[1500,2300,'Title writes','The title writes in. One gold glint at the card’s corner.'],[2100,2900,'Words','The headline, the line, then the actions.'],[2700,3600,'Settle','Still.']]};
+var FK_QUIET_FORM={wren:{tr:{'wd.y':[[0,0]],'c.x':[[0,0]],'c.y':[[0,0],[1000,0],[1600,60,'std']],'c.s':[[0,.6],[500,1,'spring'],[1000,1],[1600,.72,'std']],'p.wing':[[0,-6]]}},nas:{tr:{'p.ear':[[0,12],[1100,16,'out']]}}};
+
+var fk={screen:document.getElementById('fkScreen'),bloom:document.getElementById('fkBloom'),halo:document.getElementById('fkHalo'),ring:document.getElementById('fkRing'),arc:document.getElementById('fkRingArc'),cap:document.getElementById('fkCap'),proc:document.getElementById('fkProc'),card:document.getElementById('fkCard'),meta:document.getElementById('fkMeta'),title:document.getElementById('fkTitle'),pts:document.getElementById('fkPts'),spark:document.getElementById('fkSpark'),glint:document.getElementById('fkGlint'),words:document.getElementById('fkWords'),hl:document.getElementById('fkHl'),sub:document.getElementById('fkSub'),z:document.getElementById('fkZ'),act:document.getElementById('fkAct'),sr:document.getElementById('fkSR')};
+fk.charSvg=mkSvg(document.getElementById('fkChar'),160);fk.miniSvg=mkSvg(document.getElementById('fkMini'),160);
+var ARC=2*Math.PI*68;fk.arc.setAttribute('stroke-dasharray',R(ARC));
+function fkContent(){
+  var c=CONTENT[S.space];fk.meta.textContent=c.meta;
+  fk.title.innerHTML=c.title.split(' ').map(function(w){return '<span class="w">'+w+'</span>';}).join(' ');fk.words_=fk.title.querySelectorAll('.w');
+  fk.pts.innerHTML=c.pts.map(function(x,i){return '<li><span class="sk" style="width:'+[150,120,96][i]+'px"></span><span class="tx">'+x+'</span></li>';}).join('');
+  fk.sk=fk.pts.querySelectorAll('.sk');fk.tx=fk.pts.querySelectorAll('.tx');
+  var nm=(S.name||'').trim();
+  fk.hl.textContent=nm&&S.space!=='faith'?nm+', your first note is ready.':(nm&&S.space==='faith'?nm+', your first sermon notes are ready.':c.hl);
+  fk.sub.textContent=c.sub;fk.z.textContent=c.z?c.z.replace('I kept','I kept'):'';
+  document.getElementById('fkProcT').textContent=c.title;
+  fk.sr.innerHTML='<b>Screen reader hears, once:</b> “'+(nm?nm+', y':'Y')+'our first '+(S.space==='faith'?'sermon notes are':'note is')+' ready. '+c.title+'.”';
+  var dark=isDark(),a=dark?S.accent.d:S.accent.l;
+  fk.screen.style.setProperty('--bloom',S.space==='faith'?rgba(mix(a,'#E0B25A',.55),dark?.42:.34):rgba(a,dark?.34:.2));
+  fk.glint.innerHTML=sparkle(10,10,8,pal(S.accent,dark).gold,1);
+}
+function fkSpec(){
+  var sp=build(FK,FK_FORMS[S.form]);
+  if(S.space==='faith'){sp=build(sp,FK_QUIET,FK_QUIET_FORM[S.form]);}
+  sp.extra={sparkles:S.space==='work'?4:6,bars:S.space==='study'};
+  return scaleSpec(sp,SPACE_TS[S.space]);
+}
+function fkRender(t,sp,playing){
+  var k=SPACE_TS[S.space],tl=t/k;var g=V(sp,t),rmEnd=S.rm;
+  fk.arc.setAttribute('stroke-dashoffset',R(ARC*(1-g('ring.p',1))));fk.ring.style.opacity=g('ring.o',0);
+  fk.cap.style.opacity=g('cap.o',0);fk.proc.style.opacity=g('proc.o',0);
+  fk.bloom.style.transform='scale('+R(g('bloom.s',1))+')';fk.bloom.style.opacity=g('bloom.o',.3);
+  fk.halo.style.transform='scale('+R(g('halo.s',1))+')';fk.halo.style.opacity=g('halo.o',0);
+  fk.card.style.opacity=g('card.o',1);
+  fk.card.style.transform='translate('+R(g('card.x',0))+'px,'+R(g('card.y',0))+'px) scale('+R(g('card.s',1))+') rotate('+R(g('card.r',0))+'deg)';
+  var tp=g('title.p',1),n=fk.words_.length;
+  for(var i=0;i<n;i++){var w=fk.words_[i],q=Math.min(n,8),idx=Math.min(i,q-1),o=clamp(tp*q-idx,0,1);w.style.opacity=o;w.style.transform='translateY('+R(6*(1-o))+'px)';}
+  var pp=g('pts.p',1);for(var j=0;j<fk.sk.length;j++){fk.sk[j].style.opacity=1-pp;fk.tx[j].style.opacity=pp;}
+  fk.hl.style.opacity=g('hl.o',1);fk.hl.style.transform='translateY('+R(g('hl.y',0))+'px)';
+  var wy=g('wd.y',0);fk.words.style.transform='translateY('+wy+'px)';fk.act.style.transform='translateY('+wy+'px)';fk.sub.style.opacity=g('sub.o',1);fk.z.style.opacity=g('sub.o',1);fk.act.style.opacity=g('act.o',1);
+  /* character */
+  var cx=g('c.x',0),cy=g('c.y',0),cs=g('c.s',1),co=g('c.o',1);
+  var ch=fk.charSvg.parentNode;ch.style.transform='translate('+R(cx)+'px,'+R(cy)+'px) scale('+R(cs)+')';ch.style.opacity=co;
+  var p;
+  if(rmEnd){p=pose(S.space==='faith'?'peaceful':'celebrating',0,.5,true);if(S.space==='faith'){p.eye='happy';}if(S.form==='nas'&&sp.tr['p.headR'])p.headR=-8;}
+  else{p=mpose(g,tl/1000,S.form);}
+  drawChar(fk.charSvg,S.form,p,{noHalo:true});
+  /* mini Page */
+  var mini=fk.miniSvg.parentNode,mo=g('m.o',0);
+  if(sp.tr['m.o']&&mo>0){mini.style.display='block';mini.style.opacity=mo;mini.style.transform='translate(108px,-30px) scale('+R(g('m.s',.4))+')';
+    var mp=pose('idle',tl/1000,.5,rmEnd);mp.F=g('m.F',12);mp.blink=g('m.blink',0);if(rmEnd){mp.blink=0;}drawChar(fk.miniSvg,'folio',mp);}
+  else mini.style.display='none';
+  /* sparkles */
+  var sk=g('spk.p',0),s='';
+  if(sk>0&&sk<1&&!rmEnd){var N=sp.extra.sparkles||6,P=pal(S.accent,isDark()),ccy=300+cy;
+    for(var m=0;m<N;m++){var a=-Math.PI/2+m*(TAU/N)+.35,r=30+90*sk,sc=Math.sin(Math.PI*clamp(sk*1.15,0,1)),x=150+Math.cos(a)*r,y=ccy+Math.sin(a)*r*.92,size=[9,7,6,8,6.5,7][m%6]*sc;
+      if(sp.extra.bars){var col=m%2?P.gold:P.spark;s+='<g transform="translate('+R(x)+' '+R(y)+') rotate('+R(sk*90)+') scale('+R(sc)+')" opacity="'+R(1-sk*.6)+'">'+[-5,0,5].map(function(dx,b){var h=[6,10,6][b];return el('rect',{x:dx-1.6,y:-h/2,width:3.2,height:h,rx:1.6,fill:col});}).join('')+'</g>';}
+      else s+='<g transform="rotate('+R(sk*90)+' '+R(x)+' '+R(y)+')">'+sparkle(x,y,size,m%2?P.gold:P.spark,1-sk*.5)+'</g>';}}
+  fk.spark.innerHTML=s;
+  /* glint (quiet Faith) */
+  var go=g('glint.o',0);fk.glint.style.opacity=go;fk.glint.style.left='250px';fk.glint.style.top='86px';
+}
+fkContent();
+var fkPlayer=new Player({id:'fk',screen:fk.screen,beats:document.getElementById('fkBeats'),spec:fkSpec,render:fkRender,toast:document.getElementById('fkToast'),skipText:'Skipped to the end state. A tap on Open note would also open the note.'});
+autoplayWhenVisible(fkPlayer,fk.screen);
+document.getElementById('nameIn').addEventListener('input',function(e){S.name=e.target.value;fkContent();fkPlayer.draw();});
+
+/* =================== MOMENT 2: Unveil =================== */
+var ORDER=['lift','inkline','curtain','dawn','plant'];
+var VNAME={lift:'Lift',inkline:'Inkline',curtain:'Curtain',dawn:'Dawn',plant:'Plant'};
+var VIDEA={lift:'Zuri lifts the note out from behind itself.',inkline:'The title writes itself.',curtain:'A soft curtain of the accent parts.',dawn:'A warm light rises behind the title.',plant:'The sprout plants the note on the page.'};
+var VENERGY={lift:'playful',inkline:'crisp',curtain:'crisp',dawn:'gentle',plant:'playful'};
+var WEIGHTS={everyday:{lift:3,inkline:2,curtain:2,dawn:2,plant:2},faith:{lift:0,inkline:2,curtain:1,dawn:4,plant:0},work:{lift:1,inkline:4,curtain:3,dawn:1,plant:0},study:{lift:3,inkline:2,curtain:1,dawn:1,plant:4}};
+var UV={
+ lift:{dur:1500,
+  beats:[[0,150,'Arrive','Zuri appears over the header, which waits hidden behind it.'],[150,300,'Anticipate','A small squash.'],[300,700,'Lift · Signature','Zuri hops and the header rises out from behind it (back easing). Zuri’s sprout stretches like arms lifting.'],[700,900,'Land','Squash and settle. Haptic tick at 0.70 s.'],[900,1300,'Step back','Zuri slides up into the top bar and fades. The note is the hero.'],[600,1300,'Body','Sections fade up 8 dp, 70 ms apart.']],
+  hap:[[700,'tick']],
+  tr:{'z.x':[[0,150],[900,150],[1300,232,'in']],'z.y':[[0,130],[900,130],[1300,52,'in']],'z.s':[[0,.53],[150,.89,'out'],[900,.89],[1300,.45,'in']],'z.o':[[0,0],[150,1,'out'],[1100,1],[1300,0]],
+   'p.state':[[0,'idle'],[300,'celebrating'],[1300,'idle']],
+   'p.sy':[[150,1],[300,.93,'in'],[500,1.05,'out'],[700,1,'in'],[760,.92,'out'],[900,1,'spring']],
+   'p.sx':[[150,1],[300,1.04,'in'],[500,.97,'out'],[700,1,'in'],[760,1.08,'out'],[900,1,'spring']],
+   'p.by':[[300,0],[500,-10,'out'],[700,0,'in']],'p.hop':[[300,0],[500,1,'out'],[700,0,'in']],'p.hsK':[[300,1],[500,1.33,'out'],[900,1]],
+   'head.o':[[0,0],[300,0],[500,1,'out']],'head.y':[[0,16],[300,16],[700,-4,'back'],[900,0,'std']],'head.s':[[0,.85],[300,.85],[700,1.02,'back'],[900,1,'std']],
+   'body.p':[[0,0],[600,0],[1300,1,'out']]},
+  forms:{nas:{tr:{'p.by':[[300,0],[500,-5,'out'],[700,0,'in']],'p.headR':[[0,0],[300,0],[500,-10,'out'],[900,0]],'p.wag':[[0,0],[600,0],[650,1],[1300,0,'out']]}},
+         wren:{tr:{'p.wing':[[0,0],[300,0],[500,-45,'out'],[900,-10]]}},
+         folio:{tr:{'p.F':[[0,12],[300,12],[450,17,'out'],[650,12]]}}}},
+ inkline:{dur:1400,
+  beats:[[0,150,'Arrive','Zuri appears in the top bar, looking down at the empty title.'],[150,950,'Write · Signature','The title writes word by word behind an accent caret, and Zuri’s gaze follows it. Each form keeps time differently: the sprout ticks, the ears twitch, the head bobs, Page writes.'],[950,1150,'Underline','An accent underline draws and Zuri nods. Haptic tick at 1.00 s.'],[1150,1400,'Clear','The underline fades and Zuri leaves.'],[700,1300,'Body','Sections fade up.']],
+  hap:[[1000,'tick']],
+  tr:{'z.x':[[0,206]],'z.y':[[0,52]],'z.s':[[0,.5],[150,.67,'out']],'z.o':[[0,0],[150,1,'out'],[1150,1],[1400,0]],
+   'p.state':[[0,'idle']],'p.lookX':[[0,-1.2],[150,-1.2],[950,1.2,'lin'],[1150,0]],'p.lookY':[[0,1.4]],'p.by':[[0,0],[950,0],[1050,3,'out'],[1150,0,'in']],'p.sy':[[950,1],[1050,.97],[1150,1]],
+   'tw.p':[[0,0],[150,0],[950,1,'lin']],'caret.o':[[0,0],[150,1],[950,1],[1000,0]],'ul.p':[[0,0],[950,0],[1150,1,'std']],'ul.o':[[0,0],[950,1],[1150,1],[1400,0]],
+   'body.p':[[0,0],[700,0],[1300,1,'out']]},
+  extra:{tick:true},
+  forms:{folio:{tr:{'p.state':[[0,'thinking'],[950,'idle']]}}}},
+ curtain:{dur:1500,
+  beats:[[0,200,'Cover','A soft accent curtain covers the header and Zuri pops in at the seam.'],[200,400,'Grip · Signature','Zuri squashes and looks down, gripping the seam (sprout tugs, Nas tugs, Wren’s wing opens like a fan, Page’s fold flips).'],[400,1000,'Part','The halves slide apart and fade, and Zuri rides the end half out. Haptic tick at 0.70 s.'],[1000,1500,'Settle','The header settles to full size.'],[800,1400,'Body','Sections fade up.']],
+  hap:[[700,'tick']],
+  tr:{'cur.p':[[0,0],[400,0],[1000,1,'std']],
+   'z.x':[[0,150],[400,150],[1000,214,'std']],'z.y':[[0,140]],'z.s':[[0,.47],[200,.78,'out']],'z.o':[[0,0],[120,1],[900,1],[1150,0]],
+   'p.state':[[0,'idle'],[400,'celebrating']],'p.sy':[[200,1],[400,.92,'in'],[560,1,'spring']],'p.sx':[[200,1],[400,1.05,'in'],[560,1,'spring']],'p.lookY':[[200,0],[400,1.5],[700,0]],'p.lean':[[0,0],[200,0],[400,-14,'out'],[700,10,'std'],[1000,0]],'p.rot':[[400,0],[700,8],[1000,0]],
+   'head.o':[[0,0],[400,0],[900,1,'out']],'head.s':[[0,.98],[400,.98],[1000,1,'std']],
+   'body.p':[[0,0],[800,0],[1400,1,'out']]},
+  forms:{nas:{tr:{'p.headR':[[0,0],[200,0],[400,-12,'out'],[700,0]],'p.ear':[[0,12],[200,12],[400,4],[800,12]]}},wren:{tr:{'p.wing':[[0,0],[200,0],[400,-35],[800,-62,'out'],[1100,0]]}},folio:{tr:{'p.F':[[0,12],[200,12],[400,19,'out'],[700,12]]}}}},
+ dawn:{dur:1500,
+  beats:[[0,300,'Glow','A warm light rises from below the header.'],[300,900,'Rise · Signature','The title fades up through the light. Zuri wakes, its eyes opening at 0.70 s.'],[900,1200,'Nod','One soft dip and a single gold glint.'],[1200,1500,'Fade','The light recedes and Zuri leaves. No haptic.'],[700,1300,'Body','Sections fade up.']],
+  hap:[],
+  tr:{'glow.o':[[0,0],[300,.9,'out'],[900,.9],[1500,0,'io']],'glow.y':[[0,24],[300,0,'out']],
+   'head.o':[[0,0],[300,0],[900,1,'out']],'head.y':[[0,6],[300,6],[900,0,'out']],'head.b':[[0,4],[300,4],[900,0,'out']],
+   'z.x':[[0,206]],'z.y':[[0,52]],'z.s':[[0,.67]],'z.o':[[0,0],[300,1,'out'],[1200,1],[1500,0]],
+   'p.state':[[0,'idle']],'p.eye':[[0,'closed'],[700,'open']],'p.by':[[0,0],[900,0],[1050,3,'out'],[1200,0,'in']],'p.sy':[[900,1],[1050,.97],[1200,1]],'p.hsK':[[0,.9],[300,.9],[900,1.15,'out'],[1500,1]],
+   'glint.o':[[0,0],[900,0],[1050,1,'out'],[1300,0,'in']],
+   'body.p':[[0,0],[700,0],[1300,1,'out']]},
+  forms:{nas:{tr:{'p.ear':[[0,6],[300,6],[900,18,'out']]}},wren:{tr:{'p.headR':[[0,8],[300,8],[900,-6,'out']],'p.tail':[[0,-6],[300,-6],[900,10,'out']]}},folio:{tr:{'p.F':[[0,15],[300,15],[900,12,'out']]}}}},
+ plant:{dur:1600,
+  beats:[[0,400,'Drop','Zuri drops from the top bar onto the title line.'],[400,450,'Plant · Signature','Impact: a squash and a ripple. Haptic tick at 0.40 s.'],[450,900,'Grow','The title grows up from its baseline and three tiny sprout bars pop.'],[600,750,'Pat','A second, smaller pat.'],[1050,1450,'Hop away','Zuri hops off to the side and fades.'],[800,1400,'Body','Sections fade up.']],
+  hap:[[400,'tick']],
+  tr:{'z.x':[[0,150],[1050,150],[1450,244,'in']],'z.y':[[0,52],[400,110,'in'],[1050,110],[1250,84,'out'],[1450,64,'in']],'z.s':[[0,.78]],'z.o':[[0,0],[100,1],[1300,1],[1450,0]],
+   'p.state':[[0,'idle'],[400,'celebrating'],[1450,'idle']],
+   'p.sy':[[0,1.06],[400,1.06],[440,.9,'out'],[560,1,'spring'],[600,1],[650,.95,'out'],[750,1,'spring']],
+   'p.sx':[[0,.97],[400,.97],[440,1.1,'out'],[560,1,'spring'],[600,1],[650,1.04,'out'],[750,1,'spring']],
+   'p.by':[[0,0],[1050,0],[1250,-8,'out'],[1450,0,'in']],
+   'rip.p':[[0,0],[400,0],[1000,1,'out']],'spr.p':[[0,0],[450,0],[800,1,'back'],[1000,1],[1200,0,'in']],
+   'head.o':[[0,0],[450,0],[700,1,'out']],'head.sy':[[0,.6],[450,.6],[800,1.04,'back'],[900,1,'std']],
+   'body.p':[[0,0],[800,0],[1400,1,'out']]},
+  forms:{nas:{tr:{'p.wag':[[0,0],[400,1],[900,0,'out']]}},wren:{tr:{'p.wing':[[0,0],[400,-40],[550,0],[650,-40],[800,0]]}},folio:{tr:{'p.F':[[0,12],[400,19],[700,12,'out']]}}}}
+};
+var NOD={dur:600,beats:[[0,250,'Header','The header fades up 8 dp (standard 250 ms).'],[100,500,'Body','Sections fade up.'],[150,450,'Nod','Zuri, small in the top bar, dips 3 units. No sparkles, no haptic.'],[450,600,'Out','Zuri fades.']],hap:[],
+ tr:{'head.o':[[0,0],[250,1,'std']],'head.y':[[0,8],[250,0,'std']],'body.p':[[0,0],[100,0],[500,1,'out']],'z.x':[[0,212]],'z.y':[[0,52]],'z.s':[[0,.56]],'z.o':[[0,0],[120,1],[450,1],[600,0]],'p.state':[[0,'celebrating']],'p.by':[[0,0],[150,0],[300,3,'out'],[450,0,'in']],'p.sy':[[150,1],[300,.97],[450,1]]}};
+var RETRY_PRE={dur:1100,beats:[[0,1000,'Retry','Thinking again with real stages. Worried is gone; the fix was tapped.']],hap:[],tr:{'scene':[[0,'proc']],'pz':[[0,'thinking']]}};
+var BG_PRE={dur:1200,beats:[[0,350,'Notification','Processing finished in the background: the neutral glyph, never a character drawing.'],[850,1150,'Tap','The user opens it. The note screen loads and the planned moment plays once (the ticket).']],hap:[],tr:{'scene':[[0,'home']],'nt.y':[[0,-90],[350,0,'out']],'tap.o':[[0,0],[850,0],[900,.35],[1150,0]],'tap.s':[[0,.3],[850,.3],[1150,1.6,'out']]}};
+var CASES=[{k:'unveil',n:'Unveil'},{k:'nod',n:'Nod'},{k:'sermon',n:'Sermon'},{k:'bg',n:'Background'},{k:'fail',n:'Failed'}];
+var CASE_LINE={unveil:'The first note today with budget left (2 a day, ≥ 3 h apart) gets the rotation’s next variant.',
+  nod:'The 3rd note today, back-to-back recordings, battery saver, a low-end phone or a recording under 20 s: a 0.6 s nod.',
+  sermon:'A sermon is calm: Dawn, quiet. No hop, no glint, no haptic, eyes closed, then a soft nod. It doesn’t advance the rotation.',
+  bg:'Processing finished while the app was in the background: the glyph notification, then the moment plays the first time the note is opened.',
+  fail:'Never celebrate a failure. Worried with a fix. Tap Retry in the phone: Thinking, then a nod (never the full unveil).'};
+var U={variant:'lift',kase:'unveil',rot:{cw:{},last:null,seen:{},hist:[]}};
+function nextVariant(st,space){
+  var W=WEIGHTS[space],total=0,cw=st.cw[space]||(st.cw[space]={});
+  ORDER.forEach(function(v){if(W[v]>0){cw[v]=(cw[v]||0)+W[v];total+=W[v];}});
+  var cands=ORDER.filter(function(v){return W[v]>0;}).sort(function(a,b){return (cw[b]-cw[a])||(ORDER.indexOf(a)-ORDER.indexOf(b));});
+  var pick=cands.filter(function(v){return v!==st.last;})[0]||cands[0];
+  cw[pick]-=total;st.last=pick;st.seen[pick]=(st.seen[pick]||0)+1;st.hist.push({v:pick,s:space});return pick;
+}
+function famK(v){var n=U.rot.seen[v]||0;return n>=25?.8:(n>=8?.9:1);}
+var uv={screen:document.getElementById('uvScreen'),note:document.getElementById('uvNote'),proc:document.getElementById('uvProc'),home:document.getElementById('uvHome'),head:document.getElementById('uvHead'),meta:document.getElementById('uvMeta'),title:document.getElementById('uvTitle'),chips:document.getElementById('uvChips'),caret:document.getElementById('uvCaret'),ul:document.getElementById('uvUl'),glint:document.getElementById('uvGlint'),cur:document.getElementById('uvCur'),glow:document.getElementById('uvGlow'),body:document.getElementById('uvBody'),fx:document.getElementById('uvFx'),notif:document.getElementById('uvNotif'),notifT:document.getElementById('uvNotifT'),tap:document.getElementById('uvTap'),status:document.getElementById('uvStatus'),pcap:document.getElementById('uvPCap'),pring:document.getElementById('uvPRing'),sr:document.getElementById('uvSR')};
+uv.zSvg=mkSvg(document.getElementById('uvZ'),72);uv.pzSvg=mkSvg(document.getElementById('uvPZ'),96);uv.szSvg=mkSvg(document.getElementById('uvSZ'),32);
+uv.curL=uv.cur.querySelector('.l');uv.curR=uv.cur.querySelector('.r');
+function uvSpace(){return U.kase==='sermon'?'faith':S.space;}
+function uvContent(){
+  var c=CONTENT[uvSpace()];uv.meta.textContent=c.meta;
+  uv.title.innerHTML=c.title.split(' ').map(function(w){return '<span class="w">'+w+'</span>';}).join(' ');uv.words=uv.title.querySelectorAll('.w');
+  uv.chips.innerHTML=c.chips.map(function(x){return '<span'+(x==='On your phone'?' class="loc"':'')+'>'+x+'</span>';}).join('');
+  uv.body.innerHTML='<div class="u-sec"><h6>Summary</h6><p>'+c.summary+'</p></div><div class="u-sec"><h6>Key points</h6><ul>'+c.pts.map(function(x){return '<li>'+x+'</li>';}).join('')+'</ul></div><div class="u-sec"><h6>Action items</h6><ul>'+c.acts.map(function(x){return '<li class="ck">'+x+'</li>';}).join('')+'</ul></div>';
+  uv.secs=uv.body.querySelectorAll('.u-sec');
+  document.getElementById('uvProcT').textContent=c.title;
+  uv.notifT.textContent=U.kase==='sermon'?'Your sermon notes are ready 🙏':c.title+' is ready.';
+  var dark=isDark(),a=dark?S.accent.d:S.accent.l;
+  uv.screen.style.setProperty('--dawn',rgba(mix(a,'#E0B25A',.5),dark?.5:.42));
+  uv.glint.innerHTML=sparkle(10,10,8,pal(S.accent,dark).gold,1);
+  uv.sr.innerHTML=U.kase==='fail'?'<b>Screen reader hears:</b> “That one didn’t finish. Your recording is safe.” (the status line is the live region)':'<b>Screen reader hears, once:</b> “'+c.title+' is ready.”';
+}
+function uvSpec(){
+  var form=S.form,sp;
+  if(U.kase==='fail') return {dur:0,beats:[[0,0,'Failed','No moment. Worried, always with a fix (Retry). The recording is safe.']],hap:[],tr:{'scene':[[0,'fail']]},extra:{}};
+  if(U.kase==='nod') return build(NOD);
+  if(U.kase==='retry') return compose(RETRY_PRE,build(NOD),1100);
+  if(U.kase==='sermon'){var d=UV.dawn;sp=build(d,d.forms[form],{tr:{'p.state':[[0,'peaceful']],'p.eye':[[0,'closed']],'glint.o':[[0,0]]},beats:[[0,300,'Glow','A warm light rises behind the header.'],[300,900,'Rise','The title fades up through the light. Eyes stay closed (Peaceful).'],[900,1200,'Soft nod','One gentle dip. No glint, no hop, no haptic.'],[1200,1500,'Fade','The light recedes and Zuri leaves.'],[700,1300,'Body','Sections fade up.']]});return scaleSpec(sp,1.15);}
+  var v=UV[U.variant];sp=build(v,v.forms&&v.forms[form]);
+  var k=SPACE_TS[S.space]*famK(U.variant),d2=v.dur*k;if(d2<1200)k=1200/v.dur;if(d2>1800)k=1800/v.dur;
+  sp=scaleSpec(sp,k);
+  if(U.kase==='bg') return compose(BG_PRE,sp,1200);
+  return sp;
+}
+function uvRender(t,sp,playing){
+  var g=V(sp,t),sc=g('scene','note');
+  uv.note.style.display=sc==='note'?'block':'none';uv.proc.style.display=(sc==='proc'||sc==='fail')?'block':'none';uv.home.style.display=sc==='home'?'block':'none';
+  if(sc==='proc'||sc==='fail'){
+    var f=sc==='fail';uv.status.style.display=f?'flex':'none';uv.pcap.style.display=f?'none':'block';uv.pring.style.opacity=f?.25:1;
+    var pz=f?pose('worried',S.rm?0:performance.now()/1000,.5,S.rm):pose('thinking',t/1000,.5,S.rm);drawChar(uv.pzSvg,S.form,pz);
+    if(f)drawChar(uv.szSvg,S.form,pose('worried',0,.5,true));
+    return;
+  }
+  if(sc==='home'){uv.notif.style.transform='translateY('+R(g('nt.y',0))+'px)';uv.tap.style.left='150px';uv.tap.style.top='62px';uv.tap.style.opacity=g('tap.o',0);uv.tap.style.transform='scale('+R(g('tap.s',1))+')';return;}
+  /* header */
+  var ho=g('head.o',1),hy=g('head.y',0),hs=g('head.s',1),hsy=g('head.sy',1),hb=g('head.b',0);
+  uv.head.style.opacity=ho;uv.head.style.transform='translateY('+R(hy)+'px) scale('+R(hs)+','+R(hs*hsy)+')';uv.head.style.filter=hb>.05?'blur('+R(hb)+'px)':'none';
+  var tp=g('tw.p',1),n=uv.words.length,q=Math.min(n,8),lastVis=-1;
+  for(var i=0;i<n;i++){var idx=Math.min(i,q-1),o=clamp(tp*q-idx,0,1);uv.words[i].style.opacity=o;uv.words[i].style.transform='translateY('+R(4*(1-o))+'px)';if(o>0)lastVis=i;}
+  var co=g('caret.o',0);uv.caret.style.opacity=co;
+  if(co>0){var w=uv.words[Math.max(0,lastVis)];var x=lastVis<0?0:w.offsetLeft+w.offsetWidth+3,y=lastVis<0?uv.title.offsetTop+3:w.offsetTop+uv.title.offsetTop+3;uv.caret.style.left=x+'px';uv.caret.style.top=y+'px';}
+  var ulp=g('ul.p',0);uv.ul.style.opacity=g('ul.o',0);uv.ul.style.left='0px';uv.ul.style.top=(uv.title.offsetTop+uv.title.offsetHeight+2)+'px';uv.ul.style.width=Math.min(uv.title.scrollWidth,260)+'px';uv.ul.style.transform='scaleX('+R(ulp)+')';
+  var gl=g('glint.o',0);uv.glint.style.opacity=gl;if(gl>0){var lw=uv.words[n-1];uv.glint.style.left=(lw.offsetLeft+lw.offsetWidth+2)+'px';uv.glint.style.top=(uv.title.offsetTop+lw.offsetTop-10)+'px';}
+  var cp=g('cur.p',1);uv.cur.style.display=cp>=1?'none':'block';uv.curL.style.transform='translateX('+R(-60*cp)+'%)';uv.curR.style.transform='translateX('+R(60*cp)+'%)';uv.curL.style.opacity=uv.curR.style.opacity=1-cp;
+  uv.glow.style.opacity=g('glow.o',0);uv.glow.style.transform='translateY('+R(g('glow.y',0))+'px)';
+  var bp=g('body.p',1);for(var s2=0;s2<uv.secs.length;s2++){var e=clamp(bp*1.6-s2*.3,0,1);uv.secs[s2].style.opacity=e;uv.secs[s2].style.transform='translateY('+R(8*(1-EASE.out(e)))+'px)';}
+  /* fx: ripple + sprouts */
+  var fxs='',rp=g('rip.p',0),P=pal(S.accent,isDark());
+  if(rp>0&&rp<1)fxs+=el('circle',{cx:150,cy:136,r:8+30*rp*3.2/3.2*2,fill:'none',stroke:P.a,'stroke-width':2,opacity:.45*(1-rp)});
+  var spp=g('spr.p',0);if(spp>0){[[112,140],[188,140],[150,152]].forEach(function(c,i){fxs+='<g transform="translate('+c[0]+' '+c[1]+') scale(1 '+R(spp)+')">'+[-4,0,4].map(function(dx,b){var h=[5,8,5][b];return el('rect',{x:dx-1.4,y:-h,width:2.8,height:h,rx:1.4,fill:i===1?P.gold:P.deep});}).join('')+'</g>';});}
+  uv.fx.innerHTML=fxs;
+  /* Zuri */
+  var zo=g('z.o',0),z=uv.zSvg.parentNode;z.style.opacity=zo;
+  if(zo>0){z.style.left=R(g('z.x',150))+'px';z.style.top=R(g('z.y',120))+'px';z.style.transform='scale('+R(g('z.s',1))+')';
+    var p=mpose(g,t/1000,S.form);
+    if(sp.extra&&sp.extra.tick&&tp>0&&tp<1){var kk=Math.abs(Math.sin(tp*q*Math.PI));if(S.form==='orb')p.hsK=1+.35*kk;if(S.form==='nas')p.ear=12+9*kk;if(S.form==='wren')p.headR=-6+10*kk;}
+    drawChar(uv.zSvg,S.form,p,{noHalo:false});}
+}
+uvContent();
+var uvPlayer=new Player({id:'uv',screen:uv.screen,beats:document.getElementById('uvBeats'),spec:uvSpec,render:uvRender,toast:document.getElementById('uvToast'),skipText:'Skipped to the end. The note was already there, underneath.'});
+document.getElementById('uvRetry').addEventListener('click',function(e){e.stopPropagation();U.kase='retry';syncCase();uvContent();uvPlayer.play(true);});
+function uvLabel(){
+  var v=U.variant,c=U.kase;
+  var lab=document.getElementById('uvLabel'),ml=document.getElementById('uvMetaLine');
+  if(c==='unveil'||c==='bg'){var k=SPACE_TS[S.space]*famK(v),d=clamp(UV[v].dur*k,1200,1800);
+    lab.textContent='Variant '+(ORDER.indexOf(v)+1)+' of 5 · '+VNAME[v];
+    ml.textContent=VIDEA[v]+' '+VENERGY[v].charAt(0).toUpperCase()+VENERGY[v].slice(1)+' · '+(d/1000).toFixed(2)+' s ('+SPACES.filter(function(s){return s.k===S.space;})[0].n+' ×'+SPACE_TS[S.space]+(famK(v)<1?', seen '+U.rot.seen[v]+'× → ×'+famK(v):'')+', clamped to 1.2–1.8 s).';}
+  else if(c==='nod'||c==='retry'){lab.textContent='The nod · 0.6 s';ml.textContent='The everyday default when the budget is spent or restraint applies.';}
+  else if(c==='sermon'){lab.textContent='Dawn, quiet · sermon';ml.textContent='Calm: a warm glow and a soft nod. Faith timing ×1.15.';}
+  else {lab.textContent='Failed · no moment';ml.textContent='Worried, only ever with a fix.';}
+  document.getElementById('uvCaseLine').textContent=CASE_LINE[c==='retry'?'fail':c];
+  /* variant chips */
+  var W=WEIGHTS[S.space];
+  Array.prototype.forEach.call(document.querySelectorAll('#uvVariants .chip'),function(b){var k=b.getAttribute('data-v');b.disabled=!W[k];b.title=W[k]?'':'Not offered in this space (no hops in Faith, no Plant in Work)';b.setAttribute('aria-pressed',(c==='unveil'||c==='bg')&&k===v);});
+  /* rotation strip */
+  var hist=U.rot.hist.slice(-6),sim=clone(U.rot),nexts=[];for(var i=0;i<10;i++)nexts.push(nextVariant(sim,S.space));
+  var html=hist.map(function(h,i){var now=i===hist.length-1;return '<span class="'+(now?'now':'past')+'" title="'+h.s+'">'+VNAME[h.v]+'</span>';}).join('')+nexts.map(function(v){return '<span class="next">'+VNAME[v]+'</span>';}).join('');
+  document.getElementById('uvRot').innerHTML=html;
+  /* weights */
+  var tb='<thead><tr><th>Space</th>'+ORDER.map(function(v){return '<th>'+VNAME[v]+'</th>';}).join('')+'</tr></thead><tbody>'+SPACES.map(function(s){return '<tr'+(s.k===S.space?' class="cur"':'')+'><td>'+s.n+'</td>'+ORDER.map(function(v){return '<td>'+(WEIGHTS[s.k][v]||'·')+'</td>';}).join('')+'</tr>';}).join('')+'</tbody>';
+  document.getElementById('uvWeights').innerHTML=tb;
+}
+document.getElementById('uvVariants').innerHTML=ORDER.map(function(v){return '<button type="button" class="chip" data-v="'+v+'" aria-pressed="false">'+VNAME[v]+'</button>';}).join('');
+document.getElementById('uvVariants').addEventListener('click',function(e){var b=e.target.closest('.chip');if(!b||b.disabled)return;U.variant=b.getAttribute('data-v');if(U.kase!=='bg')U.kase='unveil';syncCase();uvContent();uvLabel();uvPlayer.play(true);});
+document.getElementById('uvCase').innerHTML=CASES.map(function(c){return '<button type="button" data-c="'+c.k+'" role="radio" aria-checked="false">'+c.n+'</button>';}).join('');
+function syncCase(){Array.prototype.forEach.call(document.querySelectorAll('#uvCase button'),function(b){b.setAttribute('aria-checked',b.getAttribute('data-c')===(U.kase==='retry'?'fail':U.kase));});}
+document.getElementById('uvCase').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;U.kase=b.getAttribute('data-c');syncCase();uvContent();uvLabel();uvPlayer.refresh(U.kase==='fail');if(U.kase!=='fail')uvPlayer.play(true);});
+document.getElementById('uvNext').addEventListener('click',function(){if(U.kase!=='bg')U.kase='unveil';syncCase();U.variant=nextVariant(U.rot,S.space);uvContent();uvLabel();uvPlayer.play(true);});
+U.variant=nextVariant(U.rot,S.space);syncCase();
+autoplayWhenVisible(uvPlayer,uv.screen);
+
+/* =================== MOMENT 3: Card =================== */
+var CARDS={
+  quote:{n:'Quote',q:'“Be still, and know that I am God.”',src:'Psalm 46:10 · Sunday sermon, Grace Chapel',serif:true,bg:'gold',allowed:['prayerful','peaceful','grateful','reflective'],ai:'peaceful',note:'On scripture, Zuri stays calm: no Joyful or Celebratory.'},
+  request:{n:'Prayer request',q:'Please pray for my mum’s surgery on Thursday.',src:'Prayer request · Grace Circle',serif:false,bg:'gold',allowed:['prayerful','peaceful'],ai:'prayerful',note:'On prayer requests, only Prayerful or Peaceful. Your words stay exactly as you wrote them.'},
+  answered:{n:'Answered prayer',q:'Mum’s surgery went well. Thank you for praying with us.',src:'Answered prayer · Grace Circle',serif:false,bg:'gold',allowed:['prayerful','peaceful','grateful','joyful','reflective','celebratory'],ai:'grateful',note:''},
+  study:{n:'Study win',q:'All 120 Organic Chemistry flashcards done.',src:'Study win · Revise today',serif:false,bg:'accent',allowed:['prayerful','peaceful','grateful','joyful','reflective','celebratory'],ai:'celebratory',note:''}
+};
+var FMT={story:{n:'Story 9:16',w:1080,h:1920,safe:{t:.14,b:.18,s:.09},cs:.20,crop:0},square:{n:'Square 1:1',w:1080,h:1080,safe:{t:.09,b:.09,s:.09},cs:.18,crop:.125},portrait:{n:'Portrait 4:5',w:1080,h:1350,safe:{t:.08,b:.08,s:.09},cs:.19,crop:.031}};
+var C={content:'study',format:'story',include:false,mode:'celebratory',anchor:'below',safe:true,anim:'reveal'};
+var CARD_REVEAL={dur:1500,beats:[[0,150,'Mark','A dashed ring shows where Zuri will sit.'],[150,700,'Step on','Zuri rises 12 units and scales 0.88 → 1 (back easing; out easing on faith cards).'],[700,1300,'Signature','The mode’s own gesture, once: bob, heart, look-up, breath or hop.'],[1300,1500,'Settle to export','It lerps into the exact static pose that is exported. The caption appears.']],hap:[],
+  tr:{'ring.o':[[0,0],[150,.55],[700,0]],'cz.y':[[0,.12],[150,.12],[700,0,'back']],'cz.s':[[0,.88],[150,.88],[700,1,'back']],'cz.o':[[0,0],[150,0],[500,1,'out']],'cap.o':[[0,0],[1300,0],[1500,1]]},extra:{sig:[700,1300,1500]}};
+var CARD_PRAYER={dur:1500,beats:[[0,1500,'Fade in','Opacity only: no rise, no scale, no gesture. A slow breath, then still.']],hap:[],tr:{'cz.o':[[0,0],[1500,1,'io']],'cap.o':[[0,0],[1300,0],[1500,1]]},extra:{sig:[0,1300,1500]}};
+var CARD_SWAP={dur:600,beats:[[0,250,'Crossfade','The pose changes (250 ms).'],[0,450,'Signature','The new mode’s gesture, once.'],[450,600,'Settle','Back to the export pose.']],hap:[],tr:{'cz.o':[[0,.55],[250,1,'std']]},extra:{sig:[0,450,600]}};
+var ed={screen:document.getElementById('edScreen'),prev:document.getElementById('edPreview'),cap:document.getElementById('edCap'),inc:document.getElementById('edInc'),incLabel:document.getElementById('edIncLabel'),incSub:document.getElementById('edIncSub'),ai:document.getElementById('edAI'),modes:document.getElementById('edModes'),note:document.getElementById('edNote'),sr:document.getElementById('edSR'),toast:document.getElementById('edToast')};
+function cardBg(d){var a=S.accent.l;return d.bg==='gold'?'linear-gradient(160deg,#8A5A16 0%,#3B2A12 55%,#1A140C 100%)':'linear-gradient(160deg,'+mix(a,'#0C111B',.1)+' 0%,'+mix(a,'#0C111B',.58)+' 62%,#0C111B 100%)';}
+/* CompanionPlacement: the pure placement rule, in card units */
+function place(fmt,anchor,include){
+  var W=fmt.w,H=fmt.h,u=1,s=fmt.safe,left=W*s.s,right=W*(1-s.s),top=H*s.t,bottom=H*(1-s.b),foot=100*u;
+  var cs=include?Math.max(160,fmt.cs*W):0,r={safe:{l:left,r:right,t:top,b:bottom}};
+  if(anchor==='corner'&&include){
+    var edge=W*(1-Math.max(s.s,fmt.crop>.1?.13:s.s)),row=Math.max(foot,cs);
+    r.text={l:left,t:top,w:right-left,h:(bottom-top)-row-24};
+    r.comp={l:edge-cs,t:bottom-cs,s:cs};
+    r.foot={l:left,t:bottom-foot,w:(edge-cs-16)-left,h:foot,start:true};
+  } else {
+    r.text={l:left,t:top,w:right-left,h:(bottom-top)-foot-(include?cs+24:0)};
+    r.comp=include?{l:(W-cs)/2,t:bottom-foot-cs,s:cs}:null;
+    r.foot={l:left,t:bottom-foot,w:right-left,h:foot,start:false};
+  }
+  return r;
+}
+function layoutCard(host,maxW,maxH,opts){
+  var d=CARDS[C.content],fmt=FMT[C.format],k=Math.min(maxW/fmt.w,maxH/fmt.h),W=fmt.w*k,H=fmt.h*k;
+  var r=place(fmt,C.anchor,C.include),len=d.q.length,fs=(len<60?84:(len<120?68:54))*k;
+  var html='<div class="ccard" style="width:'+R(W)+'px;height:'+R(H)+'px;background:'+cardBg(d)+'">';
+  html+='<div class="ctext" style="left:'+R(r.text.l*k)+'px;top:'+R(r.text.t*k)+'px;width:'+R(r.text.w*k)+'px;height:'+R(r.text.h*k)+'px"><div class="q'+(d.serif?'':' sans')+'" style="font-size:'+R(fs)+'px;line-height:'+R(fs*1.24)+'px">'+d.q+'</div></div>';
+  html+='<div class="foot'+(r.foot.start?' start':'')+'" style="left:'+R(r.foot.l*k)+'px;top:'+R(r.foot.t*k)+'px;width:'+R(r.foot.w*k)+'px;height:'+R(r.foot.h*k)+'px;font-size:'+R(Math.max(28*k,6.5))+'px;line-height:1.25">'+d.src+'</div>';
+  if(r.comp){var cl=r.comp.l*k,ct=r.comp.t*k,cz=r.comp.s*k;
+    html+='<div class="ring" style="left:'+R(cl+cz*.08)+'px;top:'+R(ct+cz*.08)+'px;width:'+R(cz*.84)+'px;height:'+R(cz*.84)+'px;opacity:0"></div>';
+    html+='<div class="cz" style="left:'+R(cl)+'px;top:'+R(ct)+'px;width:'+R(cz)+'px;height:'+R(cz)+'px"></div>';}
+  if(opts.safe){
+    if(C.format==='story'){html+='<div class="band" style="top:0;height:'+R(H*fmt.safe.t)+'px">Status bar · progress · name</div><div class="band" style="bottom:0;height:'+R(H*fmt.safe.b)+'px">Reply bar</div>';}
+    else{html+='<div class="band" style="top:0;height:'+R(H*fmt.safe.t)+'px"></div><div class="band" style="bottom:0;height:'+R(H*fmt.safe.b)+'px"></div>';}
+    html+='<div class="sideband" style="left:0;width:'+R(W*fmt.safe.s)+'px"></div><div class="sideband" style="right:0;width:'+R(W*fmt.safe.s)+'px"></div>';
+    if(fmt.crop){html+='<div class="vband" style="left:'+R(W*fmt.crop)+'px"></div><div class="vband r" style="right:'+R(W*fmt.crop)+'px"></div><div class="vlab" style="top:'+R(H*.5-6)+'px">Profile grid crop 3:4</div>';}
+  }
+  html+='</div>';host.innerHTML=html;
+  var cz2=host.querySelector('.cz');return {cz:cz2?mkSvg(cz2,'100%'):null,ring:host.querySelector('.ring'),czBox:cz2};
+}
+function cardPose(t,sp){
+  var stat=pose(C.mode,0,.5,true);if(S.rm||t>=sp.dur)return stat;
+  var sig=sp.extra.sig,tp=t<sig[0]?0:(t-sig[0])/1000,anim=pose(C.mode,tp,.5,false);
+  if(t>sig[1])return lerpPose(anim,stat,EASE.std((t-sig[1])/(sig[2]-sig[1])));
+  return anim;
+}
+var edRefs=null;
+function edLayout(){edRefs=layoutCard(ed.prev,264,300,{safe:C.safe});renderExport();}
+function edSpec(){var d=CARDS[C.content];if(C.anim==='swap')return build(CARD_SWAP);return build(C.content==='request'?CARD_PRAYER:CARD_REVEAL);}
+function edRender(t,sp){
+  if(!edRefs||!edRefs.cz){ed.cap.style.opacity=0;return;}
+  var g=V(sp,t),box=edRefs.czBox,sz=box.offsetWidth;
+  var rO=g('ring.o',0);edRefs.ring.style.opacity=S.rm?0:rO;
+  box.style.opacity=S.rm?1:g('cz.o',1);box.style.transform='translateY('+R(g('cz.y',0)*sz)+'px) scale('+R(g('cz.s',1))+')';
+  drawChar(edRefs.cz,S.form,cardPose(t,sp),{noHalo:true});
+  ed.cap.style.opacity=g('cap.o',1);
+}
+function edUI(){
+  var d=CARDS[C.content],name=formName();
+  ed.incLabel.textContent='Include '+name;ed.inc.setAttribute('aria-checked',C.include);
+  ed.incSub.textContent=C.include?'Your choice. Off on every new card.':'Off unless you want it.';
+  if(d.allowed.indexOf(C.mode)<0){C.mode=d.ai;}
+  ed.modes.innerHTML=MODES.filter(function(m){return d.allowed.indexOf(m.k)>=0;}).map(function(m){return '<button type="button" class="chip" role="radio" data-m="'+m.k+'" aria-checked="'+(m.k===C.mode)+'" aria-pressed="'+(C.include&&m.k===C.mode)+'"'+(C.include?'':' disabled')+'>'+m.n+(m.k===d.ai?'<span class="sg">Suggested</span>':'')+'</button>';}).join('');
+  var aiN=MODES.filter(function(m){return m.k===d.ai;})[0].n,chosen=MODES.filter(function(m){return m.k===C.mode;})[0].n;
+  ed.ai.textContent=C.include?('Suggested: '+aiN+(C.mode!==d.ai?' · you chose '+chosen:'')+'. The suggestion only picks a pose; it never touches your words.'):'Switch it on to see the suggested pose.';
+  ed.note.textContent=d.note;
+  ed.cap.textContent=C.include?'This is how it’ll look when shared.':'';
+  Array.prototype.forEach.call(document.querySelectorAll('#edAnchor button'),function(b){b.setAttribute('aria-checked',b.getAttribute('data-a')===C.anchor);});
+  Array.prototype.forEach.call(document.querySelectorAll('#edContent button'),function(b){b.setAttribute('aria-checked',b.getAttribute('data-c')===C.content);});
+  Array.prototype.forEach.call(document.querySelectorAll('#edFormat button'),function(b){b.setAttribute('aria-checked',b.getAttribute('data-f')===C.format);});
+  document.getElementById('edSafe').setAttribute('aria-pressed',C.safe);
+  ed.sr.innerHTML=C.include?'<b>Screen reader hears:</b> “'+name+' added. '+chosen+' pose.”':'<b>Screen reader:</b> “Include '+name+', switch, off.”';
+}
+function renderExport(){
+  var host=document.getElementById('exViewer'),fmt=C.format,story=fmt==='story';
+  var inner=document.createElement('div');
+  var mw=200,mh=story?356:250;
+  var refs;var html='';
+  host.innerHTML='';
+  if(!story){var h=document.createElement('div');h.className='feedh';h.innerHTML='<i></i>you';host.appendChild(h);}
+  var vin=document.createElement('div');vin.className='vin';host.appendChild(vin);
+  refs=layoutCard(vin,mw,mh,{safe:C.safe&&!story});
+  if(refs.cz){var sp={dur:1,extra:{sig:[0,0,1]}};drawChar(refs.cz,S.form,pose(C.mode,0,.5,true),{noHalo:true});}
+  if(story){var tp=document.createElement('div');tp.className='vtop';tp.innerHTML='<div class="vbars"><i></i><i></i><i></i></div><div class="vwho"><i></i>Your story · now</div>';vin.appendChild(tp);
+    var bt=document.createElement('div');bt.className='vbot';bt.innerHTML='<span>Reply…</span><i></i>';vin.appendChild(bt);}
+  else{var a=document.createElement('div');a.className='feeda';a.innerHTML='<i></i><i></i><i></i>';host.appendChild(a);}
+  var d=CARDS[C.content],f=FMT[C.format];
+  document.getElementById('exCap').innerHTML='<b>'+f.n+'</b> · '+f.w+'×'+f.h+' px. '+(C.include?formName()+' is drawn into the bitmap by the Canvas renderer at '+Math.round(Math.max(160,f.cs*f.w))+' px (rendered at 2× and downsampled), in the static <b>'+MODES.filter(function(m){return m.k===C.mode;})[0].n+'</b> pose: exactly what the editor settled to.':'No companion on this card (the default).')+(story?' The story chrome (progress bar, name, reply field) falls in the safe zones, clear of the words and of '+formName()+'.':' Dashed lines show the 3:4 profile-grid crop.')+(C.content==='request'?' Prayer requests: static only, never an animated export.':'');
+}
+edUI();edLayout();
+var edPlayer=new Player({id:'ed',screen:null,beats:document.getElementById('edBeats'),spec:edSpec,render:edRender,beforePlay:function(){
+  if(!C._swap)C.anim='reveal';C._swap=false;
+  if(!C.include){C.include=true;edUI();edLayout();}}});
+function edReveal(kind){C.anim=kind;C._swap=(kind==='swap');edPlayer.play(true);}
+ed.inc.addEventListener('click',function(){C.include=!C.include;edUI();edLayout();if(C.include)edReveal('reveal');else edPlayer.refresh(true);});
+ed.modes.addEventListener('click',function(e){var b=e.target.closest('.chip');if(!b||b.disabled)return;C.mode=b.getAttribute('data-m');edUI();renderExport();edReveal('swap');});
+document.getElementById('edAnchor').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;C.anchor=b.getAttribute('data-a');edUI();edLayout();C.anim='reveal';edPlayer.refresh(true);});
+document.getElementById('edContent').innerHTML=Object.keys(CARDS).map(function(k){return '<button type="button" role="radio" data-c="'+k+'" aria-checked="false">'+CARDS[k].n+'</button>';}).join('');
+document.getElementById('edContent').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;C.content=b.getAttribute('data-c');C.mode=CARDS[C.content].ai;C.include=false;edUI();edLayout();C.anim='reveal';edPlayer.refresh(true);toast(ed.toast,'New card: '+formName()+' starts off, as on every card.');});
+document.getElementById('edFormat').innerHTML=Object.keys(FMT).map(function(k){return '<button type="button" role="radio" data-f="'+k+'" aria-checked="false">'+FMT[k].n+'</button>';}).join('');
+document.getElementById('edFormat').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;C.format=b.getAttribute('data-f');edUI();edLayout();if(C.include)edReveal('reveal');else edPlayer.refresh(true);});
+document.getElementById('edSafe').addEventListener('click',function(){C.safe=!C.safe;edUI();edLayout();edPlayer.refresh(true);});
+
+/* =================== controls =================== */
+document.getElementById('formSeg').innerHTML=FORMS.map(function(f){return '<button type="button" role="radio" data-f="'+f.k+'" aria-checked="'+(f.k===S.form)+'">'+f.n+'</button>';}).join('');
+document.getElementById('spaceSeg').innerHTML=SPACES.map(function(s){return '<button type="button" role="radio" data-s="'+s.k+'" aria-checked="'+(s.k===S.space)+'">'+s.n+'</button>';}).join('');
+document.getElementById('formSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;S.form=b.getAttribute('data-f');
+  Array.prototype.forEach.call(this.children,function(x){x.setAttribute('aria-checked',x===b);});all(true);});
+document.getElementById('spaceSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;S.space=b.getAttribute('data-s');
+  Array.prototype.forEach.call(this.children,function(x){x.setAttribute('aria-checked',x===b);});
+  if(!WEIGHTS[S.space][U.variant])U.variant=nextVariant(U.rot,S.space);
+  all(true);});
+var accRow=document.getElementById('accentRow');
+accRow.innerHTML=ACC.map(function(a){return '<button type="button" class="sw" data-acc="'+a.k+'" aria-label="'+a.n+'" title="'+a.n+'" aria-pressed="false"></button>';}).join('');
+accRow.addEventListener('click',function(e){var b=e.target.closest('.sw');if(!b)return;S.accent=ACC.filter(function(x){return x.k===b.getAttribute('data-acc');})[0];applyColors();all(false);});
+function paintSwatches(){var dark=isDark();Array.prototype.forEach.call(accRow.children,function(b){var a=ACC.filter(function(x){return x.k===b.getAttribute('data-acc');})[0];b.style.setProperty('--c',dark?a.d:a.l);b.setAttribute('aria-pressed',a===S.accent);});}
+function applyColors(){var dark=isDark(),a=dark?S.accent.d:S.accent.l,r=document.documentElement.style;r.setProperty('--accent',a);r.setProperty('--wash',rgba(a,dark?.15:.10));r.setProperty('--onAccent',dark?'#111113':'#FFFFFF');paintSwatches();}
+document.getElementById('themeSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;S.theme=b.getAttribute('data-theme-set');
+  if(S.theme==='auto')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',S.theme);
+  Array.prototype.forEach.call(this.children,function(x){x.setAttribute('aria-pressed',x===b);});applyColors();all(false);});
+if(mql&&mql.addEventListener)mql.addEventListener('change',function(){if(S.theme==='auto'){applyColors();all(false);}});
+var rmBtn=document.getElementById('rmToggle');
+function setRM(v){S.rm=v;rmBtn.setAttribute('aria-pressed',v);players.forEach(function(p){p.playing=false;p.t=p.sp?p.sp.dur:0;p.btn();});all(false);}
+rmBtn.addEventListener('click',function(){setRM(!S.rm);});
+if(rml&&rml.addEventListener)rml.addEventListener('change',function(){setRM(rml.matches);});
+function all(rebuild){fkContent();uvContent();uvLabel();edUI();edLayout();players.forEach(function(p){if(rebuild){p.refresh(!p.playing);}else{p.sp=p.o.spec();p.draw();}});}
+
+/* =================== loop =================== */
+function frame(now){for(var i=0;i<players.length;i++)players[i].tick(now);requestAnimationFrame(frame);}
+applyColors();setRM(S.rm);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

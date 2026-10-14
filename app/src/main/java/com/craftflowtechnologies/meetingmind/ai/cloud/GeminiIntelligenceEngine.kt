@@ -14,6 +14,7 @@ import com.craftflowtechnologies.meetingmind.core.model.MeetingSummary
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.Transcript
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
+import com.craftflowtechnologies.meetingmind.core.work.signalKinds
 import java.util.UUID
 
 /**
@@ -87,7 +88,8 @@ class GeminiIntelligenceEngine(
                 decisions = if (profile.extractDecisions) extraction.decisions else emptyList(),
                 actionItems = if (profile.extractActionItems) extraction.actionItems else emptyList(),
                 questions = if (profile.extractQuestions) extraction.questions else emptyList(),
-                followUps = if (profile.extractFollowUps) extraction.followUps else emptyList()
+                followUps = if (profile.extractFollowUps) extraction.followUps else emptyList(),
+                signals = extraction.signals.filter { it.kind in recordingType.signalKinds().map { k -> k.name } }
             )
         )
     }
@@ -162,6 +164,7 @@ class GeminiIntelligenceEngine(
         appendLine("Recording title: $meetingTitle")
         val focus = customContext?.takeIf { it.isNotBlank() } ?: recordingType.focusGuidance()
         if (focus.isNotBlank()) appendLine("Focus: $focus")
+        com.craftflowtechnologies.meetingmind.core.work.SignalPrompts.section(recordingType).takeIf { it.isNotBlank() }?.let { appendLine(it) }
         appendLine()
         appendLine("Transcript. Each paragraph is prefixed with the id you must cite for it:")
         for (segment in transcript.segments) {
@@ -175,8 +178,11 @@ class GeminiIntelligenceEngine(
         passages: List<TranscriptSegment>,
         personalization: AskPersonalizationContext
     ): String = buildString {
-        personalization.userName?.takeIf { it.isNotBlank() }?.let {
-            appendLine("The person asking is called $it.")
+        // Faith answers stay about the recording: the person's name is only added for non-faith recordings.
+        if (!com.craftflowtechnologies.meetingmind.ai.faith.AskSermon.isFaith(personalization.recordingType)) {
+            personalization.userName?.takeIf { it.isNotBlank() }?.let {
+                appendLine("The person asking is called $it.")
+            }
         }
         if (personalization.relevantVocabulary.isNotEmpty()) {
             appendLine("Terms this person uses: ${personalization.relevantVocabulary.joinToString(", ")}")
@@ -249,6 +255,23 @@ class GeminiIntelligenceEngine(
                   "sourceSegmentIds": { "type": "array", "items": { "type": "string" } }
                 },
                 "required": ["text", "sourceSegmentIds"]
+              }
+            },
+            "signals": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string" },
+                  "text": { "type": "string" },
+                  "sourceSegmentIds": { "type": "array", "items": { "type": "string" } },
+                  "confidence": { "type": "number" },
+                  "value": { "type": "string" },
+                  "speaker": { "type": "string" },
+                  "counterparty": { "type": "string" },
+                  "due": { "type": "string" }
+                },
+                "required": ["kind", "text", "sourceSegmentIds"]
               }
             },
             "followUps": {

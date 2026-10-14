@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.today
 
 import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
+import com.craftflowtechnologies.meetingmind.ui.theme.OnSky
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
@@ -41,6 +42,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.FormatQuote
+import com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Event
@@ -55,6 +58,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -67,6 +71,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -93,6 +98,11 @@ import com.craftflowtechnologies.meetingmind.core.identity.AppIdentity
 import com.craftflowtechnologies.meetingmind.core.identity.Avatar
 import com.craftflowtechnologies.meetingmind.core.identity.LocalAppLook
 import com.craftflowtechnologies.meetingmind.core.timeline.TimeOfDaySky
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionVolume
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -114,8 +124,71 @@ private val InkNavy: Color @androidx.compose.runtime.Composable @androidx.compos
 private val Slate: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = InkMuted
 private val Hairline: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = Line
 
+/** The companion's size in the hero sky: large enough for its 3D look to read. */
+private val HeroCompanionSize = 150.dp
+
+/**
+ * The greeting's share of the card's width. The sun or moon takes the rest of the card, so the
+ * greeting never runs under it. The companion takes the top end, so the greeting keeps less width then.
+ */
+internal const val GreetingWidthWithCompanion = 0.58f
+internal const val GreetingWidthAlone = 0.62f
+
+/** The sun or moon's radius, as a share of the card's shorter side. Sized to fit its column at 360 dp. */
+private const val SkyBodyRadius = 0.085f
+
+/** How far the sun or moon sweeps across its column, as a share of the card's width. */
+private const val SkyBodySweep = 0.10f
+
+/** The sun or moon on a card: its centre and radius in the same pixels the drawing uses. */
+internal data class SkyBodyPlacement(val center: Offset, val radius: Float) {
+    /** The body and its ring. Text must never overlap this. The halo is a soft glow and sits outside it. */
+    val bounds: Rect
+        get() = Rect(center.x - radius * 1.55f, center.y - radius, center.x + radius * 1.55f, center.y + radius)
+}
+
+/**
+ * Where the sun or moon sits on a card of [size]. It rises low on the left of the column that the
+ * greeting leaves free, peaks high, and sets low on the right. The greeting uses the first
+ * [textFraction] of the width, so the body stays clear of it at any font scale.
+ */
+internal fun skyBodyPlacement(size: Size, sky: TimeOfDaySky, textFraction: Float, bobPx: Float = 0f): SkyBodyPlacement {
+    val textEdge = size.width * textFraction
+    val columnCenter = textEdge + (size.width - textEdge) / 2f
+    val x = columnCenter + size.width * SkyBodySweep * (sky.arc - 0.5f)
+    val horizon = size.height * 0.44f
+    val peak = size.height * 0.14f
+    val y = horizon - (horizon - peak) * sky.elevation
+    return SkyBodyPlacement(Offset(x, y + bobPx), size.minDimension * SkyBodyRadius)
+}
+
 /** What the floating tile under the hero shows. */
 data class HeroTile(val label: String, val title: String, val subtitle: String, val icon: ImageVector, val accent: Color, val onClick: () -> Unit)
+
+object DailyInspirations {
+    data class DailyVerse(val reference: String, val text: String)
+    data class DailyQuote(val text: String, val author: String)
+
+    val verses = listOf(
+        DailyVerse("Joshua 1:9", "Be strong and courageous. Do not be afraid; do not be discouraged, for the Lord your God is with you."),
+        DailyVerse("Philippians 4:13", "I can do all things through Christ who strengthens me."),
+        DailyVerse("Jeremiah 29:11", "For I know the plans I have for you, plans to give you hope and a future."),
+        DailyVerse("Proverbs 3:5-6", "Trust in the Lord with all your heart and lean not on your own understanding."),
+        DailyVerse("Isaiah 40:31", "Those who hope in the Lord will renew their strength. They will soar on wings like eagles."),
+        DailyVerse("Romans 8:28", "In all things God works for the good of those who love him."),
+        DailyVerse("Psalm 23:1", "The Lord is my shepherd, I lack nothing. He leads me beside quiet waters.")
+    )
+
+    val quotes = listOf(
+        DailyQuote("Faith does not eliminate questions. But faith knows where to take them.", "Elisabeth Elliot"),
+        DailyQuote("Never be afraid to trust an unknown future to a known God.", "Corrie ten Boom"),
+        DailyQuote("God never made a promise that was too good to be true.", "D.L. Moody"),
+        DailyQuote("Prayer does not fit us for the greater work; prayer is the greater work.", "Oswald Chambers"),
+        DailyQuote("Grace is not part of the way; grace is all of the way.", "C.S. Lewis"),
+        DailyQuote("When you cannot trace His hand, you can always trust His heart.", "Charles Spurgeon"),
+        DailyQuote("Let your life be shaped by the promises of God, not the problems of the day.", "A.W. Tozer")
+    )
+}
 
 /**
  * Home's immersive header (PLAN_V2 F1), after the design the user supplied.
@@ -139,23 +212,49 @@ fun HomeHeroHeader(
     switchLabel: String,
     tile: HeroTile,
     listState: LazyListState,
+    /** Shows the "Up next" tile floating under the card. A home with its own next-up card turns it off. */
+    showTile: Boolean = true,
     onAvatar: () -> Unit,
     onSearch: () -> Unit,
     onInbox: () -> Unit,
     onSwitch: () -> Unit,
     modifier: Modifier = Modifier,
+    displayMode: HomeHeroDisplayMode = HomeHeroDisplayMode.DAILY_SCRIPTURE,
+    scriptureReference: String? = null,
+    scriptureText: String? = null,
+    quoteText: String? = null,
+    quoteAuthor: String? = null,
+    onToggleMode: () -> Unit = {},
+    onOpenDevotional: () -> Unit = {},
     /** Fixes the sky to a moment (previews and screenshots); null follows the clock. */
     at: Calendar? = null
 ) {
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         TopRow(identity, inboxCount, showSwitch, switchLabel, onAvatar, onSearch, onInbox, onSwitch)
         Spacer(Modifier.height(18.dp))
-        HeroStage(greeting, contextLine, streakLabel, weekLabel, identity, tile, listState, at)
+        HeroStage(
+            greeting = greeting,
+            contextLine = contextLine,
+            streakLabel = streakLabel,
+            weekLabel = weekLabel,
+            identity = identity,
+            tile = tile,
+            showTile = showTile,
+            listState = listState,
+            at = at,
+            displayMode = displayMode,
+            scriptureReference = scriptureReference,
+            scriptureText = scriptureText,
+            quoteText = quoteText,
+            quoteAuthor = quoteAuthor,
+            onToggleMode = onToggleMode,
+            onOpenDevotional = onOpenDevotional
+        )
     }
 }
 
 @Composable
-private fun TopRow(
+internal fun TopRow(
     identity: AppIdentity,
     inboxCount: Int,
     showSwitch: Boolean,
@@ -166,28 +265,25 @@ private fun TopRow(
     onSwitch: () -> Unit
 ) {
     val look = LocalAppLook.current
-    val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-    val plain = when { hour < 12 -> "Good morning"; hour < 17 -> "Good afternoon"; else -> "Good evening" }
     val dateLabel = remember { SimpleDateFormat("EEEE, d MMM", Locale.getDefault()).format(Date()) }
 
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(top = 8.dp)) {
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier.size(50.dp)
-                .border(1.5.dp, Brush.sweepGradient(listOf(look.warm, Color.White, look.accent, look.warm)), CircleShape)
+                .border(1.dp, Hairline, CircleShape)
                 .padding(3.dp)
         ) {
             Avatar(identity, 44.dp, Modifier.testTag("home_avatar"), onClick = onAvatar)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(plain + (identity.firstName?.let { ", $it" } ?: ""), color = Slate, fontFamily = InterFamily, fontSize = 12.sp, maxLines = 1)
-            Text(dateLabel, color = InkNavy, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(dateLabel, color = InkNavy, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(8.dp))
         Surface(
             shape = CircleShape, color = SurfaceBase.copy(alpha = 0.78f),
-            border = BorderStroke(1.dp, Brush.verticalGradient(listOf(Color.White, Hairline))), shadowElevation = 10.dp
+            border = BorderStroke(1.dp, Brush.verticalGradient(listOf(OnSky, Hairline))), shadowElevation = 10.dp
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(4.dp)) {
                 DockButton(Color.Transparent, "home_search_button", onSearch) {
@@ -195,7 +291,7 @@ private fun TopRow(
                 }
                 DockButton(Color.Transparent, "home_inbox_button", onInbox) {
                     BadgedBox(badge = {
-                        if (inboxCount > 0) Badge(containerColor = look.accent) { Text("$inboxCount", color = Color.White, fontSize = 10.sp) }
+                        if (inboxCount > 0) Badge(containerColor = look.accent) { Text("$inboxCount", color = OnSky, fontSize = 10.sp) }
                     }) { Icon(Icons.Outlined.Notifications, contentDescription = "Inbox", tint = InkNavy, modifier = Modifier.size(19.dp)) }
                 }
                 if (showSwitch) DockButton(look.accentSoft, "home_switch_button", onSwitch) {
@@ -223,12 +319,23 @@ private fun HeroStage(
     weekLabel: String,
     identity: AppIdentity,
     tile: HeroTile,
+    showTile: Boolean,
     listState: LazyListState,
-    at: Calendar?
+    at: Calendar?,
+    displayMode: HomeHeroDisplayMode = HomeHeroDisplayMode.DAILY_SCRIPTURE,
+    scriptureReference: String? = null,
+    scriptureText: String? = null,
+    quoteText: String? = null,
+    quoteAuthor: String? = null,
+    onToggleMode: () -> Unit = {},
+    onOpenDevotional: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val look = LocalAppLook.current
     val scope = rememberCoroutineScope()
+    // The companion leads the greeting (§5.3); when it is filtered out the greeting keeps its old width.
+    val companionShown = rememberCompanionVisible(CompanionPage.HOME)
+    val greetingFraction = if (companionShown) GreetingWidthWithCompanion else GreetingWidthAlone
     val rotX = remember { Animatable(0f) }
     val rotY = remember { Animatable(0f) }
     val reducedMotion = remember {
@@ -280,7 +387,7 @@ private fun HeroStage(
                 }
                 .shadow(28.dp, cardShape, ambientColor = bottom.copy(alpha = 0.35f), spotColor = bottom.copy(alpha = 0.6f))
                 .clip(cardShape)
-                .drawBehind { drawSky(top, bottom, sky, stars, sparkle.value) }
+                .drawBehind { drawSky(top, bottom, sky, stars, sparkle.value, greetingFraction) }
                 .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.04f))), cardShape)
                 .pointerInput(Unit) {
                     val w = size.width.toFloat()
@@ -297,17 +404,18 @@ private fun HeroStage(
                 }
                 .testTag("home_hero")
         ) {
-            // The orb travels its arc across the card through the day.
+            // The sun or moon travels its arc through the day, in the column the greeting leaves free.
             Canvas(
                 Modifier.fillMaxSize().graphicsLayer {
                     translationX = -rotY.value * 2.2f * density
                     translationY = scroll * 60f + rotX.value * 2f * density
                 }
-            ) { drawOrb(sky, bob.value) }
+            ) { drawOrb(sky, bob.value, greetingFraction) }
 
-            Column(Modifier.align(Alignment.TopStart).fillMaxWidth(0.62f).padding(start = 24.dp, top = 30.dp)) {
+            val lateNight = now.get(Calendar.HOUR_OF_DAY).let { it >= 22 || it < 5 }
+            Column(Modifier.align(Alignment.TopStart).fillMaxWidth(greetingFraction).padding(start = 24.dp, top = 30.dp)) {
                 Text(
-                    greeting, color = Color.White, fontFamily = if (identity.faithFirst) look.headingFont else OutfitFamily,
+                    greeting, color = OnSky, fontFamily = if (identity.faithFirst) look.headingFont else OutfitFamily,
                     fontWeight = FontWeight.Medium, fontSize = 27.sp, lineHeight = 32.sp, letterSpacing = (-0.6).sp, maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -317,14 +425,63 @@ private fun HeroStage(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 52.dp)) {
-                GlassChip(Icons.Outlined.LocalFireDepartment, streakLabel, Color(sky.orbBody))
-                GlassChip(if (identity.faithFirst) Icons.Outlined.AutoStories else Icons.Outlined.EditNote, weekLabel, Color(sky.orbBody))
+            // The companion, large and in the sky: it leans toward a touch or the phone's tilt (the 3D layer).
+            Box(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 6.dp)) {
+                CompositionLocalProvider(LocalCompanionVolume provides true) {
+                    ZuriSlot(
+                        CompanionPage.HOME, HeroCompanionSize,
+                        state = if (lateNight) CompanionState.SLEEPY else CompanionState.IDLE,
+                        offerShow = true
+                    )
+                }
+            }
+
+            // From the same clock as the sky, so a fixed [at] (previews, goldens) gives a fixed verse and quote.
+            val dayOfYear = now.get(Calendar.DAY_OF_YEAR)
+            val fallbackVerse = remember(dayOfYear) { DailyInspirations.verses[dayOfYear % DailyInspirations.verses.size] }
+            val fallbackQuote = remember(dayOfYear) { DailyInspirations.quotes[dayOfYear % DailyInspirations.quotes.size] }
+
+            val refToUse = scriptureReference?.ifBlank { null } ?: fallbackVerse.reference
+            val textToUse = scriptureText?.ifBlank { null } ?: fallbackVerse.text
+            val quoteToUse = quoteText?.ifBlank { null } ?: fallbackQuote.text
+            val authorToUse = quoteAuthor?.ifBlank { null } ?: fallbackQuote.author
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, bottom = 48.dp)
+            ) {
+                when (displayMode) {
+                    HomeHeroDisplayMode.DAILY_SCRIPTURE -> {
+                        HeroScriptureBanner(
+                            reference = refToUse,
+                            verseText = textToUse,
+                            accent = Color(sky.orbBody),
+                            onToggle = onToggleMode,
+                            onClick = onOpenDevotional
+                        )
+                    }
+                    HomeHeroDisplayMode.DAILY_QUOTE -> {
+                        HeroQuoteBanner(
+                            quote = quoteToUse,
+                            author = authorToUse,
+                            accent = Color(sky.orbBody),
+                            onClick = onOpenDevotional
+                        )
+                    }
+                    HomeHeroDisplayMode.STATS -> {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            GlassChip(Icons.Outlined.LocalFireDepartment, streakLabel, Color(sky.orbBody), onClick = onToggleMode)
+                            GlassChip(if (identity.faithFirst) Icons.Outlined.AutoStories else Icons.Outlined.EditNote, weekLabel, Color(sky.orbBody), onClick = onToggleMode)
+                        }
+                    }
+                }
             }
         }
 
         // Up next, floating over the card's lower edge.
-        Surface(
+        if (showTile) Surface(
             onClick = tile.onClick, shape = RoundedCornerShape(26.dp), color = SurfaceBase,
             border = BorderStroke(1.dp, Hairline), shadowElevation = 16.dp,
             modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).fillMaxWidth().height(76.dp)
@@ -340,7 +497,7 @@ private fun HeroStage(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
                         .background(Brush.linearGradient(listOf(tile.accent, lerp(tile.accent, InkNavy, 0.6f))))
-                ) { Icon(tile.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp)) }
+                ) { Icon(tile.icon, contentDescription = null, tint = OnSky, modifier = Modifier.size(22.dp)) }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(tile.label, color = Slate, fontFamily = InterFamily, fontSize = 11.5.sp, maxLines = 1)
@@ -356,15 +513,104 @@ private fun HeroStage(
 }
 
 @Composable
-private fun GlassChip(icon: ImageVector, label: String, tint: Color) {
+private fun HeroScriptureBanner(
+    reference: String,
+    verseText: String,
+    accent: Color,
+    onToggle: () -> Unit,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        color = SurfaceBase.copy(alpha = 0.16f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("hero_scripture_banner")
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                onClick = onToggle,
+                shape = CircleShape,
+                color = accent.copy(alpha = 0.25f),
+                modifier = Modifier.size(28.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Outlined.AutoStories,
+                        contentDescription = "Switch to quote or stats",
+                        tint = accent,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    reference,
+                    color = accent,
+                    fontSize = 11.5.sp,
+                    fontFamily = OutfitFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+                Text(
+                    verseText,
+                    color = OnSky,
+                    fontSize = 12.sp,
+                    fontFamily = InterFamily,
+                    lineHeight = 16.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroQuoteBanner(
+    quote: String,
+    author: String?,
+    accent: Color,
+    onClick: () -> Unit
+) {
+    // The quote belongs to the sky, not inside another card. Its entire surface remains tappable
+    // while the visual treatment stays intentionally typographic and quiet.
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick)
+            .padding(horizontal = 2.dp, vertical = 4.dp).testTag("hero_quote_banner")
+    ) {
+        if (author != null) {
+            Text(
+                author.uppercase(), color = accent, fontSize = 10.5.sp, letterSpacing = 0.7.sp,
+                fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, maxLines = 1
+            )
+        }
+        Text(
+            "“$quote”", color = OnSky, fontSize = 14.sp, fontFamily = InterFamily,
+            fontWeight = FontWeight.Medium, lineHeight = 19.sp, maxLines = 2,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = if (author == null) 0.dp else 3.dp)
+        )
+    }
+}
+
+@Composable
+private fun GlassChip(icon: ImageVector, label: String, tint: Color, onClick: (() -> Unit)? = null) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.clip(CircleShape).background(SurfaceBase.copy(alpha = 0.12f))
-            .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape).padding(horizontal = 12.dp, vertical = 7.dp)
+            .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 12.dp, vertical = 7.dp)
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(6.dp))
-        Text(label, color = Color.White, fontFamily = InterFamily, fontWeight = FontWeight.Medium, fontSize = 12.sp, maxLines = 1)
+        Text(label, color = OnSky, fontFamily = InterFamily, fontWeight = FontWeight.Medium, fontSize = 12.sp, maxLines = 1)
     }
 }
 
@@ -380,7 +626,7 @@ object HeroTiles {
 // Drawing: the sky and the orb
 // ─────────────────────────────────────────────────────────────────────────────
 
-private fun DrawScope.drawSky(top: Color, bottom: Color, sky: TimeOfDaySky, stars: List<Triple<Float, Float, Float>>, twinkle: Float) {
+private fun DrawScope.drawSky(top: Color, bottom: Color, sky: TimeOfDaySky, stars: List<Triple<Float, Float, Float>>, twinkle: Float, textFraction: Float) {
     drawRect(Brush.linearGradient(listOf(top, lerp(top, bottom, 0.6f), bottom), start = Offset.Zero, end = Offset(size.width * 0.6f, size.height)))
 
     // Stars at night, each twinkling on its own phase.
@@ -393,7 +639,7 @@ private fun DrawScope.drawSky(top: Color, bottom: Color, sky: TimeOfDaySky, star
     }
 
     // Light pooling around where the orb is.
-    val orb = orbCenter(sky, 0f)
+    val orb = skyBodyPlacement(size, sky, textFraction).center
     drawCircle(
         Brush.radialGradient(listOf(Color(sky.glow).copy(alpha = if (sky.isMoon) 0.22f else 0.38f), Color.Transparent), center = orb, radius = size.width * 0.55f),
         radius = size.width * 0.55f, center = orb
@@ -407,21 +653,10 @@ private fun DrawScope.drawSky(top: Color, bottom: Color, sky: TimeOfDaySky, star
     drawRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.Transparent), endY = size.height * 0.45f))
 }
 
-/**
- * Where the orb sits: it travels an arc across the right of the card (rising low on the left of
- * that region, peaking high, setting low on the right), clear of the greeting on the left.
- */
-private fun DrawScope.orbCenter(sky: TimeOfDaySky, bob: Float): Offset {
-    val x = size.width * (0.64f + 0.24f * sky.arc)
-    val horizon = size.height * 0.64f
-    val peak = size.height * 0.24f
-    val y = horizon - (horizon - peak) * sky.elevation
-    return Offset(x, y + bob * 6.dp.toPx())
-}
-
-private fun DrawScope.drawOrb(sky: TimeOfDaySky, bob: Float) {
-    val r = size.minDimension * 0.15f
-    val c = orbCenter(sky, bob)
+private fun DrawScope.drawOrb(sky: TimeOfDaySky, bob: Float, textFraction: Float) {
+    val placement = skyBodyPlacement(size, sky, textFraction, bob * 6.dp.toPx())
+    val r = placement.radius
+    val c = placement.center
     val light = Color(sky.orbLight)
     val body = Color(sky.orbBody)
     val deep = Color(sky.orbDeep)

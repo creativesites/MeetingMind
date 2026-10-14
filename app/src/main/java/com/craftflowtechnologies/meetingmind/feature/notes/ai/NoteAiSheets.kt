@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Summarize
 import androidx.compose.material.icons.filled.ViewAgenda
@@ -78,6 +79,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 @Composable
 fun NoteAiMenu(
     forNotebook: Boolean,
+    isFaithOrSermon: Boolean = false,
     onPick: (NoteAiTool) -> Unit,
     onRelated: (() -> Unit)?,
     onDismiss: () -> Unit
@@ -93,6 +95,9 @@ fun NoteAiMenu(
             MenuRow(Icons.Filled.CheckBox, "Find action items", "Tasks and follow-ups the notes actually state") { onPick(NoteAiTool.EXTRACT_ACTIONS) }
             MenuRow(Icons.Filled.QuestionAnswer, if (forNotebook) "Ask this notebook" else "Ask this note", "An answer from your notes, with where it's from") { onPick(NoteAiTool.ASK) }
             if (!forNotebook) {
+                if (isFaithOrSermon) {
+                    MenuRow(Icons.Filled.MenuBook, "Discussion guide", "Discussion questions, application & prayer points for small group") { onPick(NoteAiTool.STUDY_GUIDE) }
+                }
                 MenuRow(Icons.Filled.ViewAgenda, "Organize into sections", "Sort your own sentences under headings — Undo restores it") { onPick(NoteAiTool.ORGANIZE) }
             }
             onRelated?.let { MenuRow(Icons.Filled.Hub, "Related notes", "Notes that share verses, tags or ideas — instant, no AI needed", it) }
@@ -192,7 +197,7 @@ fun NoteAiResultSheet(
                         when (val o = result.outcome) {
                             is NoteAiOutcome.Points -> PointsResult(job, o.items, result.sources, primaryLabel, onPrimary, onShowSource, onDiscard, context)
                             is NoteAiOutcome.Answer -> AnswerResult(o, result.sources, onShowSource, onDiscard)
-                            is NoteAiOutcome.Sections -> SectionsResult(o, result.sources, onApplyOrganized, onDiscard)
+                            is NoteAiOutcome.Sections -> SectionsResult(job, o, result.sources, onApplyOrganized, onDiscard, context)
                         }
                     }
                 }
@@ -266,24 +271,55 @@ private fun AnswerResult(answer: NoteAiOutcome.Answer, sources: Map<String, Sour
 }
 
 @Composable
-private fun SectionsResult(o: NoteAiOutcome.Sections, sources: Map<String, SourcePassage>, onApply: ((NoteAiOutcome.Sections) -> Unit)?, onDiscard: () -> Unit) {
+private fun SectionsResult(
+    job: NoteAiJob,
+    o: NoteAiOutcome.Sections,
+    sources: Map<String, SourcePassage>,
+    onApply: ((NoteAiOutcome.Sections) -> Unit)?,
+    onDiscard: () -> Unit,
+    context: Context
+) {
     if (o.sections.isEmpty()) {
         Text("Nothing here fitted the sections, so the note is left as it is.", color = InkSecondary, modifier = Modifier.padding(vertical = 12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = onDiscard) { Text("OK") } }
         return
     }
+    val isStudyGuide = job.tool == NoteAiTool.STUDY_GUIDE
     LazyColumn(Modifier.heightIn(max = 420.dp)) {
         items(o.sections) { s ->
             Text(s.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
-            s.items.forEach { Text("• " + it.text, fontSize = 14.sp, lineHeight = 20.sp, color = InkSecondary, modifier = Modifier.padding(vertical = 2.dp)) }
+            s.items.forEachIndexed { idx, it ->
+                val prefix = if (isStudyGuide && (s.key.contains("question") || s.key.contains("points"))) "${idx + 1}. " else "• "
+                Text(prefix + it.text, fontSize = 14.sp, lineHeight = 20.sp, color = InkSecondary, modifier = Modifier.padding(vertical = 2.dp))
+            }
         }
     }
-    Text("Anything not placed stays under “Other notes”. Undo restores the note exactly.", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 10.dp))
+    Text(
+        if (isStudyGuide) "Formatted for small groups. Copy to WhatsApp, share directly, or add to your note."
+        else "Anything not placed stays under “Other notes”. Undo restores the note exactly.",
+        fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 10.dp)
+    )
     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = onDiscard) { Text("Discard", color = InkSecondary) }
+        if (isStudyGuide) {
+            TextButton(onClick = {
+                val formatted = com.craftflowtechnologies.meetingmind.ai.notes.StudyGuideFormatter.toWhatsApp(job.question ?: "Small-Group Discussion Guide", o.sections)
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Discussion Guide", formatted))
+                Toast.makeText(context, "Copied for WhatsApp", Toast.LENGTH_SHORT).show()
+            }) { Text("Copy WhatsApp") }
+            TextButton(onClick = {
+                val formatted = com.craftflowtechnologies.meetingmind.ai.notes.StudyGuideFormatter.toWhatsApp(job.question ?: "Small-Group Discussion Guide", o.sections)
+                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_TEXT, formatted)
+                }
+                context.startActivity(android.content.Intent.createChooser(intent, "Share discussion guide"))
+            }) { Text("Share") }
+        }
         if (onApply != null) {
             Surface(onClick = { onApply(o) }, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.testTag("note_ai_apply")) {
-                Text("Apply to note", color = OnInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
+                Text(if (isStudyGuide) "Add to note" else "Apply to note", color = OnInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
             }
         }
     }

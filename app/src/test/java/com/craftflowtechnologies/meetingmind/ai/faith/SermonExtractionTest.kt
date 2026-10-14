@@ -94,6 +94,29 @@ class SermonExtractionTest {
     }
 
     @Test
+    fun `without AI the note says why, at the top, and still lists the scripture`() {
+        val g = SermonNoteBuilder.build("n", "m", segments, null, ScriptureDetector.detect(segments),
+            unavailableReason = "no AI model is available on this phone")
+        val first = g.blocks.first()
+        assertEquals(NoteBlockType.PARAGRAPH, first.type)
+        assertEquals(SermonNoteBuilder.KEY_STATUS, first.sectionKey)
+        assertEquals(
+            "Sermon notes couldn't be generated (no AI model is available on this phone). The transcript and scripture are below. " +
+                "Use Retry sermon notes in the recording menu to try again.",
+            first.content.text
+        )
+        assertTrue(g.blocks.any { it.type == NoteBlockType.SCRIPTURE })
+        assertTrue(SermonNoteBuilder.KEY_STATUS in g.keys)
+    }
+
+    @Test
+    fun `a written sermon note has no unavailable line`() {
+        val e = SermonExtractionParser.parse(good, segments)!!
+        val g = SermonNoteBuilder.build("n", "m", segments, e, ScriptureDetector.detect(segments))
+        assertTrue(g.blocks.none { it.sectionKey == SermonNoteBuilder.KEY_STATUS })
+    }
+
+    @Test
     fun `long sermons are read in parts and merged`() = runBlocking {
         val many = (1..60).map { i ->
             TranscriptSegment(id = "p$i", meetingId = "m", startMs = i * 10_000L, endMs = i * 10_000L + 9_000, text = "Point number $i is that grace is enough for every day. ".repeat(4))

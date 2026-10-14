@@ -141,18 +141,24 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
         if (started && reference == null) return
         started = true
         viewModelScope.launch {
-            refreshOffline()
-            val preferred = prefs.preferencesFlow.first().bibleVersionId
-            val list = library.bibles()
-            _bibles.value = list
-            _current.value = list.firstOrNull { it.id == preferred }
-                ?: library.info(preferred)
-                ?: list.firstOrNull { it.id == BibleVersions.DEFAULT_ID }
-                ?: list.firstOrNull()
-            refreshCanSearch()
+            ensureBible()
             if (reference != null) open(reference.book, reference.chapter, reference.verseStart, reference.verseEnd ?: reference.verseStart)
             else load()
         }
+    }
+
+    /** Picks the person's translation if none is chosen yet. */
+    private suspend fun ensureBible() {
+        if (_current.value != null && _bibles.value.isNotEmpty()) return
+        refreshOffline()
+        val preferred = prefs.preferencesFlow.first().bibleVersionId
+        val list = library.bibles()
+        _bibles.value = list
+        _current.value = list.firstOrNull { it.id == preferred }
+            ?: library.info(preferred)
+            ?: list.firstOrNull { it.id == BibleVersions.DEFAULT_ID }
+            ?: list.firstOrNull()
+        refreshCanSearch()
     }
 
     fun chooseBible(info: BibleInfo) {
@@ -168,7 +174,7 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
     fun open(book: BibleBook, chapter: Int, verseStart: Int? = null, verseEnd: Int? = null) {
         _book.value = book
         _chapter.value = chapter.coerceIn(1, book.chapterCount)
-        place.edit().putString("book", book.usfm).putInt("chapter", _chapter.value).apply()
+        place.edit().putString("book", book.usfm).putInt("chapter", _chapter.value).putInt("verse", verseStart ?: 0).apply()
         _selection.value = verseStart?.let { it..(verseEnd ?: it).coerceAtLeast(it) }
         anchor = verseStart
         _focus.value = verseStart
@@ -203,7 +209,28 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
 
     fun reload() = load()
 
+    /** Remembers the verse at the top of the screen, so Continue can open exactly where the person stopped. */
+    fun rememberVerse(verse: Int) {
+        place.edit().putString("book", _book.value.usfm).putInt("chapter", _chapter.value).putInt("verse", verse).apply()
+    }
+
+    private val notesRepo by lazy {
+        com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(getApplication(), com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(getApplication()))
+    }
+
+    /** The person's own notes on the open chapter ("Your notes on this passage"). Empty renders nothing. */
+    private val _notesHere = MutableStateFlow<List<com.craftflowtechnologies.meetingmind.core.faith.LinkedNote>>(emptyList())
+    val notesHere: StateFlow<List<com.craftflowtechnologies.meetingmind.core.faith.LinkedNote>> = _notesHere.asStateFlow()
+
+    private fun loadNotesHere(book: BibleBook, chapter: Int) {
+        viewModelScope.launch {
+            val found = runCatching { notesRepo.notesOnPassage(ScriptureReference(book, chapter)).myNotes }.getOrDefault(emptyList())
+            if (_book.value == book && _chapter.value == chapter) _notesHere.value = found
+        }
+    }
+
     private fun load() {
+        loadNotesHere(_book.value, _chapter.value)
         val info = _current.value ?: run {
             _content.value = ChapterState.Missing(
                 if (configured) "Couldn't reach the Bible service. Check your connection and try again." else "The Bible isn't set up in this build yet.",
@@ -354,6 +381,11 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
             _study.value = _study.value?.copy(crossRefs = withText ?: emptyList(), offline = refs == null)
         }
         loadCommentary(commentaryId)
+    }
+
+    /** The study sheet from outside the reader (a guided session's verse step): makes sure a translation is chosen first. */
+    fun openStudyFor(reference: ScriptureReference) {
+        viewModelScope.launch { ensureBible(); openStudy(reference) }
     }
 
     fun chooseCommentary(id: String) {
