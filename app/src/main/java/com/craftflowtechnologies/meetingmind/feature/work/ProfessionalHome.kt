@@ -17,15 +17,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,17 +48,21 @@ import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.calendar.UpNext
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.timeline.DeepTarget
-import com.craftflowtechnologies.meetingmind.core.timeline.Greetings
 import com.craftflowtechnologies.meetingmind.core.timeline.ItemKind
 import com.craftflowtechnologies.meetingmind.core.timeline.TimeOfDaySky
 import com.craftflowtechnologies.meetingmind.core.timeline.TimelineItem
 import com.craftflowtechnologies.meetingmind.core.work.PulseEvent
 import com.craftflowtechnologies.meetingmind.core.work.WorkTask
 import com.craftflowtechnologies.meetingmind.feature.today.HomeQuickAccessRow
-import com.craftflowtechnologies.meetingmind.feature.today.InterFamily
-import com.craftflowtechnologies.meetingmind.feature.today.OutfitFamily
 import com.craftflowtechnologies.meetingmind.feature.today.TodayViewModel
-import com.craftflowtechnologies.meetingmind.feature.today.TopRow
+import com.craftflowtechnologies.meetingmind.feature.today.HeroTile
+import com.craftflowtechnologies.meetingmind.feature.today.HomeModes
+import com.craftflowtechnologies.meetingmind.feature.today.ModeHome
+import com.craftflowtechnologies.meetingmind.feature.today.TodayFocus
+import com.craftflowtechnologies.meetingmind.feature.today.itemIcon
+import com.craftflowtechnologies.meetingmind.feature.today.home.FaithAndStories
+import com.craftflowtechnologies.meetingmind.feature.today.home.HomeModeHeader
+import com.craftflowtechnologies.meetingmind.feature.today.home.faithBentoData
 import com.craftflowtechnologies.meetingmind.feature.today.timeFormat
 import com.craftflowtechnologies.meetingmind.feature.work.home.NeedLine
 import com.craftflowtechnologies.meetingmind.feature.work.home.ScheduleAgendaRow
@@ -101,6 +106,7 @@ fun ProfessionalHome(
     onOpenProcessing: (String) -> Unit,
     onOpenMeeting: (String, Long?) -> Unit,
     onOpenDevotional: () -> Unit,
+    onOpenCircles: () -> Unit = {},
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit,
     onOpenWork: () -> Unit,
     onOpenFaith: () -> Unit = {},
@@ -126,6 +132,8 @@ fun ProfessionalHome(
     val jobs by today.activeJobs.collectAsState()
     val stories by today.stories.collectAsState()
     val devotional by today.devotional.collectAsState()
+    val stats by today.stats.collectAsState()
+    val faithData = faithBentoData(stats.weekCount, devotional)
     val settings by work.settings.collectAsState()
     val myTasks by work.myTasks.collectAsState()
     val waitingOn by work.waitingOn.collectAsState()
@@ -135,6 +143,10 @@ fun ProfessionalHome(
     val projects by work.projects.collectAsState()
     val people by work.everyone.collectAsState()
     val titles by work.titles.collectAsState()
+    val focus by today.focus.collectAsState()
+    val listState = rememberLazyListState()
+    val offeredModes = HomeModes.offered(ModeHome.WORK, identity.showsFaith)
+    val mode = HomeModes.effective(focus, offeredModes)
     val inboxCount by work.inboxCount.collectAsState()
     var nudging by remember { mutableStateOf<WorkTask?>(null) }
     var editing by remember { mutableStateOf<WorkTask?>(null) }
@@ -160,6 +172,13 @@ fun ProfessionalHome(
         (item.target as? DeepTarget.Event)?.event?.let { ev -> !ev.allDay && ev.end >= now } == true
     }
     val nextEvent = (nextItem?.target as? DeepTarget.Event)?.event
+    // The header's up-next line, from the same next item the hero uses.
+    val nextTile = nextItem?.let { ni ->
+        HeroTile(
+            label = "Up next", title = ni.title.ifBlank { "Untitled" }, subtitle = fmt.format(Date(ni.start)),
+            icon = itemIcon(ni), accent = Color(ni.accent), onClick = { open(ni, today, onOpenNote, onOpenProcessing) }
+        )
+    } ?: HeroTile(label = "Up next", title = "Nothing scheduled", subtitle = "Record something", icon = Icons.Filled.Mic, accent = Accent, onClick = onRecord)
     val hero = WorkHomeLayout.hero(hasNextMeeting = nextEvent != null, needsCount = toReview.size + followUps.size)
     val (reviewsShown, followUpsShown) = WorkHomeLayout.needsShown(toReview.size, followUps.size)
     val sky = remember(now / 300_000) {
@@ -177,41 +196,18 @@ fun ProfessionalHome(
             )
         }
     ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("professional_home"), contentPadding = PaddingValues(bottom = 36.dp)) {
-            // The same header as Today: date, search, inbox. No avatar switch or focus chip here.
+        LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("professional_home"), state = listState, contentPadding = PaddingValues(bottom = 36.dp)) {
+            // The header every home shares: the Today header and sky hero, then the mode switch.
             item {
-                Box(Modifier.padding(horizontal = 16.dp)) {
-                    TopRow(
-                        identity = identity,
-                        inboxCount = inboxCount,
-                        showSwitch = false,
-                        switchLabel = "",
-                        onAvatar = {},
-                        onSearch = onSearch,
-                        onInbox = onOpenInbox,
-                        onSwitch = {}
-                    )
-                }
+                HomeModeHeader(
+                    today = today, home = ModeHome.WORK, tile = nextTile, listState = listState,
+                    inboxCount = inboxCount, onSearch = onSearch, onInbox = onOpenInbox, onOpenDevotional = onOpenDevotional
+                )
             }
-
-            // Greeting, the day in one line, and the way to customize the home.
             item {
-                Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            Greetings.pick(identity), color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold,
-                            fontSize = 22.sp, letterSpacing = (-0.4).sp, maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            "$meetingsToday ${if (meetingsToday == 1) "meeting" else "meetings"} · ${dueToday.size} due" +
-                                if (overdue > 0) " · $overdue overdue" else "",
-                            color = InkMuted, fontFamily = InterFamily, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                    IconButton(onClick = onCustomize, modifier = Modifier.size(40.dp).testTag("professional_customize")) {
-                        Icon(Icons.Filled.Tune, "Customize home", tint = InkSecondary, modifier = Modifier.size(20.dp))
-                    }
+                Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    QuietLink("Circles", onOpenCircles)
+                    QuietLink("Customize home", onCustomize, modifier = Modifier.testTag("professional_customize"))
                 }
             }
 
@@ -326,6 +322,13 @@ fun ProfessionalHome(
                 }
             }
 
+            if (mode == TodayFocus.ALL) item {
+                FaithAndStories(
+                    showsFaith = identity.showsFaith, data = faithData, stories = stories,
+                    onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
+                    onOpenStories = onOpenStories, index = 7
+                )
+            }
             if (jobs.isNotEmpty()) item {
                 val j = jobs.first()
                 Row(
@@ -433,22 +436,14 @@ fun ProfessionalHome(
                 }
             }
 
-            // The rest of home, still here: Faith, stories.
-            if (identity.showsFaith) item {
-                val d = devotional?.devotional
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 22.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceRaised)
-                        .border(1.dp, LineSoft, RoundedCornerShape(18.dp)).clickable(onClick = onOpenDevotional).padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.WbSunny, null, tint = FaithGold, modifier = Modifier.size(20.dp))
-                    Column(Modifier.padding(start = 14.dp).weight(1f)) {
-                        Text("TODAY'S DEVOTIONAL", fontSize = 10.5.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = InkMuted)
-                        Text(d?.title ?: "A word for your day", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
+            // Work mode keeps the same faith and stories at the end of the page, so they stay reachable.
+            if (mode != TodayFocus.ALL) item {
+                FaithAndStories(
+                    showsFaith = identity.showsFaith, data = faithData, stories = stories,
+                    onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
+                    onOpenStories = onOpenStories, index = 7
+                )
             }
-            if (stories.isNotEmpty()) item { Spacer(Modifier.height(10.dp)); com.craftflowtechnologies.meetingmind.feature.today.StoryRings(stories, onOpenStories) }
 
             item {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 22.dp).clip(RoundedCornerShape(18.dp)).background(AccentWash).clickable(onClick = onOpenWork).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

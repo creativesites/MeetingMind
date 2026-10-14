@@ -440,6 +440,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
+                onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
                 onOpenWrapUp = { id, compose -> navController.navigate(Routes.wrapUpRoute(id, compose)) },
                 onOpenProject = { navController.navigate(Routes.projectRoute(it)) },
@@ -452,8 +453,27 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     navController.navigate(Routes.SHARE)
                 },
                 onNavigateBottomNav = navigateToPrimary
-            ) else if (homeStyle != com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) com.craftflowtechnologies.meetingmind.feature.today.FocusHome(
-                rich = homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM,
+            ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM) com.craftflowtechnologies.meetingmind.feature.today.home.CalmHome(
+                today = vm,
+                onRecord = { navController.navigate(Routes.RECORDING) },
+                onNewNote = { openNewNote(false) },
+                onImport = { navController.navigate(Routes.IMPORT) },
+                onSearch = openSearch,
+                onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenProcessing = openProcessing,
+                onOpenFaith = { navController.navigate(Routes.FAITH) },
+                onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
+                onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
+                onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
+                onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
+                onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
+                onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
+                onCustomize = { navController.navigate(Routes.APPEARANCE) },
+                onNavigateBottomNav = navigateToPrimary
+) else if (homeStyle != com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) com.craftflowtechnologies.meetingmind.feature.today.FocusHome(
+                rich = false,
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 viewModel = vm,
                 onRecord = { navController.navigate(Routes.RECORDING) },
