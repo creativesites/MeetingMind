@@ -38,7 +38,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -113,7 +112,7 @@ class NoteEditorMomentTest {
 
     @Test fun `a fresh editor open plans an Unveil, and reloading the facts does not plan it again`() {
         recording("m1", noteId = "n1")
-        val subject = noteMomentSubject(noteLoaded = true, locked = false, recordingIds = listOf("m1"))
+        val subject = noteMomentSubject(noteLoaded = true, locked = false, recordingIds = listOf("m1"), noteId = "n1")
         var refresh by mutableIntStateOf(0)
         compose.setContent { Harness { key(0) { Host(subject, refresh) } } }
         awaitPlan()
