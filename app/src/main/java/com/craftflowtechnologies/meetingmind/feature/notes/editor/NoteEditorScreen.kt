@@ -472,6 +472,12 @@ fun NoteEditorScreen(
                     onDetails = { if (currentNote.workflow == com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON) showDetails = true }
                 )
             }
+            // A work meeting made from a calendar event: prepare for it from what's on record.
+            if (currentNote.metadata[com.craftflowtechnologies.meetingmind.core.repository.NoteRepository.CALENDAR_EVENT_KEY] != null &&
+                com.craftflowtechnologies.meetingmind.core.model.Workflows.space(currentNote.workflow) == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK
+            ) item(key = "prepare") {
+                com.craftflowtechnologies.meetingmind.feature.work.NotePrepareRow(currentNote.title, currentNote.metadata, onOpenRecording)
+            }
             aiJobs.firstOrNull()?.let { job ->
                 if (!aiSheetOpen) item(key = "ai-banner") {
                     val working = job.status == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiStatus.QUEUED || job.status == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiStatus.RUNNING

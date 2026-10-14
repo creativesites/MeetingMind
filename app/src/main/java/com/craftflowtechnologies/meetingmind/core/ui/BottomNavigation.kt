@@ -28,6 +28,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.outlined.Work
+import androidx.compose.runtime.compositionLocalOf
+import com.craftflowtechnologies.meetingmind.core.work.TabSlot
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -57,7 +61,25 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Line
  * where Record comes first, then a written note, photos and import (docs/PLAN_V1.md §2). The AI
  * Engine lives under Settings; it is something set up once, not somewhere people go daily.
  */
-enum class BottomNavDestination { HOME, NOTES, NEW, SEARCH, SETTINGS }
+enum class BottomNavDestination {
+    HOME, NOTES, NEW, SEARCH, SETTINGS,
+    /** No tab is current (a screen reached from elsewhere, such as Search when its slot holds Work). */
+    NONE
+}
+
+/**
+ * What the fourth slot is (docs/PLAN_PROFESSIONAL.md §7.4). Search, unless the person put Work
+ * there; it is the same destination either way, so tags and the route table are unchanged, and
+ * the route it opens is chosen by [TabSlots.route].
+ */
+val LocalTabSlot = compositionLocalOf { TabSlot.SEARCH }
+
+object TabSlots {
+    /** The route the fourth slot opens: the Work space when it holds Work, otherwise Search. */
+    fun route(slot: TabSlot, work: String, search: String) = if (slot == TabSlot.WORK) work else search
+
+    fun label(slot: TabSlot) = if (slot == TabSlot.WORK) "Work" else "Search"
+}
 
 private data class NavItem(
     val destination: BottomNavDestination,
@@ -68,11 +90,12 @@ private data class NavItem(
     val isAction: Boolean = false
 )
 
-private val navItems = listOf(
+private fun navItems(slot: TabSlot) = listOf(
     NavItem(BottomNavDestination.HOME, "Home", Icons.Filled.Home, Icons.Outlined.Home),
     NavItem(BottomNavDestination.NOTES, "Notes", Icons.AutoMirrored.Filled.Notes, Icons.AutoMirrored.Outlined.Notes),
     NavItem(BottomNavDestination.NEW, "New", Icons.Filled.Add, Icons.Filled.Add, isAction = true),
-    NavItem(BottomNavDestination.SEARCH, "Search", Icons.Filled.Search, Icons.Outlined.Search),
+    if (slot == TabSlot.WORK) NavItem(BottomNavDestination.SEARCH, TabSlots.label(slot), Icons.Filled.Work, Icons.Outlined.Work)
+    else NavItem(BottomNavDestination.SEARCH, TabSlots.label(slot), Icons.Filled.Search, Icons.Outlined.Search),
     NavItem(BottomNavDestination.SETTINGS, "Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
 )
 
@@ -117,7 +140,7 @@ fun AppBottomNavigationBar(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
-                navItems.forEach { item ->
+                navItems(LocalTabSlot.current).forEach { item ->
                     when {
                         item.isAction -> if (showNewAction) NewAction { onNavigate(BottomNavDestination.NEW) }
                         item.destination == current -> ActiveNavChip(item)

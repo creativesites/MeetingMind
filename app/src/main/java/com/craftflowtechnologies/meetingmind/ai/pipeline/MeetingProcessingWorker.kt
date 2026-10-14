@@ -50,8 +50,11 @@ class MeetingProcessingWorker(
         } ?: com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy.AUTO
         // Defaults to the private profile: a missing or unreadable value must never result in a
         // recording being uploaded. See ProcessingProfile.fromNameOrDefault.
-        val processingProfile = com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
-            .fromNameOrDefault(inputData.getString(KEY_PROCESSING_PROFILE))
+        // Confidential work never leaves the phone, whatever Internet mode says (PLAN_PROFESSIONAL.md §6.4).
+        val processingProfile = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(
+            applicationContext, meetingId,
+            com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.fromNameOrDefault(inputData.getString(KEY_PROCESSING_PROFILE))
+        )
 
         AppNotifications.ensureChannels(applicationContext)
         this.meetingId = meetingId

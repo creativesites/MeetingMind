@@ -18,6 +18,9 @@ object Routes {
     const val SEARCH = "search"
     const val MODELS = "models"
     const val SETTINGS = "settings"
+    /** Plans. [trigger] is a PaywallTrigger name; it only labels where the person came from. */
+    const val PAYWALL = "paywall?trigger={trigger}"
+    fun paywallRoute(trigger: String = "SETTINGS") = "paywall?trigger=$trigger"
     const val FAITH = "faith"
     const val FAITH_JOURNEY = "faith_journey"
     const val FAITH_SCRIPTURE = "faith_scripture"
@@ -39,6 +42,30 @@ object Routes {
     const val APPEARANCE = "appearance"
     const val PRAY = "pray?mode={mode}"
     const val SETUP = "setup"
+    // Work (docs/PLAN_PROFESSIONAL.md §6–7).
+    const val WORK = "work"
+    const val WORK_ALL = "work_all?tab={tab}"
+    const val WORK_PERSON = "work_person/{personId}"
+    const val PROJECT = "project/{projectId}"
+    const val WRAP_UP = "wrapup/{meetingId}?compose={compose}"
+    const val WORK_SETTINGS = "work_settings"
+    /** The Work Inbox: things shared into the app, waiting to be filed. */
+    const val WORK_INBOX = "work_inbox"
+    /** Imports a file already in the app (an inbox audio item) as a recording. */
+    const val IMPORT_FILE = "import_file/{path}"
+    fun importFileRoute(path: String) = "import_file/" + java.net.URLEncoder.encode(path, "UTF-8")
+    /** One context page for a person, an organisation or a project (D5.2). */
+    const val CONTEXT = "context/{type}/{id}"
+    /** An Intelligence Brief: [kind] is a BriefKind name, and the id is the meeting, organisation, project or person ("-" for the weekly one). */
+    const val WEEKLY_REVIEW = "work/review"
+    const val BRIEF = "brief/{kind}/{id}"
+    fun brief(kind: com.craftflowtechnologies.meetingmind.core.work.BriefKind, id: String = "-") = "brief/${kind.name}/${android.net.Uri.encode(id)}"
+    fun context(type: com.craftflowtechnologies.meetingmind.core.work.ContextType, id: String) = "context/${type.name}/$id"
+    fun workAllRoute(tab: String) = "work_all?tab=$tab"
+    fun workPersonRoute(personId: String) = "work_person/$personId"
+    fun projectRoute(projectId: String) = "project/$projectId"
+    /** [compose] opens the follow-up composer straight away (Follow-ups to send). */
+    fun wrapUpRoute(meetingId: String, compose: Boolean = false) = "wrapup/$meetingId" + if (compose) "?compose=true" else ""
     fun prayRoute(mode: String? = null) = "pray" + (mode?.let { "?mode=$it" } ?: "")
 
     fun storiesRoute(start: String? = null) = "stories" + (start?.let { "?start=$it" } ?: "")
@@ -52,6 +79,10 @@ object Routes {
 
     /** Opens the recorder with [type] already picked. */
     fun recordTypeRoute(type: com.craftflowtechnologies.meetingmind.core.model.RecordingType) = "recording?type=${type.name}"
+
+    /** The recorder with [type] and [title] filled in, for an event with no note yet ("Starting now — record?"). */
+    fun recordTitledRoute(type: com.craftflowtechnologies.meetingmind.core.model.RecordingType, title: String) =
+        "recording?type=${type.name}&title=${android.net.Uri.encode(title)}"
 
     /** Records into [noteId] with its type, title and speaker count filled in (a calendar event). */
     fun recordEventRoute(noteId: String, type: com.craftflowtechnologies.meetingmind.core.model.RecordingType, title: String, speakers: Int?) =

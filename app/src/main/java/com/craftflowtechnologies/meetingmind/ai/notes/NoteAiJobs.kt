@@ -127,7 +127,12 @@ class NoteAiWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 modelStorage = com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(applicationContext),
                 geminiTransport = com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(applicationContext)
             )
-            val model = factory.resolve(prefs.processingProfile, ModelCapability.SUMMARIZATION)
+            // Confidential notes and projects stay on the phone (PLAN_PROFESSIONAL.md §6.4).
+            val profile = when (job.targetKind) {
+                "NOTE" -> com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forNote(applicationContext, job.targetId, prefs.processingProfile)
+                else -> com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forNotebook(applicationContext, job.targetId, prefs.processingProfile)
+            }
+            val model = factory.resolve(profile, ModelCapability.SUMMARIZATION)
                 ?: return fail(job, "No AI model is available. Install one in Settings → AI Engine, or turn on Internet mode.")
 
             val question = runCatching { JSONObject(job.inputJson).optString("question") }.getOrNull()?.takeIf { it.isNotBlank() }

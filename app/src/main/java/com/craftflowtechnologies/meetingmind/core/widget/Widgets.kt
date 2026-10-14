@@ -45,6 +45,36 @@ class TodayWidget : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) = Widgets.refresh(context)
 }
 
+/** Your next meeting, a countdown to it, Record, and the prep line (docs/PLAN_PROFESSIONAL.md D5.1). */
+class NextMeetingWidget : AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) = Widgets.refresh(context)
+}
+
+/**
+ * What the next-meeting widget shows. A home screen is public, so a sensitive profile gets no
+ * title and no names: "Next meeting", a countdown, and Record.
+ */
+data class NextMeetingModel(
+    val title: String, val prep: String, val startsInMs: Long, val started: Boolean,
+    val event: com.craftflowtechnologies.meetingmind.core.work.PulseEvent?
+) {
+    companion object {
+        fun of(
+            s: com.craftflowtechnologies.meetingmind.core.work.WorkSettings, event: com.craftflowtechnologies.meetingmind.core.work.PulseEvent?,
+            line: com.craftflowtechnologies.meetingmind.core.work.PulseDayLine?, now: Long
+        ): NextMeetingModel {
+            if (event == null) return NextMeetingModel("Nothing else today", "", 0, false, null)
+            val known = line != null && !line.firstMeeting
+            val prep = when {
+                !known -> ""
+                s.profile.sensitive -> if (line!!.open > 0) "${line.open} open" else ""
+                else -> listOfNotNull(line!!.withLabel?.let { "With $it" }, line.open.takeIf { it > 0 }?.let { "$it still open" }).joinToString(" · ")
+            }
+            return NextMeetingModel(if (s.profile.sensitive) "Your next meeting" else event.title, prep, (event.begin - now).coerceAtLeast(0), event.begin <= now, event)
+        }
+    }
+}
+
 object Widgets {
     private const val NOW = "widgets-now"
     private const val PERIODIC = "widgets-periodic"
@@ -59,7 +89,8 @@ object Widgets {
 
     private fun ids(context: Context, cls: Class<*>) = runCatching { AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, cls)) }.getOrDefault(IntArray(0))
 
-    fun hasAny(context: Context) = ids(context, VerseWidget::class.java).isNotEmpty() || ids(context, TodayWidget::class.java).isNotEmpty()
+    fun hasAny(context: Context) = ids(context, VerseWidget::class.java).isNotEmpty() || ids(context, TodayWidget::class.java).isNotEmpty() ||
+        ids(context, NextMeetingWidget::class.java).isNotEmpty()
 
     internal suspend fun draw(context: Context) {
         val manager = AppWidgetManager.getInstance(context)
@@ -82,6 +113,9 @@ object Widgets {
             views.setOnClickPendingIntent(R.id.widget_verse_root, DeepLinks.pendingIntent(context, DeepLink.Bible))
             manager.updateAppWidget(verseIds, views)
         }
+
+        val nextIds = ids(context, NextMeetingWidget::class.java)
+        if (nextIds.isNotEmpty()) runCatching { drawNextMeeting(context, manager, nextIds) }
 
         val todayIds = ids(context, TodayWidget::class.java)
         if (todayIds.isNotEmpty()) {
@@ -110,6 +144,37 @@ object Widgets {
             manager.updateAppWidget(todayIds, views)
         }
     }
+}
+
+private suspend fun drawNextMeeting(context: Context, manager: AppWidgetManager, ids: IntArray) {
+    val prefs = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context)
+    val settings = prefs.workSettings.first()
+    val now = System.currentTimeMillis()
+    val event = if (!prefs.preferencesFlow.first().calendarEnabled) null else {
+        val calendar = com.craftflowtechnologies.meetingmind.core.calendar.CalendarEvents(context)
+        val end = LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        calendar.between(now - 10 * 60_000L, end).filter { !it.allDay && it.end > now }.minByOrNull { it.begin }?.let {
+            com.craftflowtechnologies.meetingmind.core.work.PulseEvent(it.key, it.title, it.begin, it.end, it.otherPeople, it.attendees.filter { a -> !a.isSelf }.mapNotNull { a -> a.email })
+        }
+    }
+    val line = event?.let { runCatching { com.craftflowtechnologies.meetingmind.core.work.Pulse(com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(context)).today(listOf(it)).firstOrNull() }.getOrNull() }
+    val m = NextMeetingModel.of(settings, event, line, now)
+    val views = RemoteViews(context.packageName, R.layout.widget_next_meeting)
+    views.setTextViewText(R.id.widget_next_title, m.title)
+    views.setTextViewText(R.id.widget_next_prep, m.prep)
+    views.setViewVisibility(R.id.widget_next_prep, if (m.prep.isBlank()) android.view.View.GONE else android.view.View.VISIBLE)
+    views.setViewVisibility(R.id.widget_next_countdown, if (event == null || m.started) android.view.View.GONE else android.view.View.VISIBLE)
+    views.setViewVisibility(R.id.widget_next_now, if (event != null && m.started) android.view.View.VISIBLE else android.view.View.GONE)
+    if (event != null && !m.started) {
+        views.setChronometerCountDown(R.id.widget_next_countdown, true)
+        views.setChronometer(R.id.widget_next_countdown, android.os.SystemClock.elapsedRealtime() + m.startsInMs, null, true)
+    }
+    views.setViewVisibility(R.id.widget_next_record, if (event == null) android.view.View.GONE else android.view.View.VISIBLE)
+    if (event != null) {
+        views.setOnClickPendingIntent(R.id.widget_next_record, DeepLinks.pendingIntent(context, DeepLink.RecordEvent(event.key, event.title, "MEETING")))
+        views.setOnClickPendingIntent(R.id.widget_next_root, DeepLinks.pendingIntent(context, DeepLink.Prepare(event.key, event.title, event.begin, event.end, event.people.joinToString(", "), event.emails.joinToString(", "))))
+    } else views.setOnClickPendingIntent(R.id.widget_next_root, DeepLinks.pendingIntent(context, DeepLink.WorkSpace))
+    manager.updateAppWidget(ids, views)
 }
 
 class WidgetWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {

@@ -208,6 +208,7 @@ class MeetingProcessingPipeline(
         followUpDao.deleteFollowUpsForMeeting(meetingId)
         topicDao.deleteTopicsForMeeting(meetingId)
         embeddingDao.deleteEmbeddingsForMeeting(meetingId)
+        database.signalDao().deleteForMeeting(meetingId)
 
         val jobId = "job_$meetingId"
         val jobStartedAt = System.currentTimeMillis()
@@ -655,12 +656,21 @@ class MeetingProcessingPipeline(
                         confidence = speakerAttributionConfidence[seg.speakerId]
                     )
                 }
-            speakerDao.insertSpeakers(uniqueSpeakers)
+            // A speaker already linked to a person stays linked when the recording is processed again.
+            val linkedPeople = speakerDao.getSpeakersForMeetingDirect(meetingId).associate { it.id to it.personId }
+            speakerDao.insertSpeakers(uniqueSpeakers.map { it.copy(personId = linkedPeople[it.id]) })
 
             // Only persist intelligence output when it's real (summary != null)
             if (summary != null) {
                 persistIntelligence(meetingId, summary, actionItemDao, decisionDao, questionDao, followUpDao, topicDao)
+                persistSignals(meetingId, summary)
             }
+            // Marks tapped while recording meet what extraction found (docs/PLAN_PROFESSIONAL.md §4.2).
+            runCatching {
+                com.craftflowtechnologies.meetingmind.core.work.Marks.reconcile(database, meetingId, diarizedSegments.map {
+                    com.craftflowtechnologies.meetingmind.core.work.Marks.Segment(it.id, it.startMs, it.endMs, it.speakerId, it.cleanedText ?: it.text)
+                })
+            }.onFailure { Log.w(PERF_TAG, "Marks not reconciled: ${it.message}") }
 
             embeddingDao.insertEmbeddings(embeddingEntities)
 
@@ -890,6 +900,19 @@ class MeetingProcessingPipeline(
                 )
             }
         )
+    }
+
+    /** One row per paragraph a signal cites, so a paragraph can be filtered by what it holds. */
+    private suspend fun persistSignals(meetingId: String, summary: MeetingSummary) {
+        if (summary.signals.isEmpty()) return
+        database.signalDao().insertAll(summary.signals.flatMap { s ->
+            s.sourceSegmentIds.mapIndexed { i, segmentId ->
+                com.craftflowtechnologies.meetingmind.core.database.SegmentSignalEntity(
+                    id = "${s.id}_$i", segmentId = segmentId, meetingId = meetingId, kind = s.kind, entityId = s.speakerId,
+                    value = s.value, confidence = s.confidence, text = s.text, signalId = s.id
+                )
+            }
+        })
     }
 
     private fun List<String>.toJsonArrayString(): String {

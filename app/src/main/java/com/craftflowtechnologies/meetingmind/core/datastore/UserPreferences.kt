@@ -83,7 +83,24 @@ data class AppPreferencesState(
     /** The first-run guided tour of Home has been shown (finished or skipped). */
     val tourCompleted: Boolean = false,
     /** The "Getting started" checklist on Home was closed. */
-    val gettingStartedDismissed: Boolean = false
+    val gettingStartedDismissed: Boolean = false,
+    /** Which onboarding design the saved progress belongs to; a different version restarts the flow from the welcome. */
+    val onboardingVersion: Int = 0,
+    /** Where the person got to in onboarding (an OnboardingStep name), so a killed app resumes there. */
+    val onboardingStep: String? = null,
+    /** "SAMPLE" or "RECORD": how they chose to start. */
+    val onboardingEntryRoute: String? = null,
+    /** What they capture (CaptureGoal names) and what they want from recordings (DesiredOutcome names). */
+    val onboardingGoals: Set<String> = emptySet(),
+    val onboardingOutcomes: Set<String> = emptySet(),
+    /** They watched the example recording to its notes. This is never a personal recording. */
+    val sampleViewed: Boolean = false,
+    /** When a paywall was last shown unasked (epoch ms), how often it was closed, and whether the first-result offer has been shown. */
+    val paywallLastShownAt: Long = 0,
+    val paywallDismissals: Int = 0,
+    val firstResultOfferShown: Boolean = false,
+    /** The last usage warning shown ("<period end>:<level>"), so each level is shown once a period. */
+    val usageWarned: String? = null
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -139,6 +156,54 @@ class UserPreferencesManager(private val context: Context) {
     private val SETUP_SNOOZED_UNTIL = androidx.datastore.preferences.core.longPreferencesKey("setup_snoozed_until")
     private val TOUR_COMPLETED = booleanPreferencesKey("tour_completed")
     private val GETTING_STARTED_DISMISSED = booleanPreferencesKey("getting_started_dismissed")
+    private val ONBOARDING_VERSION = intPreferencesKey("onboarding_version")
+    private val ONBOARDING_STEP = stringPreferencesKey("onboarding_step")
+    private val ONBOARDING_ENTRY = stringPreferencesKey("onboarding_entry")
+    private val ONBOARDING_GOALS = stringSetPreferencesKey("onboarding_goals")
+    private val ONBOARDING_OUTCOMES = stringSetPreferencesKey("onboarding_outcomes")
+    private val SAMPLE_VIEWED = booleanPreferencesKey("sample_viewed")
+    private val PAYWALL_LAST_SHOWN = androidx.datastore.preferences.core.longPreferencesKey("paywall_last_shown_at")
+    private val PAYWALL_DISMISSALS = intPreferencesKey("paywall_dismissals")
+    private val FIRST_RESULT_OFFER_SHOWN = booleanPreferencesKey("first_result_offer_shown")
+    private val USAGE_WARNED = stringPreferencesKey("usage_warned")
+    private val WORK_SETTINGS = stringPreferencesKey("work_settings")
+    private val PULSE_SEEN_AT = androidx.datastore.preferences.core.longPreferencesKey("pulse_seen_at")
+
+    /** When the Work Pulse was last on screen long enough to be read; "what changed" is measured from it. */
+    val pulseSeenAt: Flow<Long?> = context.dataStore.data.map { it[PULSE_SEEN_AT] }
+
+    suspend fun setPulseSeenAt(epochMs: Long) {
+        context.dataStore.edit { it[PULSE_SEEN_AT] = epochMs }
+    }
+
+    /** Work profile, words, rhythm, outputs and privacy (docs/PLAN_PROFESSIONAL.md §8). */
+    val workSettings: Flow<com.craftflowtechnologies.meetingmind.core.work.WorkSettings> =
+        context.dataStore.data.map { com.craftflowtechnologies.meetingmind.core.work.WorkSettings.fromJson(it[WORK_SETTINGS]) }
+
+    suspend fun setWorkSettings(settings: com.craftflowtechnologies.meetingmind.core.work.WorkSettings) {
+        context.dataStore.edit { it[WORK_SETTINGS] = settings.toJson() }
+        syncWorkRhythm(settings)
+    }
+
+    suspend fun updateWorkSettings(change: (com.craftflowtechnologies.meetingmind.core.work.WorkSettings) -> com.craftflowtechnologies.meetingmind.core.work.WorkSettings) {
+        var updated = com.craftflowtechnologies.meetingmind.core.work.WorkSettings()
+        context.dataStore.edit {
+            updated = change(com.craftflowtechnologies.meetingmind.core.work.WorkSettings.fromJson(it[WORK_SETTINGS]))
+            it[WORK_SETTINGS] = updated.toJson()
+        }
+        syncWorkRhythm(updated)
+    }
+
+    /** Whether the person uses the Work space at all: the Work nudges only ever run for them. */
+    suspend fun usesWork(): Boolean =
+        com.craftflowtechnologies.meetingmind.core.identity.AppIdentity.parseSpaces(context.dataStore.data.first()[SPACES])
+            .contains(com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK)
+
+    /** Sets the Work nudges (morning, Prep, weekly review) to the settings just kept. */
+    suspend fun syncWorkRhythm(settings: com.craftflowtechnologies.meetingmind.core.work.WorkSettings) {
+        runCatching { com.craftflowtechnologies.meetingmind.core.work.WorkRhythmScheduler.sync(context, settings, usesWork()) }
+    }
+
     private val DEVOTIONAL_PROFILE = stringPreferencesKey("devotional_profile")
 
     /** How the person wants their daily devotional (PLAN_V2 F2). */
@@ -208,8 +273,49 @@ class UserPreferencesManager(private val context: Context) {
             timelineView = prefs[TIMELINE_VIEW] ?: "AGENDA",
             setupSnoozedUntil = prefs[SETUP_SNOOZED_UNTIL] ?: 0L,
             tourCompleted = prefs[TOUR_COMPLETED] ?: false,
-            gettingStartedDismissed = prefs[GETTING_STARTED_DISMISSED] ?: false
+            gettingStartedDismissed = prefs[GETTING_STARTED_DISMISSED] ?: false,
+            onboardingVersion = prefs[ONBOARDING_VERSION] ?: 0,
+            onboardingStep = prefs[ONBOARDING_STEP],
+            onboardingEntryRoute = prefs[ONBOARDING_ENTRY],
+            onboardingGoals = prefs[ONBOARDING_GOALS] ?: emptySet(),
+            onboardingOutcomes = prefs[ONBOARDING_OUTCOMES] ?: emptySet(),
+            sampleViewed = prefs[SAMPLE_VIEWED] ?: false,
+            paywallLastShownAt = prefs[PAYWALL_LAST_SHOWN] ?: 0L,
+            paywallDismissals = prefs[PAYWALL_DISMISSALS] ?: 0,
+            firstResultOfferShown = prefs[FIRST_RESULT_OFFER_SHOWN] ?: false,
+            usageWarned = prefs[USAGE_WARNED]
         )
+    }
+
+    /** Saves where onboarding is up to, so a process death resumes it instead of restarting. */
+    suspend fun saveOnboardingProgress(version: Int, step: String, entryRoute: String?, goals: Set<String>, outcomes: Set<String>) {
+        context.dataStore.edit {
+            it[ONBOARDING_VERSION] = version
+            it[ONBOARDING_STEP] = step
+            if (entryRoute == null) it.remove(ONBOARDING_ENTRY) else it[ONBOARDING_ENTRY] = entryRoute
+            it[ONBOARDING_GOALS] = goals
+            it[ONBOARDING_OUTCOMES] = outcomes
+        }
+    }
+
+    /** An unasked paywall was shown now. [firstResult] marks the one-time first-result offer as used. */
+    suspend fun markPaywallShown(nowMs: Long, firstResult: Boolean) {
+        context.dataStore.edit {
+            it[PAYWALL_LAST_SHOWN] = nowMs
+            if (firstResult) it[FIRST_RESULT_OFFER_SHOWN] = true
+        }
+    }
+
+    suspend fun markUsageWarned(tag: String) {
+        context.dataStore.edit { it[USAGE_WARNED] = tag }
+    }
+
+    suspend fun recordPaywallDismissed() {
+        context.dataStore.edit { it[PAYWALL_DISMISSALS] = (it[PAYWALL_DISMISSALS] ?: 0) + 1 }
+    }
+
+    suspend fun setSampleViewed(viewed: Boolean) {
+        context.dataStore.edit { it[SAMPLE_VIEWED] = viewed }
     }
 
     suspend fun setBibleVersionId(id: Int) {

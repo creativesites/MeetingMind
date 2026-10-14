@@ -24,6 +24,16 @@ sealed interface DeepLink {
     data object ReadingPlans : DeepLink
     data object Home : DeepLink
     data object Tasks : DeepLink
+    /** The Work Inbox (a share landed, or the morning Pulse mentions it). */
+    data object Inbox : DeepLink
+    /** The Work space. */
+    data object WorkSpace : DeepLink
+    /** Prepare for a calendar event. */
+    data class Prepare(val eventKey: String, val title: String, val begin: Long, val end: Long, val people: String, val emails: String) : DeepLink
+    /** "Starting now — record?": the recorder with the workflow and title filled in. */
+    data class RecordEvent(val eventKey: String, val title: String, val workflow: String) : DeepLink
+    /** The weekly review. */
+    data object WeeklyReview : DeepLink
 }
 
 /**
@@ -39,6 +49,9 @@ object DeepLinks {
 
     fun consume(): DeepLink? = _pending.value.also { _pending.value = null }
 
+    /** Opens a link from inside the app (a share landing), the same way a notification tap does. */
+    fun open(link: DeepLink) { _pending.value = link }
+
     fun handle(intent: Intent?) {
         val target = intent?.getStringExtra(EXTRA_TARGET) ?: return
         val meeting = intent.getStringExtra(EXTRA_MEETING)
@@ -52,6 +65,11 @@ object DeepLinks {
             "plans" -> DeepLink.ReadingPlans
             "home" -> DeepLink.Home
             "tasks" -> DeepLink.Tasks
+            "inbox" -> DeepLink.Inbox
+            "work" -> DeepLink.WorkSpace
+            "review" -> DeepLink.WeeklyReview
+            "prepare" -> DeepLink.Prepare(intent.getStringExtra("k").orEmpty(), intent.getStringExtra("t").orEmpty(), intent.getLongExtra("b", 0), intent.getLongExtra("e", 0), intent.getStringExtra("p").orEmpty(), intent.getStringExtra("m").orEmpty())
+            "record_event" -> DeepLink.RecordEvent(intent.getStringExtra("k").orEmpty(), intent.getStringExtra("t").orEmpty(), intent.getStringExtra("w").orEmpty())
             else -> null
         }
         intent.removeExtra(EXTRA_TARGET)
@@ -68,11 +86,23 @@ object DeepLinks {
             DeepLink.ReadingPlans -> "plans" to null
             DeepLink.Home -> "home" to null
             DeepLink.Tasks -> "tasks" to null
+            DeepLink.Inbox -> "inbox" to null
+            DeepLink.WorkSpace -> "work" to null
+            DeepLink.WeeklyReview -> "review" to null
+            is DeepLink.Prepare -> "prepare" to link.eventKey
+            is DeepLink.RecordEvent -> "record_event" to link.eventKey
         }
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra(EXTRA_TARGET, target)
-            .apply { meeting?.let { putExtra(EXTRA_MEETING, it) } }
+            .apply {
+                meeting?.let { putExtra(EXTRA_MEETING, it) }
+                when (link) {
+                    is DeepLink.Prepare -> { putExtra("k", link.eventKey); putExtra("t", link.title); putExtra("b", link.begin); putExtra("e", link.end); putExtra("p", link.people); putExtra("m", link.emails) }
+                    is DeepLink.RecordEvent -> { putExtra("k", link.eventKey); putExtra("t", link.title); putExtra("w", link.workflow) }
+                    else -> Unit
+                }
+            }
         // A distinct request code per destination, so one notification's tap target never
         // replaces another's.
         return PendingIntent.getActivity(
@@ -147,6 +177,33 @@ object AppNotifications {
     }
 
     const val CHANNEL_REMINDERS = "meetmind_reminders"
+    const val CHANNEL_WORK_RHYTHM = "meetmind_work_rhythm"
+
+    /**
+     * A Work nudge: the morning line, Prep, "Starting now" or the weekly review. The words come
+     * from `WorkNotices`, which already leaves out titles and names for a sensitive profile.
+     */
+    fun workNotice(context: Context, n: com.craftflowtechnologies.meetingmind.core.work.WorkNotice) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+                NotificationChannel(CHANNEL_WORK_RHYTHM, "Work rhythm", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "Your morning line, meeting prep, \"starting now\" and the weekly review, on your working days and hours"
+                }
+            )
+        }
+        post(
+            context, n.id,
+            NotificationCompat.Builder(context, CHANNEL_WORK_RHYTHM)
+                .setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setContentTitle(n.title)
+                .setContentText(n.text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(n.text))
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setContentIntent(DeepLinks.pendingIntent(context, n.link))
+                .build()
+        )
+    }
 
     /** A gentle reminder: prayer times, today's reading, evening reflection, a meeting soon. */
     fun faithReminder(context: Context, id: Int, title: String, text: String, link: DeepLink) {

@@ -87,6 +87,8 @@ class DailyAlarmReceiver : BroadcastReceiver() {
         when {
             DevotionalScheduler.handles(key) -> DevotionalScheduler.onAlarm(context, key)
             ReminderScheduler.handles(key) -> ReminderScheduler.onAlarm(context, key)
+            com.craftflowtechnologies.meetingmind.core.work.WorkRhythmScheduler.handles(key) ->
+                com.craftflowtechnologies.meetingmind.core.work.WorkRhythmScheduler.onAlarm(context, key)
         }
     }
 }
@@ -101,6 +103,7 @@ class DailyAlarmResync : BroadcastReceiver() {
                 DevotionalScheduler.sync(context.applicationContext, prefs.devotionalProfile.first())
                 ReminderScheduler.sync(context.applicationContext, prefs.reminderSettings.first())
                 runCatching { com.craftflowtechnologies.meetingmind.core.tasks.TaskReminders.sync(context.applicationContext) }
+                runCatching { com.craftflowtechnologies.meetingmind.core.work.WorkRhythmScheduler.sync(context.applicationContext, prefs.workSettings.first(), prefs.usesWork()) }
             } finally {
                 pending.finish()
             }

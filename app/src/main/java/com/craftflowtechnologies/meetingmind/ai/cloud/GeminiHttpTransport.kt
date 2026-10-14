@@ -37,7 +37,9 @@ import kotlin.coroutines.coroutineContext
 class GeminiHttpTransport(
     private val credentials: GeminiCredentialStore,
     private val client: OkHttpClient = defaultClient(),
-    private val baseUrl: String = DEFAULT_BASE_URL
+    private val baseUrl: String = DEFAULT_BASE_URL,
+    /** MeetingMind's managed Gemini service (server/gemini-proxy); blank in builds that have none. */
+    private val managedUrl: String = com.craftflowtechnologies.meetingmind.BuildConfig.GEMINI_PROXY_URL
 ) : GeminiTransport {
 
     /**
@@ -51,7 +53,7 @@ class GeminiHttpTransport(
 
     /** Refreshes [isConfigured] from storage. */
     override suspend fun refreshConfigured(): Boolean {
-        lastKnownConfigured = credentials.getApiKey() != null
+        lastKnownConfigured = GeminiRoutes.resolve(credentials, baseUrl, managedUrl) != null
         return lastKnownConfigured
     }
 
@@ -63,8 +65,8 @@ class GeminiHttpTransport(
     }
 
     private suspend fun executeLogged(request: GeminiRequest): AiResult<String> = withContext(Dispatchers.IO) {
-        val apiKey = credentials.getApiKey()
-        if (apiKey == null) {
+        val route = GeminiRoutes.resolve(credentials, baseUrl, managedUrl)
+        if (route == null) {
             lastKnownConfigured = false
             return@withContext AiResult.ModelUnavailable(
                 request.modelId,
@@ -76,15 +78,15 @@ class GeminiHttpTransport(
         try {
             val uploaded = request.audioFile?.let { file ->
                 coroutineContext.ensureActive()
-                when (val upload = uploadAudio(apiKey, file, request)) {
+                when (val upload = uploadAudio(route, file, request)) {
                     is AiResult.Success -> upload.value
                     else -> return@withContext upload as AiResult<String>
                 }
             }
 
             coroutineContext.ensureActive()
-            if (request.transcription != null) transcribeContent(apiKey, request, uploaded?.first, uploaded?.second ?: AUDIO_MIME)
-            else generateContent(apiKey, request, uploaded?.first)
+            if (request.transcription != null) transcribeContent(route, request, uploaded?.first, uploaded?.second ?: AUDIO_MIME)
+            else generateContent(route, request, uploaded?.first)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: java.io.InterruptedIOException) {
@@ -105,20 +107,20 @@ class GeminiHttpTransport(
      * reads; a part of a long recording, or the sound of a video, is cut out without decoding
      * ([CloudAudio.cut]). Only when neither works is the audio decoded to a WAV slice.
      */
-    private suspend fun uploadAudio(apiKey: String, file: File, request: GeminiRequest): AiResult<Pair<String, String>> {
+    private suspend fun uploadAudio(route: GeminiRoute, file: File, request: GeminiRequest): AiResult<Pair<String, String>> {
         if (request.transcription != null) {
             val mime = directMimeType(file)
             val video = CloudAudio.hasVideo(file)
             if (request.uploadWholeFile && mime != null && !video) {
-                return uploadFile(apiKey, file, mime).withMime(mime)
+                return uploadFile(route, file, mime).withMime(mime)
             }
             val dir = File(file.parentFile ?: File(System.getProperty("java.io.tmpdir") ?: "."), "gemini_parts")
             val part = CloudAudio.cut(file, if (request.uploadWholeFile) 0 else request.audioStartMs, if (request.uploadWholeFile) -1 else request.audioEndMs, dir)
             if (part != null) {
-                return try { uploadFile(apiKey, part.first, part.second).withMime(part.second) } finally { part.first.delete() }
+                return try { uploadFile(route, part.first, part.second).withMime(part.second) } finally { part.first.delete() }
             }
         }
-        return uploadAudioSlice(apiKey, file, request.audioStartMs, request.audioEndMs).withMime(AUDIO_MIME)
+        return uploadAudioSlice(route, file, request.audioStartMs, request.audioEndMs).withMime(AUDIO_MIME)
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -135,6 +137,8 @@ class GeminiHttpTransport(
         fun secs() = "%.1fs".format((System.currentTimeMillis() - started) / 1000.0)
         return try {
             val reply = sendRaw(request, timeoutMs)
+            // The managed service reports what the person has used on every reply; Google's own replies carry none.
+            UsageMeter.observe(reply.code, reply.headers)
             GeminiLog.add(
                 if (reply.ok) "$label → OK ${reply.code} in ${secs()}"
                 else "$label → HTTP ${reply.code} in ${secs()}: ${serverMessage(reply.body) ?: reply.body.take(300)}"
@@ -178,7 +182,7 @@ class GeminiHttpTransport(
      * time range — is not something the API offers. The temporary file is always deleted.
      */
     private suspend fun uploadAudioSlice(
-        apiKey: String,
+        route: GeminiRoute,
         audioFile: File,
         startMs: Long,
         endMs: Long
@@ -198,15 +202,14 @@ class GeminiHttpTransport(
         val wav = File.createTempFile("meetmind_chunk_", ".wav")
         return try {
             writeWav(wav, decoded.samples, fromSample, toSample, sampleRate)
-            uploadFile(apiKey, wav)
+            uploadFile(route, wav)
         } finally {
             wav.delete()
         }
     }
 
-    private suspend fun uploadFile(apiKey: String, file: File, mime: String = AUDIO_MIME): AiResult<String> {
-        val start = Request.Builder()
-            .url("$baseUrl/upload/v1beta/files?key=$apiKey")
+    private suspend fun uploadFile(route: GeminiRoute, file: File, mime: String = AUDIO_MIME): AiResult<String> {
+        val start = route.builder("/upload/v1beta/files")
             .addHeader("X-Goog-Upload-Protocol", "resumable")
             .addHeader("X-Goog-Upload-Command", "start")
             .addHeader("X-Goog-Upload-Header-Content-Length", file.length().toString())
@@ -221,8 +224,8 @@ class GeminiHttpTransport(
         if (!started.ok) return describeHttpFailure("Uploading audio", started.code, started.body)
         val uploadUrl = started.headers["X-Goog-Upload-URL"] ?: return AiResult.Failed("Gemini did not return an upload URL.")
 
-        val upload = Request.Builder()
-            .url(uploadUrl)
+        // Managed: the proxy handed back its own upload URL, which needs the same sign-in headers.
+        val upload = route.withHeaders(Request.Builder().url(uploadUrl))
             .addHeader("X-Goog-Upload-Offset", "0")
             .addHeader("X-Goog-Upload-Command", "upload, finalize")
             .post(file.asRequestBody(mime.toMediaType()))
@@ -239,17 +242,17 @@ class GeminiHttpTransport(
 
         // An uploaded file is PROCESSING before it can be referenced; using it too early fails
         // with an opaque error, so wait for it rather than letting that surface to the user.
-        return when (val ready = awaitFileActive(apiKey, fileJson.optString("name"))) {
+        return when (val ready = awaitFileActive(route, fileJson.optString("name"))) {
             is AiResult.Success -> AiResult.Success(uri)
             else -> ready as AiResult<String>
         }
     }
 
-    private suspend fun awaitFileActive(apiKey: String, name: String): AiResult<Unit> {
+    private suspend fun awaitFileActive(route: GeminiRoute, name: String): AiResult<Unit> {
         if (name.isBlank()) return AiResult.Success(Unit)
         repeat(FILE_READY_ATTEMPTS) { attempt ->
             coroutineContext.ensureActive()
-            val request = Request.Builder().url("$baseUrl/v1beta/$name?key=$apiKey").get().build()
+            val request = route.builder("/v1beta/$name").get().build()
             val state = send(request, SHORT_TIMEOUT_MS, "File state check").let { r -> if (r.ok) runCatching { JSONObject(r.body).optString("state") }.getOrNull() else null }
             when (state) {
                 "ACTIVE" -> return AiResult.Success(Unit)
@@ -262,7 +265,7 @@ class GeminiHttpTransport(
 
     // ── generateContent ──────────────────────────────────────────────────────────────────────
 
-    private suspend fun generateContent(apiKey: String, request: GeminiRequest, fileUri: String?): AiResult<String> {
+    private suspend fun generateContent(route: GeminiRoute, request: GeminiRequest, fileUri: String?): AiResult<String> {
         val parts = JSONArray().put(JSONObject().put("text", buildPrompt(request)))
         if (fileUri != null) {
             parts.put(
@@ -291,8 +294,7 @@ class GeminiHttpTransport(
             )
         }
 
-        val httpRequest = Request.Builder()
-            .url("$baseUrl/v1beta/models/${request.modelId}:generateContent?key=$apiKey")
+        val httpRequest = route.builder("/v1beta/models/${request.modelId}:generateContent", operation = true)
             .post(body.toString().toRequestBody(JSON_MIME))
             .build()
 
@@ -307,7 +309,7 @@ class GeminiHttpTransport(
      * comes back as `audioTranscription` parts — one per speaker turn, each with timed words —
      * which are handed on as JSON for [GeminiTranscriptParser].
      */
-    private suspend fun transcribeContent(apiKey: String, request: GeminiRequest, fileUri: String?, mime: String): AiResult<String> {
+    private suspend fun transcribeContent(route: GeminiRoute, request: GeminiRequest, fileUri: String?, mime: String): AiResult<String> {
         if (fileUri == null) return AiResult.Failed("There was no audio to transcribe.")
         val config = request.transcription!!
         val transcription = JSONObject()
@@ -324,8 +326,7 @@ class GeminiHttpTransport(
             ))))
             .put("generationConfig", JSONObject().put("audioTranscriptionConfig", transcription))
 
-        val httpRequest = Request.Builder()
-            .url("$baseUrl/v1beta/models/${request.modelId}:generateContent?key=$apiKey")
+        val httpRequest = route.builder("/v1beta/models/${request.modelId}:generateContent", operation = true)
             .post(body.toString().toRequestBody(JSON_MIME))
             .build()
         // Transcription runs at several times real speed; allow a third of the audio's length on top of five minutes.
@@ -396,7 +397,8 @@ class GeminiHttpTransport(
             401, 403 -> AiResult.Failed(
                 "$stage failed: your Gemini API key was rejected. Check it in Settings. ${serverMessage.orEmpty()}".trim()
             )
-            429 -> AiResult.Failed("$stage failed: Gemini quota exceeded. Try again later, or process this recording offline.")
+            402 -> AiResult.Failed("$stage needs a MeetingMind plan. See Plans in Settings, or process this recording offline.")
+            429 -> AiResult.Failed("$stage failed: the cloud allowance or quota is used up. Try again later, or process this recording offline.")
             in 500..599 -> AiResult.Failed("$stage failed: Gemini is unavailable right now. Try again shortly.")
             else -> AiResult.Failed("$stage failed (HTTP $code). ${serverMessage.orEmpty()}".trim())
         }

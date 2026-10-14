@@ -118,6 +118,7 @@ class MeetingRecordingService : Service() {
         const val ACTION_PAUSE = "com.craftflowtechnologies.meetingmind.meetmind.ACTION_PAUSE"
         const val ACTION_RESUME = "com.craftflowtechnologies.meetingmind.meetmind.ACTION_RESUME"
         const val ACTION_STOP = "com.craftflowtechnologies.meetingmind.meetmind.ACTION_STOP"
+        const val NOTIFICATION_ID_MARKS = 1002
 
         /** Binds a caller to the running (or freshly created) service. The service does not
          * self-start via [Context.startService]/[Context.startForegroundService] on bind alone —
@@ -143,7 +144,14 @@ class MeetingRecordingService : Service() {
         when (intent?.action) {
             ACTION_PAUSE -> pauseRecording()
             ACTION_RESUME -> resumeRecording()
-            ACTION_STOP -> stopRecording { _, _, _ -> }
+            ACTION_STOP -> stopRecording { id, file, _ ->
+                // Stopped from the notification: the marks tapped so far still belong on the recording's note.
+                val marks = com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.take()
+                if (file != null && marks.isNotEmpty()) scope.launch {
+                    runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.save(MeetMindDatabase.getInstance(applicationContext), id, marks) }
+                }
+            }
+            else -> com.craftflowtechnologies.meetingmind.core.work.MarkActions.handle(intent?.action, durationMs.value)
         }
         return START_STICKY
     }
@@ -181,6 +189,7 @@ class MeetingRecordingService : Service() {
         _state.value = RecordingState.RECORDING
         writeJournal()
         startMaintenanceLoop()
+        startMarks()
         return file
     }
 
@@ -247,12 +256,54 @@ class MeetingRecordingService : Service() {
      * action with its own confirmation, not this method's. */
     fun discardRecording() {
         audioRecorder.discardRecording()
+        com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.clear()
         _state.value = RecordingState.IDLE
         journalStore.clear()
         teardown()
     }
 
+    private var marksJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * For a work recording with other people in it, a second ongoing notification carries Key,
+     * Action and Question (the recording's own notification already holds Pause and Stop, and
+     * Android shows three actions at most). It is visible on the lock screen, so a moment can be
+     * marked without unlocking. It says nothing about the meeting.
+     */
+    private fun startMarks() {
+        marksJob?.cancel()
+        com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.clear()
+        val isWork = com.craftflowtechnologies.meetingmind.core.model.Workflows.space(recordingContext.recordingType) == com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK
+        if (!isWork || recordingContext.speakerCountPreference == 1) return
+        marksJob = scope.launch {
+            com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.marks.collect { postMarksNotification(it.size) }
+        }
+    }
+
+    private fun postMarksNotification(count: Int) {
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_edit)
+            .setContentTitle("Mark this moment")
+            .setContentText(if (count == 0) "Key, action or question" else if (count == 1) "1 marked" else "$count marked")
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+        listOf(
+            com.craftflowtechnologies.meetingmind.core.work.MarkKind.KEY to "⭐ Key",
+            com.craftflowtechnologies.meetingmind.core.work.MarkKind.ACTION to "✓ Action",
+            com.craftflowtechnologies.meetingmind.core.work.MarkKind.QUESTION to "? Question"
+        ).forEachIndexed { i, (kind, label) ->
+            val intent = Intent(this, MeetingRecordingService::class.java).setAction(com.craftflowtechnologies.meetingmind.core.work.MarkActions.actionOf(kind))
+            builder.addAction(0, label, PendingIntent.getService(this, 11 + i, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+        }
+        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID_MARKS, builder.build())
+    }
+
     private fun teardown() {
+        marksJob?.cancel(); marksJob = null
+        getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID_MARKS)
         maintenanceJob?.cancel()
         maintenanceJob = null
         _capacityWarning.value = null

@@ -9,6 +9,8 @@ enum class AccentChoice(val label: String, val dark: Color, val light: Color) {
     TEAL("Teal", Color(0xFF4FD1C5), Color(0xFF0F766E)),
     SKY("Sky", Color(0xFF7DD3FC), Color(0xFF0369A1)),
     GREEN("Green", Color(0xFF4ADE80), Color(0xFF15803D)),
+    EMERALD("Emerald", Color(0xFF34D399), Color(0xFF047857)),
+    CRIMSON("Crimson", Color(0xFFF87171), Color(0xFFB91C1C)),
     AMBER("Amber", Color(0xFFF2B447), Color(0xFFB45309)),
     ROSE("Rose", Color(0xFFF472B6), Color(0xFFBE185D)),
     SLATE("Slate", Color(0xFFCBD5E1), Color(0xFF475569));
@@ -27,7 +29,8 @@ enum class TextSize(val label: String, val scale: Float) {
 enum class HomeStyle(val label: String, val description: String) {
     TODAY("Today", "The day, your calendar and timeline, and everything you've captured"),
     CALM("Calm", "Quiet and simple, with your stories and your recent recordings and notes"),
-    FOCUS("Focus", "One page only: what's next, what's due, and Record")
+    FOCUS("Focus", "One page only: what's next, what's due, and Record"),
+    PROFESSIONAL("Professional", "A briefing for the working day: next meeting and prep, what needs you, your schedule, tasks, projects and people — with everything else still here")
 }
 
 /** Parts of the Today home a person can hide. */

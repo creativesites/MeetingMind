@@ -152,6 +152,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    val workSettings: StateFlow<com.craftflowtechnologies.meetingmind.core.work.WorkSettings> = userPrefs.workSettings.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), com.craftflowtechnologies.meetingmind.core.work.WorkSettings()
+    )
+
     val preferencesState: StateFlow<AppPreferencesState> = userPrefs.preferencesFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -248,11 +252,18 @@ fun SettingsScreen(
     onOpenSetup: () -> Unit = {},
     onOpenDataBackup: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
+    onOpenWork: () -> Unit = {},
+    onOpenSubscription: () -> Unit = {},
     onReplayTour: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs by viewModel.preferencesState.collectAsState()
     val geminiKeyDisplay by viewModel.geminiKeyDisplay.collectAsState()
+    val work by viewModel.workSettings.collectAsState()
+    val billing = com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway
+    val owned by billing.entitlements.collectAsState()
+    val usage by com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.state.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.refresh(context) }
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showSpaces by remember { mutableStateOf(false) }
@@ -389,6 +400,13 @@ fun SettingsScreen(
                         onClick = { showSpaces = true }
                     )
                 }
+                if (com.craftflowtechnologies.meetingmind.core.model.NotebookSpace.WORK in prefs.identity.spaces) settingsRow {
+                    SettingsNavRow(
+                        title = "Work",
+                        subtitle = listOfNotNull(work.profile.label, work.terms.organisation + " · " + work.terms.project, "on this phone only".takeIf { work.keepOnDevice }).joinToString(" · "),
+                        onClick = onOpenWork
+                    )
+                }
                 settingsRow {
                     SettingsNavRow(title = "Look & feel", subtitle = prefs.identity.look.label + " — " + prefs.identity.look.description, onClick = { showLook = true })
                 }
@@ -490,6 +508,15 @@ fun SettingsScreen(
             }
 
             settingsSection(title = "AI & Models") {
+                // Only when this build can sell something; otherwise the app is simply free.
+                if (billing.configured) settingsRow {
+                    SettingsNavRow(
+                        title = "Plan and usage",
+                        subtitle = (if (owned.isPaid) "${owned.plan.label} · manage or change your plan" else "Free · see what a plan adds") +
+                            usage.summary().takeIf { usage.known && it.isNotEmpty() }?.let { "\nThis month: $it" }.orEmpty(),
+                        onClick = onOpenSubscription
+                    )
+                }
                 settingsRow {
                     SettingsNavRow(
                         title = "Setup guide",

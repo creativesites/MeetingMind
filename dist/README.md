@@ -1,6 +1,51 @@
 # Installable builds
 
-`MeetingMind-v30-arm64-v8a.apk` — debug-signed, arm64-v8a, for device testing.
+**v41** (`MeetingMind-v41-arm64-v8a.apk`, `MeetingMind-v41-armeabi-v7a.apk`) is the Professional work through **W12**
+with a redesigned Work screen. Same signing key, so it installs over the earlier test builds and keeps your data.
+
+- **Redesigned Work header:** the date, a large title with a live status line ("3 tasks · 1 waiting on"), round
+  search and settings buttons, and a new welcome card. The empty schedule is now one slim row.
+- **New list icons:** each recording, note and summary has its own tinted tile (recording, client call, 1:1,
+  decision record, action items, summary) instead of the same grey document.
+- **The crash screen is gone.** The unlock crash was fixed in v39 and v40.
+- **Play Store bundle:** built on GitHub from the `aab-*` tag workflow (`.github/workflows/release-aab.yml`), signed with
+  your upload key and carrying the built-in testing API keys. It goes to a draft release, never into git.
+
+Built from this branch at the commit that added this file. The v40 build was removed.
+
+## What's new in v37 (W7–W10)
+
+- **Work Pulse** on the Professional home: what needs you today, and what changed since you last looked.
+- **Decisions, promises, questions and risks now last across meetings**, with a link to the exact moment
+  they were said. "You owe" and "They owe" replace Waiting on.
+- **Person, organisation and project pages** with a timeline and history.
+- **Meeting prep** (Prepare) and the **Intelligence Brief**, exportable to PDF, DOCX and Markdown.
+- **Changes card** in the Wrap-up: when a decision or date moves, it proposes what it replaces.
+- **Ask about a person, organisation or project**, answered only with cited sources.
+
+## What's new in v34
+
+Everything in v31–v33 is kept. v34 adds the professional vertical on top.
+
+- **A Work space**, in Notes next to Faith, that's useful before your first recording:
+  - Start a client call, 1:1, standup, consultation, brief, decision record or weekly review.
+  - Projects with their notes, tasks, decisions and people.
+  - People built from your meetings (no contacts access), with organisations from email domains.
+  - My tasks, Waiting on (with Nudge), the decision log and open questions.
+- **A fourth home, Professional** (Settings → Look and home): a briefing card for your day, then
+  what needs you, your schedule, tasks, projects and people. Every feature is still there.
+- **The Wrap-up after a work recording.** Confirm what was agreed in under a minute. Actions become
+  tasks, and what others owe you goes to Waiting on.
+- **Follow-ups** on WhatsApp or email. The app picks the channel per person and region, and writes
+  only what you confirmed.
+- **Names update everywhere.** Rename "Speaker 1" and the summary, tasks, decisions and note all
+  change.
+- **Mark moments while recording:** key moment, action, question. There's also a consent reminder
+  for work recordings.
+- **Settings → Work and a "What kind of work?" step in onboarding.** Clinical and Legal keep
+  everything on the phone and add a Consultation template that never adds a diagnosis, dose or
+  legal opinion that wasn't said.
+
 
 ## What's new in v30
 
