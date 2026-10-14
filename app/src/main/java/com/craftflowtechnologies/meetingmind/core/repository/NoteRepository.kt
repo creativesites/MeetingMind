@@ -202,9 +202,24 @@ class NoteRepository(
 
     suspend fun setPinned(noteId: String, pinned: Boolean) = mutate(noteId) { it.copy(pinned = pinned) }
 
-    suspend fun setPrivate(noteId: String, isPrivate: Boolean) = mutate(noteId) { it.copy(isPrivate = isPrivate) }
+    suspend fun setPrivate(noteId: String, isPrivate: Boolean) {
+        mutate(noteId) { it.copy(isPrivate = isPrivate) }
+        if (isPrivate) purgeCloudReadToMe(noteId)
+    }
 
-    suspend fun moveToNotebook(noteId: String, notebookId: String?) = mutate(noteId) { it.copy(notebookId = notebookId) }
+    suspend fun moveToNotebook(noteId: String, notebookId: String?) {
+        mutate(noteId) { it.copy(notebookId = notebookId) }
+        purgeCloudReadToMe(noteId)
+    }
+
+    /** A note that now stays on the phone must not keep Gemini-made audio of itself (see ReadingPurge). */
+    private suspend fun purgeCloudReadToMe(noteId: String) {
+        runCatching {
+            val stayOnPhone = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.mustStayOnDevice(context, noteId = noteId) ||
+                noteDao.getById(noteId)?.isPrivate == true
+            if (stayOnPhone) com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore.get(context).purgeCloudReading(noteId)
+        }
+    }
 
     suspend fun archiveNote(noteId: String) = mutate(noteId) { it.copy(archivedAt = clock()) }
 

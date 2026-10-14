@@ -199,6 +199,15 @@ class ReadingStore(
             .filter { it.progress != null }
             .maxByOrNull { it.progress!!.updatedAt }
 
+    /** Removes a saved reading made with the cloud voice, if there is one. Phone-voice audio is kept. Returns whether anything was removed. */
+    @Synchronized
+    fun purgeCloudReading(noteId: String): Boolean {
+        val manifest = load(noteId) ?: return false
+        if (!ReadingPurge.mustPurge(manifest.provider, stayOnPhone = true)) return false
+        delete(noteId)
+        return true
+    }
+
     fun delete(noteId: String) {
         dir(noteId, false).deleteRecursively()
         dir(noteId, true).deleteRecursively()
