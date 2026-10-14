@@ -12,7 +12,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** H-1: a new install opens the Today home; someone who already had the app keeps Today. */
+/** A new install opens Today, as does someone who already had the app. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class HomeDefaultTest {
