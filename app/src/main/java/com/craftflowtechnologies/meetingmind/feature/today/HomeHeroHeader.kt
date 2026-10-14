@@ -215,7 +215,7 @@ fun HomeHeroHeader(
 }
 
 @Composable
-private fun TopRow(
+internal fun TopRow(
     identity: AppIdentity,
     inboxCount: Int,
     showSwitch: Boolean,

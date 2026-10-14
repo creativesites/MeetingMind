@@ -276,7 +276,7 @@ private fun PlanCard(plan: List<PlanLine>, index: Int) {
  * Presses ease down and back, and the scene keeps drifting while it is on screen.
  */
 @Composable
-private fun SceneTile(
+internal fun SceneTile(
     index: Int,
     scene: Scene,
     height: Dp,
@@ -302,7 +302,7 @@ private fun SceneTile(
 }
 
 @Composable
-private fun TileHeader(icon: ImageVector, label: String, ink: Color) {
+internal fun TileHeader(icon: ImageVector, label: String, ink: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier.size(34.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.72f)),
@@ -314,7 +314,7 @@ private fun TileHeader(icon: ImageVector, label: String, ink: Color) {
 }
 
 @Composable
-private fun Pill(label: String, background: Color, ink: Color, modifier: Modifier = Modifier) {
+internal fun Pill(label: String, background: Color, ink: Color, modifier: Modifier = Modifier) {
     Box(modifier.clip(RoundedCornerShape(50)).background(background).padding(horizontal = 12.dp, vertical = 6.dp)) {
         Text(label, color = ink, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
     }
@@ -339,7 +339,7 @@ private fun SegmentBar(fraction: Float, color: Color, track: Color, modifier: Mo
  * Enters with a short stagger: fades up 26 dp. Reduced motion shows it at once.
  */
 @Composable
-private fun Reveal(index: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+internal fun Reveal(index: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val reduced = rememberHomeReducedMotion()
     val progress = remember { Animatable(if (reduced) 1f else 0f) }
     val density = LocalDensity.current.density
@@ -357,7 +357,7 @@ private fun Reveal(index: Int, modifier: Modifier = Modifier, content: @Composab
 
 /** Eases a little smaller while pressed, then springs back; keeps the ripple. */
 @Composable
-private fun Modifier.bentoPress(onClick: () -> Unit): Modifier {
+internal fun Modifier.bentoPress(onClick: () -> Unit): Modifier {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
