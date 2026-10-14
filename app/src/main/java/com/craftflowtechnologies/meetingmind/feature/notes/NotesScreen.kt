@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -334,7 +335,7 @@ fun NotesScreen(
                             HomeHeroBlock(hero, heroTiles, onOpen = { onOpenNote(hero.id) }, onTile = { onOpenNote(hero.id) })
                         } else {
                             item(key = "home-greeting") {
-                                NotesGreeting(hasLatest = hero != null, onBubbleClick = { hero?.let { onOpenNote(it.id) } })
+                                NotesGreeting()
                             }
                             if (hero != null) item(key = "home-hero") {
                                 LatestMeetingCard(
@@ -389,13 +390,26 @@ fun NotesScreen(
                             )
                         }
                         else -> {
-                            items(state.items, key = { it.id }) { item ->
+                            // Recent lists read in date sections; search and trash keep their plain order.
+                            val grouped = !isTrash && !query.isSearching
+                            itemsIndexed(state.items, key = { _, it -> it.id }) { index, item ->
+                                val at = if (query.sort == NoteSort.CREATED) item.note.eventDate ?: item.note.createdAt else item.note.updatedAt
+                                val group = DayGroups.of(at, now)
+                                if (grouped && (index == 0 || DayGroups.of(
+                                        if (query.sort == NoteSort.CREATED) state.items[index - 1].note.eventDate ?: state.items[index - 1].note.createdAt
+                                        else state.items[index - 1].note.updatedAt, now
+                                    ) != group)
+                                ) {
+                                    Text(
+                                        group.label, style = MM.type.caption, color = MM.colors.inkMuted,
+                                        modifier = Modifier.padding(top = MM.space.m, bottom = MM.space.xs, start = MM.space.xs)
+                                    )
+                                }
                                 LibraryRow(
                                     item = item, now = now, query = query, inTrash = isTrash, notebooks = notebooks,
                                     selecting = selecting, isSelected = item.id in selectedIds,
                                     onClick = { if (selecting) toggleSelect(item.id) else if (isTrash) noteMenu = item else onOpenNote(item.id) },
                                     onLongClick = { if (isTrash && !selecting) noteMenu = item else toggleSelect(item.id) },
-                                    latestId = if (showHero) latestMeeting?.id else null,
                                     onTogglePin = { viewModel.togglePin(item.note) }
                                 )
                             }
@@ -631,7 +645,7 @@ private fun SelectionBar(
 @Composable
 private fun LibraryRow(
     item: LibraryItem, now: Long, query: LibraryQuery, inTrash: Boolean, notebooks: List<Notebook>,
-    selecting: Boolean, isSelected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, latestId: String?, onTogglePin: () -> Unit
+    selecting: Boolean, isSelected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onTogglePin: () -> Unit
 ) {
     val note = item.note
     val c = MM.colors
@@ -672,7 +686,7 @@ private fun LibraryRow(
             NoteRow(model, Modifier.weight(1f).combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick))
         } else {
             NoteCard(
-                model, tile = marker, isLatest = item.id == latestId, selected = isSelected,
+                model, tile = marker, selected = isSelected,
                 showPin = !inTrash && !selecting, onTogglePin = onTogglePin,
                 onClick = onClick, onLongClick = onLongClick, modifier = Modifier.weight(1f)
             )

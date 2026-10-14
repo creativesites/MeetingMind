@@ -1,8 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.notes
 
-import androidx.annotation.DrawableRes
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +11,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.Canvas
+import com.craftflowtechnologies.meetingmind.feature.today.home.rememberSceneTime
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoStories
@@ -48,12 +49,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
@@ -118,25 +116,18 @@ private fun rememberGreeting(): GreetingInfo = remember {
 
 @Composable
 private fun GreetingText(greeting: String, modifier: Modifier = Modifier) {
-    val c = MM.colors
-    Column(modifier) {
-        Text("$greeting,", style = MM.type.heading, color = c.inkSecondary)
-        Text("You got this.", style = MM.type.display, color = c.accent)
-        Spacer(Modifier.height(MM.space.s))
-        Text("Your thoughts matter. I'm here to help you make the most of them.", style = MM.type.secondary, color = c.inkSecondary)
-    }
+    Text(greeting, style = MM.type.title, color = MM.colors.ink, modifier = modifier)
 }
 
 /** Greeting on the left, Zuri and a speech bubble on the right, side by side. Used when the Latest meeting hero is not shown. */
 @Composable
-internal fun NotesGreeting(hasLatest: Boolean, onBubbleClick: () -> Unit) {
+internal fun NotesGreeting() {
     val info = rememberGreeting()
     val companionShown = rememberCompanionVisible(CompanionPage.HOME)
     Row(Modifier.fillMaxWidth().padding(top = MM.space.l), verticalAlignment = Alignment.Top) {
         GreetingText(info.greeting, Modifier.weight(1f))
         if (companionShown) {
             Column(Modifier.padding(start = MM.space.s).widthIn(max = ZURI_COLUMN_WIDTH), horizontalAlignment = Alignment.End) {
-                if (hasLatest) CompanionBubble(onBubbleClick)
                 CompanionZuri(info.lateNight)
             }
         }
@@ -152,7 +143,6 @@ private val ZURI_SIZE = 104.dp
 private val ZURI_COLUMN_WIDTH = 132.dp
 
 @Composable
-private fun CompanionBubble(onClick: () -> Unit) = SpeechBubble("Ready to review your latest meeting?", onClick)
 
 @Composable
 private fun CompanionZuri(lateNight: Boolean) =
@@ -203,70 +193,54 @@ internal fun HomeHeroBlock(item: LibraryItem, tiles: List<MeetingTile>, onOpen: 
     val info = rememberGreeting()
     HeroWithZuri(
         greetingSlot = { GreetingText(info.greeting) },
-        bubbleSlot = { CompanionBubble(onOpen) },
+        bubbleSlot = {},
         zuriSlot = { CompanionZuri(info.lateNight) },
         heroSlot = { LatestMeetingCard(item, tiles, onOpen, onTile) },
         modifier = Modifier.fillMaxWidth().padding(top = MM.space.l)
     )
 }
 
-@Composable
-private fun SpeechBubble(text: String, onClick: () -> Unit) {
-    val c = MM.colors
-    Row(
-        Modifier.clip(MM.radius.card).background(c.surfaceRaised, MM.radius.card).border(1.dp, c.line, MM.radius.card)
-            .clickable(role = Role.Button, onClick = onClick).padding(MM.space.m),
-        verticalAlignment = Alignment.Top
-    ) {
-        Icon(AiMark, null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
-        Text(text, style = MM.type.caption, color = c.ink, modifier = Modifier.padding(start = MM.space.xs))
-    }
-}
 
 /**
- * The one hero of the screen: the most recent recorded Work note. Pass [heroImage] (a drawable) to lay a picture under
- * the gradient; without it the card is an accent gradient, so it follows the user's accent in light and dark.
+ * The one hero of the screen: the most recent recorded Work note. An illustrated sky sits behind it and its two most
+ * useful insights sit on it as solid cards. [HeroWithZuri] places the companion above its top edge.
  */
 @Composable
 internal fun LatestMeetingCard(
     item: LibraryItem, tiles: List<MeetingTile>, onOpen: () -> Unit, onTile: (TileAction) -> Unit,
-    modifier: Modifier = Modifier, @DrawableRes heroImage: Int? = null
+    modifier: Modifier = Modifier
 ) {
     val c = MM.colors
     val note = item.note
     val whenMs = note.eventDate ?: note.createdAt
     val date = remember(whenMs) { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(whenMs)) }
     val meta = listOfNotNull(date, item.durationMs?.let(NoteLabels::duration)).joinToString("  ·  ")
+    val cards = heroCards(tiles)
+    val time = rememberSceneTime()
+    val scene = notesHeroScene(sky = c.accentWash, horizon = c.surface, hill = c.accent.copy(alpha = 0.32f), sun = c.gold)
     Box(
-        modifier.fillMaxWidth().clip(MM.radius.card).background(c.surface)
-            .background(Brush.verticalGradient(listOf(c.accent.copy(alpha = 0.40f), c.accentWash)))
+        modifier.fillMaxWidth().heightIn(min = 300.dp).clip(MM.radius.card).background(c.accentWash)
+            .clickable(role = Role.Button, onClick = onOpen)
     ) {
-        heroImage?.let { Image(painterResource(it), null, Modifier.matchParentSize(), contentScale = ContentScale.Crop, alpha = 0.5f) }
-        Column(Modifier.padding(MM.space.l)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Row(
-                        Modifier.background(c.accent.copy(alpha = 0.16f), MM.radius.pill).padding(horizontal = MM.space.m, vertical = MM.space.xs),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.Groups, null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
-                        Spacer(Modifier.width(MM.space.xs))
-                        Text("Latest meeting", style = MM.type.caption, color = c.ink)
-                    }
-                    Spacer(Modifier.height(MM.space.s))
-                    Text(note.title.ifBlank { "Untitled note" }, style = MM.type.title, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(meta, style = MM.type.secondary, color = c.inkSecondary)
-                }
-                IconButton(onClick = onOpen, modifier = Modifier.background(c.accent.copy(alpha = 0.16f), CircleShape)) {
-                    Icon(Icons.Rounded.ChevronRight, "Open note", tint = c.ink)
-                }
+        Canvas(Modifier.matchParentSize()) { scene(time.value) }
+        Column(Modifier.fillMaxWidth().padding(MM.space.l)) {
+            Row(
+                Modifier.background(c.surface.copy(alpha = 0.8f), MM.radius.pill).padding(horizontal = MM.space.m, vertical = MM.space.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Rounded.Groups, null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
+                Spacer(Modifier.width(MM.space.xs))
+                Text("Latest meeting", style = MM.type.caption, color = c.ink)
             }
-            // Only tiles with real data are passed in; with none there is no row and no extra spacing.
-            if (tiles.isNotEmpty()) {
+            // Room for the companion, which sits in the top-right corner above this card.
+            Spacer(Modifier.height(96.dp))
+            Text(note.title.ifBlank { "Untitled note" }, style = MM.type.title, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(meta, style = MM.type.secondary, color = c.inkSecondary, modifier = Modifier.padding(top = MM.space.xs))
+            if (cards.isNotEmpty()) {
                 Spacer(Modifier.height(MM.space.l))
                 Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                    tiles.forEach { tile ->
-                        InsightTile(tile.action.icon(), tile.label, tile.subtitle, { onTile(tile.action) }, Modifier.weight(1f))
+                    cards.forEach { tile ->
+                        InsightCard(tile.action.icon(), tile.label, tile.subtitle, { onTile(tile.action) }, Modifier.weight(1f))
                     }
                 }
             }
@@ -282,18 +256,20 @@ private fun TileAction.icon(): ImageVector = when (this) {
 }
 
 @Composable
-private fun InsightTile(icon: ImageVector, label: String, sub: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun InsightCard(icon: ImageVector, label: String, sub: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = MM.colors
     Column(
-        modifier.clip(MM.radius.small).background(c.surfaceSunk, MM.radius.small)
-            .clickable(role = Role.Button, onClick = onClick).padding(MM.space.s)
+        modifier.clip(MM.radius.card).background(c.surfaceRaised, MM.radius.card)
+            .clickable(role = Role.Button, onClick = onClick).padding(MM.space.m)
     ) {
-        Box(Modifier.size(32.dp).background(c.accentWash, MM.radius.small), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(28.dp).background(c.accentWash, MM.radius.small), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = c.accent, modifier = Modifier.size(MMSize.iconSmall))
+            }
+            Spacer(Modifier.width(MM.space.xs))
+            Text(label, style = MM.type.caption, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Spacer(Modifier.height(MM.space.xs))
-        Text(label, style = MM.type.caption, color = c.ink, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(sub, style = MM.type.caption, color = c.inkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(sub, style = MM.type.secondary, color = c.inkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = MM.space.xs))
     }
 }
 
@@ -361,35 +337,35 @@ private fun IconChip(label: String, icon: ImageVector, selected: Boolean, onClic
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun NoteCard(
-    model: NoteRowModel, tile: Color, isLatest: Boolean, selected: Boolean, showPin: Boolean,
+    model: NoteRowModel, tile: Color, selected: Boolean, showPin: Boolean,
     onTogglePin: () -> Unit, onClick: () -> Unit, onLongClick: () -> Unit, modifier: Modifier = Modifier
 ) {
     val c = MM.colors
     val dark = c.background.luminance() < 0.5f
     val shape = MM.radius.card
-    val meta = listOf(model.timeLabel, model.durationLabel, model.typeLabel).filter { it.isNotBlank() }.joinToString("  ·  ")
+    val meta = listOf(model.typeLabel, model.durationLabel).filter { it.isNotBlank() }.joinToString("  ·  ")
     val tint = if (tile == c.inkFaint) c.accent else tile
     Row(
         modifier.padding(vertical = MM.space.xs).fillMaxWidth().clip(shape)
             .background(if (selected) c.accentWash else c.surface, shape)
             .then(if (dark) Modifier else Modifier.border(1.dp, c.line, shape))
             .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick)
-            .padding(start = MM.space.m, top = MM.space.m, bottom = MM.space.m, end = MM.space.xs),
+            .padding(start = MM.space.m, top = MM.space.m, bottom = MM.space.m, end = MM.space.s),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(56.dp).background(tint.copy(alpha = 0.16f), MM.radius.small), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(44.dp).background(tint.copy(alpha = 0.16f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
             Icon(model.typeIcon ?: Icons.Rounded.Description, null, tint = tint, modifier = Modifier.size(MMSize.icon))
         }
         Column(Modifier.weight(1f).padding(start = MM.space.m)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(model.title, style = MM.type.bodyStrong, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                if (isLatest) Text(
-                    "Latest", style = MM.type.caption, color = c.accent,
-                    modifier = Modifier.padding(start = MM.space.s).background(c.accentWash, MM.radius.pill).padding(horizontal = MM.space.s, vertical = 2.dp)
-                )
+                Text(model.title, style = MM.type.bodyStrong, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (model.timeLabel.isNotBlank()) Text(model.timeLabel, style = MM.type.caption, color = c.inkMuted, modifier = Modifier.padding(start = MM.space.s))
             }
             if (meta.isNotBlank()) Text(meta, style = MM.type.caption, color = c.inkSecondary)
-            if (model.preview.isNotBlank()) Text(model.preview, style = MM.type.secondary, color = c.inkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (model.preview.isNotBlank()) Text(
+                model.preview, style = MM.type.secondary, color = c.inkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = MM.space.xs)
+            )
         }
         if (showPin) IconButton(onClick = onTogglePin) {
             Icon(
@@ -398,6 +374,5 @@ internal fun NoteCard(
                 tint = if (model.pinned) c.gold else c.inkFaint
             )
         }
-        Icon(Icons.Rounded.ChevronRight, null, tint = c.inkFaint)
     }
 }
