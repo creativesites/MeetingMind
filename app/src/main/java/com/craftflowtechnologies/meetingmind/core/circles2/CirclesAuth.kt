@@ -10,6 +10,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.tasks.await
 import java.util.concurrent.CancellationException
@@ -68,8 +69,10 @@ class FirebaseCirclesAuth(private val context: Context) : CirclesAuth {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG, "Anonymous sign-in failed: ${e.message}")
-            CirclesFailure.signedOut.asResult()
+            // The error code says why (a provider that is off, no network). The message is not logged: it can carry detail.
+            val code = (e as? FirebaseAuthException)?.errorCode
+            Log.w(TAG, "Anonymous sign-in failed, code=${code ?: e.javaClass.simpleName}")
+            anonymousSignInFailure(code).asResult()
         }
     }
 

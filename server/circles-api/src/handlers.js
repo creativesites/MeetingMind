@@ -21,6 +21,8 @@ function newId() {
   return s.length === 20 ? s : newId();
 }
 const name = (v) => cleanText(v ?? "Member", "displayName", { max: 40 });
+// Merge, not replace: userMeta may hold other fields (for example push tokens), so only the quota fields are written.
+const userMetaWrite = (uid, data) => w.update(`userMeta/${uid}`, data, { mustExist: false });
 const str = (b, k) => validId(b[k], k);
 
 async function load(ctx, circleId) {
@@ -74,7 +76,9 @@ async function createCircle(ctx) {
   const idempotencyPath = `userMeta/${ctx.uid}/circleCreateRequests/${requestId}`;
   const prior = await ctx.db.get(idempotencyPath);
   if (prior?.data.circleId) return { circleId: prior.data.circleId };
-  await hit(ctx.kv, `rl:createCircle:${ctx.uid}`, RATE.createCircle);
+  // Checked before the write, counted only after it succeeds: a failed attempt must not use up the hourly allowance.
+  const rateKey = `rl:createCircle:${ctx.uid}`;
+  await check(ctx.kv, rateKey, RATE.createCircle);
   const id = newId();
   let resultId = id;
   await ctx.db.runTx(async (tx) => {
@@ -86,10 +90,11 @@ async function createCircle(ctx) {
     return [
       w.create(C(id), { name: nm, template, vocab, settings, ownerUid: ctx.uid, memberCount: 1, orgId: null, closed: false, createdAt: ctx.now }),
       w.create(`${C(id)}/members/${ctx.uid}`, { role: "owner", displayName, joinedAt: ctx.now, muted: false }),
-      w.set(`userMeta/${ctx.uid}`, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), id] }),
+      userMetaWrite(ctx.uid, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), id] }),
       w.create(idempotencyPath, { circleId: id, createdAt: ctx.now }),
     ];
   });
+  if (resultId === id) await record(ctx.kv, rateKey, RATE.createCircle);
   return { circleId: resultId };
 }
 
@@ -176,7 +181,7 @@ async function join(ctx) {
         w.create(`${C(invite.circleId)}/members/${ctx.uid}`, { role: "member", displayName, joinedAt: ctx.now, muted: false }),
         w.update(C(invite.circleId), { memberCount: circle.memberCount + 1 }),
         w.update(`invites/${code}`, {}, { inc: { uses: 1 } }),
-        w.set(`userMeta/${ctx.uid}`, { circleCount: (meta?.data.circleCount || 0) + 1, circleIds: [...(meta?.data.circleIds || []), invite.circleId] }),
+        userMetaWrite(ctx.uid, { circleCount: (meta?.data.circleCount || 0) + 1, circleIds: [...(meta?.data.circleIds || []), invite.circleId] }),
       ];
     });
   } catch (e) {
@@ -201,7 +206,7 @@ async function removeFromCircle(ctx, circleId, targetUid, authorize) {
     return [
       w.del(`${C(circleId)}/members/${targetUid}`),
       w.update(C(circleId), left <= 0 ? { memberCount: 0, closed: true } : { memberCount: left }),
-      w.set(`userMeta/${targetUid}`, { circleCount: Math.max(0, (meta?.data.circleCount || 1) - 1), circleIds: (meta?.data.circleIds || []).filter((x) => x !== circleId) }),
+      userMetaWrite(targetUid, { circleCount: Math.max(0, (meta?.data.circleCount || 1) - 1), circleIds: (meta?.data.circleIds || []).filter((x) => x !== circleId) }),
     ];
   });
   return {};

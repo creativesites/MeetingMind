@@ -1,4 +1,4 @@
-package com.craftflowtechnologies.meetingmind.core.circles
+package com.craftflowtechnologies.meetingmind.core.circles2
 
 import android.content.Intent
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleTarget

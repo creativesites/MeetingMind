@@ -10,7 +10,7 @@ import kotlinx.coroutines.launch
 /**
  * Receives Circles pushes. A refreshed token is registered with the Worker (only if this person uses Circles);
  * a push that arrives while the app is open is shown on the "Circles" channel. When the app is closed the system
- * shows the push itself and the tap carries the same data to [CircleDeepLinks][com.craftflowtechnologies.meetingmind.core.circles.CircleDeepLinks].
+ * shows the push itself and the tap carries the same data to [CircleDeepLinks][com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks].
  */
 class CirclesMessagingService : FirebaseMessagingService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
