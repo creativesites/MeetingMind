@@ -5,7 +5,7 @@ These rules apply to every agent working in this repository, human or AI. Keep t
 ## Team and models
 
 - **The CTO agent (the main session) plans, reviews and merges.** It does not do bulk work itself.
-- **All sub-agents use the Haiku-tier model.** No other tier, for any task. Set it explicitly on every sub-agent call.
+- **The Haiku-tier model is the project's default, for the CTO and every sub-agent.** Use another tier only when the founder asks for it for a specific task. Set it explicitly on every sub-agent call.
 - Repo files never name a model version, per the commit-attribution rule. Say "Haiku-tier" if you must refer to it.
 - Sub-agents run one focused task each, in their own git worktree, and report back in at most 200 words.
 
