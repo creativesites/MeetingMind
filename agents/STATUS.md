@@ -1,6 +1,19 @@
 # Status
 
-Updated: 2026-10-14. Designated branch head at last update: see `git log -1`.
+Updated: 2026-10-14. Designated branch head: see `git log -1`.
+
+## Where we are (what the founder sees on device, latest report)
+- Notes page crashed on open. Fixed on the branch in `5f120cf` (hero layout dropped a child when the latest-meeting bubble was empty). Unit tests pass. Not yet seen on device.
+- Circles section on Home shows its label but no content. Circles v2 code is on the branch; the Home section needs checking.
+- Bible study and Faith home: the redesigns are merged but the founder reports they are only partly there. Not yet traced screen by screen.
+- Read to Me is wired into the Bible reader (top-bar listen icon, "Listen here" on a selection, the study flow, the verse sheet). The founder cannot see it on device. Cause not confirmed. Check the entry point on device first.
+- Work home has a large gap. Not started.
+- The sun or moon sits over the headline in the Today quote card. It is the card's own illustration, not the companion. Not started.
+
+## Circles (team report)
+- Circles v2 first increment: creation is idempotent, clearer sign-in errors, v1 removed with migration 25 to 26. Worker live. Firestore rules deployed.
+- `.dev` build still lacks the Android OAuth client in `app/google-services.json`. Google sign-in on `.dev` will fail until the owner re-downloads the file and commits it. The owner's copy is on their machine only.
+- Not verified on device: push notifications, Google sign-in on any build, behaviour after reinstall.
 
 ## Latest dev build
 - `MeetingMind-Dev-4ddcdd2.apk` on the `apk-downloads` branch. Built from the designated branch after the no-speech change.
