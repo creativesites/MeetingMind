@@ -452,8 +452,19 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     navController.navigate(Routes.SHARE)
                 },
                 onNavigateBottomNav = navigateToPrimary
-            ) else if (homeStyle != com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) com.craftflowtechnologies.meetingmind.feature.today.FocusHome(
-                rich = homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM,
+            ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM) com.craftflowtechnologies.meetingmind.feature.today.home.CalmHome(
+                today = vm,
+                onRecord = { navController.navigate(Routes.RECORDING) },
+                onNewNote = { openNewNote(false) },
+                onSearch = openSearch,
+                onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
+                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onOpenProcessing = openProcessing,
+                onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
+                onCustomize = { navController.navigate(Routes.APPEARANCE) },
+                onNavigateBottomNav = navigateToPrimary
+) else if (homeStyle != com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) com.craftflowtechnologies.meetingmind.feature.today.FocusHome(
+                rich = false,
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 viewModel = vm,
                 onRecord = { navController.navigate(Routes.RECORDING) },
