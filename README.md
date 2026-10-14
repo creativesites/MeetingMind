@@ -1,14 +1,18 @@
 # MeetingMind dev build
 
-**MeetingMind-Dev-4ddcdd2.apk**: "MeetingMind Dev" built from commit `4ddcdd2` on `claude/meetingmind-mvp-planning-7dgowm`
+**MeetingMind-Dev-b3ab90c.apk**: "MeetingMind Dev" built from commit `b3ab90c` on `claude/meetingmind-mvp-planning-7dgowm`
 (arm64-v8a). It installs beside the tester app (`com.craftflowtechnologies.meetingmind.dev`) and keeps its own data.
 
 New in this build:
-- **Devotionals:** the bundled reading loads on device; daily devotionals are on by default for new installs, with the 00:01 write.
-- **Moments:** every note gets its moment, including notes with no speech: the Unveil when a note opens (Notes list, meeting detail, wrap-up), First Keep on note-ready. Failed and sacred notes keep their guards.
-- **Circles:** first increment: v1 retired, creation defects fixed, diagnosable sign-in. Needs the Worker and rules redeployed.
-- **Read to Me:** listen to one passage from the verse sheet and the Study workspace; Smart Read, learned defaults, settings sheet.
-- **Today home:** the design update.
-- **Companion states, sample-first onboarding, recording markers, migration 25.**
+- **Home screens:** the Today, Work and Calm homes redesigned, with a shared Today header and animated mode switch; the companion clears the sun; notes home with the illustrated sky hero and date sections.
+- **Bible:** restyled home, method chooser and session complete; share a verse as a card; read-to-me in the study flow.
+- **Read to Me:** background reading, saved-reading summary, listen to saved parts; Gemini audio removed once a note stays on the phone; licensed Bible text to Gemini (owner decision).
+- **Moments:** every note gets its moment, including no-speech notes.
+- **Devotionals:** bundled reading loads on device; on by default; 00:01 write.
+- **Circles:** first increment (v1 retired, creation defects fixed). Needs the Worker and rules redeployed.
+
+Known failing tests in this build (not blocking the APK):
+- `WorkHomeLayoutTest.needsRespectsACustomCap` (expected (2,1), got (3,0)).
+- `NotesLibraryScreenshotTest` populated, chipsFilter, searching: index out of bounds (list has 3 elements).
 
 Install: allow installs from unknown sources, then open the APK. Only the latest build is kept on this branch.
