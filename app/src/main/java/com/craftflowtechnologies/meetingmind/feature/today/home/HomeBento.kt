@@ -94,7 +94,13 @@ data class BentoActions(
     val onCircles: () -> Unit,
     val onWork: () -> Unit,
     val onNextUp: () -> Unit,
-    val onJournal: () -> Unit
+    val onJournal: () -> Unit,
+    /** Opens one circle from the Circles tile. */
+    val onOpenCircle: (String) -> Unit = {},
+    /** "Start a circle" from the Circles tile's empty state. */
+    val onStartCircle: () -> Unit = {},
+    /** "Try again" from the Circles tile's failed state. */
+    val onRetryCircles: () -> Unit = {}
 )
 
 private val Ink = BentoColors.Ink
@@ -106,7 +112,13 @@ private val Paper = BentoColors.Paper
  * work and personal, or personal only. The illustrated tiles are the feature shortcuts.
  */
 @Composable
-fun HomeBento(sections: HomeSections, data: BentoData, actions: BentoActions, modifier: Modifier = Modifier) {
+fun HomeBento(
+    sections: HomeSections,
+    data: BentoData,
+    actions: BentoActions,
+    modifier: Modifier = Modifier,
+    circles: HomeCircles = HomeCircles.Loading
+) {
     Column(modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when (sections.layout) {
             HomeLayout.ALL -> {
@@ -115,18 +127,18 @@ fun HomeBento(sections: HomeSections, data: BentoData, actions: BentoActions, mo
                     DevotionalTile(data, actions.onDevotional, index = 1, modifier = Modifier.weight(1f))
                     PrayerTile(actions.onPrayer, index = 2, modifier = Modifier.weight(1f))
                 }
-                if (sections.personal) CreateAndCircles(actions.onCreate, actions.onCircles, index = 3)
+                if (sections.personal) CreateAndCircles(actions, circles, index = 3)
                 if (sections.work) WorkTile(data, actions.onWork, index = 4)
             }
             HomeLayout.WORK_PERSONAL -> {
                 WorkTile(data, actions.onWork, index = 0)
-                CreateAndCircles(actions.onCreate, actions.onCircles, index = 1)
+                CreateAndCircles(actions, circles, index = 1)
                 EveningTile(data, actions.onNextUp, index = 3)
                 PlanCard(data.plan, index = 4)
             }
             HomeLayout.PERSONAL -> {
                 EveningTile(data, actions.onNextUp, index = 0)
-                CreateAndCircles(actions.onCreate, actions.onCircles, index = 1)
+                CreateAndCircles(actions, circles, index = 1)
                 JournalTile(actions.onJournal, index = 3)
                 PlanCard(data.plan, index = 4)
             }
@@ -140,10 +152,10 @@ fun HomeBento(sections: HomeSections, data: BentoData, actions: BentoActions, mo
 
 /** Create and Circles side by side. */
 @Composable
-private fun CreateAndCircles(onCreate: () -> Unit, onCircles: () -> Unit, index: Int) {
+private fun CreateAndCircles(actions: BentoActions, circles: HomeCircles, index: Int) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        CreateTile(onCreate, index = index, modifier = Modifier.weight(1f))
-        CircleTile(onCircles, index = index + 1, modifier = Modifier.weight(1f))
+        CreateTile(actions.onCreate, index = index, modifier = Modifier.weight(1f))
+        CircleTile(actions, circles, index = index + 1, modifier = Modifier.weight(1f))
     }
 }
 
@@ -191,20 +203,61 @@ private fun CreateTile(onClick: () -> Unit, index: Int, modifier: Modifier = Mod
     }
 }
 
+/**
+ * The Circles tile. It always shows one state: a quiet loading line, the reason it could not load (with a retry),
+ * an empty line with Start and Join, or the first circles, each of which opens. The tile body opens the Circles list.
+ */
 @Composable
-private fun CircleTile(onClick: () -> Unit, index: Int, modifier: Modifier = Modifier) {
-    SceneTile(index, CircleRingsScene, height = 182.dp, scrim = Paper.copy(alpha = 0.5f), tag = "bento_circles", onClick = onClick, modifier = modifier) {
+private fun CircleTile(actions: BentoActions, circles: HomeCircles, index: Int, modifier: Modifier = Modifier) {
+    SceneTile(index, CircleRingsScene, height = 182.dp, scrim = Paper.copy(alpha = 0.5f), tag = "bento_circles", onClick = actions.onCircles, modifier = modifier) {
         TileHeader(Icons.Filled.Groups, "Circles", BentoColors.TealInk)
-        Spacer(Modifier.weight(1f))
-        Text("Your circles", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-        Text("Share and pray together", color = BentoColors.TealText, fontFamily = InterFamily, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp))
-        Row {
-            listOf(BentoColors.CircleGold, BentoColors.CircleLilac, BentoColors.CircleMint).forEach { c ->
-                Box(Modifier.size(26.dp).clip(CircleShape).background(c).border(2.dp, Paper, CircleShape))
-                Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.height(10.dp))
+        when (circles) {
+            HomeCircles.Loading -> CircleNote("Loading your circles…", "bento_circles_loading")
+            HomeCircles.NotConnected -> CircleNote("Circles isn't connected in this build.", "bento_circles_offline")
+            is HomeCircles.Failed -> {
+                CircleNote(circles.failure.message, "bento_circles_failed")
+                CircleLink("Try again", actions.onRetryCircles, "bento_circles_retry", Modifier.padding(top = 4.dp))
+            }
+            HomeCircles.Empty -> {
+                Text("No circles yet", color = Ink, fontFamily = OutfitFamily, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.testTag("bento_circles_empty"))
+                Column(Modifier.padding(top = 4.dp)) {
+                    CircleLink("Start a circle", actions.onStartCircle, "bento_circles_start")
+                    CircleLink("Join a circle", actions.onCircles, "bento_circles_join")
+                }
+            }
+            is HomeCircles.Loaded -> {
+                circles.circles.take(HomeCircles.SHOWN).forEachIndexed { i, c ->
+                    val dot = listOf(BentoColors.CircleGold, BentoColors.CircleLilac, BentoColors.CircleMint)[i % 3]
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { actions.onOpenCircle(c.id) }
+                            .padding(vertical = 5.dp).testTag("bento_circle_${c.id}"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.size(10.dp).clip(CircleShape).background(dot))
+                        Spacer(Modifier.width(8.dp))
+                        Text(c.name, color = Ink, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    }
+                }
+                circles.note?.let { CircleLink("Couldn't refresh. Try again.", actions.onRetryCircles, "bento_circles_retry") }
             }
         }
+        Spacer(Modifier.weight(1f))
     }
+}
+
+@Composable
+private fun CircleNote(text: String, tag: String) {
+    Text(text, color = BentoColors.TealText, fontFamily = InterFamily, fontSize = 13.sp, lineHeight = 17.sp, modifier = Modifier.testTag(tag))
+}
+
+/** A text action on the tile. Its own tap target, so it opens its screen instead of the whole tile. */
+@Composable
+private fun CircleLink(label: String, onClick: () -> Unit, tag: String, modifier: Modifier = Modifier) {
+    Text(
+        label, color = BentoColors.TealInk, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+        modifier = modifier.clip(RoundedCornerShape(50)).clickable(onClick = onClick).padding(vertical = 6.dp).testTag(tag)
+    )
 }
 
 @Composable

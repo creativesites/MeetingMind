@@ -40,22 +40,25 @@ class CirclesRepository(
         get() = store.displayName
         set(value) { store.displayName = value }
 
-    /** Asks the Worker which circles I'm in (finds them again on a linked account) and merges with the local list. */
-    suspend fun refresh() {
+    /**
+     * Asks the Worker which circles I'm in (finds them again on a linked account) and merges with the local list.
+     * [activatePush] is false for the Home tile: opening Home must not turn pushes on for someone with no circle.
+     */
+    suspend fun refresh(activatePush: Boolean = true) {
         if (!api.isConfigured) return
         when (val r = api.myCircles()) {
             is CirclesResult.Ok -> { r.value.forEach(store::addCircle); ids.value = store.circleIds(); note.value = null }
             is CirclesResult.Err -> note.value = r.failure.takeIf { it.kind != FailureKind.NotConnected }
         }
         // Opening Circles (or already being in one) is when pushes become useful.
-        push?.activate()
+        if (activatePush || store.circleIds().isNotEmpty()) push?.activate()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun circles(): Flow<CirclesListState> {
         if (!api.isConfigured) return flowOf(CirclesListState.NotConnected)
-        val rows: Flow<List<Circle>> = ids.flatMapLatest { list ->
-            if (list.isEmpty()) flowOf(emptyList())
+        val rows: Flow<Pair<List<Circle>, CirclesFailure?>> = ids.flatMapLatest { list ->
+            if (list.isEmpty()) flowOf(emptyList<Circle>() to null)
             else combine(list.map { id -> data.observeCircle(id) }) { states ->
                 val out = ArrayList<Circle>(states.size)
                 states.forEachIndexed { i, s ->
@@ -68,11 +71,14 @@ class CirclesRepository(
                     }
                 }
                 if (list.any { it !in store.circleIds() }) ids.value = store.circleIds()
-                out.toList()
+                // A listener that failed is reported, not left to spin on Loading.
+                val failed = states.firstNotNullOfOrNull { (it as? DataState.Failed)?.failure?.takeIf { f -> f.code != "permission_denied" } }
+                out.toList() to failed
             }
         }
-        return combine(rows, note, ids) { circles, n, idList ->
-            if (circles.isEmpty() && idList.isNotEmpty() && n == null) CirclesListState.Loading else CirclesListState.Ready(circles, n)
+        return combine(rows, note, ids) { (circles, listenerFailure), n, idList ->
+            val shown = n ?: listenerFailure?.takeIf { circles.isEmpty() }
+            if (circles.isEmpty() && idList.isNotEmpty() && shown == null) CirclesListState.Loading else CirclesListState.Ready(circles, shown)
         }
     }
 
