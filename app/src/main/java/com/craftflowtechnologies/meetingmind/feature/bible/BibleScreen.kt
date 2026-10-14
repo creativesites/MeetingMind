@@ -119,6 +119,8 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
+import com.craftflowtechnologies.meetingmind.core.share.ShareCardContent
+import com.craftflowtechnologies.meetingmind.feature.share.ShareRequest
 import kotlinx.coroutines.launch
 
 private val Gold: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = com.craftflowtechnologies.meetingmind.ui.theme.FaithGold
@@ -142,6 +144,8 @@ fun BibleScreen(
     onInsert: ((ScriptureReference, Int) -> Unit)? = null,
     onGuide: ((ScriptureReference) -> Unit)? = null,
     onOpenNote: ((String) -> Unit)? = null,
+    /** Opens the share studio with the selected verses as a card. */
+    onShareCard: ((ShareRequest) -> Unit)? = null,
     startInSearch: Boolean = false
 ) {
     val context = LocalContext.current
@@ -237,6 +241,19 @@ fun BibleScreen(
                 onHighlight = { color -> viewModel.highlight(color) },
                 onStudy = { viewModel.openStudy(ref) },
                 onListenHere = if (viewModel.extras.value.audio.isNotEmpty()) ({ viewModel.listen(ref.verseStart); viewModel.clearSelection() }) else null,
+                onCard = if (onShareCard != null && ready != null) ({
+                    val chapter = ready.result.content
+                    onShareCard(
+                        ShareRequest(
+                            content = ShareCardContent(
+                                eyebrow = "Scripture", text = chapter.text(ref.verseStart, ref.verseEnd),
+                                reference = ref.display(), attribution = chapter.abbreviation
+                            ),
+                            theme = ref.display()
+                        )
+                    )
+                    viewModel.clearSelection()
+                }) else null,
                 onShare = {
                     val text = ready?.result?.content?.let { quote(it, ref) } ?: ref.display()
                     runCatching {
@@ -462,7 +479,8 @@ private fun SelectionBar(
     onClear: () -> Unit,
     onHighlight: (String?) -> Unit = {},
     onStudy: () -> Unit = {},
-    onListenHere: (() -> Unit)? = null
+    onListenHere: (() -> Unit)? = null,
+    onCard: (() -> Unit)? = null
 ) {
     Surface(color = SurfaceBase, shadowElevation = 10.dp, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
@@ -481,6 +499,11 @@ private fun SelectionBar(
                 Spacer(Modifier.weight(1f))
                 Surface(onClick = onStudy, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("bible_study")) {
                     Text("Explain", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                }
+                onCard?.let { make ->
+                    Surface(onClick = make, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("bible_card")) {
+                        Text("Card", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                    }
                 }
                 onListenHere?.let { go ->
                     Surface(onClick = go, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line)) {

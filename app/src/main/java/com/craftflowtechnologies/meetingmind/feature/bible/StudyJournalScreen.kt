@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Icon
@@ -56,6 +58,13 @@ fun StudyJournalScreen(viewModel: StudyJournalViewModel, onBack: () -> Unit, onO
             EmptyState("Nothing here yet", "When you write while studying a passage, it's kept here, with the passage.")
         } else if (list != null) {
             LazyColumn(contentPadding = PaddingValues(MM.space.l)) {
+                item {
+                    Text(
+                        "${list.size} ${if (list.size == 1) "study" else "studies"} · every one linked to its passage",
+                        style = MM.type.secondary, color = c.inkSecondary,
+                        modifier = Modifier.padding(bottom = MM.space.m)
+                    )
+                }
                 items(list, key = { it.id }) { n ->
                     NoteRow(
                         NoteRowModel(

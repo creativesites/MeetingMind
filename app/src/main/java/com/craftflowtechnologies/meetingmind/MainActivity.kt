@@ -783,6 +783,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 // "Guide me" on a selection starts Walk me through it (SOAP or Verse by verse).
                 onGuide = { r -> navController.navigate(Routes.bibleSessionRoute(r.passageId(), "walk")) },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
+                onShareCard = { req -> com.craftflowtechnologies.meetingmind.feature.share.ShareRequests.pending = req; navController.navigate(Routes.SHARE) },
                 startInSearch = backStackEntry.arguments?.getBoolean("search") == true
             )
         }

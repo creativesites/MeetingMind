@@ -247,6 +247,12 @@ private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, rea
     val c = MM.colors
     val request = ui.request!!
     val help = ui.help["${step.type}-${step.verse ?: 0}"]
+    if (step.type != StepType.CLOSE) {
+        Text(
+            "STEP ${session.index + 1} OF ${session.steps.size}", style = MM.type.caption, color = c.accent,
+            modifier = Modifier.testTag("session_step_count")
+        )
+    }
     when (step.type) {
         StepType.WHY -> {
             Text("Why it matters", style = MM.type.heading, color = c.ink)
