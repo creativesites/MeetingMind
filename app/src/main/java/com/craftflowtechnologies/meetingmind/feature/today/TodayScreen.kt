@@ -278,6 +278,8 @@ fun TodayScreen(
                     showSwitch = viewModel.canSwitchFocus(identity),
                     switchLabel = switchTo.label,
                     tile = tile,
+                    // The floating "Up next" card is hidden on the Today home; the layout reads cleaner without it.
+                    showTile = false,
                     listState = listState,
                     onAvatar = { avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     onSearch = onSearch,
