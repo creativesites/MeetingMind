@@ -26,8 +26,7 @@ import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.Note
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
-import com.craftflowtechnologies.meetingmind.core.ui.mm.NoteRow
-import com.craftflowtechnologies.meetingmind.core.ui.mm.NoteRowModel
+import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.feature.work.noteTimeLabel
 import com.craftflowtechnologies.meetingmind.feature.work.previewOf
@@ -65,13 +64,11 @@ fun StudyJournalScreen(viewModel: StudyJournalViewModel, onBack: () -> Unit, onO
                     )
                 }
                 items(list, key = { it.id }) { n ->
-                    NoteRow(
-                        NoteRowModel(
-                            title = n.title.ifBlank { "Bible study" }, preview = previewOf(n.plainText),
-                            spaceColor = c.gold, timeLabel = noteTimeLabel(n.updatedAt, now)
-                        ),
-                        onClick = { onOpenNote(n.id) }
-                    )
+                    MMCard(onClick = { onOpenNote(n.id) }, modifier = Modifier.padding(bottom = MM.space.s)) {
+                        Text(noteTimeLabel(n.updatedAt, now).uppercase(), style = MM.type.caption, color = c.inkMuted)
+                        Text(n.title.ifBlank { "Bible study" }, style = MM.type.heading, color = c.ink)
+                        Text(previewOf(n.plainText), style = MM.type.secondary, color = c.inkSecondary)
+                    }
                 }
             }
         }

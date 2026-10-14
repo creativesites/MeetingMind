@@ -7,6 +7,7 @@ import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.LearningRules
 import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.Promotion
 import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadCategory
 import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile
+import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -147,6 +148,13 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
         return _state.value
     }
 
+    /**
+     * Reads a passage (the whole chapter, from [fromVerse] to its end when given) without a note. The reader follows
+     * the verse being read through the queue: each part is one verse, or a few verses in a long chapter.
+     */
+    fun startPassage(reference: ScriptureReference, versionId: Int?, fromVerse: Int? = null) =
+        start(PassageSpeech.passageId(ScriptureReference(reference.book, reference.chapter), versionId), startSectionId = fromVerse?.let { "v$it" })
+
     fun start(noteId: String, startSectionId: String? = null, choice: ReadChoice = ReadChoice.DEFAULT, resume: Boolean = false) =
         launch(Request(noteId, startSectionId, choice, resume))
 
@@ -231,8 +239,10 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
                 val learnedNow = LearningRules.recordUse(host.profile(), note.category, LearningRules.deliberate(explicit))
                 if (learnedNow.profile != host.profile()) host.updateProfile { learnedNow.profile }
                 _promotions.value = learnedNow.promotions
-                val source = ReadingPlan.fromSection(prepared.source, request.startSectionId)
-                val parts = ReadingPlan.parts(source, settings.pauseAfterQuestion == PauseAfterQuestion.UNTIL_RESUME)
+                val passage = PassageSpeech.isPassage(request.noteId)
+                val source = if (passage) SpeechSource(PassageSpeech.fromVerse(prepared.source.sections, PassageSpeech.firstVerse(request.startSectionId)))
+                else ReadingPlan.fromSection(prepared.source, request.startSectionId)
+                val parts = if (passage) source.sections else ReadingPlan.parts(source, settings.pauseAfterQuestion == PauseAfterQuestion.UNTIL_RESUME)
                 val delivery = DeliveryResolver.resolve(settings, note.space)
                 // Smart Read may use a text model only where the same rules allow the cloud: licensed Bible text is never
                 // sent (it is locked), so it alone doesn't stop the rewrite of the plain prose around it.
@@ -268,7 +278,7 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
             language = language,
             scriptVersion = if (smart) com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper.SCRIPT_VERSION else 1
         )
-        val parts = ReadingPlan.parts(source, settings.pauseAfterQuestion == PauseAfterQuestion.UNTIL_RESUME)
+        val parts = if (PassageSpeech.isPassage(noteId)) source.sections else ReadingPlan.parts(source, settings.pauseAfterQuestion == PauseAfterQuestion.UNTIL_RESUME)
         val ready = parts.count { part ->
             val fingerprint = ReadFingerprint.section(part, fs)
             manifest.sections.any { it.sectionId == part.id && it.status == SectionStatus.READY && it.fingerprint == fingerprint && host.store.audioFile(noteId, it) != null }

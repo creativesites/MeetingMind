@@ -27,6 +27,9 @@ import com.craftflowtechnologies.meetingmind.core.faith.FaithStore
 import com.craftflowtechnologies.meetingmind.core.model.Note
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.scripture.ChapterAudio
+import com.craftflowtechnologies.meetingmind.ai.voice.read.PassageSpeech
+import com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore
+import com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe
 import com.craftflowtechnologies.meetingmind.core.scripture.ChapterResult
 import com.craftflowtechnologies.meetingmind.core.scripture.ChapterVerse
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
@@ -35,6 +38,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,6 +52,9 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 /** What an AI suggestion added to a step. [line] is the one honest sentence when it could not. */
+/** How long a step waits for Zuri's suggestions before it shows its own questions only. */
+private const val HELP_TIMEOUT_MS = 20_000L
+
 data class StepHelp(
     val loading: Boolean = false,
     val context: List<CitedLine> = emptyList(),
@@ -62,6 +69,9 @@ sealed interface SessionLoad {
     data class Missing(val message: String) : SessionLoad
     data class Ready(val passageText: String, val verses: List<ChapterVerse>, val attribution: String) : SessionLoad
 }
+
+/** Read aloud state for the session's passage. [verse] is the verse being read (the first of its part). */
+data class ReadAloudState(val active: Boolean = false, val playing: Boolean = false, val verse: Int? = null)
 
 data class GuidedUi(
     val request: SessionRequest? = null,
@@ -94,7 +104,6 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
     val ui: StateFlow<GuidedUi> = _ui.asStateFlow()
 
     private var journal: JournalSession? = null
-    private var chapterAudio: List<ChapterAudio> = emptyList()
     private var bibleId = 0
     private var profile = DevotionalProfile()
     private var started = false
@@ -134,10 +143,8 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
                         load = SessionLoad.Ready(r.content.text(p.verseStart, p.verseEnd ?: p.verseStart), verses, "${r.content.abbreviation} · ${r.content.attribution}")
                     )
                     if (!walk && _ui.value.session == null) begin(request.kind)
-                    runCatching { library.audio(bibleId, p.book, p.chapter) }.getOrDefault(emptyList()).let {
-                        chapterAudio = it
-                        _ui.value = _ui.value.copy(canListen = it.isNotEmpty())
-                    }
+                    // Every translation can be read aloud: the passage is generated when no narration exists.
+                    _ui.value = _ui.value.copy(canListen = true)
                 }
             }
         }
@@ -194,11 +201,13 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             val text = step.verse?.let { v -> ready.verses.firstOrNull { it.number == v }?.text } ?: ready.passageText
             val brief = SessionBrief(request.passage, text, step.type, step.verse, request.need, profile, LocalDate.now())
-            val outcome = withContext(Dispatchers.Default) { ai.suggest(brief) }
+            // A slow or silent model must not leave the step on "thinking" forever; the step works without it.
+            val outcome = withContext(Dispatchers.Default) { withTimeoutOrNull(HELP_TIMEOUT_MS) { ai.suggest(brief) } }
             setHelp(
                 key, when (outcome) {
                     is SuggestOutcome.Got -> StepHelp(context = outcome.suggestions.context, questions = outcome.suggestions.questions, fromAi = true)
                     is SuggestOutcome.Unavailable -> StepHelp(line = outcome.line)
+                    null -> StepHelp(line = "Zuri didn't answer in time. Your own thoughts are enough for this step.")
                 }
             )
         }
@@ -262,19 +271,32 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
 
     private fun playbackId() = "bible:$bibleId:${_ui.value.request?.passage?.usfm}:${_ui.value.request?.passage?.chapter}"
 
-    val listening: StateFlow<Boolean> = PlaybackController.state.map { it.recordingId == playbackId() && it.isPlaying }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /** The passage's reading as the reader sees it: loaded, playing, and which verse is being read. */
+    val reading: StateFlow<ReadAloudState> = combine(PlaybackController.state, _ui) { state, ui ->
+        val queue = readingQueueId(ui)
+        if (queue == null || state.recordingId != queue) ReadAloudState()
+        else ReadAloudState(active = true, playing = state.isPlaying, verse = PassageSpeech.firstVerse(state.queue?.currentSectionId))
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, ReadAloudState())
 
-    /** Plays the chapter's narration from the passage's first verse; pressing again pauses. Uses the reader's own audio. */
+    /** The reading queue for the session's passage in the translation the session shows. */
+    private fun readingQueueId(ui: GuidedUi): String? = ui.request?.passage?.let {
+        ReadingStore.queueId(PassageSpeech.passageId(ScriptureReference(it.book, it.chapter), bibleId))
+    }
+
+    /** Reads the passage aloud from its first verse. When it is already loaded, this pauses or resumes it. */
     fun listen() {
         val request = _ui.value.request ?: return
-        val p = request.passage
-        val narrator = app.getSharedPreferences("bible_reader", android.content.Context.MODE_PRIVATE).getString("narrator", null)
-        val audio = chapterAudio.firstOrNull { it.narrator == narrator } ?: chapterAudio.firstOrNull() ?: return
+        val queue = readingQueueId(_ui.value) ?: return
         val state = PlaybackController.state.value
-        if (state.recordingId == playbackId() && state.isPlaying) { PlaybackController.pause(); return }
-        val title = "${p.display()}"
-        PlaybackController.playUriAt(app, playbackId(), title, Uri.parse(audio.url), p.verseStart?.let { audio.startOf(it) } ?: if (state.recordingId == playbackId()) null else 0L)
+        if (state.recordingId == queue) { PlaybackController.togglePlayPause(); return }
+        val p = request.passage
+        ReadToMe.coordinator(app).startPassage(ScriptureReference(p.book, p.chapter), bibleId, fromVerse = p.verseStart)
+    }
+
+    /** Reads from [verse] to the end of the chapter (tap a verse). */
+    fun readFrom(verse: Int) {
+        val p = _ui.value.request?.passage ?: return
+        ReadToMe.coordinator(app).startPassage(ScriptureReference(p.book, p.chapter), bibleId, fromVerse = verse)
     }
 
     override fun onCleared() {

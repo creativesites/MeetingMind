@@ -6,6 +6,8 @@ import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +15,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -24,13 +32,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,7 +68,6 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.InsetPanel
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
-import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
@@ -77,6 +84,8 @@ data class SessionActions(
     val onListen: () -> Unit = {},
     /** Opens Read to Me for this passage on the reading step. */
     val onReadAloud: () -> Unit = {},
+    /** Read from a verse to the end of the chapter (tap a verse in the pinned passage). */
+    val onReadFrom: (Int) -> Unit = {},
     val onChooseMethod: (SessionKind) -> Unit = {},
     val onUseQuestion: (SessionStep, String) -> Unit = { _, _ -> },
     val onGoDeeper: (Int?) -> Unit = {},
@@ -97,7 +106,7 @@ fun GuidedSessionScreen(
     onOpenNote: (String) -> Unit
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
-    val listening by viewModel.listening.collectAsStateWithLifecycle()
+    val reading by viewModel.reading.collectAsStateWithLifecycle()
     val context = LocalContext.current
     // The reader's own study sheet: original words, commentary and cross-references for a verse.
     val reader: BibleViewModel = viewModel(key = "session-reader")
@@ -112,11 +121,12 @@ fun GuidedSessionScreen(
     val request = ui.request
     BackHandler { onClose() }
     GuidedSessionContent(
-        ui, listening,
+        ui, reading,
         SessionActions(
             onClose = onClose,
             onNext = { if (ui.session?.isLast == true) { viewModel.finish(); onClose() } else viewModel.next() },
             onBack = viewModel::back,
+            onReadFrom = viewModel::readFrom,
             onAnswer = viewModel::answer,
             onListen = viewModel::listen,
             onReadAloud = { readAloud = true },
@@ -148,25 +158,34 @@ fun GuidedSessionScreen(
 
 /** The stateless session, for the screen and for screenshot tests. */
 @Composable
-fun GuidedSessionContent(ui: GuidedUi, listening: Boolean, actions: SessionActions) {
+fun GuidedSessionContent(ui: GuidedUi, reading: ReadAloudState, actions: SessionActions) {
     val c = MM.colors
     val session = ui.session
     Column(Modifier.fillMaxSize().background(c.background).statusBarsPadding().imePadding().navigationBarsPadding().testTag("bible_session")) {
         Column(Modifier.padding(horizontal = MM.space.l)) {
-            ScreenHeader(
-                title = ui.request?.passage?.display().orEmpty(),
-                leading = { IconButton(onClick = actions.onClose, modifier = Modifier.testTag("session_close")) { Icon(Icons.Rounded.Close, "Close", tint = c.ink) } },
-                actions = {
-                    if (ui.canListen) IconButton(onClick = actions.onListen, modifier = Modifier.testTag("session_listen")) {
-                        Icon(if (listening) Icons.Rounded.Pause else Icons.Rounded.Headphones, if (listening) "Pause" else "Listen", tint = c.accent)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = actions.onClose, modifier = Modifier.testTag("session_close")) { Icon(Icons.Rounded.Close, "Close", tint = c.ink) }
+                Column(Modifier.weight(1f).padding(horizontal = MM.space.s), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(ui.request?.passage?.display().orEmpty(), style = MM.type.bodyStrong, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (session != null && session.steps.size > 1) {
+                        Text("Step ${session.index + 1} of ${session.steps.size}", style = MM.type.caption, color = c.inkMuted)
                     }
                 }
-            )
+                if (ui.canListen) {
+                    IconButton(onClick = actions.onListen, modifier = Modifier.testTag("session_listen")) {
+                        Icon(if (reading.playing) Icons.Rounded.Pause else Icons.Rounded.Headphones, if (reading.playing) "Pause" else "Listen", tint = c.accent)
+                    }
+                } else {
+                    Spacer(Modifier.width(48.dp))
+                }
+            }
             if (session != null && session.steps.size > 1) {
-                LinearProgressIndicator(
-                    progress = { session.progress.coerceAtLeast(0.04f) }, color = c.accent, trackColor = c.track,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = MM.space.xs)
-                )
+                // One segment per step: filled up to the current step, so progress reads at a glance.
+                Row(Modifier.fillMaxWidth().padding(top = MM.space.xs), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    session.steps.forEachIndexed { i, _ ->
+                        Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(4.dp)).background(if (i <= session.index) c.accent else c.track))
+                    }
+                }
             }
         }
         when {
@@ -183,12 +202,12 @@ fun GuidedSessionContent(ui: GuidedUi, listening: Boolean, actions: SessionActio
                 val step = session.current
                 val expanded = step.type == StepType.READ || step.type == StepType.SCRIPTURE
                 Column(Modifier.weight(1f).fillMaxWidth()) {
-                    if (step.type != StepType.CLOSE) PinnedPassage(ready, expanded, actions, Modifier.padding(horizontal = MM.space.l))
+                    if (step.type != StepType.CLOSE) PinnedPassage(ready, expanded, actions, reading, Modifier.padding(horizontal = MM.space.l))
                     Column(
                         Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = MM.space.l, vertical = MM.space.l),
                         verticalArrangement = Arrangement.spacedBy(MM.space.m)
                     ) {
-                        StepBody(ui, session, step, ready, actions)
+                        StepBody(ui, session, step, ready, reading, actions)
                     }
                 }
                 if (step.type != StepType.CLOSE) NavBar(session, step, actions)
@@ -200,34 +219,61 @@ fun GuidedSessionContent(ui: GuidedUi, listening: Boolean, actions: SessionActio
 @Composable
 private fun MethodChooser(actions: SessionActions, modifier: Modifier) {
     val c = MM.colors
-    Column(modifier.padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
-        Text("How do you want to study this?", style = MM.type.title, color = c.ink)
-        Text("Pick a way in. Write as you go, or just read and think.", style = MM.type.secondary, color = c.inkSecondary)
+    Column(modifier.verticalScroll(rememberScrollState()).padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+        Text("How would you like to study it?", style = MM.type.title, color = c.ink)
+        Text("Pick once. We'll remember it for next time.", style = MM.type.secondary, color = c.inkSecondary)
         MMCard(onClick = { actions.onChooseMethod(SessionKind.SOAP) }, modifier = Modifier.testTag("method_soap")) {
-            Text("SOAP · about 10 min", style = MM.type.caption, color = c.accent)
-            Text("Scripture, Observation, Application, Prayer", style = MM.type.heading, color = c.ink)
-            Text("Four short steps, each with one question you can skip.", style = MM.type.secondary, color = c.inkSecondary)
+            Box(Modifier.clip(RoundedCornerShape(50)).background(c.accentWash).padding(horizontal = 10.dp, vertical = 4.dp)) {
+                Text("Recommended ✓", style = MM.type.caption, color = c.accent)
+            }
+            Text("SOAP", style = MM.type.heading, color = c.ink)
+            Text("Scripture, Observation, Application, Prayer. Four short steps.", style = MM.type.secondary, color = c.inkSecondary)
+            Text("About 10 minutes · Ends in a saved note", style = MM.type.caption, color = c.inkMuted)
         }
         MMCard(onClick = { actions.onChooseMethod(SessionKind.VERSE_BY_VERSE) }, modifier = Modifier.testTag("method_verses")) {
-            Text("Verse by verse · about 20 min", style = MM.type.caption, color = c.accent)
             Text("Verse by verse", style = MM.type.heading, color = c.ink)
-            Text("One verse at a time, with the original words, commentary and cross-references a tap away.", style = MM.type.secondary, color = c.inkSecondary)
+            Text("One verse at a time, with a note for each. Good for slow reading.", style = MM.type.secondary, color = c.inkSecondary)
+            Text("About 20 minutes · Ends in a saved note", style = MM.type.caption, color = c.inkMuted)
         }
+        Text("Coming", style = MM.type.caption, color = c.inkMuted, modifier = Modifier.padding(top = MM.space.s))
+        Text("Inductive study · Character study · Word study", style = MM.type.secondary, color = c.inkMuted)
     }
 }
 
-/** The passage, pinned above every step. Collapsed to a few lines except while reading it. */
+/**
+ * The passage, pinned above every step. Collapsed to a few verses except while reading it. Each verse is a row; the
+ * verse being read is highlighted, and tapping a verse reads from there.
+ */
 @Composable
-private fun PinnedPassage(ready: SessionLoad.Ready, startExpanded: Boolean, actions: SessionActions, modifier: Modifier) {
+private fun PinnedPassage(ready: SessionLoad.Ready, startExpanded: Boolean, actions: SessionActions, reading: ReadAloudState, modifier: Modifier) {
     val c = MM.colors
     var open by remember(startExpanded) { mutableStateOf(startExpanded) }
+    val rows = ready.verses
     MMCard(modifier = modifier.testTag("session_passage"), contentPadding = MM.space.m) {
         SelectionContainer {
-            Text(
-                ready.passageText, style = MM.type.scripture, color = c.ink,
-                maxLines = if (open) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis,
-                modifier = if (open) Modifier.heightIn(max = MMSize.minTouch * 5).verticalScroll(rememberScrollState()) else Modifier
-            )
+            Column(
+                if (open) Modifier.heightIn(max = MMSize.minTouch * 5).verticalScroll(rememberScrollState()) else Modifier,
+                verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+            ) {
+                if (rows.isEmpty()) {
+                    Text(ready.passageText, style = MM.type.scripture, color = c.ink, maxLines = if (open) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis)
+                } else {
+                    (if (open) rows else rows.take(3)).forEach { v ->
+                        val reading_ = reading.active && reading.verse == v.number
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .background(if (reading_) c.accentWash else Color.Transparent)
+                                .clickable { actions.onReadFrom(v.number) }
+                                .padding(horizontal = MM.space.xs, vertical = MM.space.xs)
+                                .testTag("session_verse_row_${v.number}"),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text("${v.number}", style = MM.type.caption, color = if (reading_) c.accent else c.inkMuted, modifier = Modifier.width(28.dp))
+                            Text(v.text, style = MM.type.scripture, color = c.ink)
+                        }
+                    }
+                }
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextAction(if (open) "Show less" else "Show all", onClick = { open = !open })
@@ -252,7 +298,7 @@ private fun NavBar(session: SessionState, step: SessionStep, actions: SessionAct
 }
 
 @Composable
-private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, ready: SessionLoad.Ready, actions: SessionActions) {
+private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, ready: SessionLoad.Ready, reading: ReadAloudState, actions: SessionActions) {
     val c = MM.colors
     val request = ui.request!!
     val help = ui.help["${step.type}-${step.verse ?: 0}"]
@@ -271,19 +317,23 @@ private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, rea
             Suggested(help, onUse = null)
         }
         StepType.READ -> {
-            Text("Read it, or listen", style = MM.type.heading, color = c.ink)
+            Text(if (ui.canListen) "Read it, or listen" else "Read it", style = MM.type.heading, color = c.ink)
             Text("Read it once for what it says, and once for what stands out.", style = MM.type.secondary, color = c.inkSecondary)
-            SecondaryButton("Read aloud", onClick = actions.onReadAloud, modifier = Modifier.testTag("session_read_aloud"))
+            if (ui.canListen) ListenButton(reading, actions)
         }
         StepType.SCRIPTURE -> {
             Text("Scripture", style = MM.type.heading, color = c.ink)
             Text("Read the passage slowly. The next step asks what you notice.", style = MM.type.secondary, color = c.inkSecondary)
+            if (ui.canListen) ListenButton(reading, actions)
         }
         StepType.OBSERVE, StepType.APPLY, StepType.VERSE -> {
             if (step.type == StepType.VERSE && step.verse != null) {
                 val verse = ready.verses.firstOrNull { it.number == step.verse }
-                SelectionContainer {
-                    Text("${step.verse}  ${verse?.text.orEmpty()}", style = MM.type.scripture, color = c.ink, modifier = Modifier.testTag("session_verse"))
+                MMCard(modifier = Modifier.testTag("session_verse_card")) {
+                    Text("VERSE ${step.verse}", style = MM.type.caption, color = c.inkMuted)
+                    SelectionContainer {
+                        Text(verse?.text.orEmpty(), style = MM.type.scripture, color = c.ink, modifier = Modifier.testTag("session_verse"))
+                    }
                 }
                 TextAction("Original words, commentary, cross-references", onClick = { actions.onGoDeeper(step.verse) }, modifier = Modifier.testTag("session_deeper"))
             } else if (step.type == StepType.VERSE) {
@@ -307,6 +357,19 @@ private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, rea
         }
         StepType.CLOSE -> Close(ui, session, actions)
     }
+}
+
+/** Reads the passage aloud, or pauses it. Shown on the reading steps only when the chapter has audio. */
+@Composable
+private fun ListenButton(reading: ReadAloudState, actions: SessionActions) {
+    SecondaryButton(
+        when {
+            reading.playing -> "Pause reading"
+            reading.active -> "Resume reading"
+            else -> "Read aloud"
+        },
+        onClick = actions.onListen, modifier = Modifier.testTag("session_read_aloud")
+    )
 }
 
 /** A free-text answer, always optional. Typing here saves it to the journal on the first keystroke. */
@@ -354,21 +417,36 @@ private fun Suggested(help: StepHelp?, onUse: ((String) -> Unit)?) {
 @Composable
 private fun Close(ui: GuidedUi, session: SessionState, actions: SessionActions) {
     val c = MM.colors
-    Text(if (session.touched) "Well done" else "That's the reading", style = MM.type.title, color = c.ink)
     if (session.touched) {
+        Box(Modifier.size(56.dp).clip(CircleShape).background(c.accent), contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.Check, "Saved", tint = c.background)
+        }
+        Text("Well done", style = MM.type.title, color = c.ink)
         MMCard(modifier = Modifier.testTag("session_complete_card")) {
             Text(ui.request?.passage?.display().orEmpty(), style = MM.type.heading, color = c.ink)
             Text("Saved to your study journal, with the passage.", style = MM.type.secondary, color = c.inkSecondary, modifier = Modifier.testTag("session_saved"))
         }
+        // What the person wrote, step by step, so the note reads back before it is closed.
+        val written = session.steps.filter { it.answerable && !session.answers[it.id].isNullOrBlank() }
+        if (written.isNotEmpty()) {
+            MMCard(modifier = Modifier.testTag("session_note_summary")) {
+                Text("YOUR NOTE", style = MM.type.caption, color = c.inkMuted)
+                written.forEach { s ->
+                    Text(session.prompts[s.id] ?: s.title, style = MM.type.caption, color = c.inkMuted)
+                    Text(session.answers[s.id].orEmpty(), style = MM.type.body, color = c.ink)
+                }
+            }
+        }
         ui.addedTo?.let { StatusLine(StatusKind.Info, "Added to $it.") }
         var listening by remember { mutableStateOf(false) }
         ui.savedNoteId?.let { id ->
-            SecondaryButton("Listen to my study", onClick = { listening = true }, modifier = Modifier.testTag("session_read_to_me"))
+            SecondaryButton("Listen to my study", onClick = { listening = true }, modifier = Modifier.testTag("session_listen_study"))
             if (listening) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(id, onDismiss = { listening = false })
         }
         SecondaryButton("Add to an existing note", onClick = actions.onAddToNote, modifier = Modifier.testTag("session_add_to_note"))
         TextAction("Copy my notes", onClick = actions.onCopyNotes)
     } else {
+        Text("That's the reading", style = MM.type.title, color = c.ink)
         Text("You didn't write anything, so nothing was saved.", style = MM.type.secondary, color = c.inkSecondary)
     }
     PrimaryButton("Done", onClick = actions.onNext, modifier = Modifier.testTag("session_done"))
