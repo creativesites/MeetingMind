@@ -1,27 +1,28 @@
-# MeetingMind dev build: 7863d16
+# MeetingMind dev build: 5f6c728
 
-Install `MeetingMind-Dev-7863d16.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
+Install `MeetingMind-Dev-5f6c728.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
+
+Built from `ccr-08b1bb9f-iljmtb` at `5f6c728`. Contains the designated branch, Circles v2 and these changes:
 
 ## What is in this build
-- **Notes page:** fixed the crash on open (empty bubble dropped a layout slot).
-- **Read to Me in Bible study:** labelled controls in the reader ("Read aloud"), the guided session reading step, and the study completion screen ("Listen to my study"). A "Read from here" action on a selected verse starts reading without narration audio.
-- **Bible study and Faith home:** the study tile reads "Study a passage". Section tags are checked at 360 dp.
-- **Circles on Home:** the Circles tile shows loading, empty (Start / Join), the first three circles, or a failure with Try again.
-- **Sun / moon:** moved beside the greeting so it no longer overlaps the Today headline.
-- **Work home:** no fix. The gap was not reproduced, so it is still open.
-- **Build:** a compile fix in the Bible session (duplicate test tag, ambiguous import).
+- **Circles v2, first increment:** v1 retired (migration 25 to 26 drops its tables), creation is idempotent, a failed attempt no longer uses up the 5-per-hour limit, and anonymous sign-in failures show a specific message. Worker and Firestore rules are live.
+- **Faith home:** "Your week in faith" at the top, and Bible continues from today's reading.
+- **Today home:** the sun or moon rides the top of the right column, above the companion. The companion sits lower, 84 dp down. The floating "Up next" card is hidden on Today.
+- **Work home:** Circles shows as the same card as Today, in place of the text link. The gap under the hero is closed.
+- **Settings:** offers only Today, Work and Calm. A saved Everyday or Focus opens Today. New installs open Today.
 
 ## Not verified on a device
 - Everything above was checked with unit and screenshot tests only, not on a phone.
-- Read to Me audio playback and the verse highlight.
-- Sun / moon placement on a real device.
-- Work-home gap: open.
-- Circles needs the Cloudflare Worker and Firestore rules redeployed, and Google sign-in on `.dev` needs the Android OAuth client in `google-services.json`.
+- Circles on a phone: create, join, feed, chat, polls.
+- Push notifications, and the first-circle permission prompt.
+- Behaviour after a reinstall.
+- Google sign-in will fail on `.dev`: `google-services.json` has no Android OAuth client for this package yet.
 
-## Known test failures on the merged branch
-- `WorkHomeLayoutTest.needsRespectsACustomCap` also fails on the base commit.
-- `HomeCirclesScreenshotTest` fails only in the full suite and passes alone (order-dependent).
-- Canvas player styling for the Bible sheet is not finished (per the Bible session).
+## Known test failures (full suite: 3117 tests)
+- `HomeCirclesScreenshotTest` (4): fails in the full suite, passes alone (order-dependent).
+- `WorkHomeLayoutTest.needsRespectsACustomCap`: also fails on the base commit.
+- `NotesLibraryScreenshotTest.empty`: an uncaught exception before the test starts. Not investigated.
+- `CirclesApiTest` could not download its Robolectric artifact in the build environment, so its tests did not run.
 
 ## Install
 1. Enable install from unknown sources for your file manager.
