@@ -34,8 +34,11 @@ enum class HomeStyle(val label: String, val description: String) {
     PROFESSIONAL("Work", "A briefing for the working day: next meeting and prep, what needs you, your schedule, tasks, projects and people — with everything else still here");
 
     companion object {
+        /** The homes a person can choose in Settings. Everyday and Focus are retired and no longer offered. */
+        val SELECTABLE: List<HomeStyle> = listOf(TODAY, PROFESSIONAL, CALM)
+
         /** The home a new install opens. People who finished onboarding before it existed keep [TODAY]. */
-        val DEFAULT_FOR_NEW_INSTALLS = EVERYDAY
+        val DEFAULT_FOR_NEW_INSTALLS = TODAY
     }
 }
 
@@ -72,7 +75,9 @@ data class Appearance(
             return Appearance(
                 accent = at(0) { runCatching { AccentChoice.valueOf(it) }.getOrNull() } ?: AccentChoice.INDIGO,
                 textSize = at(1) { runCatching { TextSize.valueOf(it) }.getOrNull() } ?: TextSize.DEFAULT,
-                homeStyle = at(2) { runCatching { HomeStyle.valueOf(it) }.getOrNull() } ?: homeFallback,
+                // A saved choice of a retired home opens Today.
+                homeStyle = at(2) { runCatching { HomeStyle.valueOf(it) }.getOrNull() }
+                    ?.let { if (it in HomeStyle.SELECTABLE) it else HomeStyle.TODAY } ?: homeFallback,
                 hidden = p.getOrNull(3)?.split(",")?.mapNotNull { runCatching { HomeSection.valueOf(it) }.getOrNull() }?.toSet().orEmpty()
             )
         }

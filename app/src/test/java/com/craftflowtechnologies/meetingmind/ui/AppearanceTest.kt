@@ -15,7 +15,7 @@ import org.junit.Test
 
 class AppearanceTest {
     @Test fun roundTripsEveryChoice() {
-        val a = Appearance(AccentChoice.ROSE, TextSize.LARGE, HomeStyle.FOCUS, setOf(HomeSection.STORIES, HomeSection.FOR_YOU))
+        val a = Appearance(AccentChoice.ROSE, TextSize.LARGE, HomeStyle.CALM, setOf(HomeSection.STORIES, HomeSection.FOR_YOU))
         assertEquals(a, Appearance.decode(a.encode()))
         assertEquals(Appearance(), Appearance.decode(Appearance().encode()))
     }
@@ -23,24 +23,35 @@ class AppearanceTest {
     @Test fun unreadableValuesFallBackFieldByField() {
         assertEquals(Appearance(), Appearance.decode(null))
         assertEquals(Appearance(), Appearance.decode("garbage"))
-        val partial = Appearance.decode("TEAL|HUGE|FOCUS|STORIES,NOPE")
+        val partial = Appearance.decode("TEAL|HUGE|CALM|STORIES,NOPE")
         assertEquals(AccentChoice.TEAL, partial.accent)
         assertEquals(TextSize.DEFAULT, partial.textSize)
-        assertEquals(HomeStyle.FOCUS, partial.homeStyle)
+        assertEquals(HomeStyle.CALM, partial.homeStyle)
         assertEquals(setOf(HomeSection.STORIES), partial.hidden)
     }
 
-    @Test fun existingInstallsKeepTodayAndNewInstallsGetEveryday() {
-        // Nothing stored for the home: an install that finished onboarding earlier keeps Today.
+    @Test fun newAndExistingInstallsBothOpenToday() {
         assertEquals(HomeStyle.TODAY, Appearance.decode(null, existingInstall = true).homeStyle)
         assertEquals(HomeStyle.TODAY, Appearance.decode("TEAL|DEFAULT||", existingInstall = true).homeStyle)
-        assertEquals(HomeStyle.EVERYDAY, Appearance.decode(null, existingInstall = false).homeStyle)
-        assertEquals(HomeStyle.EVERYDAY, Appearance.decode(null).homeStyle)
-        // A stored choice always wins, in both cases.
-        val stored = Appearance(homeStyle = HomeStyle.FOCUS).encode()
-        assertEquals(HomeStyle.FOCUS, Appearance.decode(stored, existingInstall = true).homeStyle)
-        assertEquals(HomeStyle.FOCUS, Appearance.decode(stored, existingInstall = false).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode(null, existingInstall = false).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode(null).homeStyle)
+    }
+
+    @Test fun aStoredChoiceOfASelectableHomeWins() {
+        val stored = Appearance(homeStyle = HomeStyle.CALM).encode()
+        assertEquals(HomeStyle.CALM, Appearance.decode(stored, existingInstall = true).homeStyle)
+        assertEquals(HomeStyle.CALM, Appearance.decode(stored, existingInstall = false).homeStyle)
         assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.TODAY).encode()).homeStyle)
+    }
+
+    @Test fun retiredHomesOpenToday() {
+        // Everyday and Focus are no longer offered: a saved choice of either opens Today.
+        assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.FOCUS).encode()).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.EVERYDAY).encode()).homeStyle)
+    }
+
+    @Test fun onlyTheThreeHomesAreSelectable() {
+        assertEquals(listOf(HomeStyle.TODAY, HomeStyle.PROFESSIONAL, HomeStyle.CALM), HomeStyle.SELECTABLE)
     }
 
     @Test fun accentRecolorsBothPalettesAndKeepsTheRest() {
@@ -55,9 +66,9 @@ class AppearanceTest {
         assertNotEquals(AccentChoice.ROSE.on(GraphiteColors).accent, AccentChoice.INDIGO.on(GraphiteColors).accent)
     }
 
-    @Test fun defaultIsEverydayWithEverythingShown() {
+    @Test fun defaultIsTodayWithEverythingShown() {
         val a = Appearance()
-        assertEquals(HomeStyle.EVERYDAY, a.homeStyle)
+        assertEquals(HomeStyle.TODAY, a.homeStyle)
         assertTrue(HomeSection.entries.all { a.shows(it) })
         assertFalse(a.copy(hidden = setOf(HomeSection.TIMELINE)).shows(HomeSection.TIMELINE))
     }
