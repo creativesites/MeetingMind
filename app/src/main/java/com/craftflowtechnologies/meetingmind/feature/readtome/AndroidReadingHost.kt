@@ -10,6 +10,7 @@ import com.craftflowtechnologies.meetingmind.ai.voice.read.DeliverySpec
 import com.craftflowtechnologies.meetingmind.ai.voice.read.Environment
 import com.craftflowtechnologies.meetingmind.ai.voice.read.ExtractOptions
 import com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiKeyTier
+import com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiKeyTierPolicy
 import com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiReadingEngine
 import com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiSectionVoice
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LibraryScriptureSource
@@ -124,7 +125,7 @@ class AndroidReadingHost(context: Context) : ReadingHost {
         profile = prefs.preferencesFlow.first().processingProfile,
         geminiConfigured = credentials.getApiKey() != null,
         entitled = ReadToMeEntitlements.current.canUseGeminiVoice(),
-        keyTier = if (credentials.keyPlanConfirmedPaid()) GeminiKeyTier.PAID else GeminiKeyTier.UNKNOWN,
+        keyTier = GeminiKeyTierPolicy.tier(gateOn = com.craftflowtechnologies.meetingmind.BuildConfig.READ_TO_ME_TIER_GATE, confirmedPaid = credentials.keyPlanConfirmedPaid()),
         usingBuiltInKey = credentials.usingSystemKey()
     )
 

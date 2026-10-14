@@ -53,6 +53,10 @@ android {
     buildConfigField("String", "DEEPSEEK_PROXY_URL", "\"${(System.getenv("DEEPSEEK_PROXY_URL") ?: "").replace("\"", "")}\"")
     buildConfigField("String", "SYSTEM_DEEPSEEK_API_KEY", "\"${(System.getenv("SYSTEM_DEEPSEEK_API_KEY") ?: "").replace("\"", "")}\"")
     buildConfigField("Boolean", "SYSTEM_GEMINI_MODE", "true")
+    // Read to Me's plan-tier gate (see GeminiKeyTierPolicy). Off for dev and test builds, which carry the
+    // built-in key for everyone. Turn on only for Play Store builds: -PREAD_TO_ME_TIER_GATE=true or the env var.
+    val readToMeTierGate = (findProperty("READ_TO_ME_TIER_GATE") ?: System.getenv("READ_TO_ME_TIER_GATE") ?: "false").toString().toBoolean()
+    buildConfigField("Boolean", "READ_TO_ME_TIER_GATE", "$readToMeTierGate")
 
     // Integrations (W13): Gmail and Outlook are off by default per brief
     val emailIntegrationsEnabled = (System.getenv("FEATURE_INTEGRATIONS_EMAIL") ?: "false").toBoolean()

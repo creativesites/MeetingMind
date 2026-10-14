@@ -83,7 +83,7 @@ class ScriptureResolverTest {
         val src = FakeSource(chapters = mutableMapOf((3034 to 3) to chapter(3034, "BSB"), (111 to 3) to chapter(111, "NIV", "© Biblica")))
         val r = resolve(src, listOf(block("b1", "John 3:16-17", "r1")), listOf(ref("r1", 111)))["b1"]!!
         assertEquals("New International Version", r.translationName)
-        assertFalse(r.openForCloud) // licensed: phone voice only
+        assertTrue(r.openForCloud) // licensed, but Read to Me sends it to Gemini by owner decision (ReadToMeLicencePolicy)
         assertEquals(listOf(111 to "JHN.3"), src.chapterCalls)
     }
 
