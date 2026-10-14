@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -198,6 +199,7 @@ fun BibleHomeContent(state: BibleHomeState, actions: BibleHomeActions) {
     if (studySheet) StudyPassageSheet(onDismiss = { studySheet = false }, onWalk = { studySheet = false; actions.onWalkThrough(it) })
 }
 
+@Composable
 private fun Chevron() = Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MM.colors.inkMuted, modifier = Modifier.width(MMSize.icon))
 
 /**
