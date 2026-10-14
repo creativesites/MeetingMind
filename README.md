@@ -1,18 +1,28 @@
-# MeetingMind dev build
+# MeetingMind dev build: 7863d16
 
-**MeetingMind-Dev-b3ab90c.apk**: "MeetingMind Dev" built from commit `b3ab90c` on `claude/meetingmind-mvp-planning-7dgowm`
-(arm64-v8a). It installs beside the tester app (`com.craftflowtechnologies.meetingmind.dev`) and keeps its own data.
+Install `MeetingMind-Dev-7863d16.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
 
-New in this build:
-- **Home screens:** the Today, Work and Calm homes redesigned, with a shared Today header and animated mode switch; the companion clears the sun; notes home with the illustrated sky hero and date sections.
-- **Bible:** restyled home, method chooser and session complete; share a verse as a card; read-to-me in the study flow.
-- **Read to Me:** background reading, saved-reading summary, listen to saved parts; Gemini audio removed once a note stays on the phone; licensed Bible text to Gemini (owner decision).
-- **Moments:** every note gets its moment, including no-speech notes.
-- **Devotionals:** bundled reading loads on device; on by default; 00:01 write.
-- **Circles:** first increment (v1 retired, creation defects fixed). Needs the Worker and rules redeployed.
+## What is in this build
+- **Notes page:** fixed the crash on open (empty bubble dropped a layout slot).
+- **Read to Me in Bible study:** labelled controls in the reader ("Read aloud"), the guided session reading step, and the study completion screen ("Listen to my study"). A "Read from here" action on a selected verse starts reading without narration audio.
+- **Bible study and Faith home:** the study tile reads "Study a passage". Section tags are checked at 360 dp.
+- **Circles on Home:** the Circles tile shows loading, empty (Start / Join), the first three circles, or a failure with Try again.
+- **Sun / moon:** moved beside the greeting so it no longer overlaps the Today headline.
+- **Work home:** no fix. The gap was not reproduced, so it is still open.
+- **Build:** a compile fix in the Bible session (duplicate test tag, ambiguous import).
 
-Known failing tests in this build (not blocking the APK):
-- `WorkHomeLayoutTest.needsRespectsACustomCap` (expected (2,1), got (3,0)).
-- `NotesLibraryScreenshotTest` populated, chipsFilter, searching: index out of bounds (list has 3 elements).
+## Not verified on a device
+- Everything above was checked with unit and screenshot tests only, not on a phone.
+- Read to Me audio playback and the verse highlight.
+- Sun / moon placement on a real device.
+- Work-home gap: open.
+- Circles needs the Cloudflare Worker and Firestore rules redeployed, and Google sign-in on `.dev` needs the Android OAuth client in `google-services.json`.
 
-Install: allow installs from unknown sources, then open the APK. Only the latest build is kept on this branch.
+## Known test failures on the merged branch
+- `WorkHomeLayoutTest.needsRespectsACustomCap` also fails on the base commit.
+- `HomeCirclesScreenshotTest` fails only in the full suite and passes alone (order-dependent).
+- Canvas player styling for the Bible sheet is not finished (per the Bible session).
+
+## Install
+1. Enable install from unknown sources for your file manager.
+2. Open the APK and install. Uninstall the `.dev` build first if signatures differ.
