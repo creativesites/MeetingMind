@@ -24,6 +24,13 @@ class MainThreadReadPlayer(private val delegate: ReadPlayer, private val post: (
     override fun setExpected(count: Int) = post { delegate.setExpected(count) }
 }
 
+/** For a reading made in the background: parts are saved to disk and nothing is played. */
+object SilentReadPlayer : ReadPlayer {
+    override fun play(queueId: String, items: List<QueueItem>, startIndex: Int, startPositionMs: Long, expected: Int) = Unit
+    override fun append(item: QueueItem) = Unit
+    override fun setExpected(count: Int) = Unit
+}
+
 sealed interface VoiceResult {
     data class Done(val audio: Pcm, val model: String? = null) : VoiceResult
     data class Failed(val message: String, val recovery: RecoveryPlan) : VoiceResult

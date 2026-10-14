@@ -73,7 +73,11 @@ data class ReadOffer(
     val empty: Boolean,
     val hasSavedPlace: Boolean,
     val skippedCount: Int,
-    val space: NotebookSpace?
+    val space: NotebookSpace?,
+    /** Parts of the saved reading that are current for the settings now, out of all parts; and when it was last made. */
+    val savedReady: Int = 0,
+    val savedTotal: Int = 0,
+    val savedMadeAt: Long? = null
 )
 
 /**
@@ -84,7 +88,7 @@ data class ReadOffer(
  */
 class ReadingCoordinator(private val host: ReadingHost, private val scope: CoroutineScope, private val clock: () -> Long = System::currentTimeMillis) {
 
-    private data class Request(val noteId: String, val startSectionId: String?, val choice: ReadChoice, val resume: Boolean)
+    private data class Request(val noteId: String, val startSectionId: String?, val choice: ReadChoice, val resume: Boolean, val silent: Boolean = false)
 
     /** What a failure needs to continue from. */
     private data class Stalled(val request: Request, val plan: ReadPlan, val voice: SectionVoice, val decision: RouteDecision, val index: Int, val note: String?)
@@ -117,6 +121,7 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
             else -> null to null
         }
         val manifest = host.store.load(noteId)
+        val saved = savedSummary(noteId, note.source, provider, settings, note.space, note.language, manifest)
         return ReadOffer(
             title = note.title,
             sections = note.source.sections.map { it.id to it.title },
@@ -126,8 +131,20 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
             empty = prepared is Prepared.Empty,
             hasSavedPlace = manifest?.progress?.let { !it.completed } == true,
             skippedCount = note.source.skipped.size,
-            space = note.space
+            space = note.space,
+            savedReady = saved.first,
+            savedTotal = saved.second,
+            savedMadeAt = saved.third
         )
+    }
+
+    /**
+     * Makes the whole reading for [noteId] without playing it, for a background worker. Parts are saved as they
+     * are made, so a later "Listen" plays them at once. Returns how it ended.
+     */
+    suspend fun generateInBackground(noteId: String): ReadingUiState {
+        begin(Request(noteId, null, ReadChoice.DEFAULT, resume = false, silent = true))
+        return _state.value
     }
 
     fun start(noteId: String, startSectionId: String? = null, choice: ReadChoice = ReadChoice.DEFAULT, resume: Boolean = false) =
@@ -237,6 +254,28 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
         }
     }
 
+    /** How much of the saved reading is current for these settings, as parts; the same fingerprint the runner uses. */
+    private fun savedSummary(noteId: String, source: SpeechSource, provider: SpeechProvider?, settings: ReadToMeSettings, space: NotebookSpace?, language: String?, manifest: ReadingManifest?): Triple<Int, Int, Long?> {
+        if (manifest == null) return Triple(0, 0, null)
+        val chosen = provider ?: return Triple(0, 0, manifest.updatedAt)
+        val smart = settings.smartRead
+        val fs = FingerprintSettings(
+            mode = if (smart) MODE_SMART else MODE_EXACT,
+            provider = chosen,
+            model = if (chosen == SpeechProvider.GEMINI) "gemini-tts" else "device-tts",
+            voiceId = if (chosen == SpeechProvider.GEMINI) settings.geminiVoice else (settings.localVoice ?: "default"),
+            delivery = DeliveryResolver.resolve(settings, space).canonical(),
+            language = language,
+            scriptVersion = if (smart) com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper.SCRIPT_VERSION else 1
+        )
+        val parts = ReadingPlan.parts(source, settings.pauseAfterQuestion == PauseAfterQuestion.UNTIL_RESUME)
+        val ready = parts.count { part ->
+            val fingerprint = ReadFingerprint.section(part, fs)
+            manifest.sections.any { it.sectionId == part.id && it.status == SectionStatus.READY && it.fingerprint == fingerprint && host.store.audioFile(noteId, it) != null }
+        }
+        return Triple(ready, parts.size, manifest.updatedAt)
+    }
+
     private fun mustStayOffline(env: Environment, facts: NoteFacts) =
         env.profile != ProcessingProfile.INTERNET || facts.notePrivate || facts.notebookConfidential || facts.workPrivacyOffline
 
@@ -248,7 +287,7 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
         var doneParts = alreadyQueued
         _state.value = ReadingUiState.Working(request.noteId, provider, alreadyQueued, total, note, 0f, startedAt)
         ReadToMeLog.d("run start provider=$provider parts=$total alreadyQueued=$alreadyQueued")
-        val runner = ReadingRunner(host.store, host.player)
+        val runner = ReadingRunner(host.store, if (request.silent) SilentReadPlayer else host.player)
         val outcome = runner.run(plan, voice, resume, alreadyQueued, onProgress = { done, all ->
             doneParts = done
             ReadToMeLog.d("part ready $done/$all after ${clock() - startedAt} ms")

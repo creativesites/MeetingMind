@@ -69,6 +69,7 @@ fun ReadToMeSheet(noteId: String, onDismiss: () -> Unit) {
     var startFrom by remember { mutableStateOf<String?>(null) }
     var started by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var backgroundQueued by remember { mutableStateOf(false) }
     val promotions by coordinator.promotions.collectAsState()
     val state by coordinator.state.collectAsState()
 
@@ -93,10 +94,18 @@ fun ReadToMeSheet(noteId: String, onDismiss: () -> Unit) {
             val shown = if (own) state else ReadingUiState.Idle
             when (shown) {
                 is ReadingUiState.Idle -> {
-                    SetupContent(offer, settings, startFrom, { startFrom = it }, ::change) { resume ->
-                        started = true
-                        coordinator.start(noteId, startFrom, resume = resume)
-                    }
+                    SetupContent(
+                        offer, settings, startFrom, { startFrom = it }, ::change,
+                        onStart = { resume ->
+                            started = true
+                            coordinator.start(noteId, startFrom, resume = resume)
+                        },
+                        onBackground = {
+                            ReadToMe.enqueueBackground(context, noteId)
+                            backgroundQueued = true
+                        },
+                        backgroundQueued = backgroundQueued
+                    )
                     TextAction("Read to Me settings", onClick = { showSettings = true })
                 }
                 is ReadingUiState.Working -> {
@@ -188,7 +197,9 @@ private fun SetupContent(
     startFrom: String?,
     onStartFrom: (String?) -> Unit,
     change: ((ReadToMeSettings) -> ReadToMeSettings) -> Unit,
-    onStart: (resume: Boolean) -> Unit
+    onStart: (resume: Boolean) -> Unit,
+    onBackground: () -> Unit,
+    backgroundQueued: Boolean
 ) {
     if (offer == null) { Text("Looking at the note…", style = MM.type.secondary, color = MM.colors.inkSecondary); return }
     val provider = offer.provider
@@ -256,8 +267,23 @@ private fun SetupContent(
         }
     }
 
+    if (offer.savedTotal > 0) {
+        val madeAt = offer.savedMadeAt?.let { android.text.format.DateUtils.getRelativeTimeSpanString(it).toString() }
+        StatusLine(
+            StatusKind.Info,
+            when {
+                offer.savedReady == offer.savedTotal -> "Saved reading ready${madeAt?.let { " · made $it" }.orEmpty()}. It plays without a new voice request."
+                else -> "Saved reading: ${offer.savedReady} of ${offer.savedTotal} parts are current. The rest are made when you listen."
+            }
+        )
+    }
     PrimaryButton("Listen", onClick = { onStart(false) }, modifier = Modifier.fillMaxWidth())
     if (offer.hasSavedPlace) TextAction("Continue where I left off", onClick = { onStart(true) })
+    if (backgroundQueued) {
+        StatusLine(StatusKind.Info, "Making it in the background. It keeps going if you close this, and you'll get a note when it's ready.")
+    } else {
+        SecondaryButton("Make it in the background", onClick = onBackground, modifier = Modifier.fillMaxWidth())
+    }
 }
 
 /** "See what changed": what Smart Read did to the wording, and anything it left as written and why. */

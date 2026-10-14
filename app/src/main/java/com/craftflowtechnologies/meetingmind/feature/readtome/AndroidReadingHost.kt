@@ -171,6 +171,9 @@ private const val PASSAGE_PREFIX = "passage:"
 
 /** The one coordinator for the app, like the player it feeds. */
 object ReadToMe {
+    /** Makes the reading in the background (see [ReadingWorker]); it can be listened to later. */
+    fun enqueueBackground(context: Context, noteId: String) = ReadingWorker.enqueue(context, noteId)
+
     /** The reading id for one passage in one translation; [ReadToMeSheet] and the coordinator take it where a note id goes. */
     fun passageId(reference: com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference, versionId: Int?) = "passage:${versionId ?: 0}:${reference.passageId()}"
 

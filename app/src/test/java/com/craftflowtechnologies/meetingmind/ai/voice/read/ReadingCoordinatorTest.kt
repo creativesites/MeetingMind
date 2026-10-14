@@ -31,8 +31,9 @@ private class CPlayer : ReadPlayer {
 }
 
 private class CVoice(override val provider: SpeechProvider, val failOn: MutableSet<String> = mutableSetOf(), val hang: kotlinx.coroutines.CompletableDeferred<Unit>? = null) : SectionVoice {
-    override val fingerprintModel = "fake"
-    override val voiceId = "v"
+    // Same ids the real voices use, so a saved part made here matches the fingerprint the summary computes.
+    override val fingerprintModel = if (provider == SpeechProvider.GEMINI) "gemini-tts" else "device-tts"
+    override val voiceId = if (provider == SpeechProvider.GEMINI) "Kore" else "default"
     val made = mutableListOf<String>()
     override suspend fun synthesize(partId: String, fingerprint: String, chunks: List<SpeechChunk>, onProgress: (Float) -> Unit): VoiceResult {
         hang?.await()
@@ -259,5 +260,39 @@ class ReadingCoordinatorTest {
         host.settings = host.settings.copy(disclosureAccepted = false, prefersLocal = true)
         go { coordinator.start("n1") }
         assertEquals(false, host.shaperAllowCloud)
+    }
+
+    @Test fun `a background reading is saved in full and nothing is played`() = scope.runTest {
+        val end = coordinator.generateInBackground("n1")
+        assertTrue(end is ReadingUiState.Finished)
+        assertTrue(host.player.plays.isEmpty())
+        assertTrue(host.player.appended.isEmpty())
+        assertEquals(listOf("h1", "h2"), host.gemini.made)
+        assertTrue(host.store.load("n1")!!.sections.all { it.status == SectionStatus.READY })
+    }
+
+    @Test fun `after a background reading the summary shows every part current and listening makes no voice call`() = scope.runTest {
+        coordinator.generateInBackground("n1").also { advanceUntilIdle() }
+        val offer = coordinator.offer("n1")!!
+        assertEquals(2, offer.savedTotal)
+        assertEquals(2, offer.savedReady)
+        host.gemini.made.clear()
+        go { coordinator.start("n1") }
+        assertTrue(host.gemini.made.isEmpty())
+        assertTrue(coordinator.state.value is ReadingUiState.Finished)
+    }
+
+    @Test fun `a changed part is the only one made again`() = scope.runTest {
+        coordinator.generateInBackground("n1").also { advanceUntilIdle() }
+        host.gemini.made.clear()
+        val changed = loaded(b = Blocks().apply {
+            add(HEADING_2, "One", id = "h1"); add(PARAGRAPH, "First section text, now edited.", id = "p1")
+            add(HEADING_2, "Two", id = "h2"); add(PARAGRAPH, "Second section text.", id = "p2")
+        })
+        host.note = changed
+        val offer = coordinator.offer("n1")!!
+        assertEquals(1, offer.savedReady)
+        coordinator.generateInBackground("n1").also { advanceUntilIdle() }
+        assertEquals(listOf("h1"), host.gemini.made)
     }
 }
