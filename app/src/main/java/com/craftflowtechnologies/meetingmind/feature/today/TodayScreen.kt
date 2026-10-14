@@ -106,6 +106,7 @@ import com.craftflowtechnologies.meetingmind.core.timeline.TimelineLayer
 import com.craftflowtechnologies.meetingmind.feature.today.home.BentoActions
 import com.craftflowtechnologies.meetingmind.feature.today.home.BentoData
 import com.craftflowtechnologies.meetingmind.feature.today.home.HomeBento
+import com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles
 import com.craftflowtechnologies.meetingmind.feature.today.home.HomeSections
 import com.craftflowtechnologies.meetingmind.feature.today.home.StoryCardData
 import com.craftflowtechnologies.meetingmind.feature.today.home.StoryCards
@@ -136,6 +137,11 @@ fun TodayScreen(
     onOpenFaith: () -> Unit = {},
     onOpenWork: () -> Unit = {},
     onOpenCircles: () -> Unit = {},
+    /** What the Circles tile shows; the caller loads it (see HomeCirclesViewModel). */
+    homeCircles: HomeCircles = HomeCircles.Loading,
+    onOpenCircle: (String) -> Unit = {},
+    onStartCircle: () -> Unit = {},
+    onRetryCircles: () -> Unit = {},
     onOpenPrayer: () -> Unit = {},
     onOpenWord: () -> Unit = {},
     onOpenTestimonies: () -> Unit = {},
@@ -243,7 +249,8 @@ fun TodayScreen(
     val bentoActions = BentoActions(
         onFaith = onOpenFaith, onDevotional = onOpenDevotional, onPrayer = onOpenPrayer,
         onCreate = { create.open() }, onCircles = onOpenCircles, onWork = onOpenWork,
-        onNextUp = tile.onClick, onJournal = onNewNote
+        onNextUp = tile.onClick, onJournal = onNewNote,
+        onOpenCircle = onOpenCircle, onStartCircle = onStartCircle, onRetryCircles = onRetryCircles
     )
 
     // The setup card nags until setup is done; "thinking only" can't be snoozed — it's a real problem.
@@ -329,7 +336,7 @@ fun TodayScreen(
             }
 
             item(key = "bento") {
-                HomeBento(sections, bentoData, bentoActions, modifier = Modifier.padding(top = 20.dp))
+                HomeBento(sections, bentoData, bentoActions, modifier = Modifier.padding(top = 20.dp), circles = homeCircles)
             }
 
             // For you: rhythms, memories, the week, recordings in progress, the calendar invitation.

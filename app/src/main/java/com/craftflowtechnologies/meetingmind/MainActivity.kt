@@ -411,6 +411,15 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val setupState by setupVm.state.collectAsState()
             val setupSnoozedUntil by setupVm.snoozedUntil.collectAsState()
             val homeStyle = com.craftflowtechnologies.meetingmind.ui.theme.LocalAppearance.current.homeStyle
+            // The Circles tile exists only on the Today home. Other homes never load circles, so no sign-in happens for them.
+            val homeCirclesVm: com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel? =
+                if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY) viewModel<com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel>(
+                    factory = com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel.Factory(
+                        com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(context)
+                    )
+                ) else null
+            val homeCircles = if (homeCirclesVm != null) homeCirclesVm.state.collectAsState().value
+                else com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles.Loading
             if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.EVERYDAY) com.craftflowtechnologies.meetingmind.feature.today.EverydayHome(
                 viewModel = vm,
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
@@ -499,6 +508,10 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
+                homeCircles = homeCircles,
+                onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
+                onStartCircle = { navController.navigate(Routes.CIRCLE_CREATE) },
+                onRetryCircles = { homeCirclesVm?.retry() },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
