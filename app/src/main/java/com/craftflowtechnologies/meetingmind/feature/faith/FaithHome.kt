@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -41,6 +42,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
+import java.time.format.TextStyle
+import java.util.Locale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -99,7 +104,9 @@ data class FaithHomeState(
     val entryCount: Int = 0,
     val scripturePassages: Int = 0,
     val collections: Int = 0,
-    val recent: List<Note> = emptyList()
+    val recent: List<Note> = emptyList(),
+    /** The last seven days in faith, oldest first, for the week card at the top. */
+    val week: List<WeekDay> = emptyList()
 )
 
 data class FaithHomeActions(
@@ -170,7 +177,12 @@ fun FaithHomeContent(
                 }
             )
         },
-        hero = { BibleCard(state, actions) },
+        hero = {
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+                WeekInFaith(state.week)
+                BibleCard(state, actions)
+            }
+        },
         sections = {
             item(key = "devotional") {
                 Column {
@@ -265,6 +277,36 @@ fun FaithHomeContent(
 @Composable
 private fun Chevron() = Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MM.colors.inkMuted, modifier = Modifier.width(MMSize.icon))
 
+/** Your week in faith: one bar per day, filled when a faith note was written that day. */
+@Composable
+private fun WeekInFaith(week: List<WeekDay>) {
+    val c = MM.colors
+    val kept = FaithWeek.keptCount(week)
+    MMCard(contentPadding = MM.space.m) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Your week in faith", style = MM.type.heading, color = c.ink, modifier = Modifier.weight(1f))
+            Text("$kept of ${week.size} days", style = MM.type.caption, color = c.inkSecondary)
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(top = MM.space.m),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            week.forEach { day ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(8.dp))
+                            .background(if (day.kept) c.accent else c.surfaceSunk)
+                    )
+                    Text(
+                        day.date.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
+                        style = MM.type.caption, color = c.inkMuted, modifier = Modifier.padding(top = MM.space.xs)
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** The hero: the card header opens the Bible home; Continue and today's reading are the two things most people want. */
 @Composable
 private fun BibleCard(state: FaithHomeState, actions: FaithHomeActions) {
@@ -283,12 +325,16 @@ private fun BibleCard(state: FaithHomeState, actions: FaithHomeActions) {
         }
         Row(
             Modifier.fillMaxWidth().heightIn(min = MMSize.minTouch).clip(MM.radius.small)
-                .clickable { actions.onRead(place ?: state.start) }.testTag("faith_continue"),
+                .clickable { actions.onRead(state.today?.reference ?: place ?: state.start) }.testTag("faith_continue"),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    if (place == null) EntryPoints.faithStartReading.label else "${EntryPoints.faithContinue.label} · ${place.display()}",
+                    when {
+                        state.today != null -> "Today's reading · ${state.today.reference.display()}"
+                        place == null -> EntryPoints.faithStartReading.label
+                        else -> "${EntryPoints.faithContinue.label} · ${place.display()}"
+                    },
                     style = MM.type.bodyStrong, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 if (place == null) Text("Begin with the Gospel of John", style = MM.type.secondary, color = c.inkSecondary)
@@ -296,8 +342,6 @@ private fun BibleCard(state: FaithHomeState, actions: FaithHomeActions) {
         }
         state.today?.let { today ->
             HorizontalDivider(color = c.line, modifier = Modifier.padding(vertical = MM.space.s))
-            Text("Today's reading", style = MM.type.caption, color = c.inkSecondary)
-            Text(today.reference.display(), style = MM.type.title, color = c.ink)
             today.lines.firstOrNull()?.let {
                 Text(it, style = MM.type.secondary, color = c.inkSecondary, modifier = Modifier.padding(top = MM.space.xs))
             }
