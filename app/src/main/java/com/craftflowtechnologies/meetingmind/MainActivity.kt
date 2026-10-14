@@ -1012,6 +1012,16 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         }
 
         // SETTINGS
+        composable(
+            Routes.PAYWALL,
+            arguments = listOf(navArgument("trigger") { type = NavType.StringType; defaultValue = "SETTINGS" })
+        ) { entry ->
+            com.craftflowtechnologies.meetingmind.feature.paywall.PaywallScreen(
+                trigger = com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger.parse(entry.arguments?.getString("trigger")),
+                onClose = { navController.popBackStack() }
+            )
+        }
+
         composable(Routes.SETTINGS) {
             val vm: SettingsViewModel = viewModel()
             SettingsScreen(
@@ -1024,6 +1034,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenDataBackup = { navController.navigate(Routes.DATA_BACKUP) },
                 onOpenAppearance = { navController.navigate(Routes.APPEARANCE) },
                 onOpenWork = { navController.navigate(Routes.WORK_SETTINGS) },
+                onOpenSubscription = { navController.navigate(Routes.paywallRoute("SETTINGS")) { launchSingleTop = true } },
                 onReplayTour = {
                     recoveryScope.launch {
                         com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context).setTourCompleted(false)
@@ -1033,6 +1044,12 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
     }
+
+    // After a real recording's notes appear: one gentle, dismissible offer (never the sample, never more than weekly).
+    com.craftflowtechnologies.meetingmind.feature.paywall.PostResultOfferHost(
+        onResultScreen = currentRoute == Routes.MEETING_DETAIL,
+        onOpenPlans = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) { launchSingleTop = true } }
+    )
 
     // The minimised processing screen, on the main tabs and in the notes library.
     val showPill = activeProcessing != null && !onProcessingScreen &&

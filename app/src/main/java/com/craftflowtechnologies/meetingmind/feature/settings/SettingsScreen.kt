@@ -253,12 +253,15 @@ fun SettingsScreen(
     onOpenDataBackup: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
     onOpenWork: () -> Unit = {},
+    onOpenSubscription: () -> Unit = {},
     onReplayTour: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs by viewModel.preferencesState.collectAsState()
     val geminiKeyDisplay by viewModel.geminiKeyDisplay.collectAsState()
     val work by viewModel.workSettings.collectAsState()
+    val billing = com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway
+    val owned by billing.entitlements.collectAsState()
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showSpaces by remember { mutableStateOf(false) }
@@ -503,6 +506,14 @@ fun SettingsScreen(
             }
 
             settingsSection(title = "AI & Models") {
+                // Only when this build can sell something; otherwise the app is simply free.
+                if (billing.configured) settingsRow {
+                    SettingsNavRow(
+                        title = "Plan and usage",
+                        subtitle = if (owned.isPaid) "${owned.plan.label} · manage or change your plan" else "Free · see what a plan adds",
+                        onClick = onOpenSubscription
+                    )
+                }
                 settingsRow {
                     SettingsNavRow(
                         title = "Setup guide",

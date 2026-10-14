@@ -42,6 +42,11 @@ android {
     buildConfigField("String", "DEEPSEEK_PROXY_URL", "\"${(System.getenv("DEEPSEEK_PROXY_URL") ?: "").replace("\"", "")}\"")
     buildConfigField("String", "SYSTEM_DEEPSEEK_API_KEY", "\"${(System.getenv("SYSTEM_DEEPSEEK_API_KEY") ?: "").replace("\"", "")}\"")
     buildConfigField("Boolean", "SYSTEM_GEMINI_MODE", "true")
+    // RevenueCat public SDK key (Play). Empty = billing off: the app is free and offers no plans. Public by
+    // design (it ships in the app), but still read from the environment so builds choose their project.
+    buildConfigField("String", "REVENUECAT_API_KEY", "\"${(System.getenv("REVENUECAT_API_KEY") ?: "").replace("\"", "")}\"")
+    // Base URL of server/gemini-proxy (MeetingMind-managed cloud AI). Empty = no managed AI.
+    buildConfigField("String", "GEMINI_PROXY_URL", "\"${(System.getenv("GEMINI_PROXY_URL") ?: "").replace("\"", "")}\"")
   }
 
   signingConfigs {
@@ -138,6 +143,8 @@ dependencies {
   implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
+  // Subscriptions over Google Play Billing; every call into it is in core/billing/RevenueCatBillingGateway.kt.
+  implementation(libs.revenuecat.purchases)
   // implementation(libs.androidx.camera.camera2)
   // implementation(libs.androidx.camera.core)
   // implementation(libs.androidx.camera.lifecycle)

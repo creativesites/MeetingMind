@@ -18,6 +18,9 @@ object Routes {
     const val SEARCH = "search"
     const val MODELS = "models"
     const val SETTINGS = "settings"
+    /** Plans. [trigger] is a PaywallTrigger name; it only labels where the person came from. */
+    const val PAYWALL = "paywall?trigger={trigger}"
+    fun paywallRoute(trigger: String = "SETTINGS") = "paywall?trigger=$trigger"
     const val FAITH = "faith"
     const val FAITH_JOURNEY = "faith_journey"
     const val FAITH_SCRIPTURE = "faith_scripture"
