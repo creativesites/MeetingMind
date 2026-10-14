@@ -176,6 +176,8 @@ fun HomeHeroHeader(
     switchLabel: String,
     tile: HeroTile,
     listState: LazyListState,
+    /** Shows the "Up next" tile floating under the card. A home with its own next-up card turns it off. */
+    showTile: Boolean = true,
     onAvatar: () -> Unit,
     onSearch: () -> Unit,
     onInbox: () -> Unit,
@@ -201,6 +203,7 @@ fun HomeHeroHeader(
             weekLabel = weekLabel,
             identity = identity,
             tile = tile,
+            showTile = showTile,
             listState = listState,
             at = at,
             displayMode = displayMode,
@@ -280,6 +283,7 @@ private fun HeroStage(
     weekLabel: String,
     identity: AppIdentity,
     tile: HeroTile,
+    showTile: Boolean,
     listState: LazyListState,
     at: Calendar?,
     displayMode: HomeHeroDisplayMode = HomeHeroDisplayMode.DAILY_SCRIPTURE,
@@ -440,7 +444,7 @@ private fun HeroStage(
         }
 
         // Up next, floating over the card's lower edge.
-        Surface(
+        if (showTile) Surface(
             onClick = tile.onClick, shape = RoundedCornerShape(26.dp), color = SurfaceBase,
             border = BorderStroke(1.dp, Hairline), shadowElevation = 16.dp,
             modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).fillMaxWidth().height(76.dp)
