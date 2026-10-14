@@ -21,7 +21,8 @@ Updated: 2026-10-14. Designated branch head at last update: see `git log -1`.
 - Circles: the Worker and `firestore.rules` must be redeployed by the owner. See `BACKEND.md`.
 - Circles: anonymous sign-in must be confirmed enabled in the Firebase console.
 - Circles migration of the client to the Worker (V-0b3) and removal of old tables (V-0b6): not done.
-- Old commits carry model-name trailers from earlier sessions. Rewriting shared history needs the owner's go-ahead.
+- Play workflow trigger watches branch `ccr-5e66b00c-btultn`, not the designated branch. Team to decide whether to move it. Documented as it is in `PLAY_STORE.md`.
+- Decided: no rewrite of old commit trailers from earlier sessions. Leave history as it is; new commits follow the trailer rule.
 
 ## Open, needs a device
 - Moments on a real phone: First Keep, Unveil, the no-speech case.

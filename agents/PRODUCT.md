@@ -1,5 +1,8 @@
 # Product decisions (founder)
 
+## Team
+- Preferred model for the project: the Haiku-tier model, for the CTO and every sub-agent. Use another tier only when the founder asks for it for a specific task.
+
 ## Scope
 - MVP: transcription (offline and online), workflows, the Work vertical, the Faith vertical.
 - Learning is cut from the MVP and out of the first Play release.
