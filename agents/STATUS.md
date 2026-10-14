@@ -11,6 +11,7 @@ Updated: 2026-10-14. Designated branch head: see `git log -1`.
 - The sun or moon sits over the headline in the Today quote card. It is the card's own illustration, not the companion. Not started.
 
 ## Circles (team report)
+- Redesign M1 (branch `circles-redesign-m1`, from `269ebc7`): Worker gains circle `description` and the `joinApproval` setting (default off). Creation: no code defect found; needs an on-device repro. Worker tests 37/37. Android not yet changed.
 - Circles v2 first increment: creation is idempotent, clearer sign-in errors, v1 removed with migration 25 to 26. Worker live. Firestore rules deployed.
 - `.dev` build still lacks the Android OAuth client in `app/google-services.json`. Google sign-in on `.dev` will fail until the owner re-downloads the file and commits it. The owner's copy is on their machine only.
 - Not verified on device: push notifications, Google sign-in on any build, behaviour after reinstall.

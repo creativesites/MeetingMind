@@ -323,3 +323,29 @@ test("userMeta writes merge: create and join keep unrelated fields", async () =>
   assert.deepEqual(W.db.dump("userMeta/friend").pushTokens, ["tok-2"]);
   assert.equal(W.db.dump("userMeta/friend").circleCount, 1);
 });
+
+test("description: stored on create, changed by an admin, capped at 300", async () => {
+  const W = world();
+  const { circleId } = await W.call("owner", "createCircle", { name: "Cell", template: "custom", description: "Breakfast every second Wednesday.", displayName: "Olive", requestId: crypto.randomUUID() });
+  assert.equal(W.db.dump(`circles/${circleId}`).description, "Breakfast every second Wednesday.");
+  await W.call("owner", "updateCircle", { circleId, description: "Bring a question." });
+  assert.equal(W.db.dump(`circles/${circleId}`).description, "Bring a question.");
+  const long = "x".repeat(301);
+  assert.equal((await W.err("owner", "updateCircle", { circleId, description: long })).code, "bad_request");
+  assert.equal((await W.err("owner", "createCircle", { name: "Too long", template: "custom", description: long, requestId: crypto.randomUUID() })).code, "bad_request");
+});
+
+test("description defaults to empty for circles created without one", async () => {
+  const W = world();
+  const id = await circle(W);
+  assert.equal(W.db.dump(`circles/${id}`).description, "");
+});
+
+test("join approval: off by default, admins can turn it on, junk is refused", async () => {
+  const W = world();
+  const id = await circle(W);
+  assert.equal(W.db.dump(`circles/${id}`).settings.joinApproval, false);
+  await W.call("owner", "updateCircle", { circleId: id, settings: { joinApproval: true } });
+  assert.equal(W.db.dump(`circles/${id}`).settings.joinApproval, true);
+  assert.equal((await W.err("owner", "updateCircle", { circleId: id, settings: { joinApproval: "yes" } })).code, "bad_request");
+});

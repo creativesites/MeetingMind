@@ -35,3 +35,13 @@ guidance received on the planning branch.
 | Open | Google sign-in not yet tested on a device. The `.dev` build may still fail Google sign-in. Cloudflare returns 1010 to Python-urllib, but OkHttp (the app) and browsers get 200. |
 
 Still open: device test of Google sign-in and the reinstall/link flow. Nothing else blocks the first increment. The chat and fun placeholder (decision 4) is the existing v2 surface.
+
+## Implementation milestone 1 (Circles redesign, branch `circles-redesign-m1`)
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| 17 | Circle creation failure | No defect found in the code path. The app's create payload matches the Worker's accepted values (post types, reactions, templates), the Worker create tests pass (33/33 before this milestone), and the default Worker URL is set in the build. Remaining failure modes are configuration: anonymous sign-in, a Worker or rules deploy that is out of date, and the `.dev` build's missing Android OAuth client. Next step: reproduce on a device and capture the error code. | Code and test reading, 2026-10-14. |
+| 18 | `joinApproval` setting | Added to `settings`, default **off**, so circles that exist today join as they do. The design shows it on; turning it on by default is a product decision still open. | Keeps behaviour unchanged for existing circles. |
+| 19 | Circle `description` | Added to the circle document on create and update, up to 300 characters, default empty. | Needed by the approved Circle home design. |
+
+Worker tests: 37 of 37 pass (4 new: description on create and update, description length cap, description default, join approval default and validation).

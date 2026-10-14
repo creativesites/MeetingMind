@@ -80,3 +80,9 @@ test("shapePoll builds stable option ids; shapeCelebration validates kind and co
   assert.throws(() => shapeCelebration({ kind: "x" }));
   assert.throws(() => shapeCelebration({ kind: "streak", text: "x".repeat(141) }));
 });
+
+test("join approval defaults off and must be a boolean", () => {
+  assert.equal(normalizeSettings({}, "family").joinApproval, false);
+  assert.equal(normalizeSettings({ joinApproval: true }, "family").joinApproval, true);
+  assert.throws(() => normalizeSettings({ joinApproval: 1 }, "family"));
+});

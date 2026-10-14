@@ -66,6 +66,7 @@ async function createCircle(ctx) {
   const nm = cleanText(b.name, "name", { max: LIMITS.nameMax });
   const vocab = cleanText(b.vocab, "vocab", { min: 0, max: 40, optional: true }) ?? "Circle";
   const settings = normalizeSettings(b.settings, template);
+  const description = cleanText(b.description, "description", { min: 0, max: LIMITS.descriptionMax, optional: true }) ?? "";
   const displayName = name(b.displayName);
   // Older app builds do not send a key yet; keep them working, while newer builds
   // reuse a stable key across retries to make the create operation idempotent.
@@ -88,7 +89,7 @@ async function createCircle(ctx) {
     const n = meta?.data.circleCount || 0;
     if (n >= LIMITS.circlesPerUser) throw new ApiError(409, "too_many_circles", "You're in the maximum of 10 circles. Leave one to create another.");
     return [
-      w.create(C(id), { name: nm, template, vocab, settings, ownerUid: ctx.uid, memberCount: 1, orgId: null, closed: false, createdAt: ctx.now }),
+      w.create(C(id), { name: nm, template, vocab, description, settings, ownerUid: ctx.uid, memberCount: 1, orgId: null, closed: false, createdAt: ctx.now }),
       w.create(`${C(id)}/members/${ctx.uid}`, { role: "owner", displayName, joinedAt: ctx.now, muted: false }),
       userMetaWrite(ctx.uid, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), id] }),
       w.create(idempotencyPath, { circleId: id, createdAt: ctx.now }),
@@ -105,6 +106,7 @@ async function updateCircle(ctx) {
   const data = {};
   if (ctx.body.name !== undefined) data.name = cleanText(ctx.body.name, "name", { max: LIMITS.nameMax });
   if (ctx.body.vocab !== undefined) data.vocab = cleanText(ctx.body.vocab, "vocab", { max: 40 });
+  if (ctx.body.description !== undefined) data.description = cleanText(ctx.body.description, "description", { min: 0, max: LIMITS.descriptionMax });
   if (ctx.body.settings !== undefined) data.settings = normalizeSettings({ ...circle.settings, ...ctx.body.settings }, circle.template);
   if (!Object.keys(data).length) throw new ApiError(400, "bad_request", "Nothing to change");
   await ctx.db.commit([w.update(C(id), data)]);

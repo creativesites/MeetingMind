@@ -1,7 +1,7 @@
 // Pure logic: validation, codes, caps, post shaping. No I/O, fully unit-tested.
 import { ApiError } from "./errors.js";
 
-export const LIMITS = { membersPerCircle: 50, circlesPerUser: 10, bodyMax: 4000, commentMax: 2000, nameMax: 60, maxTokensPerUser: 5, maxUpdates: 50 };
+export const LIMITS = { membersPerCircle: 50, circlesPerUser: 10, bodyMax: 4000, commentMax: 2000, nameMax: 60, descriptionMax: 300, maxTokensPerUser: 5, maxUpdates: 50 };
 export const POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement"];
 export const REACTIONS = ["praying", "amen", "heart", "celebrate"];
 const ALL = POST_TYPES;
@@ -42,7 +42,8 @@ export function normalizeSettings(input, template) {
   const s = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const tpl = TEMPLATES[template];
   if (!tpl) throw bad("bad_request", "Unknown template");
-  const out = { allowedTypes: [...tpl], whoCanInvite: "admins", prayerApproval: true, reactions: [...REACTIONS], guidelines: "" };
+  // joinApproval defaults off so circles that exist today keep joining as they do.
+  const out = { allowedTypes: [...tpl], whoCanInvite: "admins", prayerApproval: true, joinApproval: false, reactions: [...REACTIONS], guidelines: "" };
   if (s.allowedTypes !== undefined) {
     if (!Array.isArray(s.allowedTypes) || s.allowedTypes.length === 0 || s.allowedTypes.some((t) => !POST_TYPES.includes(t))) throw bad("bad_request", "Invalid post types");
     out.allowedTypes = [...new Set(s.allowedTypes)];
@@ -54,6 +55,10 @@ export function normalizeSettings(input, template) {
   if (s.prayerApproval !== undefined) {
     if (typeof s.prayerApproval !== "boolean") throw bad("bad_request", "Invalid approval setting");
     out.prayerApproval = s.prayerApproval;
+  }
+  if (s.joinApproval !== undefined) {
+    if (typeof s.joinApproval !== "boolean") throw bad("bad_request", "Invalid join approval setting");
+    out.joinApproval = s.joinApproval;
   }
   if (s.reactions !== undefined) {
     if (!Array.isArray(s.reactions) || s.reactions.length === 0 || s.reactions.some((r) => !REACTIONS.includes(r))) throw bad("bad_request", "Invalid reactions");
