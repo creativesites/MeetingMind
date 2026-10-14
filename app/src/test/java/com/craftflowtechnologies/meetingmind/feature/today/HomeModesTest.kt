@@ -56,6 +56,18 @@ class HomeModesTest {
         assertNull(HomeModes.nextLine(TodayFocus.ALL, listOf(TodayFocus.ALL)))
     }
 
+    @Test fun todayOffersTheSameModesAsCalm() {
+        assertEquals(
+            HomeModes.offered(ModeHome.CALM, showsFaith = true),
+            HomeModes.offered(ModeHome.TODAY, showsFaith = true)
+        )
+        assertEquals(listOf(TodayFocus.ALL, TodayFocus.WORK), HomeModes.offered(ModeHome.TODAY, showsFaith = false))
+    }
+
+    @Test fun todayDescribesItsModesLikeCalm() {
+        assertEquals("Showing Faith · Faith only", HomeModes.showingLine(ModeHome.TODAY, TodayFocus.FAITH))
+    }
+
     @Test fun showingLineSaysWhatTheModeIncludes() {
         assertEquals("Showing Everything · Work and faith", HomeModes.showingLine(ModeHome.WORK, TodayFocus.ALL))
         assertEquals("Showing Work · Work only", HomeModes.showingLine(ModeHome.WORK, TodayFocus.WORK))

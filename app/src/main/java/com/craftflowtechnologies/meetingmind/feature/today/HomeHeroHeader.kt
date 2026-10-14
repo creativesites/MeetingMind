@@ -621,7 +621,8 @@ private fun DrawScope.drawSky(top: Color, bottom: Color, sky: TimeOfDaySky, star
  * that region, peaking high, setting low on the right), clear of the greeting on the left.
  */
 private fun DrawScope.orbCenter(sky: TimeOfDaySky, bob: Float): Offset {
-    val x = size.width * (0.64f + 0.24f * sky.arc)
+    // The sun and moon cross the middle of the card, left of the companion, so the companion never covers them.
+    val x = size.width * (0.40f + 0.16f * sky.arc)
     val horizon = size.height * 0.64f
     val peak = size.height * 0.24f
     val y = horizon - (horizon - peak) * sky.elevation
