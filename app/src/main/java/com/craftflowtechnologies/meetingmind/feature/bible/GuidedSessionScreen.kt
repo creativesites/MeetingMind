@@ -13,7 +13,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -24,13 +30,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,7 +66,6 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.InsetPanel
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
-import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
@@ -144,20 +149,29 @@ fun GuidedSessionContent(ui: GuidedUi, listening: Boolean, actions: SessionActio
     val session = ui.session
     Column(Modifier.fillMaxSize().background(c.background).statusBarsPadding().imePadding().navigationBarsPadding().testTag("bible_session")) {
         Column(Modifier.padding(horizontal = MM.space.l)) {
-            ScreenHeader(
-                title = ui.request?.passage?.display().orEmpty(),
-                leading = { IconButton(onClick = actions.onClose, modifier = Modifier.testTag("session_close")) { Icon(Icons.Rounded.Close, "Close", tint = c.ink) } },
-                actions = {
-                    if (ui.canListen) IconButton(onClick = actions.onListen, modifier = Modifier.testTag("session_listen")) {
-                        Icon(if (listening) Icons.Rounded.Pause else Icons.Rounded.Headphones, if (listening) "Pause" else "Listen", tint = c.accent)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = actions.onClose, modifier = Modifier.testTag("session_close")) { Icon(Icons.Rounded.Close, "Close", tint = c.ink) }
+                Column(Modifier.weight(1f).padding(horizontal = MM.space.s), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(ui.request?.passage?.display().orEmpty(), style = MM.type.bodyStrong, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (session != null && session.steps.size > 1) {
+                        Text("Step ${session.index + 1} of ${session.steps.size}", style = MM.type.caption, color = c.inkMuted)
                     }
                 }
-            )
+                if (ui.canListen) {
+                    IconButton(onClick = actions.onListen, modifier = Modifier.testTag("session_listen")) {
+                        Icon(if (listening) Icons.Rounded.Pause else Icons.Rounded.Headphones, if (listening) "Pause" else "Listen", tint = c.accent)
+                    }
+                } else {
+                    Spacer(Modifier.width(48.dp))
+                }
+            }
             if (session != null && session.steps.size > 1) {
-                LinearProgressIndicator(
-                    progress = { session.progress.coerceAtLeast(0.04f) }, color = c.accent, trackColor = c.track,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = MM.space.xs)
-                )
+                // One segment per step: filled up to the current step, so progress reads at a glance.
+                Row(Modifier.fillMaxWidth().padding(top = MM.space.xs), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    session.steps.forEachIndexed { i, _ ->
+                        Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(4.dp)).background(if (i <= session.index) c.accent else c.track))
+                    }
+                }
             }
         }
         when {
@@ -191,19 +205,24 @@ fun GuidedSessionContent(ui: GuidedUi, listening: Boolean, actions: SessionActio
 @Composable
 private fun MethodChooser(actions: SessionActions, modifier: Modifier) {
     val c = MM.colors
-    Column(modifier.padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
-        Text("How do you want to study this?", style = MM.type.title, color = c.ink)
-        Text("Pick a way in. Write as you go, or just read and think.", style = MM.type.secondary, color = c.inkSecondary)
+    Column(modifier.verticalScroll(rememberScrollState()).padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+        Text("How would you like to study it?", style = MM.type.title, color = c.ink)
+        Text("Pick once. We'll remember it for next time.", style = MM.type.secondary, color = c.inkSecondary)
         MMCard(onClick = { actions.onChooseMethod(SessionKind.SOAP) }, modifier = Modifier.testTag("method_soap")) {
-            Text("SOAP · about 10 min", style = MM.type.caption, color = c.accent)
-            Text("Scripture, Observation, Application, Prayer", style = MM.type.heading, color = c.ink)
-            Text("Four short steps, each with one question you can skip.", style = MM.type.secondary, color = c.inkSecondary)
+            Box(Modifier.clip(RoundedCornerShape(50)).background(c.accentWash).padding(horizontal = 10.dp, vertical = 4.dp)) {
+                Text("Recommended ✓", style = MM.type.caption, color = c.accent)
+            }
+            Text("SOAP", style = MM.type.heading, color = c.ink)
+            Text("Scripture, Observation, Application, Prayer. Four short steps.", style = MM.type.secondary, color = c.inkSecondary)
+            Text("About 10 minutes · Ends in a saved note", style = MM.type.caption, color = c.inkMuted)
         }
         MMCard(onClick = { actions.onChooseMethod(SessionKind.VERSE_BY_VERSE) }, modifier = Modifier.testTag("method_verses")) {
-            Text("Verse by verse · about 20 min", style = MM.type.caption, color = c.accent)
             Text("Verse by verse", style = MM.type.heading, color = c.ink)
-            Text("One verse at a time, with the original words, commentary and cross-references a tap away.", style = MM.type.secondary, color = c.inkSecondary)
+            Text("One verse at a time, with a note for each. Good for slow reading.", style = MM.type.secondary, color = c.inkSecondary)
+            Text("About 20 minutes · Ends in a saved note", style = MM.type.caption, color = c.inkMuted)
         }
+        Text("Coming", style = MM.type.caption, color = c.inkMuted, modifier = Modifier.padding(top = MM.space.s))
+        Text("Inductive study · Character study · Word study", style = MM.type.secondary, color = c.inkMuted)
     }
 }
 
@@ -344,11 +363,25 @@ private fun Suggested(help: StepHelp?, onUse: ((String) -> Unit)?) {
 @Composable
 private fun Close(ui: GuidedUi, session: SessionState, actions: SessionActions) {
     val c = MM.colors
-    Text(if (session.touched) "Well done" else "That's the reading", style = MM.type.title, color = c.ink)
     if (session.touched) {
+        Box(Modifier.size(56.dp).clip(CircleShape).background(c.accent), contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.Check, "Saved", tint = c.background)
+        }
+        Text("Well done", style = MM.type.title, color = c.ink)
         MMCard(modifier = Modifier.testTag("session_complete_card")) {
             Text(ui.request?.passage?.display().orEmpty(), style = MM.type.heading, color = c.ink)
             Text("Saved to your study journal, with the passage.", style = MM.type.secondary, color = c.inkSecondary, modifier = Modifier.testTag("session_saved"))
+        }
+        // What the person wrote, step by step, so the note reads back before it is closed.
+        val written = session.steps.filter { it.answerable && !session.answers[it.id].isNullOrBlank() }
+        if (written.isNotEmpty()) {
+            MMCard(modifier = Modifier.testTag("session_note_summary")) {
+                Text("YOUR NOTE", style = MM.type.caption, color = c.inkMuted)
+                written.forEach { s ->
+                    Text(session.prompts[s.id] ?: s.title, style = MM.type.caption, color = c.inkMuted)
+                    Text(session.answers[s.id].orEmpty(), style = MM.type.body, color = c.ink)
+                }
+            }
         }
         ui.addedTo?.let { StatusLine(StatusKind.Info, "Added to $it.") }
         var listening by remember { mutableStateOf(false) }
@@ -359,6 +392,7 @@ private fun Close(ui: GuidedUi, session: SessionState, actions: SessionActions) 
         SecondaryButton("Add to an existing note", onClick = actions.onAddToNote, modifier = Modifier.testTag("session_add_to_note"))
         TextAction("Copy my notes", onClick = actions.onCopyNotes)
     } else {
+        Text("That's the reading", style = MM.type.title, color = c.ink)
         Text("You didn't write anything, so nothing was saved.", style = MM.type.secondary, color = c.inkSecondary)
     }
     PrimaryButton("Done", onClick = actions.onNext, modifier = Modifier.testTag("session_done"))
