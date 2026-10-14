@@ -12,7 +12,7 @@ These rules apply to every agent working in this repository, human or AI. Keep t
 ## Git
 
 - Designated branch: `claude/meetingmind-mvp-planning-7dgowm`. Work there, commit there, push there.
-- Other branches holding work: `ccr-5dc13c30-a5eqgv` (companion, Read to Me, moments), `ccr-4fc36d78-nhc3lx` (Circles). Merge them in; do not rebase them.
+- Other branches holding work: `ccr-5dc13c30-a5eqgv` (companion, Read to Me, moments), `ccr-4fc36d78-nhc3lx` (Circles), `ccr-e1f66026-rff3e0` (onboarding and billing; not yet compiled, build only when asked). Merge them in; do not rebase them.
 - Merge, never rebase, on any shared branch. Never force-push, except to the `apk-downloads` publish branch (see `agents/DEV_BUILDS.md`).
 - Before pushing: `git fetch`, then confirm the remote is an ancestor of HEAD, then `git push -u`.
 - Commit messages: one focused message, a body where it helps, and only the `Claude-Session` trailer. No model names, no `Co-Authored-By` lines naming a model.

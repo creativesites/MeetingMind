@@ -14,6 +14,9 @@ Updated: 2026-10-14. Designated branch head at last update: see `git log -1`.
 - Companion states Curious, Proud, Reading; sample-first onboarding.
 - Circles first increment on the designated branch: v1 retired, creation defects fixed, diagnosable sign-in. Needs the Worker and rules redeployed.
 
+## Other branches (not merged, not built)
+- `ccr-e1f66026-rff3e0`: onboarding and billing work (draft PR #1). Head: "Sample-first onboarding with resumable state; stop prompting for permissions at launch". Its code has never been compiled. Do not merge main into it or rebase it. Build it only when the CTO asks. Analytics, billing and the paywall are not on it yet.
+
 ## Open, needs a decision
 - Circles: the Worker and `firestore.rules` must be redeployed by the owner. See `BACKEND.md`.
 - Circles: anonymous sign-in must be confirmed enabled in the Firebase console.
