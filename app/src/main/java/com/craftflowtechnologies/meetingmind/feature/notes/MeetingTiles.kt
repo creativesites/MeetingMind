@@ -46,6 +46,15 @@ fun meetingTiles(blocks: List<NoteBlock>, aiAvailable: Boolean): List<MeetingTil
     return tiles
 }
 
+/**
+ * The two insights the hero shows as cards, most useful first: action items, the summary, key points, then the
+ * assistant. Pure, so the choice is unit-tested in [HeroCardsTest].
+ */
+fun heroCards(tiles: List<MeetingTile>, max: Int = 2): List<MeetingTile> {
+    val order = listOf(TileAction.ACTION_ITEMS, TileAction.SUMMARY, TileAction.KEY_POINTS, TileAction.ASSISTANT)
+    return order.mapNotNull { action -> tiles.firstOrNull { it.action == action } }.take(max)
+}
+
 private fun plural(count: Int, one: String, many: String) = "$count ${if (count == 1) one else many}"
 
 private fun wordCount(text: String) = text.trim().split(Regex("\\s+")).count { it.isNotEmpty() }
