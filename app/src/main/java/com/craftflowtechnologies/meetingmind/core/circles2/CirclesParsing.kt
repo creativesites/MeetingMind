@@ -28,6 +28,7 @@ object CirclesParsing {
             allowedTypes = types,
             whoCanInvite = WhoCanInvite.from(str(m, "whoCanInvite")),
             prayerApproval = m["prayerApproval"] as? Boolean ?: true,
+            joinApproval = m["joinApproval"] as? Boolean ?: false,
             reactions = reactions,
             guidelines = str(m, "guidelines").orEmpty()
         )
@@ -37,11 +38,14 @@ object CirclesParsing {
         if (d == null || d["closed"] == true) return null
         val name = str(d, "name") ?: return null
         val template = str(d, "template") ?: "custom"
-        return Circle(id, name, template, str(d, "vocab").orEmpty(), settings(map(d["settings"]), template), int(d, "memberCount"), str(d, "ownerUid").orEmpty())
+        return Circle(
+            id, name, template, str(d, "vocab").orEmpty(), settings(map(d["settings"]), template), int(d, "memberCount"), str(d, "ownerUid").orEmpty(),
+            description = str(d, "description").orEmpty(), pinnedPostId = str(d, "pinnedPostId")?.ifBlank { null }
+        )
     }
 
     fun member(uid: String, d: Map<String, Any?>): Member =
-        Member(uid, str(d, "displayName")?.ifBlank { null } ?: "Member", Role.from(str(d, "role")), d["muted"] == true, millis(d["joinedAt"]))
+        Member(uid, str(d, "displayName")?.ifBlank { null } ?: "Member", Role.from(str(d, "role")), d["muted"] == true, millis(d["joinedAt"]), str(d, "title")?.ifBlank { null })
 
     private fun counts(m: Map<String, Any?>): PostCounts {
         val r = map(m["reactions"])
@@ -103,6 +107,19 @@ object CirclesParsing {
     fun chain(id: String, d: Map<String, Any?>): Chain? {
         val title = str(d, "title") ?: return null
         return Chain(id, title, str(d, "postId"), millis(d["startsAt"]), millis(d["endsAt"]), int(d, "hours").takeIf { it > 0 } ?: 24, str(d, "createdByName").orEmpty())
+    }
+
+    fun event(id: String, d: Map<String, Any?>): CircleEvent? {
+        val title = str(d, "title") ?: return null
+        return CircleEvent(
+            id, title, str(d, "description").orEmpty(), str(d, "location").orEmpty(), str(d, "onlineUrl")?.ifBlank { null },
+            millis(d["startsAt"]), millis(d["endsAt"]), str(d, "timeZone").orEmpty(), str(d, "status") ?: "scheduled", str(d, "createdByName").orEmpty()
+        )
+    }
+
+    fun rsvp(uid: String, d: Map<String, Any?>): Rsvp? {
+        val answer = RsvpAnswer.from(str(d, "status")) ?: return null
+        return Rsvp(uid, str(d, "displayName")?.ifBlank { null } ?: "Member", answer)
     }
 
     fun slot(hourId: String, d: Map<String, Any?>): Slot? {

@@ -11,7 +11,7 @@ Updated: 2026-10-14. Designated branch head: see `git log -1`.
 - The sun or moon sits over the headline in the Today quote card. It is the card's own illustration, not the companion. Not started.
 
 ## Circles (team report)
-- Redesign backend (branch `circles-redesign-m1`, from `269ebc7`, committed locally, not pushed): Worker and rules for join approval, member titles, free-form posts, pinned posts, events and RSVPs. Worker tests 46/46, rules emulator 20/20. Creation: no code defect found; needs an on-device repro. Android side and the redesigned screens are not built: the sandbox has no Android SDK.
+- Redesign (branch `circles-redesign-m1`, from `269ebc7`): Worker and rules done and tested (Worker 46/46, rules 20/20). Android data layer written but NOT COMPILED (no Android SDK in the authoring sandbox): models, parsing, API calls, fakes, repository, events and RSVP listeners, and `CirclesRedesignM1Test`. The redesigned screens are not built. The other agent should build and run `:app:testDebugUnitTest --tests *Circles*` first. Creation: no code defect found; needs an on-device repro.
 - Circles v2 first increment: creation is idempotent, clearer sign-in errors, v1 removed with migration 25 to 26. Worker live. Firestore rules deployed.
 - `.dev` build still lacks the Android OAuth client in `app/google-services.json`. Google sign-in on `.dev` will fail until the owner re-downloads the file and commits it. The owner's copy is on their machine only.
 - Not verified on device: push notifications, Google sign-in on any build, behaviour after reinstall.

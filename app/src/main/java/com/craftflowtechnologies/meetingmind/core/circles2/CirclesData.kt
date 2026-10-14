@@ -25,6 +25,9 @@ interface CirclesData {
     fun observeMessageReactions(circleId: String, messageId: String, myUid: String): Flow<List<MessageReaction>>
     fun observePoll(circleId: String, pollId: String, myUid: String): Flow<DataState<PollState>>
     fun observeChain(circleId: String, chainId: String, myUid: String): Flow<DataState<ChainState>>
+    /** Upcoming and past events, soonest first. Cancelled ones stay in the list so people see them. */
+    fun observeEvents(circleId: String): Flow<DataState<List<CircleEvent>>>
+    fun observeRsvps(circleId: String, eventId: String): Flow<DataState<List<Rsvp>>>
 
     /** My own "I prayed" marker (the only one rules let me read). False when unknown. */
     suspend fun hasPrayed(circleId: String, postId: String): Boolean

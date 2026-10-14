@@ -61,3 +61,14 @@ Worker tests: 37 of 37 pass (4 new: description on create and update, descriptio
 Rules tests: 20 of 20 pass (2 new: events and RSVP reads and writes; join requests are Worker-only). Worker tests: 46 of 46 pass.
 
 Not done in this slice: the Android side (models, parsing, the new API calls, and every redesigned screen). The sandbox has no Android SDK, so the app cannot be compiled or tested here.
+
+## Implementation milestone 1, Android data layer
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| 27 | `join` return type | Now `CirclesResult<JoinOutcome>` (circle id plus `pending`). A pending join is not remembered as a circle, so the app does not open a circle the person is not in yet. | Needed for join approval. |
+| 28 | Event and RSVP reads | `CirclesData.observeEvents` and `observeRsvps` read the subcollections the rules allow. Writes all go through the Worker. | Rules from the backend slice. |
+| 29 | Compile status | Written without a compiler: the authoring sandbox has no Android SDK. Brace balance is checked; nothing is compiled or run. | Stated plainly. |
+
+Not done: the redesigned screens (Circle home hero, feed composer with free-form, chat, members, events UI, and the join-pending message on the list screen, which needs wiring to `JoinUiState.pending`).
+

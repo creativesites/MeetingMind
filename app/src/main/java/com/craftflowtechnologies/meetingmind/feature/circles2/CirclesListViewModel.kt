@@ -22,7 +22,9 @@ data class JoinUiState(
     val input: String = "",
     val name: String = "",
     val busy: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    /** The request is with an admin. Shown instead of opening the circle. */
+    val pending: Boolean = false
 ) {
     /** The code found in [input], shown back to the person so they can see what will be used. */
     val code: String? get() = InviteCodes.extract(input)
@@ -52,7 +54,10 @@ class CirclesListViewModel(private val repo: CirclesRepository) : ViewModel() {
         _join.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             repo.join(s.input, s.name).fold(
-                onOk = { id -> _join.update { JoinUiState(name = it.name) }; onJoined(id) },
+                onOk = { outcome ->
+                    if (outcome.pending) _join.update { JoinUiState(name = it.name, pending = true) }
+                    else { _join.update { JoinUiState(name = it.name) }; onJoined(outcome.circleId) }
+                },
                 onErr = { f -> _join.update { it.copy(busy = false, error = f.message) } }
             )
         }

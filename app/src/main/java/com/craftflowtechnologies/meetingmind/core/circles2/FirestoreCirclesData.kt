@@ -73,6 +73,12 @@ class FirestoreCirclesData(private val context: Context) : CirclesData {
     override fun observeMembers(circleId: String) = listenQuery(circle(circleId)?.collection("members")) { s ->
         s.mapDocs { id, d -> CirclesParsing.member(id, d) }.sortedWith(compareBy({ it.role.ordinal }, { it.displayName.lowercase() }))
     }
+    override fun observeEvents(circleId: String) = listenQuery(circle(circleId)?.collection("events")?.orderBy("startsAt")?.limit(200)) { s ->
+        s.mapDocs { id, d -> CirclesParsing.event(id, d) }
+    }
+    override fun observeRsvps(circleId: String, eventId: String) = listenQuery(circle(circleId)?.collection("events")?.document(eventId)?.collection("rsvps")) { s ->
+        s.mapDocs { id, d -> CirclesParsing.rsvp(id, d) }
+    }
     override fun observePosts(circleId: String) = listenQuery(circle(circleId)?.collection("posts")?.orderBy("createdAt", Query.Direction.DESCENDING)?.limit(100)) { s ->
         s.mapDocs { id, d -> CirclesParsing.post(id, d) }.filter { !it.deleted }
     }

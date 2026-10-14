@@ -34,6 +34,7 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
     var nextFailure: CirclesFailure? = null
     var createdPending = true
     var joinedCircleId = "c1"
+    var joinPending = false
     var alreadyPrayed = false
     var lastPost: CreatePostRequest? = null
     var lastJoinText: String? = null
@@ -45,15 +46,22 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
     }
 
     override suspend fun createCircle(req: CreateCircleRequest) = reply("createCircle", "new-circle")
-    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?) = reply("updateCircle", Unit)
+    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?) = reply("updateCircle", Unit)
     override suspend fun myCircles() = reply("myCircles", myCirclesResult)
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = reply("createInvite", Invite("GRACE-7K2Q", null, 50))
     override suspend fun revokeInvite(code: String) = reply("revokeInvite", Unit)
-    override suspend fun join(pasted: String, displayName: String): CirclesResult<String> { lastJoinText = pasted; return reply("join", joinedCircleId) }
+    override suspend fun join(pasted: String, displayName: String): CirclesResult<JoinOutcome> { lastJoinText = pasted; return reply("join", JoinOutcome(joinedCircleId, joinPending)) }
     override suspend fun leave(circleId: String) = reply("leave", Unit)
     override suspend fun removeMember(circleId: String, targetUid: String) = reply("removeMember", Unit)
     override suspend fun setRole(circleId: String, targetUid: String, role: Role) = reply("setRole", Unit)
     override suspend fun setMute(circleId: String, muted: Boolean) = reply("setMute", Unit)
+    override suspend fun decideJoin(circleId: String, uid: String, approve: Boolean) = reply("decideJoin", Unit)
+    override suspend fun setTitle(circleId: String, targetUid: String, title: String?) = reply("setTitle", Unit)
+    override suspend fun pinPost(circleId: String, postId: String?) = reply("pinPost", Unit)
+    override suspend fun createEvent(circleId: String, draft: EventDraft) = reply("createEvent", "event-1")
+    override suspend fun updateEvent(circleId: String, eventId: String, draft: EventDraft) = reply("updateEvent", Unit)
+    override suspend fun cancelEvent(circleId: String, eventId: String) = reply("cancelEvent", Unit)
+    override suspend fun rsvp(circleId: String, eventId: String, answer: RsvpAnswer) = reply("rsvp", Unit)
     override suspend fun createPost(req: CreatePostRequest): CirclesResult<CreatedPost> { lastPost = req; return reply("createPost", CreatedPost("post-${calls.size}", createdPending)) }
     override suspend fun approvePost(circleId: String, postId: String) = reply("approvePost", Unit)
     override suspend fun rejectPost(circleId: String, postId: String) = reply("rejectPost", Unit)
@@ -91,6 +99,7 @@ class FakeData : CirclesData {
     val messages = MutableStateFlow<DataState<List<ChatMessage>>>(DataState.Ready(emptyList()))
     val reactions = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
     val polls = MutableStateFlow<Map<String, PollState>>(emptyMap())
+    val events = MutableStateFlow<DataState<List<CircleEvent>>>(DataState.Ready(emptyList()))
 
     var pendingObserved = 0
     val writes = mutableListOf<String>()
@@ -115,6 +124,8 @@ class FakeData : CirclesData {
     override fun observePoll(circleId: String, pollId: String, myUid: String): Flow<DataState<PollState>> =
         polls.map { m -> m[pollId]?.let { DataState.Ready(it) } ?: DataState.Failed(CirclesFailure(FailureKind.NotFound, "gone")) }
     override fun observeChain(circleId: String, chainId: String, myUid: String): Flow<DataState<ChainState>> = flowOf(DataState.Loading)
+    override fun observeEvents(circleId: String) = events
+    override fun observeRsvps(circleId: String, eventId: String): Flow<DataState<List<Rsvp>>> = flowOf(DataState.Ready(emptyList()))
     override suspend fun hasPrayed(circleId: String, postId: String) = false
     override suspend fun addComment(circleId: String, postId: String, uid: String, name: String, body: String, parentId: String?) = write("addComment")
     override suspend fun deleteComment(circleId: String, postId: String, commentId: String) = write("deleteComment")

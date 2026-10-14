@@ -18,7 +18,9 @@ enum class PostType(val wire: String, val label: String, val verb: String, val a
     Study("study", "Study share", "Share from your study"),
     Encouragement("encouragement", "Encouragement", "Encourage the group"),
     Reading("reading", "Reading plan", "Post about the plan"),
-    Announcement("announcement", "Announcement", "Make an announcement", adminOnly = true);
+    Announcement("announcement", "Announcement", "Make an announcement", adminOnly = true),
+    /** Free-form: any member, any circle, published at once. Not in any template list. */
+    Note("note", "Free-form", "Share anything");
 
     companion object { fun from(wire: String?): PostType? = entries.firstOrNull { it.wire == wire } }
 }
@@ -34,6 +36,8 @@ data class CircleSettings(
     val allowedTypes: List<PostType>,
     val whoCanInvite: WhoCanInvite = WhoCanInvite.Admins,
     val prayerApproval: Boolean = true,
+    /** When on, a join waits for an admin (the Worker keeps a join request). Off keeps today's behaviour. */
+    val joinApproval: Boolean = false,
     val reactions: List<ReactionKind> = ReactionKind.entries,
     val guidelines: String = ""
 )
@@ -85,14 +89,17 @@ data class Circle(
     val vocab: String,
     val settings: CircleSettings,
     val memberCount: Int,
-    val ownerUid: String = ""
+    val ownerUid: String = "",
+    val description: String = "",
+    val pinnedPostId: String? = null
 ) {
     /** "Cell group" for the header: the group's own word, never a generic one. */
     val groupWord: String get() = vocab.ifBlank { "Circle" }
 }
 
+/** [title] is a display label such as "Pastor". It never changes what the person may do; [role] does. */
 @Immutable
-data class Member(val uid: String, val displayName: String, val role: Role, val muted: Boolean = false, val joinedAt: Long = 0L)
+data class Member(val uid: String, val displayName: String, val role: Role, val muted: Boolean = false, val joinedAt: Long = 0L, val title: String? = null)
 
 @Immutable
 data class PostCounts(val prayed: Int = 0, val comments: Int = 0, val updates: Int = 0, val reactions: Map<ReactionKind, Int> = emptyMap())
@@ -219,3 +226,44 @@ enum class CelebrationKind(val wire: String, val label: String) {
 
 /** The companion forms the Worker accepts, by id. */
 val COMPANION_IDS: List<String> = listOf("zuri", "nas", "wren", "page")
+
+/** Event fields as shown. [startsAt] and [endsAt] are epoch milliseconds (UTC); [timeZone] is the IANA zone to show them in. */
+@Immutable
+data class CircleEvent(
+    val id: String,
+    val title: String,
+    val description: String,
+    val location: String,
+    val onlineUrl: String?,
+    val startsAt: Long,
+    val endsAt: Long,
+    val timeZone: String,
+    val status: String,
+    val createdByName: String
+) {
+    val cancelled: Boolean get() = status == "cancelled"
+}
+
+enum class RsvpAnswer(val wire: String, val label: String) {
+    Going("going", "Going"), Maybe("maybe", "Maybe"), No("no", "Can't go");
+
+    companion object { fun from(wire: String?): RsvpAnswer? = entries.firstOrNull { it.wire == wire } }
+}
+
+@Immutable
+data class Rsvp(val uid: String, val displayName: String, val answer: RsvpAnswer)
+
+/** What an admin writes for an event. The Worker checks times, zone and link. */
+@Immutable
+data class EventDraft(
+    val title: String,
+    val description: String,
+    val location: String,
+    val onlineUrl: String?,
+    val startsAt: Long,
+    val endsAt: Long,
+    val timeZone: String
+)
+
+/** The result of a join: the circle, and whether the person is still waiting for an admin. */
+data class JoinOutcome(val circleId: String, val pending: Boolean)

@@ -21,7 +21,7 @@ data class CreatePostRequest(
 )
 
 data class CreatedPost(val postId: String, val pending: Boolean)
-data class CreateCircleRequest(val name: String, val template: String, val vocab: String, val displayName: String, val settings: CircleSettings, val requestId: String = java.util.UUID.randomUUID().toString())
+data class CreateCircleRequest(val name: String, val template: String, val vocab: String, val displayName: String, val settings: CircleSettings, val requestId: String = java.util.UUID.randomUUID().toString(), val description: String = "")
 
 /** The Worker's endpoints (server/circles-api). Every call returns a result: nothing here throws to the UI. */
 interface CirclesApi {
@@ -29,16 +29,26 @@ interface CirclesApi {
     val isConfigured: Boolean
 
     suspend fun createCircle(req: CreateCircleRequest): CirclesResult<String>
-    suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?): CirclesResult<Unit>
+    suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String? = null): CirclesResult<Unit>
     suspend fun myCircles(): CirclesResult<List<String>>
     suspend fun createInvite(circleId: String, expiresInDays: Int = 7, maxUses: Int = 50): CirclesResult<Invite>
     suspend fun revokeInvite(code: String): CirclesResult<Unit>
     /** [pasted] is whatever the person pasted; the Worker extracts the code. Returns the circle id. */
-    suspend fun join(pasted: String, displayName: String): CirclesResult<String>
+    suspend fun join(pasted: String, displayName: String): CirclesResult<JoinOutcome>
     suspend fun leave(circleId: String): CirclesResult<Unit>
     suspend fun removeMember(circleId: String, targetUid: String): CirclesResult<Unit>
     suspend fun setRole(circleId: String, targetUid: String, role: Role): CirclesResult<Unit>
     suspend fun setMute(circleId: String, muted: Boolean): CirclesResult<Unit>
+    /** Let a waiting person in (approve) or turn them away. Admins only. */
+    suspend fun decideJoin(circleId: String, uid: String, approve: Boolean): CirclesResult<Unit>
+    /** A display title such as "Pastor". Null clears it. Admins only. */
+    suspend fun setTitle(circleId: String, targetUid: String, title: String?): CirclesResult<Unit>
+    /** Pin a post to the top, or unpin with null. Admins only. */
+    suspend fun pinPost(circleId: String, postId: String?): CirclesResult<Unit>
+    suspend fun createEvent(circleId: String, draft: EventDraft): CirclesResult<String>
+    suspend fun updateEvent(circleId: String, eventId: String, draft: EventDraft): CirclesResult<Unit>
+    suspend fun cancelEvent(circleId: String, eventId: String): CirclesResult<Unit>
+    suspend fun rsvp(circleId: String, eventId: String, answer: RsvpAnswer): CirclesResult<Unit>
 
     suspend fun createPost(req: CreatePostRequest): CirclesResult<CreatedPost>
     suspend fun approvePost(circleId: String, postId: String): CirclesResult<Unit>
@@ -71,11 +81,18 @@ object NotConfiguredCirclesApi : CirclesApi {
     override val isConfigured = false
     private fun <T> no(): CirclesResult<T> = CirclesFailure.notConnected.asResult()
     override suspend fun createCircle(req: CreateCircleRequest) = no<String>()
-    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?) = no<Unit>()
+    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?) = no<Unit>()
     override suspend fun myCircles() = no<List<String>>()
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = no<Invite>()
     override suspend fun revokeInvite(code: String) = no<Unit>()
-    override suspend fun join(pasted: String, displayName: String) = no<String>()
+    override suspend fun join(pasted: String, displayName: String) = no<JoinOutcome>()
+    override suspend fun decideJoin(circleId: String, uid: String, approve: Boolean) = no<Unit>()
+    override suspend fun setTitle(circleId: String, targetUid: String, title: String?) = no<Unit>()
+    override suspend fun pinPost(circleId: String, postId: String?) = no<Unit>()
+    override suspend fun createEvent(circleId: String, draft: EventDraft) = no<String>()
+    override suspend fun updateEvent(circleId: String, eventId: String, draft: EventDraft) = no<Unit>()
+    override suspend fun cancelEvent(circleId: String, eventId: String) = no<Unit>()
+    override suspend fun rsvp(circleId: String, eventId: String, answer: RsvpAnswer) = no<Unit>()
     override suspend fun leave(circleId: String) = no<Unit>()
     override suspend fun removeMember(circleId: String, targetUid: String) = no<Unit>()
     override suspend fun setRole(circleId: String, targetUid: String, role: Role) = no<Unit>()
@@ -107,8 +124,14 @@ object CirclesJson {
         .put("allowedTypes", JSONArray(s.allowedTypes.map { it.wire }))
         .put("whoCanInvite", s.whoCanInvite.wire)
         .put("prayerApproval", s.prayerApproval)
+        .put("joinApproval", s.joinApproval)
         .put("reactions", JSONArray(s.reactions.map { it.wire }))
         .put("guidelines", s.guidelines)
+
+    fun event(circleId: String, d: EventDraft): JSONObject = JSONObject()
+        .put("circleId", circleId).put("title", d.title).put("description", d.description)
+        .put("location", d.location).put("onlineUrl", d.onlineUrl ?: "")
+        .put("startsAt", d.startsAt).put("endsAt", d.endsAt).put("timeZone", d.timeZone)
 
     fun createPost(r: CreatePostRequest): JSONObject = JSONObject()
         .put("circleId", r.circleId).put("type", r.type.wire).put("body", r.body)
@@ -122,6 +145,7 @@ object CirclesJson {
     fun createCircle(r: CreateCircleRequest): JSONObject = JSONObject()
         .put("name", r.name).put("template", r.template).put("vocab", r.vocab)
         .put("displayName", r.displayName).put("settings", settings(r.settings)).put("requestId", r.requestId)
+        .put("description", r.description)
 }
 
 /**
@@ -193,11 +217,12 @@ class HttpCirclesApi(
     override suspend fun createCircle(req: CreateCircleRequest): CirclesResult<String> =
         call("createCircle", CirclesJson.createCircle(req)).flatMap { str(it, "circleId") }
 
-    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?) =
+    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?) =
         unit("updateCircle", JSONObject().put("circleId", circleId).apply {
             if (name != null) put("name", name)
             if (vocab != null) put("vocab", vocab)
             if (settings != null) put("settings", CirclesJson.settings(settings))
+            if (description != null) put("description", description)
         })
 
     override suspend fun myCircles(): CirclesResult<List<String>> = call("myCircles").map { o ->
@@ -213,12 +238,27 @@ class HttpCirclesApi(
             }
 
     override suspend fun revokeInvite(code: String) = unit("revokeInvite", JSONObject().put("code", code))
-    override suspend fun join(pasted: String, displayName: String): CirclesResult<String> =
-        call("join", JSONObject().put("code", pasted.take(2000)).put("displayName", displayName)).flatMap { str(it, "circleId") }
+    override suspend fun join(pasted: String, displayName: String): CirclesResult<JoinOutcome> =
+        call("join", JSONObject().put("code", pasted.take(2000)).put("displayName", displayName))
+            .flatMap { o -> str(o, "circleId").map { JoinOutcome(it, o.optBoolean("pending", false)) } }
     override suspend fun leave(circleId: String) = unit("leave", JSONObject().put("circleId", circleId))
     override suspend fun removeMember(circleId: String, targetUid: String) = unit("removeMember", JSONObject().put("circleId", circleId).put("targetUid", targetUid))
     override suspend fun setRole(circleId: String, targetUid: String, role: Role) = unit("setRole", JSONObject().put("circleId", circleId).put("targetUid", targetUid).put("role", role.wire))
     override suspend fun setMute(circleId: String, muted: Boolean) = unit("setMute", JSONObject().put("circleId", circleId).put("muted", muted))
+    override suspend fun decideJoin(circleId: String, uid: String, approve: Boolean) =
+        unit("decideJoin", JSONObject().put("circleId", circleId).put("uid", uid).put("approve", approve))
+    override suspend fun setTitle(circleId: String, targetUid: String, title: String?) =
+        unit("setTitle", JSONObject().put("circleId", circleId).put("targetUid", targetUid).put("title", title ?: JSONObject.NULL))
+    override suspend fun pinPost(circleId: String, postId: String?) =
+        unit("pinPost", JSONObject().put("circleId", circleId).put("postId", postId ?: JSONObject.NULL))
+    override suspend fun createEvent(circleId: String, draft: EventDraft): CirclesResult<String> =
+        call("createEvent", CirclesJson.event(circleId, draft)).flatMap { str(it, "eventId") }
+    override suspend fun updateEvent(circleId: String, eventId: String, draft: EventDraft) =
+        unit("updateEvent", CirclesJson.event(circleId, draft).put("eventId", eventId))
+    override suspend fun cancelEvent(circleId: String, eventId: String) =
+        unit("cancelEvent", JSONObject().put("circleId", circleId).put("eventId", eventId))
+    override suspend fun rsvp(circleId: String, eventId: String, answer: RsvpAnswer) =
+        unit("rsvp", JSONObject().put("circleId", circleId).put("eventId", eventId).put("status", answer.wire))
 
     override suspend fun createPost(req: CreatePostRequest): CirclesResult<CreatedPost> =
         call("createPost", CirclesJson.createPost(req)).flatMap { o ->

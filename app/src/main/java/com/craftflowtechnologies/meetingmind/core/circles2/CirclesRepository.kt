@@ -92,7 +92,7 @@ class CirclesRepository(
     }
 
     /** [pasted] is anything: a code, a whole shared message, a link. Garbage gives an inline "doesn't look like a code" message, never a crash. */
-    suspend fun join(pasted: String, displayName: String): CirclesResult<String> {
+    suspend fun join(pasted: String, displayName: String): CirclesResult<JoinOutcome> {
         if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
         val code = InviteCodes.extract(pasted)
         if (code == null) {
@@ -102,7 +102,8 @@ class CirclesRepository(
         if (signedIn is CirclesResult.Err) return signedIn
         // Only the clean code goes out, not the whole pasted message.
         val r = api.join(code, displayName.trim().ifBlank { "Member" })
-        if (r is CirclesResult.Ok) { store.displayName = displayName.trim(); remember(r.value) }
+        // A pending request is not membership yet: nothing is remembered until an admin lets the person in.
+        if (r is CirclesResult.Ok) { store.displayName = displayName.trim(); if (!r.value.pending) remember(r.value.circleId) }
         return r
     }
 
