@@ -507,7 +507,7 @@ private fun SelectionBar(
                 }
                 onListenHere?.let { go ->
                     Surface(onClick = go, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line)) {
-                        Text("Listen here", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                        Text("Read from here", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
                     }
                 }
             }
@@ -519,7 +519,7 @@ private fun SelectionBar(
                         Text(insertLabel, color = OnInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
-                SmallAction(Icons.Filled.BookmarkAdd, "Save", onSave, Modifier.weight(1f))
+                SmallAction(Icons.Filled.BookmarkAdd, "Note", onSave, Modifier.weight(1f))
                 SmallAction(Icons.Filled.ContentCopy, "Copy", onCopy, Modifier.weight(1f))
                 SmallAction(Icons.Filled.Share, "Share", onShare, Modifier.weight(1f))
             }

@@ -193,7 +193,7 @@ fun GuidedSessionContent(ui: GuidedUi, listening: Boolean, actions: SessionActio
                         Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = MM.space.l, vertical = MM.space.l),
                         verticalArrangement = Arrangement.spacedBy(MM.space.m)
                     ) {
-                        StepBody(ui, session, step, ready, actions)
+                        StepBody(ui, session, step, ready, listening, actions)
                     }
                 }
                 if (step.type != StepType.CLOSE) NavBar(session, step, actions)
@@ -262,7 +262,7 @@ private fun NavBar(session: SessionState, step: SessionStep, actions: SessionAct
 }
 
 @Composable
-private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, ready: SessionLoad.Ready, actions: SessionActions) {
+private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, ready: SessionLoad.Ready, listening: Boolean, actions: SessionActions) {
     val c = MM.colors
     val request = ui.request!!
     val help = ui.help["${step.type}-${step.verse ?: 0}"]
@@ -281,18 +281,23 @@ private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, rea
             Suggested(help, onUse = null)
         }
         StepType.READ -> {
-            Text("Read it, or listen", style = MM.type.heading, color = c.ink)
+            Text(if (ui.canListen) "Read it, or listen" else "Read it", style = MM.type.heading, color = c.ink)
             Text("Read it once for what it says, and once for what stands out.", style = MM.type.secondary, color = c.inkSecondary)
+            if (ui.canListen) ListenButton(listening, actions)
         }
         StepType.SCRIPTURE -> {
             Text("Scripture", style = MM.type.heading, color = c.ink)
             Text("Read the passage slowly. The next step asks what you notice.", style = MM.type.secondary, color = c.inkSecondary)
+            if (ui.canListen) ListenButton(listening, actions)
         }
         StepType.OBSERVE, StepType.APPLY, StepType.VERSE -> {
             if (step.type == StepType.VERSE && step.verse != null) {
                 val verse = ready.verses.firstOrNull { it.number == step.verse }
-                SelectionContainer {
-                    Text("${step.verse}  ${verse?.text.orEmpty()}", style = MM.type.scripture, color = c.ink, modifier = Modifier.testTag("session_verse"))
+                MMCard(modifier = Modifier.testTag("session_verse_card")) {
+                    Text("VERSE ${step.verse}", style = MM.type.caption, color = c.inkMuted)
+                    SelectionContainer {
+                        Text(verse?.text.orEmpty(), style = MM.type.scripture, color = c.ink, modifier = Modifier.testTag("session_verse"))
+                    }
                 }
                 TextAction("Original words, commentary, cross-references", onClick = { actions.onGoDeeper(step.verse) }, modifier = Modifier.testTag("session_deeper"))
             } else if (step.type == StepType.VERSE) {
@@ -316,6 +321,15 @@ private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, rea
         }
         StepType.CLOSE -> Close(ui, session, actions)
     }
+}
+
+/** Reads the passage aloud, or pauses it. Shown on the reading steps only when the chapter has audio. */
+@Composable
+private fun ListenButton(listening: Boolean, actions: SessionActions) {
+    SecondaryButton(
+        if (listening) "Pause reading" else "Read aloud",
+        onClick = actions.onListen, modifier = Modifier.testTag("session_read_aloud")
+    )
 }
 
 /** A free-text answer, always optional. Typing here saves it to the journal on the first keystroke. */
