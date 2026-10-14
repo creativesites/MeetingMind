@@ -68,15 +68,27 @@ class MomentPlannerTest {
         assertEquals(CompanionState.SLEEPY, PlainReason.MODEL_REQUIRED.statusCompanion)
     }
 
-    @Test fun `row 1 - a no-speech note is not a failure, so it does not stop at row 1`() {
-        // Founder decision (2026-10-14): every note gets its moment. Zero words is a very short recording,
-        // so the restraint row (7) nods, on arrival and on a reopen alike. Never plain, never the Unveil.
-        val arrival = MomentPlanner.plan(facts(outcome = NoteOutcome.NO_SPEECH, words = 0))
-        assertEquals(MomentPlan.Nod(), arrival.plan)
+    @Test fun `row 1 - a no-speech note is not a failure, and gets the First Keep on arrival and the Unveil on reopen`() {
+        // Founder decision (2026-10-14): every note gets its moment. Never plain, never a nod.
+        val arrival = MomentPlanner.plan(facts(outcome = NoteOutcome.NO_SPEECH, words = 0, flags = shipped))
+        assertEquals(MomentPlan.FirstKeep(quiet = false, hello = false, onceEver = false, chime = false, space = MomentSpace.EVERYDAY), arrival.plan)
         assertEquals(TicketAction.CONSUME, arrival.effects.ticket)
         val reopen = MomentPlanner.plan(facts(ticket = null, flags = shipped, outcome = NoteOutcome.NO_SPEECH, words = 0))
-        assertEquals(MomentPlan.Nod(), reopen.plan)
+        assertEquals(MomentPlan.Unveil(UnveilVariant.LIFT, 1500, quiet = false, space = MomentSpace.EVERYDAY), reopen.plan)
         assertEquals(TicketAction.NONE, reopen.effects.ticket)
+    }
+
+    @Test fun `row 7 - a no-speech note with zero words and a long recording still gets the Unveil`() {
+        // A no-speech note's zero words do not make it very short, so the restraint row does not nod it.
+        val arrival = MomentPlanner.plan(facts(outcome = NoteOutcome.NO_SPEECH, words = 0, audioMs = 600_000))
+        assertTrue(arrival.plan is MomentPlan.Unveil)
+        val reopen = MomentPlanner.plan(facts(ticket = null, flags = shipped, outcome = NoteOutcome.NO_SPEECH, words = 0, audioMs = 600_000))
+        assertTrue(reopen.plan is MomentPlan.Unveil)
+        // The guards that apply to every note still apply to it.
+        assertEquals(MomentPlan.Nod(), plan(facts(outcome = NoteOutcome.NO_SPEECH, words = 0, device = DeviceFacts(batterySaver = true))))
+        assertEquals(MomentPlan.Nod(), plan(facts(outcome = NoteOutcome.NO_SPEECH, words = 0, device = DeviceFacts(lowEnd = true))))
+        // An ordinary short note that has speech (29 words) is still very short.
+        assertEquals(MomentPlan.Nod(), plan(facts(outcome = NoteOutcome.COMPLETE, words = 29)))
     }
 
     @Test fun `row 1 - a partial ticket is never celebrated`() {

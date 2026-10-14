@@ -84,8 +84,13 @@ data class MomentFacts(
     val momentSpace: MomentSpace get() = MomentSpace.of(space)
     /** Faith, or a sermon: gentle, no hops, no sparkles, no haptics, no chime. */
     val quiet: Boolean get() = momentSpace == MomentSpace.FAITH || sermon
+    /**
+     * A recording too short to celebrate. A no-speech note is never "very short": it gets its moment like any
+     * other note (founder decision, 2026-10-14). Its zero word count is not a sign of a short recording.
+     */
     val veryShort: Boolean
-        get() = (audioMs != null && audioMs < ShortAudioMs) || (transcriptWords != null && transcriptWords < ShortWords)
+        get() = outcome != NoteOutcome.NO_SPEECH &&
+            ((audioMs != null && audioMs < ShortAudioMs) || (transcriptWords != null && transcriptWords < ShortWords))
 
     companion object {
         const val ShortAudioMs = 20_000L
