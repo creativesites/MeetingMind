@@ -345,6 +345,11 @@ private fun Close(ui: GuidedUi, session: SessionState, actions: SessionActions) 
             Text("Saved to your study journal, with the passage.", style = MM.type.secondary, color = c.inkSecondary, modifier = Modifier.testTag("session_saved"))
         }
         ui.addedTo?.let { StatusLine(StatusKind.Info, "Added to $it.") }
+        var listening by remember { mutableStateOf(false) }
+        ui.savedNoteId?.let { id ->
+            SecondaryButton("Listen to my study", onClick = { listening = true }, modifier = Modifier.testTag("session_listen"))
+            if (listening) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(id, onDismiss = { listening = false })
+        }
         SecondaryButton("Add to an existing note", onClick = actions.onAddToNote, modifier = Modifier.testTag("session_add_to_note"))
         TextAction("Copy my notes", onClick = actions.onCopyNotes)
     } else {

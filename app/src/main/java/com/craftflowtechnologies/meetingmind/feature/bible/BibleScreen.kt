@@ -42,6 +42,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.filled.AutoStories
@@ -158,8 +159,17 @@ fun BibleScreen(
     var page by remember { mutableStateOf(if (startInSearch) Page.SEARCH else Page.READ) }
     var versionSheet by remember { mutableStateOf(false) }
     var collectionFor by remember { mutableStateOf<ScriptureReference?>(null) }
+    var listenChapter by remember { mutableStateOf(false) }
 
     BackHandler(enabled = page != Page.READ) { page = Page.READ }
+
+    if (listenChapter) {
+        // The whole chapter in the translation on screen: read by the same voice rules as any reading.
+        com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(
+            com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.passageId(ScriptureReference(book, chapter), current?.id),
+            onDismiss = { listenChapter = false }
+        )
+    }
 
     Column(Modifier.fillMaxSize().background(SurfaceBase).statusBarsPadding()) {
         // Top bar: back · "John 3 ▾" · translation · search
@@ -186,6 +196,11 @@ fun BibleScreen(
             }
             IconButton(onClick = { page = if (page == Page.SEARCH) Page.READ else Page.SEARCH }, modifier = Modifier.testTag("bible_search")) {
                 Icon(Icons.Filled.Search, contentDescription = "Search the Bible", tint = if (page == Page.SEARCH) Accent else Ink)
+            }
+            if (page == Page.READ) {
+                IconButton(onClick = { listenChapter = true }, modifier = Modifier.testTag("bible_listen")) {
+                    Icon(Icons.Filled.GraphicEq, contentDescription = "Read this chapter aloud", tint = Ink)
+                }
             }
         }
         HorizontalDivider(color = Line)
