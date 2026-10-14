@@ -55,8 +55,7 @@ class MomentPlannerTest {
             NoteOutcome.FAILED to (PlainReason.FAILED to FixAction.RETRY),
             NoteOutcome.PARTIAL to (PlainReason.PARTIAL to FixAction.RETRY),
             NoteOutcome.AI_FALLBACK to (PlainReason.AI_FALLBACK to FixAction.REDO_ONLINE),
-            NoteOutcome.MODEL_REQUIRED to (PlainReason.MODEL_REQUIRED to FixAction.DOWNLOAD_MODELS),
-            NoteOutcome.NO_SPEECH to (PlainReason.NO_SPEECH to null)
+            NoteOutcome.MODEL_REQUIRED to (PlainReason.MODEL_REQUIRED to FixAction.DOWNLOAD_MODELS)
         )
         for (flags in listOf(budgeted, shipped)) for ((outcome, want) in cases) {
             val (p, e) = MomentPlanner.plan(facts(outcome = outcome, flags = flags))
@@ -67,7 +66,17 @@ class MomentPlannerTest {
         }
         assertEquals(CompanionState.WORRIED, PlainReason.FAILED.statusCompanion)
         assertEquals(CompanionState.SLEEPY, PlainReason.MODEL_REQUIRED.statusCompanion)
-        assertNull(PlainReason.NO_SPEECH.statusCompanion)
+    }
+
+    @Test fun `row 1 - a no-speech note is not a failure, so it does not stop at row 1`() {
+        // Founder decision (2026-10-14): every note gets its moment. Zero words is a very short recording,
+        // so the restraint row (7) nods, on arrival and on a reopen alike. Never plain, never the Unveil.
+        val arrival = MomentPlanner.plan(facts(outcome = NoteOutcome.NO_SPEECH, words = 0))
+        assertEquals(MomentPlan.Nod(), arrival.plan)
+        assertEquals(TicketAction.CONSUME, arrival.effects.ticket)
+        val reopen = MomentPlanner.plan(facts(ticket = null, flags = shipped, outcome = NoteOutcome.NO_SPEECH, words = 0))
+        assertEquals(MomentPlan.Nod(), reopen.plan)
+        assertEquals(TicketAction.NONE, reopen.effects.ticket)
     }
 
     @Test fun `row 1 - a partial ticket is never celebrated`() {

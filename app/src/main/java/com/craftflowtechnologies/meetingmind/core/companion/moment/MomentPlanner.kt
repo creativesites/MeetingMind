@@ -106,8 +106,6 @@ enum class PlainReason(
     PARTIAL(CompanionState.WORRIED),
     AI_FALLBACK(CompanionState.WORRIED),
     MODEL_REQUIRED(CompanionState.SLEEPY),
-    /** No speech found: plain, no companion; the line is "Your recording is safe." [Play it]. */
-    NO_SPEECH(null),
     /** Prayer request, grief tag or Good Friday: no companion motion. */
     SENSITIVE(null),
     /** Animations are off: the static end state (the note) and the polite announcement. */
@@ -277,12 +275,13 @@ object MomentPlanner {
     private fun failure(f: MomentFacts): MomentPlan.Plain? {
         val outcome = if (f.ticket?.partial == true && f.outcome == NoteOutcome.COMPLETE) NoteOutcome.PARTIAL else f.outcome
         return when (outcome) {
-            NoteOutcome.COMPLETE -> null
+            // A note with no speech gets its moment like a complete one (founder decision, 2026-10-14).
+            // Its "We didn't hear anyone speaking" line is the NoteStatus line, not the planner's.
+            NoteOutcome.COMPLETE, NoteOutcome.NO_SPEECH -> null
             NoteOutcome.PARTIAL -> MomentPlan.Plain(PlainReason.PARTIAL, FixAction.RETRY)
             NoteOutcome.AI_FALLBACK -> MomentPlan.Plain(PlainReason.AI_FALLBACK, FixAction.REDO_ONLINE)
             NoteOutcome.FAILED -> MomentPlan.Plain(PlainReason.FAILED, FixAction.RETRY)
             NoteOutcome.MODEL_REQUIRED -> MomentPlan.Plain(PlainReason.MODEL_REQUIRED, FixAction.DOWNLOAD_MODELS)
-            NoteOutcome.NO_SPEECH -> MomentPlan.Plain(PlainReason.NO_SPEECH)
         }
     }
 }
