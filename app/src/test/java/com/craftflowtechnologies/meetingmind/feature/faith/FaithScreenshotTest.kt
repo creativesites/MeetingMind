@@ -100,7 +100,8 @@ class FaithScreenshotTest {
             EntryPoints.faithCircles, EntryPoints.faithVerseWrite, EntryPoints.faithVerseShare, EntryPoints.faithTestimonies, EntryPoints.faithRecordSermon
         ) + EntryPoints.faithWriteTiles
         shown.forEach { e -> compose.onNodeWithText(e.label, useUnmergedTree = true).assertExists("missing ${e.label}") }
-        compose.onNodeWithText("Continue · John 3:16", substring = false, useUnmergedTree = true).assertExists()
+        // With today's reading set, the hero leads with it (the Faith redesign), not Continue.
+        compose.onNodeWithText("Today's reading · ", substring = true, useUnmergedTree = true).assertExists()
         listOf("Bible study", "Search", "Begin").forEach { compose.onNodeWithText(it, useUnmergedTree = true).assertDoesNotExist() }
         EntryPoints.faithWriteTiles.forEach { assertEquals(EntryKind.WRITE, it.kind) }
         compose.onNodeWithText("Write a prayer", useUnmergedTree = true).performClick()
@@ -108,6 +109,6 @@ class FaithScreenshotTest {
 
         state.value = firstTime
         compose.waitForIdle()
-        compose.onNodeWithText("Start reading", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("Today's reading · ", substring = true, useUnmergedTree = true).assertExists()
     }
 }
