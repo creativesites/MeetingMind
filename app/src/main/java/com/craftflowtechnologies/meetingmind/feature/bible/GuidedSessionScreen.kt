@@ -75,6 +75,8 @@ data class SessionActions(
     val onBack: () -> Unit = {},
     val onAnswer: (String, String) -> Unit = { _, _ -> },
     val onListen: () -> Unit = {},
+    /** Opens Read to Me for this passage on the reading step. */
+    val onReadAloud: () -> Unit = {},
     val onChooseMethod: (SessionKind) -> Unit = {},
     val onUseQuestion: (SessionStep, String) -> Unit = { _, _ -> },
     val onGoDeeper: (Int?) -> Unit = {},
@@ -101,6 +103,7 @@ fun GuidedSessionScreen(
     val reader: BibleViewModel = viewModel(key = "session-reader")
     val study by reader.study.collectAsStateWithLifecycle()
     var pickNote by remember { mutableStateOf(false) }
+    var readAloud by remember { mutableStateOf(false) }
 
     fun copy(label: String, text: String) {
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(label, text))
@@ -116,6 +119,7 @@ fun GuidedSessionScreen(
             onBack = viewModel::back,
             onAnswer = viewModel::answer,
             onListen = viewModel::listen,
+            onReadAloud = { readAloud = true },
             onChooseMethod = viewModel::chooseMethod,
             onUseQuestion = viewModel::useQuestion,
             onGoDeeper = { v -> request?.passage?.let { p -> reader.openStudyFor(ScriptureReference(p.book, p.chapter, v ?: p.verseStart, null)) } },
@@ -127,6 +131,11 @@ fun GuidedSessionScreen(
             onOpenJournalEntry = onOpenNote
         )
     )
+    if (readAloud) request?.let { r ->
+        com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(
+            com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.passageId(r.passage, null), onDismiss = { readAloud = false }
+        )
+    }
     study?.let { st ->
         StudySheet(st, onCommentary = reader::chooseCommentary, onOpen = { r -> reader.closeStudy(); onOpenReader(r) }, onDismiss = reader::closeStudy)
     }
@@ -264,6 +273,7 @@ private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, rea
         StepType.READ -> {
             Text("Read it, or listen", style = MM.type.heading, color = c.ink)
             Text("Read it once for what it says, and once for what stands out.", style = MM.type.secondary, color = c.inkSecondary)
+            SecondaryButton("Read aloud", onClick = actions.onReadAloud, modifier = Modifier.testTag("session_read_aloud"))
         }
         StepType.SCRIPTURE -> {
             Text("Scripture", style = MM.type.heading, color = c.ink)
@@ -353,7 +363,7 @@ private fun Close(ui: GuidedUi, session: SessionState, actions: SessionActions) 
         ui.addedTo?.let { StatusLine(StatusKind.Info, "Added to $it.") }
         var listening by remember { mutableStateOf(false) }
         ui.savedNoteId?.let { id ->
-            SecondaryButton("Listen to my study", onClick = { listening = true }, modifier = Modifier.testTag("session_listen"))
+            SecondaryButton("Listen to my study", onClick = { listening = true }, modifier = Modifier.testTag("session_read_to_me"))
             if (listening) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(id, onDismiss = { listening = false })
         }
         SecondaryButton("Add to an existing note", onClick = actions.onAddToNote, modifier = Modifier.testTag("session_add_to_note"))

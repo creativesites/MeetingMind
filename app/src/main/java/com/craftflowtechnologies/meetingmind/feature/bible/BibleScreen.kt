@@ -128,6 +128,21 @@ private val SelectedWash = Color(0x33F2C94C)
 
 private enum class Page { READ, BOOKS, SEARCH }
 
+/** "Read aloud" for the chapter on screen: opens Read to Me. Tag `bible_listen`. */
+@Composable
+internal fun ReadAloudChip(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onClick, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line),
+        modifier = modifier.testTag("bible_listen")
+    ) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Read aloud", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+        }
+    }
+}
+
 /**
  * The Bible: read any chapter in any available translation, search it, and take verses into notes.
  *
@@ -201,13 +216,14 @@ fun BibleScreen(
             IconButton(onClick = { page = if (page == Page.SEARCH) Page.READ else Page.SEARCH }, modifier = Modifier.testTag("bible_search")) {
                 Icon(Icons.Filled.Search, contentDescription = "Search the Bible", tint = if (page == Page.SEARCH) Accent else Ink)
             }
-            if (page == Page.READ) {
-                IconButton(onClick = { listenChapter = true }, modifier = Modifier.testTag("bible_listen")) {
-                    Icon(Icons.Filled.GraphicEq, contentDescription = "Read this chapter aloud", tint = Ink)
-                }
-            }
         }
         HorizontalDivider(color = Line)
+        if (page == Page.READ) {
+            // Read to Me for this chapter: a labelled control under the top bar, where the eye lands, not a bare icon.
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                ReadAloudChip(onClick = { listenChapter = true })
+            }
+        }
 
         Box(Modifier.weight(1f)) {
             when (page) {

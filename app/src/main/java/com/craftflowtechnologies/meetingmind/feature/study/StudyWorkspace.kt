@@ -254,6 +254,19 @@ private fun StudyTabs(tab: StudyTab, onTab: (StudyTab) -> Unit) {
     }
 }
 
+/** The chapter heading with previous and next. Read to Me for the chapter (tag `study_listen`) shows once the chapter has loaded. */
+@Composable
+internal fun PassageHeader(title: String, canListen: Boolean, onPrevious: () -> Unit, onNext: () -> Unit, onListen: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+        IconButton(onClick = onPrevious) { Icon(Icons.Filled.ChevronLeft, contentDescription = "Previous chapter", tint = InkSecondary) }
+        Text(title, fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
+        if (canListen) {
+            IconButton(onClick = onListen, modifier = Modifier.testTag("study_listen")) { Icon(Icons.Filled.GraphicEq, contentDescription = "Listen to this chapter", tint = InkSecondary) }
+        }
+        IconButton(onClick = onNext) { Icon(Icons.Filled.ChevronRight, contentDescription = "Next chapter", tint = InkSecondary) }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PassagePane(
@@ -273,19 +286,18 @@ private fun PassagePane(
     val r = ref ?: run { Text("Choose a passage from the sermon's Scripture, or open one from the Bible.", color = InkMuted, modifier = Modifier.padding(24.dp)); return }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                IconButton(onClick = { if (r.chapter > 1) onOpenPassage(ScriptureReference(r.book, r.chapter - 1)) }) { Icon(Icons.Filled.ChevronLeft, contentDescription = "Previous chapter", tint = InkSecondary) }
-                Text("${r.book.name} ${r.chapter}", fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
-                val listenContext = androidx.compose.ui.platform.LocalContext.current
-                var listenOpen by remember { mutableStateOf(false) }
-                if (chapter != null && com.craftflowtechnologies.meetingmind.ai.voice.read.ReadToMeFlags.enabled(listenContext)) {
-                    IconButton(onClick = { listenOpen = true }) { Icon(Icons.Filled.GraphicEq, contentDescription = "Listen to this chapter", tint = InkSecondary) }
-                }
-                if (listenOpen) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(
-                    com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.passageId(ScriptureReference(r.book, r.chapter), null), onDismiss = { listenOpen = false }
-                )
-                IconButton(onClick = { if (r.chapter < r.book.chapterCount) onOpenPassage(ScriptureReference(r.book, r.chapter + 1)) }) { Icon(Icons.Filled.ChevronRight, contentDescription = "Next chapter", tint = InkSecondary) }
-            }
+            val listenContext = androidx.compose.ui.platform.LocalContext.current
+            var listenOpen by remember { mutableStateOf(false) }
+            PassageHeader(
+                title = "${r.book.name} ${r.chapter}",
+                canListen = chapter != null && com.craftflowtechnologies.meetingmind.ai.voice.read.ReadToMeFlags.enabled(listenContext),
+                onPrevious = { if (r.chapter > 1) onOpenPassage(ScriptureReference(r.book, r.chapter - 1)) },
+                onNext = { if (r.chapter < r.book.chapterCount) onOpenPassage(ScriptureReference(r.book, r.chapter + 1)) },
+                onListen = { listenOpen = true }
+            )
+            if (listenOpen) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(
+                com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.passageId(ScriptureReference(r.book, r.chapter), null), onDismiss = { listenOpen = false }
+            )
             chapter?.let { Text("${it.abbreviation} · tap a verse to add it to your notes · long-press to highlight", fontSize = 11.5.sp, color = InkMuted) }
             // Notes on this passage: first-class, right under the heading.
             if (!links.isEmpty) {

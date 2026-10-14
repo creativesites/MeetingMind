@@ -56,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -217,25 +218,23 @@ fun VerseSheet(
                     )
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (onPlay != null && heardAtMs != null) {
-                    SheetAction("Play", Icons.Filled.PlayArrow, primary = true, modifier = Modifier.weight(1f)) { onPlay(); onDismiss() }
-                }
-                SheetAction("Read", Icons.AutoMirrored.Filled.MenuBook, modifier = Modifier.weight(1f)) { readChapter = true }
-                if (result is PassageResult.Found && com.craftflowtechnologies.meetingmind.ai.voice.read.ReadToMeFlags.enabled(context)) {
-                    SheetAction("Listen", Icons.Filled.GraphicEq, modifier = Modifier.weight(1f)) { listenOpen = true }
-                }
-                SheetAction("Save", Icons.Filled.BookmarkAdd, modifier = Modifier.weight(1f)) { showCollections = true }
-                SheetAction("Copy", Icons.Filled.ContentCopy, modifier = Modifier.weight(1f)) {
+            VerseSheetActions(
+                canPlay = onPlay != null && heardAtMs != null,
+                canListen = result is PassageResult.Found && com.craftflowtechnologies.meetingmind.ai.voice.read.ReadToMeFlags.enabled(context),
+                onPlay = { onPlay?.invoke(); onDismiss() },
+                onRead = { readChapter = true },
+                onListen = { listenOpen = true },
+                onSave = { showCollections = true },
+                onCopy = {
                     val found = result as? PassageResult.Found
                     val text = if (found != null) "“${found.passage.text}” — ${reference.display()} (${found.passage.versionAbbreviation})" else reference.display()
                     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(reference.display(), text))
                     Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
-                }
-                SheetAction("Bible app", Icons.AutoMirrored.Filled.OpenInNew, modifier = Modifier.weight(1f)) {
+                },
+                onBibleApp = {
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(reference.webLink(versionId ?: BibleVersions.DEFAULT_ID)))) }
                 }
-            }
+            )
         }
     }
     if (listenOpen) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(
@@ -269,6 +268,28 @@ private fun SheetAction(label: String, icon: androidx.compose.ui.graphics.vector
             Icon(icon, contentDescription = null, tint = if (primary) OnInk else Ink, modifier = Modifier.size(19.dp))
             Text(label, fontSize = 11.sp, color = if (primary) OnInk else InkSecondary, modifier = Modifier.padding(top = 3.dp), maxLines = 1)
         }
+    }
+}
+
+/** The verse sheet's actions. Listen (tag `verse_listen`) is shown once the verse text has loaded and Read to Me is on. */
+@Composable
+internal fun VerseSheetActions(
+    canPlay: Boolean,
+    canListen: Boolean,
+    onPlay: () -> Unit,
+    onRead: () -> Unit,
+    onListen: () -> Unit,
+    onSave: () -> Unit,
+    onCopy: () -> Unit,
+    onBibleApp: () -> Unit
+) {
+    Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (canPlay) SheetAction("Play", Icons.Filled.PlayArrow, primary = true, modifier = Modifier.weight(1f), onClick = onPlay)
+        SheetAction("Read", Icons.AutoMirrored.Filled.MenuBook, modifier = Modifier.weight(1f), onClick = onRead)
+        if (canListen) SheetAction("Listen", Icons.Filled.GraphicEq, modifier = Modifier.weight(1f).testTag("verse_listen"), onClick = onListen)
+        SheetAction("Save", Icons.Filled.BookmarkAdd, modifier = Modifier.weight(1f), onClick = onSave)
+        SheetAction("Copy", Icons.Filled.ContentCopy, modifier = Modifier.weight(1f), onClick = onCopy)
+        SheetAction("Bible app", Icons.AutoMirrored.Filled.OpenInNew, modifier = Modifier.weight(1f), onClick = onBibleApp)
     }
 }
 
