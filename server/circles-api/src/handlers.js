@@ -8,6 +8,7 @@ import { hit, check, record } from "./ratelimit.js";
 import {
   LIMITS, RATE, REACTIONS, POST_TYPES, TEMPLATES, validId, cleanText, cleanVerseRef, normalizeSettings,
   generateCode, extractCodes, CHAT, shapePoll, shapeCelebration, clampInvite, joinDecision, canInvite, isAdmin, shapePost, publishFromPending, assertNoAuthorLeak,
+  cleanTitle, cleanEvent, RSVP_STATES,
 } from "./logic.js";
 
 const C = (id) => `circles/${id}`;
@@ -179,6 +180,13 @@ async function join(ctx) {
       });
       if (err) throw new ApiError(err[0] === "not_found" ? 404 : err[0] === "expired" || err[0] === "revoked" ? 410 : 409, err[0], err[1]);
       result = { circleId: invite.circleId, name: circle.name };
+      if (circle.settings?.joinApproval === true) {
+        // The invite is not used up until an admin lets the person in.
+        result.pending = true;
+        const requestPath = `${C(invite.circleId)}/joinRequests/${ctx.uid}`;
+        if (await tx.get(requestPath)) return [];
+        return [w.create(requestPath, { displayName, createdAt: ctx.now, inviteCode: code })];
+      }
       return [
         w.create(`${C(invite.circleId)}/members/${ctx.uid}`, { role: "member", displayName, joinedAt: ctx.now, muted: false }),
         w.update(C(invite.circleId), { memberCount: circle.memberCount + 1 }),
@@ -195,6 +203,117 @@ async function join(ctx) {
 }
 
 // ---------- membership ----------
+/** An admin lets a waiting person in (approve) or turns them away (reject). */
+async function decideJoin(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const targetUid = str(ctx.body, "uid");
+  const { circle, member } = await load(ctx, circleId);
+  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can let people in.");
+  const requestPath = `${C(circleId)}/joinRequests/${targetUid}`;
+  const request = await ctx.db.get(requestPath);
+  if (!request) throw notFound("That request");
+  if (ctx.body.approve !== true) {
+    await ctx.db.commit([w.del(requestPath)]);
+    return {};
+  }
+  if (await ctx.db.get(`${C(circleId)}/members/${targetUid}`)) {
+    await ctx.db.commit([w.del(requestPath)]);
+    return {};
+  }
+  if (circle.memberCount >= LIMITS.membersPerCircle) throw new ApiError(409, "full", "This circle is full.");
+  const meta = await ctx.db.get(`userMeta/${targetUid}`);
+  const n = meta?.data.circleCount || 0;
+  if (n >= LIMITS.circlesPerUser) throw new ApiError(409, "too_many_circles", "That person is in the maximum of 10 circles.");
+  await ctx.db.commit([
+    w.create(`${C(circleId)}/members/${targetUid}`, { role: "member", displayName: request.data.displayName, joinedAt: ctx.now, muted: false }),
+    w.update(C(circleId), { memberCount: circle.memberCount + 1 }),
+    w.del(requestPath),
+    userMetaWrite(targetUid, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), circleId] }),
+  ]);
+  return {};
+}
+
+/** Set or clear a person's display title. Admins only. The title is a label; roles still decide permissions. */
+async function setTitle(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const targetUid = str(ctx.body, "targetUid");
+  const { member } = await load(ctx, circleId);
+  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can set titles.");
+  const target = await ctx.db.get(`${C(circleId)}/members/${targetUid}`);
+  if (!target) throw notFound("That person");
+  await ctx.db.commit([w.update(`${C(circleId)}/members/${targetUid}`, { title: cleanTitle(ctx.body.title) })]);
+  return {};
+}
+
+/** Pin one post to the top of the circle, or unpin with a null postId. Admins only. */
+async function pinPost(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const { member } = await load(ctx, circleId);
+  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can pin posts.");
+  const postId = ctx.body.postId == null ? null : str(ctx.body, "postId");
+  if (postId !== null) {
+    const post = await ctx.db.get(`${C(circleId)}/posts/${postId}`);
+    if (!post || post.data.deleted) throw notFound("That post");
+  }
+  await ctx.db.commit([w.update(C(circleId), { pinnedPostId: postId })]);
+  return {};
+}
+
+// ---------- events ----------
+async function createEvent(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const { member } = await load(ctx, circleId);
+  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can add events.");
+  const event = cleanEvent(ctx.body);
+  const id = newId();
+  await ctx.db.commit([w.create(`${C(circleId)}/events/${id}`, {
+    ...event, status: "scheduled", createdBy: ctx.uid, createdByName: member.displayName, createdAt: ctx.now, updatedAt: ctx.now,
+  })]);
+  return { eventId: id };
+}
+
+async function liveEvent(ctx, circleId, eventId) {
+  const doc = await ctx.db.get(`${C(circleId)}/events/${eventId}`);
+  if (!doc) throw notFound("That event");
+  return doc;
+}
+
+async function updateEvent(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const eventId = str(ctx.body, "eventId");
+  const { member } = await load(ctx, circleId);
+  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can change events.");
+  const current = await liveEvent(ctx, circleId, eventId);
+  if (current.data.status === "cancelled") throw new ApiError(409, "event_cancelled", "This event was cancelled.");
+  const event = cleanEvent({ ...current.data, ...ctx.body });
+  await ctx.db.commit([w.update(`${C(circleId)}/events/${eventId}`, { ...event, updatedAt: ctx.now })]);
+  return {};
+}
+
+async function cancelEvent(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const eventId = str(ctx.body, "eventId");
+  const { member } = await load(ctx, circleId);
+  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can cancel events.");
+  await liveEvent(ctx, circleId, eventId);
+  await ctx.db.commit([w.update(`${C(circleId)}/events/${eventId}`, { status: "cancelled", updatedAt: ctx.now })]);
+  return {};
+}
+
+/** Any member can say going, maybe or no. One answer per person, stored under the event. */
+async function rsvp(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const eventId = str(ctx.body, "eventId");
+  const { member } = await load(ctx, circleId);
+  if (!RSVP_STATES.includes(ctx.body.status)) throw new ApiError(400, "bad_request", "Answer going, maybe or no.");
+  const event = await liveEvent(ctx, circleId, eventId);
+  if (event.data.status === "cancelled") throw new ApiError(409, "event_cancelled", "This event was cancelled.");
+  await ctx.db.commit([w.set(`${C(circleId)}/events/${eventId}/rsvps/${ctx.uid}`, {
+    status: ctx.body.status, displayName: member.displayName, updatedAt: ctx.now,
+  })]);
+  return {};
+}
+
 async function removeFromCircle(ctx, circleId, targetUid, authorize) {
   await ctx.db.runTx(async (tx) => {
     const circle = await tx.get(C(circleId));
@@ -573,5 +692,6 @@ export const HANDLERS = {
   createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, deletePost,
   prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken,
   createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
+  decideJoin, setTitle, pinPost, createEvent, updateEvent, cancelEvent, rsvp,
 };
 export { POST_TYPES };

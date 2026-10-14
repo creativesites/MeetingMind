@@ -2,7 +2,8 @@
 import { ApiError } from "./errors.js";
 
 export const LIMITS = { membersPerCircle: 50, circlesPerUser: 10, bodyMax: 4000, commentMax: 2000, nameMax: 60, descriptionMax: 300, maxTokensPerUser: 5, maxUpdates: 50 };
-export const POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement"];
+// "note" is the free-form post. Every circle allows it, so it is not in any template or allowedTypes list.
+export const POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement", "note"];
 export const REACTIONS = ["praying", "amen", "heart", "celebrate"];
 const ALL = POST_TYPES;
 export const TEMPLATES = {
@@ -148,7 +149,7 @@ export const hourFloor = (d) => new Date(Math.floor(d.getTime() / 3_600_000) * 3
  */
 export function shapePost({ type, body, verseRef, anonymous, uid, authorName, settings, now }) {
   if (!POST_TYPES.includes(type)) throw bad("bad_request", "Unknown post type");
-  if (!settings.allowedTypes.includes(type)) throw new ApiError(403, "type_not_allowed", "This circle doesn't use that kind of post.");
+  if (type !== "note" && !settings.allowedTypes.includes(type)) throw new ApiError(403, "type_not_allowed", "This circle doesn't use that kind of post.");
   if (typeof anonymous !== "boolean") throw bad("bad_request", "anonymous must be true or false");
   if (anonymous && type !== "prayer") throw bad("bad_request", "Only prayer requests can be anonymous");
   const pending = type === "prayer" && settings.prayerApproval !== false;
@@ -178,6 +179,42 @@ export function publishFromPending(pendingDoc, authorDoc, now) {
 }
 
 // ---- chat & fun (FAITH_V2 section 2.2b) ----
+export const EVENT = { titleMax: 80, descriptionMax: 1000, locationMax: 200, urlMax: 300, timeZoneMax: 64 };
+export const RSVP_STATES = ["going", "maybe", "no"];
+export const TITLE_MAX = 40;
+
+/** A display title ("Pastor", "Deacon"). Null clears it. It never changes what the person may do. */
+export function cleanTitle(v) {
+  if (v === null || v === undefined || v === "") return null;
+  return cleanText(v, "title", { max: TITLE_MAX });
+}
+
+function cleanUrl(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v !== "string" || v.trim().length > EVENT.urlMax) throw bad("bad_request", "The online link is too long");
+  let u;
+  try { u = new URL(v.trim()); } catch { throw bad("bad_request", "The online link isn't a web address"); }
+  if (u.protocol !== "https:") throw bad("bad_request", "The online link must start with https://");
+  return u.toString();
+}
+
+function checkTimeZone(zone) {
+  try { new Intl.DateTimeFormat("en-US", { timeZone: zone }); } catch { throw bad("bad_request", "Unknown time zone"); }
+  return zone;
+}
+
+/** Event fields from a request. Times are epoch milliseconds in UTC; [timeZone] is the IANA zone to show them in. */
+export function cleanEvent(b) {
+  const title = cleanText(b.title, "title", { max: EVENT.titleMax });
+  const description = cleanText(b.description, "description", { min: 0, max: EVENT.descriptionMax, optional: true }) ?? "";
+  const location = cleanText(b.location, "location", { min: 0, max: EVENT.locationMax, optional: true }) ?? "";
+  const onlineUrl = cleanUrl(b.onlineUrl);
+  if (!Number.isSafeInteger(b.startsAt) || !Number.isSafeInteger(b.endsAt)) throw bad("bad_request", "Start and end must be times");
+  if (b.endsAt <= b.startsAt) throw bad("bad_request", "The event must end after it starts");
+  const timeZone = checkTimeZone(cleanText(b.timeZone, "timeZone", { max: EVENT.timeZoneMax }));
+  return { title, description, location, onlineUrl, startsAt: b.startsAt, endsAt: b.endsAt, timeZone };
+}
+
 export const CHAT = { pollQuestionMax: 200, pollOptionMax: 80, pollOptionsMin: 2, pollOptionsMax: 6, chainHours: 24, chainTitleMax: 120, celebrationTextMax: 140 };
 export const COMPANIONS = ["zuri", "nas", "wren", "page"];
 export const CELEBRATIONS = ["birthday", "answered", "streak", "milestone"];

@@ -35,12 +35,19 @@ Success: `{"ok":true,...}`. Failure: `{"ok":false,"error":{"code","message"}}` w
 | Endpoint | Who | Body / result |
 |---|---|---|
 | `createCircle` | anyone (max 10 circles) | `name, template, vocab?, settings?, displayName?, requestId` (UUID, reused for retries) -> `circleId` |
-| `updateCircle` | owner/admin | `circleId, name?, vocab?, settings?` |
+| `updateCircle` | owner/admin | `circleId, name?, vocab?, description? (max 300), settings?` (`settings.joinApproval` is a boolean, default off) |
 | `createInvite` | owner/admin (or any member if `whoCanInvite=members`) | `circleId, expiresInDays? (1-30, 7), maxUses? (1-100, 50)` -> `code` like `GRACE-7K2Q` |
 | `revokeInvite` | admin or creator | `code` |
-| `join` | anyone | `code` (paste the whole share message), `displayName?` -> `circleId, name`. Errors: `not_found, expired, revoked, full, already_member, too_many_circles, rate_limited` |
+| `join` | anyone | `code` (paste the whole share message), `displayName?` -> `circleId, name`. With `joinApproval` on: `pending: true` and the invite is kept until an admin decides. Errors: `not_found, expired, revoked, full, already_member, too_many_circles, rate_limited` |
+| `decideJoin` | admin | `circleId, uid, approve` (true lets the person in, false turns them away) |
+| `setTitle` | admin | `circleId, targetUid, title` (max 40; `null` clears). A title is a label. It never changes permissions |
+| `pinPost` | admin | `circleId, postId` (`null` unpins). The post must be live |
+| `createEvent` | admin | `circleId, title (max 80), description? (max 1000), location? (max 200), onlineUrl? (https only), startsAt, endsAt (epoch ms), timeZone` (IANA) -> `eventId` |
+| `updateEvent` | admin | `circleId, eventId`, plus any event field. Refused once cancelled |
+| `cancelEvent` | admin | `circleId, eventId` |
+| `rsvp` | member | `circleId, eventId, status` in `going, maybe, no`. One answer per person, stored under the event |
 | `leave`, `removeMember`, `setRole`, `setMute` | see below | `circleId, targetUid?, role?, muted?` |
-| `createPost` | member | `circleId, type, body, verseRef?, anonymous` -> `postId, status: pending/published` |
+| `createPost` | member | `circleId, type` (`note` is the free-form post, allowed in every circle), `body, verseRef?, anonymous` -> `postId, status: pending/published` |
 | `approvePost`, `rejectPost` | admin | `circleId, postId` |
 | `editPost`, `addUpdate`, `markAnswered` | author (resolved via `postAuthors`) | `circleId, postId, body?` |
 | `deletePost` | author or admin (soft delete, body blanked) | `circleId, postId` |

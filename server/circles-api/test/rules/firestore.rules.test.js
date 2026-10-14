@@ -270,3 +270,24 @@ test("prayer chain slots: valid hour, open chain, claim once, release own, Worke
   await assertSucceeds(deleteDoc(s("ch1", "5", "owner"))); // admin clears
   await assertFails(setDoc(doc(as("owner"), `circles/${C}/chains/mine`), { title: "x", endsAt: new Date() }));
 });
+
+test("events: members read events and RSVPs; outsiders cannot; clients cannot write either", async () => {
+  await env.withSecurityRulesDisabled(async (c) => {
+    const db = c.firestore();
+    await setDoc(doc(db, `circles/${C}/events/ev1`), { title: "Breakfast", status: "scheduled", startsAt: 1, endsAt: 2 });
+    await setDoc(doc(db, `circles/${C}/events/ev1/rsvps/member`), { status: "going" });
+  });
+  await assertSucceeds(getDoc(doc(as("member"), `circles/${C}/events/ev1`)));
+  await assertSucceeds(getDoc(doc(as("member"), `circles/${C}/events/ev1/rsvps/member`)));
+  await assertFails(getDoc(doc(as("stranger"), `circles/${C}/events/ev1`)));
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/events/ev2`), { title: "Forged", status: "scheduled" }));
+  await assertFails(updateDoc(doc(as("admin"), `circles/${C}/events/ev1`), { status: "cancelled" }));
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/events/ev1/rsvps/member`), { status: "going" }));
+});
+
+test("join requests are Worker-only: nobody on the client can read or write them", async () => {
+  await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), `circles/${C}/joinRequests/ann`), { displayName: "Ann" }));
+  await assertFails(getDoc(doc(as("admin"), `circles/${C}/joinRequests/ann`)));
+  await assertFails(getDoc(doc(as("owner"), `circles/${C}/joinRequests/ann`)));
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/joinRequests/member`), { displayName: "M" }));
+});

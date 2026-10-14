@@ -45,3 +45,19 @@ Still open: device test of Google sign-in and the reinstall/link flow. Nothing e
 | 19 | Circle `description` | Added to the circle document on create and update, up to 300 characters, default empty. | Needed by the approved Circle home design. |
 
 Worker tests: 37 of 37 pass (4 new: description on create and update, description length cap, description default, join approval default and validation).
+
+## Implementation milestone 1, backend slice
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| 20 | Join approval | With `joinApproval` on, a join creates `joinRequests/{uid}` and returns `pending: true`. The invite is not used up until an admin approves. Admins approve or reject with `decideJoin`. | Approved design (Members page: requests to join). |
+| 21 | Free-form post | New post type `note`. Every circle allows it, and it publishes at once with no approval. Anonymous notes are refused. Existing circles get it without changing their settings. | Approved design; decision 2 recommended. |
+| 22 | Titles | `setTitle`, admin only, stored on the member as `title` (max 40). Titles never change permissions. | Approved design; the title/role split. |
+| 23 | Pinned post | `pinPost` (admin), stored as `pinnedPostId` on the circle. Only live posts can be pinned. | Approved design (pinned feed post). |
+| 24 | Events | `createEvent`, `updateEvent`, `cancelEvent` (admin only). Times are UTC milliseconds plus an IANA time zone. Links must be https. Rules: members read events and RSVPs; clients never write them. | Approved design; the events plan. |
+| 25 | RSVP | Any member, one answer each (`going`, `maybe`, `no`), stored under the event. Refused once the event is cancelled. | Events plan. |
+| 26 | Moderator role | **Not built.** The design shows a Moderator role for "create events" and "remove posts". Adding it touches the Role enum, the Worker, and the rules. It needs its own decision. Until then those actions are admin only. | Open. |
+
+Rules tests: 20 of 20 pass (2 new: events and RSVP reads and writes; join requests are Worker-only). Worker tests: 46 of 46 pass.
+
+Not done in this slice: the Android side (models, parsing, the new API calls, and every redesigned screen). The sandbox has no Android SDK, so the app cannot be compiled or tested here.
