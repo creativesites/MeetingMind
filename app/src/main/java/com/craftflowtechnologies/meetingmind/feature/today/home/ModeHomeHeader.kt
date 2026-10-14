@@ -38,8 +38,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -151,7 +151,7 @@ fun HomeModeSwitch(
             Row(Modifier.fillMaxSize()) {
                 offered.forEach { mode ->
                     val ink by animateColorAsState(
-                        targetValue = if (mode == current) Color.White else InkSecondary,
+                        targetValue = if (mode == current) FixedWhite else InkSecondary,
                         animationSpec = tween(260),
                         label = "mode_ink"
                     )

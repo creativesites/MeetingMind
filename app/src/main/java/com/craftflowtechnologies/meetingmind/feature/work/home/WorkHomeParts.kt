@@ -55,6 +55,8 @@ import com.craftflowtechnologies.meetingmind.feature.today.home.SceneTile
 import com.craftflowtechnologies.meetingmind.feature.today.home.TileHeader
 import com.craftflowtechnologies.meetingmind.feature.today.home.WorkGridScene
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
+import com.craftflowtechnologies.meetingmind.ui.theme.BentoColors
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
@@ -128,7 +130,7 @@ private fun HeroButton(label: String, primary: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 9.dp)
     ) {
-        Text(label, color = if (primary) Color.White else Ink, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        Text(label, color = if (primary) FixedWhite else Ink, fontFamily = InterFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
     }
 }
 
@@ -152,7 +154,7 @@ internal fun WorkGlanceTile(
 ) {
     val colors = LocalMMColors.current
     SceneTile(index, WorkGridScene, height = 150.dp, scrim = Color.Transparent, tag = "work_home_glance", onClick = onOpenWork) {
-        TileHeader(Icons.Filled.Work, "At a glance", Color(0xFF3F3A74))
+        TileHeader(Icons.Filled.Work, "At a glance", BentoColors.IndigoInk)
         Spacer(Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             GlanceFigure("$dueToday", "Due today", if (overdue > 0) colors.danger else Accent, Modifier.weight(1f), onDue)

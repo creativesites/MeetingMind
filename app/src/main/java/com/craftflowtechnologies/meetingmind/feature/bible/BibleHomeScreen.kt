@@ -71,6 +71,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.ui.theme.BibleColors
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
@@ -90,11 +91,10 @@ data class BibleHomeActions(
 )
 
 /** The Bible's own palette: parchment, indigo ink and gold, so it reads as part of Faith but its own place. */
-private val Parchment = Color(0xFFFBF6EC)
-private val Indigo = Color(0xFF1F1B2D)
-private val IndigoLift = Color(0xFF3A3370)
-private val GoldInk = Color(0xFFB7791F)
-private val GoldLight = Color(0xFFE7B35A)
+private val Parchment = BibleColors.Parchment
+private val Indigo = BibleColors.Indigo
+private val IndigoLift = BibleColors.IndigoLift
+private val GoldLight = BibleColors.GoldLight
 
 private val comingMethods = listOf("Book overview", "Character study", "Word study", "Topical study", "Inductive study", "Small group prep")
 

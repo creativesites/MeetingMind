@@ -48,6 +48,19 @@ object BentoColors {
     val BrownInk = Color(0xFF6B4A3A)
     val BrownText = Color(0xFF6B5A4E)
     val PrayerScrim = Color(0xFF1C1A44)
+    /** The Today plan card's hairline border, and the ring around each plan row's checkbox. */
+    val PlanBorder = Color(0xFFECEBF3)
+    val PlanRing = Color(0xFFC9C4E3)
+}
+
+/**
+ * The Bible home's Continue hero: a fixed deep indigo card with parchment type and gold, the same in both themes.
+ */
+object BibleColors {
+    val Parchment = Color(0xFFFBF6EC)
+    val Indigo = Color(0xFF1F1B2D)
+    val IndigoLift = Color(0xFF3A3370)
+    val GoldLight = Color(0xFFE7B35A)
 }
 
 /** The artwork behind the Today home's illustrated tiles (drawn in code, see feature/today/home/BentoScenes.kt). */
