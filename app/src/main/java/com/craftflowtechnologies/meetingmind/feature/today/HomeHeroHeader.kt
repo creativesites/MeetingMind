@@ -71,6 +71,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -125,6 +126,41 @@ private val Hairline: Color @androidx.compose.runtime.Composable @androidx.compo
 
 /** The companion's size in the hero sky: large enough for its 3D look to read. */
 private val HeroCompanionSize = 150.dp
+
+/**
+ * The greeting's share of the card's width. The sun or moon takes the rest of the card, so the
+ * greeting never runs under it. The companion takes the top end, so the greeting keeps less width then.
+ */
+internal const val GreetingWidthWithCompanion = 0.58f
+internal const val GreetingWidthAlone = 0.62f
+
+/** The sun or moon's radius, as a share of the card's shorter side. Sized to fit its column at 360 dp. */
+private const val SkyBodyRadius = 0.085f
+
+/** How far the sun or moon sweeps across its column, as a share of the card's width. */
+private const val SkyBodySweep = 0.10f
+
+/** The sun or moon on a card: its centre and radius in the same pixels the drawing uses. */
+internal data class SkyBodyPlacement(val center: Offset, val radius: Float) {
+    /** The body and its ring. Text must never overlap this. The halo is a soft glow and sits outside it. */
+    val bounds: Rect
+        get() = Rect(center.x - radius * 1.55f, center.y - radius, center.x + radius * 1.55f, center.y + radius)
+}
+
+/**
+ * Where the sun or moon sits on a card of [size]. It rises low on the left of the column that the
+ * greeting leaves free, peaks high, and sets low on the right. The greeting uses the first
+ * [textFraction] of the width, so the body stays clear of it at any font scale.
+ */
+internal fun skyBodyPlacement(size: Size, sky: TimeOfDaySky, textFraction: Float, bobPx: Float = 0f): SkyBodyPlacement {
+    val textEdge = size.width * textFraction
+    val columnCenter = textEdge + (size.width - textEdge) / 2f
+    val x = columnCenter + size.width * SkyBodySweep * (sky.arc - 0.5f)
+    val horizon = size.height * 0.44f
+    val peak = size.height * 0.14f
+    val y = horizon - (horizon - peak) * sky.elevation
+    return SkyBodyPlacement(Offset(x, y + bobPx), size.minDimension * SkyBodyRadius)
+}
 
 /** What the floating tile under the hero shows. */
 data class HeroTile(val label: String, val title: String, val subtitle: String, val icon: ImageVector, val accent: Color, val onClick: () -> Unit)
@@ -297,6 +333,9 @@ private fun HeroStage(
     val context = LocalContext.current
     val look = LocalAppLook.current
     val scope = rememberCoroutineScope()
+    // The companion leads the greeting (§5.3); when it is filtered out the greeting keeps its old width.
+    val companionShown = rememberCompanionVisible(CompanionPage.HOME)
+    val greetingFraction = if (companionShown) GreetingWidthWithCompanion else GreetingWidthAlone
     val rotX = remember { Animatable(0f) }
     val rotY = remember { Animatable(0f) }
     val reducedMotion = remember {
@@ -348,7 +387,7 @@ private fun HeroStage(
                 }
                 .shadow(28.dp, cardShape, ambientColor = bottom.copy(alpha = 0.35f), spotColor = bottom.copy(alpha = 0.6f))
                 .clip(cardShape)
-                .drawBehind { drawSky(top, bottom, sky, stars, sparkle.value) }
+                .drawBehind { drawSky(top, bottom, sky, stars, sparkle.value, greetingFraction) }
                 .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.04f))), cardShape)
                 .pointerInput(Unit) {
                     val w = size.width.toFloat()
@@ -365,18 +404,16 @@ private fun HeroStage(
                 }
                 .testTag("home_hero")
         ) {
-            // The orb travels its arc across the card through the day.
+            // The sun or moon travels its arc through the day, in the column the greeting leaves free.
             Canvas(
                 Modifier.fillMaxSize().graphicsLayer {
                     translationX = -rotY.value * 2.2f * density
                     translationY = scroll * 60f + rotX.value * 2f * density
                 }
-            ) { drawOrb(sky, bob.value) }
+            ) { drawOrb(sky, bob.value, greetingFraction) }
 
-            // The companion leads the greeting (§5.3); when it is filtered out the greeting keeps its old width.
-            val companionShown = rememberCompanionVisible(CompanionPage.HOME)
             val lateNight = now.get(Calendar.HOUR_OF_DAY).let { it >= 22 || it < 5 }
-            Column(Modifier.align(Alignment.TopStart).fillMaxWidth(if (companionShown) 0.58f else 0.62f).padding(start = 24.dp, top = 30.dp)) {
+            Column(Modifier.align(Alignment.TopStart).fillMaxWidth(greetingFraction).padding(start = 24.dp, top = 30.dp)) {
                 Text(
                     greeting, color = OnSky, fontFamily = if (identity.faithFirst) look.headingFont else OutfitFamily,
                     fontWeight = FontWeight.Medium, fontSize = 27.sp, lineHeight = 32.sp, letterSpacing = (-0.6).sp, maxLines = 3,
@@ -589,7 +626,7 @@ object HeroTiles {
 // Drawing: the sky and the orb
 // ─────────────────────────────────────────────────────────────────────────────
 
-private fun DrawScope.drawSky(top: Color, bottom: Color, sky: TimeOfDaySky, stars: List<Triple<Float, Float, Float>>, twinkle: Float) {
+private fun DrawScope.drawSky(top: Color, bottom: Color, sky: TimeOfDaySky, stars: List<Triple<Float, Float, Float>>, twinkle: Float, textFraction: Float) {
     drawRect(Brush.linearGradient(listOf(top, lerp(top, bottom, 0.6f), bottom), start = Offset.Zero, end = Offset(size.width * 0.6f, size.height)))
 
     // Stars at night, each twinkling on its own phase.
@@ -602,7 +639,7 @@ private fun DrawScope.drawSky(top: Color, bottom: Color, sky: TimeOfDaySky, star
     }
 
     // Light pooling around where the orb is.
-    val orb = orbCenter(sky, 0f)
+    val orb = skyBodyPlacement(size, sky, textFraction).center
     drawCircle(
         Brush.radialGradient(listOf(Color(sky.glow).copy(alpha = if (sky.isMoon) 0.22f else 0.38f), Color.Transparent), center = orb, radius = size.width * 0.55f),
         radius = size.width * 0.55f, center = orb
@@ -616,22 +653,10 @@ private fun DrawScope.drawSky(top: Color, bottom: Color, sky: TimeOfDaySky, star
     drawRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.Transparent), endY = size.height * 0.45f))
 }
 
-/**
- * Where the orb sits: it travels an arc across the right of the card (rising low on the left of
- * that region, peaking high, setting low on the right), clear of the greeting on the left.
- */
-private fun DrawScope.orbCenter(sky: TimeOfDaySky, bob: Float): Offset {
-    // The sun and moon cross the middle of the card, left of the companion, so the companion never covers them.
-    val x = size.width * (0.40f + 0.16f * sky.arc)
-    val horizon = size.height * 0.64f
-    val peak = size.height * 0.24f
-    val y = horizon - (horizon - peak) * sky.elevation
-    return Offset(x, y + bob * 6.dp.toPx())
-}
-
-private fun DrawScope.drawOrb(sky: TimeOfDaySky, bob: Float) {
-    val r = size.minDimension * 0.15f
-    val c = orbCenter(sky, bob)
+private fun DrawScope.drawOrb(sky: TimeOfDaySky, bob: Float, textFraction: Float) {
+    val placement = skyBodyPlacement(size, sky, textFraction, bob * 6.dp.toPx())
+    val r = placement.radius
+    val c = placement.center
     val light = Color(sky.orbLight)
     val body = Color(sky.orbBody)
     val deep = Color(sky.orbDeep)
