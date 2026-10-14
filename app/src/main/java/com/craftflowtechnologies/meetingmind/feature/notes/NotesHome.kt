@@ -162,7 +162,9 @@ internal fun HeroWithZuri(
     // Read the MM token here, in composition: the measure lambda below is not composable.
     val gapDp = MM.space.m
     Layout(
-        content = { greetingSlot(); bubbleSlot(); zuriSlot(); heroSlot() },
+        // Each slot is wrapped in its own box so it always yields exactly one child. A slot with nothing to
+        // show (no latest meeting, say) would otherwise drop out of the list and break the destructuring below.
+        content = { Box { greetingSlot() }; Box { bubbleSlot() }; Box { zuriSlot() }; Box { heroSlot() } },
         modifier = modifier
     ) { measurables, constraints ->
         val (greetingM, bubbleM, zuriM, heroM) = measurables
