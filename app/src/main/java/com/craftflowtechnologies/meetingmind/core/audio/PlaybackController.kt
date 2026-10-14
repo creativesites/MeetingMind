@@ -369,7 +369,8 @@ object PlaybackController {
         expectedCount = expected,
         waitingForNext = waiting,
         blockIds = items.map { it.blockIds },
-        pausedAfterQuestion = paused
+        pausedAfterQuestion = paused,
+        sectionIds = items.map { it.sectionId.orEmpty() }
     )
 
     private fun saveProgress(force: Boolean) {

@@ -15,6 +15,8 @@ import com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiReadingEngine
 import com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiSectionVoice
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LibraryScriptureSource
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LoadedNote
+import com.craftflowtechnologies.meetingmind.ai.voice.read.PassageSpeech
+import com.craftflowtechnologies.meetingmind.ai.voice.read.SpeechSource
 import com.craftflowtechnologies.meetingmind.ai.voice.read.MainThreadReadPlayer
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LocalSectionVoice
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LocalSpeechEngine
@@ -117,7 +119,13 @@ class AndroidReadingHost(context: Context) : ReadingHost {
         val resolved = kotlinx.coroutines.withTimeoutOrNull(SCRIPTURE_TIMEOUT_MS) {
             ScriptureResolver(LibraryScriptureSource(ScriptureService(app))).resolve(listOf(block), listOf(ref))
         } ?: emptyMap()
-        val source = NoteSpeechExtractor.extract(reference.display(), false, listOf(block), emptySet(), ScriptureLookup { resolved[it.id] }, options)
+        // One part per verse (or per few verses in a long chapter), so the reader can follow the verse being read.
+        val verses = resolved[block.id]?.takeIf { !it.userTyped }?.verses?.takeIf { it.isNotEmpty() }
+        val source = if (verses != null) {
+            SpeechSource(PassageSpeech.sections(verses.map { it.number to it.text }, resolved.getValue(block.id)!!.spokenReference, block.id, reference.book.name))
+        } else {
+            NoteSpeechExtractor.extract(reference.display(), false, listOf(block), emptySet(), ScriptureLookup { resolved[it.id] }, options)
+        }
         return LoadedNote(reference.display(), NotebookSpace.FAITH, source, NoteFacts(false, false, false, false), null)
     }
 
@@ -175,7 +183,8 @@ object ReadToMe {
     fun enqueueBackground(context: Context, noteId: String) = ReadingWorker.enqueue(context, noteId)
 
     /** The reading id for one passage in one translation; [ReadToMeSheet] and the coordinator take it where a note id goes. */
-    fun passageId(reference: com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference, versionId: Int?) = "passage:${versionId ?: 0}:${reference.passageId()}"
+    fun passageId(reference: com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference, versionId: Int?) =
+        com.craftflowtechnologies.meetingmind.ai.voice.read.PassageSpeech.passageId(reference, versionId)
 
     @Volatile private var shared: ReadingCoordinator? = null
 

@@ -240,7 +240,10 @@ fun BibleScreen(
                 },
                 onHighlight = { color -> viewModel.highlight(color) },
                 onStudy = { viewModel.openStudy(ref) },
-                onListenHere = if (viewModel.extras.value.audio.isNotEmpty()) ({ viewModel.listen(ref.verseStart); viewModel.clearSelection() }) else null,
+                onListenHere = {
+                    com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.coordinator(context).startPassage(ref, current?.id, fromVerse = ref.verseStart)
+                    viewModel.clearSelection()
+                },
                 onCard = if (onShareCard != null && ready != null) ({
                     val chapter = ready.result.content
                     onShareCard(

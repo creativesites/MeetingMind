@@ -6,6 +6,8 @@ import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,6 +82,8 @@ data class SessionActions(
     val onBack: () -> Unit = {},
     val onAnswer: (String, String) -> Unit = { _, _ -> },
     val onListen: () -> Unit = {},
+    /** Read from a verse to the end of the chapter (tap a verse in the pinned passage). */
+    val onReadFrom: (Int) -> Unit = {},
     val onChooseMethod: (SessionKind) -> Unit = {},
     val onUseQuestion: (SessionStep, String) -> Unit = { _, _ -> },
     val onGoDeeper: (Int?) -> Unit = {},
@@ -100,7 +104,7 @@ fun GuidedSessionScreen(
     onOpenNote: (String) -> Unit
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
-    val listening by viewModel.listening.collectAsStateWithLifecycle()
+    val reading by viewModel.reading.collectAsStateWithLifecycle()
     val context = LocalContext.current
     // The reader's own study sheet: original words, commentary and cross-references for a verse.
     val reader: BibleViewModel = viewModel(key = "session-reader")
@@ -114,11 +118,12 @@ fun GuidedSessionScreen(
     val request = ui.request
     BackHandler { onClose() }
     GuidedSessionContent(
-        ui, listening,
+        ui, reading,
         SessionActions(
             onClose = onClose,
             onNext = { if (ui.session?.isLast == true) { viewModel.finish(); onClose() } else viewModel.next() },
             onBack = viewModel::back,
+            onReadFrom = viewModel::readFrom,
             onAnswer = viewModel::answer,
             onListen = viewModel::listen,
             onChooseMethod = viewModel::chooseMethod,
@@ -144,7 +149,7 @@ fun GuidedSessionScreen(
 
 /** The stateless session, for the screen and for screenshot tests. */
 @Composable
-fun GuidedSessionContent(ui: GuidedUi, listening: Boolean, actions: SessionActions) {
+fun GuidedSessionContent(ui: GuidedUi, reading: ReadAloudState, actions: SessionActions) {
     val c = MM.colors
     val session = ui.session
     Column(Modifier.fillMaxSize().background(c.background).statusBarsPadding().imePadding().navigationBarsPadding().testTag("bible_session")) {
@@ -159,7 +164,7 @@ fun GuidedSessionContent(ui: GuidedUi, listening: Boolean, actions: SessionActio
                 }
                 if (ui.canListen) {
                     IconButton(onClick = actions.onListen, modifier = Modifier.testTag("session_listen")) {
-                        Icon(if (listening) Icons.Rounded.Pause else Icons.Rounded.Headphones, if (listening) "Pause" else "Listen", tint = c.accent)
+                        Icon(if (reading.playing) Icons.Rounded.Pause else Icons.Rounded.Headphones, if (reading.playing) "Pause" else "Listen", tint = c.accent)
                     }
                 } else {
                     Spacer(Modifier.width(48.dp))
@@ -188,12 +193,12 @@ fun GuidedSessionContent(ui: GuidedUi, listening: Boolean, actions: SessionActio
                 val step = session.current
                 val expanded = step.type == StepType.READ || step.type == StepType.SCRIPTURE
                 Column(Modifier.weight(1f).fillMaxWidth()) {
-                    if (step.type != StepType.CLOSE) PinnedPassage(ready, expanded, actions, Modifier.padding(horizontal = MM.space.l))
+                    if (step.type != StepType.CLOSE) PinnedPassage(ready, expanded, actions, reading, Modifier.padding(horizontal = MM.space.l))
                     Column(
                         Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = MM.space.l, vertical = MM.space.l),
                         verticalArrangement = Arrangement.spacedBy(MM.space.m)
                     ) {
-                        StepBody(ui, session, step, ready, listening, actions)
+                        StepBody(ui, session, step, ready, reading, actions)
                     }
                 }
                 if (step.type != StepType.CLOSE) NavBar(session, step, actions)
@@ -226,18 +231,40 @@ private fun MethodChooser(actions: SessionActions, modifier: Modifier) {
     }
 }
 
-/** The passage, pinned above every step. Collapsed to a few lines except while reading it. */
+/**
+ * The passage, pinned above every step. Collapsed to a few verses except while reading it. Each verse is a row; the
+ * verse being read is highlighted, and tapping a verse reads from there.
+ */
 @Composable
-private fun PinnedPassage(ready: SessionLoad.Ready, startExpanded: Boolean, actions: SessionActions, modifier: Modifier) {
+private fun PinnedPassage(ready: SessionLoad.Ready, startExpanded: Boolean, actions: SessionActions, reading: ReadAloudState, modifier: Modifier) {
     val c = MM.colors
     var open by remember(startExpanded) { mutableStateOf(startExpanded) }
+    val rows = ready.verses
     MMCard(modifier = modifier.testTag("session_passage"), contentPadding = MM.space.m) {
         SelectionContainer {
-            Text(
-                ready.passageText, style = MM.type.scripture, color = c.ink,
-                maxLines = if (open) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis,
-                modifier = if (open) Modifier.heightIn(max = MMSize.minTouch * 5).verticalScroll(rememberScrollState()) else Modifier
-            )
+            Column(
+                if (open) Modifier.heightIn(max = MMSize.minTouch * 5).verticalScroll(rememberScrollState()) else Modifier,
+                verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+            ) {
+                if (rows.isEmpty()) {
+                    Text(ready.passageText, style = MM.type.scripture, color = c.ink, maxLines = if (open) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis)
+                } else {
+                    (if (open) rows else rows.take(3)).forEach { v ->
+                        val reading_ = reading.active && reading.verse == v.number
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .background(if (reading_) c.accentWash else Color.Transparent)
+                                .clickable { actions.onReadFrom(v.number) }
+                                .padding(horizontal = MM.space.xs, vertical = MM.space.xs)
+                                .testTag("session_verse_row_${v.number}"),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text("${v.number}", style = MM.type.caption, color = if (reading_) c.accent else c.inkMuted, modifier = Modifier.width(28.dp))
+                            Text(v.text, style = MM.type.scripture, color = c.ink)
+                        }
+                    }
+                }
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextAction(if (open) "Show less" else "Show all", onClick = { open = !open })
@@ -262,7 +289,7 @@ private fun NavBar(session: SessionState, step: SessionStep, actions: SessionAct
 }
 
 @Composable
-private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, ready: SessionLoad.Ready, listening: Boolean, actions: SessionActions) {
+private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, ready: SessionLoad.Ready, reading: ReadAloudState, actions: SessionActions) {
     val c = MM.colors
     val request = ui.request!!
     val help = ui.help["${step.type}-${step.verse ?: 0}"]
@@ -283,12 +310,12 @@ private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, rea
         StepType.READ -> {
             Text(if (ui.canListen) "Read it, or listen" else "Read it", style = MM.type.heading, color = c.ink)
             Text("Read it once for what it says, and once for what stands out.", style = MM.type.secondary, color = c.inkSecondary)
-            if (ui.canListen) ListenButton(listening, actions)
+            if (ui.canListen) ListenButton(reading, actions)
         }
         StepType.SCRIPTURE -> {
             Text("Scripture", style = MM.type.heading, color = c.ink)
             Text("Read the passage slowly. The next step asks what you notice.", style = MM.type.secondary, color = c.inkSecondary)
-            if (ui.canListen) ListenButton(listening, actions)
+            if (ui.canListen) ListenButton(reading, actions)
         }
         StepType.OBSERVE, StepType.APPLY, StepType.VERSE -> {
             if (step.type == StepType.VERSE && step.verse != null) {
@@ -325,9 +352,13 @@ private fun StepBody(ui: GuidedUi, session: SessionState, step: SessionStep, rea
 
 /** Reads the passage aloud, or pauses it. Shown on the reading steps only when the chapter has audio. */
 @Composable
-private fun ListenButton(listening: Boolean, actions: SessionActions) {
+private fun ListenButton(reading: ReadAloudState, actions: SessionActions) {
     SecondaryButton(
-        if (listening) "Pause reading" else "Read aloud",
+        when {
+            reading.playing -> "Pause reading"
+            reading.active -> "Resume reading"
+            else -> "Read aloud"
+        },
         onClick = actions.onListen, modifier = Modifier.testTag("session_read_aloud")
     )
 }
@@ -400,7 +431,7 @@ private fun Close(ui: GuidedUi, session: SessionState, actions: SessionActions) 
         ui.addedTo?.let { StatusLine(StatusKind.Info, "Added to $it.") }
         var listening by remember { mutableStateOf(false) }
         ui.savedNoteId?.let { id ->
-            SecondaryButton("Listen to my study", onClick = { listening = true }, modifier = Modifier.testTag("session_listen"))
+            SecondaryButton("Listen to my study", onClick = { listening = true }, modifier = Modifier.testTag("session_listen_study"))
             if (listening) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(id, onDismiss = { listening = false })
         }
         SecondaryButton("Add to an existing note", onClick = actions.onAddToNote, modifier = Modifier.testTag("session_add_to_note"))

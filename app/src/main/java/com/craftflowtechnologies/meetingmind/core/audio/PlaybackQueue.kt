@@ -25,9 +25,12 @@ data class QueueInfo(
     val waitingForNext: Boolean = false,
     val blockIds: List<List<String>> = emptyList(),
     /** Playback paused by itself at the end of a reflection question. */
-    val pausedAfterQuestion: Boolean = false
+    val pausedAfterQuestion: Boolean = false,
+    /** The section each item was made from (a passage's part is `v<first verse>`), so a reader can follow it. */
+    val sectionIds: List<String> = emptyList()
 ) {
     val count: Int get() = titles.size
+    val currentSectionId: String? get() = sectionIds.getOrNull(index)
     val currentTitle: String get() = titles.getOrNull(index).orEmpty()
     val hasNext: Boolean get() = index < expectedCount - 1
     val hasPrevious: Boolean get() = index > 0

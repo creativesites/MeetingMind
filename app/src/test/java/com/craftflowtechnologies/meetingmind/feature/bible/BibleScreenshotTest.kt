@@ -68,7 +68,7 @@ class BibleScreenshotTest {
                 session = session, canListen = true,
                 help = mapOf("OBSERVE-0" to StepHelp(line = "Zuri's suggestions need an internet connection or an on-device model. These are our own questions."))
             ),
-            listening = false, actions = SessionActions()
+            reading = ReadAloudState(), actions = SessionActions()
         )
     }
 }

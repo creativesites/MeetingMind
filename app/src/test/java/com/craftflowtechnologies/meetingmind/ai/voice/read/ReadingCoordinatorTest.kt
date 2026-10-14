@@ -295,4 +295,23 @@ class ReadingCoordinatorTest {
         coordinator.generateInBackground("n1").also { advanceUntilIdle() }
         assertEquals(listOf("h1"), host.gemini.made)
     }
+
+    @Test fun `a passage read from a verse starts at the part that contains it, with no narration needed`() = scope.runTest {
+        val john = com.craftflowtechnologies.meetingmind.core.scripture.BibleBooks.byUsfm("JHN")!!
+        val verses = (1..20).map { it to "verse $it text" }
+        host.note = LoadedNote("John 3", NotebookSpace.FAITH, SpeechSource(PassageSpeech.sections(verses, "John chapter 3", "b1", "John")), facts, null)
+        coordinator.startPassage(com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference(john, 3), null, fromVerse = 17)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ReadingUiState.Finished)
+        // Twenty verses are grouped by three: v1, v4, v7, v10, v13, v16, v19. Verse 17 is in the part that starts at v16.
+        assertEquals(listOf("v16", "v19"), host.gemini.made)
+    }
+
+    @Test fun `a passage read from the start makes every part`() = scope.runTest {
+        val john = com.craftflowtechnologies.meetingmind.core.scripture.BibleBooks.byUsfm("JHN")!!
+        host.note = LoadedNote("John 3", NotebookSpace.FAITH, SpeechSource(PassageSpeech.sections((1..4).map { it to "v$it" }, "John chapter 3", "b1", "John")), facts, null)
+        coordinator.startPassage(com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference(john, 3), null)
+        advanceUntilIdle()
+        assertEquals(listOf("v1", "v2", "v3", "v4"), host.gemini.made)
+    }
 }

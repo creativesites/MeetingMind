@@ -27,6 +27,9 @@ import com.craftflowtechnologies.meetingmind.core.faith.FaithStore
 import com.craftflowtechnologies.meetingmind.core.model.Note
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.scripture.ChapterAudio
+import com.craftflowtechnologies.meetingmind.ai.voice.read.PassageSpeech
+import com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore
+import com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe
 import com.craftflowtechnologies.meetingmind.core.scripture.ChapterResult
 import com.craftflowtechnologies.meetingmind.core.scripture.ChapterVerse
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
@@ -67,6 +70,9 @@ sealed interface SessionLoad {
     data class Ready(val passageText: String, val verses: List<ChapterVerse>, val attribution: String) : SessionLoad
 }
 
+/** Read aloud state for the session's passage. [verse] is the verse being read (the first of its part). */
+data class ReadAloudState(val active: Boolean = false, val playing: Boolean = false, val verse: Int? = null)
+
 data class GuidedUi(
     val request: SessionRequest? = null,
     val load: SessionLoad = SessionLoad.Loading,
@@ -98,7 +104,6 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
     val ui: StateFlow<GuidedUi> = _ui.asStateFlow()
 
     private var journal: JournalSession? = null
-    private var chapterAudio: List<ChapterAudio> = emptyList()
     private var bibleId = 0
     private var profile = DevotionalProfile()
     private var started = false
@@ -138,10 +143,8 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
                         load = SessionLoad.Ready(r.content.text(p.verseStart, p.verseEnd ?: p.verseStart), verses, "${r.content.abbreviation} · ${r.content.attribution}")
                     )
                     if (!walk && _ui.value.session == null) begin(request.kind)
-                    runCatching { library.audio(bibleId, p.book, p.chapter) }.getOrDefault(emptyList()).let {
-                        chapterAudio = it
-                        _ui.value = _ui.value.copy(canListen = it.isNotEmpty())
-                    }
+                    // Every translation can be read aloud: the passage is generated when no narration exists.
+                    _ui.value = _ui.value.copy(canListen = true)
                 }
             }
         }
@@ -268,19 +271,32 @@ class GuidedSessionViewModel(application: Application) : AndroidViewModel(applic
 
     private fun playbackId() = "bible:$bibleId:${_ui.value.request?.passage?.usfm}:${_ui.value.request?.passage?.chapter}"
 
-    val listening: StateFlow<Boolean> = PlaybackController.state.map { it.recordingId == playbackId() && it.isPlaying }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /** The passage's reading as the reader sees it: loaded, playing, and which verse is being read. */
+    val reading: StateFlow<ReadAloudState> = combine(PlaybackController.state, _ui) { state, ui ->
+        val queue = readingQueueId(ui)
+        if (queue == null || state.recordingId != queue) ReadAloudState()
+        else ReadAloudState(active = true, playing = state.isPlaying, verse = PassageSpeech.firstVerse(state.queue?.currentSectionId))
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, ReadAloudState())
 
-    /** Plays the chapter's narration from the passage's first verse; pressing again pauses. Uses the reader's own audio. */
+    /** The reading queue for the session's passage in the translation the session shows. */
+    private fun readingQueueId(ui: GuidedUi): String? = ui.request?.passage?.let {
+        ReadingStore.queueId(PassageSpeech.passageId(ScriptureReference(it.book, it.chapter), bibleId))
+    }
+
+    /** Reads the passage aloud from its first verse. When it is already loaded, this pauses or resumes it. */
     fun listen() {
         val request = _ui.value.request ?: return
-        val p = request.passage
-        val narrator = app.getSharedPreferences("bible_reader", android.content.Context.MODE_PRIVATE).getString("narrator", null)
-        val audio = chapterAudio.firstOrNull { it.narrator == narrator } ?: chapterAudio.firstOrNull() ?: return
+        val queue = readingQueueId(_ui.value) ?: return
         val state = PlaybackController.state.value
-        if (state.recordingId == playbackId() && state.isPlaying) { PlaybackController.pause(); return }
-        val title = "${p.display()}"
-        PlaybackController.playUriAt(app, playbackId(), title, Uri.parse(audio.url), p.verseStart?.let { audio.startOf(it) } ?: if (state.recordingId == playbackId()) null else 0L)
+        if (state.recordingId == queue) { PlaybackController.togglePlayPause(); return }
+        val p = request.passage
+        ReadToMe.coordinator(app).startPassage(ScriptureReference(p.book, p.chapter), bibleId, fromVerse = p.verseStart)
+    }
+
+    /** Reads from [verse] to the end of the chapter (tap a verse). */
+    fun readFrom(verse: Int) {
+        val p = _ui.value.request?.passage ?: return
+        ReadToMe.coordinator(app).startPassage(ScriptureReference(p.book, p.chapter), bibleId, fromVerse = verse)
     }
 
     override fun onCleared() {
