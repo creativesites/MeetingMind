@@ -34,7 +34,7 @@ Full list: `agents/PRODUCT.md`. The short version:
 - Generic by default. Personal context only when the person turns it on.
 - Experience first, notes after: a prominent button starts the experience its label names; "Write…" buttons are quiet.
 - A devotional is never empty. The bundled reading is always the fallback.
-- Every note gets its moment, including notes with no speech. Failed and sacred notes stay plain.
+- Every note gets its moment every time it is opened, including notes with no speech, typed notes, failed notes and sacred notes (founder decision, 2026-10-14). See `agents/PRODUCT.md`.
 - Circle content lives on the server. Personal notes stay local.
 - Learning is out of the MVP.
 

@@ -16,9 +16,10 @@
 
 ## Moments (Zuri)
 - First Keep on every note-ready arrival. The chime plays only on the two once-ever moments (the hello sample note and the first real recording).
-- Unveil on every fresh open of a note: Notes list, meeting detail, wrap-up.
-- Every note gets its moment, including notes with no speech.
-- Guards that stay: failed and sacred notes are plain; reduced motion is plain; battery saver and low-end phones get a nod; sermons get the quiet version; a recording in progress defers the moment.
+- Unveil on every open of a note: Notes list, meeting detail, wrap-up, note editor. Every note gets its moment, every time it is opened (founder decision, 2026-10-14, overrides the earlier guards below).
+- Every note gets its moment, including notes with no speech, typed notes, failed notes and sacred notes (founder decision, 2026-10-14). The earlier rule that failed and sacred notes stay plain is withdrawn.
+- Still open: reduced motion and battery saver. The founder has not yet decided whether these keep their plain or nod behaviour (accessibility); until decided, the code keeps them.
+- Sermons get the quiet version; a recording in progress defers the moment.
 - Zuri may share the note screen during a designed moment, but never covers, edits or replaces the user's own words.
 
 ## Experience rules
