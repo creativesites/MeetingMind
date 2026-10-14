@@ -331,7 +331,8 @@ private fun HeroStage(
     val bottom = Color(sky.skyBottom)
     val stars = remember { List(28) { Triple(Random(it * 31 + 7).nextFloat(), Random(it * 17 + 3).nextFloat() * 0.7f, Random(it).nextFloat()) } }
 
-    Box(Modifier.fillMaxWidth().height(338.dp)) {
+    // The 38 dp under the card is for the floating Up next tile; without it the card sits flush.
+    Box(Modifier.fillMaxWidth().height(if (showTile) 338.dp else 300.dp)) {
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -389,7 +390,7 @@ private fun HeroStage(
             }
 
             // The companion, large and in the sky: it leans toward a touch or the phone's tilt (the 3D layer).
-            Box(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 6.dp)) {
+            Box(Modifier.align(Alignment.TopEnd).padding(top = 84.dp, end = 6.dp)) {
                 CompositionLocalProvider(LocalCompanionVolume provides true) {
                     ZuriSlot(
                         CompanionPage.HOME, HeroCompanionSize,
@@ -621,8 +622,8 @@ private fun DrawScope.drawSky(top: Color, bottom: Color, sky: TimeOfDaySky, star
  * that region, peaking high, setting low on the right), clear of the greeting on the left.
  */
 private fun DrawScope.orbCenter(sky: TimeOfDaySky, bob: Float): Offset {
-    // The sun and moon cross the middle of the card, left of the companion, so the companion never covers them.
-    val x = size.width * (0.40f + 0.16f * sky.arc)
+    // The sun and moon cross the left of the card's middle, clear of the companion, which sits lower on the right.
+    val x = size.width * (0.22f + 0.22f * sky.arc)
     val horizon = size.height * 0.64f
     val peak = size.height * 0.24f
     val y = horizon - (horizon - peak) * sky.elevation

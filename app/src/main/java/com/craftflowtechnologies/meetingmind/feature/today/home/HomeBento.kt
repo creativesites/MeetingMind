@@ -190,7 +190,7 @@ private fun CreateTile(onClick: () -> Unit, index: Int, modifier: Modifier = Mod
 }
 
 @Composable
-private fun CircleTile(onClick: () -> Unit, index: Int, modifier: Modifier = Modifier) {
+internal fun CircleTile(onClick: () -> Unit, index: Int, modifier: Modifier = Modifier) {
     SceneTile(index, CircleRingsScene, height = 182.dp, scrim = Paper.copy(alpha = 0.5f), tag = "bento_circles", onClick = onClick, modifier = modifier) {
         TileHeader(Icons.Filled.Groups, "Circles", Color(0xFF2F6F6A))
         Spacer(Modifier.weight(1f))
