@@ -13,6 +13,17 @@ interface ReadPlayer {
     fun setExpected(count: Int)
 }
 
+/**
+ * Hands every player call to the main thread, in order. The shared player (and the Media3 controller
+ * behind it) may only be touched from there, while readings are made on background threads.
+ */
+class MainThreadReadPlayer(private val delegate: ReadPlayer, private val post: (Runnable) -> Unit) : ReadPlayer {
+    override fun play(queueId: String, items: List<QueueItem>, startIndex: Int, startPositionMs: Long, expected: Int) =
+        post { delegate.play(queueId, items, startIndex, startPositionMs, expected) }
+    override fun append(item: QueueItem) = post { delegate.append(item) }
+    override fun setExpected(count: Int) = post { delegate.setExpected(count) }
+}
+
 sealed interface VoiceResult {
     data class Done(val audio: Pcm, val model: String? = null) : VoiceResult
     data class Failed(val message: String, val recovery: RecoveryPlan) : VoiceResult
@@ -38,7 +49,10 @@ data class ReadPlan(
     val genericTitle: Boolean,
     /** Audio of licensed text: kept briefly, outside backups. */
     val ephemeral: Boolean,
-    val settings: ReadToMeSettings
+    val settings: ReadToMeSettings,
+    /** Smart Read: shapes a part's wording just before it is spoken. Null for Read Exactly, which never changes a word. */
+    val shape: (suspend (SpeechSection) -> SpeechSection)? = null,
+    val scriptVersion: Int = 1
 )
 
 data class ResumeTarget(val partIndex: Int, val positionMs: Long)
@@ -63,10 +77,12 @@ class ReadingRunner(private val store: ReadingStore, private val player: ReadPla
         resume: ResumeTarget? = null,
         /** Parts before this index are already in the player's queue (a switch of voice part-way). */
         alreadyQueued: Int = 0,
-        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+        /** How far along the part being made is, 0 to 1. */
+        onPartProgress: (Float) -> Unit = {}
     ): RunOutcome {
         val total = plan.parts.size
-        val settings = FingerprintSettings(plan.mode, voice.provider, voice.fingerprintModel, voice.voiceId, plan.delivery.canonical(), plan.language)
+        val settings = FingerprintSettings(plan.mode, voice.provider, voice.fingerprintModel, voice.voiceId, plan.delivery.canonical(), plan.language, plan.scriptVersion)
         val previous = store.load(plan.noteId)
         val entries = LinkedHashMap<String, SectionEntry>()
         previous?.sections?.forEach { if (it.status == SectionStatus.READY) entries[it.sectionId] = it }
@@ -106,7 +122,7 @@ class ReadingRunner(private val store: ReadingStore, private val player: ReadPla
                 val part = plan.parts[i]
                 val entry = fresh(i) ?: run {
                     onProgress(i, total)
-                    when (val r = voice.synthesize(part.id, fingerprints[i], ReadingPlan.chunks(part, plan.settings), { })) {
+                    when (val r = voice.synthesize(part.id, fingerprints[i], ReadingPlan.chunks(plan.shape?.invoke(part) ?: part, plan.settings), onPartProgress)) {
                         is VoiceResult.Failed -> {
                             entries[part.id] = SectionEntry(part.id, titleOf(plan, part), fingerprints[i], SectionStatus.FAILED, blockIds = part.blockIds, references = part.references, error = r.message)
                             save(model)

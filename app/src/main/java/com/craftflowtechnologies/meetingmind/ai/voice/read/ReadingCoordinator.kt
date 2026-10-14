@@ -2,6 +2,11 @@ package com.craftflowtechnologies.meetingmind.ai.voice.read
 
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
+import com.craftflowtechnologies.meetingmind.ai.common.ReadToMeLog
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.LearningRules
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.Promotion
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadCategory
+import com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -16,7 +21,8 @@ data class LoadedNote(
     val space: NotebookSpace?,
     val source: SpeechSource,
     val facts: NoteFacts,
-    val language: String?
+    val language: String?,
+    val category: ReadCategory = ReadCategory.OTHER
 )
 
 /** Everything the coordinator needs from the phone, so the state machine can be tested with fakes. */
@@ -27,16 +33,26 @@ interface ReadingHost {
     suspend fun environment(): Environment
     fun settings(): ReadToMeSettings
     fun updateSettings(change: (ReadToMeSettings) -> ReadToMeSettings): ReadToMeSettings
+    fun profile(): ReadToMeProfile
+    fun updateProfile(change: (ReadToMeProfile) -> ReadToMeProfile): ReadToMeProfile
     /** The phone's voice. [requireOffline] when the voice must not use the network. */
     fun localVoice(settings: ReadToMeSettings, requireOffline: Boolean): SectionVoice
     /** The Gemini voice; every request is checked again against [routeAllowsCloud] and the live settings. */
     fun geminiVoice(settings: ReadToMeSettings, delivery: DeliverySpec, routeAllowsCloud: Boolean): SectionVoice
+    /** Smart Read's wording step for [noteId]'s reading; [allowCloud] says whether a text model may be used at all. */
+    fun shaper(noteId: String, allowCloud: Boolean, passages: List<String>): com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper
 }
 
 sealed interface ReadingUiState {
     data object Idle : ReadingUiState
     /** Making parts and playing as they arrive. [done] parts are ready out of [total]. */
-    data class Working(val noteId: String, val provider: SpeechProvider, val done: Int, val total: Int, val note: String?) : ReadingUiState
+    data class Working(
+        val noteId: String, val provider: SpeechProvider, val done: Int, val total: Int, val note: String?,
+        /** How far the part being made has got, 0 to 1. */
+        val partFraction: Float = 0f,
+        /** When this run started, so the sheet can say how long it has been waiting. */
+        val startedAtMs: Long = 0L
+    ) : ReadingUiState
     /** Every part is made; playback carries on in the player. */
     data class Finished(val noteId: String, val provider: SpeechProvider, val total: Int, val note: String?, val switchedToPhone: Boolean) : ReadingUiState
     data class NeedsChoice(val noteId: String, val message: String) : ReadingUiState
@@ -66,7 +82,7 @@ data class ReadOffer(
  * [ReadingRunner], and reports a single [ReadingUiState]. A reading keeps one provider from start to
  * end: a failure offers retry or an explicit switch to the phone's voice, never a silent change.
  */
-class ReadingCoordinator(private val host: ReadingHost, private val scope: CoroutineScope) {
+class ReadingCoordinator(private val host: ReadingHost, private val scope: CoroutineScope, private val clock: () -> Long = System::currentTimeMillis) {
 
     private data class Request(val noteId: String, val startSectionId: String?, val choice: ReadChoice, val resume: Boolean)
 
@@ -75,6 +91,15 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
 
     private val _state = MutableStateFlow<ReadingUiState>(ReadingUiState.Idle)
     val state: StateFlow<ReadingUiState> = _state.asStateFlow()
+
+    private val _promotions = MutableStateFlow<List<Promotion>>(emptyList())
+    /** Defaults just learned from the person's repeated choices, for "…will now start with X. Undo." */
+    val promotions: StateFlow<List<Promotion>> = _promotions.asStateFlow()
+
+    fun undoPromotion(p: Promotion) {
+        host.updateProfile { LearningRules.undo(it, p) }
+        _promotions.value = _promotions.value - p
+    }
 
     private var job: Job? = null
     private var lastRequest: Request? = null
@@ -153,7 +178,8 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
         job = scope.launch {
             try { begin(request) } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                _state.value = ReadingUiState.Failed(request.noteId, 0, 0, "Read to Me couldn't start. ${e.message.orEmpty()}".trim(), listOf(Recovery.RETRY), SpeechProvider.LOCAL)
+                ReadToMeLog.w("begin failed: ${e::class.simpleName}: ${e.message}")
+                _state.value = ReadingUiState.Failed(request.noteId, 0, 0, "Read to Me couldn't start (${e::class.simpleName}). ${e.message.orEmpty()}".trim(), listOf(Recovery.RETRY), SpeechProvider.LOCAL)
             }
         }
     }
@@ -164,7 +190,8 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
         job = scope.launch {
             try { execute(s.request, s.plan, voice, s.decision, s.index, s.note, switched) } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                _state.value = ReadingUiState.Failed(s.request.noteId, s.index, s.plan.parts.size, "Read to Me stopped. ${e.message.orEmpty()}".trim(), listOf(Recovery.RETRY), voice.provider)
+                ReadToMeLog.w("resume failed: ${e::class.simpleName}: ${e.message}")
+                _state.value = ReadingUiState.Failed(s.request.noteId, s.index, s.plan.parts.size, "Read to Me stopped (${e::class.simpleName}). ${e.message.orEmpty()}".trim(), listOf(Recovery.RETRY), voice.provider)
             }
         }
     }
@@ -180,12 +207,28 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
             is Prepared.NeedsChoice -> _state.value = ReadingUiState.NeedsChoice(request.noteId, prepared.message)
             is Prepared.NeedsDisclosure -> _state.value = ReadingUiState.NeedsDisclosure(request.noteId, prepared.usingBuiltInKey, prepared.keyTier)
             is Prepared.Ready -> {
+                ReadToMeLog.d("route provider=${prepared.decision.provider} blocks=${prepared.decision.cloudBlocks} sections=${prepared.source.sections.size}")
+                // Learned defaults fill in only what the person left on Automatic; explicit choices always win.
+                val explicit = settings
+                val settings = LearningRules.apply(explicit, note.category, host.profile())
+                val learnedNow = LearningRules.recordUse(host.profile(), note.category, LearningRules.deliberate(explicit))
+                if (learnedNow.profile != host.profile()) host.updateProfile { learnedNow.profile }
+                _promotions.value = learnedNow.promotions
                 val source = ReadingPlan.fromSection(prepared.source, request.startSectionId)
                 val parts = ReadingPlan.parts(source, settings.pauseAfterQuestion == PauseAfterQuestion.UNTIL_RESUME)
                 val delivery = DeliveryResolver.resolve(settings, note.space)
+                // Smart Read may use a text model only where the same rules allow the cloud: licensed Bible text is never
+                // sent (it is locked), so it alone doesn't stop the rewrite of the plain prose around it.
+                val smart = settings.smartRead
+                val cloudRewrite = smart && settings.disclosureAccepted && !settings.prefersLocal && env.profile == ProcessingProfile.INTERNET &&
+                    env.geminiConfigured && env.entitled && (prepared.decision.cloudBlocks - CloudBlock.LICENSED_SCRIPTURE).isEmpty()
+                val shaper = if (smart) host.shaper(request.noteId, cloudRewrite, source.sections.flatMap { it.units }.filter { it.role == SpeechRole.SCRIPTURE && !it.unavailable }.map { it.text }) else null
+                val shapeFn: (suspend (SpeechSection) -> SpeechSection)? = if (shaper == null) null else { part -> shaper.shape(part) }
                 val plan = ReadPlan(
-                    noteId = request.noteId, parts = parts, mode = MODE_EXACT, delivery = delivery, language = note.language,
-                    genericTitle = note.facts.genericTitle, ephemeral = prepared.decision.ephemeralAudio, settings = settings
+                    noteId = request.noteId, parts = parts, mode = if (smart) MODE_SMART else MODE_EXACT, delivery = delivery, language = note.language,
+                    genericTitle = note.facts.genericTitle, ephemeral = prepared.decision.ephemeralAudio, settings = settings,
+                    shape = shapeFn,
+                    scriptVersion = if (smart) com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper.SCRIPT_VERSION else 1
                 )
                 val voice = if (prepared.decision.provider == SpeechProvider.GEMINI) host.geminiVoice(settings, delivery, prepared.decision.cloudAllowed)
                 else host.localVoice(settings, requireOffline = mustStayOffline(env, note.facts))
@@ -201,11 +244,20 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
         val total = plan.parts.size
         val resume = if (request.resume && alreadyQueued == 0) resumeTarget(plan) else null
         val provider = voice.provider
-        _state.value = ReadingUiState.Working(request.noteId, provider, alreadyQueued, total, note)
+        val startedAt = clock()
+        var doneParts = alreadyQueued
+        _state.value = ReadingUiState.Working(request.noteId, provider, alreadyQueued, total, note, 0f, startedAt)
+        ReadToMeLog.d("run start provider=$provider parts=$total alreadyQueued=$alreadyQueued")
         val runner = ReadingRunner(host.store, host.player)
-        when (val outcome = runner.run(plan, voice, resume, alreadyQueued) { done, all ->
-            _state.value = ReadingUiState.Working(request.noteId, provider, done, all, note)
-        }) {
+        val outcome = runner.run(plan, voice, resume, alreadyQueued, onProgress = { done, all ->
+            doneParts = done
+            ReadToMeLog.d("part ready $done/$all after ${clock() - startedAt} ms")
+            _state.value = ReadingUiState.Working(request.noteId, provider, done, all, note, 0f, startedAt)
+        }, onPartProgress = { f ->
+            _state.value = ReadingUiState.Working(request.noteId, provider, doneParts, total, note, f, startedAt)
+        })
+        ReadToMeLog.d("run end ${outcome::class.simpleName} after ${clock() - startedAt} ms")
+        when (outcome) {
             is RunOutcome.Completed -> _state.value = ReadingUiState.Finished(request.noteId, provider, total, note, switched || host.store.load(request.noteId)?.switchedToPhoneAtSection != null)
             is RunOutcome.Failed -> {
                 stalled = Stalled(request, plan, voice, decision, outcome.partIndex, note)
@@ -226,5 +278,6 @@ class ReadingCoordinator(private val host: ReadingHost, private val scope: Corou
 
     companion object {
         const val MODE_EXACT = "exact"
+        const val MODE_SMART = "smart"
     }
 }

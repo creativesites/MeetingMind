@@ -14,6 +14,7 @@ import com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiReadingEngine
 import com.craftflowtechnologies.meetingmind.ai.voice.read.GeminiSectionVoice
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LibraryScriptureSource
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LoadedNote
+import com.craftflowtechnologies.meetingmind.ai.voice.read.MainThreadReadPlayer
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LocalSectionVoice
 import com.craftflowtechnologies.meetingmind.ai.voice.read.LocalSpeechEngine
 import com.craftflowtechnologies.meetingmind.ai.voice.read.NoteFacts
@@ -28,6 +29,9 @@ import com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore
 import com.craftflowtechnologies.meetingmind.ai.voice.read.ScriptureLookup
 import com.craftflowtechnologies.meetingmind.ai.voice.read.ScriptureResolver
 import com.craftflowtechnologies.meetingmind.ai.voice.read.SectionVoice
+import com.craftflowtechnologies.meetingmind.ai.voice.read.smart.RewriteModel
+import com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ScriptStore
+import com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper
 import com.craftflowtechnologies.meetingmind.core.audio.PlaybackController
 import com.craftflowtechnologies.meetingmind.core.audio.QueueItem
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
@@ -54,18 +58,23 @@ class AndroidReadingHost(context: Context) : ReadingHost {
 
     override val store: ReadingStore = ReadingStore.get(app)
 
-    override val player = object : ReadPlayer {
+    override val player: ReadPlayer = MainThreadReadPlayer(object : ReadPlayer {
         override fun play(queueId: String, items: List<QueueItem>, startIndex: Int, startPositionMs: Long, expected: Int) =
             PlaybackController.playQueue(app, queueId, items, startIndex, startPositionMs, expected)
         override fun append(item: QueueItem) = PlaybackController.appendItem(item)
         override fun setExpected(count: Int) = PlaybackController.setExpectedCount(count)
-    }
+    }, post = { r -> mainHandler.post(r) })
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     override suspend fun loadNote(noteId: String, options: ExtractOptions): LoadedNote? {
+        if (noteId.startsWith(PASSAGE_PREFIX)) return loadPassage(noteId, options)
         val db = MeetMindDatabase.getInstance(app)
         val doc = NoteRepository(app, db).getDocument(noteId) ?: return null
         val note = doc.note
-        val resolved = ScriptureResolver(LibraryScriptureSource(ScriptureService(app))).resolve(doc.blocks, doc.scriptureRefs)
+        // A slow or offline Bible lookup must not hold the reading: passages that don't arrive in time read as unavailable.
+        val resolved = kotlinx.coroutines.withTimeoutOrNull(SCRIPTURE_TIMEOUT_MS) {
+            ScriptureResolver(LibraryScriptureSource(ScriptureService(app))).resolve(doc.blocks, doc.scriptureRefs)
+        } ?: emptyMap()
         val source = NoteSpeechExtractor.extract(
             noteTitle = note.title, notePrivate = note.isPrivate, blocks = doc.blocks,
             privateKeys = Workflows.template(note.workflow).privateKeys,
@@ -84,8 +93,31 @@ class AndroidReadingHost(context: Context) : ReadingHost {
                 workPrivacyOffline = !notebookConfidential && WorkPrivacy.mustStayOnDevice(app, noteId = noteId),
                 faithLocked = faithLocked
             ),
-            language = null
+            language = null,
+            category = com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadCategory.of(note.workflow)
         )
+    }
+
+    /** One passage on its own (from the verse sheet or the Study workspace), read in the translation it was opened in. */
+    private suspend fun loadPassage(id: String, options: ExtractOptions): LoadedNote? {
+        val rest = id.removePrefix(PASSAGE_PREFIX)
+        val version = rest.substringBefore(':').toIntOrNull()?.takeIf { it > 0 }
+        val reference = com.craftflowtechnologies.meetingmind.core.scripture.YouVersionScriptureProvider.parsePassageId(rest.substringAfter(':')) ?: return null
+        val ref = com.craftflowtechnologies.meetingmind.core.model.ScriptureRef(
+            id = "r", noteId = id, blockId = "b", bookUsfm = reference.book.usfm, chapter = reference.chapter,
+            verseStart = reference.verseStart, verseEnd = reference.verseEnd, versionId = version,
+            origin = com.craftflowtechnologies.meetingmind.core.model.ScriptureOrigin.USER, createdAt = 0L
+        )
+        val block = com.craftflowtechnologies.meetingmind.core.model.NoteBlock(
+            id = "b", noteId = id, position = 0, type = com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.SCRIPTURE,
+            payload = mapOf(com.craftflowtechnologies.meetingmind.core.model.NoteBlock.PAYLOAD_SCRIPTURE_REF_ID to "r", "reference" to reference.display()),
+            source = com.craftflowtechnologies.meetingmind.core.model.BlockSource.SCRIPTURE
+        )
+        val resolved = kotlinx.coroutines.withTimeoutOrNull(SCRIPTURE_TIMEOUT_MS) {
+            ScriptureResolver(LibraryScriptureSource(ScriptureService(app))).resolve(listOf(block), listOf(ref))
+        } ?: emptyMap()
+        val source = NoteSpeechExtractor.extract(reference.display(), false, listOf(block), emptySet(), ScriptureLookup { resolved[it.id] }, options)
+        return LoadedNote(reference.display(), NotebookSpace.FAITH, source, NoteFacts(false, false, false, false), null)
     }
 
     override suspend fun environment(): Environment = Environment(
@@ -96,6 +128,10 @@ class AndroidReadingHost(context: Context) : ReadingHost {
         usingBuiltInKey = credentials.usingSystemKey()
     )
 
+    private val profileStore = com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfileStore(app)
+    override fun profile() = profileStore.load()
+    override fun updateProfile(change: (com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile) -> com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile) = profileStore.update(change)
+
     override fun settings(): ReadToMeSettings = settingsStore.load()
 
     override fun updateSettings(change: (ReadToMeSettings) -> ReadToMeSettings): ReadToMeSettings = settingsStore.update(change)
@@ -105,15 +141,38 @@ class AndroidReadingHost(context: Context) : ReadingHost {
         locale = Locale.getDefault(), voiceName = settings.localVoice, rate = settings.pace, requireOffline = requireOffline
     )
 
+    override fun shaper(noteId: String, allowCloud: Boolean, passages: List<String>): SmartShaper {
+        val model = if (!allowCloud) null else {
+            val lm = com.craftflowtechnologies.meetingmind.ai.cloud.GeminiLanguageModel(
+                com.craftflowtechnologies.meetingmind.ai.cloud.GeminiHttpTransport(credentials),
+                systemInstruction = "You rewrite short passages from a person's notes so they sound natural read aloud. Follow the rules in the request exactly and reply with only the rewritten text."
+            )
+            val gate = CloudGate(true, { prefs.preferencesFlow.first().processingProfile })
+            RewriteModel { prompt ->
+                if (gate.blockedReason() != null) null
+                else (lm.generate(prompt, 1024) as? com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success)?.value
+            }
+        }
+        return SmartShaper(model, ScriptStore(store.scriptFile(noteId)), passages)
+    }
+
     override fun geminiVoice(settings: ReadToMeSettings, delivery: DeliverySpec, routeAllowsCloud: Boolean): SectionVoice {
         val gate = CloudGate(routeAllowsCloud, { prefs.preferencesFlow.first().processingProfile })
-        val client = GeminiSpeechClient(GeminiInteractions(credentials), gate)
+        // One request may not hold a reading for minutes: it times out and is retried or reported.
+        val http = GeminiInteractions.mediaClient().newBuilder().callTimeout(90, java.util.concurrent.TimeUnit.SECONDS).readTimeout(80, java.util.concurrent.TimeUnit.SECONDS).build()
+        val client = GeminiSpeechClient(GeminiInteractions(credentials, http), gate)
         return GeminiSectionVoice(GeminiReadingEngine(client, File(app.cacheDir, "read_to_me_work").apply { mkdirs() }), settings.geminiVoice, delivery)
     }
 }
 
+private const val SCRIPTURE_TIMEOUT_MS = 10_000L
+private const val PASSAGE_PREFIX = "passage:"
+
 /** The one coordinator for the app, like the player it feeds. */
 object ReadToMe {
+    /** The reading id for one passage in one translation; [ReadToMeSheet] and the coordinator take it where a note id goes. */
+    fun passageId(reference: com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference, versionId: Int?) = "passage:${versionId ?: 0}:${reference.passageId()}"
+
     @Volatile private var shared: ReadingCoordinator? = null
 
     fun coordinator(context: Context): ReadingCoordinator = shared ?: synchronized(this) {

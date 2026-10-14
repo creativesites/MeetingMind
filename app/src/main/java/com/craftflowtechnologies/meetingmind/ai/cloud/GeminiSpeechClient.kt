@@ -57,7 +57,13 @@ class GeminiSpeechClient(
                 permission.blockedReason()?.let {
                     return GeminiResult.Failure(GeminiError(GeminiErrorKind.POLICY_BLOCKED, null, it))
                 }
-                val error = when (val r = interactions.mediaTyped(GeminiInteractions.speechRequest(model, text, style, voice), "audio")) {
+                val sentAt = now()
+                val reply = interactions.mediaTyped(GeminiInteractions.speechRequest(model, text, style, voice), "audio")
+                com.craftflowtechnologies.meetingmind.ai.common.ReadToMeLog.d(
+                    "gemini speak model=$model attempt=$attempt chars=${text.length} ms=${now() - sentAt} -> " +
+                        when (reply) { is GeminiResult.Success -> "ok"; is GeminiResult.Failure -> "${reply.error.kind} http=${reply.error.httpCode}" }
+                )
+                val error = when (val r = reply) {
                     is GeminiResult.Success -> decode(r.value, text)?.let { return GeminiResult.Success(SpeechClip(it.first, model)) }
                         ?: GeminiError(GeminiErrorKind.EMPTY_AUDIO, null, "Gemini's audio was empty or too short for the text.")
                     is GeminiResult.Failure -> r.error

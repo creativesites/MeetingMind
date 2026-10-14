@@ -46,6 +46,8 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 
+private const val SLOW_AFTER_SECONDS = 25
+
 private val PACES = listOf(0.9f to "Slower", 1.0f to "Normal", 1.15f to "Faster")
 
 /** Pace to the nearest of the three offered. */
@@ -66,11 +68,14 @@ fun ReadToMeSheet(noteId: String, onDismiss: () -> Unit) {
     var offer by remember { mutableStateOf<ReadOffer?>(null) }
     var startFrom by remember { mutableStateOf<String?>(null) }
     var started by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    val promotions by coordinator.promotions.collectAsState()
     val state by coordinator.state.collectAsState()
 
     LaunchedEffect(noteId, settings.prefersLocal, settings.disclosureAccepted) { offer = coordinator.offer(noteId) }
 
     fun change(update: (ReadToMeSettings) -> ReadToMeSettings) { settings = settingsStore.update(update) }
+    if (showSettings) ReadToMeSettingsSheet(onDismiss = { showSettings = false })
 
     ModalBottomSheet(
         onDismissRequest = { coordinator.dismiss(); onDismiss() },
@@ -87,15 +92,32 @@ fun ReadToMeSheet(noteId: String, onDismiss: () -> Unit) {
             val own = started || state.noteId() == noteId
             val shown = if (own) state else ReadingUiState.Idle
             when (shown) {
-                is ReadingUiState.Idle -> SetupContent(offer, settings, startFrom, { startFrom = it }, ::change) { resume ->
-                    started = true
-                    coordinator.start(noteId, startFrom, resume = resume)
+                is ReadingUiState.Idle -> {
+                    SetupContent(offer, settings, startFrom, { startFrom = it }, ::change) { resume ->
+                        started = true
+                        coordinator.start(noteId, startFrom, resume = resume)
+                    }
+                    TextAction("Read to Me settings", onClick = { showSettings = true })
                 }
                 is ReadingUiState.Working -> {
-                    val fraction = if (shown.total == 0) 0f else shown.done.toFloat() / shown.total
-                    Text(if (shown.total == 0) "Getting ready…" else if (shown.done == 0) "Preparing the first part…" else "Preparing ${minOf(shown.done + 1, shown.total)} of ${shown.total}", style = MM.type.body, color = MM.colors.ink)
+                    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+                    LaunchedEffect(shown.startedAtMs) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(1_000) } }
+                    val waited = if (shown.startedAtMs > 0) ((now - shown.startedAtMs) / 1000).coerceAtLeast(0) else 0
+                    val fraction = if (shown.total == 0) 0f else ((shown.done + shown.partFraction) / shown.total).coerceIn(0f, 1f)
+                    Text(
+                        when {
+                            shown.total == 0 -> "Getting ready…"
+                            shown.done == 0 -> "Preparing the first part… ${waited}s"
+                            else -> "Preparing ${minOf(shown.done + 1, shown.total)} of ${shown.total} · ${waited}s"
+                        },
+                        style = MM.type.body, color = MM.colors.ink
+                    )
                     LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth(), color = MM.colors.accent, trackColor = MM.colors.track)
                     shown.note?.let { StatusLine(StatusKind.Info, it) }
+                    if (shown.provider == SpeechProvider.GEMINI && shown.done == 0 && waited >= SLOW_AFTER_SECONDS) {
+                        StatusLine(StatusKind.Warning, "Gemini is taking a while. You can keep waiting or use your phone's voice instead.")
+                        SecondaryButton("Use my phone's voice", onClick = coordinator::choosePhoneVoice, modifier = Modifier.fillMaxWidth())
+                    }
                     Text("Playing starts after the first part. You can close this; the rest keeps getting ready.", style = MM.type.caption, color = MM.colors.inkMuted)
                     SecondaryButton("Stop preparing", onClick = { coordinator.cancel(); started = false }, modifier = Modifier.fillMaxWidth())
                 }
@@ -103,6 +125,10 @@ fun ReadToMeSheet(noteId: String, onDismiss: () -> Unit) {
                     StatusLine(StatusKind.Info, "Playing with ${if (shown.provider == SpeechProvider.GEMINI) "the Gemini voice" else "your phone's voice"}. The player at the bottom has the controls.")
                     if (shown.switchedToPhone) StatusLine(StatusKind.Warning, "Part of this reading uses your phone's voice because you switched.")
                     shown.note?.let { StatusLine(StatusKind.Info, it) }
+                    promotions.forEach { p ->
+                        StatusLine(StatusKind.Info, p.message, actionLabel = "Undo", onAction = { coordinator.undoPromotion(p) })
+                    }
+                    ChangesSection(noteId)
                     PrimaryButton("Done", onClick = { coordinator.dismiss(); onDismiss() }, modifier = Modifier.fillMaxWidth())
                 }
                 is ReadingUiState.NeedsChoice -> {
@@ -189,6 +215,17 @@ private fun SetupContent(
     }
     if (offer.skippedCount > 0) Text("${offer.skippedCount} items such as images or embeds aren't read.", style = MM.type.caption, color = MM.colors.inkMuted)
 
+    Text("Wording", style = MM.type.bodyStrong, color = MM.colors.ink)
+    SegmentedControl(listOf("Smart Read", "Read Exactly"), if (settings.smartRead) 0 else 1, { i -> change { it.copy(smartRead = i == 0) } })
+    Text(
+        when {
+            !settings.smartRead -> "Reads your words exactly as written."
+            provider == SpeechProvider.GEMINI && settings.disclosureAccepted -> "Smoother wording for listening. Scripture, quotes, transcripts and your own prayers and notes are never reworded."
+            else -> "Smoother wording for listening. Without the Gemini voice it only spells out shorthand such as “e.g.”. Scripture, quotes and your own writing are never reworded."
+        },
+        style = MM.type.caption, color = MM.colors.inkMuted
+    )
+
     if (offer.sections.size > 1) {
         Text("Start from", style = MM.type.bodyStrong, color = MM.colors.ink)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
@@ -204,7 +241,7 @@ private fun SetupContent(
             MMChip(preset.label, selected = settings.preset == preset, onClick = { change { it.copy(preset = preset) } })
         }
     }
-    if (settings.preset == DeliveryPreset.AUTO) Text("Automatic picks a plain, neutral style for this kind of note.", style = MM.type.caption, color = MM.colors.inkMuted)
+    if (settings.preset == DeliveryPreset.AUTO) Text("Automatic uses the style you usually pick for this kind of note, or a plain, neutral one.", style = MM.type.caption, color = MM.colors.inkMuted)
     SegmentedControl(PACES.map { it.second }, paceIndex(settings.pace), { i -> change { it.copy(pace = PACES[i].first) } })
 
     if (faith) {
@@ -221,4 +258,27 @@ private fun SetupContent(
 
     PrimaryButton("Listen", onClick = { onStart(false) }, modifier = Modifier.fillMaxWidth())
     if (offer.hasSavedPlace) TextAction("Continue where I left off", onClick = { onStart(true) })
+}
+
+/** "See what changed": what Smart Read did to the wording, and anything it left as written and why. */
+@Composable
+private fun ChangesSection(noteId: String) {
+    val context = LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    val changes = remember(noteId) { com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ScriptStore(com.craftflowtechnologies.meetingmind.ai.voice.read.ReadingStore.get(context).scriptFile(noteId)).all() }
+    val shown = changes.filter { it.kind != com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ChangeKind.AS_WRITTEN || it.reason != null }
+    if (shown.isEmpty()) return
+    val reworded = shown.count { it.kind != com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ChangeKind.AS_WRITTEN }
+    TextAction(if (open) "Hide what changed" else "See what changed ($reworded reworded, ${shown.size - reworded} read as written)", onClick = { open = !open })
+    if (open) Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+        shown.forEach { c ->
+            val asWritten = c.kind == com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ChangeKind.AS_WRITTEN
+            Text(
+                if (asWritten) "Read as written${c.reason?.let { " ($it)" }.orEmpty()}" else if (c.kind == com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ChangeKind.SPOKEN_FORM) "Spelled out" else "Reworded",
+                style = MM.type.caption, color = MM.colors.accent
+            )
+            Text("Your words: ${c.before}", style = MM.type.secondary, color = MM.colors.inkSecondary)
+            if (!asWritten) Text("Read as: ${c.after}", style = MM.type.secondary, color = MM.colors.ink)
+        }
+    }
 }

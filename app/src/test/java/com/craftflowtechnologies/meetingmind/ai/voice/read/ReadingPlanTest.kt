@@ -78,4 +78,24 @@ class ReadingPlanTest {
         assertTrue(ReadingPlan.chunks(SpeechSection("s", "t", emptyList()), settings).isEmpty())
         assertNull(null)
     }
+
+    @Test fun `parts stay small with a short first part and keep every word in order`() {
+        val long = (1..40).joinToString(" ") { "Sentence number $it is here." }
+        val b = Blocks().apply {
+            add(com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.HEADING_2, "One", id = "h1")
+            add(com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.PARAGRAPH, long, id = "p1")
+            add(com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.PARAGRAPH, long, id = "p2")
+            add(com.craftflowtechnologies.meetingmind.core.model.NoteBlockType.PARAGRAPH, "Short closing line.", id = "p3")
+        }
+        val src = extract(b)
+        val parts = ReadingPlan.parts(src, false)
+        fun len(p: SpeechSection) = p.units.sumOf { it.spoken.length }
+        assertTrue("first part is short: ${len(parts[0])}", len(parts[0]) <= ReadingPlan.FIRST_PART_CHARS + 60)
+        assertTrue(parts.drop(1).all { len(it) <= ReadingPlan.PART_CHARS + 1200 })
+        assertTrue(parts.size >= 3)
+        assertEquals(src.sections.flatMap { it.units }.joinToString(" ") { it.spoken }.split(Regex("\\s+")), parts.flatMap { it.units }.joinToString(" ") { it.spoken }.split(Regex("\\s+")))
+        assertEquals(parts.map { it.id }, ReadingPlan.parts(src, false).map { it.id })
+        assertEquals(parts.size, parts.map { it.id }.toSet().size)
+        assertTrue("a heading never sits alone", parts.none { p -> p.units.all { it.role == SpeechRole.HEADING } })
+    }
 }

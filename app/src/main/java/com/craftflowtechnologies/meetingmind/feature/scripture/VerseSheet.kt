@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
@@ -177,6 +178,7 @@ fun VerseSheet(
     val result = versionId?.let { rememberPassage(reference, it) }
     var showCollections by remember { mutableStateOf(false) }
     var readChapter by remember { mutableStateOf(false) }
+    var listenOpen by remember { mutableStateOf(false) }
     // The translations this app is licensed for, from the service; the built-in list until it answers.
     var versions by remember { mutableStateOf(BibleVersions.common.filter { it.id == BibleVersions.DEFAULT_ID }) }
     LaunchedEffect(Unit) {
@@ -220,6 +222,9 @@ fun VerseSheet(
                     SheetAction("Play", Icons.Filled.PlayArrow, primary = true, modifier = Modifier.weight(1f)) { onPlay(); onDismiss() }
                 }
                 SheetAction("Read", Icons.AutoMirrored.Filled.MenuBook, modifier = Modifier.weight(1f)) { readChapter = true }
+                if (result is PassageResult.Found && com.craftflowtechnologies.meetingmind.ai.voice.read.ReadToMeFlags.enabled(context)) {
+                    SheetAction("Listen", Icons.Filled.GraphicEq, modifier = Modifier.weight(1f)) { listenOpen = true }
+                }
                 SheetAction("Save", Icons.Filled.BookmarkAdd, modifier = Modifier.weight(1f)) { showCollections = true }
                 SheetAction("Copy", Icons.Filled.ContentCopy, modifier = Modifier.weight(1f)) {
                     val found = result as? PassageResult.Found
@@ -233,6 +238,9 @@ fun VerseSheet(
             }
         }
     }
+    if (listenOpen) com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMeSheet(
+        com.craftflowtechnologies.meetingmind.feature.readtome.ReadToMe.passageId(reference, versionId), onDismiss = { listenOpen = false }
+    )
     if (readChapter) {
         com.craftflowtechnologies.meetingmind.feature.bible.BibleDialog(initialReference = reference, onDismiss = { readChapter = false })
     }

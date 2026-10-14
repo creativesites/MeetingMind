@@ -30,11 +30,12 @@ private class CPlayer : ReadPlayer {
     override fun setExpected(count: Int) = Unit
 }
 
-private class CVoice(override val provider: SpeechProvider, val failOn: MutableSet<String> = mutableSetOf()) : SectionVoice {
+private class CVoice(override val provider: SpeechProvider, val failOn: MutableSet<String> = mutableSetOf(), val hang: kotlinx.coroutines.CompletableDeferred<Unit>? = null) : SectionVoice {
     override val fingerprintModel = "fake"
     override val voiceId = "v"
     val made = mutableListOf<String>()
     override suspend fun synthesize(partId: String, fingerprint: String, chunks: List<SpeechChunk>, onProgress: (Float) -> Unit): VoiceResult {
+        hang?.await()
         if (partId in failOn) return VoiceResult.Failed("down", RecoveryPlan("Gemini voice isn't available right now.", listOf(Recovery.RETRY)))
         made += partId
         return VoiceResult.Done(Pcm(ShortArray(12000) { (it % 40).toShort() }, 24000))
@@ -49,15 +50,23 @@ private class CHost(
     var env: Environment,
     var settings: ReadToMeSettings = ReadToMeSettings(disclosureAccepted = true)
 ) : ReadingHost {
-    val gemini = CVoice(SpeechProvider.GEMINI)
+    var gemini = CVoice(SpeechProvider.GEMINI)
     val local = CVoice(SpeechProvider.LOCAL)
     var geminiCreatedWithCloudAllowed: Boolean? = null
     var localOffline: Boolean? = null
     override suspend fun loadNote(noteId: String, options: ExtractOptions) = note
     override suspend fun environment() = env
     override fun settings() = settings
+    var profile = com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile()
+    override fun profile() = profile
+    override fun updateProfile(change: (com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile) -> com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile): com.craftflowtechnologies.meetingmind.ai.voice.read.profile.ReadToMeProfile { profile = change(profile); return profile }
     override fun updateSettings(change: (ReadToMeSettings) -> ReadToMeSettings): ReadToMeSettings { settings = change(settings); return settings }
     override fun localVoice(settings: ReadToMeSettings, requireOffline: Boolean): SectionVoice { localOffline = requireOffline; return local }
+    var shaperAllowCloud: Boolean? = null
+    override fun shaper(noteId: String, allowCloud: Boolean, passages: List<String>): com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper {
+        shaperAllowCloud = allowCloud
+        return com.craftflowtechnologies.meetingmind.ai.voice.read.smart.SmartShaper(null, com.craftflowtechnologies.meetingmind.ai.voice.read.smart.ScriptStore(store.scriptFile(noteId)), passages)
+    }
     override fun geminiVoice(settings: ReadToMeSettings, delivery: DeliverySpec, routeAllowsCloud: Boolean): SectionVoice { geminiCreatedWithCloudAllowed = routeAllowsCloud; return gemini }
 }
 
@@ -210,5 +219,45 @@ class ReadingCoordinatorTest {
         assertEquals(listOf("h1" to "One", "h2" to "Two"), offer.sections)
         assertEquals(SpeechProvider.GEMINI, offer.provider)
         assertTrue(host.gemini.made.isEmpty())
+    }
+
+    @Test fun `a hung Gemini request can be left for the phone voice by the person`() = scope.runTest {
+        host.gemini = CVoice(SpeechProvider.GEMINI, hang = kotlinx.coroutines.CompletableDeferred())
+        go { coordinator.start("n1") }
+        val working = coordinator.state.value as ReadingUiState.Working
+        assertEquals(SpeechProvider.GEMINI, working.provider)
+        assertEquals(0, working.done)
+        go { coordinator.choosePhoneVoice() }
+        val done = coordinator.state.value as ReadingUiState.Finished
+        assertEquals(SpeechProvider.LOCAL, done.provider)
+        assertEquals(listOf("h1", "h2"), host.local.made)
+    }
+
+    @Test fun `Smart Read may use a text model only where the cloud is allowed`() = scope.runTest {
+        go { coordinator.start("n1") }
+        assertEquals(true, host.shaperAllowCloud)
+        host.shaperAllowCloud = null
+        host.env = online.copy(profile = ProcessingProfile.OFFLINE)
+        go { coordinator.start("n1") }
+        assertEquals(false, host.shaperAllowCloud)
+        host.shaperAllowCloud = null
+        host.env = online
+        host.note = loaded(facts.copy(notePrivate = true))
+        go { coordinator.start("n1") }
+        assertEquals(false, host.shaperAllowCloud)
+    }
+
+    @Test fun `Read Exactly never builds the wording step`() = scope.runTest {
+        host.settings = host.settings.copy(smartRead = false)
+        host.shaperAllowCloud = null
+        go { coordinator.start("n1") }
+        assertEquals(null, host.shaperAllowCloud)
+        assertEquals("exact", host.store.load("n1")!!.mode)
+    }
+
+    @Test fun `phone voice choice with disclosure not accepted keeps Smart Read off the cloud`() = scope.runTest {
+        host.settings = host.settings.copy(disclosureAccepted = false, prefersLocal = true)
+        go { coordinator.start("n1") }
+        assertEquals(false, host.shaperAllowCloud)
     }
 }
