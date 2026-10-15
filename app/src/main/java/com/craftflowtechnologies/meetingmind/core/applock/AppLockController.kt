@@ -110,6 +110,6 @@ class AppLockController(
          * the share sheet, the photo picker or a quick app switch doesn't ask again; short enough
          * that leaving the phone on a table does. One constant — change it here.
          */
-        const val DEFAULT_GRACE_MS = 30_000L
+        const val DEFAULT_GRACE_MS = 5 * 60_000L // 5 minutes
     }
 }

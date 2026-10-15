@@ -125,19 +125,30 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     val tags: StateFlow<List<Tag>> = notes.observeDocument(noteId).map { it?.tags.orEmpty() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** Scripture reference id to the translation it was saved with (only those pinned to one). The card shows that translation, as export and Read to Me do. */
+    val scriptureVersions: StateFlow<Map<String, Int>> = notes.observeDocument(noteId)
+        .map { doc -> doc?.scriptureRefs.orEmpty().mapNotNull { r -> r.versionId?.let { r.id to it } }.toMap() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
     val allTags: StateFlow<List<Tag>> = notes.observeTags().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val notebooks: StateFlow<List<Notebook>> = notes.observeNotebooks().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val backlinks: StateFlow<List<Note>> = notes.observeBacklinks(noteId).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val recordings: StateFlow<Map<String, RecordingCard>> = database.noteDao().observeMeetingsForNote(noteId)
+    // Null until the database has answered, so the moment never plans on the empty first frame.
+    private val recordingCards = database.noteDao().observeMeetingsForNote(noteId)
         .map { list ->
             list.associate {
                 it.id to RecordingCard(it.id, it.title, it.durationMs, it.status, it.summaryText, it.audioFilePath)
             }
         }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val recordings: StateFlow<Map<String, RecordingCard>> = recordingCards.map { it.orEmpty() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    /** False until the note's recordings have been read. */
+    val recordingsLoaded: StateFlow<Boolean> = recordingCards.map { it != null }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** Titles of notes that NOTE_LINK blocks point to, kept current if a linked note is renamed. */
     val linkedTitles: StateFlow<Map<String, String>> = _blocks
@@ -900,6 +911,72 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         )
     }
 
+    /** Which part of a recording "Insert from a recording" adds. */
+    enum class RecordingContent { SUMMARY, TRANSCRIPT }
+
+    /**
+     * Adds a recording's summary or transcript as blocks after the focused block (or at the end), as one
+     * undoable step. The transcript is the text the app shows, with speakers' current names.
+     */
+    fun insertFromRecording(meetingId: String, what: RecordingContent) {
+        viewModelScope.launch {
+            val blocks = withContext(Dispatchers.IO) { recordingBlocks(meetingId, what) }
+            if (blocks.isEmpty()) {
+                _message.value = if (what == RecordingContent.SUMMARY) "This recording has no summary yet" else "This recording has no transcript yet"
+                return@launch
+            }
+            insert(blocks)
+        }
+    }
+
+    private suspend fun recordingBlocks(meetingId: String, what: RecordingContent): List<NoteBlock> {
+        val segments = database.transcriptDao().getSegmentsForMeetingDirect(meetingId).map {
+            com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment(
+                id = it.id, meetingId = it.meetingId, speakerId = it.speakerId, speakerName = it.speakerName, startMs = it.startMs,
+                endMs = it.endMs, text = it.text, confidence = it.confidence, isUserEdited = it.isUserEdited, cleanedText = it.cleanedText
+            )
+        }
+        return when (what) {
+            RecordingContent.TRANSCRIPT -> {
+                val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId).map {
+                    com.craftflowtechnologies.meetingmind.core.model.Speaker(it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence)
+                }
+                val body = com.craftflowtechnologies.meetingmind.core.notes.TranscriptBlocks.build(noteId, meetingId, segments, speakers)
+                if (body.isEmpty()) emptyList() else {
+                    val title = recordings.value.takeIf { it.size > 1 }?.get(meetingId)?.title?.takeIf { it.isNotBlank() }
+                    listOf(headingBlock(if (title != null) "Transcript: $title" else "Transcript")) + body
+                }
+            }
+            RecordingContent.SUMMARY -> {
+                fun ids(json: String) = runCatching { org.json.JSONArray(json).let { a -> (0 until a.length()).map { a.getString(it) } } }.getOrDefault(emptyList())
+                val meeting = database.meetingDao().getMeetingById(meetingId)
+                com.craftflowtechnologies.meetingmind.core.notes.SummaryBlocks.build(
+                    noteId, meetingId, meeting?.summaryText,
+                    decisions = database.decisionDao().getDecisionsForMeetingDirect(meetingId).map {
+                        com.craftflowtechnologies.meetingmind.core.model.Decision(it.id, it.meetingId, it.text, sourceSegmentIds = ids(it.sourceSegmentIdsJson))
+                    },
+                    actionItems = database.actionItemDao().getActionItemsForMeetingDirect(meetingId).map {
+                        com.craftflowtechnologies.meetingmind.core.model.ActionItem(
+                            it.id, it.meetingId, it.task, assigneeName = it.assigneeName, deadline = it.deadline,
+                            isCompleted = it.isCompleted, sourceSegmentIds = ids(it.sourceSegmentIdsJson)
+                        )
+                    },
+                    questions = database.questionDao().getQuestionsForMeetingDirect(meetingId).map {
+                        com.craftflowtechnologies.meetingmind.core.model.Question(
+                            it.id, it.meetingId, it.text, resolved = it.resolved, answer = it.answer, sourceSegmentIds = ids(it.sourceSegmentIdsJson)
+                        )
+                    },
+                    segmentStarts = segments.associate { it.id to it.startMs }
+                )
+            }
+        }
+    }
+
+    private fun headingBlock(text: String) = NoteBlock(
+        id = NoteRepository.newId("block"), noteId = noteId, position = 0, type = NoteBlockType.HEADING_2,
+        content = RichText.plain(text), source = BlockSource.TRANSCRIPT
+    )
+
     suspend fun excerptCandidates(): List<ExcerptCandidate> = withContext(Dispatchers.IO) {
         recordings.value.values.flatMap { card ->
             database.transcriptDao().getSegmentsForMeetingDirect(card.meetingId).map {
@@ -1189,9 +1266,16 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
     }
 
     fun applyOrganized(jobId: String, result: com.craftflowtechnologies.meetingmind.ai.notes.NoteAiOutcome.Sections) {
-        snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, "Organise")
-        update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.organized(_blocks.value, noteId, result))
-        dismissAi(jobId); _message.value = "Organised — Undo puts it back as it was"
+        val job = aiJobs.value.firstOrNull { it.id == jobId }
+        if (job?.tool == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.STUDY_GUIDE) {
+            snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, "Discussion guide")
+            update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.withStudyGuide(_blocks.value, noteId, result))
+            dismissAi(jobId); _message.value = "Discussion guide added"
+        } else {
+            snapshotBefore(com.craftflowtechnologies.meetingmind.core.notes.VersionReason.BEFORE_AI, "Organise")
+            update(com.craftflowtechnologies.meetingmind.ai.notes.NoteAiApply.organized(_blocks.value, noteId, result))
+            dismissAi(jobId); _message.value = "Organised — Undo puts it back as it was"
+        }
     }
 
     /** Puts the caret in [blockId] at [cursor]. */

@@ -15,7 +15,7 @@ import org.junit.Test
 
 class AppearanceTest {
     @Test fun roundTripsEveryChoice() {
-        val a = Appearance(AccentChoice.ROSE, TextSize.LARGE, HomeStyle.FOCUS, setOf(HomeSection.STORIES, HomeSection.FOR_YOU))
+        val a = Appearance(AccentChoice.ROSE, TextSize.LARGE, HomeStyle.CALM, setOf(HomeSection.STORIES, HomeSection.FOR_YOU))
         assertEquals(a, Appearance.decode(a.encode()))
         assertEquals(Appearance(), Appearance.decode(Appearance().encode()))
     }
@@ -23,11 +23,35 @@ class AppearanceTest {
     @Test fun unreadableValuesFallBackFieldByField() {
         assertEquals(Appearance(), Appearance.decode(null))
         assertEquals(Appearance(), Appearance.decode("garbage"))
-        val partial = Appearance.decode("TEAL|HUGE|FOCUS|STORIES,NOPE")
+        val partial = Appearance.decode("TEAL|HUGE|CALM|STORIES,NOPE")
         assertEquals(AccentChoice.TEAL, partial.accent)
         assertEquals(TextSize.DEFAULT, partial.textSize)
-        assertEquals(HomeStyle.FOCUS, partial.homeStyle)
+        assertEquals(HomeStyle.CALM, partial.homeStyle)
         assertEquals(setOf(HomeSection.STORIES), partial.hidden)
+    }
+
+    @Test fun newAndExistingInstallsBothOpenToday() {
+        assertEquals(HomeStyle.TODAY, Appearance.decode(null, existingInstall = true).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode("TEAL|DEFAULT||", existingInstall = true).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode(null, existingInstall = false).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode(null).homeStyle)
+    }
+
+    @Test fun aStoredChoiceOfASelectableHomeWins() {
+        val stored = Appearance(homeStyle = HomeStyle.CALM).encode()
+        assertEquals(HomeStyle.CALM, Appearance.decode(stored, existingInstall = true).homeStyle)
+        assertEquals(HomeStyle.CALM, Appearance.decode(stored, existingInstall = false).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.TODAY).encode()).homeStyle)
+    }
+
+    @Test fun retiredHomesOpenToday() {
+        // Everyday and Focus are no longer offered: a saved choice of either opens Today.
+        assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.FOCUS).encode()).homeStyle)
+        assertEquals(HomeStyle.TODAY, Appearance.decode(Appearance(homeStyle = HomeStyle.EVERYDAY).encode()).homeStyle)
+    }
+
+    @Test fun onlyTheThreeHomesAreSelectable() {
+        assertEquals(listOf(HomeStyle.TODAY, HomeStyle.PROFESSIONAL, HomeStyle.CALM), HomeStyle.SELECTABLE)
     }
 
     @Test fun accentRecolorsBothPalettesAndKeepsTheRest() {
@@ -47,5 +71,35 @@ class AppearanceTest {
         assertEquals(HomeStyle.TODAY, a.homeStyle)
         assertTrue(HomeSection.entries.all { a.shows(it) })
         assertFalse(a.copy(hidden = setOf(HomeSection.TIMELINE)).shows(HomeSection.TIMELINE))
+    }
+}
+
+/** The accent is a token: every choice must read on both themes (docs/PLAN_PROFESSIONAL.md §8.7). */
+class AccentTokenTest {
+    private fun lum(c: androidx.compose.ui.graphics.Color): Double {
+        fun ch(v: Float) = v.toDouble().let { if (it <= 0.03928) it / 12.92 else Math.pow((it + 0.055) / 1.055, 2.4) }
+        return 0.2126 * ch(c.red) + 0.7152 * ch(c.green) + 0.0722 * ch(c.blue)
+    }
+    private fun contrast(a: androidx.compose.ui.graphics.Color, b: androidx.compose.ui.graphics.Color): Double =
+        (maxOf(lum(a), lum(b)) + 0.05) / (minOf(lum(a), lum(b)) + 0.05)
+
+    @org.junit.Test fun theProfessionalChoicesAreOffered() {
+        val names = com.craftflowtechnologies.meetingmind.ui.theme.AccentChoice.entries.map { it.name }
+        listOf("INDIGO", "TEAL", "SLATE", "EMERALD", "CRIMSON").forEach { org.junit.Assert.assertTrue("$it missing", it in names) }
+    }
+
+    @org.junit.Test fun everyAccentReadsOnBothThemes() {
+        com.craftflowtechnologies.meetingmind.ui.theme.AccentChoice.entries.forEach { a ->
+            val dark = a.on(com.craftflowtechnologies.meetingmind.ui.theme.GraphiteColors)
+            val light = a.on(com.craftflowtechnologies.meetingmind.ui.theme.PaperColors)
+            org.junit.Assert.assertTrue("${a.name} on Graphite", contrast(dark.accent, dark.background) >= 3.0)
+            org.junit.Assert.assertTrue("${a.name} on Paper", contrast(light.accent, light.background) >= 3.0)
+            org.junit.Assert.assertNotEquals(dark.accent, light.accent)
+        }
+    }
+
+    @org.junit.Test fun aSavedChoiceSurvivesItsEncoding() {
+        val a = com.craftflowtechnologies.meetingmind.ui.theme.Appearance(accent = com.craftflowtechnologies.meetingmind.ui.theme.AccentChoice.CRIMSON)
+        org.junit.Assert.assertEquals(a, com.craftflowtechnologies.meetingmind.ui.theme.Appearance.decode(a.encode()))
     }
 }

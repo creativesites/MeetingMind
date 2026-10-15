@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalAsk
 import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalUnavailable
 import com.craftflowtechnologies.meetingmind.ai.devotional.DevotionalWriter
+import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiCredentialStore
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -30,12 +31,20 @@ class DevotionalDayTest {
     private val date = LocalDate.now()
     private val day = LocalDay.of(date)
 
+    private var builtInKey: String? = null
+
     @Before fun setUp() {
         db = Room.inMemoryDatabaseBuilder(context, MeetMindDatabase::class.java).allowMainThreadQueries().build()
         MeetMindDatabase.setInstanceForTest(db)
         ClassicDevotionals.useForTest(java.io.File("src/main/assets/${ClassicDevotionals.ASSET}").inputStream().use { ClassicDevotionals.parse(java.util.zip.GZIPInputStream(it)) })
+        // "The writers on offer" with no AI set up: a tester key built into the app would offer Gemini.
+        builtInKey = GeminiCredentialStore.systemKey
+        GeminiCredentialStore.systemKey = null
     }
-    @After fun tearDown() { MeetMindDatabase.setInstanceForTest(null); db.close(); ClassicDevotionals.useForTest(null) }
+    @After fun tearDown() {
+        GeminiCredentialStore.systemKey = builtInKey
+        MeetMindDatabase.setInstanceForTest(null); db.close(); ClassicDevotionals.useForTest(null)
+    }
 
     @Test fun `new ones are added to the day, a failed one changes nothing, and any can become today's`() = runBlocking {
         val repo = DevotionalRepository(context, db)

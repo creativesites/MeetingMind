@@ -26,7 +26,7 @@ class ScriptureService(private val context: Context, private val provider: Scrip
     suspend fun passage(reference: ScriptureReference, versionId: Int? = null): PassageResult =
         provider.passage(reference, versionId ?: defaultVersionId())
 
-    /** Today's verse: YouVersion's when reachable, else the key verse of the day's classic reading — so it works offline. */
+    /** Today's verse: the key verse of the day's classic reading, so it works offline. */
     suspend fun verseOfTheDay(dayOfYear: Int): ScriptureReference? =
         runCatching { provider.verseOfTheDay(dayOfYear) }.getOrNull()
             ?: com.craftflowtechnologies.meetingmind.core.devotional.ClassicDevotionals.get(context.applicationContext)
@@ -46,10 +46,10 @@ class ScriptureService(private val context: Context, private val provider: Scrip
     companion object {
         @Volatile private var shared: BibleLibrary? = null
 
-        /** One library per process: the YouVersion session cache in front, the phone's store behind. */
+        /** One library per process: the open catalogue and the phone's store. */
         fun library(context: Context): BibleLibrary = shared ?: synchronized(this) {
             shared ?: BibleLibrary(
-                YouVersionScriptureProvider(), BibleStore.get(context.applicationContext),
+                NoRemoteBible, BibleStore.get(context.applicationContext),
                 HelloAoClient(), java.io.File(context.applicationContext.filesDir, "helloao_catalog.json")
             ).also { shared = it }
         }
@@ -58,6 +58,3 @@ class ScriptureService(private val context: Context, private val provider: Scrip
 
 fun ScriptureRef.toReference(): ScriptureReference? =
     BibleBooks.byUsfm(bookUsfm)?.let { ScriptureReference(it, chapter, verseStart, verseEnd) }
-
-/** A link that opens the passage in the Bible app, or on bible.com when it isn't installed. */
-fun ScriptureReference.webLink(versionId: Int): String = "https://www.bible.com/bible/$versionId/${passageId().substringBefore('-')}"

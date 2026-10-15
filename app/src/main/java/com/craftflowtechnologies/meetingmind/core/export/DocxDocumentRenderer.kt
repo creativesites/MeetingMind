@@ -67,6 +67,7 @@ object DocxDocumentRenderer {
         fun writeAll() {
             paragraph(style = "Title", runs = plainRuns(document.title.ifBlank { "Untitled" }))
             document.subtitle?.let { paragraph(style = "Subtitle", runs = plainRuns(it)) }
+            document.statusChip?.let { paragraph(runs = run(it.label, bold = true, color = if (it.attention) "B45309" else ACCENT)) }
 
             var previousNumbered = false
             for (block in document.blocks) {
@@ -109,6 +110,7 @@ object DocxDocumentRenderer {
                     paragraph(style = "Fact", runs = run("$k: ", bold = true) + run(v))
                 }
                 ExportBlock.Divider -> divider()
+                ExportBlock.PageBreak -> body.append("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>")
             }
         }
 

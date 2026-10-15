@@ -66,6 +66,7 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
 import com.craftflowtechnologies.meetingmind.ui.theme.LocalMMColors
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -86,6 +87,8 @@ sealed class ArchiveFilter(val label: String) {
     data object All : ArchiveFilter("All")
     data object Favourites : ArchiveFilter("Favourites")
     data object Evenings : ArchiveFilter("Evenings")
+    /** Only the days the person wrote a reflection on. */
+    data object Reflections : ArchiveFilter("With my reflections")
     data class Format(val format: com.craftflowtechnologies.meetingmind.core.devotional.DevotionalFormat) : ArchiveFilter(format.label)
     data class Series(val title: String) : ArchiveFilter(title)
 
@@ -93,6 +96,7 @@ sealed class ArchiveFilter(val label: String) {
         All -> true
         Favourites -> i.favourite
         Evenings -> i.evening
+        Reflections -> i.hasReflection
         is Format -> i.format == format
         is Series -> i.series == title
     }
@@ -114,6 +118,7 @@ fun DevotionalArchive(items: List<ArchiveItem>?, onNavigateBack: () -> Unit, onO
     val filters = remember(all) {
         buildList<ArchiveFilter> {
             add(ArchiveFilter.All); add(ArchiveFilter.Favourites)
+            if (all.any { it.hasReflection }) add(ArchiveFilter.Reflections)
             if (all.any { it.evening }) add(ArchiveFilter.Evenings)
             all.mapNotNull { it.format }.distinct().forEach { add(ArchiveFilter.Format(it)) }
             all.mapNotNull { it.series }.distinct().forEach { add(ArchiveFilter.Series(it)) }
@@ -197,6 +202,11 @@ private fun ArchiveRow(i: ArchiveItem, onOpen: (String) -> Unit) {
                 Text(i.title, fontSize = 16.sp, lineHeight = 21.sp, color = Ink, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val meta = listOfNotNull(i.passage, i.format?.label, i.series).joinToString(" · ")
                 if (meta.isNotBlank()) Text(meta, fontSize = 12.5.sp, color = InkSecondary, modifier = Modifier.padding(top = 3.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // The journal side of the archive: the first line of what they wrote.
+                i.reflectionLine?.let { line ->
+                    Text(line, style = MM.type.secondary, color = MM.colors.goldInk, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                        modifier = Modifier.padding(top = MM.space.xs).testTag("archive_reflection"), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             if (i.favourite) Icon(Icons.Filled.Star, contentDescription = "Favourite", tint = FaithGold, modifier = Modifier.padding(start = 8.dp).size(16.dp))
         }

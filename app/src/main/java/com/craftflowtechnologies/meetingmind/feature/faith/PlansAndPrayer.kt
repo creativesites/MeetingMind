@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -201,7 +202,7 @@ fun PrayingForCard(vm: FaithExtrasViewModel, onOpenList: () -> Unit) {
 // ---------------------------------------------------------------- screens
 
 @Composable
-fun ReadingPlansScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit, onRead: (ScriptureReference) -> Unit) {
+fun ReadingPlansScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit, onRead: (ScriptureReference) -> Unit, onReadDay: ((ReadingPlan, Int) -> Unit)? = null) {
     val plans by vm.plans.collectAsState()
     var open by remember { mutableStateOf<String?>(plans.firstOrNull()?.plan?.id) }
     Scaffold(containerColor = SurfaceBase) { padding ->
@@ -224,7 +225,7 @@ fun ReadingPlansScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit, onR
                 if (open == p.plan.id) items(p.plan.length, key = { "d-${p.plan.id}-$it" }) { d ->
                     val done = d in p.done
                     val isToday = d == p.dayFor(vm.today)
-                    Row(Modifier.fillMaxWidth().clickable { onRead(p.plan.days[d].first()) }.padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clickable { onReadDay?.invoke(p.plan, d) ?: onRead(p.plan.days[d].first()) }.padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(26.dp).clip(CircleShape).background(if (done) Color(0xFF2563EB).forTheme() else com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk).clickable { vm.setDone(p.plan, d, !done) }
                             .then(if (!done) Modifier.background(Color(0xFFEFF3FB).forTheme()) else Modifier), contentAlignment = Alignment.Center) {
                             if (done) Icon(Icons.Filled.Check, contentDescription = "Read", tint = Color.White, modifier = Modifier.size(16.dp))
@@ -252,7 +253,11 @@ fun ReadingPlansScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit, onR
 }
 
 @Composable
-fun PrayerListScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit) {
+fun PrayerListScreen(
+    vm: FaithExtrasViewModel,
+    onNavigateBack: () -> Unit,
+    onShareCard: (com.craftflowtechnologies.meetingmind.feature.share.ShareRequest) -> Unit = {}
+) {
     val people by vm.people.collectAsState()
     val days by vm.prayedDays.collectAsState()
     var adding by remember { mutableStateOf(false) }
@@ -288,6 +293,22 @@ fun PrayerListScreen(vm: FaithExtrasViewModel, onNavigateBack: () -> Unit) {
                         Text(p.name + if (p in today) "  · today" else "", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                         Text(listOfNotNull(p.note.takeIf { it.isNotBlank() }, if (p.prayedCount == 0) "Not yet prayed for" else "Prayed ${p.prayedCount}×").joinToString(" · "), fontSize = 12.5.sp, color = InkSecondary)
                     }
+                    IconButton(onClick = {
+                        val text = if (p.note.isNotBlank()) "${p.name}\n${p.note}" else p.name
+                        val theme = "prayer for ${p.name}: ${p.note.ifBlank { "healing, strength, peace and grace" }}"
+                        onShareCard(
+                            com.craftflowtechnologies.meetingmind.feature.share.ShareRequest(
+                                com.craftflowtechnologies.meetingmind.core.share.ShareCardContent(
+                                    eyebrow = "PRAYER REQUEST",
+                                    text = text,
+                                    reference = null,
+                                    attribution = null,
+                                    quoted = false
+                                ),
+                                theme = theme
+                            )
+                        )
+                    }) { Icon(Icons.Filled.Share, contentDescription = "Share prayer card", tint = InkMuted) }
                     IconButton(onClick = { vm.removePerson(p) }) { Icon(Icons.Filled.DeleteOutline, contentDescription = "Remove", tint = InkMuted) }
                 }
             }
@@ -333,29 +354,41 @@ fun RemindersSheet(vm: FaithExtrasViewModel, onDismiss: () -> Unit) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).navigationBarsPadding()) {
             Text("Reminders", fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, color = Ink)
             Text("Gentle nudges, only the ones you choose. Your daily devotional has its own setting on its page.", fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
-            Text("Prayer times (Daily Office)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(top = 8.dp, bottom = 6.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PrayerTime.entries.forEach { t ->
-                    val on = t in s.prayerTimes
-                    Surface(onClick = { s = s.copy(prayerTimes = if (on) s.prayerTimes - t else s.prayerTimes + t) }, shape = RoundedCornerShape(50), color = if (on) Gold.copy(alpha = 0.14f) else OnInk, border = BorderStroke(1.dp, if (on) Gold else Line)) {
-                        Text("${t.label} · %d:%02d".format(t.defaultMinutes / 60, t.defaultMinutes % 60), fontSize = 13.sp, color = if (on) FaithGoldInk else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
-                    }
-                }
-            }
-            Toggle("Today's reading", "At 7 pm if you haven't read yet", s.readingNudge) { s = s.copy(readingNudge = it) }
-            Toggle("Evening reflection", "A moment at 9 pm to notice the day", s.eveningReflection) { s = s.copy(eveningReflection = it) }
-            Toggle("Before meetings", "15 minutes before calendar events", s.meetingPrep) { s = s.copy(meetingPrep = it) }
-            Text("Quiet hours: %d:%02d – %d:%02d".format(s.quietStart / 60, s.quietStart % 60, s.quietEnd / 60, s.quietEnd % 60), fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 14.dp))
-            Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(21 * 60 to 7 * 60, 22 * 60 to 7 * 60, 23 * 60 to 6 * 60).forEach { (a, b) ->
-                    val on = s.quietStart == a && s.quietEnd == b
-                    Surface(onClick = { s = s.copy(quietStart = a, quietEnd = b) }, shape = RoundedCornerShape(50), color = if (on) Ink else SurfaceBase, border = BorderStroke(1.dp, if (on) Ink else Line)) {
-                        Text("${a / 60}:00–${b / 60}:00", fontSize = 13.sp, color = if (on) OnInk else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
-                    }
-                }
-            }
+            RemindersBody(s) { s = it }
             Surface(onClick = { vm.setReminders(s); onDismiss() }, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.padding(top = 10.dp, bottom = 24.dp)) {
                 Text("Save", color = OnInk, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 22.dp, vertical = 11.dp))
+            }
+        }
+    }
+}
+
+/**
+ * The reminder controls themselves: prayer times, the three nudges, quiet hours. Shared by the sheet on the prayer
+ * list and by the Faith group in Settings, so there is one set of controls for one set of preferences.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun RemindersBody(s: ReminderSettings, onChange: (ReminderSettings) -> Unit) {
+    Column {
+        Text("Prayer times (Daily Office)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, modifier = Modifier.padding(top = 8.dp, bottom = 6.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PrayerTime.entries.forEach { t ->
+                val on = t in s.prayerTimes
+                Surface(onClick = { onChange(s.copy(prayerTimes = if (on) s.prayerTimes - t else s.prayerTimes + t)) }, shape = RoundedCornerShape(50), color = if (on) Gold.copy(alpha = 0.14f) else OnInk, border = BorderStroke(1.dp, if (on) Gold else Line)) {
+                    Text("${t.label} · %d:%02d".format(t.defaultMinutes / 60, t.defaultMinutes % 60), fontSize = 13.sp, color = if (on) FaithGoldInk else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                }
+            }
+        }
+        Toggle("Today's reading", "At 7 pm if you haven't read yet", s.readingNudge) { onChange(s.copy(readingNudge = it)) }
+        Toggle("Evening reflection", "A moment at 9 pm to notice the day", s.eveningReflection) { onChange(s.copy(eveningReflection = it)) }
+        Toggle("Before meetings", "15 minutes before calendar events", s.meetingPrep) { onChange(s.copy(meetingPrep = it)) }
+        Text("Quiet hours: %d:%02d – %d:%02d".format(s.quietStart / 60, s.quietStart % 60, s.quietEnd / 60, s.quietEnd % 60), fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 14.dp))
+        Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(21 * 60 to 7 * 60, 22 * 60 to 7 * 60, 23 * 60 to 6 * 60).forEach { (a, b) ->
+                val on = s.quietStart == a && s.quietEnd == b
+                Surface(onClick = { onChange(s.copy(quietStart = a, quietEnd = b)) }, shape = RoundedCornerShape(50), color = if (on) Ink else SurfaceBase, border = BorderStroke(1.dp, if (on) Ink else Line)) {
+                    Text("${a / 60}:00–${b / 60}:00", fontSize = 13.sp, color = if (on) OnInk else InkSecondary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                }
             }
         }
     }

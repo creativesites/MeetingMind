@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.settings
 
+import com.craftflowtechnologies.meetingmind.ui.theme.Briefing
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -109,20 +110,7 @@ fun AppearanceScreen(vm: AppearanceViewModel, onNavigateBack: () -> Unit) {
             Segments(TextSize.entries, a.textSize, { it.label }) { s -> vm.update { it.copy(textSize = s) } }
 
             Label("Home")
-            HomeStyle.entries.forEach { h ->
-                val on = a.homeStyle == h
-                Row(
-                    Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(RoundedCornerShape(16.dp)).background(if (on) AccentWash else SurfaceRaised)
-                        .border(1.dp, if (on) Accent else LineSoft, RoundedCornerShape(16.dp)).clickable { vm.update { it.copy(homeStyle = h) } }.padding(16.dp).testTag("home_${h.name.lowercase()}"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(h.label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                        Text(h.description, fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(top = 2.dp))
-                    }
-                    if (on) Icon(Icons.Filled.Check, null, tint = Accent)
-                }
-            }
+            HomePicker(a.homeStyle, onSelect = { h -> vm.update { it.copy(homeStyle = h) } })
 
             if (a.homeStyle == HomeStyle.TODAY) {
                 Label("On the Today home")
@@ -161,6 +149,27 @@ private fun <T> Segments(items: List<T>, selected: T, label: (T) -> String, onPi
 /** A small live sample, so a change is seen before leaving the page. */
 @Composable
 private fun Preview(a: Appearance) {
+    if (a.homeStyle == HomeStyle.PROFESSIONAL) {
+        // The Professional home's briefing, in miniature.
+        Column(
+            Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp))
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Briefing.Top, Briefing.Bottom)))
+                .padding(18.dp)
+        ) {
+            Text("YOUR DAY", fontSize = 10.5.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.SemiBold, color = Briefing.Lavender)
+            Text("3 meetings today  ·  2 to review", fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.78f))
+            Text("NEXT · IN 25 MIN", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Briefing.Rose, modifier = Modifier.padding(top = 12.dp))
+            Text("Acme — project review", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief)
+            Text("Last time: OAuth2 chosen · Sarah owes credentials", fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f))
+            Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("● Record", color = Briefing.Top, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(Briefing.OnBrief).padding(horizontal = 14.dp, vertical = 8.dp))
+                Spacer(Modifier.size(10.dp))
+                Text("Professional home · " + a.textSize.label.lowercase() + " text", fontSize = 12.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.55f))
+            }
+        }
+        return
+    }
     Column(Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(SurfaceRaised).border(1.dp, LineSoft, RoundedCornerShape(20.dp)).padding(18.dp)) {
         Text("UP NEXT · 10:30", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Accent)
         Text("Sunday service", fontSize = 21.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif, color = Ink, modifier = Modifier.padding(top = 6.dp))

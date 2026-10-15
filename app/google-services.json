@@ -1,0 +1,76 @@
+{
+  "project_info": {
+    "project_number": "1045479699328",
+    "project_id": "meetingmind-mobile",
+    "storage_bucket": "meetingmind-mobile.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1045479699328:android:017d394418458b71474765",
+        "android_client_info": {
+          "package_name": "com.craftflowtechnologies.meetingmind"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1045479699328-uaaqokubj0d2n51fkr0c2iqik2srdhi0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.craftflowtechnologies.meetingmind",
+            "certificate_hash": "63bac345079d35472a0cddbe718a90d9ed17c726"
+          }
+        },
+        {
+          "client_id": "1045479699328-o5q3t2hgtokh6b52jujv6edb8g7gmqvk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAANBVlA9haWWASnvl_zJ30PA_D0d0wM78"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1045479699328-o5q3t2hgtokh6b52jujv6edb8g7gmqvk.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1045479699328:android:908142d7682e86e4474765",
+        "android_client_info": {
+          "package_name": "com.craftflowtechnologies.meetingmind.dev"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1045479699328-o5q3t2hgtokh6b52jujv6edb8g7gmqvk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAANBVlA9haWWASnvl_zJ30PA_D0d0wM78"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1045479699328-o5q3t2hgtokh6b52jujv6edb8g7gmqvk.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

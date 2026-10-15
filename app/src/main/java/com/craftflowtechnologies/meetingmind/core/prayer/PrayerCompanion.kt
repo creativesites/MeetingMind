@@ -86,16 +86,38 @@ object PrayerCompanion {
         - After singing, let a moment of quiet pass, then gently move into prayer.
     """.trimIndent()
 
-    fun systemInstruction(s: PraySetup): String = buildString {
+    /** Morning, afternoon, evening or night, from the local hour. */
+    fun partOfDay(hour: Int): String = when (hour) {
+        in 5..11 -> "morning"
+        in 12..16 -> "afternoon"
+        in 17..20 -> "evening"
+        else -> "night"
+    }
+
+    /** The local day and time, so greetings and prayers fit the hour (it is not always morning). */
+    fun timeContext(now: java.time.LocalDateTime): String {
+        val day = now.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH)
+        val time = now.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.ENGLISH))
+        val part = partOfDay(now.hour)
+        return "It is $day, $time — $part where they are. Greet and pray for the $part (e.g. a night prayer for rest, not \"this morning\"). " +
+            "If today's devotional speaks of the morning, don't assume it is morning now."
+    }
+
+    fun systemInstruction(s: PraySetup, now: java.time.LocalDateTime = java.time.LocalDateTime.now()): String = buildString {
         appendLine(BOUNDARIES)
         appendLine()
-        appendLine(SINGING)
+        appendLine(timeContext(now))
+        appendLine()
+        appendLine("If asked to sing, be honest that you cannot sing a melody yet. Offer to pray together or share a hymn's words instead; do not claim to sing or hum.")
         appendLine()
         appendLine("How to pray this time: ${s.mode.instruction}")
         s.persona?.let { appendLine("Your voice and manner: $it. Keep that manner in how you speak and pray.") }
         appendLine("Style: ${s.style.instruction}")
         appendLine("Their tradition: ${s.tradition.label}.")
-        s.name?.takeIf { it.isNotBlank() }?.let { appendLine("Their first name is $it; use it sparingly.") }
+        // The name is personal context: only given when they chose to bring something personal to this prayer.
+        val personal = s.about.isNotBlank() || s.requests.isNotEmpty()
+        s.name?.takeIf { it.isNotBlank() && personal }?.let { appendLine("Their first name is $it; use it sparingly.") }
+        if (!personal) appendLine("You know nothing about them beyond what they say here; don't guess at their circumstances. Pray in words that fit anyone.")
         if (s.about.isNotBlank()) appendLine("What they want to bring, in their words: ${s.about.trim().take(800)}")
         if (s.requests.isNotEmpty()) appendLine("From their prayer list: " + s.requests.joinToString("; ") { it.take(120) })
         s.devotional?.let { appendLine("Today's devotional, for context: ${it.take(1500)}") }
@@ -103,7 +125,7 @@ object PrayerCompanion {
 
     /** The first thing sent, so the companion speaks first. */
     fun opening(s: PraySetup): String = s.worship?.let { worshipOpening(it) } ?: when (s.mode) {
-        PrayMode.TALK_IT_THROUGH -> "Please greet me briefly and ask me one question about today's devotional."
+        PrayMode.TALK_IT_THROUGH -> "Please greet me briefly, right for this time of day, and ask me one question about today's devotional."
         PrayMode.LISTEN -> "Please greet me in one short sentence and invite me to pray whenever I'm ready."
         PrayMode.ONE_AT_A_TIME -> if (s.requests.isEmpty() && s.about.isBlank()) "Please greet me briefly and ask what I'd like to pray about, one thing at a time." else "Please greet me briefly and begin with the first thing on my list."
         else -> if (s.requests.isEmpty() && s.about.isBlank()) "Please greet me briefly and ask what's on my heart today." else "Please greet me briefly and begin."

@@ -109,8 +109,10 @@ class AiToolWorker(
         }
 
         setProgress(workDataOf(KEY_PROGRESS_PERCENT to 50))
-        val profile = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(applicationContext)
-            .preferencesFlow.first().processingProfile
+        val profile = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(
+            applicationContext, job.meetingId,
+            com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(applicationContext).preferencesFlow.first().processingProfile
+        )
         useCase(job.meetingId, mode, processingProfile = profile)
 
         val resultJson = JSONObject().put("cleanupMode", mode.name).toString()
@@ -161,7 +163,10 @@ class AiToolWorker(
         }
 
         val preferences = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(applicationContext)
-            .preferencesFlow.first()
+            .preferencesFlow.first().let { p ->
+                // Confidential work never leaves the phone (docs/PLAN_PROFESSIONAL.md §6.4).
+                p.copy(processingProfile = com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy.forMeeting(applicationContext, job.meetingId, p.processingProfile))
+            }
         val meeting = database.meetingDao().getMeetingById(job.meetingId)
         val recordingType = runCatching {
             com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(meeting?.recordingType ?: "")

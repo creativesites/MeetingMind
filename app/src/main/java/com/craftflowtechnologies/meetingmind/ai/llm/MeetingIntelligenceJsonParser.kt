@@ -14,7 +14,9 @@ data class ChunkExtraction(
     val actionItems: List<ActionItem> = emptyList(),
     val questions: List<Question> = emptyList(),
     val followUps: List<FollowUp> = emptyList(),
-    val briefSummary: String = ""
+    val briefSummary: String = "",
+    /** Empty when the output is in the older format that has no signals. */
+    val signals: List<com.craftflowtechnologies.meetingmind.core.model.Signal> = emptyList()
 ) {
     companion object {
         val EMPTY = ChunkExtraction()
@@ -104,11 +106,37 @@ object MeetingIntelligenceJsonParser {
                 )
             }
 
-            ChunkExtraction(decisions, actionItems, questions, followUps, json.optString("briefSummary", "").trim())
+            val signals = parseSignals(json.optJSONArray("signals"), meetingId, validSegmentIds, speakerNameToId)
+            ChunkExtraction(decisions, actionItems, questions, followUps, json.optString("briefSummary", "").trim(), signals)
         } catch (e: Exception) {
             ChunkExtraction.EMPTY
         }
     }
+
+    /**
+     * Signals need a known kind, some text, and at least one real paragraph id: one that cites
+     * nothing the model was shown is dropped, never trusted. Commitments carry who, to whom and when
+     * as a small JSON object in `value`.
+     */
+    internal fun parseSignals(arr: JSONArray?, meetingId: String, validSegmentIds: Set<String>, speakerNameToId: Map<String, String>): List<com.craftflowtechnologies.meetingmind.core.model.Signal> =
+        arr.mapItemsNotNull { obj ->
+            val kind = com.craftflowtechnologies.meetingmind.core.work.ItemKind.entries.firstOrNull { it.name == obj.optString("kind").trim().uppercase() } ?: return@mapItemsNotNull null
+            val text = obj.optString("text").trim()
+            val ids = obj.optJSONArray("sourceSegmentIds").toValidIds(validSegmentIds)
+            if (text.isBlank() || ids.isEmpty()) return@mapItemsNotNull null
+            val speaker = obj.optString("speaker", "").trim().takeIf { it.isNotBlank() && !obj.isNull("speaker") }
+            val counterparty = obj.optString("counterparty", "").trim().takeIf { it.isNotBlank() && !obj.isNull("counterparty") }
+            val due = obj.optString("due", "").trim().takeIf { it.isNotBlank() && !obj.isNull("due") }
+            val plain = obj.optString("value", "").trim().takeIf { it.isNotBlank() && !obj.isNull("value") }
+            val details = if (kind == com.craftflowtechnologies.meetingmind.core.work.ItemKind.COMMITMENT && (counterparty != null || due != null)) {
+                JSONObject().apply { counterparty?.let { put("counterparty", it) }; due?.let { put("due", it) } }.toString()
+            } else null
+            com.craftflowtechnologies.meetingmind.core.model.Signal(
+                id = UUID.randomUUID().toString(), meetingId = meetingId, kind = kind.name, text = text, sourceSegmentIds = ids,
+                value = plain ?: details, speakerId = speaker?.let { speakerNameToId[it.lowercase()] },
+                confidence = if (obj.has("confidence") && !obj.isNull("confidence")) obj.optDouble("confidence", 0.6).toFloat().coerceIn(0f, 1f) else com.craftflowtechnologies.meetingmind.core.model.Signal.DEFAULT_CONFIDENCE
+            )
+        }
 
     fun parseSynthesis(raw: String, fallbackTitle: String): SynthesisResult {
         val json = extractJsonObject(raw) ?: return SynthesisResult(fallbackTitle, "", emptyList())

@@ -42,6 +42,8 @@ object PdfDocumentRenderer {
     private val MUTED = Color.rgb(0x6B, 0x6B, 0x6B)
     private val RULE = Color.rgb(0xD0, 0xD0, 0xD0)
     private val HIGHLIGHT = Color.rgb(0xFF, 0xF1, 0x76)
+    private val ON_TRACK = Color.rgb(0x0F, 0x76, 0x6E)
+    private val ATTENTION = Color.rgb(0xB4, 0x53, 0x09)
 
     /** Where pages are drawn. A PDF on a device; a plain canvas in tests. */
     internal interface PageSink {
@@ -66,13 +68,13 @@ object PdfDocumentRenderer {
 
     /** Draws [document] page by page into [sink] and returns the number of pages. */
     internal fun layOut(document: ExportDocument, sink: PageSink): Int {
-        val writer = Writer(sink, document.serifBody)
+        val writer = Writer(sink, document.serifBody, document.theme)
         writer.writeDocument(document)
         writer.finish()
         return writer.pageCount
     }
 
-    private class Writer(private val sink: PageSink, serif: Boolean) {
+    private class Writer(private val sink: PageSink, serif: Boolean, private val theme: ExportTheme = ExportTheme.DEFAULT) {
         private var pageNumber = 0
         private lateinit var canvas: Canvas
         private var y = 0f
@@ -104,7 +106,8 @@ object PdfDocumentRenderer {
 
         fun writeDocument(document: ExportDocument) {
             text(RichText.plain(document.title.ifBlank { "Untitled" }), paint(22f, INK, bold = true, face = Typeface.SANS_SERIF), after = 4f)
-            document.subtitle?.let { text(RichText.plain(it), paint(10f, MUTED, face = Typeface.SANS_SERIF), after = 18f) }
+            document.subtitle?.let { text(RichText.plain(it), paint(10f, MUTED, face = Typeface.SANS_SERIF), after = if (document.statusChip != null) 8f else 18f) }
+            document.statusChip?.let { statusChip(it) }
 
             val numbers = document.numberedPositions()
             document.blocks.forEachIndexed { i, block -> write(block, numbers[i]) }
@@ -117,7 +120,11 @@ object PdfDocumentRenderer {
 
         private fun write(block: ExportBlock, number: Int?) {
             when (block) {
-                is ExportBlock.Heading -> {
+                is ExportBlock.Heading -> if (theme == ExportTheme.BRIEF && block.level == 1) {
+                    // A brief's sections: small, tracked capitals in the accent colour, with a rule above.
+                    y += 14f
+                    text(RichText.plain(block.text.text.uppercase()), paint(9.5f, ACCENT, bold = true, face = Typeface.SANS_SERIF).apply { letterSpacing = 0.12f }, after = 6f, keepWithNext = 40f)
+                } else {
                     val size = when (block.level) { 1 -> 16f; 2 -> 13.5f; else -> 12f }
                     y += if (block.level == 1) 12f else 8f
                     text(block.text, paint(size, if (block.level >= 3) ACCENT else INK, bold = true, face = Typeface.SANS_SERIF), after = 5f, keepWithNext = 36f)
@@ -164,7 +171,18 @@ object PdfDocumentRenderer {
                     y += 6f
                 }
                 ExportBlock.Divider -> rule()
+                ExportBlock.PageBreak -> newPage()
             }
+        }
+
+        /** A rounded chip with the brief's status: green-blue when on track, amber when it needs attention. */
+        private fun statusChip(chip: StatusChip) {
+            val paint = paint(9.5f, Color.WHITE, bold = true, face = Typeface.SANS_SERIF)
+            val width = paint.measureText(chip.label) + 20f
+            val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = if (chip.attention) ATTENTION else ON_TRACK }
+            canvas.drawRoundRect(RectF(MARGIN, y, MARGIN + width, y + 18f), 9f, 9f, fill)
+            canvas.drawText(chip.label, MARGIN + 10f, y + 12.5f, paint)
+            y += 30f
         }
 
         /** Draws a coloured bar down the left of whatever [content] writes, across page breaks. */

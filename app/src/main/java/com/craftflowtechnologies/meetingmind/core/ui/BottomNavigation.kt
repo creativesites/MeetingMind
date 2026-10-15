@@ -5,7 +5,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -28,6 +27,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.outlined.Work
+import androidx.compose.runtime.compositionLocalOf
+import com.craftflowtechnologies.meetingmind.core.work.TabSlot
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -36,7 +39,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -46,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
+import com.craftflowtechnologies.meetingmind.ui.theme.OnAccent
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
@@ -57,7 +60,25 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Line
  * where Record comes first, then a written note, photos and import (docs/PLAN_V1.md §2). The AI
  * Engine lives under Settings; it is something set up once, not somewhere people go daily.
  */
-enum class BottomNavDestination { HOME, NOTES, NEW, SEARCH, SETTINGS }
+enum class BottomNavDestination {
+    HOME, NOTES, NEW, SEARCH, SETTINGS,
+    /** No tab is current (a screen reached from elsewhere, such as Search when its slot holds Work). */
+    NONE
+}
+
+/**
+ * What the fourth slot is (docs/PLAN_PROFESSIONAL.md §7.4). Search, unless the person put Work
+ * there; it is the same destination either way, so tags and the route table are unchanged, and
+ * the route it opens is chosen by [TabSlots.route].
+ */
+val LocalTabSlot = compositionLocalOf { TabSlot.SEARCH }
+
+object TabSlots {
+    /** The route the fourth slot opens: the Work space when it holds Work, otherwise Search. */
+    fun route(slot: TabSlot, work: String, search: String) = if (slot == TabSlot.WORK) work else search
+
+    fun label(slot: TabSlot) = if (slot == TabSlot.WORK) "Work" else "Search"
+}
 
 private data class NavItem(
     val destination: BottomNavDestination,
@@ -68,11 +89,12 @@ private data class NavItem(
     val isAction: Boolean = false
 )
 
-private val navItems = listOf(
+private fun navItems(slot: TabSlot) = listOf(
     NavItem(BottomNavDestination.HOME, "Home", Icons.Filled.Home, Icons.Outlined.Home),
     NavItem(BottomNavDestination.NOTES, "Notes", Icons.AutoMirrored.Filled.Notes, Icons.AutoMirrored.Outlined.Notes),
     NavItem(BottomNavDestination.NEW, "New", Icons.Filled.Add, Icons.Filled.Add, isAction = true),
-    NavItem(BottomNavDestination.SEARCH, "Search", Icons.Filled.Search, Icons.Outlined.Search),
+    if (slot == TabSlot.WORK) NavItem(BottomNavDestination.SEARCH, TabSlots.label(slot), Icons.Filled.Work, Icons.Outlined.Work)
+    else NavItem(BottomNavDestination.SEARCH, TabSlots.label(slot), Icons.Filled.Search, Icons.Outlined.Search),
     NavItem(BottomNavDestination.SETTINGS, "Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
 )
 
@@ -117,7 +139,7 @@ fun AppBottomNavigationBar(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
-                navItems.forEach { item ->
+                navItems(LocalTabSlot.current).forEach { item ->
                     when {
                         item.isAction -> if (showNewAction) NewAction { onNavigate(BottomNavDestination.NEW) }
                         item.destination == current -> ActiveNavChip(item)
@@ -131,15 +153,15 @@ fun AppBottomNavigationBar(
 
 @Composable
 private fun NewAction(onClick: () -> Unit) {
-    // The one action on every screen, in the brand's colours so it's the first thing you find.
+    // The one action on every screen reflects the person's chosen accent without competing with
+    // the selected destination chip.
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(percent = 50),
-        color = Color.Transparent,
+        color = Accent,
         modifier = Modifier
             .height(44.dp)
             .coachTarget("new")
-            .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.craftflowtechnologies.meetingmind.ui.theme.Brand.Blue, com.craftflowtechnologies.meetingmind.ui.theme.Brand.Indigo, com.craftflowtechnologies.meetingmind.ui.theme.Brand.Violet)), RoundedCornerShape(percent = 50))
             .testTag("bottom_nav_new")
             .semantics { contentDescription = "Create: record, write a note, add photos or import" }
     ) {
@@ -150,7 +172,7 @@ private fun NewAction(onClick: () -> Unit) {
             Icon(
                 imageVector = Icons.Filled.Add,
                 contentDescription = null,
-                tint = Color.White,
+                tint = OnAccent,
                 modifier = Modifier.size(19.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
@@ -159,7 +181,7 @@ private fun NewAction(onClick: () -> Unit) {
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = (-0.1).sp,
-                color = Color.White
+                color = OnAccent
             )
         }
     }

@@ -1,9 +1,11 @@
 package com.craftflowtechnologies.meetingmind.core.devotional
 
 import android.content.Context
+import android.util.Log
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser
 import org.json.JSONArray
+import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.time.LocalDate
 import java.util.zip.GZIPInputStream
@@ -17,45 +19,99 @@ data class ClassicReading(
     val keyText: String,
     val reference: ScriptureReference?,
     val referenceText: String,
-    val paragraphs: List<String>
+    val paragraphs: List<String>,
+    /** The reading's own title, for plans that give each day one ("The Bible's First Promise"); blank otherwise. */
+    val heading: String = ""
 )
 
 /**
- * Spurgeon's *Morning and Evening* (1865, public domain; text from the Christian Classics Ethereal
- * Library), bundled so a devotional is always there — offline, with no key and no model.
+ * The readings of one bundled public-domain plan (see [DevotionalPlans]), so a devotional is always
+ * there: offline, with no key and no model. Which plan it is travels with it in [plan].
  */
-class ClassicDevotionals(private val readings: List<ClassicReading>) {
+class ClassicDevotionals(private val readings: List<ClassicReading>, val plan: DevotionalPlan = DevotionalPlans.default) {
 
-    val title = "Morning and Evening"
-    val author = "C. H. Spurgeon"
-    val attribution = "From Morning and Evening by C. H. Spurgeon (1865), public domain."
+    val title get() = plan.title
+    val author get() = plan.author
+    val attribution get() = plan.attribution
 
-    /** The reading for [date]; 29 February falls back to the 28th. */
+    /**
+     * The reading for [date]; 29 February falls back to the 28th. A plan with a single reading a day
+     * (no evening ones) answers an evening request with that reading, so no day is ever empty.
+     */
     fun forDate(date: LocalDate, evening: Boolean = false): ClassicReading? {
         val key = "%02d-%02d".format(date.monthValue, date.dayOfMonth)
         return readings.firstOrNull { it.date == key && it.evening == evening }
+            ?: (if (evening && !plan.hasEvening) readings.firstOrNull { it.date == key && !it.evening } else null)
             ?: if (key == "02-29") forDate(date.withDayOfMonth(28), evening) else null
     }
 
     val size get() = readings.size
 
+    /** False when the plan's text could not be read on this phone (see [unreadableMessage]). */
+    val readable get() = readings.isNotEmpty()
+
+    /** The plain line the page shows when there is no reading to show, rather than a blank page. */
+    fun unreadableMessage(): String =
+        "$title couldn't be read from the app on this phone, so today's reading isn't there yet. " +
+            "Try again; if it keeps happening, reinstall MeetingMind."
+
     companion object {
-        const val ASSET = "devotionals/spurgeon_morning_evening.json.gz"
+        private const val TAG = "ClassicDevotionals"
 
-        @Volatile private var cached: ClassicDevotionals? = null
+        /** The default plan's asset, kept for callers that mean "the bundled classic". */
+        val ASSET get() = DevotionalPlans.default.asset!!
 
-        /** Loads once. A failed load isn't remembered, so one bad moment can't leave every later day empty. */
-        fun get(context: Context): ClassicDevotionals =
-            cached ?: synchronized(this) {
-                cached ?: runCatching { context.assets.open(ASSET).use { parse(GZIPInputStream(it)) } }
-                    .getOrNull()?.takeIf { it.size > 0 }?.also { cached = it }
-                    ?: ClassicDevotionals(emptyList())
+        private val cache = java.util.concurrent.ConcurrentHashMap<String, ClassicDevotionals>()
+
+        /** The default plan (Morning and Evening). */
+        fun get(context: Context): ClassicDevotionals = get(context, DevotionalPlans.DEFAULT_ID)
+
+        /**
+         * Loads [planId] once. A failed load isn't remembered, so one bad moment can't leave every later day
+         * empty; a plan that can't be read (or isn't bundled) falls back to the default plan, never to nothing.
+         */
+        fun get(context: Context, planId: String): ClassicDevotionals {
+            val plan = DevotionalPlans.resolve(planId)
+            cache[plan.id]?.let { return it }
+            val loaded = load(context, plan)
+            if (loaded != null) return loaded
+            return if (plan.id != DevotionalPlans.DEFAULT_ID) get(context, DevotionalPlans.DEFAULT_ID) else ClassicDevotionals(emptyList(), plan)
+        }
+
+        private fun load(context: Context, plan: DevotionalPlan): ClassicDevotionals? {
+            val asset = plan.asset ?: return null
+            return synchronized(this) {
+                cache[plan.id]?.let { return it }
+                // A failure is logged, not hidden: the caller then says so on the page instead of showing nothing.
+                val classics = runCatching { openBundled(context, asset).use { parse(it, plan) } }
+                    .onFailure { Log.e(TAG, "Bundled reading plan ${plan.id} ($asset) could not be read", it) }
+                    .getOrNull()
+                if (classics != null && classics.size == 0) Log.e(TAG, "Bundled reading plan ${plan.id} ($asset) has no readings")
+                classics?.takeIf { it.size > 0 }?.also { cache[plan.id] = it }
             }
+        }
 
-        /** For tests, where app assets aren't packaged. */
-        fun useForTest(classics: ClassicDevotionals?) { cached = classics }
+        /**
+         * The bundled text as plain JSON, whatever the packaged file is called or stored as. The source is
+         * `*.json.gz`, but the build may ship it decompressed under the `.json` name (it does for the debug
+         * merge), so both names are tried, and gzip is only undone when the bytes really are gzip.
+         */
+        internal fun openBundled(context: Context, asset: String): InputStream {
+            val raw = try {
+                context.assets.open(asset).use { it.readBytes() }
+            } catch (e: java.io.IOException) {
+                context.assets.open(asset.removeSuffix(".gz")).use { it.readBytes() }
+            }
+            val gzip = raw.size >= 2 && raw[0] == 0x1f.toByte() && raw[1] == 0x8b.toByte()
+            return if (gzip) GZIPInputStream(ByteArrayInputStream(raw)) else ByteArrayInputStream(raw)
+        }
 
-        fun parse(input: InputStream): ClassicDevotionals {
+        /** For tests, where app assets aren't packaged: replaces the default plan's cached readings (null clears all). */
+        fun useForTest(classics: ClassicDevotionals?) {
+            if (classics == null) cache.clear() else cache[classics.plan.id] = classics
+        }
+
+        fun parse(input: InputStream, plan: DevotionalPlan = DevotionalPlans.default): ClassicDevotionals {
             val array = JSONArray(input.bufferedReader(Charsets.UTF_8).readText())
             val list = (0 until array.length()).map { i ->
                 val o = array.getJSONObject(i)
@@ -67,10 +123,11 @@ class ClassicDevotionals(private val readings: List<ClassicReading>) {
                     keyText = o.optString("v"),
                     reference = ScriptureReferenceParser.parse(refText),
                     referenceText = refText,
-                    paragraphs = (0 until b.length()).map { b.getString(it) }.filter { it.isNotBlank() }
+                    paragraphs = (0 until b.length()).map { b.getString(it) }.filter { it.isNotBlank() },
+                    heading = o.optString("h")
                 )
             }
-            return ClassicDevotionals(list)
+            return ClassicDevotionals(list, plan)
         }
     }
 }
@@ -97,12 +154,14 @@ object Quotes {
     }
 
     /**
-     * One quote for the day: from the person's topics when any match, otherwise from all of them,
+     * One quote for the day: from the given topics when any match, otherwise from all of them,
      * rotating by date so it changes daily but is stable within a day.
      */
-    fun pick(quotes: List<Quote>, topics: Collection<String>, date: LocalDate): Quote? {
+    fun pick(quotes: List<Quote>, topics: Collection<String>, date: LocalDate, less: Collection<String> = emptySet()): Quote? {
         if (quotes.isEmpty()) return null
-        val matching = quotes.filter { q -> q.topics.any { it in topics } }.ifEmpty { quotes }
+        // "Less of" is always honoured; [topics] are only weights, passed by the caller when allowed.
+        val allowed = quotes.filter { q -> q.topics.none { it in less } }.ifEmpty { quotes }
+        val matching = allowed.filter { q -> q.topics.any { it in topics } }.ifEmpty { allowed }
         return matching[(date.toEpochDay() % matching.size).toInt().let { if (it < 0) it + matching.size else it }]
     }
 }
@@ -159,6 +218,7 @@ object TopicPassages {
         val pool = when {
             seasonal != null && (day.feast != null || date.dayOfWeek == java.time.DayOfWeek.SUNDAY || topics.isEmpty()) -> seasonal
             else -> topics.filter { it !in less }.flatMap { byTopic[it].orEmpty() }
+                .filter { r -> less.isEmpty() || topicsOf(ScriptureReferenceParser.parse(r) ?: return@filter true).none { it in less } }
         }
         if (pool.isEmpty()) return null
         val index = Math.floorMod(date.toEpochDay(), pool.size.toLong()).toInt()

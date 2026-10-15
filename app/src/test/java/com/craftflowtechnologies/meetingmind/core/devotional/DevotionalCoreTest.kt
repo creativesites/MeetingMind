@@ -30,7 +30,7 @@ class DevotionalCoreTest {
         assertEquals(p, DevotionalProfile.fromJson(p.toJson()))
         assertEquals(DevotionalProfile(), DevotionalProfile.fromJson("not json"))
         assertEquals(DevotionalProfile(), DevotionalProfile.fromJson(null))
-        assertEquals(DevotionalSource.AI, DevotionalProfile.fromJson("""{"source":"NOPE"}""").source)
+        assertEquals(DevotionalSource.CLASSIC, DevotionalProfile.fromJson("""{"source":"NOPE"}""").source)
     }
 
     @Test fun `easter dates, western and orthodox`() {

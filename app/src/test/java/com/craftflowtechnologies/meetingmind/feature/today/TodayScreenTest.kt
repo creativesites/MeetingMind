@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
@@ -63,28 +64,42 @@ class TodayScreenTest {
         }
     }
 
+    /**
+     * The view chips are a LazyRow: with Inter's wider glyphs the later ones start off-screen. The row is found by its own
+     * tag. (It used to be found by "has a view_day descendant", but once the row has scrolled past the first chip that
+     * chip is no longer composed, so the row could not be found and the next scroll failed.)
+     */
+    private fun scrollToView(tag: String) {
+        // The chips sit part-way down a lazy page and are not composed until it has scrolled to them.
+        compose.onNodeWithTag("today_list").performScrollToNode(androidx.compose.ui.test.hasTestTag("view_chips"))
+        compose.onNodeWithTag("view_chips").performScrollToNode(androidx.compose.ui.test.hasTestTag(tag))
+    }
+
     @Test
     fun `today lists the day and opens a card`() {
         val opened = mutableListOf<String>()
         val vm = TodayViewModel(ApplicationProvider.getApplicationContext())
         compose.setContent {
-            MeetMindTheme {
+            MeetMindTheme { androidx.compose.runtime.CompositionLocalProvider(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas provides true, com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion provides true) {
                 TodayScreen(vm, onOpenNote = { opened += it }, onOpenProcessing = {}, onRecord = {}, onRecordType = {},
                     onRecordEvent = { _, _, _, _ -> }, onSearch = {}, onNavigateBottomNav = {})
-            }
+            }}
         }
         settle { vm.items.value.size == 4 }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/today_full.png")
         assertEquals(setOf("Product sync", "Grace that holds", "Ideas for Q4", "Follow-up with design"), vm.items.value.map { it.title }.toSet())
+        scrollToView("view_day")
         compose.onNodeWithTag("view_day").performClick()
         settle { vm.view.value == CalendarView.DAY && vm.items.value.isNotEmpty() }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/today_day.png")
 
+        scrollToView("view_month")
         compose.onNodeWithTag("view_month").performClick()
         settle { vm.view.value == CalendarView.MONTH }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/today_month.png")
+        scrollToView("view_river")
         compose.onNodeWithTag("view_river").performClick()
         settle { vm.view.value == CalendarView.RIVER && vm.items.value.isNotEmpty() }
         compose.waitForIdle()

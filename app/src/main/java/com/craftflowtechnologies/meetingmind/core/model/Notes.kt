@@ -40,6 +40,12 @@ enum class NotebookSpace(val displayName: String) {
     PERSONAL("Personal")
 }
 
+/**
+ * Spaces the UI offers (filters, pickers, onboarding). LEARNING stays in the enum because stored notes and the
+ * database still reference it; it is hidden until the Learning vertical is rebuilt (MVP S-7).
+ */
+val OfferedNotebookSpaces: List<NotebookSpace> = NotebookSpace.entries.filter { it != NotebookSpace.LEARNING }
+
 data class Notebook(
     val id: String,
     val name: String,
@@ -51,8 +57,17 @@ data class Notebook(
     val archivedAt: Long? = null,
     val sortOrder: Int = 0,
     /** When it was moved to the Trash; null for a notebook that isn't there. */
-    val deletedAt: Long? = null
-)
+    val deletedAt: Long? = null,
+    /** A work context: a client, a matter, a case (docs/PLAN_PROFESSIONAL.md §5.1). */
+    val isProject: Boolean = false,
+    /** A project's status, organisation and privacy, as JSON. */
+    val propertiesJson: String = "{}"
+) {
+    /** Work in a confidential project never goes to cloud AI (PLAN_PROFESSIONAL.md §6.4). */
+    val confidential: Boolean get() = runCatching { org.json.JSONObject(propertiesJson).optBoolean("confidential") }.getOrDefault(false)
+    val orgId: String? get() = runCatching { org.json.JSONObject(propertiesJson).optString("orgId").ifBlank { null } }.getOrNull()
+    val status: String get() = runCatching { org.json.JSONObject(propertiesJson).optString("status").ifBlank { "Active" } }.getOrDefault("Active")
+}
 
 enum class NoteBlockType {
     PARAGRAPH, HEADING_1, HEADING_2, HEADING_3,
@@ -197,7 +212,7 @@ data class ScriptureRef(
     /** Null for a whole chapter. */
     val verseStart: Int?,
     val verseEnd: Int?,
-    /** YouVersion Bible id. Null means the user's default translation. */
+    /** Bible id (see BibleVersions). Null means the user's default translation. */
     val versionId: Int?,
     val origin: ScriptureOrigin,
     val meetingId: String? = null,

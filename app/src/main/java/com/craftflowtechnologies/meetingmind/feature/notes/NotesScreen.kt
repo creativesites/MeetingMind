@@ -1,58 +1,63 @@
 package com.craftflowtechnologies.meetingmind.feature.notes
 
-import com.craftflowtechnologies.meetingmind.ui.theme.Danger
-import com.craftflowtechnologies.meetingmind.ui.theme.forTheme
-import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
-import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
-import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
-import androidx.compose.ui.platform.testTag
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Sort
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoStories
+import androidx.compose.material.icons.rounded.Book
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Notes
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.School
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -61,39 +66,77 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.launch
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.craftflowtechnologies.meetingmind.core.common.Formatters
-import com.craftflowtechnologies.meetingmind.core.model.Note
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
 import com.craftflowtechnologies.meetingmind.core.model.Notebook
 import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
+import com.craftflowtechnologies.meetingmind.core.model.OfferedNotebookSpaces
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
+import com.craftflowtechnologies.meetingmind.core.model.Workflows
+import com.craftflowtechnologies.meetingmind.core.notes.LibraryChip
+import com.craftflowtechnologies.meetingmind.core.notes.LibraryItem
+import com.craftflowtechnologies.meetingmind.core.notes.LibraryQuery
+import com.craftflowtechnologies.meetingmind.core.notes.NoteLabels
+import com.craftflowtechnologies.meetingmind.core.notes.NoteSort
+import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.ui.AppBottomNavigationBar
 import com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination
+import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
+import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
+import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
+import com.craftflowtechnologies.meetingmind.core.ui.mm.NoteRow
+import com.craftflowtechnologies.meetingmind.core.ui.mm.NoteRowModel
+import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
+import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
+import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
+import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
+import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
+import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
 import com.craftflowtechnologies.meetingmind.feature.notes.editor.NotebookDot
-import com.craftflowtechnologies.meetingmind.ui.theme.Accent
-import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
-import com.craftflowtechnologies.meetingmind.ui.theme.Ink
-import com.craftflowtechnologies.meetingmind.ui.theme.InkFaint
-import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
-import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
-import com.craftflowtechnologies.meetingmind.ui.theme.Line
-import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
+import com.craftflowtechnologies.meetingmind.feature.work.EmptyCompanionSize
+import com.craftflowtechnologies.meetingmind.feature.work.LOAD_AHEAD
+import com.craftflowtechnologies.meetingmind.feature.work.QuietLink
+import com.craftflowtechnologies.meetingmind.feature.work.SkeletonRow
+import com.craftflowtechnologies.meetingmind.feature.work.WorkTextField
+import com.craftflowtechnologies.meetingmind.feature.work.pagedFooter
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
+import kotlinx.coroutines.launch
 
 /** Colours a notebook can take; picked in the notebook dialog. */
 val NotebookColors = listOf("#6366F1", "#A855F7", "#EC4899", "#F43F5E", "#F59E0B", "#10B981", "#06B6D4", "#0F172A")
 
-@OptIn(ExperimentalFoundationApi::class)
+private const val SKELETON_ROWS = 6
+
+/**
+ * The Notes library (U-2). Search comes first, then one row of chips, then the notes, loaded a page at a time.
+ * Long-press a note to select; Pin, Move and Delete then apply to all of them, each with Undo. Folders are a toggle
+ * on this screen, not another one.
+ *
+ * [onOpenFaith] and [onOpenWork] are kept so existing call sites compile; the library no longer hosts navigation
+ * cards (Faith and Work have their own homes). [onRecord] starts a recording from the empty state; without it the
+ * empty state opens the Create sheet through the bottom bar.
+ */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun NotesScreen(
     viewModel: NotesViewModel,
@@ -102,49 +145,77 @@ fun NotesScreen(
     onOpenArchive: () -> Unit,
     onNavigateBack: (() -> Unit)?,
     onNavigateBottomNav: (BottomNavDestination) -> Unit,
-    /** Opens the Faith space; shown on the library root. */
-    onOpenFaith: (() -> Unit)? = null,
-    onOpenTrash: () -> Unit = {}
+    @Suppress("UNUSED_PARAMETER") onOpenFaith: (() -> Unit)? = null,
+    @Suppress("UNUSED_PARAMETER") onOpenWork: (() -> Unit)? = null,
+    onOpenTrash: () -> Unit = {},
+    onRecord: (() -> Unit)? = null
 ) {
-    val notes by viewModel.visibleNotes.collectAsState()
-    val loaded by viewModel.loaded.collectAsState()
+    val library = viewModel.library
+    val holder = viewModel<NotesStateHolder>(key = "notes-library-" + viewModel.scope.toString())
+    LaunchedEffect(viewModel) { viewModel.attach(holder.handle) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onResume() }
+
+    val state by library.items.collectAsState()
+    val query by library.query.collectAsState()
+    val searchText by library.searchText.collectAsState()
+    val view by library.view.collectAsState()
     val notebooks by viewModel.notebooks.collectAsState()
     val counts by viewModel.notebookCounts.collectAsState()
     val tags by viewModel.tags.collectAsState()
-    val space by viewModel.space.collectAsState()
-    val tagFilter by viewModel.tagFilter.collectAsState()
-    val query by viewModel.query.collectAsState()
-    val sort by viewModel.sort.collectAsState()
     val archivedCount by viewModel.archivedCount.collectAsState()
+    val trashCount by viewModel.trashCount.collectAsState()
+    val trashedNotebooks by viewModel.trashedNotebooks.collectAsState()
     val currentNotebook by viewModel.currentNotebook.collectAsState()
-    val appIdentity = com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity.current
     val aiJobs by viewModel.aiJobs.collectAsState()
-    var showAiMenu by remember { mutableStateOf(false) }
-    var showAsk by remember { mutableStateOf(false) }
-    var aiSheetOpen by remember { mutableStateOf(false) }
+    val appIdentity = com.craftflowtechnologies.meetingmind.core.identity.LocalAppIdentity.current
 
     val isRoot = viewModel.scope == NotesScope.All
     val isArchive = viewModel.scope == NotesScope.Archived
     val isTrash = viewModel.scope == NotesScope.Trash
-    val trashCount by viewModel.trashCount.collectAsState()
-    val trashedNotebooks by viewModel.trashedNotebooks.collectAsState()
+    val inNotebook = viewModel.scope is NotesScope.InNotebook
+    val folders = isRoot && view == LibraryView.FOLDERS && !query.isSearching && searchText.isBlank()
+
+    var showAiMenu by remember { mutableStateOf(false) }
+    var showAsk by remember { mutableStateOf(false) }
+    var aiSheetOpen by remember { mutableStateOf(false) }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
-    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
-    val snackScope = androidx.compose.runtime.rememberCoroutineScope()
-    fun trashWithUndo(n: Note) {
-        viewModel.delete(n)
-        snackScope.launch {
-            val result = snackbar.showSnackbar("Moved to Trash", actionLabel = "Undo", duration = androidx.compose.material3.SnackbarDuration.Short)
-            if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) viewModel.restore(n)
-        }
-    }
-    var searching by remember { mutableStateOf(false) }
-    var showSort by remember { mutableStateOf(false) }
     var notebookDialog by remember { mutableStateOf<NotebookDialogState?>(null) }
     var notebookMenu by remember { mutableStateOf<Notebook?>(null) }
-    var noteMenu by remember { mutableStateOf<Note?>(null) }
+    var noteMenu by remember { mutableStateOf<LibraryItem?>(null) }
     var confirmDeleteNotebook by remember { mutableStateOf<Notebook?>(null) }
-    val notebookById = remember(notebooks) { notebooks.associateBy { it.id } }
+    var moreFilters by remember { mutableStateOf(false) }
+    var moveOpen by remember { mutableStateOf(false) }
+
+    var searchOpen by remember { mutableStateOf(false) }
+    val homeMode = isRoot && !folders
+    val showHero = homeMode && !query.isFiltered && !query.isSearching && searchText.isBlank()
+    val latestMeeting = remember(state.items) {
+        state.items.filter { it.hasRecording && Workflows.space(it.note.workflow) == NotebookSpace.WORK }
+            .maxByOrNull { it.note.eventDate ?: it.note.createdAt }
+    }
+    val companionShown = rememberCompanionVisible(CompanionPage.HOME)
+    val heroBlocks by viewModel.heroBlocks.collectAsState()
+    LaunchedEffect(showHero, latestMeeting?.id) { viewModel.watchHero(if (showHero) latestMeeting?.id else null) }
+    // Tiles come from the hero note's blocks, so they follow edits to that note.
+    val heroTiles = remember(heroBlocks, latestMeeting) {
+        latestMeeting?.let { meetingTiles(heroBlocks, aiAvailable = it.note.plainText.isNotBlank()) }.orEmpty()
+    }
+
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    fun offerUndo(message: String, undo: Undo) {
+        scope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            val result = snackbar.showSnackbar(message, actionLabel = "Undo", duration = SnackbarDuration.Short)
+            if (result == SnackbarResult.ActionPerformed) undo.run()
+        }
+    }
+
+    var selectedIds by rememberSaveable(stateSaver = listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() })) { mutableStateOf(emptySet<String>()) }
+    val selecting = selectedIds.isNotEmpty()
+    val selectedItems = state.items.filter { it.id in selectedIds }
+    fun toggleSelect(id: String) { selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id }
+    BackHandler(enabled = selecting) { selectedIds = emptySet() }
 
     val title = when (viewModel.scope) {
         NotesScope.All -> "Notes"
@@ -152,257 +223,226 @@ fun NotesScreen(
         NotesScope.Trash -> "Trash"
         is NotesScope.InNotebook -> currentNotebook?.name ?: "Notebook"
     }
-
-    // Select mode: long-press a note, then tap others; actions apply to all of them.
-    var selectedIds by remember { mutableStateOf(setOf<String>()) }
-    var moveOpen by remember { mutableStateOf(false) }
-    fun toggleSelect(id: String) { selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id }
-    androidx.activity.compose.BackHandler(enabled = selectedIds.isNotEmpty()) { selectedIds = emptySet() }
-    val selectedNotes = notes.filter { it.id in selectedIds }
+    val startRecording: () -> Unit = onRecord ?: { onNavigateBottomNav(BottomNavDestination.NEW) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState, state.items.size) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .collect { last -> if (state.items.isNotEmpty() && last >= state.items.size - LOAD_AHEAD) library.loadMore() }
+    }
 
     Scaffold(
-        containerColor = SurfaceBase,
-        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
-        bottomBar = {
-            if (isRoot) AppBottomNavigationBar(current = BottomNavDestination.NOTES, onNavigate = onNavigateBottomNav)
-        },
+        containerColor = MM.colors.background,
+        snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = { if (isRoot) AppBottomNavigationBar(current = BottomNavDestination.NOTES, onNavigate = onNavigateBottomNav) },
         floatingActionButton = {
-            if (!isRoot && !isArchive && !isTrash) {
-                Surface(onClick = { viewModel.createNote(onOpenNote) }, shape = RoundedCornerShape(50), color = Ink, shadowElevation = 6.dp) {
-                    Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.EditNote, contentDescription = null, tint = OnInk, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("New note", color = OnInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    }
-                }
-            }
+            if (inNotebook && !selecting) PrimaryButton("Write a note", { viewModel.createNote(onOpenNote) }, leadingIcon = Icons.Rounded.Add)
         }
     ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 28.dp)) {
-            if (selectedIds.isNotEmpty()) item(key = "selection") {
-                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 8.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { selectedIds = emptySet() }) { Icon(Icons.Filled.Close, contentDescription = "Cancel selection", tint = Ink) }
-                    Text("${selectedIds.size} selected", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
-                    androidx.compose.material3.TextButton(onClick = { selectedIds = notes.map { it.id }.toSet() }) { Text("All", color = Accent) }
-                }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (isTrash) {
-                        androidx.compose.material3.TextButton(onClick = { viewModel.restoreAll(selectedIds); selectedIds = emptySet() }) { Text("Restore", color = Accent) }
-                    } else {
-                        val allPinned = selectedNotes.isNotEmpty() && selectedNotes.all { it.pinned }
-                        androidx.compose.material3.TextButton(onClick = { viewModel.pinAll(selectedIds, !allPinned); selectedIds = emptySet() }) { Text(if (allPinned) "Unpin" else "Pin", color = Accent) }
-                        androidx.compose.material3.TextButton(onClick = { moveOpen = true }) { Text("Move", color = Accent) }
-                        if (!isArchive) androidx.compose.material3.TextButton(onClick = { viewModel.archiveAll(selectedIds); selectedIds = emptySet() }) { Text("Archive", color = Accent) }
-                        androidx.compose.material3.TextButton(onClick = { viewModel.deleteAll(selectedIds); selectedIds = emptySet() }) { Text("Trash", color = Danger) }
-                    }
-                }
-            }
-            if (selectedIds.isEmpty()) item(key = "header") {
-                Row(
-                    Modifier.fillMaxWidth().statusBarsPadding().padding(start = if (onNavigateBack != null) 6.dp else 22.dp, end = 16.dp, top = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
+        Column(Modifier.fillMaxSize().padding(padding).statusBarsPadding()) {
+            // ------------------------------------------------------------ header, or the selection bar
+            if (selecting) {
+                SelectionBar(
+                    count = selectedIds.size, inTrash = isTrash, allPinned = selectedItems.isNotEmpty() && selectedItems.all { it.note.pinned },
+                    onClose = { selectedIds = emptySet() },
+                    onSelectAll = { selectedIds = state.items.map { it.id }.toSet() },
+                    onPin = { pin ->
+                        val items = selectedItems; selectedIds = emptySet()
+                        scope.launch { offerUndo(if (pin) "Pinned ${items.size}" else "Unpinned ${items.size}", viewModel.pinAll(items, pin)) }
+                    },
+                    onMove = { moveOpen = true },
+                    onArchive = if (isArchive || isTrash) null else ({
+                        val items = selectedItems; selectedIds = emptySet()
+                        scope.launch { offerUndo("Archived ${items.size}", viewModel.archiveAll(items)) }
+                    }),
+                    onDelete = {
+                        val items = selectedItems; selectedIds = emptySet()
+                        scope.launch { offerUndo(if (items.size == 1) "Moved to Trash" else "${items.size} moved to Trash", viewModel.deleteAll(items)) }
+                    },
+                    onRestore = { viewModel.restoreAll(selectedItems); selectedIds = emptySet() }
+                )
+            } else if (!homeMode) {
+                ScreenHeader(
+                    title = title,
+                    modifier = Modifier.padding(horizontal = MM.space.l),
+                    leading = if (onNavigateBack != null) ({
+                        IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.ink) }
+                    }) else null
                 ) {
-                    if (onNavigateBack != null) {
-                        IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink) }
-                    }
-                    currentNotebook?.let { NotebookDot(it.colorHex, 14); Spacer(Modifier.width(10.dp)) }
-                    Column(Modifier.weight(1f)) {
-                        Text(title, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.7).sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            if (notes.size == 1) "1 note" else "${notes.size} notes",
-                            fontSize = 13.sp, color = InkMuted, modifier = Modifier.padding(top = 3.dp)
-                        )
-                    }
-                    if (isTrash && (notes.isNotEmpty() || trashedNotebooks.isNotEmpty())) {
-                        androidx.compose.material3.TextButton(onClick = { confirmEmptyTrash = true }) { Text("Empty", color = Danger) }
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    CircleAction(if (searching) Icons.Filled.Close else Icons.Filled.Search, if (searching) "Close search" else "Search notes") {
-                        searching = !searching
-                        if (!searching) viewModel.query.value = ""
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Box {
-                        CircleAction(Icons.AutoMirrored.Filled.Sort, "Sort") { showSort = true }
-                        DropdownMenu(expanded = showSort, onDismissRequest = { showSort = false }, containerColor = SurfaceBase) {
-                            NoteSort.entries.forEach { s ->
-                                DropdownMenuItem(
-                                    text = { Text(s.label, fontWeight = if (s == sort) FontWeight.SemiBold else FontWeight.Normal, color = if (s == sort) Accent else Ink) },
-                                    onClick = { viewModel.sort.value = s; showSort = false }
-                                )
-                            }
+                    if (isTrash && (state.items.isNotEmpty() || trashedNotebooks.isNotEmpty())) TextAction("Empty", { confirmEmptyTrash = true })
+                    if (isRoot) {
+                        IconButton(onClick = { library.setView(if (view == LibraryView.FOLDERS) LibraryView.LIST else LibraryView.FOLDERS) }) {
+                            Icon(
+                                if (view == LibraryView.FOLDERS) Icons.Rounded.Notes else Icons.Rounded.FolderOpen,
+                                if (view == LibraryView.FOLDERS) "Show notes" else "Show notebooks",
+                                tint = MM.colors.inkSecondary
+                            )
                         }
                     }
+                    SortMenu(query.sort, library::setSort)
                     currentNotebook?.let { nb ->
-                        Spacer(Modifier.width(8.dp))
-                        CircleAction(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, "AI for this notebook") { showAiMenu = true }
-                        Spacer(Modifier.width(8.dp))
-                        CircleAction(Icons.Filled.MoreVert, "Notebook options") { notebookMenu = nb }
+                        IconButton(onClick = { showAiMenu = true }) { Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, "AI for this notebook", tint = MM.colors.inkSecondary) }
+                        IconButton(onClick = { notebookMenu = nb }) { Icon(Icons.Rounded.MoreVert, "Notebook options", tint = MM.colors.inkSecondary) }
+                    }
+                    if (isRoot && (archivedCount > 0 || trashCount > 0)) {
+                        LibraryMenu(archivedCount, trashCount, onOpenArchive, onOpenTrash)
                     }
                 }
             }
-            if (searching) {
-                item(key = "search") {
-                    Surface(shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 14.dp)) {
-                        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Search, contentDescription = null, tint = InkMuted, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(10.dp))
-                            Box(Modifier.weight(1f)) {
-                                if (query.isEmpty()) Text("Search titles and text", color = InkFaint, fontSize = 15.sp)
-                                BasicTextField(
-                                    value = query, onValueChange = { viewModel.query.value = it }, singleLine = true,
-                                    textStyle = TextStyle(fontSize = 15.sp, color = Ink), cursorBrush = SolidColor(Accent), modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-                    }
-                }
+            if (!homeMode) {
+            // ------------------------------------------------------------ search first, then the chips
+            WorkTextField(
+                value = searchText, onValueChange = library::setSearch,
+                placeholder = if (isTrash) "Search the Trash" else if (isArchive) "Search archived notes" else "Search notes",
+                icon = Icons.Rounded.Search,
+                modifier = Modifier.padding(horizontal = MM.space.l).testTag("notes_search"),
+                clearLabel = "Clear search"
+            )
             }
-            if (isRoot) {
-                item(key = "spaces") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 22.dp), modifier = Modifier.padding(top = 18.dp)) {
-                        item { Pill("All", space == null) { viewModel.space.value = null } }
-                        items(NotebookSpace.entries.filter { it in appIdentity.spaces }) { s -> Pill(s.displayName, space == s) { viewModel.space.value = if (space == s) null else s } }
-                    }
-                }
-                if (onOpenFaith != null && appIdentity.showsFaith && (space == null || space == NotebookSpace.FAITH)) {
-                    item(key = "faith") {
-                        Surface(
-                            onClick = onOpenFaith, shape = RoundedCornerShape(18.dp), color = com.craftflowtechnologies.meetingmind.ui.theme.FaithGoldWash,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, com.craftflowtechnologies.meetingmind.ui.theme.FaithGold.copy(alpha = 0.35f)),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 16.dp).testTag("notes_open_faith")
-                        ) {
-                            Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = com.craftflowtechnologies.meetingmind.ui.theme.FaithGold, modifier = Modifier.size(22.dp))
-                                Column(Modifier.weight(1f).padding(start = 14.dp)) {
-                                    Text("Faith", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif)
-                                    Text("Bible, verse of the day, prayer and your journey", fontSize = 12.5.sp, color = InkSecondary)
-                                }
-                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = InkSecondary, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    }
-                }
-                item(key = "notebooks") {
-                    Column(Modifier.padding(top = 22.dp)) {
-                        SectionHeader("Notebooks")
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(horizontal = 22.dp)) {
-                            items(notebooks.filter { space == null || it.space == space }, key = { it.id }) { nb ->
-                                NotebookCard(nb, counts[nb.id] ?: 0, onClick = { onOpenNotebook(nb.id) }, onLongClick = { notebookMenu = nb })
-                            }
-                            item(key = "new-notebook") {
-                                Surface(
-                                    onClick = { notebookDialog = NotebookDialogState(null, "", space ?: NotebookSpace.PERSONAL, NotebookColors.first()) },
-                                    shape = RoundedCornerShape(18.dp), color = SurfaceBase, border = BorderStroke(1.dp, Line),
-                                    modifier = Modifier.width(120.dp).height(96.dp)
-                                ) {
-                                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.Center) {
-                                        Icon(Icons.Filled.Add, contentDescription = null, tint = Ink, modifier = Modifier.size(22.dp))
-                                        Spacer(Modifier.height(10.dp))
-                                        Text("New notebook", fontSize = 13.sp, color = InkSecondary, fontWeight = FontWeight.Medium)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (isTrash) {
-                item(key = "trash-info") {
-                    Text(
-                        "Notes and notebooks here are deleted for good after ${com.craftflowtechnologies.meetingmind.core.repository.NoteRepository.TRASH_DAYS} days. Tap one to restore it.",
-                        fontSize = 13.sp, color = InkSecondary, modifier = Modifier.padding(horizontal = 22.dp).padding(top = 12.dp)
+            if (!homeMode) {
+                if (!isTrash && !isArchive && !folders) {
+                    LibraryChips(
+                        query = query, showWork = NotebookSpace.WORK in appIdentity.spaces, showFaith = appIdentity.showsFaith,
+                        onAll = library::showAll, onChip = library::toggleChip, onMore = { moreFilters = true },
+                        modifier = Modifier.padding(horizontal = MM.space.l)
                     )
-                }
-                if (trashedNotebooks.isNotEmpty()) {
-                    item(key = "trash-nb-h") { SectionHeader("Notebooks", top = 22.dp) }
-                    items(trashedNotebooks, key = { "tnb-" + it.id }) { nb ->
-                        Row(
-                            Modifier.fillMaxWidth().combinedClickable(onClick = { notebookMenu = nb }).padding(horizontal = 22.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            NotebookDot(nb.colorHex, 12)
-                            Spacer(Modifier.width(12.dp))
-                            Text(nb.name, fontSize = 15.sp, color = Ink, modifier = Modifier.weight(1f))
-                            Text(daysLeft(nb.deletedAt), fontSize = 12.sp, color = InkMuted)
-                        }
-                    }
-                }
-            }
-            if (tags.isNotEmpty() && !isArchive && !isTrash) {
-                item(key = "tags") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 22.dp), modifier = Modifier.padding(top = 18.dp)) {
-                        items(tags, key = { it.id }) { tag ->
-                            Pill("#${tag.name}", tagFilter?.id == tag.id, accent = true) { viewModel.tagFilter.value = if (tagFilter?.id == tag.id) null else tag }
-                        }
-                    }
                 }
             }
 
-            if (loaded && notes.isEmpty()) {
-                item(key = "empty") {
-                    EmptyNotes(
-                        filtered = query.isNotBlank() || tagFilter != null || space != null,
-                        archive = isArchive,
-                        trash = isTrash,
-                        onCreate = { viewModel.createNote(onOpenNote) }
-                    )
-                }
+            // ------------------------------------------------------------ the body
+            if (folders) {
+                NotebookList(
+                    notebooks = notebooks, counts = counts, onOpen = onOpenNotebook, onMenu = { notebookMenu = it },
+                    onNew = { notebookDialog = NotebookDialogState(null, "", NotebookSpace.PERSONAL, NotebookColors.first()) },
+                    modifier = Modifier.weight(1f)
+                )
             } else {
-                val pinned = notes.filter { it.pinned }
-                val rest = notes.filter { !it.pinned }
-                if (pinned.isNotEmpty()) {
-                    item(key = "pinned-h") { SectionHeader("Pinned", top = 26.dp) }
-                    items(pinned, key = { "p-" + it.id }) { n ->
-                        NoteRow(n, notebookById[n.notebookId], showNotebook = isRoot, selecting = selectedIds.isNotEmpty(), selected = n.id in selectedIds,
-                            onClick = { if (selectedIds.isNotEmpty()) toggleSelect(n.id) else if (isTrash) noteMenu = n else onOpenNote(n.id) },
-                            onLongClick = { if (isTrash) noteMenu = n else toggleSelect(n.id) })
+                val now = remember(state.items) { System.currentTimeMillis() }
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth().testTag("notes_list"), state = listState,
+                    contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, bottom = MM.space.xxl)
+                ) {
+                    if (homeMode) {
+                        item(key = "home-top") {
+                            NotesHomeTopBar(
+                                onSearch = { searchOpen = !searchOpen },
+                                onFolders = { library.setView(LibraryView.FOLDERS) },
+                                archived = archivedCount, trash = trashCount, onArchive = onOpenArchive, onTrash = onOpenTrash
+                            )
+                        }
+                        val hero = latestMeeting.takeIf { showHero }
+                        if (hero != null && companionShown) item(key = "home-hero-block") {
+                            // Zuri sits partly behind the hero card: one item, so the card can cover Zuri's lower body.
+                            HomeHeroBlock(hero, heroTiles, onOpen = { onOpenNote(hero.id) }, onTile = { onOpenNote(hero.id) })
+                        } else {
+                            item(key = "home-greeting") {
+                                NotesGreeting()
+                            }
+                            if (hero != null) item(key = "home-hero") {
+                                LatestMeetingCard(
+                                    hero, heroTiles, onOpen = { onOpenNote(hero.id) }, onTile = { onOpenNote(hero.id) },
+                                    modifier = Modifier.padding(top = MM.space.l)
+                                )
+                            }
+                        }
+                        if (searchOpen || searchText.isNotBlank()) item(key = "home-search") {
+                            WorkTextField(
+                                value = searchText, onValueChange = library::setSearch, placeholder = "Search notes",
+                                icon = Icons.Rounded.Search, modifier = Modifier.padding(top = MM.space.m).testTag("notes_search"),
+                                clearLabel = "Clear search"
+                            )
+                        }
+                        item(key = "home-header") {
+                            NotesSectionHeader(
+                                extraFilters = query.types.size + if (query.tagId != null) 1 else 0,
+                                sort = query.sort, onSort = library::setSort,
+                                onFilters = { moreFilters = true }, onNew = { viewModel.createNote(onOpenNote) }
+                            )
+                        }
+                        item(key = "home-chips") {
+                            HomeChips(query, showWork = NotebookSpace.WORK in appIdentity.spaces, showFaith = appIdentity.showsFaith, onAll = library::showAll, onChip = library::toggleChip)
+                        }
                     }
-                }
-                val groups = if (isTrash) rest.groupBy { daysLeft(it.deletedAt).replaceFirstChar { c -> c.uppercase() } }
-                    else if (sort == NoteSort.TITLE) mapOf("All notes" to rest) else rest.groupBy { Formatters.formatDateHeader(if (sort == NoteSort.CREATED) it.eventDate ?: it.createdAt else it.updatedAt) }
-                groups.forEach { (header, list) ->
-                    item(key = "h-$header") { SectionHeader(header, top = 26.dp) }
-                    items(list, key = { it.id }) { n ->
-                        NoteRow(n, notebookById[n.notebookId], showNotebook = isRoot, selecting = selectedIds.isNotEmpty(), selected = n.id in selectedIds,
-                            onClick = { if (selectedIds.isNotEmpty()) toggleSelect(n.id) else if (isTrash) noteMenu = n else onOpenNote(n.id) },
-                            onLongClick = { if (isTrash) noteMenu = n else toggleSelect(n.id) })
+                    if (isTrash) {
+                        item(key = "trash-info") {
+                            Text(
+                                "Notes and notebooks here are deleted for good after ${NoteRepository.TRASH_DAYS} days. Tap one to restore it.",
+                                style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(vertical = MM.space.m)
+                            )
+                        }
+                        items(trashedNotebooks, key = { "tnb-" + it.id }) { nb ->
+                            ListRow(
+                                nb.name, Modifier.combinedClickable(onClick = { notebookMenu = nb }),
+                                meta = daysLeft(nb.deletedAt), leading = { NotebookDot(nb.colorHex, 12) }
+                            )
+                        }
                     }
-                }
-            }
-            if (isRoot && trashCount > 0) {
-                item(key = "trash-link") {
-                    Row(
-                        Modifier.fillMaxWidth().padding(top = if (archivedCount > 0) 0.dp else 28.dp).combinedClickable(onClick = onOpenTrash).padding(horizontal = 22.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Delete, contentDescription = null, tint = InkMuted, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Text("Trash · $trashCount", fontSize = 14.sp, color = InkSecondary)
-                    }
-                }
-            }
-            if (isRoot && archivedCount > 0) {
-                item(key = "archive-link") {
-                    Row(
-                        Modifier.fillMaxWidth().padding(top = 28.dp).combinedClickable(onClick = onOpenArchive).padding(horizontal = 22.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Archive, contentDescription = null, tint = InkMuted, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Text("Archived notes · $archivedCount", fontSize = 14.sp, color = InkSecondary)
+                    when {
+                        state.isLoadingFirst && state.items.isEmpty() -> items(SKELETON_ROWS, key = { "skeleton-$it" }) { SkeletonRow() }
+                        state.error != null && state.items.isEmpty() -> item(key = "error") {
+                            StatusLine(StatusKind.Error, "Couldn't load your notes.", Modifier.padding(top = MM.space.l), actionLabel = "Retry", onAction = library::retry)
+                        }
+                        state.items.isEmpty() -> item(key = "empty") {
+                            EmptyLibrary(
+                                query = query, isArchive = isArchive, isTrash = isTrash, searchText = searchText,
+                                onSearchTranscripts = { library.setIncludeTranscripts(true) },
+                                onClear = library::clearFilters,
+                                onRecord = startRecording, onWrite = { viewModel.createNote(onOpenNote) }
+                            )
+                        }
+                        else -> {
+                            // Recent lists read in date sections; search and trash keep their plain order.
+                            val grouped = !isTrash && !query.isSearching
+                            itemsIndexed(state.items, key = { _, it -> it.id }) { index, item ->
+                                val at = if (query.sort == NoteSort.CREATED) item.note.eventDate ?: item.note.createdAt else item.note.updatedAt
+                                val group = DayGroups.of(at, now)
+                                if (grouped && (index == 0 || DayGroups.of(
+                                        if (query.sort == NoteSort.CREATED) state.items[index - 1].note.eventDate ?: state.items[index - 1].note.createdAt
+                                        else state.items[index - 1].note.updatedAt, now
+                                    ) != group)
+                                ) {
+                                    Text(
+                                        group.label, style = MM.type.caption, color = MM.colors.inkMuted,
+                                        modifier = Modifier.padding(top = MM.space.m, bottom = MM.space.xs, start = MM.space.xs)
+                                    )
+                                }
+                                LibraryRow(
+                                    item = item, now = now, query = query, inTrash = isTrash, notebooks = notebooks,
+                                    selecting = selecting, isSelected = item.id in selectedIds,
+                                    onClick = { if (selecting) toggleSelect(item.id) else if (isTrash) noteMenu = item else onOpenNote(item.id) },
+                                    onLongClick = { if (isTrash && !selecting) noteMenu = item else toggleSelect(item.id) },
+                                    onTogglePin = { viewModel.togglePin(item.note) }
+                                )
+                            }
+                            pagedFooter(state, if (query.isSearching) "That's every match" else "That's everything", library::retry)
+                            if (query.isSearching && !query.includeTranscripts) item(key = "more-transcripts") {
+                                QuietLink("Search in transcripts too", { library.setIncludeTranscripts(true) })
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    notebookDialog?.let { state ->
+    // ---------------------------------------------------------------- sheets and dialogs
+    if (moreFilters) MoreFiltersSheet(
+        query = query, tags = tags.map { it.id to it.name },
+        onType = library::toggleType, onTag = library::setTag, onClear = library::showAll, onDismiss = { moreFilters = false }
+    )
+    if (moveOpen) MoveSheet(
+        notebooks = notebooks,
+        onPick = { nb ->
+            val items = selectedItems; selectedIds = emptySet(); moveOpen = false
+            scope.launch { offerUndo("Moved ${items.size} to ${nb.name}", viewModel.moveAll(items, nb.id)) }
+        },
+        onDismiss = { moveOpen = false }
+    )
+    notebookDialog?.let { s ->
         NotebookDialog(
-            state = state,
-            onSave = { s ->
-                if (s.existing == null) viewModel.createNotebook(s.name.trim(), s.space, s.color)
-                else viewModel.updateNotebook(s.existing.copy(name = s.name.trim(), space = s.space, colorHex = s.color))
+            state = s,
+            onSave = { saved ->
+                if (saved.existing == null) viewModel.createNotebook(saved.name.trim(), saved.space, saved.color)
+                else viewModel.updateNotebook(saved.existing.copy(name = saved.name.trim(), space = saved.space, colorHex = saved.color))
                 notebookDialog = null
             },
             onDismiss = { notebookDialog = null }
@@ -442,8 +482,8 @@ fun NotesScreen(
     notebookMenu?.let { nb ->
         AlertDialog(
             onDismissRequest = { notebookMenu = null },
-            containerColor = SurfaceBase,
-            title = { Text(nb.name) },
+            containerColor = MM.colors.surfaceRaised,
+            title = { Text(nb.name, style = MM.type.heading, color = MM.colors.ink) },
             text = {
                 if (isTrash) Column {
                     MenuText("Restore notebook") { notebookMenu = null; viewModel.restoreNotebook(nb.id) }
@@ -456,66 +496,283 @@ fun NotesScreen(
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { notebookMenu = null }) { Text("Close") } }
+            confirmButton = { TextAction("Close", { notebookMenu = null }) }
         )
     }
     if (confirmEmptyTrash) {
         AlertDialog(
             onDismissRequest = { confirmEmptyTrash = false },
-            containerColor = SurfaceBase,
-            title = { Text("Empty the Trash?") },
-            text = { Text("Everything in the Trash is deleted for good. Recordings are never deleted this way; they stay in your library.") },
-            confirmButton = { TextButton(onClick = { viewModel.emptyTrash(); confirmEmptyTrash = false }) { Text("Empty Trash", color = Danger) } },
-            dismissButton = { TextButton(onClick = { confirmEmptyTrash = false }) { Text("Cancel") } }
+            containerColor = MM.colors.surfaceRaised,
+            title = { Text("Empty the Trash?", style = MM.type.heading, color = MM.colors.ink) },
+            text = { Text("Everything in the Trash is deleted for good. Recordings are never deleted this way; they stay in your library.", style = MM.type.body, color = MM.colors.inkSecondary) },
+            confirmButton = { TextButton(onClick = { viewModel.emptyTrash(); confirmEmptyTrash = false }) { Text("Empty Trash", style = MM.type.bodyStrong, color = MM.colors.danger) } },
+            dismissButton = { TextAction("Cancel", { confirmEmptyTrash = false }) }
         )
     }
     confirmDeleteNotebook?.let { nb ->
         AlertDialog(
             onDismissRequest = { confirmDeleteNotebook = null },
-            containerColor = SurfaceBase,
-            title = { Text("Delete “${nb.name}”?") },
-            text = { Text("The notebook moves to the Trash. Its notes are kept and stay in All notes; restoring the notebook gathers them back.") },
+            containerColor = MM.colors.surfaceRaised,
+            title = { Text("Delete “${nb.name}”?", style = MM.type.heading, color = MM.colors.ink) },
+            text = { Text("The notebook moves to the Trash. Its notes are kept and stay in All notes; restoring the notebook gathers them back.", style = MM.type.body, color = MM.colors.inkSecondary) },
             confirmButton = {
-                TextButton(onClick = { viewModel.deleteNotebook(nb.id); confirmDeleteNotebook = null; if (!isRoot) onNavigateBack?.invoke() }) { Text("Delete", color = Danger) }
+                TextButton(onClick = { viewModel.deleteNotebook(nb.id); confirmDeleteNotebook = null; if (!isRoot) onNavigateBack?.invoke() }) {
+                    Text("Delete", style = MM.type.bodyStrong, color = MM.colors.danger)
+                }
             },
-            dismissButton = { TextButton(onClick = { confirmDeleteNotebook = null }) { Text("Cancel") } }
+            dismissButton = { TextAction("Cancel", { confirmDeleteNotebook = null }) }
         )
     }
-    if (moveOpen) androidx.compose.material3.AlertDialog(
-        onDismissRequest = { moveOpen = false }, containerColor = SurfaceBase,
-        title = { Text("Move ${selectedIds.size} to…") },
-        text = {
-            Column {
-                notebooks.forEach { nb ->
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { viewModel.moveAll(selectedIds, nb.id); selectedIds = emptySet(); moveOpen = false }.padding(vertical = 12.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) { NotebookDot(nb.colorHex, 12); Text(nb.name, fontSize = 16.sp, color = Ink, modifier = Modifier.padding(start = 12.dp)) }
-                }
-            }
-        },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = { moveOpen = false }) { Text("Cancel") } }
-    )
-    noteMenu?.let { n ->
+    noteMenu?.let { item ->
         AlertDialog(
             onDismissRequest = { noteMenu = null },
-            containerColor = SurfaceBase,
-            title = { Text(n.title.ifBlank { "Untitled note" }, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+            containerColor = MM.colors.surfaceRaised,
+            title = { Text(item.note.title.ifBlank { "Untitled note" }, style = MM.type.heading, color = MM.colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             text = {
                 Column {
-                    if (isTrash) {
-                        MenuText("Restore") { viewModel.restore(n); noteMenu = null }
-                        MenuText("Delete for good", destructive = true) { viewModel.deleteForever(n); noteMenu = null }
-                    } else {
-                        MenuText(if (n.pinned) "Unpin" else "Pin to top") { viewModel.togglePin(n); noteMenu = null }
-                        if (isArchive) MenuText("Restore") { viewModel.unarchive(n); noteMenu = null }
-                        else MenuText("Archive") { viewModel.archive(n); noteMenu = null }
-                        MenuText("Delete", destructive = true) { trashWithUndo(n); noteMenu = null }
-                    }
+                    MenuText("Restore") { viewModel.restore(item.note); noteMenu = null }
+                    MenuText("Delete for good", destructive = true) { viewModel.deleteForever(item.note); noteMenu = null }
                 }
             },
-            confirmButton = { TextButton(onClick = { noteMenu = null }) { Text("Close") } }
+            confirmButton = { TextAction("Close", { noteMenu = null }) }
         )
+    }
+}
+
+// ==================================================================== pieces
+
+/** Everything is "All"; Work, Faith and Bible add up; Recordings and Pinned narrow; "More filters" holds types and tags. */
+@Composable
+private fun LibraryChips(
+    query: LibraryQuery, showWork: Boolean, showFaith: Boolean,
+    onAll: () -> Unit, onChip: (LibraryChip) -> Unit, onMore: () -> Unit, modifier: Modifier = Modifier
+) {
+    val extra = query.types.size + if (query.tagId != null) 1 else 0
+    Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+        MMChip("All", selected = query.chips.isEmpty() && extra == 0, onClick = onAll)
+        LibraryChip.entries
+            .filter { (it != LibraryChip.WORK || showWork) && ((it != LibraryChip.FAITH && it != LibraryChip.BIBLE) || showFaith) }
+            .forEach { chip -> MMChip(chip.label, selected = chip in query.chips, onClick = { onChip(chip) }) }
+        MMChip(if (extra > 0) "More filters · $extra" else "More filters", selected = extra > 0, onClick = onMore)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun MoreFiltersSheet(
+    query: LibraryQuery, tags: List<Pair<String, String>>,
+    onType: (RecordingType) -> Unit, onTag: (String?) -> Unit, onClear: () -> Unit, onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MM.colors.surfaceRaised, shape = MM.radius.sheet) {
+        Column(Modifier.padding(horizontal = MM.space.l).padding(bottom = MM.space.xl), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("More filters", style = MM.type.heading, color = MM.colors.ink, modifier = Modifier.weight(1f).semantics { heading() })
+                if (query.types.isNotEmpty() || query.tagId != null) TextAction("Clear", onClear)
+            }
+            Text("Type", style = MM.type.caption, color = MM.colors.inkMuted)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                RecordingType.entries.filter { it != RecordingType.CUSTOM }.forEach { type ->
+                    MMChip(type.displayName, selected = type in query.types, onClick = { onType(type) })
+                }
+            }
+            if (tags.isNotEmpty()) {
+                Text("Tag", style = MM.type.caption, color = MM.colors.inkMuted, modifier = Modifier.padding(top = MM.space.s))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    tags.forEach { (id, name) -> MMChip("#$name", selected = query.tagId == id, onClick = { onTag(if (query.tagId == id) null else id) }) }
+                }
+            }
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) { PrimaryButton("Done", onDismiss) }
+        }
+    }
+}
+
+@Composable
+internal fun SortMenu(sort: NoteSort, onSort: (NoteSort) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, "Sort: ${sort.label}", tint = MM.colors.inkSecondary) }
+        DropdownMenu(open, { open = false }, containerColor = MM.colors.surfaceRaised, shape = MM.radius.card) {
+            NoteSort.entries.forEach { s ->
+                DropdownMenuItem(
+                    text = { Text(s.label, style = if (s == sort) MM.type.bodyStrong else MM.type.body, color = MM.colors.ink) },
+                    trailingIcon = { if (s == sort) Icon(Icons.Rounded.Check, null, tint = MM.colors.accent) },
+                    onClick = { open = false; onSort(s) }
+                )
+            }
+        }
+    }
+}
+
+/** Archived and Trash are one tap away, not rows at the bottom of a long list. */
+@Composable
+internal fun LibraryMenu(archived: Int, trash: Int, onArchive: () -> Unit, onTrash: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) { Icon(Icons.Rounded.MoreVert, "More", tint = MM.colors.inkSecondary) }
+        DropdownMenu(open, { open = false }, containerColor = MM.colors.surfaceRaised, shape = MM.radius.card) {
+            if (archived > 0) DropdownMenuItem(text = { Text("Archived · $archived", style = MM.type.body, color = MM.colors.ink) }, onClick = { open = false; onArchive() })
+            if (trash > 0) DropdownMenuItem(text = { Text("Trash · $trash", style = MM.type.body, color = MM.colors.ink) }, onClick = { open = false; onTrash() })
+        }
+    }
+}
+
+@Composable
+private fun SelectionBar(
+    count: Int, inTrash: Boolean, allPinned: Boolean,
+    onClose: () -> Unit, onSelectAll: () -> Unit, onPin: (Boolean) -> Unit, onMove: () -> Unit,
+    onArchive: (() -> Unit)?, onDelete: () -> Unit, onRestore: () -> Unit
+) {
+    Column(Modifier.padding(horizontal = MM.space.xs)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, "Cancel selection", tint = MM.colors.ink) }
+            Text("$count selected", style = MM.type.heading, color = MM.colors.ink, modifier = Modifier.weight(1f).semantics { heading() })
+            TextAction("All", onSelectAll)
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+            if (inTrash) TextAction("Restore", onRestore) else {
+                TextAction(if (allPinned) "Unpin" else "Pin", { onPin(!allPinned) })
+                TextAction("Move", onMove)
+                if (onArchive != null) TextAction("Archive", onArchive)
+                TextButton(onClick = onDelete, modifier = Modifier.heightIn(min = MMSize.minTouch), shape = MM.radius.pill) {
+                    Text("Delete", style = MM.type.bodyStrong, color = MM.colors.danger)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LibraryRow(
+    item: LibraryItem, now: Long, query: LibraryQuery, inTrash: Boolean, notebooks: List<Notebook>,
+    selecting: Boolean, isSelected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onTogglePin: () -> Unit
+) {
+    val note = item.note
+    val c = MM.colors
+    val marker = when {
+        Workflows.space(note.workflow) == NotebookSpace.WORK -> c.accent
+        Workflows.space(note.workflow) == NotebookSpace.FAITH -> c.gold
+        else -> notebooks.firstOrNull { it.id == note.notebookId }?.colorHex
+            ?.let { hex -> runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull() } ?: c.inkFaint
+    }
+    val at = if (query.sort == NoteSort.CREATED) note.eventDate ?: note.createdAt else note.updatedAt
+    val model = NoteRowModel(
+        title = note.title.ifBlank { "Untitled note" },
+        preview = item.preview,
+        spaceColor = marker,
+        hasRecording = item.hasRecording,
+        transcriptStatus = item.transcript,
+        timeLabel = if (inTrash) daysLeft(note.deletedAt) else NoteLabels.relativeDate(at, now),
+        pinned = note.pinned,
+        isPrivate = note.isPrivate,
+        typeIcon = typeIcon(note.workflow),
+        typeLabel = note.workflow.displayName.takeIf { note.workflow != RecordingType.GENERAL }.orEmpty(),
+        durationLabel = item.durationMs?.let(NoteLabels::duration).orEmpty(),
+        highlight = item.highlight
+    )
+    Row(
+        Modifier.fillMaxWidth().background(if (isSelected) c.accentWash else Color.Transparent, MM.radius.small)
+            .padding(horizontal = MM.space.xs).semantics { selected = isSelected },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (selecting) {
+            Icon(
+                if (isSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                if (isSelected) "Selected" else "Not selected",
+                tint = if (isSelected) c.accent else c.inkFaint, modifier = Modifier.padding(end = MM.space.s).size(MMSize.icon)
+            )
+        }
+        if (query.isSearching) {
+            NoteRow(model, Modifier.weight(1f).combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick))
+        } else {
+            NoteCard(
+                model, tile = marker, selected = isSelected,
+                showPin = !inTrash && !selecting, onTogglePin = onTogglePin,
+                onClick = onClick, onLongClick = onLongClick, modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+private fun typeIcon(type: RecordingType): ImageVector = when (type) {
+    RecordingType.BIBLE_STUDY -> Icons.Rounded.AutoStories
+    RecordingType.SERMON -> Icons.Rounded.RecordVoiceOver
+    RecordingType.PRAYER, RecordingType.PRAYER_REQUEST, RecordingType.GRATITUDE -> Icons.Rounded.Favorite
+    RecordingType.DEVOTIONAL, RecordingType.REFLECTION, RecordingType.TESTIMONY, RecordingType.JOURNAL -> Icons.Rounded.Book
+    RecordingType.IDEA, RecordingType.BRAINSTORM -> Icons.Rounded.Lightbulb
+    RecordingType.VOICE_MEMO, RecordingType.DICTATION -> Icons.Rounded.Mic
+    RecordingType.LECTURE, RecordingType.RESEARCH -> Icons.Rounded.School
+    RecordingType.PROJECT_BRIEF, RecordingType.DECISION_RECORD, RecordingType.WEEKLY_REVIEW -> Icons.Rounded.Description
+    else -> if (Workflows.space(type) == NotebookSpace.WORK) Icons.Rounded.Groups else Icons.Rounded.Notes
+}
+
+/** Empty is never one thing: no notes yet, nothing found, a filter too narrow, an empty archive or Trash. */
+@Composable
+private fun EmptyLibrary(
+    query: LibraryQuery, isArchive: Boolean, isTrash: Boolean, searchText: String,
+    onSearchTranscripts: () -> Unit, onClear: () -> Unit, onRecord: () -> Unit, onWrite: () -> Unit
+) {
+    when {
+        isTrash -> EmptyState("The Trash is empty", "Deleted notes wait here for ${NoteRepository.TRASH_DAYS} days, so a delete can always be undone.")
+        isArchive && !query.isFiltered -> EmptyState("Nothing archived", "Archived notes wait here, out of the way, until you restore them.")
+        query.isSearching -> EmptyState(
+            title = "Nothing matches “${searchText.trim()}”",
+            body = if (query.includeTranscripts) "Not in your notes or their transcripts. Try another word." else "Not in your notes. Recording transcripts aren't searched unless you ask.",
+            action = {
+                Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    if (!query.includeTranscripts) SecondaryButton("Search in transcripts too", onSearchTranscripts)
+                    TextAction("Clear", onClear)
+                }
+            }
+        )
+        query.isFiltered -> EmptyState("No notes match these filters", "Try fewer filters.", action = { SecondaryButton("Show all notes", onClear) })
+        else -> EmptyState(
+            illustration = { ZuriSlot(CompanionPage.EMPTY, EmptyCompanionSize) },
+            title = "No notes yet — record or write one",
+            body = "Every recording gets a note of its own, with the summary and what was said.",
+            action = {
+                Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    PrimaryButton("Record", onRecord, leadingIcon = Icons.Rounded.Mic)
+                    SecondaryButton("Write a note", onWrite)
+                }
+            }
+        )
+    }
+}
+
+/** Notebooks as folders: the same screen, the other way of looking. Tap to open, long-press for options. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun NotebookList(
+    notebooks: List<Notebook>, counts: Map<String, Int>, onOpen: (String) -> Unit, onMenu: (Notebook) -> Unit,
+    onNew: () -> Unit, modifier: Modifier = Modifier
+) {
+    LazyColumn(modifier.fillMaxWidth().testTag("notes_folders"), contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.s)) {
+        items(notebooks, key = { it.id }) { nb ->
+            val n = counts[nb.id] ?: 0
+            ListRow(
+                nb.name,
+                Modifier.combinedClickable(role = Role.Button, onClick = { onOpen(nb.id) }, onLongClick = { onMenu(nb) }),
+                subtitle = nb.space.displayName, meta = if (n == 1) "1 note" else "$n notes",
+                leading = { NotebookDot(nb.colorHex, 16) }
+            )
+        }
+        item(key = "new-notebook") {
+            Box(Modifier.padding(top = MM.space.m)) { SecondaryButton("New notebook", onNew, leadingIcon = Icons.Rounded.Add) }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MoveSheet(notebooks: List<Notebook>, onPick: (Notebook) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MM.colors.surfaceRaised, shape = MM.radius.sheet) {
+        Column(Modifier.padding(bottom = MM.space.l)) {
+            Text("Move to", style = MM.type.heading, color = MM.colors.ink, modifier = Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s))
+            notebooks.forEach { nb ->
+                ListRow(nb.name, Modifier.padding(horizontal = MM.space.l), leading = { NotebookDot(nb.colorHex, 12) }, onClick = { onPick(nb) })
+            }
+        }
     }
 }
 
@@ -527,159 +784,46 @@ private fun NotebookDialog(state: NotebookDialogState, onSave: (NotebookDialogSt
     var s by remember { mutableStateOf(state) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = SurfaceBase,
-        title = { Text(if (state.existing == null) "New notebook" else "Edit notebook") },
+        containerColor = MM.colors.surfaceRaised,
+        title = { Text(if (state.existing == null) "New notebook" else "Edit notebook", style = MM.type.heading, color = MM.colors.ink) },
         text = {
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
                 OutlinedTextField(value = s.name, onValueChange = { s = s.copy(name = it.replace("\n", "")) }, singleLine = true, placeholder = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-                Text("Space", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    NotebookSpace.entries.forEach { sp -> Pill(sp.displayName, s.space == sp) { s = s.copy(space = sp) } }
+                Text("Space", style = MM.type.caption, color = MM.colors.inkMuted, modifier = Modifier.padding(top = MM.space.s))
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    OfferedNotebookSpaces.forEach { sp -> MMChip(sp.displayName, selected = s.space == sp, onClick = { s = s.copy(space = sp) }) }
                 }
-                Text("Colour", fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Colour", style = MM.type.caption, color = MM.colors.inkMuted, modifier = Modifier.padding(top = MM.space.s))
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
                     NotebookColors.forEach { hex ->
                         Box(
-                            Modifier.size(28.dp).clip(CircleShape)
-                                .background(Color(android.graphics.Color.parseColor(hex)))
-                                .combinedClickable { s = s.copy(color = hex) },
+                            Modifier.size(MMSize.minTouch).combinedClickable(role = Role.RadioButton, onClick = { s = s.copy(color = hex) }),
                             contentAlignment = Alignment.Center
                         ) {
-                            if (s.color == hex) Box(Modifier.size(10.dp).clip(CircleShape).background(SurfaceBase))
+                            NotebookDot(hex, 28)
+                            if (s.color == hex) Icon(Icons.Rounded.Check, "Selected", tint = MM.colors.onAccent, modifier = Modifier.size(MMSize.iconSmall))
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(s) }, enabled = s.name.isNotBlank()) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = { TextAction("Save", { onSave(s) }, enabled = s.name.isNotBlank()) },
+        dismissButton = { TextAction("Cancel", onDismiss) }
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MenuText(label: String, destructive: Boolean = false, onClick: () -> Unit) {
     Text(
-        label, fontSize = 15.sp, color = if (destructive) Danger else Ink,
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).combinedClickable(onClick = onClick).padding(vertical = 12.dp, horizontal = 4.dp)
+        label, style = MM.type.body, color = if (destructive) MM.colors.danger else MM.colors.ink,
+        modifier = Modifier.fillMaxWidth().heightIn(min = MMSize.minTouch).clickable(role = Role.Button, onClick = onClick).padding(vertical = MM.space.m, horizontal = MM.space.xs)
     )
-}
-
-@Composable
-private fun CircleAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = CircleShape, color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.size(42.dp)) {
-        Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = label, tint = Ink, modifier = Modifier.size(19.dp)) }
-    }
-}
-
-@Composable
-private fun Pill(label: String, selected: Boolean, accent: Boolean = false, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(50),
-        color = when { selected && accent -> AccentWash; selected -> Ink; else -> SurfaceBase },
-        border = if (selected) null else BorderStroke(1.dp, Line)
-    ) {
-        Text(
-            label, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-            color = when { selected && accent -> Accent; selected -> OnInk; else -> InkSecondary },
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-        )
-    }
-}
-
-@Composable
-private fun SectionHeader(text: String, top: androidx.compose.ui.unit.Dp = 0.dp) {
-    Text(
-        text.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = InkMuted, letterSpacing = 0.8.sp,
-        modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = top, bottom = 10.dp)
-    )
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun NotebookCard(notebook: Notebook, count: Int, onClick: () -> Unit, onLongClick: () -> Unit) {
-    val color = runCatching { Color(android.graphics.Color.parseColor(notebook.colorHex ?: "#6366F1")) }.getOrDefault(Accent)
-    Surface(shape = RoundedCornerShape(18.dp), color = color.copy(alpha = 0.08f), modifier = Modifier.width(140.dp).height(96.dp)) {
-        Column(Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(14.dp)) {
-            Box(Modifier.size(22.dp).clip(RoundedCornerShape(7.dp)).background(color))
-            Spacer(Modifier.weight(1f))
-            Text(notebook.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(if (count == 1) "1 note" else "$count notes", fontSize = 12.sp, color = InkSecondary)
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun NoteRow(note: Note, notebook: Notebook?, showNotebook: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, selecting: Boolean = false, selected: Boolean = false) {
-    Column(
-        Modifier.fillMaxWidth().background(if (selected) AccentWash else androidx.compose.ui.graphics.Color.Transparent)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 22.dp, vertical = 12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (selecting) {
-                Icon(if (selected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked, contentDescription = if (selected) "Selected" else "Not selected", tint = if (selected) Accent else InkFaint, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-            }
-            if (note.pinned) { Icon(Icons.Filled.PushPin, contentDescription = "Pinned", tint = Accent, modifier = Modifier.size(14.dp)); Spacer(Modifier.width(6.dp)) }
-            Text(
-                note.title.ifBlank { "Untitled note" }, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                color = if (note.title.isBlank()) InkMuted else Ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
-            )
-            if (note.isPrivate) Icon(Icons.Filled.Lock, contentDescription = "Private", tint = InkMuted, modifier = Modifier.size(14.dp))
-        }
-        // A private note's text isn't previewed in the list; someone glancing at the phone sees only its title.
-        val preview = if (note.isPrivate) "Private" else note.plainText.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.take(2).joinToString(" · ")
-        if (preview.isNotEmpty()) {
-            Text(preview, fontSize = 14.sp, lineHeight = 20.sp, color = InkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
-        }
-        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (showNotebook && notebook != null) {
-                NotebookDot(notebook.colorHex, 8)
-                Text(" ${notebook.name}", fontSize = 12.sp, color = InkMuted)
-                Text("  ·  ", fontSize = 12.sp, color = InkFaint)
-            }
-            if (note.workflow != RecordingType.GENERAL) {
-                Text(note.workflow.displayName, fontSize = 12.sp, color = Accent, fontWeight = FontWeight.Medium)
-                Text("  ·  ", fontSize = 12.sp, color = InkFaint)
-            }
-            Text(Formatters.formatDateRelative(note.updatedAt), fontSize = 12.sp, color = InkMuted)
-        }
-    }
-}
-
-@Composable
-private fun EmptyNotes(filtered: Boolean, archive: Boolean, onCreate: () -> Unit, trash: Boolean = false) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(shape = CircleShape, color = AccentWash, modifier = Modifier.size(64.dp)) {
-            Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.EditNote, contentDescription = null, tint = Accent, modifier = Modifier.size(30.dp)) }
-        }
-        Text(
-            when { trash -> "The Trash is empty"; archive -> "Nothing archived"; filtered -> "No notes match"; else -> "Your notes live here" },
-            fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 16.dp)
-        )
-        Text(
-            when {
-                trash -> "Deleted notes wait here for ${com.craftflowtechnologies.meetingmind.core.repository.NoteRepository.TRASH_DAYS} days, so a delete can always be undone."
-                archive -> "Archived notes wait here, out of the way, until you restore them."
-                filtered -> "Try another word, or clear the filters."
-                else -> "Write something, add photos, or record — every recording gets a note of its own."
-            },
-            fontSize = 14.sp, color = InkSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 6.dp)
-        )
-        if (!filtered && !archive && !trash) {
-            Surface(onClick = onCreate, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.padding(top = 20.dp)) {
-                Text("Write a note", color = OnInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp))
-            }
-        }
-    }
 }
 
 /** "12 days left" for something deleted at [deletedAt]. */
 internal fun daysLeft(deletedAt: Long?, now: Long = System.currentTimeMillis()): String {
     if (deletedAt == null) return ""
-    val purgeAt = deletedAt + com.craftflowtechnologies.meetingmind.core.repository.NoteRepository.TRASH_DAYS * 24L * 60 * 60 * 1000
+    val purgeAt = deletedAt + NoteRepository.TRASH_DAYS * 24L * 60 * 60 * 1000
     val days = ((purgeAt - now) / (24L * 60 * 60 * 1000)).coerceAtLeast(0)
     return when (days) { 0L -> "deleted for good today"; 1L -> "1 day left"; else -> "$days days left" }
 }

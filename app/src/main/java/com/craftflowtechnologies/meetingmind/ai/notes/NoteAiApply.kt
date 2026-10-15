@@ -79,6 +79,25 @@ object NoteAiApply {
         return summary + fixed + sections + other + actions + NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.PARAGRAPH)
     }
 
+    /**
+     * Appends discussion guide sections to the note without overwriting existing content.
+     */
+    fun withStudyGuide(blocks: List<NoteBlock>, noteId: String, result: NoteAiOutcome.Sections): List<NoteBlock> {
+        if (result.sections.isEmpty()) return blocks
+        val trailing = blocks.lastOrNull()?.takeIf { it.type == NoteBlockType.PARAGRAPH && it.content.isEmpty }
+        val body = if (trailing != null) blocks.dropLast(1) else blocks
+        val newBlocks = mutableListOf<NoteBlock>()
+        newBlocks.add(heading(noteId, "Small-Group Discussion Guide", "sg_header"))
+        for (s in result.sections) {
+            newBlocks.add(NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.HEADING_3, RichText.plain(s.title), source = BlockSource.AI, sectionKey = "sg_${s.key}"))
+            s.items.forEachIndexed { i, item ->
+                val type = if (s.key.contains("question") || s.key.contains("points")) NoteBlockType.NUMBERED else NoteBlockType.BULLET
+                newBlocks.add(NoteBlock(NoteRepository.newId("block"), noteId, 0, type, RichText.plain(item.text), source = BlockSource.AI, sectionKey = "sg_${s.key}"))
+            }
+        }
+        return body + newBlocks + listOfNotNull(trailing)
+    }
+
     private fun itemText(a: CitedItem) = a.detail?.let { "${a.text} — $it" } ?: a.text
 
     private fun heading(noteId: String, title: String, key: String) =

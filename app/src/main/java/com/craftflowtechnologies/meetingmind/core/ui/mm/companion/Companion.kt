@@ -1,0 +1,281 @@
+package com.craftflowtechnologies.meetingmind.core.ui.mm.companion
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Canvas as GraphicsCanvas
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionFlags
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionForm
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionTier
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionVariant
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionVisual
+import com.craftflowtechnologies.meetingmind.core.companion.CreateMode
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.forms.CompanionDrawKit
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.forms.CompanionFrame
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.forms.FormDrawer
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionAssets
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionRenderer
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.CompanionRendererSelector
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.LocalCompanionRiveBudget
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RendererChoice
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RendererInputs
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RiveCompanion
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rive.RiveSafety
+import com.craftflowtechnologies.meetingmind.ui.theme.CompanionPalette
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.companionPalette
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+/** Overrides the system animator scale for companions below: true = static poses, false = animate. */
+val LocalCompanionReducedMotion = staticCompositionLocalOf<Boolean?> { null }
+
+/** True forces the Canvas renderer below (screenshot tests, card export previews). */
+val LocalCompanionForceCanvas = staticCompositionLocalOf { false }
+
+/** The tier for a drawn size (§4.2). */
+fun CompanionTier.Companion.forSize(size: Dp): CompanionTier = forSizeDp(size.value)
+
+/** Below this the companion drops to LOD-0: silhouette and eyes (§2.4). */
+val CompanionLodCutoff = 32.dp
+
+/**
+ * Draws one companion form in one state (§10.2). Stateless; animation-only state lives inside.
+ *
+ * Picks the renderer per [CompanionRendererSelector]: Rive when the form's `.riv` is bundled and
+ * the slot is ≥ 48 dp, animations are on and the screen's live budget allows it; Canvas otherwise.
+ *
+ * @param state the app state or Create mode to draw; [mode], when set, overrides it.
+ * @param level mic or TTS amplitude 0..1, read in the draw phase only.
+ * @param contentDescription null = decorative (cleared semantics), the default.
+ * @param palette defaults to the theme accent.
+ * @param onRenderer reports the renderer chosen (Companion Lab).
+ */
+@Composable
+fun Companion(
+    form: CompanionForm,
+    state: CompanionVisual,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    level: () -> Float = { 0f },
+    mode: CreateMode? = null,
+    variant: CompanionVariant = CompanionVariant.Normal,
+    tier: CompanionTier = CompanionTier.forSize(size),
+    contentDescription: String? = null,
+    palette: CompanionPalette = companionPalette(MM.colors),
+    onRenderer: ((RendererChoice) -> Unit)? = null
+) {
+    val visual: CompanionVisual = mode ?: state
+    val context = LocalContext.current
+    val reducedOverride = LocalCompanionReducedMotion.current
+    val durationScale = when (reducedOverride) { true -> 0f; false -> 1f; null -> MM.motion.durationScale }
+    val forceCanvas = LocalCompanionForceCanvas.current
+    val bundled = remember(form) { CompanionAssets.isBundled(context, form) }
+    var riveFailed by remember(form) { mutableStateOf(false) }
+
+    val base = RendererInputs(
+        sizeDp = size.value, durationScale = durationScale, assetBundled = bundled, hasBudgetSlot = false,
+        riveEnabled = CompanionFlags.rive, forceCanvas = forceCanvas, riveFailed = riveFailed,
+        guardTripped = CompanionFlags.rive && !forceCanvas && !RiveSafety.allowed(context)
+    )
+    val wantsRive = CompanionRendererSelector.wantsRive(base)
+    val budget = LocalCompanionRiveBudget.current
+    var hasSlot by remember { mutableStateOf(false) }
+    DisposableEffect(wantsRive, budget) {
+        val got = wantsRive && budget.tryAcquire()
+        hasSlot = got
+        onDispose { if (got) budget.release() }
+    }
+    val choice = CompanionRendererSelector.select(base.copy(hasBudgetSlot = hasSlot))
+    if (onRenderer != null) SideEffect { onRenderer(choice) }
+
+    val bytes by produceState<ByteArray?>(null, form, choice.renderer) {
+        value = if (choice.renderer == CompanionRenderer.RIVE) withContext(Dispatchers.IO) { CompanionAssets.read(context, form) } else null
+    }
+
+    val onScreen = rememberOnScreenTracker()
+    // T1 volume layer and parallax (Z-14, §4.2): behind CompanionFlags.volumeLayer.
+    val volumeOn = LocalCompanionVolume.current ?: CompanionFlags.volumeLayer
+    val volume = CompanionParallaxGate.volume(volumeOn, tier)
+    val parallax = CompanionParallaxGate.parallax(volumeOn, tier, durationScale)
+    val look = remember { CompanionLook() }
+    val resumed = lifecycleAtLeast(Lifecycle.State.RESUMED)
+    CompanionTiltEffect(CompanionParallaxGate.gyro(volumeOn, tier, durationScale, onScreen.isOnScreen, resumed))
+    val lookModifier = if (parallax) look.touchModifier().then(look.scrollModifier()) else Modifier
+    val semantics = if (contentDescription == null) Modifier.clearAndSetSemantics { }
+    else Modifier.semantics { this.contentDescription = contentDescription }
+
+    Box(modifier.size(size).then(onScreen.modifier).then(lookModifier).then(semantics)) {
+        val riveBytes = bytes
+        if (choice.renderer == CompanionRenderer.RIVE && riveBytes != null) {
+            RiveCompanion(
+                form = form, bytes = riveBytes, visual = visual, variant = variant, palette = palette, level = level,
+                active = onScreen.isOnScreen && resumed,
+                look = if (parallax) look else null,
+                onFailure = { why -> CompanionDiagnostics.lastRiveFailure = "${form.name}: $why"; riveFailed = true },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            CanvasCompanion(
+                form = form, visual = visual, variant = variant, palette = palette, size = size, tier = tier,
+                level = level, durationScale = durationScale,
+                visible = onScreen.isOnScreen && lifecycleAtLeast(Lifecycle.State.STARTED),
+                volume = volume, look = if (parallax) look else null
+            )
+        }
+    }
+}
+
+/**
+ * The Canvas renderer: the Compose port of the visual reference. Used under 48 dp, with reduced
+ * motion, in screenshot tests, for card export and until the `.riv` files land.
+ */
+@Composable
+internal fun CanvasCompanion(
+    form: CompanionForm,
+    visual: CompanionVisual,
+    variant: CompanionVariant,
+    palette: CompanionPalette,
+    size: Dp,
+    tier: CompanionTier,
+    level: () -> Float,
+    durationScale: Float,
+    visible: Boolean,
+    volume: Boolean = false,
+    look: CompanionLook? = null,
+    modifier: Modifier = Modifier.fillMaxSize()
+) {
+    val spec = ZuriMotion.spec(visual, variant)
+    var finished by remember(visual, variant) { mutableStateOf(false) }
+    val running = CompanionClockGate.shouldRun(spec, tier, durationScale, visible, finished)
+    val time = rememberCompanionTime(
+        running = running, restartKey = visual to variant, fps = spec.fps, durationScale = durationScale,
+        runMs = spec.runMs, onFinished = { finished = true }
+    )
+    // A capped loop that played out (Sleepy's three z cycles) settles to its static pose; a
+    // one-shot holds its last frame.
+    val static = durationScale <= 0f || tier == CompanionTier.T0 || (finished && spec.timing is Timing.Loop)
+    val kit = remember { CompanionDrawKit() }
+    val frame = remember { CompanionFrame() }
+    val smoother = remember { LevelSmoother() }
+    val holder = remember { PoseMemory() }
+    val transition = remember { Animatable(1f) }
+    LaunchedEffect(visual, variant) {
+        holder.hasFrom = holder.hasLast
+        if (holder.hasLast) holder.from.set(holder.last)
+        if (durationScale <= 0f || !holder.hasFrom) { transition.snapTo(1f); return@LaunchedEffect }
+        transition.snapTo(0f)
+        val ms = if (tier == CompanionTier.T0) 150 else spec.enterMs
+        transition.animateTo(1f, tween((ms * durationScale).toInt(), easing = LinearEasing))
+    }
+    val drawer = FormDrawer.of(form)
+    val lod = size >= CompanionLodCutoff
+    val driven = spec.timing is Timing.Driven
+    Canvas(modifier) {
+        val diag = CompanionDiagnostics.frameStart()
+        val t = time.floatValue
+        val dt = ((t - holder.lastT) * 1000f).coerceIn(0f, 100f)
+        holder.lastT = t
+        // Only level-driven visuals read the level: a host lambda returns a boxed Float.
+        val l = if (static) StaticLevel else smoother.update(if (driven) level() else 0f, if (dt == 0f) 16f else dt)
+        val target = CompanionPoses.poseInto(holder.target, form, visual, t, l, static, variant)
+        val progress = transition.value
+        val pose = if (holder.hasFrom && progress < 1f) lerpInto(holder.blend, holder.from, target, progress) else target
+        holder.last.set(pose)
+        holder.hasLast = true
+        frame.pose = pose
+        frame.visual = visual
+        frame.t = t
+        frame.level = l
+        frame.reduced = static
+        frame.lod = lod
+        frame.volume = volume && lod
+        if (look != null) {
+            // State reads in the draw phase: a finger, a tilt or a scroll redraws without recomposing.
+            frame.lookX = look.x; frame.lookY = look.y; frame.lightX = look.lightX; frame.lightY = look.lightY
+        } else {
+            frame.lookX = 0f; frame.lookY = 0f; frame.lightX = 0f; frame.lightY = 0f
+        }
+        drawCompanion(kit, frame, drawer, palette)
+        CompanionDiagnostics.frameEnd(diag)
+    }
+}
+
+/** The level the static Listening pose shows (§3.1). */
+private const val StaticLevel = 0.55f
+
+/** Per-slot pose buffers, refilled every frame so drawing allocates nothing. */
+private class PoseMemory {
+    val target = Pose()
+    val blend = Pose()
+    val last = Pose()
+    val from = Pose()
+    var hasLast = false
+    var hasFrom = false
+    var lastT: Float = 0f
+}
+
+/** Draws [frame] scaled from the 100-unit box to this scope's size. */
+internal fun DrawScope.drawCompanion(kit: CompanionDrawKit, frame: CompanionFrame, drawer: FormDrawer, palette: CompanionPalette) {
+    kit.ensure(palette)
+    if (frame.volume) kit.volume.ensure(palette)
+    scale(size.minDimension / 100f, pivot = Offset.Zero) {
+        with(drawer) { draw(kit, frame, palette) }
+    }
+}
+
+/**
+ * Renders a companion's static pose into a bitmap, for Create card export (Z-22). Always the
+ * Canvas renderer, so the export never depends on a `.riv` file or on animation time.
+ */
+fun renderCompanionBitmap(
+    form: CompanionForm,
+    visual: CompanionVisual,
+    palette: CompanionPalette,
+    sizePx: Int,
+    variant: CompanionVariant = CompanionVariant.Normal
+): ImageBitmap {
+    val bitmap = ImageBitmap(sizePx, sizePx)
+    val frame = CompanionFrame().apply {
+        pose = CompanionPoses.pose(form, visual, 0f, StaticLevel, reduced = true, variant = variant)
+        this.visual = visual
+        reduced = true
+        lod = true
+        level = if (visual == CompanionState.LISTENING) StaticLevel else 0f
+    }
+    CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, GraphicsCanvas(bitmap), Size(sizePx.toFloat(), sizePx.toFloat())) {
+        drawCompanion(CompanionDrawKit(), frame, FormDrawer.of(form), palette)
+    }
+    return bitmap
+}

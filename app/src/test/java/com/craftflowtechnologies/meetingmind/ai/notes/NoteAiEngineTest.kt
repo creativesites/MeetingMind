@@ -234,4 +234,63 @@ class NoteAiEngineTest {
         val answer = NoteAiResult(NoteAiOutcome.Answer("a", listOf("b1"), true), mapOf("b1" to passages[0]), "s")
         assertEquals(answer, NoteAiCodec.decode(NoteAiCodec.encode(answer)))
     }
+
+    @Test
+    fun `study guide generates structured sections citing passages`() = runBlocking {
+        val (outcome, _) = run(
+            NoteAiTool.STUDY_GUIDE,
+            """{"sections":[
+                {"key":"scripture","title":"Scripture Focus","items":[{"text":"Ephesians 2:8-10","sources":["p1"]}]},
+                {"key":"main_idea","title":"Main Message","items":[{"text":"Salvation by grace through faith","sources":["p1"]}]},
+                {"key":"questions","title":"Discussion Questions","items":[{"text":"What does grace mean in your daily life?","sources":["p1"]}]}
+            ]}""",
+            faith = true
+        )
+        val sections = (outcome as NoteAiOutcome.Sections).sections
+        assertEquals(3, sections.size)
+        assertEquals("scripture", sections[0].key)
+        assertEquals("Scripture Focus", sections[0].title)
+        assertEquals(listOf("b1"), sections[0].items[0].sourceIds)
+    }
+
+    @Test
+    fun `study guide formatter generates WhatsApp markdown with emojis and numbering`() {
+        val sections = listOf(
+            SectionDraft("scripture", "Scripture Focus", listOf(CitedItem("Romans 8:28", listOf("p1")))),
+            SectionDraft("main_idea", "Main Message", listOf(CitedItem("God works all things together for good.", listOf("p1")))),
+            SectionDraft("questions", "Discussion Questions", listOf(
+                CitedItem("How do we trust God in difficult seasons?", listOf("p1")),
+                CitedItem("What promise stands out to you today?", listOf("p1"))
+            )),
+            SectionDraft("prayer", "Prayer Points", listOf(CitedItem("Pray for faith and patience.", listOf("p1"))))
+        )
+        val wa = StudyGuideFormatter.toWhatsApp("Sunday Sermon Study", sections)
+        assertTrue(wa.contains("*SUNDAY SERMON STUDY*"))
+        assertTrue(wa.contains("📜 *SCRIPTURE FOCUS*"))
+        assertTrue(wa.contains("• Romans 8:28"))
+        assertTrue(wa.contains("❓ *DISCUSSION QUESTIONS*"))
+        assertTrue(wa.contains("1. How do we trust God in difficult seasons?"))
+        assertTrue(wa.contains("2. What promise stands out to you today?"))
+        assertTrue(wa.contains("🙏 *PRAYER POINTS*"))
+        assertTrue(wa.contains("_Generated with MeetingMind_"))
+    }
+
+    @Test
+    fun `withStudyGuide appends discussion guide sections without losing existing content`() {
+        val sections = listOf(
+            SectionDraft("main_idea", "Main Message", listOf(CitedItem("Grace is a gift.", listOf("a")))),
+            SectionDraft("questions", "Discussion Questions", listOf(CitedItem("How do we receive grace?", listOf("a"))))
+        )
+        val out = NoteAiApply.withStudyGuide(noteBlocks, "n1", NoteAiOutcome.Sections(sections, emptyList()))
+        val texts = out.map { it.content.text }
+        // Contains existing content
+        assertTrue(texts.contains("We agreed to hire two designers."))
+        assertTrue(texts.contains("Text the model never saw."))
+        // Contains study guide header and items
+        assertTrue(texts.contains("Small-Group Discussion Guide"))
+        assertTrue(texts.contains("Main Message"))
+        assertTrue(texts.contains("Grace is a gift."))
+        assertTrue(texts.contains("Discussion Questions"))
+        assertTrue(texts.contains("How do we receive grace?"))
+    }
 }

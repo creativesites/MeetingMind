@@ -1,0 +1,25 @@
+name = "meetingmind-circles"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+# Your Firebase project id (Firebase console > Project settings). Not secret.
+FIREBASE_PROJECT_ID = "meetingmind-mobile"
+# Max push sends per event. Free Workers plan allows 50 outbound calls per request; raise on the paid plan.
+NOTIFY_MAX = "30"
+
+# Create with: npx wrangler kv namespace create RATE  -- then paste its id here.
+[[kv_namespaces]]
+binding = "RATE"
+id = "f6258ac012c8448fae2c785dde588a03"
+
+# Circles media (chat photos, voice notes, files, post photos, cover). Only the Worker touches this bucket.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "meetingmind-circles-media"
+
+# Daily prayer digest at 18:00 UTC; orphaned media sweep every six hours.
+[triggers]
+crons = ["0 18 * * *", "30 */6 * * *"]
+
+# Secret (never in git):  npx wrangler secret put SERVICE_ACCOUNT_JSON

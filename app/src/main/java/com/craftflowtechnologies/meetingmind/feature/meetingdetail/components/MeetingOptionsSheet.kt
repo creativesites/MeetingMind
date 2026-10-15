@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -48,6 +49,8 @@ fun MeetingOptionsSheet(
     onEditTitle: () -> Unit,
     onReCleanTranscript: () -> Unit,
     reCleanEnabled: Boolean,
+    /** Shown only for sermons: re-runs the sermon notes from the stored transcript. */
+    onRetrySermonNotes: (() -> Unit)? = null,
     onCopyMarkdownSummary: () -> Unit,
     onShareSummary: () -> Unit,
     onShareTranscript: () -> Unit,
@@ -80,6 +83,9 @@ fun MeetingOptionsSheet(
                 enabled = reCleanEnabled,
                 onClick = { onDismiss(); onReCleanTranscript() }
             )
+            onRetrySermonNotes?.let { retry ->
+                OptionRow(icon = Icons.Default.Refresh, label = "Retry sermon notes", onClick = { onDismiss(); retry() })
+            }
             OptionRow(icon = Icons.Default.ContentCopy, label = "Copy Markdown Summary", onClick = { onDismiss(); onCopyMarkdownSummary() })
 
             HorizontalDivider(color = LineSoft)

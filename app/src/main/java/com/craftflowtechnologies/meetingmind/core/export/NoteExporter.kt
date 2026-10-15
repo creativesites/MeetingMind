@@ -19,7 +19,7 @@ data class RecordingExportInfo(val title: String, val durationMs: Long, val summ
 
 /**
  * A Bible passage ready to print. [text] is null when it couldn't be fetched; [attribution] is
- * the version's copyright line, which YouVersion's terms require wherever its text appears.
+ * the version's copyright line, which the publisher's terms require wherever its text appears.
  */
 data class ExportPassage(
     val reference: String,

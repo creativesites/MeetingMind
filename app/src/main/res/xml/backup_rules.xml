@@ -6,5 +6,6 @@
 -->
 <full-backup-content>
     <exclude domain="file" path="meetings/" />
+    <exclude domain="file" path="read_to_me/" />
     <exclude domain="database" path="meetmind_database" />
 </full-backup-content>

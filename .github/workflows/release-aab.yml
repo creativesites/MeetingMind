@@ -1,0 +1,133 @@
+name: Release AAB (Play Store)
+
+# Builds the Play Store bundle, signed with the upload key, and attaches it to a DRAFT GitHub release.
+#
+# Why this runs on GitHub: the upload key is a secret that lives only in this repository's secrets,
+# never in a chat, a branch or a developer's machine. The bundle is far over the 100 MB file limit
+# for a commit, so it is published as a release asset instead.
+#
+# To run it: push a tag that starts with "aab-" (for example aab-v41) on the commit to release, or
+# push a commit to the branch below whose message contains [build-aab]. The release is then named
+# aab-v<versionCode>. Secrets needed (Settings > Secrets and variables > Actions):
+#   KEYSTORE_BASE64    the upload keystore file, base64-encoded (base64 -w0 upload.jks)
+#   KEYSTORE_PASSWORD  its store password
+#   KEY_PASSWORD       the password of the key "upload" inside it
+# Two kinds of bundle, chosen by whether the GEMINI_PROXY_URL secret is set:
+#   MANAGED (GEMINI_PROXY_URL set): Gemini goes through server/gemini-proxy, which holds the Google key and
+#     enforces each plan's allowance. NO Gemini key is built in (SYSTEM_GEMINI_API_KEY is ignored), and the
+#     build FAILS if one is found in the bundle. This is the kind to put in front of the public.
+#     Also set REVENUECAT_API_KEY so plans can be bought.
+#   TESTER (GEMINI_PROXY_URL not set): the built-in SYSTEM_GEMINI_API_KEY is baked in so closed testers can use
+#     Internet mode without setup. That secret is then required.
+# Optional for both: SYSTEM_DEEPSEEK_API_KEY (built-in fallback key), DEEPSEEK_PROXY_URL.
+#
+# A TESTER BUNDLE CONTAINS THE BUILT-IN API KEYS. It is attached to a draft release, which only
+# people with access to the repository can see, and is never committed. Download it, upload it to
+# Play, then DELETE the release so the keys are not left lying around.
+on:
+  push:
+    tags:
+      - 'aab-*'
+    branches:
+      - ccr-5e66b00c-btultn
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    # An ordinary push to the branch does nothing; only a tag or a [build-aab] commit builds.
+    if: startsWith(github.ref, 'refs/tags/aab-') || contains(github.event.head_commit.message, '[build-aab]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Work out the release name
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/aab-* ]]; then tag="$GITHUB_REF_NAME"
+          else tag="aab-v$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)"; fi
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+
+      - name: Check the signing secrets exist
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SYSTEM_GEMINI_API_KEY: ${{ secrets.SYSTEM_GEMINI_API_KEY }}
+          GEMINI_PROXY_URL: ${{ secrets.GEMINI_PROXY_URL }}
+        run: |
+          required="KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_PASSWORD"
+          # A tester bundle needs the built-in key; a managed bundle must not have one.
+          if [ -z "${GEMINI_PROXY_URL:-}" ]; then required="$required SYSTEM_GEMINI_API_KEY"; fi
+          for name in $required; do
+            if [ -z "${!name}" ]; then echo "::error::Secret $name is not set"; exit 1; fi
+          done
+
+      - name: Run unit tests
+        # A release that fails its own tests is not a release.
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build the signed bundle
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SYSTEM_GEMINI_API_KEY: ${{ secrets.SYSTEM_GEMINI_API_KEY }}
+          SYSTEM_DEEPSEEK_API_KEY: ${{ secrets.SYSTEM_DEEPSEEK_API_KEY }}
+          DEEPSEEK_PROXY_URL: ${{ secrets.DEEPSEEK_PROXY_URL }}
+          GEMINI_PROXY_URL: ${{ secrets.GEMINI_PROXY_URL }}
+          REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
+        run: |
+          set -euo pipefail
+          # A managed bundle never carries a Gemini key, whatever the secret holds.
+          if [ -n "${GEMINI_PROXY_URL:-}" ]; then unset SYSTEM_GEMINI_API_KEY; fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          export KEYSTORE_PATH="$RUNNER_TEMP/upload.jks"
+          ./gradlew bundleRelease
+          rm -f "$RUNNER_TEMP/upload.jks"
+
+      - name: Check the bundle has (tester) or lacks (managed) the built-in key
+        # A tester bundle must carry the key or Internet mode would be broken for testers. A managed bundle
+        # must NOT: it is the one the public gets, and its Gemini access goes through the proxy. The key is never printed.
+        env:
+          GEMINI_PROXY_URL: ${{ secrets.GEMINI_PROXY_URL }}
+        run: |
+          set -euo pipefail
+          aab="$(ls app/build/outputs/bundle/release/*.aab)"
+          found=no
+          if unzip -p "$aab" 'base/dex/*' | strings | grep -qE 'AIzaSy[0-9A-Za-z_-]{33}|AQ\.[0-9A-Za-z_-]{20,}'; then found=yes; fi
+          if [ -n "${GEMINI_PROXY_URL:-}" ]; then
+            if [ "$found" = yes ]; then echo "::error::a Gemini key is in a managed bundle"; exit 1; fi
+            echo "Managed bundle: no built-in Gemini key."
+          else
+            if [ "$found" = no ]; then echo "::error::the built-in Gemini key is not in the tester bundle"; exit 1; fi
+            echo "Tester bundle: the built-in Gemini key is in the bundle."
+          fi
+
+      - name: Name the bundle
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/bundle/release/*.aab "dist/MeetingMind-${RELEASE_TAG#aab-}.aab"
+          ls -la dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: MeetingMind Play bundle ${{ env.RELEASE_TAG }}
+          # A draft is visible only to people with access to the repository: this repository is
+          # public, and the bundle should not be handed out before it goes to Play.
+          draft: true
+          prerelease: true
+          body: |
+            Download it and upload it to Play Console, then delete this release. **A tester bundle contains the built-in API keys; a managed bundle (built with GEMINI_PROXY_URL) contains no Gemini key.**
+          files: dist/*.aab

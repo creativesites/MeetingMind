@@ -73,7 +73,7 @@ object HelloAo {
         Commentary("tyndale", "Tyndale Open Study Notes", "Tyndale")
     )
 
-    /** HelloAO ids are strings; the app's Bible ids are ints. Negative, so they never meet YouVersion's. */
+    /** HelloAO ids are strings; the app's Bible ids are ints. Negative, so they never clash with the ids of any other source. */
     fun intId(id: String): Int {
         val crc = CRC32().apply { update(id.toByteArray()) }.value
         return -((crc % 1_000_000_000L).toInt() + 1)

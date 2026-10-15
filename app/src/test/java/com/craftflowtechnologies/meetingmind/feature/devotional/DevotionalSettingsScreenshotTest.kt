@@ -32,8 +32,8 @@ class DevotionalSettingsScreenshotTest {
         topics = setOf("Joy", "Work & calling")
     )
 
-    private fun shot(page: String?, name: String) {
-        compose.setContent { MeetMindTheme { DevotionalSettingsContent(profile, { _, _ -> }, {}, startPage = page) } }
+    private fun shot(page: String?, name: String, p: DevotionalProfile = profile) {
+        compose.setContent { MeetMindTheme { DevotionalSettingsContent(p, { _, _ -> }, {}, startPage = page) } }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }
@@ -45,8 +45,16 @@ class DevotionalSettingsScreenshotTest {
     }
 
     @Test fun `style page offers formats with their roots`() {
-        shot("STYLE", "devotional_settings_style")
+        shot("STYLE", "devotional_settings_style", profile.copy(source = com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.AI))
         compose.onNodeWithText("Mix it up").assertIsDisplayed()
+    }
+
+    @Test fun `style page lists the plans first, then AI and my own`() {
+        shot("STYLE", "devotional_settings_plans")
+        compose.onNodeWithText("Morning and Evening").assertIsDisplayed()
+        compose.onNodeWithText("Faith's Checkbook").assertIsDisplayed()
+        compose.onNodeWithText("Written with AI").assertIsDisplayed()
+        compose.onNodeWithText("My own").assertIsDisplayed()
     }
 
     @Test fun `series page shows progress`() {

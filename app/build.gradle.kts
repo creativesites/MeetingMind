@@ -17,22 +17,22 @@ android {
     applicationId = "com.craftflowtechnologies.meetingmind"
     minSdk = 24
     targetSdk = 36
-    versionCode = 33
-    versionName = "1.0-v33"
+    versionCode = 46
+    versionName = "1.0-v46"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-    // YouVersion Platform app key (docs/PLAN_V1.md §7). Read from local.properties
-    // (youversion.appKey=...) or the YOUVERSION_APP_KEY environment variable — never committed to
-    // this public repository. It is designed to ship in the app; without it, verse text shows as
-    // unavailable and references still work.
-    val youVersionKey = run {
+    // Circles (docs/mvp/FAITH_V2.md section 7): base URL of the deployed Worker in server/circles-api, e.g.
+    // https://circles-api.<account>.workers.dev. From local.properties (circles.apiUrl=...) or the
+    // CIRCLES_API_URL environment variable, else the deployed production Worker (not a secret: every call is
+    // authenticated with the user's Firebase ID token). An empty override shows "Circles isn't connected yet".
+    val circlesApiUrl = run {
       val props = Properties()
       val local = rootProject.file("local.properties")
       if (local.exists()) local.inputStream().use { props.load(it) }
-      props.getProperty("youversion.appKey") ?: System.getenv("YOUVERSION_APP_KEY") ?: ""
+      System.getenv("CIRCLES_API_URL") ?: props.getProperty("circles.apiUrl") ?: "https://meetingmind-circles.meetingmind.workers.dev"
     }
-    buildConfigField("String", "YOUVERSION_APP_KEY", "\"${youVersionKey.replace("\"", "")}\"")
+    buildConfigField("String", "CIRCLES_API_URL", "\"${circlesApiUrl.trim().replace("\"", "")}\"")
     // System Gemini API key for closed testing (via SYSTEM_GEMINI_API_KEY env var)
     val systemGeminiKey = System.getenv("SYSTEM_GEMINI_API_KEY") ?: ""
     buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"${systemGeminiKey.replace("\"", "")}\"")
@@ -42,6 +42,34 @@ android {
     buildConfigField("String", "DEEPSEEK_PROXY_URL", "\"${(System.getenv("DEEPSEEK_PROXY_URL") ?: "").replace("\"", "")}\"")
     buildConfigField("String", "SYSTEM_DEEPSEEK_API_KEY", "\"${(System.getenv("SYSTEM_DEEPSEEK_API_KEY") ?: "").replace("\"", "")}\"")
     buildConfigField("Boolean", "SYSTEM_GEMINI_MODE", "true")
+    // Read to Me's plan-tier gate (see GeminiKeyTierPolicy). Off for dev and test builds, which carry the
+    // built-in key for everyone. Turn on only for Play Store builds: -PREAD_TO_ME_TIER_GATE=true or the env var.
+    val readToMeTierGate = (findProperty("READ_TO_ME_TIER_GATE") ?: System.getenv("READ_TO_ME_TIER_GATE") ?: "false").toString().toBoolean()
+    buildConfigField("Boolean", "READ_TO_ME_TIER_GATE", "$readToMeTierGate")
+
+    // Integrations (W13): Gmail and Outlook are off by default per brief
+    val emailIntegrationsEnabled = (System.getenv("FEATURE_INTEGRATIONS_EMAIL") ?: "false").toBoolean()
+    buildConfigField("Boolean", "FEATURE_INTEGRATIONS_EMAIL", "$emailIntegrationsEnabled")
+
+    // MVP (S-5): unfinished Work features stay hidden at the UI entry point until they earn their place.
+    // The code stays in the tree; these flags only control what is shown. Default off.
+    val recipesEnabled = (System.getenv("FEATURE_RECIPES") ?: "false").toBoolean()
+    buildConfigField("Boolean", "FEATURE_RECIPES", "$recipesEnabled")
+    val projectViewsEnabled = (System.getenv("FEATURE_PROJECT_VIEWS") ?: "false").toBoolean()
+    buildConfigField("Boolean", "FEATURE_PROJECT_VIEWS", "$projectViewsEnabled")
+    val savedViewsEnabled = (System.getenv("FEATURE_SAVED_VIEWS") ?: "false").toBoolean()
+    buildConfigField("Boolean", "FEATURE_SAVED_VIEWS", "$savedViewsEnabled")
+    val stubIntegrationsEnabled = (System.getenv("FEATURE_STUB_INTEGRATIONS") ?: "false").toBoolean()
+    buildConfigField("Boolean", "FEATURE_STUB_INTEGRATIONS", "$stubIntegrationsEnabled")
+
+    // The companion roster (docs/mvp/ZURI_EXPERIENCE.md §10.7): which forms are offered, in display
+    // order. The founder's switch; all four forms at launch.
+    buildConfigField("String", "COMPANION_FORMS", "\"ZURI,NAS,WREN,PAGE\"")
+    // RevenueCat public SDK key (Play). Empty = billing off: the app is free and offers no plans. Public by
+    // design (it ships in the app), but still read from the environment so builds choose their project.
+    buildConfigField("String", "REVENUECAT_API_KEY", "\"${(System.getenv("REVENUECAT_API_KEY") ?: "").replace("\"", "")}\"")
+    // Base URL of server/gemini-proxy (MeetingMind-managed cloud AI). Empty = no managed AI.
+    buildConfigField("String", "GEMINI_PROXY_URL", "\"${(System.getenv("GEMINI_PROXY_URL") ?: "").replace("\"", "")}\"")
   }
 
   signingConfigs {
@@ -68,12 +96,26 @@ android {
       // Installs beside the tester/Play app, never over it: its own package, name and data.
       applicationIdSuffix = ".dev"
       versionNameSuffix = "-dev"
+      // Live whisper (Z-25) is an experiment: testable in dev builds only.
+      buildConfigField("Boolean", "COMPANION_LIVE_WHISPER", "true")
+      // Sign-in registrations for W13 (docs/INTEGRATION_CREDENTIALS.md)
+      buildConfigField("String", "GOOGLE_CLIENT_ID", "\"785434731634-p56sa9uf14ivlnfh2hubtn1j6nrhta7u.apps.googleusercontent.com\"")
+      buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"658f22a9-30c8-40e6-8400-992ace977d57\"")
+      buildConfigField("String", "MICROSOFT_REDIRECT_URI", "\"msauth://com.craftflowtechnologies.meetingmind.dev/5wWRPGuPtxCEmMlzxlXOVAoSszg%3D\"")
     }
     release {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
+      buildConfigField("Boolean", "COMPANION_LIVE_WHISPER", "false")
+      // Play builds never use the RevenueCat test key: RevenueCat refuses it in a release build and the app closes.
+      // Empty means billing is off and the app is free. Set a production (goog_) key here to turn billing on.
+      buildConfigField("String", "REVENUECAT_API_KEY", "\"\"")
+      // Sign-in registrations for W13 (docs/INTEGRATION_CREDENTIALS.md)
+      buildConfigField("String", "GOOGLE_CLIENT_ID", "\"785434731634-k9t9e8c1altm4boq43j5f5t4p06ksdhk.apps.googleusercontent.com\"")
+      buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"658f22a9-30c8-40e6-8400-992ace977d57\"")
+      buildConfigField("String", "MICROSOFT_REDIRECT_URI", "\"msauth://com.craftflowtechnologies.meetingmind/FESXSvN0NJAEHo4M4ZnxNON6Mz0%3D\"")
     }
     // debug build type intentionally left unconfigured here so AGP falls back to its
     // built-in default debug signing config (auto-generated ~/.android/debug.keystore),
@@ -138,6 +180,8 @@ dependencies {
   implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
+  // Subscriptions over Google Play Billing; every call into it is in core/billing/RevenueCatBillingGateway.kt.
+  implementation(libs.revenuecat.purchases)
   // implementation(libs.androidx.camera.camera2)
   // implementation(libs.androidx.camera.core)
   // implementation(libs.androidx.camera.lifecycle)
@@ -162,6 +206,7 @@ dependencies {
   implementation(libs.coil.compose)
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.auth)
+  implementation(libs.firebase.messaging)
   implementation(libs.androidx.credentials)
   implementation(libs.androidx.credentials.play.services)
   implementation(libs.googleid)
@@ -169,6 +214,8 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   // implementation(libs.play.services.location)
+  // Document scanner for the Work Inbox: runs on the device, and hands back a PDF or pictures (docs/PLAN_PROFESSIONAL.md D7).
+  implementation(libs.mlkit.document.scanner)
   // sherpa-onnx: on-device speech recognition (VAD + Parakeet TDT ASR). Prebuilt AAR from
   // GitHub Releases — see settings.gradle.kts ivy repository and docs/AI_ARCHITECTURE.md.
   // Declared with an explicit "@aar" artifact type since the ivy repo pattern resolves a
@@ -195,11 +242,24 @@ dependencies {
   // phase 6) — per docs/recording-page-implementation.md §4, a real diff library, not a
   // hand-rolled one.
   implementation(libs.java.diff.utils)
+  // Rive: the renderer for the living companion (docs/mvp/ZURI_RIVE_BRIEF.md). The app uses only
+  // its View-based RiveAnimationView, not its Compose API, so Rive's Compose BOM, Compose and
+  // lifecycle-compose dependencies are excluded: left in, they would move the whole app from
+  // Compose 1.7 to 1.9 and lifecycle 2.8 to 2.9. The app's own versions satisfy the View path.
+  // APK cost per ABI: see docs/mvp/ZURI_RIVE_BRIEF.md §11.
+  implementation(libs.rive.android) {
+    exclude(group = "androidx.compose")
+    exclude(group = "androidx.compose.runtime")
+    exclude(group = "androidx.compose.ui")
+    exclude(group = "androidx.lifecycle")
+  }
   testImplementation(libs.androidx.work.testing)
   testImplementation(libs.okhttp.mockwebserver)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
+  // Real org.json for JVM unit tests; the Android stub throws "not mocked".
+  testImplementation("org.json:json:20240303")
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
   testImplementation(libs.robolectric)
@@ -215,4 +275,13 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
+}
+
+// Dev (debug) APKs are side-loaded from GitHub, which caps a file at 100 MiB. Compressing the native
+// libraries (about 58 MB uncompressed: MediaPipe, ONNX Runtime, sherpa-onnx) keeps them well under
+// it. Release bundles keep them uncompressed so Play can serve them page-aligned and mmap them.
+androidComponents {
+  onVariants(selector().withBuildType("debug")) { variant ->
+    variant.packaging.jniLibs.useLegacyPackaging.set(true)
+  }
 }
