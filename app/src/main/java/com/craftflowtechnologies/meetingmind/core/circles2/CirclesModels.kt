@@ -265,5 +265,9 @@ data class EventDraft(
     val timeZone: String
 )
 
+/** Someone waiting to be let in (joinApproval on). Admins see these; the Worker decides them. */
+@Immutable
+data class JoinRequest(val uid: String, val displayName: String, val createdAt: Long)
+
 /** The result of a join: the circle, and whether the person is still waiting for an admin. */
 data class JoinOutcome(val circleId: String, val pending: Boolean)

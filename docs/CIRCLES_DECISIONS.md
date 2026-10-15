@@ -72,3 +72,16 @@ Not done in this slice: the Android side (models, parsing, the new API calls, an
 
 Not done: the redesigned screens (Circle home hero, feed composer with free-form, chat, members, events UI, and the join-pending message on the list screen, which needs wiring to `JoinUiState.pending`).
 
+## Client UI pass (after the data layer)
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| 30 | Event times in the form | Quick choices (next Wednesday 7 pm, Sunday 10 am, Saturday 9 am) in the device zone, stored with the event's IANA zone. No full date picker yet. | Keeps the UI compile-safe without a date picker; replace once the UI can be built and tested. |
+| 31 | Cancel event | Cancels straight away, with no confirmation dialog. | Gap: add a confirmation before release. |
+| 32 | Join pending | The join sheet shows "Request sent" and does not open the circle. | Matches row 27. |
+| 33 | Chat redesign | Not implemented in this pass. Its main features (read receipts, typing, mentions, pins, media) need the backend contracts in `docs/CIRCLES_BACKEND_HANDOFF.md` section 5 first. Building the UI before then would show features that cannot work. | Honest scope. |
+| 34 | Members page | Titles shown beside roles; admins set titles; waiting requests listed to admins only, with Let in and Decline. | Approved design; depends on handoff section 4 (admin read rule). |
+| 35 | Settings | Circle description and the "Admins let new people in" toggle are saved through `updateCircle`. | Rows 17-19. |
+
+Not compiled. Nothing in this pass has been built or run. `CirclesScreenshotTest` expects updated lambda arity, which is done here, but the screenshots themselves were not recorded.
+

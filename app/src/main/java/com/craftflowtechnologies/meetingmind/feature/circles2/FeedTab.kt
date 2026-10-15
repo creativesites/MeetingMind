@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
+import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.Comment
 import com.craftflowtechnologies.meetingmind.core.circles2.PendingPost
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
@@ -54,7 +55,11 @@ class FeedActions(
     val onStartChain: (Post) -> Unit = {},
     val onCelebrateAnswered: (Post) -> Unit = {},
     val onApprove: (PendingPost) -> Unit = {},
-    val onReject: (PendingPost) -> Unit = {}
+    val onReject: (PendingPost) -> Unit = {},
+    /** Pin this post to the top, or unpin it with null. Admins only. */
+    val onPinPost: (Post?) -> Unit = {},
+    val onOpenEvent: (CircleEvent) -> Unit = {},
+    val onNewEvent: () -> Unit = {}
 ) { companion object { val None = FeedActions() } }
 
 @Composable
@@ -66,6 +71,7 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
         verticalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
         state.failure?.let { f -> item { StatusLine(StatusKind.Warning, f.message) } }
+        item { EventsSection(state.events, now, actions.onOpenEvent, if (state.isAdmin) actions.onNewEvent else null) }
         if (state.isAdmin && state.pending.isNotEmpty()) {
             item { SectionHeader("Waiting for approval", count = state.pending.size) }
             items(state.pending, key = { "p_" + it.id }) { PendingCard(it, actions) }
@@ -82,7 +88,12 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
                 )
             }
         } else {
-            items(state.posts, key = { it.post.id }) { PostCard(it, circle, state.isAdmin, now, actions) }
+            // The pinned post leads the feed; it is not repeated below.
+            state.posts.firstOrNull { it.post.id == state.pinnedPostId }?.let { pinned ->
+                item { SectionHeader("Pinned") }
+                item { PostCard(pinned, circle, state.isAdmin, now, actions, pinned = true) }
+            }
+            items(state.posts.filter { it.post.id != state.pinnedPostId }, key = { it.post.id }) { PostCard(it, circle, state.isAdmin, now, actions) }
             if (canPost) item { Row(Modifier.fillMaxWidth().padding(vertical = MM.space.s), horizontalArrangement = Arrangement.Center) { PrimaryButton("New post", actions.onNewPost, leadingIcon = Icons.Rounded.Add) } }
         }
     }
@@ -103,7 +114,7 @@ private fun PendingCard(p: PendingPost, actions: FeedActions) {
 }
 
 @Composable
-fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, actions: FeedActions) {
+fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, actions: FeedActions, pinned: Boolean = false) {
     val post = item.post
     val c = MM.colors
     val clipboard = LocalClipboardManager.current
@@ -133,6 +144,7 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
                         MenuItem("Post an update") { menu = false; actions.onUpdate(post) }
                         MenuItem("Mark answered") { menu = false; actions.onMarkAnswered(post) }
                     }
+                    if (isAdmin) MenuItem(if (pinned) "Unpin" else "Pin to top") { menu = false; actions.onPinPost(if (pinned) null else post) }
                     if (post.type == PostType.Prayer) MenuItem("Start a prayer chain") { menu = false; actions.onStartChain(post) }
                     if (item.mine) MenuItem("Edit") { menu = false; actions.onEdit(post) }
                     if (item.mine || isAdmin) MenuItem("Delete") { menu = false; actions.onDelete(post) }

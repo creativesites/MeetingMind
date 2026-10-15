@@ -117,6 +117,9 @@ object CirclesParsing {
         )
     }
 
+    fun joinRequest(uid: String, d: Map<String, Any?>): JoinRequest =
+        JoinRequest(uid, str(d, "displayName")?.ifBlank { null } ?: "Someone", millis(d["createdAt"]))
+
     fun rsvp(uid: String, d: Map<String, Any?>): Rsvp? {
         val answer = RsvpAnswer.from(str(d, "status")) ?: return null
         return Rsvp(uid, str(d, "displayName")?.ifBlank { null } ?: "Member", answer)

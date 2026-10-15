@@ -124,7 +124,7 @@ class CirclesApiTest {
 
     @Test fun `join and celebrate bodies`() = runBlocking {
         val c = Canned(body = """{"ok":true,"circleId":"c7"}""")
-        assertEquals("c7", api(c).join("GRACE-7K2Q", "Ann").okOrNull)
+        assertEquals("c7", api(c).join("GRACE-7K2Q", "Ann").okOrNull?.circleId)
         assertEquals("GRACE-7K2Q", JSONObject(c.sent).getString("code"))
         val c2 = Canned()
         api(c2).celebrate("c1", CelebrationKind.Birthday, "30!", "zuri")

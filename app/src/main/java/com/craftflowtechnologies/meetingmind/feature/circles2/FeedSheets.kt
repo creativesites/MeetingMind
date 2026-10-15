@@ -35,7 +35,8 @@ import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 fun PostTypeSheet(circle: Circle, isAdmin: Boolean, onPick: (PostType) -> Unit, onDismiss: () -> Unit) {
     CircleSheet(onDismiss) {
         Text("New post", style = MM.type.title, color = MM.colors.ink)
-        circle.settings.allowedTypes.filter { !it.adminOnly || isAdmin }.forEach { t ->
+        // Free-form is always offered; the circle's own kinds follow.
+        (listOf(PostType.Note) + circle.settings.allowedTypes.filter { !it.adminOnly || isAdmin }).distinct().forEach { t ->
             ListRow(title = t.verb, subtitle = t.label, onClick = { onPick(t) })
         }
     }

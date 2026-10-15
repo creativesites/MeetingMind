@@ -126,6 +126,8 @@ class FakeData : CirclesData {
     override fun observeChain(circleId: String, chainId: String, myUid: String): Flow<DataState<ChainState>> = flowOf(DataState.Loading)
     override fun observeEvents(circleId: String) = events
     override fun observeRsvps(circleId: String, eventId: String): Flow<DataState<List<Rsvp>>> = flowOf(DataState.Ready(emptyList()))
+    val joinRequests = MutableStateFlow<DataState<List<JoinRequest>>>(DataState.Ready(emptyList()))
+    override fun observeJoinRequests(circleId: String) = joinRequests
     override suspend fun hasPrayed(circleId: String, postId: String) = false
     override suspend fun addComment(circleId: String, postId: String, uid: String, name: String, body: String, parentId: String?) = write("addComment")
     override suspend fun deleteComment(circleId: String, postId: String, commentId: String) = write("deleteComment")

@@ -28,6 +28,8 @@ interface CirclesData {
     /** Upcoming and past events, soonest first. Cancelled ones stay in the list so people see them. */
     fun observeEvents(circleId: String): Flow<DataState<List<CircleEvent>>>
     fun observeRsvps(circleId: String, eventId: String): Flow<DataState<List<Rsvp>>>
+    /** Waiting requests, oldest first. Admins only: the rules refuse everyone else. */
+    fun observeJoinRequests(circleId: String): Flow<DataState<List<JoinRequest>>>
 
     /** My own "I prayed" marker (the only one rules let me read). False when unknown. */
     suspend fun hasPrayed(circleId: String, postId: String): Boolean
