@@ -114,7 +114,7 @@ object SettingsRegistry {
         e(SettingId.RECIPES, SettingsGroup.RECORDING, "Recipes & automation", "post meeting actions tasks review triggers", advanced = true, needs = Needs.FEATURE_RECIPES),
 
         // AI & offline models
-        e(SettingId.PLAN_USAGE, SettingsGroup.AI, "Plan and usage", "plan subscription paywall usage gemini monthly billing upgrade"),
+        e(SettingId.PLAN_USAGE, SettingsGroup.AI, "Plan and usage", "plan subscription paywall usage gemini monthly billing upgrade", advanced = true),
         e(SettingId.SETUP_GUIDE, SettingsGroup.AI, "Setup guide", "get started transcribe summarise permissions what the app needs"),
         e(SettingId.AI_ENGINE, SettingsGroup.AI, "AI Engine", "on-device models download pause resume remove offline whisper parakeet qwen"),
         e(SettingId.GEMINI_KEY, SettingsGroup.AI, "Gemini API key", "google internet mode cloud key api"),
