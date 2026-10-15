@@ -1,21 +1,18 @@
-# MeetingMind dev build: 7bcd778
+# MeetingMind dev build: 4655d77
 
-Install `MeetingMind-Dev-7bcd778.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
+Install `MeetingMind-Dev-4655d77.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
 
-Built from `ccr-08b1bb9f-iljmtb` at `7bcd778`, which includes the other session's onboarding, billing and Gemini proxy commits (merged).
+Built from `ccr-08b1bb9f-iljmtb` at `4655d77`. It includes the Circles redesign branch (`circles-redesign-m1`, PR #7): R2 media, chat attachments and mentions, pinned messages, read receipts, typing, and the moderator role. It also includes the onboarding, billing and Gemini proxy commits from the other session.
 
-## What is in this build
-- **Moments:** every note gets its moment every time it is opened, including typed notes, failed notes and sacred notes. A moment waits for the note's recordings to load, so notes with recordings show it. Reduced motion, battery saver and low-end phones still get a plain open or a nod.
-- **Circles v2, first increment:** v1 retired (migration 25 to 26), idempotent create, clearer sign-in errors.
-- **Faith home:** "Your week in faith" at the top, and Bible continues from today's reading.
-- **Today home:** the sun or moon sits above the companion. The floating "Up next" card is hidden on Today.
-- **Work home:** Circles as the same card as Today. The gap under the hero is closed.
-- **Settings:** offers only Today, Work and Calm. A saved Everyday or Focus opens Today.
-- **Onboarding, billing and the Gemini proxy:** from the other session's commits.
+## What is new in this build
+- **Circles redesign (first compile):** the Android code from the redesign branch compiles. Four compile fixes were made on top of it: `fold` is an inline extension on `CirclesResult`, the message item opts in to the experimental combined-click API, `mentionText` is composable, and the view models import `fold`.
+- **Moments:** every note gets its moment every time it is opened. A plan waits for a note's recordings to load. Reduced motion, battery saver and low-end phones still get a plain open or a nod.
+- **Circles v2, first increment, and the Faith, Today and Work home changes** from earlier builds.
 
 ## Not verified
-- The full unit suite was **not** run for this build (skipped on request). Last full run was on an earlier head: 3117 tests, 5 failing (4 order-dependent Circles screenshot tests, 1 base-commit WorkHomeLayout test).
+- The unit test suite was **not** run for this build. The Circles redesign has never had its tests run.
 - Not verified on a device. Google sign-in will fail on `.dev` (no Android OAuth client in `google-services.json`).
+- Moments on a device: if "Remove animations" or battery saver is on, moments are suppressed by design (reduced-motion and battery guards).
 
 ## Install
 1. Enable install from unknown sources for your file manager.
