@@ -141,7 +141,10 @@ fun FileBubble(circleId: String, a: MediaAttachment) {
     }
 }
 
-/** Reads a picked document into memory. Oversized photos are shrunk to a JPEG first; other large files are refused upstream. */
+/**
+ * Reads a picked document into memory. Every photo is re-encoded as a JPEG, which drops EXIF metadata such as
+ * GPS location. Oversized photos are also shrunk. Other files are sent as they are; large ones are refused upstream.
+ */
 fun readPicked(context: Context, uri: Uri): PickedFile? {
     val resolver = context.contentResolver
     val mime = resolver.getType(uri) ?: return null
@@ -150,14 +153,18 @@ fun readPicked(context: Context, uri: Uri): PickedFile? {
         val index = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
         if (c.moveToFirst() && index >= 0) c.getString(index) else null
     }
-    if (mime.startsWith("image/") && raw.size > MediaKind.Image.maxBytes) {
-        return shrinkToJpeg(raw)?.let { PickedFile(it, "image/jpeg", name) }
+    if (mime.startsWith("image/")) {
+        // Refuse a photo we can't decode rather than send it with its metadata intact.
+        return reencodeToJpeg(raw)?.let { PickedFile(it, "image/jpeg", name) }
     }
     return PickedFile(raw, mime, name)
 }
 
-/** Longest side at most 2048 px, JPEG at 85%. Null when the picture can't be decoded or still won't fit. */
-private fun shrinkToJpeg(bytes: ByteArray): ByteArray? {
+/**
+ * Longest side at most 2048 px, JPEG at 85%. Re-encoding writes only the pixels, so the output carries no EXIF.
+ * Null when the picture can't be decoded or still won't fit.
+ */
+private fun reencodeToJpeg(bytes: ByteArray): ByteArray? {
     var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
     val scale = minOf(1f, 2048f / maxOf(bitmap.width, bitmap.height))
     if (scale < 1f) bitmap = Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)

@@ -166,9 +166,15 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
         viewModelScope.launch { repo.api.pinMessage(circleId, null).fold(onOk = { say("Unpinned.") }, onErr = ::fail) }
     }
 
-    /** Uids of members named with @Name in [text], matched by display name without regard to case. */
+    /**
+     * Uids of members named with @Name in [text], matched by display name without regard to case.
+     * Capped at 20 entries and 128 characters each, the limits the Worker and rules enforce.
+     */
     private fun mentionsIn(text: String, members: List<Member>): List<String> =
-        members.filter { m -> m.displayName.isNotBlank() && text.contains("@" + m.displayName, ignoreCase = true) }.map { it.uid }.take(20)
+        members.filter { m -> m.displayName.isNotBlank() && text.contains("@" + m.displayName, ignoreCase = true) }
+            .map { it.uid }
+            .filter { it.length <= 128 }
+            .take(20)
 
     /**
      * Sends a photo, voice note or file. The file is uploaded through the Worker and the Worker writes the
