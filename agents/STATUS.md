@@ -1,6 +1,6 @@
 # Status
 
-Updated: 2026-10-14. Designated branch head: see `git log -1`.
+Updated: 2026-10-15. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git log -1`.
 
 ## Where we are (what the founder sees on device, latest report)
 - Notes page crashed on open. Fixed on the branch in `5f120cf` (hero layout dropped a child when the latest-meeting bubble was empty). Unit tests pass. Not yet seen on device.
@@ -33,7 +33,17 @@ Updated: 2026-10-14. Designated branch head: see `git log -1`.
 - `ccr-1face576-9bomay`: 7 commits not on the designated branch. Only `17d838e` is taken so far. The rest: `6652901` hide floating Up next on Today; `04db60d` shared Today header and mode switch; `5e35c13` Work and Calm homes keep every feature; `0565adf` companion clears the sun; `cf7d379` polished notes home; `fd5501b` licensed Bible text to Gemini and a tier gate (owner decision, needs confirming). A full merge conflicts in `NotesHome.kt`, `HomeHeroHeader.kt`, `HomeBento.kt` and `ModeHomeHeader.kt`. Merge per commit with a decision on `fd5501b`.
 - `ccr-e1f66026-rff3e0`: onboarding and billing work (draft PR #1). Head: "Sample-first onboarding with resumable state; stop prompting for permissions at launch". Its code has never been compiled. Do not merge main into it or rebase it. Build it only when the CTO asks. Analytics, billing and the paywall are not on it yet.
 
+
+## Latest merge (2026-10-15)
+- Onboarding, RevenueCat plans and the managed Gemini proxy (`ccr-e1f66026-rff3e0`) are merged. The paywall is in the app but only shows when a RevenueCat key is set (`REVENUECAT_API_KEY`).
+- The home branch `ccr-1face576-9bomay` is already in this branch except `fd5501b` (licensed Bible text to Gemini). `fd5501b` is held for the owner's decision; see `docs/DATA_SAFETY.md`.
+- Data Safety now describes anonymous Circles sign-in and optional Google linking.
+- Not built into an AAB yet. Build waits for Circles and the remaining fixes. Owner wants the AAB pushed to GitHub, with a download link.
+
 ## Open, needs a decision
+- Licensed Bible text to Gemini (Read to Me). Options are in the Data Safety doc. The code currently sends all translations.
+
+## Earlier open items (still open)
 - Circles: the Worker and `firestore.rules` must be redeployed by the owner. See `BACKEND.md`.
 - Circles: anonymous sign-in must be confirmed enabled in the Firebase console.
 - Circles migration of the client to the Worker (V-0b3) and removal of old tables (V-0b6): not done.
