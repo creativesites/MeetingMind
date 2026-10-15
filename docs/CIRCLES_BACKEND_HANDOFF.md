@@ -107,23 +107,73 @@ Gate: rules tests for each kind: valid; wrong mime; oversized; path outside the 
 
 Already on the branch. No change.
 
-## 6. Media storage (decision needed, then build)
+## 6. Media storage: Cloudflare R2, gated by the Worker (approved direction, 2026-10-15)
 
-Decision needed from the owner (from `docs/CIRCLES_DECISIONS.md`, not yet answered):
+Replaces the Firebase Storage option. Firebase Storage needs the Blaze plan, and the project is on the free plan. Do not create a Storage bucket or storage rules.
 
-- Firebase Storage. One auth and rules model. Check in the console whether this project needs the Blaze plan for Cloud Storage. My understanding is that new projects do, but verify; do not assume.
-- Or Cloudflare R2 with signed upload URLs from the Worker. A second system.
+Decisions:
 
-Recommendation: Firebase Storage if billing is acceptable.
+- Storage: Cloudflare R2, bucket `meetingmind-circles-media`, same Cloudflare account as `meetingmind-circles`.
+- Access: the Worker is the only thing that reads or writes R2. Clients never get R2 credentials and never touch the bucket. Membership is checked in the Worker.
+- Transfer: the Worker proxies the bytes, for upload and download. No presigned R2 URLs and no S3 keys. Acceptable because R2 has no egress fees and the cap is 25 MB.
+- Object path: `circles/{circleId}/media/{uuid}`. The Worker generates the uuid.
+- Object metadata: uploader uid, mime, bytes, kind, createdAt.
+- Firebase Storage rules and their emulator tests: none. Worker tests replace them.
 
-Once decided:
+Limits:
 
-- Storage rules: read if the caller is a member of the circle in the path; write only from a signed-in member, only under `circles/{circleId}/media/`, only with an allowed content type, with a size cap (25 MB; images 10 MB).
-- Worker endpoint `createUploadTicket`: body `circleId, kind, mime, bytes`. Checks membership and limits, returns the object path the client must upload to. Rate limit per user.
-- Worker endpoint `deleteMedia`: body `circleId, path`, author or admin, deletes the object. Called when a message or post is hard-deleted.
-- Thumbnails and resizing: out of scope for this step. The client compresses before upload.
+| Kind | Allowed mime | Max bytes |
+|---|---|---|
+| image | image/jpeg, image/png, image/webp | 10 MB |
+| voice | audio/mp4, audio/aac, audio/ogg | 25 MB |
+| file | application/pdf | 25 MB |
 
-Gate: Storage rules tests (emulator) for read, write, type, size, path. Worker tests for the ticket and delete endpoints.
+- The Worker sniffs the file header and checks it matches the declared mime. It does not trust the Content-Type header alone.
+- Refuse an upload over its cap from `Content-Length` before reading the body in full.
+
+Endpoints:
+
+- `POST /v1/createUploadTicket`: body `circleId, kind, mime, bytes, durationMs?, name?`. Checks membership, kind, mime, bytes, `name` at most 120 characters, and a rate limit per user (suggest 60 per hour). Returns `{ticketId, path, expiresAt}`. The ticket is stored in KV with uid, circleId, path, mime, bytes, a 15-minute expiry, and single use.
+- `PUT /v1/media/upload/{ticketId}`: raw bytes. `Content-Type` must equal the ticket mime. Checks the ticket exists, is unexpired and unused, belongs to the caller, the length equals the ticket bytes, and the header sniff matches the mime. Writes to R2 at the ticket path, marks the ticket used, returns `{ok, path}`.
+- `GET /v1/media/{circleId}/{uuid}`: member only. Non-members get 404, so existence is not revealed. Streams the object with `Cache-Control: private, max-age=3600`.
+- `POST /v1/deleteMedia`: body `circleId, path`. The uploader or an admin may delete. The Worker calls it on hard delete. Clients never delete objects.
+- Orphan cleanup, in the existing daily cron: delete objects older than 24 hours that no message or post references.
+
+Messages and posts: the field names in section 5e and section 7 stay exactly as written: `attachment {path, mime, bytes, durationMs?, name?}`, and the caption in `text` (at most 2000 characters).
+
+Open owner decision: chat messages with attachments are written through a `sendMessage` Worker endpoint, not directly by the client. The recommendation is the Worker. Firestore rules can check the path prefix and the mime, but cannot check that this user uploaded the object. Until the owner confirms, do not change how chat messages are written. If `sendMessage` is confirmed, client rules must refuse attachment kinds entirely, because only the Worker may create them.
+
+Plain text messages keep their current rules.
+
+Client errors: `{ok:false, error:{code, message}}` with a plain message. Codes: `not_member, too_large, bad_mime, ticket_expired, ticket_used, rate_limited, bad_request`.
+
+Setup, before any code:
+
+1. `npx wrangler r2 bucket create meetingmind-circles-media`
+2. Add to `server/circles-api/wrangler.toml`:
+   ```toml
+   [[r2_buckets]]
+   binding = "MEDIA"
+   bucket_name = "meetingmind-circles-media"
+   ```
+3. Add a KV namespace for upload tickets, or reuse the rate-limit KV with a `ticket:` key prefix.
+4. The Worker's request body limit covers 25 MB.
+
+Tests, the gate for each step:
+
+- Ticket: member and non-member; each kind's valid case; wrong mime; oversized; name too long; rate limit.
+- Upload: expired ticket; reused ticket; another user's ticket; length mismatch; header does not match the mime (for example a PDF sent as `image/png`).
+- Read: a member gets the bytes; a non-member gets 404; a missing object gets 404.
+- Delete: uploader allowed; another member refused; admin allowed.
+- Orphan cleanup: an unreferenced object older than 24 hours is removed; a referenced object is kept; a recent object is kept.
+- Firestore rules (existing emulator suite): a message with an attachment is accepted only when the shape and the mime allow-list match, and rejected otherwise. If `sendMessage` is confirmed, instead assert that clients cannot create attachment kinds at all.
+
+Out of scope for this step: thumbnails and resizing (the client compresses before upload), video, and virus scanning.
+
+Notes for the agent:
+
+- KV is eventually consistent, so "single use" for tickets needs an atomic check. Use a Durable Object for the ticket, or document the small race window and accept it. Decide before writing the code.
+- Sniff the audio mime with its container or header: `audio/mp4` is an `ftyp` box, `audio/ogg` starts with `OggS`, and `audio/aac` must be ADTS framing.
 
 ## 7. Feed attachments (photos)
 
@@ -148,7 +198,7 @@ If any contract has to change, update this document and the Android side in the 
 3. Section 4 (join request read rule): small, unblocks the Members page.
 4. Section 5a and 5b (pins, mentions, forwards).
 5. Section 5c and 5d (read receipts, typing).
-6. Section 6 once the storage decision is made. Then 5e and 7.
+6. Section 6 (R2). Then 5e and 7 once the sendMessage decision is confirmed.
 7. Section 3 once the Moderator decision is made.
 
 Each step: tests green, the commit message names the section, and the PR description lists which contracts changed.
