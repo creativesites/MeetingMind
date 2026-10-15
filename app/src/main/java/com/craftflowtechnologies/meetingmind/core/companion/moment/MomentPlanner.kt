@@ -205,10 +205,8 @@ object MomentPlanner {
         // §3.2: without the every-open flag, only an arrival (a valid ticket) gets a moment.
         if (!arrival && !f.flags.unveilOnEveryOpen) return done(MomentPlan.Plain(PlainReason.NO_TICKET))
 
-        // Row 1: never celebrate a failure.
-        failure(f)?.let { return done(it) }
-        // Row 2: sacred notes and Good Friday.
-        if (f.sensitive || f.goodFriday) return done(MomentPlan.Plain(PlainReason.SENSITIVE))
+        // Row 1 (founder decision, 2026-10-15): every note gets its moment, failed ones included.
+        // Row 2 (founder decision, 2026-10-15): sacred notes and Good Friday get their moment too.
 
         val space = f.momentSpace
         val quiet = f.quiet
@@ -236,7 +234,7 @@ object MomentPlanner {
                 // Every note (decision 9): the system and honesty guards still step down.
                 if (f.device.reducedMotion) return done(MomentPlan.Plain(PlainReason.REDUCED_MOTION))
                 if (f.retried) return done(nod(f, space))
-                if (f.device.batterySaver || f.device.lowEnd || f.veryShort) return done(nod(f, space))
+                if (f.device.batterySaver || f.device.lowEnd) return done(nod(f, space))
                 return done(MomentPlan.FirstKeep(quiet, hello = false, onceEver = false, chime = false, space = space, companion = shown))
             }
         }
@@ -262,7 +260,7 @@ object MomentPlanner {
         }
         // Row 7: restraint. Back-to-back is a note-ready rule, and only while the First Keep isn't on every note.
         val backToBack = arrival && !f.flags.firstKeepEveryNote && t!!.backToBack
-        if (f.device.batterySaver || f.device.lowEnd || f.veryShort || backToBack) return done(nod(f, space))
+        if (f.device.batterySaver || f.device.lowEnd || backToBack) return done(nod(f, space))
         // Row 8: the rationed (or, with the flag, every-open) reward.
         if (budgetLeft) {
             if (!shown) return done(MomentPlan.Nod(companion = false, space = space))
@@ -276,17 +274,4 @@ object MomentPlanner {
 
     private fun nod(f: MomentFacts, space: MomentSpace) =
         MomentPlan.Nod(companion = f.companionShown && !f.nodPlayedInSnackbar, quiet = f.quiet, space = space)
-
-    private fun failure(f: MomentFacts): MomentPlan.Plain? {
-        val outcome = if (f.ticket?.partial == true && f.outcome == NoteOutcome.COMPLETE) NoteOutcome.PARTIAL else f.outcome
-        return when (outcome) {
-            // A note with no speech gets its moment like a complete one (founder decision, 2026-10-14).
-            // Its "We didn't hear anyone speaking" line is the NoteStatus line, not the planner's.
-            NoteOutcome.COMPLETE, NoteOutcome.NO_SPEECH -> null
-            NoteOutcome.PARTIAL -> MomentPlan.Plain(PlainReason.PARTIAL, FixAction.RETRY)
-            NoteOutcome.AI_FALLBACK -> MomentPlan.Plain(PlainReason.AI_FALLBACK, FixAction.REDO_ONLINE)
-            NoteOutcome.FAILED -> MomentPlan.Plain(PlainReason.FAILED, FixAction.RETRY)
-            NoteOutcome.MODEL_REQUIRED -> MomentPlan.Plain(PlainReason.MODEL_REQUIRED, FixAction.DOWNLOAD_MODELS)
-        }
-    }
 }
