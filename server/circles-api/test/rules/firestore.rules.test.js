@@ -1,7 +1,7 @@
 import test, { before, after, beforeEach } from "node:test";
 import { readFileSync } from "node:fs";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, serverTimestamp, Timestamp } from "firebase/firestore";
 
 const rules = readFileSync(new URL("./firestore.rules", import.meta.url), "utf8");
 const [host, port] = (process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8089").split(":");
@@ -314,4 +314,29 @@ test("join requests: admins and the owner can read them; members, outsiders and 
   await assertFails(setDoc(doc(as("member"), `circles/${C}/joinRequests/member`), { displayName: "M" }));
   await assertFails(setDoc(doc(as("admin"), `circles/${C}/joinRequests/ann`), { displayName: "Changed" }));
   await assertFails(deleteDoc(doc(as("admin"), `circles/${C}/joinRequests/ann`)));
+});
+
+test("read receipts: a member sets only their own lastReadAt, to the server time", async () => {
+  await assertSucceeds(updateDoc(doc(as("member"), `circles/${C}/members/member`), { lastReadAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(as("member"), `circles/${C}/members/admin`), { lastReadAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(as("member"), `circles/${C}/members/member`), { lastReadAt: serverTimestamp(), role: "admin" }));
+  await assertFails(updateDoc(doc(as("member"), `circles/${C}/members/member`), { lastReadAt: new Date("2020-01-01") }));
+  await assertFails(updateDoc(doc(as("stranger"), `circles/${C}/members/member`), { lastReadAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/members/newbie`), { role: "member", lastReadAt: serverTimestamp() }));
+});
+
+test("typing: members write only their own short-lived doc; name and expiry are capped", async () => {
+  const typing = (uid) => doc(as(uid), `circles/${C}/typing/${uid}`);
+  const now = () => Timestamp.fromMillis(Date.now() + 10_000);
+  await assertSucceeds(setDoc(typing("member"), { displayName: "M", updatedAt: serverTimestamp(), expiresAt: now() }));
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/typing/admin`), { displayName: "A", updatedAt: serverTimestamp(), expiresAt: now() }));
+  await assertFails(setDoc(typing("member"), { displayName: "x".repeat(41), updatedAt: serverTimestamp(), expiresAt: now() }));
+  await assertFails(setDoc(typing("member"), { displayName: "M", updatedAt: serverTimestamp(), expiresAt: Timestamp.fromMillis(Date.now() + 120_000) }));
+  await assertFails(setDoc(typing("member"), { displayName: "M", updatedAt: new Date("2020-01-01"), expiresAt: now() }));
+  await assertFails(setDoc(typing("member"), { displayName: "M", updatedAt: serverTimestamp(), expiresAt: now(), role: "admin" }));
+  await assertFails(setDoc(typing("stranger"), { displayName: "S", updatedAt: serverTimestamp(), expiresAt: now() }));
+  await assertSucceeds(getDocs(collection(as("member"), `circles/${C}/typing`)));
+  await assertFails(getDocs(collection(as("stranger"), `circles/${C}/typing`)));
+  await assertSucceeds(deleteDoc(typing("member")));
+  await assertFails(deleteDoc(doc(as("member"), `circles/${C}/typing/admin`)));
 });

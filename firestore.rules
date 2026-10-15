@@ -53,7 +53,28 @@ service cloud.firestore {
       match /members/{uid} {
         allow get: if isMember(circleId);
         allow list: if isMember(circleId);
-        allow write: if false;
+        allow create, delete: if false;
+        // Read receipts: a member sets only their own lastReadAt, to the server time.
+        allow update: if isMember(circleId)
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastReadAt'])
+          && request.resource.data.lastReadAt == request.time;
+      }
+
+      // Typing indicator. Members write only their own doc; it expires (TTL on expiresAt, at most 60 s ahead).
+      match /typing/{uid} {
+        allow get, list: if isMember(circleId);
+        allow create, update: if isMember(circleId)
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['displayName', 'updatedAt', 'expiresAt'])
+          && request.resource.data.keys().hasAll(['displayName', 'updatedAt', 'expiresAt'])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() <= 40
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.expiresAt is timestamp
+          && request.resource.data.expiresAt > request.time
+          && request.resource.data.expiresAt <= request.time + duration.value(60, 's');
+        allow delete: if isMember(circleId) && request.auth.uid == uid;
       }
 
       match /posts/{postId} {
