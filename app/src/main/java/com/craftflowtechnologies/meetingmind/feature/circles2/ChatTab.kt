@@ -225,6 +225,7 @@ private fun UnreadDivider(count: Int) {
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun MessageItem(m: ChatMessage, state: ChatUiState, now: Long, actions: ChatActions, continued: Boolean = false, seen: Int = 0, onLongPress: () -> Unit) {
     val c = MM.colors
     val mine = m.authorUid == state.myUid
@@ -359,6 +360,7 @@ fun MessageActionsSheet(
 }
 
 /** "@Name" in a message, highlighted when it names a member. */
+@Composable
 private fun mentionText(text: String, members: List<Member>): androidx.compose.ui.text.AnnotatedString {
     val names = members.map { it.displayName }.filter { it.isNotBlank() }.sortedByDescending { it.length }
     val accent = MM.colors.accent

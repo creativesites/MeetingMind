@@ -31,7 +31,7 @@ sealed interface CirclesResult<out T> {
         is Err -> this
     }
 
-    fun <R> fold(onOk: (T) -> R, onErr: (CirclesFailure) -> R): R = when (this) {
+    inline fun <R> fold(onOk: (T) -> R, onErr: (CirclesFailure) -> R): R = when (this) {
         is Ok -> onOk(value)
         is Err -> onErr(failure)
     }
