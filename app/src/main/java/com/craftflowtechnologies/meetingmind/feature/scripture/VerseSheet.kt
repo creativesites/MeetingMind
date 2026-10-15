@@ -161,7 +161,7 @@ fun ScriptureCard(
 
 /**
  * Everything about one passage: its text in any translation, where it was read, and what you
- * can do with it. Attribution is always shown with the text (YouVersion's licence).
+ * can do with it. Attribution is always shown with the text (the translation's licence).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -210,7 +210,7 @@ fun VerseSheet(
                     }
                     is PassageResult.Unavailable -> Text(
                         when (result.reason) {
-                            PassageResult.Reason.NOT_CONFIGURED -> "Verse text isn't set up in this build yet. The reference still works, and still plays where it was read."
+                            PassageResult.Reason.NOT_CONFIGURED -> "That translation isn't on this phone. Choose an open one in Bible translation. The reference still works, and still plays where it was read."
                             PassageResult.Reason.OFFLINE -> "Verse text is unavailable offline. It will load when you're back online."
                             else -> result.message
                         },

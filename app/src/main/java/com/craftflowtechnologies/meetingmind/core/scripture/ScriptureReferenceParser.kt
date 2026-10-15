@@ -20,7 +20,7 @@ data class ScriptureReference(
         }
     }
 
-    /** The YouVersion / USFM passage id: "JHN.3.16", "JHN.3.16-JHN.3.18", "PSA.23". */
+    /** The USFM passage id: "JHN.3.16", "JHN.3.16-JHN.3.18", "PSA.23". */
     fun passageId(): String = when {
         verseStart == null -> "$usfm.$chapter"
         verseEnd != null && verseEnd != verseStart -> "$usfm.$chapter.$verseStart-$usfm.$chapter.$verseEnd"

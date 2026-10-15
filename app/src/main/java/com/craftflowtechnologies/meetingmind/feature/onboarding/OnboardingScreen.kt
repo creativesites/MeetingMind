@@ -468,7 +468,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
             }
             if (step == OnboardingStep.WELCOME) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    GradientButton("Explore a sample", "onboarding_next_btn") { forward = true; viewModel.startSample() }
+                    GradientButton("Explore a sample", "onboarding_next_btn", Modifier.fillMaxWidth()) { forward = true; viewModel.startSample() }
                     Text(
                         "Record something now", color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).clickable { forward = true; viewModel.startRecordNow() }.padding(horizontal = 16.dp, vertical = 12.dp).testTag("onboarding_record_now_btn")
@@ -517,9 +517,9 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
 internal const val SampleNoteId = "onboarding.sample"
 
 @Composable
-private fun GradientButton(label: String, tag: String, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = Modifier.testTag(tag)) {
-        Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun GradientButton(label: String, tag: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = modifier.testTag(tag)) {
+        Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             Text(label, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             Spacer(Modifier.width(8.dp))
             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
@@ -527,34 +527,42 @@ private fun GradientButton(label: String, tag: String, onClick: () -> Unit) {
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun Welcome() {
     val t = rememberInfiniteTransition(label = "glow")
     val glow by t.animateFloat(0.85f, 1.12f, infiniteRepeatable(tween(2600), RepeatMode.Reverse), label = "g")
-    Column(Modifier.fillMaxWidth().padding(top = 56.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(200.dp)) {
-            Box(Modifier.size(200.dp).graphicsLayer { scaleX = glow; scaleY = glow }.background(Brush.radialGradient(listOf(Brand.Indigo.copy(alpha = 0.45f), Color.Transparent)), CircleShape))
-            Image(painterResource(R.drawable.brand_mark), contentDescription = "MeetingMind", modifier = Modifier.size(width = 138.dp, height = 118.dp))
+    Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        // The launcher icon on the brand's soft light.
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(210.dp)) {
+            Box(Modifier.size(210.dp).graphicsLayer { scaleX = glow; scaleY = glow }.background(Brush.radialGradient(listOf(Brand.Indigo.copy(alpha = 0.45f), Color.Transparent)), CircleShape))
+            com.craftflowtechnologies.meetingmind.core.ui.AppIconTile(size = 120.dp)
         }
-        Text("Your thoughts deserve to be remembered.", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.6).sp, lineHeight = 36.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 18.dp))
+        Text("MeetingMind", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 8.dp))
+        Text("Your thoughts deserve to be remembered.", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 34.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 14.dp))
         Text(
             "Turn conversations, ideas and lessons into knowledge you can return to.",
-            color = Color.White.copy(alpha = 0.72f), fontSize = 17.sp, lineHeight = 25.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp)
+            color = Color.White.copy(alpha = 0.72f), fontSize = 16.sp, lineHeight = 23.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp)
         )
-        Row(Modifier.padding(top = 32.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(Icons.Filled.Lock, "Private")
-            Pill(Icons.Filled.PhoneAndroid, "Works offline")
-            Pill(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, "AI notes")
+        // Wraps to a second line on narrow screens instead of squeezing a pill into a column of letters.
+        androidx.compose.foundation.layout.FlowRow(
+            Modifier.padding(top = 28.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Pill(Icons.Filled.Lock, "Private by choice", "welcome_pill_private")
+            Pill(Icons.Filled.PhoneAndroid, "Offline option", "welcome_pill_offline")
+            Pill(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, "AI notes", "welcome_pill_ai")
         }
     }
 }
 
 @Composable
-private fun Pill(icon: ImageVector, label: String) {
-    Row(Modifier.clip(RoundedCornerShape(50)).background(SurfaceBase.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun Pill(icon: ImageVector, label: String, tag: String) {
+    Row(Modifier.testTag(tag).clip(RoundedCornerShape(50)).background(SurfaceBase.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = Brand.Cyan, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(6.dp))
-        Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 12.5.sp)
+        Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 12.5.sp, maxLines = 1, softWrap = false)
     }
 }
 

@@ -12,10 +12,16 @@ name: Release AAB (Play Store)
 #   KEYSTORE_BASE64    the upload keystore file, base64-encoded (base64 -w0 upload.jks)
 #   KEYSTORE_PASSWORD  its store password
 #   KEY_PASSWORD       the password of the key "upload" inside it
-#   SYSTEM_GEMINI_API_KEY    the built-in key testers use for Internet mode (required)
-# Optional: SYSTEM_DEEPSEEK_API_KEY (built-in fallback key), YOUVERSION_APP_KEY, DEEPSEEK_PROXY_URL.
+# Two kinds of bundle, chosen by whether the GEMINI_PROXY_URL secret is set:
+#   MANAGED (GEMINI_PROXY_URL set): Gemini goes through server/gemini-proxy, which holds the Google key and
+#     enforces each plan's allowance. NO Gemini key is built in (SYSTEM_GEMINI_API_KEY is ignored), and the
+#     build FAILS if one is found in the bundle. This is the kind to put in front of the public.
+#     Also set REVENUECAT_API_KEY so plans can be bought.
+#   TESTER (GEMINI_PROXY_URL not set): the built-in SYSTEM_GEMINI_API_KEY is baked in so closed testers can use
+#     Internet mode without setup. That secret is then required.
+# Optional for both: SYSTEM_DEEPSEEK_API_KEY (built-in fallback key), DEEPSEEK_PROXY_URL.
 #
-# THE BUNDLE THIS MAKES CONTAINS THE BUILT-IN API KEYS. It is attached to a draft release, which only
+# A TESTER BUNDLE CONTAINS THE BUILT-IN API KEYS. It is attached to a draft release, which only
 # people with access to the repository can see, and is never committed. Download it, upload it to
 # Play, then DELETE the release so the keys are not left lying around.
 on:
@@ -56,8 +62,12 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           SYSTEM_GEMINI_API_KEY: ${{ secrets.SYSTEM_GEMINI_API_KEY }}
+          GEMINI_PROXY_URL: ${{ secrets.GEMINI_PROXY_URL }}
         run: |
-          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_PASSWORD SYSTEM_GEMINI_API_KEY; do
+          required="KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_PASSWORD"
+          # A tester bundle needs the built-in key; a managed bundle must not have one.
+          if [ -z "${GEMINI_PROXY_URL:-}" ]; then required="$required SYSTEM_GEMINI_API_KEY"; fi
+          for name in $required; do
             if [ -z "${!name}" ]; then echo "::error::Secret $name is not set"; exit 1; fi
           done
 
@@ -72,25 +82,34 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           SYSTEM_GEMINI_API_KEY: ${{ secrets.SYSTEM_GEMINI_API_KEY }}
           SYSTEM_DEEPSEEK_API_KEY: ${{ secrets.SYSTEM_DEEPSEEK_API_KEY }}
-          YOUVERSION_APP_KEY: ${{ secrets.YOUVERSION_APP_KEY }}
           DEEPSEEK_PROXY_URL: ${{ secrets.DEEPSEEK_PROXY_URL }}
+          GEMINI_PROXY_URL: ${{ secrets.GEMINI_PROXY_URL }}
+          REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
         run: |
           set -euo pipefail
+          # A managed bundle never carries a Gemini key, whatever the secret holds.
+          if [ -n "${GEMINI_PROXY_URL:-}" ]; then unset SYSTEM_GEMINI_API_KEY; fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           export KEYSTORE_PATH="$RUNNER_TEMP/upload.jks"
           ./gradlew bundleRelease
           rm -f "$RUNNER_TEMP/upload.jks"
 
-      - name: Check the built-in key is in the bundle
-        # The opposite of the public APK check: for this bundle the key is meant to be there, and a
-        # bundle without it would ship to testers with Internet mode broken. The key is never printed.
+      - name: Check the bundle has (tester) or lacks (managed) the built-in key
+        # A tester bundle must carry the key or Internet mode would be broken for testers. A managed bundle
+        # must NOT: it is the one the public gets, and its Gemini access goes through the proxy. The key is never printed.
+        env:
+          GEMINI_PROXY_URL: ${{ secrets.GEMINI_PROXY_URL }}
         run: |
           set -euo pipefail
           aab="$(ls app/build/outputs/bundle/release/*.aab)"
-          if unzip -p "$aab" 'base/dex/*' | strings | grep -qE 'AIzaSy[0-9A-Za-z_-]{33}|AQ\.[0-9A-Za-z_-]{20,}'; then
-            echo "The built-in Gemini key is in the bundle."
+          found=no
+          if unzip -p "$aab" 'base/dex/*' | strings | grep -qE 'AIzaSy[0-9A-Za-z_-]{33}|AQ\.[0-9A-Za-z_-]{20,}'; then found=yes; fi
+          if [ -n "${GEMINI_PROXY_URL:-}" ]; then
+            if [ "$found" = yes ]; then echo "::error::a Gemini key is in a managed bundle"; exit 1; fi
+            echo "Managed bundle: no built-in Gemini key."
           else
-            echo "::error::the built-in Gemini key is not in the bundle"; exit 1
+            if [ "$found" = no ]; then echo "::error::the built-in Gemini key is not in the tester bundle"; exit 1; fi
+            echo "Tester bundle: the built-in Gemini key is in the bundle."
           fi
 
       - name: Name the bundle
@@ -110,5 +129,5 @@ jobs:
           draft: true
           prerelease: true
           body: |
-            **This bundle contains the built-in API keys.** Download it, upload it to Play Console, then delete this release.
+            Download it and upload it to Play Console, then delete this release. **A tester bundle contains the built-in API keys; a managed bundle (built with GEMINI_PROXY_URL) contains no Gemini key.**
           files: dist/*.aab

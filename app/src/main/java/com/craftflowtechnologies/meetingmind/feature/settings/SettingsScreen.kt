@@ -336,6 +336,7 @@ private class SettingsActions(
     val onOpenRecipes: () -> Unit,
     val onOpenCompanion: () -> Unit,
     val onReplayTour: () -> Unit,
+    val onOpenSubscription: () -> Unit,
     val editName: () -> Unit,
     val pickAvatar: () -> Unit,
     val showSpaces: () -> Unit,
@@ -398,6 +399,7 @@ fun SettingsScreen(
     onOpenRecipes: () -> Unit = {},
     onOpenCompanion: () -> Unit = {},
     onReplayTour: () -> Unit = {},
+    onOpenSubscription: () -> Unit = {},
     startGroup: String? = null
 ) {
     val context = LocalContext.current
@@ -435,7 +437,7 @@ fun SettingsScreen(
 
     val actions = SettingsActions(
         onNavigateToModels, onOpenBible, onOpenSetup, onOpenDataBackup, onOpenAppearance, onOpenWork, onOpenIntegrations,
-        onOpenRecipes, onOpenCompanion, onReplayTour,
+        onOpenRecipes, onOpenCompanion, onReplayTour, onOpenSubscription,
         editName = { showEditNameDialog = true },
         pickAvatar = { avatarPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
         showSpaces = { showSpaces = true },
@@ -764,6 +766,7 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
         }
         SettingId.RECIPES -> SettingsNavRow("Recipes & automation", "Post-meeting actions, tasks and review triggers", a.onOpenRecipes)
 
+        SettingId.PLAN_USAGE -> PlanAndUsageRow(a.onOpenSubscription)
         SettingId.SETUP_GUIDE -> SettingsNavRow("Setup guide", "What the app needs to transcribe and summarise, and one tap to get it", a.onOpenSetup)
         SettingId.AI_ENGINE -> SettingsNavRow("AI Engine", "On-device models: download, pause, resume or remove", a.onNavigateToModels)
         SettingId.GEMINI_KEY -> GeminiApiKeyRow(env.geminiKeyDisplay, { vm.setGeminiApiKey(it) }, { vm.clearGeminiApiKey() })
@@ -1369,4 +1372,21 @@ internal object GeminiKeyProbe {
             }
         }.getOrElse { "Couldn't reach Gemini (${it.javaClass.simpleName}): ${it.message ?: "no connection"}" }
     }
+}
+
+/** The plan and this month's Gemini use. Only shown when this build can sell something; otherwise the app is simply free. */
+@Composable
+private fun PlanAndUsageRow(onOpen: () -> Unit) {
+    val billing = com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway
+    if (!billing.configured) return
+    val owned by billing.entitlements.collectAsState()
+    val usage by com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.state.collectAsState()
+    val context = LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.refresh(context) }
+    SettingsNavRow(
+        title = "Plan and usage",
+        subtitle = (if (owned.isPaid) "${owned.plan.label} · manage or change your plan" else "Free · see what a plan adds") +
+            usage.summary().takeIf { usage.known && it.isNotEmpty() }?.let { "\nThis month: $it" }.orEmpty(),
+        onClick = onOpen
+    )
 }

@@ -1,0 +1,29 @@
+name = "meetingmind-gemini"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+ALLOWED_MODELS = "gemini-3.5-transcribe,gemini-3.6-flash"
+# The first FOUNDER_LIMIT paying people get FOUNDER_MULTIPLIER x their allowance for FOUNDER_DAYS days.
+# Set FOUNDER_LIMIT to "0" to turn the bonus off.
+FOUNDER_LIMIT = "100"
+FOUNDER_DAYS = "90"
+FOUNDER_MULTIPLIER = "1.5"
+# PLAN_ALLOWANCES is deliberately NOT set here. The proxy refuses to serve until it is set (README).
+
+# Create with: npx wrangler kv namespace create CACHE, then paste its id here. Caches RevenueCat lookups for 5 minutes.
+[[kv_namespaces]]
+binding = "CACHE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[[durable_objects.bindings]]
+name = "LEDGER"
+class_name = "UsageLedger"
+
+[[durable_objects.bindings]]
+name = "FOUNDERS"
+class_name = "Founders"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["UsageLedger", "Founders"]

@@ -3,8 +3,7 @@ package com.craftflowtechnologies.meetingmind.core.scripture
 /**
  * The full-Bible layer (docs/PLAN_V1.md §7): translations, whole chapters for reading, and search.
  *
- * The Faith features only ever talk to [BibleProvider]. Which service answers — YouVersion today,
- * API.Bible or a bundled public-domain text later — and whether the answer came from the phone or
+ * The Faith features only ever talk to [BibleProvider]. Which service answers (the Free Use Bible API, or the phone) and whether the answer came from the phone or
  * the network is decided underneath it, in [BibleLibrary].
  */
 interface BibleProvider : ScriptureProvider {
@@ -103,58 +102,4 @@ object BibleLicensing {
      * decided to add it. This one switch is where that decision goes.
      */
     const val KJV_TREATED_AS_OPEN = false
-}
-
-/**
- * Turns a YouVersion chapter (`format=html`) into verses.
- *
- * The markup is a run of block `div`s — `p`/`m` paragraphs, `q1`/`q2` poetry lines, `d` psalm
- * titles — with `<span class="yv-v" v="N">` marking where each verse starts and a `yv-vlbl` label
- * holding the printed number. Anything before verse 1 (a psalm title) joins verse 1.
- */
-object YouVersionChapterParser {
-    private val BLOCK = Regex("""<div class="([^"]+)">(.*?)</div>""", RegexOption.DOT_MATCHES_ALL)
-    private val VERSE_MARK = Regex("""<span class="yv-v" v="(\d+)"></span>(?:<span class="yv-vlbl">[^<]*</span>)?""")
-    private val TAG = Regex("<[^>]+>")
-
-    fun parse(html: String): List<ChapterVerse> {
-        data class Building(val number: Int, val lines: MutableList<String>, val paragraph: Boolean, var poetry: Boolean)
-        val verses = mutableListOf<Building>()
-        var carried = StringBuilder() // text before the first verse marker
-
-        for (block in BLOCK.findAll(html)) {
-            val style = block.groupValues[1]
-            if (style.startsWith("yv-")) continue
-            val poetry = style.startsWith("q")
-            val paragraphStyle = style == "p" || style == "m" || style == "pi" || style == "b" || style == "d"
-            val body = block.groupValues[2]
-            val marks = VERSE_MARK.findAll(body).toList()
-            // Text in this block before its first verse marker continues the current verse.
-            val leading = clean(body.substring(0, marks.firstOrNull()?.range?.first ?: body.length))
-            if (leading.isNotEmpty()) {
-                val current = verses.lastOrNull()
-                if (current == null) carried.append(leading).append('\n')
-                else { current.lines += leading; if (poetry) current.poetry = true }
-            }
-            for ((i, mark) in marks.withIndex()) {
-                val number = mark.groupValues[1].toInt()
-                val end = marks.getOrNull(i + 1)?.range?.first ?: body.length
-                val text = clean(body.substring(mark.range.last + 1, end))
-                val startsBlock = i == 0 && leading.isEmpty()
-                val lines = mutableListOf<String>()
-                if (verses.isEmpty() && carried.isNotEmpty()) { lines += carried.toString().trim(); carried = StringBuilder() }
-                if (text.isNotEmpty()) lines += text
-                verses += Building(number, lines, paragraph = startsBlock && (paragraphStyle || verses.isEmpty()), poetry = poetry)
-            }
-        }
-        return verses.map { b ->
-            val joined = if (b.poetry) b.lines.joinToString("\n") else b.lines.joinToString(" ")
-            ChapterVerse(b.number, joined.replace(Regex("[ \\t]+"), " ").trim(), b.paragraph, b.poetry)
-        }.filter { it.text.isNotEmpty() }
-    }
-
-    private fun clean(fragment: String): String = decode(fragment.replace(TAG, "")).replace(Regex("\\s+"), " ").trim()
-
-    private fun decode(s: String) = s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-        .replace("&quot;", "\"").replace("&#39;", "'").replace("&nbsp;", " ")
 }

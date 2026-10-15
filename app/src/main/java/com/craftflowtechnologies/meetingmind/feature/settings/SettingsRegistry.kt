@@ -36,7 +36,7 @@ enum class SettingId {
     TIDY_FILLER, TRANSCRIPT_CLEANUP, SPEAKER_DETECTION, RECIPES,
 
     // AI & offline models
-    SETUP_GUIDE, AI_ENGINE, GEMINI_KEY, WIFI_ONLY, GEMINI_CHECK, DEEPSEEK,
+    PLAN_USAGE, SETUP_GUIDE, AI_ENGINE, GEMINI_KEY, WIFI_ONLY, GEMINI_CHECK, DEEPSEEK,
 
     // Faith
     BIBLE_TRANSLATION, BIBLE_OFFLINE, DEVOTIONAL, PRAYER_REMINDERS, ORIGINAL_PACKS, PERSONAL_TOUCH, FAITH_LOCK,
@@ -114,6 +114,7 @@ object SettingsRegistry {
         e(SettingId.RECIPES, SettingsGroup.RECORDING, "Recipes & automation", "post meeting actions tasks review triggers", advanced = true, needs = Needs.FEATURE_RECIPES),
 
         // AI & offline models
+        e(SettingId.PLAN_USAGE, SettingsGroup.AI, "Plan and usage", "plan subscription paywall usage gemini monthly billing upgrade"),
         e(SettingId.SETUP_GUIDE, SettingsGroup.AI, "Setup guide", "get started transcribe summarise permissions what the app needs"),
         e(SettingId.AI_ENGINE, SettingsGroup.AI, "AI Engine", "on-device models download pause resume remove offline whisper parakeet qwen"),
         e(SettingId.GEMINI_KEY, SettingsGroup.AI, "Gemini API key", "google internet mode cloud key api"),
@@ -122,7 +123,7 @@ object SettingsRegistry {
         e(SettingId.DEEPSEEK, SettingsGroup.AI, "Backup AI (DeepSeek)", "deepseek fallback writer tokens key usage", advanced = true),
 
         // Faith
-        e(SettingId.BIBLE_TRANSLATION, SettingsGroup.FAITH, "Bible translation", "version niv kjv esv bsb youversion verses"),
+        e(SettingId.BIBLE_TRANSLATION, SettingsGroup.FAITH, "Bible translation", "version translation bsb kjv web open verses"),
         e(SettingId.BIBLE_OFFLINE, SettingsGroup.FAITH, "Bible on this phone", "offline copies download read search without internet"),
         e(SettingId.DEVOTIONAL, SettingsGroup.FAITH, "Devotional time & style", "devotional morning time tradition format length tone voice series language picture read aloud"),
         e(SettingId.PRAYER_REMINDERS, SettingsGroup.FAITH, "Prayer reminders", "prayer times daily office reading evening reflection quiet hours"),

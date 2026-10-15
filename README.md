@@ -90,7 +90,7 @@ Faith space with a Bible, daily devotionals and prayer tools.
 | Mode | What happens to your audio |
 | --- | --- |
 | **Offline** (default) | Everything runs on the phone. Nothing leaves it. |
-| **Internet** (opt in) | Gemini transcribes and summarises. Recordings go to Google. Needs your own API key, which you enter in the app and which is never built into the APK. |
+| **Internet** (opt in) | Gemini transcribes and summarises. Recordings go to Google. Uses your own API key (entered in the app), or, on a MeetingMind plan, MeetingMind's managed service (`server/gemini-proxy`), which holds the key server-side. A managed release build contains no Gemini key; only closed-tester builds carry a built-in one. |
 
 A setting that can't be read always falls back to Offline, so the app never starts uploading by
 accident. See [docs/DATA_SAFETY.md](docs/DATA_SAFETY.md).
@@ -133,8 +133,6 @@ Optional keys go in `local.properties`, which is gitignored. Never commit them.
 
 ```properties
 sdk.dir=/path/to/Android/sdk
-# YouVersion Platform key, for licensed Bible translations (open ones work without it)
-youversion.appKey=...
 ```
 
 Gemini keys are never part of the build. Each person enters their own in

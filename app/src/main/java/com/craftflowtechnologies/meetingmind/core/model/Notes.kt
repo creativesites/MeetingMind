@@ -212,7 +212,7 @@ data class ScriptureRef(
     /** Null for a whole chapter. */
     val verseStart: Int?,
     val verseEnd: Int?,
-    /** YouVersion Bible id. Null means the user's default translation. */
+    /** Bible id (see BibleVersions). Null means the user's default translation. */
     val versionId: Int?,
     val origin: ScriptureOrigin,
     val meetingId: String? = null,
