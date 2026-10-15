@@ -240,9 +240,11 @@ service cloud.firestore {
         }
       }
 
-      // Join requests waiting for an admin. Worker-only: the Worker reads and writes them.
+      // Join requests waiting for an admin. Admins (and the owner) read them for the Members screen;
+      // only the Worker writes them.
       match /joinRequests/{uid} {
-        allow read, write: if false;
+        allow get, list: if isAdmin(circleId);
+        allow write: if false;
       }
 
       // Prayer requests awaiting approval. Admins only; the doc carries no author information.

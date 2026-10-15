@@ -285,9 +285,16 @@ test("events: members read events and RSVPs; outsiders cannot; clients cannot wr
   await assertFails(setDoc(doc(as("member"), `circles/${C}/events/ev1/rsvps/member`), { status: "going" }));
 });
 
-test("join requests are Worker-only: nobody on the client can read or write them", async () => {
+test("join requests: admins and the owner can read them; members, outsiders and every client write are refused", async () => {
   await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), `circles/${C}/joinRequests/ann`), { displayName: "Ann" }));
-  await assertFails(getDoc(doc(as("admin"), `circles/${C}/joinRequests/ann`)));
-  await assertFails(getDoc(doc(as("owner"), `circles/${C}/joinRequests/ann`)));
+  await assertSucceeds(getDoc(doc(as("admin"), `circles/${C}/joinRequests/ann`)));
+  await assertSucceeds(getDocs(collection(as("admin"), `circles/${C}/joinRequests`)));
+  await assertSucceeds(getDoc(doc(as("owner"), `circles/${C}/joinRequests/ann`)));
+  await assertSucceeds(getDocs(collection(as("owner"), `circles/${C}/joinRequests`)));
+  await assertFails(getDoc(doc(as("member"), `circles/${C}/joinRequests/ann`)));
+  await assertFails(getDocs(collection(as("member"), `circles/${C}/joinRequests`)));
+  await assertFails(getDocs(collection(as("stranger"), `circles/${C}/joinRequests`)));
   await assertFails(setDoc(doc(as("member"), `circles/${C}/joinRequests/member`), { displayName: "M" }));
+  await assertFails(setDoc(doc(as("admin"), `circles/${C}/joinRequests/ann`), { displayName: "Changed" }));
+  await assertFails(deleteDoc(doc(as("admin"), `circles/${C}/joinRequests/ann`)));
 });
