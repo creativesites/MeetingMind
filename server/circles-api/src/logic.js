@@ -124,6 +124,11 @@ export function canInvite(role, settings) {
   return role === "owner" || role === "admin" || (role === "member" && settings?.whoCanInvite === "members");
 }
 export const isAdmin = (role) => role === "owner" || role === "admin";
+/**
+ * Moderator sits between admin and member: creates, edits and cancels events, and removes other people's posts.
+ * Owners and admins can do everything a moderator can. Titles are a label and never grant anything.
+ */
+export const canModerate = (role) => isAdmin(role) || role === "moderator";
 
 // ---- rate limits ----
 export const RATE = {

@@ -8,7 +8,7 @@ import { hit, check, record } from "./ratelimit.js";
 import { createUploadTicket, sendMessage, deleteMedia, checkPostAttachments, checkCover } from "./media.js";
 import {
   LIMITS, RATE, REACTIONS, POST_TYPES, TEMPLATES, validId, cleanText, cleanVerseRef, normalizeSettings,
-  generateCode, extractCodes, CHAT, shapePoll, shapeCelebration, clampInvite, joinDecision, canInvite, isAdmin, shapePost, publishFromPending, assertNoAuthorLeak,
+  generateCode, extractCodes, CHAT, shapePoll, shapeCelebration, clampInvite, joinDecision, canInvite, isAdmin, canModerate, shapePost, publishFromPending, assertNoAuthorLeak,
   cleanTitle, cleanEvent, RSVP_STATES,
 } from "./logic.js";
 
@@ -279,7 +279,7 @@ async function pinMessage(ctx) {
 async function createEvent(ctx) {
   const circleId = str(ctx.body, "circleId");
   const { member } = await load(ctx, circleId);
-  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can add events.");
+  if (!canModerate(member.role)) throw new ApiError(403, "forbidden", "Only admins and moderators can add events.");
   const event = cleanEvent(ctx.body);
   const id = newId();
   await ctx.db.commit([w.create(`${C(circleId)}/events/${id}`, {
@@ -298,7 +298,7 @@ async function updateEvent(ctx) {
   const circleId = str(ctx.body, "circleId");
   const eventId = str(ctx.body, "eventId");
   const { member } = await load(ctx, circleId);
-  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can change events.");
+  if (!canModerate(member.role)) throw new ApiError(403, "forbidden", "Only admins and moderators can change events.");
   const current = await liveEvent(ctx, circleId, eventId);
   if (current.data.status === "cancelled") throw new ApiError(409, "event_cancelled", "This event was cancelled.");
   const event = cleanEvent({ ...current.data, ...ctx.body });
@@ -310,7 +310,7 @@ async function cancelEvent(ctx) {
   const circleId = str(ctx.body, "circleId");
   const eventId = str(ctx.body, "eventId");
   const { member } = await load(ctx, circleId);
-  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can cancel events.");
+  if (!canModerate(member.role)) throw new ApiError(403, "forbidden", "Only admins and moderators can cancel events.");
   await liveEvent(ctx, circleId, eventId);
   await ctx.db.commit([w.update(`${C(circleId)}/events/${eventId}`, { status: "cancelled", updatedAt: ctx.now })]);
   return {};
@@ -365,7 +365,7 @@ const removeMember = (ctx) => {
 
 async function setRole(ctx) {
   const id = str(ctx.body, "circleId"); const target = str(ctx.body, "targetUid"); const role = ctx.body.role;
-  if (!["admin", "member", "owner"].includes(role)) throw new ApiError(400, "bad_request", "Invalid role");
+  if (!["owner", "admin", "moderator", "member"].includes(role)) throw new ApiError(400, "bad_request", "Invalid role");
   if (target === ctx.uid) throw new ApiError(400, "bad_request", "You can't change your own role.");
   await ctx.db.runTx(async (tx) => {
     const actor = await tx.get(`${C(id)}/members/${ctx.uid}`);
@@ -488,7 +488,7 @@ async function deletePost(ctx) {
   const auth = await ctx.db.get(`${C(circleId)}/postAuthors/${postId}`);
   if (!auth) throw notFound("That post");
   const isAuthor = auth.data.authorUid === ctx.uid;
-  if (!isAuthor && !isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only the author or an admin can delete this.");
+  if (!isAuthor && !canModerate(member.role)) throw new ApiError(403, "forbidden", "Only the author, an admin or a moderator can delete this.");
   const pend = await ctx.db.get(`${C(circleId)}/pending/${postId}`);
   if (pend) { // withdrawing / removing a request that was never published
     await ctx.db.commit([w.del(`${C(circleId)}/pending/${postId}`), w.del(`${C(circleId)}/postAuthors/${postId}`)]);

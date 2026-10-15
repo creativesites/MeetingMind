@@ -438,6 +438,50 @@ test("pinning a message: admins pin a live message, unpin with null, members and
   assert.equal(W.db.dump(C(id)).pinnedMessageId, null);
 });
 
+test("moderator: events and removing others' posts; admins keep every power; everything else stays admin-only", async () => {
+  const W = world();
+  const id = await circle(W);
+  await joinAs(W, "mo", id, "Mo");
+  await joinAs(W, "ad", id, "Ad");
+  await joinAs(W, "eve", id, "Eve");
+  // only the owner can set roles; a member cannot promote anyone
+  assert.equal((await W.err("eve", "setRole", { circleId: id, targetUid: "mo", role: "moderator" })).code, "forbidden");
+  assert.equal((await W.err("owner", "setRole", { circleId: id, targetUid: "mo", role: "superuser" })).code, "bad_request");
+  await W.call("owner", "setRole", { circleId: id, targetUid: "mo", role: "moderator" });
+  await W.call("owner", "setRole", { circleId: id, targetUid: "ad", role: "admin" });
+  assert.equal(W.db.dump(`circles/${id}/members/mo`).role, "moderator");
+
+  // events: moderator and admin can create, edit and cancel; a plain member cannot
+  const { eventId } = await W.call("mo", "createEvent", { circleId: id, ...eventBody() });
+  await W.call("mo", "updateEvent", { circleId: id, eventId, title: "Breakfast (moved)" });
+  await W.call("ad", "createEvent", { circleId: id, ...eventBody({ title: "Lunch" }) });
+  assert.equal((await W.err("eve", "createEvent", { circleId: id, ...eventBody() })).code, "forbidden");
+  assert.equal((await W.err("eve", "updateEvent", { circleId: id, eventId, title: "x" })).code, "forbidden");
+  await W.call("mo", "cancelEvent", { circleId: id, eventId });
+  assert.equal(W.db.dump(`circles/${id}/events/${eventId}`).status, "cancelled");
+
+  // removing others' posts: a moderator can; a member cannot; the author can always
+  const { postId } = await W.call("eve", "createPost", { circleId: id, type: "note", body: "Hello", anonymous: false });
+  await W.call("ad", "pinPost", { circleId: id, postId }); // admins still pin
+  assert.equal((await W.err("mo", "pinPost", { circleId: id, postId })).code, "forbidden"); // moderators do not
+  await W.call("mo", "deletePost", { circleId: id, postId });
+  assert.equal(W.db.dump(`circles/${id}/posts/${postId}`).deleted, true);
+  const { postId: second } = await W.call("eve", "createPost", { circleId: id, type: "note", body: "Again", anonymous: false });
+  assert.equal((await W.err("stranger", "deletePost", { circleId: id, postId: second })).code, "not_a_member");
+  await W.call("eve", "deletePost", { circleId: id, postId: second }); // the author can always delete
+
+  // what a moderator cannot do stays admin-only
+  await joinAs(W, "pat", id, "Pat");
+  assert.equal((await W.err("mo", "setTitle", { circleId: id, targetUid: "pat", title: "Deacon" })).code, "forbidden");
+  assert.equal((await W.err("mo", "removeMember", { circleId: id, targetUid: "eve" })).code, "forbidden");
+  assert.equal((await W.err("mo", "setRole", { circleId: id, targetUid: "eve", role: "admin" })).code, "forbidden");
+  assert.equal((await W.err("mo", "pinMessage", { circleId: id, messageId: "nope123" })).code, "forbidden");
+
+  // a demoted moderator loses the event powers
+  await W.call("owner", "setRole", { circleId: id, targetUid: "mo", role: "member" });
+  assert.equal((await W.err("mo", "createEvent", { circleId: id, ...eventBody() })).code, "forbidden");
+});
+
 const eventBody = (over = {}) => ({
   title: "Breakfast", description: "Café Lumen", location: "214 Maple St", onlineUrl: "https://meet.example.org/breakfast",
   startsAt: 1_800_000_000_000, endsAt: 1_800_003_600_000, timeZone: "America/New_York", ...over,

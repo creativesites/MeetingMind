@@ -19,6 +19,11 @@ service cloud.firestore {
     function isAdmin(circleId) {
       return isMember(circleId) && get(memberDoc(circleId)).data.role in ['owner', 'admin'];
     }
+    // Moderators can run events and remove others' posts; admins and the owner can do everything a moderator can.
+    // The Worker does all role-gated writes today, so nothing calls this yet; it is here for client-written paths.
+    function isModerator(circleId) {
+      return isMember(circleId) && get(memberDoc(circleId)).data.role in ['owner', 'admin', 'moderator'];
+    }
     function postPath(circleId, postId) {
       return /databases/$(database)/documents/circles/$(circleId)/posts/$(postId);
     }

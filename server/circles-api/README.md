@@ -76,7 +76,9 @@ media older than 24 hours that no message, post, pending request or cover refere
 | `registerToken`, `unregisterToken` | any | FCM `token` (max 5 devices per user) |
 
 Post types: prayer, testimony, achievement, study, encouragement, reading, announcement (admins only). Only prayer requests can be
-anonymous. Roles: `setRole` is **owner-only** (stricter than "owner/admin", to stop an admin promoting accomplices);
+anonymous. Roles, from most to least powerful: owner, admin, moderator, member. A moderator creates, edits and cancels
+events and deletes other people's posts (`canModerate`); admins and the owner can do everything a moderator can. Titles are
+labels only. `setRole` (any role, including `moderator`) is **owner-only** (stricter than "owner/admin", to stop an admin promoting accomplices);
 admins can remove plain members; only the owner removes admins; the owner must hand over ownership before leaving.
 
 Pushes (text never contains post bodies; anonymous posts say "Someone shared a prayer request"): new published post (not to the
