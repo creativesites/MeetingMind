@@ -99,7 +99,7 @@ fun PaywallScreen(trigger: PaywallTrigger, onClose: () -> Unit, vm: PaywallViewM
 
     fun close() {
         // Only on the last page, and only once: offer monthly to someone about to leave a yearly plan.
-        val monthly = state.offers.firstOrNull { !it.isYearly && it.plan == state.selected?.plan }
+        val monthly = state.offers.firstOrNull { it.kind == com.craftflowtechnologies.meetingmind.core.billing.OfferKind.MONTHLY && it.plan == state.selected?.plan }
         if (page == 2 && state.selected?.isYearly == true && monthly != null && !exitShown) {
             exitShown = true; showExit = true; vm.exitSheetShown()
         } else { vm.dismissed(); onClose() }
@@ -107,7 +107,7 @@ fun PaywallScreen(trigger: PaywallTrigger, onClose: () -> Unit, vm: PaywallViewM
     BackHandler { close() }
 
     if (showExit) {
-        val monthly = state.offers.firstOrNull { !it.isYearly && it.plan == state.selected?.plan }
+        val monthly = state.offers.firstOrNull { it.kind == com.craftflowtechnologies.meetingmind.core.billing.OfferKind.MONTHLY && it.plan == state.selected?.plan }
         AlertDialog(
             onDismissRequest = { showExit = false; vm.dismissed(); onClose() },
             title = { Text("Not ready for a year?") },
@@ -250,10 +250,10 @@ private fun PlanCard(offer: PlanOffer, selected: Boolean, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(offer.plan.label + if (offer.isYearly) " · yearly" else " · monthly", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Text("Billed every ${offer.period}", color = Color.White.copy(alpha = 0.6f), fontSize = 12.5.sp)
+            Text(offer.plan.label + " · " + offer.kind.name.lowercase(), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (offer.isLifetime) "One payment, never renews" else "Billed every ${offer.period}", color = Color.White.copy(alpha = 0.6f), fontSize = 12.5.sp)
         }
-        Text("${offer.priceText} / ${offer.period}", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (offer.isLifetime) offer.priceText else "${offer.priceText} / ${offer.period}", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

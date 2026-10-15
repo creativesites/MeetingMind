@@ -13,24 +13,22 @@ class BillingModelTest {
     private fun paid(plan: Plan = Plan.PRO, state: EntitlementState = EntitlementState.ACTIVE, expires: Long? = now + 30 * day, verified: Long = now) =
         Entitlements(plan, state, expires, willRenew = true, verifiedAtMs = verified)
 
-    @Test fun `the longest package prefix wins`() {
-        assertEquals(Plan.PRO_PLUS, Plan.fromPackageId("pro_plus_yearly"))
-        assertEquals(Plan.PRO, Plan.fromPackageId("pro_monthly"))
-        assertEquals(Plan.CHURCH, Plan.fromPackageId("church_yearly"))
-        assertNull(Plan.fromPackageId("something_else"))
-        assertNull(Plan.fromPackageId("professional_monthly"))
+    @Test fun `the three products map to their package ids exactly`() {
+        assertEquals(OfferKind.MONTHLY, OfferKind.fromPackageId("monthly"))
+        assertEquals(OfferKind.YEARLY, OfferKind.fromPackageId("yearly"))
+        assertEquals(OfferKind.LIFETIME, OfferKind.fromPackageId("lifetime"))
+        assertNull(OfferKind.fromPackageId("monthly_promo"))
+        assertNull(OfferKind.fromPackageId("pro_monthly"))
     }
 
-    @Test fun `entitlement ids map to plans and free has none`() {
-        assertEquals(Plan.PRO_PLUS, Plan.fromEntitlementId("pro_plus"))
+    @Test fun `the paid entitlement is meetingmind_pro and nothing else`() {
+        assertEquals(Plan.PRO, Plan.fromEntitlementId("meetingmind_pro"))
+        assertNull(Plan.fromEntitlementId("pro"))
         assertNull(Plan.fromEntitlementId(""))
-        assertNull(Plan.fromEntitlementId("free"))
     }
 
-    @Test fun `only managed plans get managed cloud AI`() {
-        assertFalse(paid(Plan.BYOK).has(Capability.MANAGED_CLOUD_AI))
+    @Test fun `only the paid plan gets managed cloud AI`() {
         assertTrue(paid(Plan.PRO).has(Capability.MANAGED_CLOUD_AI))
-        assertTrue(paid(Plan.CHURCH).has(Capability.MANAGED_CLOUD_AI))
         assertFalse(Entitlements().has(Capability.MANAGED_CLOUD_AI))
     }
 
@@ -57,6 +55,10 @@ class BillingModelTest {
     @Test fun `a current confirmed entitlement is kept as it is`() {
         val e = paid()
         assertEquals(e, e.effective(now))
+    }
+
+    @Test fun `a lifetime purchase has no expiry and stays paid`() {
+        assertTrue(paid(expires = null).effective(now + day).isPaid)
     }
 
     @Test fun `no expiry date means it stays until the store says otherwise`() {

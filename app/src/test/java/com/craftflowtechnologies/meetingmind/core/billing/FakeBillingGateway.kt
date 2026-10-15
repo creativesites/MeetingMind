@@ -8,8 +8,9 @@ import kotlinx.coroutines.flow.asStateFlow
 /** For tests and previews: the offers and the next purchase result are whatever the test sets. */
 class FakeBillingGateway(
     private val offered: List<PlanOffer> = listOf(
-        PlanOffer("pro_monthly", Plan.PRO, "$9.99", "month", isYearly = false),
-        PlanOffer("pro_yearly", Plan.PRO, "$79.99", "year", isYearly = true)
+        PlanOffer("monthly", Plan.PRO, "$9.99", OfferKind.MONTHLY),
+        PlanOffer("yearly", Plan.PRO, "$79.99", OfferKind.YEARLY),
+        PlanOffer("lifetime", Plan.PRO, "$149.99", OfferKind.LIFETIME)
     ),
     override val configured: Boolean = true
 ) : BillingGateway {

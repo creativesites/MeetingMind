@@ -5,16 +5,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** One plan the person can buy, as the store describes it. Nothing here is hardcoded. */
+/** One product the person can buy, as the store describes it. Nothing here is hardcoded except the package ids. */
 data class PlanOffer(
     val id: String,
     val plan: Plan,
     /** The store's formatted price, e.g. "$49.99". */
     val priceText: String,
-    /** "month" or "year". */
-    val period: String,
-    val isYearly: Boolean
-)
+    val kind: OfferKind
+) {
+    val isYearly: Boolean get() = kind == OfferKind.YEARLY
+    val isLifetime: Boolean get() = kind == OfferKind.LIFETIME
+    /** "month", "year" or "one-time payment". */
+    val period: String get() = kind.period
+}
 
 sealed interface PurchaseResult {
     data class Success(val entitlements: Entitlements) : PurchaseResult

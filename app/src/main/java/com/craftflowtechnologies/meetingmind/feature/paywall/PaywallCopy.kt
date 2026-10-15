@@ -21,7 +21,11 @@ object PaywallCopy {
     }
 
     /** What the person can count on to happen with the money and the plan. No dates or prices are invented. */
-    fun timeline(offer: com.craftflowtechnologies.meetingmind.core.billing.PlanOffer): List<Pair<String, String>> = listOf(
+    fun timeline(offer: com.craftflowtechnologies.meetingmind.core.billing.PlanOffer): List<Pair<String, String>> = if (offer.isLifetime) listOf(
+        "Today" to "You're charged ${offer.priceText} once, and MeetingMind Pro is yours from today.",
+        "Later" to "Nothing renews. There is no further payment.",
+        "Refunds" to "Google Play handles refund requests for one-time purchases. Your notes always stay yours."
+    ) else listOf(
         "Today" to "You're charged ${offer.priceText} and your plan starts right away.",
         "Every ${offer.period}" to "Google Play renews it at ${offer.priceText} until you cancel.",
         "Any time" to "Cancel in Google Play. You keep your plan until the period you paid for ends, and your notes always stay yours."

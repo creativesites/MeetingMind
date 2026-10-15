@@ -1,25 +1,30 @@
 package com.craftflowtechnologies.meetingmind.core.billing
 
 /**
- * The plans on sale. [entitlementId] is the RevenueCat entitlement identifier and [packagePrefix] the
- * start of its package identifiers in the RevenueCat offering ("pro_monthly", "pro_yearly", ...); the
- * dashboard has to use these names. Prices, periods and trial terms are never defined here: they come
- * from the store through the offering, so the paywall can only show what the store will charge.
+ * The plans on sale. There is one paid plan, unlocked by the RevenueCat entitlement [entitlementId]
+ * ("meetingmind_pro"). Prices, periods and trial terms are never defined here: they come from the store
+ * through the offering, so the paywall can only show what the store will charge.
  */
-enum class Plan(val entitlementId: String, val packagePrefix: String, val rank: Int, val label: String) {
-    FREE("", "", 0, "Free"),
-    BYOK("byok", "byok", 1, "Bring your own key"),
-    PRO("pro", "pro", 2, "Pro"),
-    PRO_PLUS("pro_plus", "pro_plus", 3, "Pro+"),
-    CHURCH("church", "church", 3, "Church");
+enum class Plan(val entitlementId: String, val rank: Int, val label: String) {
+    FREE("", 0, "Free"),
+    PRO("meetingmind_pro", 1, "MeetingMind Pro");
 
     companion object {
         fun fromEntitlementId(id: String): Plan? = entries.firstOrNull { it != FREE && it.entitlementId == id }
+    }
+}
 
-        /** "pro_plus_yearly" is PRO_PLUS, not PRO: the longest matching prefix wins. */
-        fun fromPackageId(id: String): Plan? =
-            entries.filter { it != FREE && (id == it.packagePrefix || id.startsWith(it.packagePrefix + "_")) }
-                .maxByOrNull { it.packagePrefix.length }
+/**
+ * The products in the RevenueCat offering, by their package identifiers. Each is one package in the
+ * current offering: "monthly" and "yearly" are subscriptions, "lifetime" is a one-time purchase.
+ */
+enum class OfferKind(val packageId: String, val period: String) {
+    MONTHLY("monthly", "month"),
+    YEARLY("yearly", "year"),
+    LIFETIME("lifetime", "one-time payment");
+
+    companion object {
+        fun fromPackageId(id: String): OfferKind? = entries.firstOrNull { it.packageId == id }
     }
 }
 
@@ -31,7 +36,7 @@ enum class Capability {
 
 object PlanCapabilities {
     fun has(plan: Plan, capability: Capability): Boolean = when (capability) {
-        Capability.MANAGED_CLOUD_AI -> plan == Plan.PRO || plan == Plan.PRO_PLUS || plan == Plan.CHURCH
+        Capability.MANAGED_CLOUD_AI -> plan == Plan.PRO
     }
 }
 

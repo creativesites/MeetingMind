@@ -38,7 +38,7 @@ googleid = "1.1.1"
 sherpaOnnx = "1.13.6"
 okhttp = "4.12.0"
 # RevenueCat 9.x uses Play Billing 8.x (the Play requirement). Upgrading past 9.x changes the SDK API; check the migration guide first.
-revenuecat = "9.10.0"
+revenuecat = "10.28.0"
 commonsCompress = "1.28.0"
 mediapipeTasksGenai = "0.10.35"
 media3 = "1.11.0"

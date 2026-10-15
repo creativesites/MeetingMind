@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.paywall
 
 import com.craftflowtechnologies.meetingmind.core.billing.Plan
+import com.craftflowtechnologies.meetingmind.core.billing.OfferKind
 import com.craftflowtechnologies.meetingmind.core.billing.PlanOffer
 import com.craftflowtechnologies.meetingmind.feature.onboarding.CaptureGoal
 import com.craftflowtechnologies.meetingmind.feature.onboarding.DesiredOutcome
@@ -16,7 +17,7 @@ class PaywallCopyTest {
     }
 
     @Test fun `the timeline only states the store's price and period`() {
-        val lines = PaywallCopy.timeline(PlanOffer("pro_yearly", Plan.PRO, "\$79.99", "year", true))
+        val lines = PaywallCopy.timeline(PlanOffer("yearly", Plan.PRO, "\$79.99", OfferKind.YEARLY))
         assertTrue(lines.any { it.second.contains("\$79.99") })
         assertTrue(lines.any { it.first == "Every year" })
         assertTrue(lines.any { it.second.contains("Cancel in Google Play") })
@@ -24,11 +25,11 @@ class PaywallCopyTest {
 
     @Test fun `the yearly individual plan is preselected`() {
         val offers = listOf(
-            PlanOffer("pro_monthly", Plan.PRO, "\$9.99", "month", false),
-            PlanOffer("pro_yearly", Plan.PRO, "\$79.99", "year", true),
-            PlanOffer("pro_plus_yearly", Plan.PRO_PLUS, "\$199", "year", true)
+            PlanOffer("monthly", Plan.PRO, "\$9.99", OfferKind.MONTHLY),
+            PlanOffer("yearly", Plan.PRO, "\$79.99", OfferKind.YEARLY),
+            PlanOffer("lifetime", Plan.PRO, "\$149.99", OfferKind.LIFETIME)
         )
-        assertEquals("pro_yearly", defaultOffer(offers)?.id)
-        assertEquals("pro_monthly", defaultOffer(listOf(offers[0]))?.id)
+        assertEquals("yearly", defaultOffer(offers)?.id)
+        assertEquals("monthly", defaultOffer(listOf(offers[0]))?.id)
     }
 }
