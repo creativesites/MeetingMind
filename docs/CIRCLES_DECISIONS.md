@@ -90,6 +90,6 @@ Not compiled. Nothing in this pass has been built or run. `CirclesScreenshotTest
 | # | Question | Decision | Basis |
 |---|---|---|---|
 | 36 | Media storage | Cloudflare R2 (`meetingmind-circles-media`), accessed only by the Worker, which proxies bytes. Replaces Firebase Storage. | Firebase Storage needs the Blaze plan; the project is on the free plan. R2 has no egress fees. |
-| 37 | Chat attachments | Recommended: written through a `sendMessage` Worker endpoint, so the Worker can confirm the uploader. Open until the owner confirms. | Firestore rules cannot check who uploaded an object. |
+| 37 | Chat attachments | Decided: written through a `sendMessage` Worker endpoint. Clients cannot create attachment messages. | Owner, 2026-10-15. Firestore rules cannot check who uploaded an object. |
 | 38 | Ticket single use | Open: KV is eventually consistent, so the agent chooses between a Durable Object and a documented race window. | Found while reviewing the plan. |
 

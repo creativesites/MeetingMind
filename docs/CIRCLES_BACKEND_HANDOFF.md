@@ -95,13 +95,14 @@ Gate: rules tests: own write allowed; other uid refused; oversized name refused;
 
 ### 5e. Images, voice notes and files
 
-These need the media pipeline in section 6. The chat contract:
+These need the media pipeline in section 6. Decided by the owner: attachment messages are written by the Worker through `sendMessage`. Clients never write them directly.
 
-- New message kinds `image`, `voice`, `file`. Each carries `attachment`: a map with `path` (string, must start with `circles/{circleId}/media/`), `mime` (string), `bytes` (integer, at most 25 MB), and where relevant `durationMs` (integer) and `name` (string, at most 120 characters). `text` may be a caption (at most 2000 characters).
-- Rules: allow these kinds only when `attachment` passes those checks and `mime` is on the allow-list for the kind (`image/jpeg`, `image/png`, `image/webp`, `audio/mp4`, `audio/aac`, `audio/ogg`, `application/pdf`).
+- New Worker endpoint `sendMessage`: body `circleId, kind` (`image`, `voice` or `file`), `uploadPath` (the `path` from a finished upload ticket), `text` (optional caption, at most 2000 characters), `replyTo?`. The Worker checks membership, that the caller is the uploader of `uploadPath` (ticket record or object metadata), that the object exists, that its mime and bytes match the kind's limits, and that the kind's mime allow-list holds. It then writes the message with a server `createdAt`, `authorUid` from the token, and `attachment {path, mime, bytes, durationMs?, name?}`. `durationMs` and `name` are optional; `name` is at most 120 characters.
+- Text messages stay as they are: clients write `text` and `reply` directly under the existing rules.
+- Rules: refuse client creation of `image`, `voice` and `file` messages entirely. The Worker is the only writer, so the rules do not need to check the attachment shape.
 - Message delete stays soft (`deleted`, `text` blanked, `attachment` removed). Storage objects are deleted by the Worker on hard delete; never by the client.
 
-Gate: rules tests for each kind: valid; wrong mime; oversized; path outside the circle.
+Gate: Worker tests for `sendMessage`: a non-uploader is refused; a valid message is written with server time; a wrong mime or an oversized object is refused; a missing object is refused. Rules tests: a client cannot create an `image`, `voice` or `file` message; text messages still work.
 
 ### 5f. Message reactions and polls
 
@@ -141,7 +142,7 @@ Endpoints:
 
 Messages and posts: the field names in section 5e and section 7 stay exactly as written: `attachment {path, mime, bytes, durationMs?, name?}`, and the caption in `text` (at most 2000 characters).
 
-Open owner decision: chat messages with attachments are written through a `sendMessage` Worker endpoint, not directly by the client. The recommendation is the Worker. Firestore rules can check the path prefix and the mime, but cannot check that this user uploaded the object. Until the owner confirms, do not change how chat messages are written. If `sendMessage` is confirmed, client rules must refuse attachment kinds entirely, because only the Worker may create them.
+Decided by the owner (2026-10-15): chat messages with attachments are written through the `sendMessage` Worker endpoint (section 5e). Firestore rules cannot check that the user uploaded the object, so the Worker does.
 
 Plain text messages keep their current rules.
 
@@ -166,7 +167,7 @@ Tests, the gate for each step:
 - Read: a member gets the bytes; a non-member gets 404; a missing object gets 404.
 - Delete: uploader allowed; another member refused; admin allowed.
 - Orphan cleanup: an unreferenced object older than 24 hours is removed; a referenced object is kept; a recent object is kept.
-- Firestore rules (existing emulator suite): a message with an attachment is accepted only when the shape and the mime allow-list match, and rejected otherwise. If `sendMessage` is confirmed, instead assert that clients cannot create attachment kinds at all.
+- Firestore rules (existing emulator suite): clients cannot create `image`, `voice` or `file` messages; text messages still work.
 
 Out of scope for this step: thumbnails and resizing (the client compresses before upload), video, and virus scanning.
 
