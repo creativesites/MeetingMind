@@ -5,8 +5,6 @@ import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -28,7 +26,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.GraphicEq
@@ -69,7 +66,6 @@ import com.craftflowtechnologies.meetingmind.core.scripture.BibleVersions
 import com.craftflowtechnologies.meetingmind.core.scripture.PassageResult
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureService
-import com.craftflowtechnologies.meetingmind.core.scripture.webLink
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
@@ -231,9 +227,7 @@ fun VerseSheet(
                     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(reference.display(), text))
                     Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
                 },
-                onBibleApp = {
-                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(reference.webLink(versionId ?: BibleVersions.DEFAULT_ID)))) }
-                }
+                onBibleApp = { readChapter = true }
             )
         }
     }
@@ -289,7 +283,7 @@ internal fun VerseSheetActions(
         if (canListen) SheetAction("Listen", Icons.Filled.GraphicEq, modifier = Modifier.weight(1f).testTag("verse_listen"), onClick = onListen)
         SheetAction("Save", Icons.Filled.BookmarkAdd, modifier = Modifier.weight(1f), onClick = onSave)
         SheetAction("Copy", Icons.Filled.ContentCopy, modifier = Modifier.weight(1f), onClick = onCopy)
-        SheetAction("Bible app", Icons.AutoMirrored.Filled.OpenInNew, modifier = Modifier.weight(1f), onClick = onBibleApp)
+        SheetAction("Open in Bible", Icons.AutoMirrored.Filled.MenuBook, modifier = Modifier.weight(1f), onClick = onBibleApp)
     }
 }
 

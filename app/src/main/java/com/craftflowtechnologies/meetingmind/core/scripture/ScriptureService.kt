@@ -58,13 +58,3 @@ class ScriptureService(private val context: Context, private val provider: Scrip
 
 fun ScriptureRef.toReference(): ScriptureReference? =
     BibleBooks.byUsfm(bookUsfm)?.let { ScriptureReference(it, chapter, verseStart, verseEnd) }
-
-/**
- * A link that opens the passage in the Bible app, or on bible.com when it isn't installed. The link
- * is only a link: no text is fetched from there. Open translations have no bible.com id of their own,
- * so those open the Berean Standard Bible page (YouVersion's id 3034).
- */
-fun ScriptureReference.webLink(versionId: Int): String {
-    val linkId = if (versionId < 0) 3034 else versionId
-    return "https://www.bible.com/bible/$linkId/${passageId().substringBefore('-')}"
-}
