@@ -1,7 +1,15 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
@@ -82,6 +90,7 @@ fun EventSheet(
     onDismiss: () -> Unit
 ) {
     val mine = rsvps.firstOrNull { it.uid == myUid }?.answer
+    var confirmCancel by remember { mutableStateOf(false) }
     CircleSheet(onDismiss) {
         Text(event.title, style = MM.type.title, color = MM.colors.ink)
         Text(whenText(event.startsAt, event.timeZone), style = MM.type.secondary, color = MM.colors.inkSecondary)
@@ -99,13 +108,23 @@ fun EventSheet(
             }
             if (isAdmin) {
                 SecondaryButton("Edit event", onEdit, modifier = Modifier.fillMaxWidth())
-                TextAction("Cancel event", onCancel)
+                TextAction("Cancel event", { confirmCancel = true })
             }
         }
+    }
+    if (confirmCancel) {
+        AlertDialog(
+            onDismissRequest = { confirmCancel = false },
+            title = { Text("Cancel this event?", style = MM.type.heading, color = MM.colors.ink) },
+            text = { Text("Everyone in the circle will see it as cancelled.", style = MM.type.body, color = MM.colors.inkSecondary) },
+            confirmButton = { TextAction("Cancel event", { confirmCancel = false; onCancel() }) },
+            dismissButton = { TextAction("Keep it", { confirmCancel = false }) }
+        )
     }
 }
 
 /** Create or edit an event. Times come from quick choices; the Worker checks the link and the zone. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EventFormSheet(existing: CircleEvent?, nowMs: Long, onSave: (EventDraft) -> Unit, onDismiss: () -> Unit) {
     val zone = TimeZone.getDefault().id
@@ -118,6 +137,25 @@ fun EventFormSheet(existing: CircleEvent?, nowMs: Long, onSave: (EventDraft) -> 
     var link by remember { mutableStateOf(existing?.onlineUrl.orEmpty()) }
     var startAt by remember { mutableStateOf(existing?.startsAt ?: presets.first()) }
     val duration = existing?.let { it.endsAt - it.startsAt }?.takeIf { it > 0 } ?: HOUR_MS
+    var showDate by remember { mutableStateOf(false) }
+    var showTime by remember { mutableStateOf(false) }
+    val dateState = rememberDatePickerState(initialSelectedDateMillis = startAt)
+    val timeState = rememberTimePickerState(initialHour = dayPartInt(startAt, zone, "H"), initialMinute = dayPartInt(startAt, zone, "m"), is24Hour = false)
+    if (showDate) {
+        DatePickerDialog(
+            onDismissRequest = { showDate = false },
+            confirmButton = { TextButton(onClick = { showDate = false; dateState.selectedDateMillis?.let { startAt = withDate(startAt, it, zone) } }) { Text("OK") } },
+            dismissButton = { TextButton(onClick = { showDate = false }) { Text("Cancel") } }
+        ) { DatePicker(state = dateState) }
+    }
+    if (showTime) {
+        AlertDialog(
+            onDismissRequest = { showTime = false },
+            confirmButton = { TextButton(onClick = { showTime = false; startAt = withTime(startAt, timeState.hour, timeState.minute, zone) }) { Text("OK") } },
+            dismissButton = { TextButton(onClick = { showTime = false }) { Text("Cancel") } },
+            text = { TimePicker(state = timeState) }
+        )
+    }
 
     CircleSheet(onDismiss) {
         Text(if (existing == null) "New event" else "Edit event", style = MM.type.title, color = MM.colors.ink)
@@ -131,7 +169,11 @@ fun EventFormSheet(existing: CircleEvent?, nowMs: Long, onSave: (EventDraft) -> 
                 MMChip(presetLabel(i), selected = startAt == at, onClick = { startAt = at })
             }
         }
-        Text("Shown in ${zone.replace('_', ' ')}.", style = MM.type.secondary, color = MM.colors.inkSecondary)
+        Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            SecondaryButton("Pick date", { showDate = true }, modifier = Modifier.weight(1f))
+            SecondaryButton("Pick time", { showTime = true }, modifier = Modifier.weight(1f))
+        }
+        Text("${whenText(startAt, zone)} · shown in ${zone.replace('_', ' ')}", style = MM.type.secondary, color = MM.colors.inkSecondary)
         PrimaryButton(
             if (existing == null) "Add event" else "Save event",
             { onSave(EventDraft(title.trim(), description.trim(), location.trim(), link.trim().ifBlank { null }, startAt, startAt + duration, zone)) },
@@ -152,3 +194,30 @@ private fun nextAt(nowMs: Long, zone: String, dayOfWeek: Int, hour: Int): Long {
     while (cal.timeInMillis <= nowMs || cal.get(Calendar.DAY_OF_WEEK) != dayOfWeek) cal.add(Calendar.DAY_OF_YEAR, 1)
     return cal.timeInMillis
 }
+
+private fun hourMinute(ms: Long, zone: String): Calendar = Calendar.getInstance(TimeZone.getTimeZone(zone)).apply { timeInMillis = ms }
+
+private fun dayPartInt(ms: Long, zone: String, part: String): Int {
+    val cal = hourMinute(ms, zone)
+    return if (part == "H") cal.get(Calendar.HOUR_OF_DAY) else cal.get(Calendar.MINUTE)
+}
+
+/** Keeps the time of day from [atMs] and takes the calendar date from [dateUtcMs] (the date picker reports UTC midnight). */
+private fun withDate(atMs: Long, dateUtcMs: Long, zone: String): Long {
+    val date = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = dateUtcMs }
+    val time = hourMinute(atMs, zone)
+    return Calendar.getInstance(TimeZone.getTimeZone(zone)).apply {
+        set(date.get(Calendar.YEAR), date.get(Calendar.MONTH), date.get(Calendar.DAY_OF_MONTH), time.get(Calendar.HOUR_OF_DAY), time.get(Calendar.MINUTE), 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+}
+
+/** Keeps the date from [atMs] and sets the time of day. */
+private fun withTime(atMs: Long, hour: Int, minute: Int, zone: String): Long {
+    val day = hourMinute(atMs, zone)
+    return Calendar.getInstance(TimeZone.getTimeZone(zone)).apply {
+        set(day.get(Calendar.YEAR), day.get(Calendar.MONTH), day.get(Calendar.DAY_OF_MONTH), hour, minute, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+}
+

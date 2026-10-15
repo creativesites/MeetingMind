@@ -41,7 +41,9 @@ fun CircleSettingsContent(
     account: AccountUiState? = null,
     onLink: (android.content.Context) -> Unit = {},
     onSwitch: () -> Unit = {},
-    onDismissConflict: () -> Unit = {}
+    onDismissConflict: () -> Unit = {},
+    /** The cover photo picked on this phone. Admins only. */
+    onCover: (PickedFile) -> Unit = {}
 ) {
     val admin = me?.role?.isAdmin == true
     var name by rememberSaveable(circle.id, circle.name) { mutableStateOf(circle.name) }
@@ -54,6 +56,10 @@ fun CircleSettingsContent(
     var reactions by remember(circle.settings) { mutableStateOf(circle.settings.reactions) }
     var guidelines by remember(circle.settings) { mutableStateOf(circle.settings.guidelines) }
     var confirmLeave by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val pickCover = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri: android.net.Uri? ->
+        if (uri != null) readPicked(ctx, uri)?.let(onCover)
+    }
     val changed = admin && (name.trim() != circle.name || vocab.trim() != circle.vocab || types != circle.settings.allowedTypes ||
         description.trim() != circle.description || joinApproval != circle.settings.joinApproval || approval != circle.settings.prayerApproval || who != circle.settings.whoCanInvite || reactions != circle.settings.reactions || guidelines != circle.settings.guidelines)
 
@@ -66,6 +72,7 @@ fun CircleSettingsContent(
             if (!admin) Text("Only admins can change these. You can still mute or leave.", style = MM.type.secondary, color = MM.colors.inkSecondary)
             SectionHeader("About")
             CircleField(name, { name = it.take(60) }, "Name")
+            if (admin) TextAction("Change cover photo", { pickCover.launch("image/*") })
             CircleField(vocab, { vocab = it.take(40) }, "What your group is called", placeholder = "Cell group")
             CircleField(description, { description = it.take(300) }, "About this circle (optional)", placeholder = "Breakfast every second Wednesday.", minLines = 2, maxLines = 4)
             if (admin) {

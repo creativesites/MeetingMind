@@ -140,6 +140,16 @@ Endpoints:
 - `POST /v1/deleteMedia`: body `circleId, path`. The uploader or an admin may delete. The Worker calls it on hard delete. Clients never delete objects.
 - Orphan cleanup, in the existing daily cron: delete objects older than 24 hours that no message or post references.
 
+Client contracts added with the client UI (the backend must match):
+
+- `sendMessage` body also takes `durationMs?` (voice) and `name?` (file or voice name, at most 120 characters). The response is `{ok:true}`.
+- `updateCircle` takes `coverPath?`: the path of an uploaded image (`circles/{circleId}/media/{uuid}`) that the circle's hero shows. Admins only. The circle document stores it as `coverPath`.
+- `pinMessage` takes `circleId, messageId` (null to unpin). The circle document stores it as `pinnedMessageId`.
+- `createUploadTicket` returns `{ok:true, ticketId, path, expiresAt}`. `uploadMedia` (PUT) returns `{ok:true, path}`. `downloadMedia` (GET) returns the raw bytes, with the Worker's error body on failure.
+- `createPost` takes `attachments`: an array of `{path, mime, bytes}`, at most four.
+- Clients write `members/{uid}.lastReadAt = serverTimestamp` for read receipts, and `typing/{uid}` with `displayName`, `updatedAt` and `expiresAt` for the typing line. Both are covered by section 5c and 5d.
+- Clients write `forwardedFrom` (the original message id) and `mentions` (uids, at most 20) on text messages (section 5b).
+
 Messages and posts: the field names in section 5e and section 7 stay exactly as written: `attachment {path, mime, bytes, durationMs?, name?}`, and the caption in `text` (at most 2000 characters).
 
 Decided by the owner (2026-10-15): chat messages with attachments are written through the `sendMessage` Worker endpoint (section 5e). Firestore rules cannot check that the user uploaded the object, so the Worker does.

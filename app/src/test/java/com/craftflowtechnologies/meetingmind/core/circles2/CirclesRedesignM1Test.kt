@@ -68,3 +68,47 @@ class CirclesRedesignM1JsonTest {
         assertEquals("America/New_York", json.getString("timeZone"))
     }
 }
+
+class CirclesMediaParsingTest {
+    @Test fun `member: last-read time is read for read receipts`() {
+        assertEquals(1_700L, CirclesParsing.member("u1", mapOf("displayName" to "Ann", "role" to "member", "lastReadAt" to 1_700L)).lastReadAt)
+        assertEquals(0L, CirclesParsing.member("u2", mapOf("displayName" to "Bo", "role" to "member")).lastReadAt)
+    }
+
+    @Test fun `circle: cover photo and pinned message are read, blank means none`() {
+        val c = CirclesParsing.circle("c1", mapOf("name" to "Cell", "template" to "custom", "coverPath" to "circles/c1/media/x", "pinnedMessageId" to "m4"))
+        assertEquals("circles/c1/media/x", c?.coverPath)
+        assertEquals("m4", c?.pinnedMessageId)
+        assertNull(CirclesParsing.circle("c2", mapOf("name" to "Cell", "template" to "custom", "coverPath" to ""))?.coverPath)
+    }
+
+    @Test fun `message: attachment, forwarded label and mentions are read`() {
+        val m = CirclesParsing.message("m1", mapOf(
+            "authorUid" to "u1", "kind" to "image", "text" to "Breakfast", "createdAt" to 5L,
+            "attachment" to mapOf("path" to "circles/c1/media/x", "mime" to "image/jpeg", "bytes" to 1200L),
+            "forwardedFrom" to "m0", "mentions" to listOf("u2")
+        ))
+        assertEquals(MessageKind.Image, m?.kind)
+        assertEquals("circles/c1/media/x", m?.attachment?.path)
+        assertEquals(1200L, m?.attachment?.bytes)
+        assertEquals("m0", m?.forwardedFrom)
+        assertEquals(listOf("u2"), m?.mentions)
+    }
+
+    @Test fun `attachment without a path is no attachment`() {
+        assertNull(CirclesParsing.attachment(mapOf("mime" to "image/png")))
+    }
+
+    @Test fun `typing: name is read, missing name is Someone`() {
+        assertEquals("Ann", CirclesParsing.typingUser("u1", mapOf("displayName" to "Ann", "updatedAt" to 9L)).name)
+        assertEquals("Someone", CirclesParsing.typingUser("u2", mapOf("updatedAt" to 9L)).name)
+    }
+
+    @Test fun `media kinds accept only their own mimes`() {
+        assertTrue(MediaKind.Image.accepts("image/webp"))
+        assertFalse(MediaKind.Image.accepts("application/pdf"))
+        assertTrue(MediaKind.File.accepts("application/pdf"))
+        assertEquals(10_000_000L, MediaKind.Image.maxBytes)
+    }
+}
+

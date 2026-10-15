@@ -91,7 +91,10 @@ data class Circle(
     val memberCount: Int,
     val ownerUid: String = "",
     val description: String = "",
-    val pinnedPostId: String? = null
+    val pinnedPostId: String? = null,
+    /** Storage path of the cover photo, once one is set. */
+    val coverPath: String? = null,
+    val pinnedMessageId: String? = null
 ) {
     /** "Cell group" for the header: the group's own word, never a generic one. */
     val groupWord: String get() = vocab.ifBlank { "Circle" }
@@ -99,7 +102,7 @@ data class Circle(
 
 /** [title] is a display label such as "Pastor". It never changes what the person may do; [role] does. */
 @Immutable
-data class Member(val uid: String, val displayName: String, val role: Role, val muted: Boolean = false, val joinedAt: Long = 0L, val title: String? = null)
+data class Member(val uid: String, val displayName: String, val role: Role, val muted: Boolean = false, val joinedAt: Long = 0L, val title: String? = null, val lastReadAt: Long = 0L)
 
 @Immutable
 data class PostCounts(val prayed: Int = 0, val comments: Int = 0, val updates: Int = 0, val reactions: Map<ReactionKind, Int> = emptyMap())
@@ -141,10 +144,11 @@ data class Comment(
     val byRequester: Boolean = false
 )
 
-enum class MessageKind { Text, Card, Reply, Poll, Celebration, Chain, Unknown;
+enum class MessageKind { Text, Card, Reply, Poll, Celebration, Chain, Image, Voice, File, Unknown;
     companion object {
         fun from(wire: String?): MessageKind = when (wire) {
             "text" -> Text; "card" -> Card; "reply" -> Reply; "poll" -> Poll; "celebration" -> Celebration; "chain" -> Chain
+            "image" -> Image; "voice" -> Voice; "file" -> File
             else -> Unknown
         }
     }
@@ -176,7 +180,13 @@ data class ChatMessage(
     val companion: String? = null,
     val createdAt: Long = 0L,
     val editedAt: Long? = null,
-    val deleted: Boolean = false
+    val deleted: Boolean = false,
+    /** Image, voice or file messages only. Written by the Worker (sendMessage). */
+    val attachment: MediaAttachment? = null,
+    /** The id of the message this was forwarded from, when it was forwarded. */
+    val forwardedFrom: String? = null,
+    /** Uids of members mentioned with @name in the text. */
+    val mentions: List<String> = emptyList()
 )
 
 @Immutable
@@ -271,3 +281,23 @@ data class JoinRequest(val uid: String, val displayName: String, val createdAt: 
 
 /** The result of a join: the circle, and whether the person is still waiting for an admin. */
 data class JoinOutcome(val circleId: String, val pending: Boolean)
+
+/** The kinds of file the Worker accepts. Limits match the Worker (docs/CIRCLES_BACKEND_HANDOFF.md section 6). */
+enum class MediaKind(val wire: String, val maxBytes: Long, val mimes: List<String>) {
+    Image("image", 10_000_000L, listOf("image/jpeg", "image/png", "image/webp")),
+    Voice("voice", 25_000_000L, listOf("audio/mp4", "audio/aac", "audio/ogg")),
+    File("file", 25_000_000L, listOf("application/pdf"));
+
+    fun accepts(mime: String): Boolean = mime in mimes
+}
+
+/** A stored file as a message or post refers to it. [path] is `circles/{circleId}/media/{uuid}`. */
+@Immutable
+data class MediaAttachment(val path: String, val mime: String, val bytes: Long, val durationMs: Long? = null, val name: String? = null)
+
+data class UploadTicket(val ticketId: String, val path: String)
+
+/** Someone typing right now. Stale entries are dropped by the view model. */
+@Immutable
+data class TypingUser(val uid: String, val name: String, val updatedAt: Long)
+

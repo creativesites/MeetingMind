@@ -18,6 +18,8 @@ import com.craftflowtechnologies.meetingmind.core.circles2.Comment
 import com.craftflowtechnologies.meetingmind.core.circles2.CreatePostRequest
 import com.craftflowtechnologies.meetingmind.core.circles2.DataState
 import com.craftflowtechnologies.meetingmind.core.circles2.Invite
+import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
+import com.craftflowtechnologies.meetingmind.core.circles2.MediaKind
 import com.craftflowtechnologies.meetingmind.core.circles2.InviteCodes
 import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.PendingPost
@@ -76,6 +78,8 @@ data class ComposerState(
     val body: String = "",
     val verse: String = "",
     val anonymous: Boolean = false,
+    /** Photos already uploaded for this post. */
+    val attachments: List<MediaAttachment> = emptyList(),
     val sending: Boolean = false,
     val error: String? = null,
     /** Set when "Turn into testimony" starts a draft from an answered request. */
@@ -173,6 +177,30 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         composer.value = ComposerState(type = type)
     }
     fun closeComposer() { composer.value = ComposerState() }
+
+    /** A photo for the post being written. Opens a free-form composer when none is open. */
+    fun addPhoto(file: PickedFile) {
+        if (!composer.value.open) openComposer(PostType.Note)
+        viewModelScope.launch {
+            repo.uploadAttachment(circleId, MediaKind.Image, file.bytes, file.mime, file.name, null).fold(
+                onOk = { a -> composer.update { it.copy(attachments = it.attachments + a, error = null) } },
+                onErr = { f -> composer.update { it.copy(error = f.message) } }
+            )
+        }
+    }
+    fun removePhoto(a: MediaAttachment) { composer.update { it.copy(attachments = it.attachments.filter { x -> x.path != a.path }) } }
+
+    /** The cover photo for the circle's hero. Admins only; the Worker checks it. */
+    fun setCover(file: PickedFile) {
+        viewModelScope.launch {
+            repo.uploadAttachment(circleId, MediaKind.Image, file.bytes, file.mime, file.name, null).fold(
+                onOk = { a ->
+                    repo.api.updateCircle(circleId, null, null, null, null, coverPath = a.path).fold(onOk = { say("Cover photo saved.") }, onErr = ::fail)
+                },
+                onErr = ::fail
+            )
+        }
+    }
     fun setBody(v: String) = composer.update { it.copy(body = v.take(4000), error = null) }
     fun setVerse(v: String) = composer.update { it.copy(verse = v.take(64), error = null) }
     /** Only prayer requests can be anonymous; for any other type the flag is forced off. */
@@ -192,11 +220,11 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         val type = c.type ?: return
         if (c.sending) return
         val body = c.body.trim()
-        if (body.isEmpty()) { composer.update { it.copy(error = "Write something first.") }; return }
+        if (body.isEmpty() && c.attachments.isEmpty()) { composer.update { it.copy(error = "Write something first.") }; return }
         composer.update { it.copy(sending = true, error = null) }
         viewModelScope.launch {
             // No uid, no name: the Worker takes the caller from the token and, for an anonymous post, never stores it on the post.
-            val req = CreatePostRequest(circleId, type, body, c.verse.trim().ifBlank { null }, anonymous = c.anonymous && type == PostType.Prayer)
+            val req = CreatePostRequest(circleId, type, body, c.verse.trim().ifBlank { null }, anonymous = c.anonymous && type == PostType.Prayer, attachments = c.attachments)
             repo.createPost(req).fold(
                 onOk = { created ->
                     mine.value = repo.store.myPostIds(circleId)

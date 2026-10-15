@@ -1,6 +1,13 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import android.net.Uri
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -59,11 +66,21 @@ class FeedActions(
     /** Pin this post to the top, or unpin it with null. Admins only. */
     val onPinPost: (Post?) -> Unit = {},
     val onOpenEvent: (CircleEvent) -> Unit = {},
-    val onNewEvent: () -> Unit = {}
+    val onNewEvent: () -> Unit = {},
+    /** Switches to the chat tab. */
+    val onOpenChat: () -> Unit = {},
+    /** Opens the composer for a type: free-form, prayer request, testimony and so on. */
+    val onStartPost: (PostType) -> Unit = {},
+    /** A photo picked for the next post. */
+    val onPhoto: (PickedFile) -> Unit = {}
 ) { companion object { val None = FeedActions() } }
 
 @Composable
 fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) readPicked(context, uri)?.let { actions.onPhoto(it) }
+    }
     val circle = state.circle ?: return
     val canPost = circle.settings.allowedTypes.any { !it.adminOnly || state.isAdmin }
     LazyColumn(
@@ -71,6 +88,8 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
         verticalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
         state.failure?.let { f -> item { StatusLine(StatusKind.Warning, f.message) } }
+        item { CircleHero(circle, state, actions) }
+        item { ComposerCard(circle, actions, onPhotoClick = { pickPhoto.launch("image/*") }) }
         item { EventsSection(state.events, now, actions.onOpenEvent, if (state.isAdmin) actions.onNewEvent else null) }
         if (state.isAdmin && state.pending.isNotEmpty()) {
             item { SectionHeader("Waiting for approval", count = state.pending.size) }
@@ -95,6 +114,49 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
             }
             items(state.posts.filter { it.post.id != state.pinnedPostId }, key = { it.post.id }) { PostCard(it, circle, state.isAdmin, now, actions) }
             if (canPost) item { Row(Modifier.fillMaxWidth().padding(vertical = MM.space.s), horizontalArrangement = Arrangement.Center) { PrimaryButton("New post", actions.onNewPost, leadingIcon = Icons.Rounded.Add) } }
+        }
+    }
+}
+
+/** The top of the Circle home: cover photo, name, who is in, and the way into the chat. */
+@Composable
+private fun CircleHero(circle: Circle, state: CircleHomeUiState, actions: FeedActions) {
+    val c = MM.colors
+    MMCard(contentPadding = 0.dp) {
+        Box(Modifier.fillMaxWidth().height(180.dp)) {
+            MediaImage(circle.id, circle.coverPath, Modifier.fillMaxSize(), "Cover photo for ${circle.name}")
+        }
+        Column(Modifier.padding(MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            Text(circle.name, style = MM.type.title, color = c.ink)
+            Text(
+                "${circle.groupWord} · ${state.members.size} ${if (state.members.size == 1) "member" else "members"}",
+                style = MM.type.secondary, color = c.inkSecondary
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(-MM.space.s)) {
+                state.members.take(5).forEach { m -> InitialsAvatar(m.displayName) }
+                if (state.members.size > 5) Text("+${state.members.size - 5}", style = MM.type.caption, color = c.inkSecondary, modifier = Modifier.padding(start = MM.space.m))
+            }
+            PrimaryButton("Open conversation", actions.onOpenChat, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+/** The composer at the top of the feed: tap to write anything, or pick a kind or a photo. */
+@Composable
+private fun ComposerCard(circle: Circle, actions: FeedActions, onPhotoClick: () -> Unit) {
+    val c = MM.colors
+    MMCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Share anything with ${circle.name}…", style = MM.type.body, color = c.inkMuted,
+                modifier = Modifier.weight(1f).clickable { actions.onStartPost(PostType.Note) }
+            )
+            IconButton(onClick = onPhotoClick) { Icon(Icons.Rounded.Image, "Add a photo", tint = c.accent) }
+        }
+        Row(Modifier.padding(top = MM.space.s), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            MMChip("Free-form", selected = true, onClick = { actions.onStartPost(PostType.Note) })
+            if (PostType.Prayer in circle.settings.allowedTypes) MMChip("Prayer request", selected = false, onClick = { actions.onStartPost(PostType.Prayer) })
+            if (PostType.Testimony in circle.settings.allowedTypes) MMChip("Testimony", selected = false, onClick = { actions.onStartPost(PostType.Testimony) })
         }
     }
 }

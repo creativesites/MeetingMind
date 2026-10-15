@@ -40,12 +40,13 @@ object CirclesParsing {
         val template = str(d, "template") ?: "custom"
         return Circle(
             id, name, template, str(d, "vocab").orEmpty(), settings(map(d["settings"]), template), int(d, "memberCount"), str(d, "ownerUid").orEmpty(),
-            description = str(d, "description").orEmpty(), pinnedPostId = str(d, "pinnedPostId")?.ifBlank { null }
+            description = str(d, "description").orEmpty(), pinnedPostId = str(d, "pinnedPostId")?.ifBlank { null },
+            coverPath = str(d, "coverPath")?.ifBlank { null }, pinnedMessageId = str(d, "pinnedMessageId")?.ifBlank { null }
         )
     }
 
     fun member(uid: String, d: Map<String, Any?>): Member =
-        Member(uid, str(d, "displayName")?.ifBlank { null } ?: "Member", Role.from(str(d, "role")), d["muted"] == true, millis(d["joinedAt"]), str(d, "title")?.ifBlank { null })
+        Member(uid, str(d, "displayName")?.ifBlank { null } ?: "Member", Role.from(str(d, "role")), d["muted"] == true, millis(d["joinedAt"]), str(d, "title")?.ifBlank { null }, millis(d["lastReadAt"]))
 
     private fun counts(m: Map<String, Any?>): PostCounts {
         val r = map(m["reactions"])
@@ -90,9 +91,19 @@ object CirclesParsing {
             id = id, authorUid = uid, authorName = str(d, "displayName")?.ifBlank { null } ?: "Member", kind = MessageKind.from(str(d, "kind")),
             text = str(d, "text").orEmpty(), replyTo = str(d, "replyTo"), card = card, pollId = str(d, "pollId"), chainId = str(d, "chainId"),
             celebration = str(d, "celebration"), companion = str(d, "companion"), createdAt = millis(d["createdAt"]),
-            editedAt = d["editedAt"]?.let { millis(it) }?.takeIf { it > 0 }, deleted = d["deleted"] == true
+            editedAt = d["editedAt"]?.let { millis(it) }?.takeIf { it > 0 }, deleted = d["deleted"] == true,
+            attachment = attachment(map(d["attachment"])), forwardedFrom = str(d, "forwardedFrom")?.ifBlank { null }, mentions = strings(d["mentions"])
         )
     }
+
+    /** An image, voice or file reference. Null when the map has no path. */
+    fun attachment(a: Map<String, Any?>): MediaAttachment? {
+        val path = str(a, "path") ?: return null
+        return MediaAttachment(path, str(a, "mime").orEmpty(), (a["bytes"] as? Number)?.toLong() ?: 0L, (a["durationMs"] as? Number)?.toLong(), str(a, "name"))
+    }
+
+    fun typingUser(uid: String, d: Map<String, Any?>): TypingUser =
+        TypingUser(uid, str(d, "displayName")?.ifBlank { null } ?: "Someone", millis(d["updatedAt"]))
 
     fun poll(id: String, d: Map<String, Any?>): Poll? {
         @Suppress("UNCHECKED_CAST")

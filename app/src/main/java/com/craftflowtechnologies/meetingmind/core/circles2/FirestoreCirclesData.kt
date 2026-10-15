@@ -73,6 +73,24 @@ class FirestoreCirclesData(private val context: Context) : CirclesData {
     override fun observeMembers(circleId: String) = listenQuery(circle(circleId)?.collection("members")) { s ->
         s.mapDocs { id, d -> CirclesParsing.member(id, d) }.sortedWith(compareBy({ it.role.ordinal }, { it.displayName.lowercase() }))
     }
+    override fun observeTyping(circleId: String) = listenQuery(circle(circleId)?.collection("typing")) { s ->
+        s.mapDocs { id, d -> CirclesParsing.typingUser(id, d) }
+    }
+
+    override suspend fun setTyping(circleId: String, uid: String, name: String, typing: Boolean) = write { d ->
+        val docRef = ref(d, circleId).collection("typing").document(uid)
+        if (!typing) { docRef.delete().await(); return@write }
+        val expires = com.google.firebase.Timestamp(java.util.Date(System.currentTimeMillis() + 10_000L))
+        docRef.set(hashMapOf<String, Any?>("displayName" to name.take(40), "updatedAt" to ts(), "expiresAt" to expires)).await()
+    }
+
+    override suspend fun markRead(circleId: String, uid: String) = write { d ->
+        ref(d, circleId).collection("members").document(uid).update(mapOf("lastReadAt" to ts())).await()
+    }
+
+    /** Mentions travel only when there are some, capped at 20. */
+    private fun mentionsOf(uids: List<String>): List<String>? = uids.take(20).ifEmpty { null }
+
     override fun observeEvents(circleId: String) = listenQuery(circle(circleId)?.collection("events")?.orderBy("startsAt")?.limit(200)) { s ->
         s.mapDocs { id, d -> CirclesParsing.event(id, d) }
     }
@@ -175,8 +193,9 @@ class FirestoreCirclesData(private val context: Context) : CirclesData {
     override suspend fun sendMessage(circleId: String, uid: String, name: String, draft: MessageDraft) = write { d ->
         val data = hashMapOf<String, Any?>("authorUid" to uid, "displayName" to name.take(40), "createdAt" to ts(), "deleted" to false)
         when (draft) {
-            is MessageDraft.Text -> { data["kind"] = "text"; data["text"] = draft.text }
-            is MessageDraft.Reply -> { data["kind"] = "reply"; data["text"] = draft.text; data["replyTo"] = draft.replyTo }
+            is MessageDraft.Text -> { data["kind"] = "text"; data["text"] = draft.text; mentionsOf(draft.mentions)?.let { data["mentions"] = it } }
+            is MessageDraft.Reply -> { data["kind"] = "reply"; data["text"] = draft.text; data["replyTo"] = draft.replyTo; mentionsOf(draft.mentions)?.let { data["mentions"] = it } }
+            is MessageDraft.Forward -> { data["kind"] = "text"; data["text"] = draft.text; data["forwardedFrom"] = draft.forwardedFrom.take(64); mentionsOf(draft.mentions)?.let { data["mentions"] = it } }
             is MessageDraft.Card -> {
                 data["kind"] = "card"; data["text"] = ""
                 data["card"] = hashMapOf<String, Any?>("templateId" to draft.card.templateId, "text" to draft.card.text)

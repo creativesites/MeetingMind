@@ -100,7 +100,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     if (showSettings && circle != null) {
         CircleSettingsContent(
             circle = circle, me = state.me, onBack = { showSettings = false },
-            onSave = home::saveSettings, onMute = home::setMuted, onLeave = { home.leave(onBack) },
+            onSave = home::saveSettings, onCover = home::setCover, onMute = home::setMuted, onLeave = { home.leave(onBack) },
             account = accountState, onLink = account::link, onSwitch = account::switchAccount, onDismissConflict = account::dismissConflict
         )
     } else {
@@ -116,7 +116,10 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onCelebrateAnswered = { p -> home.celebrateAnswered(p, companionId) },
             onPinPost = home::pinFeedPost,
             onOpenEvent = { openingEvent = it; home.openEvent(it.id) },
-            onNewEvent = { editingEvent = null; showEventForm = true }
+            onNewEvent = { editingEvent = null; showEventForm = true },
+            onOpenChat = { tab = HomeTab.Chat },
+            onStartPost = home::openComposer,
+            onPhoto = home::addPhoto
         )
         val chatActions = ChatActions(
             onDraft = chat::setDraft, onSend = chat::send, onReply = chat::startReply, onCancelReply = chat::cancelReply,
@@ -129,7 +132,11 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
                 create.open(CreateSeed(), label = circle?.name ?: "the chat") { r ->
                     CreateChatCard.toPayload(r.card, r.scripture)?.let(chat::shareCard)
                 }
-            }, onStartChain = { chainPost = null; chainTitle = "" }, onCelebrate = { showCelebrate = true }
+            }, onStartChain = { chainPost = null; chainTitle = "" }, onCelebrate = { showCelebrate = true },
+            onForward = chat::startForward, onCancelForward = chat::cancelForward,
+            onPin = chat::pin, onUnpin = chat::unpin,
+            onSendAttachment = chat::sendAttachment, onCancelUpload = chat::cancelUpload,
+            onNotice = chat::notice
         )
         CircleHomeContent(
             state = state, chat = chatState, draft = draft, tab = tab, onTab = { tab = it }, now = now,
@@ -145,7 +152,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
 
     // ---- sheets and dialogs ----
     if (showTypes && circle != null) PostTypeSheet(circle, state.isAdmin, onPick = { showTypes = false; home.openComposer(it) }, onDismiss = { showTypes = false })
-    if (composer.open && circle != null) ComposerSheet(circle, composer, home::setBody, home::setVerse, home::setAnonymous, home::submitPost, home::closeComposer)
+    if (composer.open && circle != null) ComposerSheet(circle, composer, home::setBody, home::setVerse, home::setAnonymous, home::submitPost, home::closeComposer, home::removePhoto)
     val threadPost = thread?.let { t -> state.posts.firstOrNull { it.post.id == t.postId }?.post }
     if (thread != null) ThreadSheet(threadPost, thread, state.myUid, state.isAdmin, now, onSend = { home.comment(thread!!.postId, it) }, onDeleteComment = { home.deleteComment(thread!!.postId, it.id) }, onDismiss = home::closeThread)
     if (showInvite) InviteSheet(invite, home::createInvite) { showInvite = false; home.closeInvite() }

@@ -93,3 +93,15 @@ Not compiled. Nothing in this pass has been built or run. `CirclesScreenshotTest
 | 37 | Chat attachments | Decided: written through a `sendMessage` Worker endpoint. Clients cannot create attachment messages. | Owner, 2026-10-15. Firestore rules cannot check who uploaded an object. |
 | 38 | Ticket single use | Open: KV is eventually consistent, so the agent chooses between a Durable Object and a documented race window. | Found while reviewing the plan. |
 
+## Client UI, media and chat (not compiled)
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| 39 | Attachments on the client | Photos, PDFs and voice notes are uploaded through `createUploadTicket` and `uploadMedia`, then sent with `sendMessage` (chat) or `createPost` (feed). Large photos are shrunk to JPEG first. | Rows 36 and 37. |
+| 40 | Forwarding | Forward copies the message text into the composer and records `forwardedFrom`. Forwarding to another circle is not built. | Scope of the chat design. |
+| 41 | Read receipts and typing | Written from the client to `members/{uid}.lastReadAt` and `typing/{uid}`. Writes fail quietly until the rules in the handoff are deployed. | Handoff sections 5c and 5d. |
+| 42 | Presence (online dots) | Not built. The contract has no presence data. Add it to the handoff if the design needs it. | Gap. |
+| 43 | Cover photo | Admins pick it in settings. It shows on the feed's hero through the Worker. | Handoff section 6. |
+| 44 | Event times | Date and time pickers replace the quick choices. The times are kept in the circle's zone. | Row 30 superseded. |
+| 45 | Cancelling an event | Asks for confirmation first. | Row 31 superseded. |
+

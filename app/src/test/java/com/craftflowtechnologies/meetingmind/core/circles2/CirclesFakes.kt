@@ -46,7 +46,7 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
     }
 
     override suspend fun createCircle(req: CreateCircleRequest) = reply("createCircle", "new-circle")
-    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?) = reply("updateCircle", Unit)
+    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?, coverPath: String?) = reply("updateCircle", Unit)
     override suspend fun myCircles() = reply("myCircles", myCirclesResult)
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = reply("createInvite", Invite("GRACE-7K2Q", null, 50))
     override suspend fun revokeInvite(code: String) = reply("revokeInvite", Unit)
@@ -87,6 +87,17 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
     var myCirclesResult: List<String> = emptyList()
     val registered = mutableListOf<String>()
     val unregistered = mutableListOf<String>()
+    override suspend fun pinMessage(circleId: String, messageId: String?) = reply("pinMessage", Unit)
+    var lastUploadBytes: Int? = null
+    override suspend fun createUploadTicket(circleId: String, kind: MediaKind, mime: String, bytes: Long, durationMs: Long?, name: String?) =
+        reply("createUploadTicket", UploadTicket("ticket-1", "circles/$circleId/media/uuid-1"))
+    override suspend fun uploadMedia(ticketId: String, mime: String, bytes: ByteArray): CirclesResult<String> {
+        lastUploadBytes = bytes.size
+        return reply("uploadMedia", "circles/c1/media/uuid-1")
+    }
+    override suspend fun downloadMedia(circleId: String, path: String) = reply("downloadMedia", ByteArray(0))
+    override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?) =
+        reply("sendMessage", Unit)
     override suspend fun registerToken(token: String): CirclesResult<Unit> { registered += token; return reply("registerToken", Unit) }
     override suspend fun unregisterToken(token: String): CirclesResult<Unit> { unregistered += token; return reply("unregisterToken", Unit) }
 }
@@ -124,6 +135,10 @@ class FakeData : CirclesData {
     override fun observePoll(circleId: String, pollId: String, myUid: String): Flow<DataState<PollState>> =
         polls.map { m -> m[pollId]?.let { DataState.Ready(it) } ?: DataState.Failed(CirclesFailure(FailureKind.NotFound, "gone")) }
     override fun observeChain(circleId: String, chainId: String, myUid: String): Flow<DataState<ChainState>> = flowOf(DataState.Loading)
+    val typing = MutableStateFlow<DataState<List<TypingUser>>>(DataState.Ready(emptyList()))
+    override fun observeTyping(circleId: String) = typing
+    override suspend fun setTyping(circleId: String, uid: String, name: String, typing: Boolean) = write("setTyping:$typing")
+    override suspend fun markRead(circleId: String, uid: String) = write("markRead")
     override fun observeEvents(circleId: String) = events
     override fun observeRsvps(circleId: String, eventId: String): Flow<DataState<List<Rsvp>>> = flowOf(DataState.Ready(emptyList()))
     val joinRequests = MutableStateFlow<DataState<List<JoinRequest>>>(DataState.Ready(emptyList()))

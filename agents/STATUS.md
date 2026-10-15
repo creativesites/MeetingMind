@@ -11,7 +11,7 @@ Updated: 2026-10-14. Designated branch head: see `git log -1`.
 - The sun or moon sits over the headline in the Today quote card. It is the card's own illustration, not the companion. Not started.
 
 ## Circles (team report)
-- Redesign (branch `circles-redesign-m1`): Worker and rules tested (Worker 46/46, rules 20/20). Android data layer and a client UI pass (Members titles and requests, settings description and join approval, Circle home events and pinned post, free-form posts, join pending) written, NOT COMPILED. Chat redesign not started: it waits on `docs/CIRCLES_BACKEND_HANDOFF.md` section 5. Backend work for the local agent is in that handoff.
+- Redesign (branch `circles-redesign-m1`): backend and client are written end to end, NOT COMPILED. Client: Circle hero with cover photo, feed composer with photos, chat (pins, typing, read receipts, mentions, forwards, photos, PDFs, voice notes), members search and invites, event pickers and cancel confirmation. Backend for the local agent: `docs/CIRCLES_BACKEND_HANDOFF.md`.
 - Circles v2 first increment: creation is idempotent, clearer sign-in errors, v1 removed with migration 25 to 26. Worker live. Firestore rules deployed.
 - `.dev` build still lacks the Android OAuth client in `app/google-services.json`. Google sign-in on `.dev` will fail until the owner re-downloads the file and commits it. The owner's copy is on their machine only.
 - Not verified on device: push notifications, Google sign-in on any build, behaviour after reinstall.

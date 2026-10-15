@@ -17,7 +17,9 @@ data class CreatePostRequest(
     val type: PostType,
     val body: String,
     val verseRef: String? = null,
-    val anonymous: Boolean = false
+    val anonymous: Boolean = false,
+    /** Photos on the post. Each was uploaded through the Worker first. */
+    val attachments: List<MediaAttachment> = emptyList()
 )
 
 data class CreatedPost(val postId: String, val pending: Boolean)
@@ -29,7 +31,7 @@ interface CirclesApi {
     val isConfigured: Boolean
 
     suspend fun createCircle(req: CreateCircleRequest): CirclesResult<String>
-    suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String? = null): CirclesResult<Unit>
+    suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String? = null, coverPath: String? = null): CirclesResult<Unit>
     suspend fun myCircles(): CirclesResult<List<String>>
     suspend fun createInvite(circleId: String, expiresInDays: Int = 7, maxUses: Int = 50): CirclesResult<Invite>
     suspend fun revokeInvite(code: String): CirclesResult<Unit>
@@ -72,6 +74,16 @@ interface CirclesApi {
     /** A comment by the hidden author of my own anonymous request. The Worker writes it with no uid. */
     suspend fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?): CirclesResult<Unit>
 
+    /** Pin a message to the top of the chat, or unpin with null. Admins only. */
+    suspend fun pinMessage(circleId: String, messageId: String?): CirclesResult<Unit>
+    /** Step one of an upload: the Worker checks the member, kind, mime and size, and returns a 15-minute ticket. */
+    suspend fun createUploadTicket(circleId: String, kind: MediaKind, mime: String, bytes: Long, durationMs: Long?, name: String?): CirclesResult<UploadTicket>
+    /** Step two: the raw bytes. Returns the stored path. */
+    suspend fun uploadMedia(ticketId: String, mime: String, bytes: ByteArray): CirclesResult<String>
+    /** Member only. The bytes of one stored file. */
+    suspend fun downloadMedia(circleId: String, path: String): CirclesResult<ByteArray>
+    /** An image, voice or file message, from an upload the caller made. The Worker writes it. */
+    suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?): CirclesResult<Unit>
     suspend fun registerToken(token: String): CirclesResult<Unit>
     suspend fun unregisterToken(token: String): CirclesResult<Unit>
 }
@@ -81,7 +93,12 @@ object NotConfiguredCirclesApi : CirclesApi {
     override val isConfigured = false
     private fun <T> no(): CirclesResult<T> = CirclesFailure.notConnected.asResult()
     override suspend fun createCircle(req: CreateCircleRequest) = no<String>()
-    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?) = no<Unit>()
+    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?, coverPath: String?) = no<Unit>()
+    override suspend fun pinMessage(circleId: String, messageId: String?) = no<Unit>()
+    override suspend fun createUploadTicket(circleId: String, kind: MediaKind, mime: String, bytes: Long, durationMs: Long?, name: String?) = no<UploadTicket>()
+    override suspend fun uploadMedia(ticketId: String, mime: String, bytes: ByteArray) = no<String>()
+    override suspend fun downloadMedia(circleId: String, path: String) = no<ByteArray>()
+    override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?) = no<Unit>()
     override suspend fun myCircles() = no<List<String>>()
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = no<Invite>()
     override suspend fun revokeInvite(code: String) = no<Unit>()
@@ -137,6 +154,7 @@ object CirclesJson {
         .put("circleId", r.circleId).put("type", r.type.wire).put("body", r.body)
         .put("anonymous", r.anonymous)
         .apply { if (!r.verseRef.isNullOrBlank()) put("verseRef", r.verseRef) }
+        .apply { if (r.attachments.isNotEmpty()) put("attachments", JSONArray(r.attachments.map { a -> JSONObject().put("path", a.path).put("mime", a.mime).put("bytes", a.bytes) })) }
 
     fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?): JSONObject = JSONObject()
         .put("circleId", circleId).put("postId", postId).put("body", body.take(2000))
@@ -161,6 +179,20 @@ class HttpCirclesApi(
     override val isConfigured: Boolean = baseUrl.isNotBlank()
     private val root = baseUrl.trim().trimEnd('/')
     private val json = "application/json; charset=utf-8".toMediaType()
+
+    /** One request already built. Same error mapping as [post]; never throws. */
+    private fun runRequest(request: Request): CirclesResult<JSONObject> = try {
+        client.newCall(request).execute().use { res ->
+            val text = res.body?.string().orEmpty()
+            val obj = try { JSONObject(text) } catch (e: JSONException) { null }
+            if (res.isSuccessful && obj != null && obj.optBoolean("ok", false)) CirclesResult.Ok(obj)
+            else CirclesResult.Err(failureFrom(res.code, obj, res.header("X-Request-Id")))
+        }
+    } catch (e: IOException) {
+        CirclesFailure.offline.asResult()
+    } catch (e: RuntimeException) {
+        CirclesFailure.server().asResult()
+    }
 
     /** One POST. Never throws. */
     suspend fun call(endpoint: String, body: JSONObject = JSONObject()): CirclesResult<JSONObject> {
@@ -217,12 +249,13 @@ class HttpCirclesApi(
     override suspend fun createCircle(req: CreateCircleRequest): CirclesResult<String> =
         call("createCircle", CirclesJson.createCircle(req)).flatMap { str(it, "circleId") }
 
-    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?) =
+    override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?, coverPath: String?) =
         unit("updateCircle", JSONObject().put("circleId", circleId).apply {
             if (name != null) put("name", name)
             if (vocab != null) put("vocab", vocab)
             if (settings != null) put("settings", CirclesJson.settings(settings))
             if (description != null) put("description", description)
+            if (coverPath != null) put("coverPath", coverPath)
         })
 
     override suspend fun myCircles(): CirclesResult<List<String>> = call("myCircles").map { o ->
@@ -289,6 +322,62 @@ class HttpCirclesApi(
             .apply { if (companion != null) put("companion", companion); if (postId != null) put("postId", postId) })
     override suspend fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?) =
         unit("commentAsAuthor", CirclesJson.commentAsAuthor(circleId, postId, body, parentId))
+    override suspend fun pinMessage(circleId: String, messageId: String?) =
+        unit("pinMessage", JSONObject().put("circleId", circleId).put("messageId", messageId ?: JSONObject.NULL))
+
+    override suspend fun createUploadTicket(circleId: String, kind: MediaKind, mime: String, bytes: Long, durationMs: Long?, name: String?): CirclesResult<UploadTicket> =
+        call("createUploadTicket", JSONObject().put("circleId", circleId).put("kind", kind.wire).put("mime", mime).put("bytes", bytes)
+            .apply { durationMs?.let { put("durationMs", it) }; name?.let { put("name", it.take(120)) } })
+            .flatMap { o -> str(o, "ticketId").flatMap { id -> str(o, "path").map { UploadTicket(id, it) } } }
+
+    override suspend fun uploadMedia(ticketId: String, mime: String, bytes: ByteArray): CirclesResult<String> {
+        if (!isConfigured) return CirclesFailure.notConnected.asResult()
+        val token = when (val t = tokenProvider()) {
+            is CirclesResult.Ok -> t.value
+            is CirclesResult.Err -> return t
+        }
+        return withContext(Dispatchers.IO) {
+            val request = try {
+                Request.Builder().url("$root/v1/media/upload/$ticketId").header("Authorization", "Bearer $token")
+                    .put(bytes.toRequestBody(mime.toMediaType())).build()
+            } catch (e: IllegalArgumentException) {
+                return@withContext CirclesFailure.notConnected.asResult()
+            }
+            runRequest(request).flatMap { o -> str(o, "path") }
+        }
+    }
+
+    override suspend fun downloadMedia(circleId: String, path: String): CirclesResult<ByteArray> {
+        if (!isConfigured) return CirclesFailure.notConnected.asResult()
+        val uuid = path.substringAfterLast('/')
+        if (uuid.isBlank() || path != "circles/$circleId/media/$uuid") return CirclesFailure(FailureKind.NotFound, "That file isn't in this circle.").asResult()
+        val token = when (val t = tokenProvider()) {
+            is CirclesResult.Ok -> t.value
+            is CirclesResult.Err -> return t
+        }
+        return withContext(Dispatchers.IO) {
+            val request = try {
+                Request.Builder().url("$root/v1/media/$circleId/$uuid").header("Authorization", "Bearer $token").get().build()
+            } catch (e: IllegalArgumentException) {
+                return@withContext CirclesFailure.notConnected.asResult()
+            }
+            try {
+                client.newCall(request).execute().use { res ->
+                    if (res.isSuccessful) CirclesResult.Ok(res.body?.bytes() ?: ByteArray(0))
+                    else CirclesResult.Err(failureFrom(res.code, null, res.header("X-Request-Id")))
+                }
+            } catch (e: IOException) {
+                CirclesFailure.offline.asResult()
+            } catch (e: RuntimeException) {
+                CirclesFailure.server().asResult()
+            }
+        }
+    }
+
+    override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?): CirclesResult<Unit> =
+        unit("sendMessage", JSONObject().put("circleId", circleId).put("kind", kind.wire).put("uploadPath", uploadPath).put("text", text.take(2000))
+            .apply { replyTo?.let { put("replyTo", it) }; durationMs?.let { put("durationMs", it) }; name?.let { put("name", it.take(120)) } })
+
     override suspend fun registerToken(token: String) = unit("registerToken", JSONObject().put("token", token))
     override suspend fun unregisterToken(token: String) = unit("unregisterToken", JSONObject().put("token", token))
 

@@ -39,9 +39,18 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
     val circle = state.circle ?: return
     val me = state.me
     val canInvite = me != null && (me.role.isAdmin || circle.settings.whoCanInvite == WhoCanInvite.Members)
+    var query by remember { mutableStateOf("") }
+    val shown = state.members.filter { query.isBlank() || it.displayName.contains(query.trim(), ignoreCase = true) }
     LazyColumn(modifier, contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.s), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
         item { SectionHeader("Members", count = state.members.size) }
-        if (canInvite) item { SecondaryButton("Invite people", actions.onInvite, leadingIcon = Icons.Rounded.PersonAdd) }
+        if (canInvite) item {
+            MMCard {
+                Text("Invite people", style = MM.type.heading, color = MM.colors.ink)
+                Text("Share a code or a link. Admins can let people in one at a time.", style = MM.type.secondary, color = MM.colors.inkSecondary)
+                SecondaryButton("Invite people", actions.onInvite, modifier = Modifier.fillMaxWidth(), leadingIcon = Icons.Rounded.PersonAdd)
+            }
+        }
+        item { CircleField(query, { query = it.take(60) }, "Search members") }
         if (state.isAdmin && state.joinRequests.isNotEmpty()) {
             item { SectionHeader("Waiting to join", count = state.joinRequests.size) }
             item {
@@ -52,7 +61,8 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
         }
         item {
             MMCard {
-                state.members.forEach { m -> MemberRow(m, me, actions) }
+                if (shown.isEmpty()) Text("No one matches \"${query.trim()}\".", style = MM.type.secondary, color = MM.colors.inkSecondary)
+                shown.forEach { m -> MemberRow(m, me, actions) }
             }
         }
     }

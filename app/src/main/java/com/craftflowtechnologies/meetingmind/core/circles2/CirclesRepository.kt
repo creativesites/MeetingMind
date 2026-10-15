@@ -92,6 +92,25 @@ class CirclesRepository(
     }
 
     /** [pasted] is anything: a code, a whole shared message, a link. Garbage gives an inline "doesn't look like a code" message, never a crash. */
+    /**
+     * Uploads one file through the Worker: a ticket, then the bytes. The caller then posts or sends it.
+     * Size and type are checked here first, so a big file is refused before any upload starts.
+     */
+    suspend fun uploadAttachment(circleId: String, kind: MediaKind, bytes: ByteArray, mime: String, name: String?, durationMs: Long?): CirclesResult<MediaAttachment> {
+        if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
+        if (!kind.accepts(mime)) return CirclesFailure(FailureKind.Rejected, "That kind of file isn't supported here.", "bad_mime").asResult()
+        if (bytes.size > kind.maxBytes) return CirclesFailure(FailureKind.Rejected, "That file is too large. The limit is ${kind.maxBytes / 1_000_000} MB.", "too_large").asResult()
+        val ticket = when (val t = api.createUploadTicket(circleId, kind, mime, bytes.size.toLong(), durationMs, name?.take(120))) {
+            is CirclesResult.Ok -> t.value
+            is CirclesResult.Err -> return t
+        }
+        val path = when (val p = api.uploadMedia(ticket.ticketId, mime, bytes)) {
+            is CirclesResult.Ok -> p.value
+            is CirclesResult.Err -> return p
+        }
+        return CirclesResult.Ok(MediaAttachment(path, mime, bytes.size.toLong(), durationMs, name?.take(120)))
+    }
+
     suspend fun join(pasted: String, displayName: String): CirclesResult<JoinOutcome> {
         if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
         val code = InviteCodes.extract(pasted)
