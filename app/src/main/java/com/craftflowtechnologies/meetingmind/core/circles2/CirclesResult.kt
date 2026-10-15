@@ -30,11 +30,12 @@ sealed interface CirclesResult<out T> {
         is Ok -> f(value)
         is Err -> this
     }
+}
 
-    inline fun <R> fold(onOk: (T) -> R, onErr: (CirclesFailure) -> R): R = when (this) {
-        is Ok -> onOk(value)
-        is Err -> onErr(failure)
-    }
+/** Inline, so a suspend call can sit in either branch. */
+inline fun <T, R> CirclesResult<T>.fold(onOk: (T) -> R, onErr: (CirclesFailure) -> R): R = when (this) {
+    is CirclesResult.Ok -> onOk(value)
+    is CirclesResult.Err -> onErr(failure)
 }
 
 fun <T> CirclesFailure.asResult(): CirclesResult<T> = CirclesResult.Err(this)
