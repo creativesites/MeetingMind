@@ -169,6 +169,7 @@ fun NoteEditorScreen(
     val notebooks by viewModel.notebooks.collectAsState()
     val backlinks by viewModel.backlinks.collectAsState()
     val recordings by viewModel.recordings.collectAsState()
+    val recordingsLoaded by viewModel.recordingsLoaded.collectAsState()
     val linkedTitles by viewModel.linkedTitles.collectAsState()
     val message by viewModel.message.collectAsState()
     val aiEdit by viewModel.aiEdit.collectAsState()
@@ -177,7 +178,7 @@ fun NoteEditorScreen(
     // the same as the meeting detail. Its facts come from the note's first recording, or from the note itself
     // when it has none; the Faith lock and the loading note plan nothing yet. A return to this entry (sub-screens, rotation, resume) never replays.
     val momentSubject = com.craftflowtechnologies.meetingmind.feature.moments.noteMomentSubject(
-        noteLoaded = note != null, locked = lockNeeded && !faithUnlocked, recordingIds = recordings.keys, noteId = viewModel.noteId
+        noteLoaded = note != null && recordingsLoaded, locked = lockNeeded && !faithUnlocked, recordingIds = recordings.keys, noteId = viewModel.noteId
     )
     val noteMoment = com.craftflowtechnologies.meetingmind.feature.moments.rememberNoteMoment(momentSubject)
     val momentForm = com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings().value.form
