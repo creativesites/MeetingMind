@@ -259,6 +259,20 @@ async function pinPost(ctx) {
   return {};
 }
 
+// Pins one chat message at the top of the chat (null unpins). Admins only; the message must exist and be live.
+async function pinMessage(ctx) {
+  const circleId = str(ctx.body, "circleId");
+  const { member } = await load(ctx, circleId);
+  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can pin messages.");
+  const messageId = ctx.body.messageId == null ? null : str(ctx.body, "messageId");
+  if (messageId !== null) {
+    const msg = await ctx.db.get(`${C(circleId)}/messages/${messageId}`);
+    if (!msg || msg.data.deleted) throw notFound("That message");
+  }
+  await ctx.db.commit([w.update(C(circleId), { pinnedMessageId: messageId })]);
+  return {};
+}
+
 // ---------- events ----------
 async function createEvent(ctx) {
   const circleId = str(ctx.body, "circleId");
@@ -692,6 +706,6 @@ export const HANDLERS = {
   createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, deletePost,
   prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken,
   createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
-  decideJoin, setTitle, pinPost, createEvent, updateEvent, cancelEvent, rsvp,
+  decideJoin, setTitle, pinPost, pinMessage, createEvent, updateEvent, cancelEvent, rsvp,
 };
 export { POST_TYPES };

@@ -173,6 +173,23 @@ test("chat: members only read; only members write; author == uid; time and size 
   await assertFails(setDoc(doc(as("member"), M("n10")), msg({ displayName: "x".repeat(41) })));
 });
 
+test("chat: mentions (at most 20) and forwardedFrom (at most 64) on text and reply messages only", async () => {
+  await assertSucceeds(setDoc(doc(as("member"), M("mn1")), msg({ mentions: ["admin", "owner"] })));
+  await assertSucceeds(setDoc(doc(as("member"), M("mn2")), msg({ kind: "reply", replyTo: "m1", mentions: ["admin"] })));
+  await assertSucceeds(setDoc(doc(as("member"), M("mn3")), msg({ forwardedFrom: "m1" })));
+  await assertSucceeds(setDoc(doc(as("member"), M("mn4")), msg({ forwardedFrom: "x".repeat(64) })));
+  await assertFails(setDoc(doc(as("member"), M("mn5")), msg({ mentions: Array.from({ length: 21 }, (_, i) => `u${i}`) })));
+  await assertFails(setDoc(doc(as("member"), M("mn6")), msg({ mentions: "admin" })));
+  await assertFails(setDoc(doc(as("member"), M("mn7")), msg({ forwardedFrom: "x".repeat(65) })));
+  await assertFails(setDoc(doc(as("member"), M("mn8")), msg({ forwardedFrom: "" })));
+  await assertFails(setDoc(doc(as("member"), M("mn9")), msg({ forwardedFrom: 42 })));
+  // The card itself is valid (templateId, text), so these fail only because of mentions / forwardedFrom on a card.
+  const card = { templateId: "x", text: "y", mood: "z" };
+  await assertSucceeds(setDoc(doc(as("member"), M("mnc0")), msg({ kind: "card", text: "", card })));
+  await assertFails(setDoc(doc(as("member"), M("mn10")), msg({ kind: "card", text: "", card, mentions: ["admin"] })));
+  await assertFails(setDoc(doc(as("member"), M("mn11")), msg({ kind: "card", text: "", card, forwardedFrom: "m1" })));
+});
+
 test("chat: Worker-only kinds (poll, celebration, chain) cannot be forged by clients", async () => {
   for (const kind of ["poll", "celebration", "chain", "system"]) {
     await assertFails(setDoc(doc(as("member"), M("f" + kind)), msg({ kind, pollId: "pl1" })));

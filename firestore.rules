@@ -126,7 +126,7 @@ service cloud.firestore {
         allow get, list: if isMember(circleId);
 
         allow create: if isMember(circleId)
-          && request.resource.data.keys().hasOnly(['authorUid', 'displayName', 'kind', 'text', 'replyTo', 'card', 'createdAt', 'deleted'])
+          && request.resource.data.keys().hasOnly(['authorUid', 'displayName', 'kind', 'text', 'replyTo', 'card', 'createdAt', 'deleted', 'mentions', 'forwardedFrom'])
           && request.resource.data.keys().hasAll(['authorUid', 'kind', 'text', 'createdAt', 'deleted'])
           && request.resource.data.authorUid == request.auth.uid
           && request.resource.data.deleted == false
@@ -143,7 +143,20 @@ service cloud.firestore {
               ? (request.resource.data.replyTo is string
                  && request.resource.data.replyTo.size() > 0 && request.resource.data.replyTo.size() <= 40
                  && exists(/databases/$(database)/documents/circles/$(circleId)/messages/$(request.resource.data.replyTo)))
-              : !('replyTo' in request.resource.data));
+              : !('replyTo' in request.resource.data))
+          // @mentions: at most 20 uids on text and reply messages. Rules cannot loop over a list, so the
+          // per-entry 128-character limit is not enforced here; the total length of the joined list is capped.
+          && (!('mentions' in request.resource.data)
+              || (request.resource.data.kind in ['text', 'reply']
+                  && request.resource.data.mentions is list
+                  && request.resource.data.mentions.size() <= 20
+                  && request.resource.data.mentions.join(',').size() <= 2700))
+          // Forwarded label: the original message id, at most 64 characters, on text and reply messages.
+          && (!('forwardedFrom' in request.resource.data)
+              || (request.resource.data.kind in ['text', 'reply']
+                  && request.resource.data.forwardedFrom is string
+                  && request.resource.data.forwardedFrom.size() > 0
+                  && request.resource.data.forwardedFrom.size() <= 64));
 
         // Edit own text (not cards or Worker-made kinds); time of edit is the server time.
         allow update: if isMember(circleId)

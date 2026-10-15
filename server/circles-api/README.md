@@ -42,6 +42,7 @@ Success: `{"ok":true,...}`. Failure: `{"ok":false,"error":{"code","message"}}` w
 | `decideJoin` | admin | `circleId, uid, approve` (true lets the person in, false turns them away) |
 | `setTitle` | admin | `circleId, targetUid, title` (max 40; `null` clears). A title is a label. It never changes permissions |
 | `pinPost` | admin | `circleId, postId` (`null` unpins). The post must be live |
+| `pinMessage` | admin | `circleId, messageId` (`null` unpins) -> `pinnedMessageId` on the circle. The message must be live |
 | `createEvent` | admin | `circleId, title (max 80), description? (max 1000), location? (max 200), onlineUrl? (https only), startsAt, endsAt (epoch ms), timeZone` (IANA) -> `eventId` |
 | `updateEvent` | admin | `circleId, eventId`, plus any event field. Refused once cancelled |
 | `cancelEvent` | admin | `circleId, eventId` |

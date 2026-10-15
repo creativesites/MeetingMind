@@ -423,6 +423,21 @@ test("pinning: admins pin a live post, unpin with null, members cannot", async (
   assert.equal((await W.err("owner", "pinPost", { circleId: id, postId: "nope123" })).code, "not_found");
 });
 
+test("pinning a message: admins pin a live message, unpin with null, members and deleted messages refused", async () => {
+  const W = world();
+  const id = await circle(W, {});
+  await joinAs(W, "eve", id, "Eve");
+  W.db.seed(`${C(id)}/messages/m1`, { authorUid: "eve", kind: "text", text: "Pray for Sam", deleted: false });
+  W.db.seed(`${C(id)}/messages/gone`, { authorUid: "eve", kind: "text", text: "", deleted: true });
+  assert.equal((await W.err("eve", "pinMessage", { circleId: id, messageId: "m1" })).code, "forbidden");
+  await W.call("owner", "pinMessage", { circleId: id, messageId: "m1" });
+  assert.equal(W.db.dump(C(id)).pinnedMessageId, "m1");
+  assert.equal((await W.err("owner", "pinMessage", { circleId: id, messageId: "gone" })).code, "not_found");
+  assert.equal((await W.err("owner", "pinMessage", { circleId: id, messageId: "nope123" })).code, "not_found");
+  await W.call("owner", "pinMessage", { circleId: id, messageId: null });
+  assert.equal(W.db.dump(C(id)).pinnedMessageId, null);
+});
+
 const eventBody = (over = {}) => ({
   title: "Breakfast", description: "Café Lumen", location: "214 Maple St", onlineUrl: "https://meet.example.org/breakfast",
   startsAt: 1_800_000_000_000, endsAt: 1_800_003_600_000, timeZone: "America/New_York", ...over,
