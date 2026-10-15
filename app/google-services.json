@@ -60,6 +60,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "1045479699328-rfbmse00m0obk40n7fhkfrdhp52spaov.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.craftflowtechnologies.meetingmind.dev",
+            "certificate_hash": "e705913c6b8fb7108498c973c655ce540a12b338"
+          }
+        },
+        {
           "client_id": "1045479699328-o5q3t2hgtokh6b52jujv6edb8g7gmqvk.apps.googleusercontent.com",
           "client_type": 3
         }
