@@ -4,8 +4,10 @@ import kotlinx.coroutines.flow.Flow
 
 /** What the composer on the Chat tab sends. Time and author come from the server rules, not from here. */
 sealed interface MessageDraft {
-    data class Text(val text: String) : MessageDraft
-    data class Reply(val text: String, val replyTo: String) : MessageDraft
+    data class Text(val text: String, val mentions: List<String> = emptyList()) : MessageDraft
+    data class Reply(val text: String, val replyTo: String, val mentions: List<String> = emptyList()) : MessageDraft
+    /** A message copied from another one. [forwardedFrom] is the original message id. */
+    data class Forward(val text: String, val forwardedFrom: String, val mentions: List<String> = emptyList()) : MessageDraft
     data class Card(val card: CardPayload) : MessageDraft
 }
 
@@ -25,6 +27,13 @@ interface CirclesData {
     fun observeMessageReactions(circleId: String, messageId: String, myUid: String): Flow<List<MessageReaction>>
     fun observePoll(circleId: String, pollId: String, myUid: String): Flow<DataState<PollState>>
     fun observeChain(circleId: String, chainId: String, myUid: String): Flow<DataState<ChainState>>
+    /** Upcoming and past events, soonest first. Cancelled ones stay in the list so people see them. */
+    fun observeEvents(circleId: String): Flow<DataState<List<CircleEvent>>>
+    fun observeRsvps(circleId: String, eventId: String): Flow<DataState<List<Rsvp>>>
+    /** Who is typing now (their typing documents expire on their own). */
+    fun observeTyping(circleId: String): Flow<DataState<List<TypingUser>>>
+    /** Waiting requests, oldest first. Admins only: the rules refuse everyone else. */
+    fun observeJoinRequests(circleId: String): Flow<DataState<List<JoinRequest>>>
 
     /** My own "I prayed" marker (the only one rules let me read). False when unknown. */
     suspend fun hasPrayed(circleId: String, postId: String): Boolean
@@ -40,4 +49,7 @@ interface CirclesData {
     suspend fun vote(circleId: String, pollId: String, uid: String, choices: List<String>): CirclesResult<Unit>
     suspend fun claimSlot(circleId: String, chainId: String, uid: String, name: String, hour: Int): CirclesResult<Unit>
     suspend fun releaseSlot(circleId: String, chainId: String, hour: Int): CirclesResult<Unit>
+    suspend fun setTyping(circleId: String, uid: String, name: String, typing: Boolean): CirclesResult<Unit>
+    /** Records when I last read this chat. Read receipts come from it. */
+    suspend fun markRead(circleId: String, uid: String): CirclesResult<Unit>
 }

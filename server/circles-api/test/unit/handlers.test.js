@@ -323,3 +323,207 @@ test("userMeta writes merge: create and join keep unrelated fields", async () =>
   assert.deepEqual(W.db.dump("userMeta/friend").pushTokens, ["tok-2"]);
   assert.equal(W.db.dump("userMeta/friend").circleCount, 1);
 });
+
+test("description: stored on create, changed by an admin, capped at 300", async () => {
+  const W = world();
+  const { circleId } = await W.call("owner", "createCircle", { name: "Cell", template: "custom", description: "Breakfast every second Wednesday.", displayName: "Olive", requestId: crypto.randomUUID() });
+  assert.equal(W.db.dump(`circles/${circleId}`).description, "Breakfast every second Wednesday.");
+  await W.call("owner", "updateCircle", { circleId, description: "Bring a question." });
+  assert.equal(W.db.dump(`circles/${circleId}`).description, "Bring a question.");
+  const long = "x".repeat(301);
+  assert.equal((await W.err("owner", "updateCircle", { circleId, description: long })).code, "bad_request");
+  assert.equal((await W.err("owner", "createCircle", { name: "Too long", template: "custom", description: long, requestId: crypto.randomUUID() })).code, "bad_request");
+});
+
+test("description defaults to empty for circles created without one", async () => {
+  const W = world();
+  const id = await circle(W);
+  assert.equal(W.db.dump(`circles/${id}`).description, "");
+});
+
+test("join approval: off by default, admins can turn it on, junk is refused", async () => {
+  const W = world();
+  const id = await circle(W);
+  assert.equal(W.db.dump(`circles/${id}`).settings.joinApproval, false);
+  await W.call("owner", "updateCircle", { circleId: id, settings: { joinApproval: true } });
+  assert.equal(W.db.dump(`circles/${id}`).settings.joinApproval, true);
+  assert.equal((await W.err("owner", "updateCircle", { circleId: id, settings: { joinApproval: "yes" } })).code, "bad_request");
+});
+
+test("free-form note: any circle, published at once, never anonymous", async () => {
+  const W = world();
+  const id = await circle(W, { allowedTypes: ["prayer"] }); // the circle does not list notes
+  const { postId, status } = await W.call("owner", "createPost", { circleId: id, type: "note", body: "Breakfast photos are up.", anonymous: false });
+  assert.equal(status, "published");
+  assert.equal(W.db.dump(`${C(id)}/posts/${postId}`).type, "note");
+  assert.equal((await W.err("owner", "createPost", { circleId: id, type: "note", body: "x", anonymous: true })).code, "bad_request");
+});
+const C = (id) => `circles/${id}`;
+
+test("join approval: the request waits, the invite is kept, an admin lets the person in", async () => {
+  const W = world();
+  const id = await circle(W, { joinApproval: true });
+  const { code } = await W.call("owner", "createInvite", { circleId: id });
+  const r = await W.call("ann", "join", { code, displayName: "Ann" });
+  assert.equal(r.pending, true);
+  assert.equal(W.db.dump(`${C(id)}/members/ann`), undefined, "not a member yet");
+  assert.equal(W.db.dump(`${C(id)}/joinRequests/ann`).displayName, "Ann");
+  assert.equal(W.db.dump(`invites/${code}`).uses ?? 0, 0, "invite not used up while waiting");
+  assert.equal(W.db.dump(C(id)).memberCount, 1);
+  await W.call("owner", "decideJoin", { circleId: id, uid: "ann", approve: true });
+  assert.equal(W.db.dump(`${C(id)}/members/ann`).role, "member");
+  assert.equal(W.db.dump(C(id)).memberCount, 2);
+  assert.equal(W.db.dump(`${C(id)}/joinRequests/ann`), undefined);
+});
+
+test("join approval: rejecting removes the request; members cannot decide", async () => {
+  const W = world();
+  const id = await circle(W, { joinApproval: true });
+  const { code } = await W.call("owner", "createInvite", { circleId: id });
+  await W.call("bob", "join", { code, displayName: "Bob" });
+  assert.equal((await W.err("bob", "decideJoin", { circleId: id, uid: "bob", approve: true })).code, "not_a_member", "a waiting person is not a member");
+  await joinAs(W, "cy", id, "Cy");
+  await W.call("owner", "decideJoin", { circleId: id, uid: "cy", approve: true });
+  assert.equal((await W.err("cy", "decideJoin", { circleId: id, uid: "bob", approve: true })).code, "forbidden", "a member cannot let people in");
+  await W.call("owner", "decideJoin", { circleId: id, uid: "bob", approve: false });
+  assert.equal(W.db.dump(`${C(id)}/joinRequests/bob`), undefined);
+  assert.equal(W.db.dump(`${C(id)}/members/bob`), undefined);
+});
+
+test("join without approval is unchanged: member straight away", async () => {
+  const W = world();
+  const id = await circle(W);
+  const r = await joinAs(W, "dee", id, "Dee");
+  assert.equal(r.pending, undefined);
+  assert.equal(W.db.dump(`${C(id)}/members/dee`).role, "member");
+});
+
+test("titles: admins set and clear them, members cannot, length is capped", async () => {
+  const W = world();
+  const id = await circle(W);
+  await joinAs(W, "pat", id, "Pat");
+  await W.call("owner", "setTitle", { circleId: id, targetUid: "pat", title: "Pastor" });
+  assert.equal(W.db.dump(`${C(id)}/members/pat`).title, "Pastor");
+  assert.equal((await W.err("pat", "setTitle", { circleId: id, targetUid: "pat", title: "Boss" })).code, "forbidden");
+  assert.equal((await W.err("owner", "setTitle", { circleId: id, targetUid: "pat", title: "x".repeat(41) })).code, "bad_request");
+  await W.call("owner", "setTitle", { circleId: id, targetUid: "pat", title: null });
+  assert.equal(W.db.dump(`${C(id)}/members/pat`).title, null);
+});
+
+test("pinning: admins pin a live post, unpin with null, members cannot", async () => {
+  const W = world();
+  const id = await circle(W, { allowedTypes: ["prayer"] });
+  const { postId } = await W.call("owner", "createPost", { circleId: id, type: "note", body: "Read this", anonymous: false });
+  await joinAs(W, "eve", id, "Eve");
+  assert.equal((await W.err("eve", "pinPost", { circleId: id, postId })).code, "forbidden");
+  await W.call("owner", "pinPost", { circleId: id, postId });
+  assert.equal(W.db.dump(C(id)).pinnedPostId, postId);
+  await W.call("owner", "pinPost", { circleId: id, postId: null });
+  assert.equal(W.db.dump(C(id)).pinnedPostId, null);
+  assert.equal((await W.err("owner", "pinPost", { circleId: id, postId: "nope123" })).code, "not_found");
+});
+
+test("pinning a message: admins pin a live message, unpin with null, members and deleted messages refused", async () => {
+  const W = world();
+  const id = await circle(W, {});
+  await joinAs(W, "eve", id, "Eve");
+  W.db.seed(`${C(id)}/messages/m1`, { authorUid: "eve", kind: "text", text: "Pray for Sam", deleted: false });
+  W.db.seed(`${C(id)}/messages/gone`, { authorUid: "eve", kind: "text", text: "", deleted: true });
+  assert.equal((await W.err("eve", "pinMessage", { circleId: id, messageId: "m1" })).code, "forbidden");
+  await W.call("owner", "pinMessage", { circleId: id, messageId: "m1" });
+  assert.equal(W.db.dump(C(id)).pinnedMessageId, "m1");
+  assert.equal((await W.err("owner", "pinMessage", { circleId: id, messageId: "gone" })).code, "not_found");
+  assert.equal((await W.err("owner", "pinMessage", { circleId: id, messageId: "nope123" })).code, "not_found");
+  await W.call("owner", "pinMessage", { circleId: id, messageId: null });
+  assert.equal(W.db.dump(C(id)).pinnedMessageId, null);
+});
+
+test("moderator: events and removing others' posts; admins keep every power; everything else stays admin-only", async () => {
+  const W = world();
+  const id = await circle(W);
+  await joinAs(W, "mo", id, "Mo");
+  await joinAs(W, "ad", id, "Ad");
+  await joinAs(W, "eve", id, "Eve");
+  // only the owner can set roles; a member cannot promote anyone
+  assert.equal((await W.err("eve", "setRole", { circleId: id, targetUid: "mo", role: "moderator" })).code, "forbidden");
+  assert.equal((await W.err("owner", "setRole", { circleId: id, targetUid: "mo", role: "superuser" })).code, "bad_request");
+  await W.call("owner", "setRole", { circleId: id, targetUid: "mo", role: "moderator" });
+  await W.call("owner", "setRole", { circleId: id, targetUid: "ad", role: "admin" });
+  assert.equal(W.db.dump(`circles/${id}/members/mo`).role, "moderator");
+
+  // events: moderator and admin can create, edit and cancel; a plain member cannot
+  const { eventId } = await W.call("mo", "createEvent", { circleId: id, ...eventBody() });
+  await W.call("mo", "updateEvent", { circleId: id, eventId, title: "Breakfast (moved)" });
+  await W.call("ad", "createEvent", { circleId: id, ...eventBody({ title: "Lunch" }) });
+  assert.equal((await W.err("eve", "createEvent", { circleId: id, ...eventBody() })).code, "forbidden");
+  assert.equal((await W.err("eve", "updateEvent", { circleId: id, eventId, title: "x" })).code, "forbidden");
+  await W.call("mo", "cancelEvent", { circleId: id, eventId });
+  assert.equal(W.db.dump(`circles/${id}/events/${eventId}`).status, "cancelled");
+
+  // removing others' posts: a moderator can; a member cannot; the author can always
+  const { postId } = await W.call("eve", "createPost", { circleId: id, type: "note", body: "Hello", anonymous: false });
+  await W.call("ad", "pinPost", { circleId: id, postId }); // admins still pin
+  assert.equal((await W.err("mo", "pinPost", { circleId: id, postId })).code, "forbidden"); // moderators do not
+  await W.call("mo", "deletePost", { circleId: id, postId });
+  assert.equal(W.db.dump(`circles/${id}/posts/${postId}`).deleted, true);
+  const { postId: second } = await W.call("eve", "createPost", { circleId: id, type: "note", body: "Again", anonymous: false });
+  assert.equal((await W.err("stranger", "deletePost", { circleId: id, postId: second })).code, "not_a_member");
+  await W.call("eve", "deletePost", { circleId: id, postId: second }); // the author can always delete
+
+  // what a moderator cannot do stays admin-only
+  await joinAs(W, "pat", id, "Pat");
+  assert.equal((await W.err("mo", "setTitle", { circleId: id, targetUid: "pat", title: "Deacon" })).code, "forbidden");
+  assert.equal((await W.err("mo", "removeMember", { circleId: id, targetUid: "eve" })).code, "forbidden");
+  assert.equal((await W.err("mo", "setRole", { circleId: id, targetUid: "eve", role: "admin" })).code, "forbidden");
+  assert.equal((await W.err("mo", "pinMessage", { circleId: id, messageId: "nope123" })).code, "forbidden");
+
+  // a demoted moderator loses the event powers
+  await W.call("owner", "setRole", { circleId: id, targetUid: "mo", role: "member" });
+  assert.equal((await W.err("mo", "createEvent", { circleId: id, ...eventBody() })).code, "forbidden");
+});
+
+const eventBody = (over = {}) => ({
+  title: "Breakfast", description: "Café Lumen", location: "214 Maple St", onlineUrl: "https://meet.example.org/breakfast",
+  startsAt: 1_800_000_000_000, endsAt: 1_800_003_600_000, timeZone: "America/New_York", ...over,
+});
+
+test("events: admins create, edit and cancel; members cannot; RSVP to a cancelled event is refused", async () => {
+  const W = world();
+  const id = await circle(W);
+  await joinAs(W, "fay", id, "Fay");
+  assert.equal((await W.err("fay", "createEvent", { circleId: id, ...eventBody() })).code, "forbidden");
+  const { eventId } = await W.call("owner", "createEvent", { circleId: id, ...eventBody() });
+  assert.equal(W.db.dump(`${C(id)}/events/${eventId}`).status, "scheduled");
+  await W.call("owner", "updateEvent", { circleId: id, eventId, title: "Breakfast (moved)" });
+  assert.equal(W.db.dump(`${C(id)}/events/${eventId}`).title, "Breakfast (moved)");
+  assert.equal(W.db.dump(`${C(id)}/events/${eventId}`).timeZone, "America/New_York", "fields not sent are kept");
+  await W.call("fay", "rsvp", { circleId: id, eventId, status: "going" });
+  assert.equal(W.db.dump(`${C(id)}/events/${eventId}/rsvps/fay`).status, "going");
+  await W.call("owner", "cancelEvent", { circleId: id, eventId });
+  assert.equal(W.db.dump(`${C(id)}/events/${eventId}`).status, "cancelled");
+  assert.equal((await W.err("fay", "rsvp", { circleId: id, eventId, status: "maybe" })).code, "event_cancelled");
+  assert.equal((await W.err("owner", "updateEvent", { circleId: id, eventId, title: "x" })).code, "event_cancelled");
+});
+
+test("events: bad times, zones and links are refused with a plain message", async () => {
+  const W = world();
+  const id = await circle(W);
+  const bad = async (over) => (await W.err("owner", "createEvent", { circleId: id, ...eventBody(over) })).code;
+  assert.equal(await bad({ endsAt: 1_800_000_000_000 }), "bad_request");
+  assert.equal(await bad({ startsAt: "soon" }), "bad_request");
+  assert.equal(await bad({ timeZone: "Mars/Olympus" }), "bad_request");
+  assert.equal(await bad({ onlineUrl: "http://insecure.example.org" }), "bad_request");
+  assert.equal(await bad({ onlineUrl: "javascript:alert(1)" }), "bad_request");
+  assert.equal(await bad({ title: "" }), "bad_request");
+  assert.equal(await bad({ title: "x".repeat(81) }), "bad_request");
+});
+
+test("rsvp: one answer per member, a junk answer is refused", async () => {
+  const W = world();
+  const id = await circle(W);
+  const { eventId } = await W.call("owner", "createEvent", { circleId: id, ...eventBody({ onlineUrl: "" }) });
+  await W.call("owner", "rsvp", { circleId: id, eventId, status: "maybe" });
+  await W.call("owner", "rsvp", { circleId: id, eventId, status: "no" });
+  assert.equal(W.db.dump(`${C(id)}/events/${eventId}/rsvps/owner`).status, "no");
+  assert.equal((await W.err("owner", "rsvp", { circleId: id, eventId, status: "yes please" })).code, "bad_request");
+});

@@ -24,6 +24,8 @@ import com.craftflowtechnologies.meetingmind.core.create.CreateSeed
 import com.craftflowtechnologies.meetingmind.feature.create.CreateHost
 import com.craftflowtechnologies.meetingmind.feature.create.rememberCreateController
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesFailure
+import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
+import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
 import com.craftflowtechnologies.meetingmind.core.circles2.WhoCanInvite
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
@@ -71,6 +73,11 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     var reporting by remember { mutableStateOf<Post?>(null) }
     var reportingMessage by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.circles2.ChatMessage?>(null) }
     var deleting by remember { mutableStateOf<Post?>(null) }
+    var titling by remember { mutableStateOf<Member?>(null) }
+    var openingEvent by remember { mutableStateOf<CircleEvent?>(null) }
+    var showEventForm by remember { mutableStateOf(false) }
+    var editingEvent by remember { mutableStateOf<CircleEvent?>(null) }
+    val eventRsvps by home.eventRsvps.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val now = remember(state.posts, chatState.messages) { System.currentTimeMillis() }
 
@@ -93,7 +100,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     if (showSettings && circle != null) {
         CircleSettingsContent(
             circle = circle, me = state.me, onBack = { showSettings = false },
-            onSave = home::saveSettings, onMute = home::setMuted, onLeave = { home.leave(onBack) },
+            onSave = home::saveSettings, onCover = home::setCover, onMute = home::setMuted, onLeave = { home.leave(onBack) },
             account = accountState, onLink = account::link, onSwitch = account::switchAccount, onDismissConflict = account::dismissConflict
         )
     } else {
@@ -106,7 +113,13 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onUpdate = { updating = it }, onEdit = { editing = it }, onDelete = { deleting = it }, onReport = { reporting = it },
             onStartChain = { chainPost = it.id; chainTitle = it.body.take(100) },
             onApprove = home::approve, onReject = home::reject,
-            onCelebrateAnswered = { p -> home.celebrateAnswered(p, companionId) }
+            onCelebrateAnswered = { p -> home.celebrateAnswered(p, companionId) },
+            onPinPost = home::pinFeedPost,
+            onOpenEvent = { openingEvent = it; home.openEvent(it.id) },
+            onNewEvent = { editingEvent = null; showEventForm = true },
+            onOpenChat = { tab = HomeTab.Chat },
+            onStartPost = home::openComposer,
+            onPhoto = home::addPhoto
         )
         val chatActions = ChatActions(
             onDraft = chat::setDraft, onSend = chat::send, onReply = chat::startReply, onCancelReply = chat::cancelReply,
@@ -119,12 +132,19 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
                 create.open(CreateSeed(), label = circle?.name ?: "the chat") { r ->
                     CreateChatCard.toPayload(r.card, r.scripture)?.let(chat::shareCard)
                 }
-            }, onStartChain = { chainPost = null; chainTitle = "" }, onCelebrate = { showCelebrate = true }
+            }, onStartChain = { chainPost = null; chainTitle = "" }, onCelebrate = { showCelebrate = true },
+            onForward = chat::startForward, onCancelForward = chat::cancelForward,
+            onPin = chat::pin, onUnpin = chat::unpin,
+            onSendAttachment = chat::sendAttachment, onCancelUpload = chat::cancelUpload,
+            onNotice = chat::notice
         )
         CircleHomeContent(
             state = state, chat = chatState, draft = draft, tab = tab, onTab = { tab = it }, now = now,
             feed = feed, chatActions = chatActions,
-            members = MemberActions(onInvite = { home.createInvite(); showInvite = true }, onSetRole = home::setRole, onRemove = home::remove),
+            members = MemberActions(
+                onInvite = { home.createInvite(); showInvite = true }, onSetRole = home::setRole, onRemove = home::remove,
+                onSetTitle = { titling = it }, onDecideJoin = home::decideJoin
+            ),
             snackbar = snackbar, onBack = onBack, onSettings = { showSettings = true },
             onInvite = { home.createInvite(); showInvite = true }, onRetry = { }
         )
@@ -132,7 +152,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
 
     // ---- sheets and dialogs ----
     if (showTypes && circle != null) PostTypeSheet(circle, state.isAdmin, onPick = { showTypes = false; home.openComposer(it) }, onDismiss = { showTypes = false })
-    if (composer.open && circle != null) ComposerSheet(circle, composer, home::setBody, home::setVerse, home::setAnonymous, home::submitPost, home::closeComposer)
+    if (composer.open && circle != null) ComposerSheet(circle, composer, home::setBody, home::setVerse, home::setAnonymous, home::submitPost, home::closeComposer, home::removePhoto)
     val threadPost = thread?.let { t -> state.posts.firstOrNull { it.post.id == t.postId }?.post }
     if (thread != null) ThreadSheet(threadPost, thread, state.myUid, state.isAdmin, now, onSend = { home.comment(thread!!.postId, it) }, onDeleteComment = { home.deleteComment(thread!!.postId, it.id) }, onDismiss = home::closeThread)
     if (showInvite) InviteSheet(invite, home::createInvite) { showInvite = false; home.closeInvite() }
@@ -144,6 +164,24 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
         PollSheet(d, PollSheetActions(chat::setPollQuestion, chat::setPollOption, chat::addPollOption, chat::removePollOption, chat::setPollMulti, chat::createPoll), chat::closePollDraft)
     }
     CreateHost(create)
+    titling?.let { m -> TextEditSheet("Title for ${m.displayName}", m.title.orEmpty(), "Save", { home.setTitle(m, it); titling = null }, { titling = null }) }
+    val liveEvent = openingEvent?.let { o -> state.events.firstOrNull { it.id == o.id } ?: o }
+    liveEvent?.let { e ->
+        EventSheet(
+            e, eventRsvps, state.myUid, state.isAdmin,
+            onRsvp = { home.rsvp(e.id, it) },
+            onEdit = { openingEvent = null; home.openEvent(null); editingEvent = e; showEventForm = true },
+            onCancel = { home.cancelEvent(e.id); openingEvent = null; home.openEvent(null) },
+            onDismiss = { openingEvent = null; home.openEvent(null) }
+        )
+    }
+    if (showEventForm && circle != null) {
+        EventFormSheet(
+            editingEvent, now,
+            onSave = { d -> home.saveEvent(editingEvent?.id, d); showEventForm = false; editingEvent = null },
+            onDismiss = { showEventForm = false; editingEvent = null }
+        )
+    }
     // The simple card sheet is only a fallback for builds where the studio can't open.
     if (showCard) CardShareSheet({ chat.shareCard(it) }, { showCard = false })
     chainTitle?.let { t -> ChainSheet(t, { chat.startChain(it, chainPost) }, { chainTitle = null; chainPost = null }) }

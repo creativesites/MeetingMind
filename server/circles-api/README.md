@@ -35,12 +35,30 @@ Success: `{"ok":true,...}`. Failure: `{"ok":false,"error":{"code","message"}}` w
 | Endpoint | Who | Body / result |
 |---|---|---|
 | `createCircle` | anyone (max 10 circles) | `name, template, vocab?, settings?, displayName?, requestId` (UUID, reused for retries) -> `circleId` |
-| `updateCircle` | owner/admin | `circleId, name?, vocab?, settings?` |
+| `updateCircle` | owner/admin | `circleId, name?, vocab?, description? (max 300), settings?` (`settings.joinApproval` is a boolean, default off) |
 | `createInvite` | owner/admin (or any member if `whoCanInvite=members`) | `circleId, expiresInDays? (1-30, 7), maxUses? (1-100, 50)` -> `code` like `GRACE-7K2Q` |
 | `revokeInvite` | admin or creator | `code` |
-| `join` | anyone | `code` (paste the whole share message), `displayName?` -> `circleId, name`. Errors: `not_found, expired, revoked, full, already_member, too_many_circles, rate_limited` |
+| `join` | anyone | `code` (paste the whole share message), `displayName?` -> `circleId, name`. With `joinApproval` on: `pending: true` and the invite is kept until an admin decides. Errors: `not_found, expired, revoked, full, already_member, too_many_circles, rate_limited` |
+| `decideJoin` | admin | `circleId, uid, approve` (true lets the person in, false turns them away) |
+| `setTitle` | admin | `circleId, targetUid, title` (max 40; `null` clears). A title is a label. It never changes permissions |
+| `pinPost` | admin | `circleId, postId` (`null` unpins). The post must be live |
+| `pinMessage` | admin | `circleId, messageId` (`null` unpins) -> `pinnedMessageId` on the circle. The message must be live |
+| `createUploadTicket` | member | `circleId, kind` (`image`, `voice`, `file`), `mime, bytes, durationMs?, name?` -> `ticketId, path, expiresAt`. Single use, 15 minutes; 60/h |
+| `sendMessage` | member, the uploader | `circleId, kind, uploadPath, text?` (caption, at most 2000), `replyTo?, durationMs?, name?` -> `messageId`. The only writer of attachment messages |
+| `deleteMedia` | uploader or admin | `circleId, path` |
+| `PUT /v1/media/upload/{ticketId}` | the ticket's owner | raw bytes; `Content-Type` must equal the ticket mime -> `path`. Checks length and the file header |
+| `GET /v1/media/{circleId}/{uuid}` | member | streams the file; 404 for non-members |
+
+Media lives in R2 (`MEDIA` binding, bucket `meetingmind-circles-media`) at `circles/{circleId}/media/{uuid}`. The Worker
+is the only reader or writer. Limits: images jpeg, png or webp up to 10 MB; voice mp4, aac or ogg and files PDF up to 25 MB.
+`createPost` takes `attachments` (at most 4 photos) and `updateCircle` takes `coverPath` (admin). The six-hourly cron deletes
+media older than 24 hours that no message, post, pending request or cover references.
+| `createEvent` | admin | `circleId, title (max 80), description? (max 1000), location? (max 200), onlineUrl? (https only), startsAt, endsAt (epoch ms), timeZone` (IANA) -> `eventId` |
+| `updateEvent` | admin | `circleId, eventId`, plus any event field. Refused once cancelled |
+| `cancelEvent` | admin | `circleId, eventId` |
+| `rsvp` | member | `circleId, eventId, status` in `going, maybe, no`. One answer per person, stored under the event |
 | `leave`, `removeMember`, `setRole`, `setMute` | see below | `circleId, targetUid?, role?, muted?` |
-| `createPost` | member | `circleId, type, body, verseRef?, anonymous` -> `postId, status: pending/published` |
+| `createPost` | member | `circleId, type` (`note` is the free-form post, allowed in every circle), `body, verseRef?, anonymous` -> `postId, status: pending/published` |
 | `approvePost`, `rejectPost` | admin | `circleId, postId` |
 | `editPost`, `addUpdate`, `markAnswered` | author (resolved via `postAuthors`) | `circleId, postId, body?` |
 | `deletePost` | author or admin (soft delete, body blanked) | `circleId, postId` |
@@ -58,7 +76,9 @@ Success: `{"ok":true,...}`. Failure: `{"ok":false,"error":{"code","message"}}` w
 | `registerToken`, `unregisterToken` | any | FCM `token` (max 5 devices per user) |
 
 Post types: prayer, testimony, achievement, study, encouragement, reading, announcement (admins only). Only prayer requests can be
-anonymous. Roles: `setRole` is **owner-only** (stricter than "owner/admin", to stop an admin promoting accomplices);
+anonymous. Roles, from most to least powerful: owner, admin, moderator, member. A moderator creates, edits and cancels
+events and deletes other people's posts (`canModerate`); admins and the owner can do everything a moderator can. Titles are
+labels only. `setRole` (any role, including `moderator`) is **owner-only** (stricter than "owner/admin", to stop an admin promoting accomplices);
 admins can remove plain members; only the owner removes admins; the owner must hand over ownership before leaving.
 
 Pushes (text never contains post bodies; anonymous posts say "Someone shared a prayer request"): new published post (not to the

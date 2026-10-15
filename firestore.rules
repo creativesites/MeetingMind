@@ -19,6 +19,11 @@ service cloud.firestore {
     function isAdmin(circleId) {
       return isMember(circleId) && get(memberDoc(circleId)).data.role in ['owner', 'admin'];
     }
+    // Moderators can run events and remove others' posts; admins and the owner can do everything a moderator can.
+    // The Worker does all role-gated writes today, so nothing calls this yet; it is here for client-written paths.
+    function isModerator(circleId) {
+      return isMember(circleId) && get(memberDoc(circleId)).data.role in ['owner', 'admin', 'moderator'];
+    }
     function postPath(circleId, postId) {
       return /databases/$(database)/documents/circles/$(circleId)/posts/$(postId);
     }
@@ -53,7 +58,28 @@ service cloud.firestore {
       match /members/{uid} {
         allow get: if isMember(circleId);
         allow list: if isMember(circleId);
-        allow write: if false;
+        allow create, delete: if false;
+        // Read receipts: a member sets only their own lastReadAt, to the server time.
+        allow update: if isMember(circleId)
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastReadAt'])
+          && request.resource.data.lastReadAt == request.time;
+      }
+
+      // Typing indicator. Members write only their own doc; it expires (TTL on expiresAt, at most 60 s ahead).
+      match /typing/{uid} {
+        allow get, list: if isMember(circleId);
+        allow create, update: if isMember(circleId)
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['displayName', 'updatedAt', 'expiresAt'])
+          && request.resource.data.keys().hasAll(['displayName', 'updatedAt', 'expiresAt'])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() <= 40
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.expiresAt is timestamp
+          && request.resource.data.expiresAt > request.time
+          && request.resource.data.expiresAt <= request.time + duration.value(60, 's');
+        allow delete: if isMember(circleId) && request.auth.uid == uid;
       }
 
       match /posts/{postId} {
@@ -126,7 +152,7 @@ service cloud.firestore {
         allow get, list: if isMember(circleId);
 
         allow create: if isMember(circleId)
-          && request.resource.data.keys().hasOnly(['authorUid', 'displayName', 'kind', 'text', 'replyTo', 'card', 'createdAt', 'deleted'])
+          && request.resource.data.keys().hasOnly(['authorUid', 'displayName', 'kind', 'text', 'replyTo', 'card', 'createdAt', 'deleted', 'mentions', 'forwardedFrom'])
           && request.resource.data.keys().hasAll(['authorUid', 'kind', 'text', 'createdAt', 'deleted'])
           && request.resource.data.authorUid == request.auth.uid
           && request.resource.data.deleted == false
@@ -143,7 +169,20 @@ service cloud.firestore {
               ? (request.resource.data.replyTo is string
                  && request.resource.data.replyTo.size() > 0 && request.resource.data.replyTo.size() <= 40
                  && exists(/databases/$(database)/documents/circles/$(circleId)/messages/$(request.resource.data.replyTo)))
-              : !('replyTo' in request.resource.data));
+              : !('replyTo' in request.resource.data))
+          // @mentions: at most 20 uids on text and reply messages. Rules cannot loop over a list, so the
+          // per-entry 128-character limit is not enforced here; the total length of the joined list is capped.
+          && (!('mentions' in request.resource.data)
+              || (request.resource.data.kind in ['text', 'reply']
+                  && request.resource.data.mentions is list
+                  && request.resource.data.mentions.size() <= 20
+                  && request.resource.data.mentions.join(',').size() <= 2700))
+          // Forwarded label: the original message id, at most 64 characters, on text and reply messages.
+          && (!('forwardedFrom' in request.resource.data)
+              || (request.resource.data.kind in ['text', 'reply']
+                  && request.resource.data.forwardedFrom is string
+                  && request.resource.data.forwardedFrom.size() > 0
+                  && request.resource.data.forwardedFrom.size() <= 64));
 
         // Edit own text (not cards or Worker-made kinds); time of edit is the server time.
         allow update: if isMember(circleId)
@@ -227,6 +266,24 @@ service cloud.firestore {
           allow update: if false;
           allow delete: if isMember(circleId) && (resource.data.authorUid == request.auth.uid || isAdmin(circleId));
         }
+      }
+
+      // Events: members read them; only the Worker writes (create, edit, cancel, RSVP).
+      match /events/{eventId} {
+        allow get, list: if isMember(circleId);
+        allow write: if false;
+
+        match /rsvps/{uid} {
+          allow get, list: if isMember(circleId);
+          allow write: if false;
+        }
+      }
+
+      // Join requests waiting for an admin. Admins (and the owner) read them for the Members screen;
+      // only the Worker writes them.
+      match /joinRequests/{uid} {
+        allow get, list: if isAdmin(circleId);
+        allow write: if false;
       }
 
       // Prayer requests awaiting approval. Admins only; the doc carries no author information.

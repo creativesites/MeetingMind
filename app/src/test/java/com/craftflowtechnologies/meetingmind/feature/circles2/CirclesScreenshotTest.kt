@@ -136,6 +136,6 @@ class CirclesScreenshotTest {
 
     // ---------- settings ----------
 
-    @Test fun settingsAdmin() = shot("settings_admin", { CircleSettingsContent(testCircle(), members[1], {}, { _, _, _ -> }, {}, {}) })
-    @Test fun settingsMember() = shot("settings_member", { CircleSettingsContent(testCircle(), members[2], {}, { _, _, _ -> }, {}, {}) })
+    @Test fun settingsAdmin() = shot("settings_admin", { CircleSettingsContent(testCircle(), members[1], {}, { _, _, _, _ -> }, {}, {}) })
+    @Test fun settingsMember() = shot("settings_member", { CircleSettingsContent(testCircle(), members[2], {}, { _, _, _, _ -> }, {}, {}) })
 }

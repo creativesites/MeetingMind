@@ -229,6 +229,7 @@ fun JoinSheet(join: JoinUiState, onDismiss: () -> Unit, onPaste: (String) -> Uni
         }
         CircleField(join.name, onName, "Your name in this circle", placeholder = "How should people see you?")
         join.error?.let { StatusLine(StatusKind.Error, it) }
-        PrimaryButton(if (join.busy) "Joining..." else "Join", onJoin, enabled = join.canJoin, modifier = Modifier.fillMaxWidth())
+        if (join.pending) StatusLine(StatusKind.Info, "Request sent. An admin will let you in once they've checked it.")
+        if (!join.pending) PrimaryButton(if (join.busy) "Joining..." else "Join", onJoin, enabled = join.canJoin, modifier = Modifier.fillMaxWidth())
     }
 }

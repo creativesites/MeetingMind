@@ -4,7 +4,12 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleSettings
+import com.craftflowtechnologies.meetingmind.core.circles2.EventDraft
+import com.craftflowtechnologies.meetingmind.core.circles2.JoinRequest
+import com.craftflowtechnologies.meetingmind.core.circles2.Rsvp
+import com.craftflowtechnologies.meetingmind.core.circles2.RsvpAnswer
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesFailure
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesRepository
@@ -13,6 +18,8 @@ import com.craftflowtechnologies.meetingmind.core.circles2.Comment
 import com.craftflowtechnologies.meetingmind.core.circles2.CreatePostRequest
 import com.craftflowtechnologies.meetingmind.core.circles2.DataState
 import com.craftflowtechnologies.meetingmind.core.circles2.Invite
+import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
+import com.craftflowtechnologies.meetingmind.core.circles2.MediaKind
 import com.craftflowtechnologies.meetingmind.core.circles2.InviteCodes
 import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.PendingPost
@@ -49,6 +56,12 @@ data class CircleHomeUiState(
     val members: List<Member> = emptyList(),
     val posts: List<FeedPost> = emptyList(),
     val pending: List<PendingPost> = emptyList(),
+    /** People waiting to be let in (admins only; empty for everyone else). */
+    val joinRequests: List<JoinRequest> = emptyList(),
+    /** Upcoming and past events, soonest first. Cancelled ones are kept so people can see them. */
+    val events: List<CircleEvent> = emptyList(),
+    /** The post pinned to the top of the feed, if any. */
+    val pinnedPostId: String? = null,
     /** Ids of pending requests I sent from this phone (so I can see "waiting for approval" without knowing who wrote what). */
     val myPendingCount: Int = 0,
     val failure: CirclesFailure? = null,
@@ -65,6 +78,8 @@ data class ComposerState(
     val body: String = "",
     val verse: String = "",
     val anonymous: Boolean = false,
+    /** Photos already uploaded for this post. */
+    val attachments: List<MediaAttachment> = emptyList(),
     val sending: Boolean = false,
     val error: String? = null,
     /** Set when "Turn into testimony" starts a draft from an answered request. */
@@ -111,13 +126,22 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
 
     private val me: Flow<Member?> = combine(membersState, myUid) { m, uid -> m.valueOr(emptyList()).firstOrNull { it.uid == uid } }
 
-    private val pendingState: Flow<List<PendingPost>> = me.flatMapLatest { m ->
-        if (m?.role?.isAdmin == true) repo.data.observePending(circleId).map { it.valueOr(emptyList()) } else flowOf(emptyList())
+    private val eventsState = repo.data.observeEvents(circleId)
+
+    /** Admin-only reads. Non-admins never subscribe, so the rules' refusals never reach them. */
+    private val adminData: Flow<AdminData> = me.flatMapLatest { m ->
+        if (m?.role?.isAdmin == true) {
+            combine(repo.data.observePending(circleId), repo.data.observeJoinRequests(circleId)) { p, j ->
+                AdminData(p.valueOr(emptyList()), j.valueOr(emptyList()))
+            }
+        } else flowOf(AdminData(emptyList(), emptyList()))
     }
 
+    private val extras: Flow<Extras> = combine(eventsState, adminData) { e, a -> Extras(e.valueOr(emptyList()), a) }
+
     val state: StateFlow<CircleHomeUiState> = combine(
-        circleState, membersState, postsState, pendingState, combine(myUid, prayed, mine, sentPending) { u, p, m, s -> Quad(u, p, m, s) }
-    ) { c, ms, ps, pend, q ->
+        circleState, membersState, postsState, extras, combine(myUid, prayed, mine, sentPending) { u, p, m, s -> Quad(u, p, m, s) }
+    ) { c, ms, ps, ex, q ->
         val members = ms.valueOr(emptyList())
         val circle = (c as? DataState.Ready)?.value
         val failure = listOf(c, ms, ps).filterIsInstance<DataState.Failed>().firstOrNull()?.failure
@@ -128,7 +152,10 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
             me = members.firstOrNull { it.uid == q.uid },
             members = members,
             posts = ps.valueOr(emptyList()).map { FeedPost(it, mine = (q.uid != null && it.authorUid == q.uid) || it.id in q.mine, prayedByMe = it.id in q.prayed) },
-            pending = pend,
+            pending = ex.admin.pending,
+            joinRequests = ex.admin.requests,
+            events = ex.events,
+            pinnedPostId = circle?.pinnedPostId,
             myPendingCount = q.pending,
             failure = if (removed) null else failure,
             gone = removed
@@ -136,6 +163,8 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CircleHomeUiState())
 
     private data class Quad(val uid: String?, val prayed: Set<String>, val mine: Set<String>, val pending: Int)
+    private data class AdminData(val pending: List<PendingPost>, val requests: List<JoinRequest>)
+    private data class Extras(val events: List<CircleEvent>, val admin: AdminData)
 
     private fun say(text: String) { _messages.tryEmit(text) }
     private fun fail(f: CirclesFailure) = say(f.message)
@@ -143,10 +172,35 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     // ---------- composer ----------
     fun openComposer(type: PostType) {
         val circle = state.value.circle
-        if (circle != null && type !in circle.settings.allowedTypes) return
+        // Free-form is always on: it is not one of the circle's listed kinds.
+        if (circle != null && type != PostType.Note && type !in circle.settings.allowedTypes) return
         composer.value = ComposerState(type = type)
     }
     fun closeComposer() { composer.value = ComposerState() }
+
+    /** A photo for the post being written. Opens a free-form composer when none is open. */
+    fun addPhoto(file: PickedFile) {
+        if (!composer.value.open) openComposer(PostType.Note)
+        viewModelScope.launch {
+            repo.uploadAttachment(circleId, MediaKind.Image, file.bytes, file.mime, file.name, null).fold(
+                onOk = { a -> composer.update { it.copy(attachments = it.attachments + a, error = null) } },
+                onErr = { f -> composer.update { it.copy(error = f.message) } }
+            )
+        }
+    }
+    fun removePhoto(a: MediaAttachment) { composer.update { it.copy(attachments = it.attachments.filter { x -> x.path != a.path }) } }
+
+    /** The cover photo for the circle's hero. Admins only; the Worker checks it. */
+    fun setCover(file: PickedFile) {
+        viewModelScope.launch {
+            repo.uploadAttachment(circleId, MediaKind.Image, file.bytes, file.mime, file.name, null).fold(
+                onOk = { a ->
+                    repo.api.updateCircle(circleId, null, null, null, null, coverPath = a.path).fold(onOk = { say("Cover photo saved.") }, onErr = ::fail)
+                },
+                onErr = ::fail
+            )
+        }
+    }
     fun setBody(v: String) = composer.update { it.copy(body = v.take(4000), error = null) }
     fun setVerse(v: String) = composer.update { it.copy(verse = v.take(64), error = null) }
     /** Only prayer requests can be anonymous; for any other type the flag is forced off. */
@@ -166,11 +220,11 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         val type = c.type ?: return
         if (c.sending) return
         val body = c.body.trim()
-        if (body.isEmpty()) { composer.update { it.copy(error = "Write something first.") }; return }
+        if (body.isEmpty() && c.attachments.isEmpty()) { composer.update { it.copy(error = "Write something first.") }; return }
         composer.update { it.copy(sending = true, error = null) }
         viewModelScope.launch {
             // No uid, no name: the Worker takes the caller from the token and, for an anonymous post, never stores it on the post.
-            val req = CreatePostRequest(circleId, type, body, c.verse.trim().ifBlank { null }, anonymous = c.anonymous && type == PostType.Prayer)
+            val req = CreatePostRequest(circleId, type, body, c.verse.trim().ifBlank { null }, anonymous = c.anonymous && type == PostType.Prayer, attachments = c.attachments)
             repo.createPost(req).fold(
                 onOk = { created ->
                     mine.value = repo.store.myPostIds(circleId)
@@ -253,18 +307,38 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     }
 
     // ---------- admin: pending ----------
+    fun decideJoin(r: JoinRequest, approve: Boolean) {
+        viewModelScope.launch {
+            repo.api.decideJoin(circleId, r.uid, approve).fold(onOk = { say(if (approve) "${r.displayName} is in." else "Not this time.") }, onErr = ::fail)
+        }
+    }
+
+    /** Pin one post to the top of the feed, or unpin with null. */
+    fun pinFeedPost(post: Post?) {
+        viewModelScope.launch {
+            repo.api.pinPost(circleId, post?.id).fold(onOk = { say(if (post == null) "Unpinned." else "Pinned to the top.") }, onErr = ::fail)
+        }
+    }
+
     fun approve(p: PendingPost) { viewModelScope.launch { repo.api.approvePost(circleId, p.id).fold(onOk = { say("Shared with the circle.") }, onErr = ::fail) } }
     fun reject(p: PendingPost) { viewModelScope.launch { repo.api.rejectPost(circleId, p.id).fold(onOk = { say("Not shared.") }, onErr = ::fail) } }
 
     // ---------- members ----------
     fun setRole(m: Member, role: Role) { viewModelScope.launch { repo.api.setRole(circleId, m.uid, role).fold(onOk = { say("${m.displayName} is now ${role.label.lowercase()}.") }, onErr = ::fail) } }
+    /** A display title such as "Pastor". Blank clears it. The title never changes what the person can do. */
+    fun setTitle(m: Member, title: String) {
+        viewModelScope.launch {
+            repo.api.setTitle(circleId, m.uid, title.trim().ifBlank { null }).fold(onOk = { say("Title saved for ${m.displayName}.") }, onErr = ::fail)
+        }
+    }
+
     fun remove(m: Member) { viewModelScope.launch { repo.api.removeMember(circleId, m.uid).fold(onOk = { say("${m.displayName} was removed.") }, onErr = ::fail) } }
 
     // ---------- settings ----------
-    fun saveSettings(name: String, vocab: String, settings: CircleSettings) {
+    fun saveSettings(name: String, vocab: String, description: String, settings: CircleSettings) {
         val c = state.value.circle ?: return
         viewModelScope.launch {
-            repo.api.updateCircle(circleId, name.trim().takeIf { it != c.name }, vocab.trim().takeIf { it != c.vocab }, settings)
+            repo.api.updateCircle(circleId, name.trim().takeIf { it != c.name }, vocab.trim().takeIf { it != c.vocab }, settings, description.trim().takeIf { it != c.description })
                 .fold(onOk = { say("Saved.") }, onErr = ::fail)
         }
     }
@@ -273,6 +347,31 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         viewModelScope.launch {
             repo.leave(circleId).fold(onOk = { onLeft() }, onErr = ::fail)
         }
+    }
+
+    // ---------- events ----------
+    private val openEventId = MutableStateFlow<String?>(null)
+    /** Who has said going, maybe or no for the event open on screen. */
+    val eventRsvps: StateFlow<List<Rsvp>> = openEventId.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList<Rsvp>()) else repo.data.observeRsvps(circleId, id).map { it.valueOr(emptyList()) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun openEvent(eventId: String?) { openEventId.value = eventId }
+
+    /** [eventId] null creates a new event; otherwise the event is updated. Times are checked by the Worker. */
+    fun saveEvent(eventId: String?, draft: EventDraft) {
+        viewModelScope.launch {
+            val result = if (eventId == null) repo.api.createEvent(circleId, draft).map { } else repo.api.updateEvent(circleId, eventId, draft)
+            result.fold(onOk = { say(if (eventId == null) "Event added." else "Event saved.") }, onErr = ::fail)
+        }
+    }
+
+    fun cancelEvent(eventId: String) {
+        viewModelScope.launch { repo.api.cancelEvent(circleId, eventId).fold(onOk = { say("Event cancelled.") }, onErr = ::fail) }
+    }
+
+    fun rsvp(eventId: String, answer: RsvpAnswer) {
+        viewModelScope.launch { repo.api.rsvp(circleId, eventId, answer).fold(onOk = { say("Saved: ${answer.label}.") }, onErr = ::fail) }
     }
 
     // ---------- invites ----------

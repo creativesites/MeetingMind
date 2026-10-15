@@ -13,7 +13,11 @@ export class FakeDb {
     const out = [];
     for (const [p, d] of this.docs) {
       if (!p.startsWith(prefix) || p.slice(prefix.length).includes("/")) continue;
-      const ok = where.every(([f, op, v]) => op === "==" ? d[f] === v : op === ">" ? d[f] > v : op === "in" ? v.includes(d[f]) : false);
+      const field = (f) => f.split(".").reduce((o, k) => o?.[k], d);
+      const ok = where.every(([f, op, v]) => {
+        const x = field(f);
+        return op === "==" ? x === v : op === ">" ? x > v : op === "in" ? v.includes(x) : op === "array-contains" ? Array.isArray(x) && x.includes(v) : false;
+      });
       if (ok) out.push(this.wrap(p));
     }
     return out.slice(0, limit);
@@ -37,6 +41,32 @@ export class FakeDb {
     }
   }
   async runTx(fn) { await this.commit((await fn({ get: (p) => this.get(p), query: (q) => this.query(q) })) || []); }
+}
+
+/** R2 stand-in: conditional put (onlyIf etagDoesNotMatch "*") returns null when the key exists, as R2 does. */
+export class FakeR2 {
+  constructor() { this.objs = new Map(); }
+  async put(key, value, opts = {}) {
+    if (opts.onlyIf?.etagDoesNotMatch === "*" && this.objs.has(key)) return null;
+    const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+    this.objs.set(key, { bytes, size: bytes.byteLength, httpMetadata: opts.httpMetadata || {}, customMetadata: opts.customMetadata || {}, uploaded: new Date() });
+    return { key };
+  }
+  async get(key) {
+    const o = this.objs.get(key);
+    if (!o) return null;
+    return { body: new Response(o.bytes).body, size: o.size, httpMetadata: o.httpMetadata, customMetadata: o.customMetadata };
+  }
+  async head(key) {
+    const o = this.objs.get(key);
+    return o ? { size: o.size, httpMetadata: o.httpMetadata, customMetadata: o.customMetadata, uploaded: o.uploaded } : null;
+  }
+  async delete(key) { this.objs.delete(key); }
+  async list({ prefix = "", limit = 1000 } = {}) {
+    const objects = [...this.objs].filter(([k]) => k.startsWith(prefix)).slice(0, limit)
+      .map(([key, o]) => ({ key, size: o.size, uploaded: o.uploaded, customMetadata: o.customMetadata }));
+    return { objects, truncated: false };
+  }
 }
 
 export class FakeKv {

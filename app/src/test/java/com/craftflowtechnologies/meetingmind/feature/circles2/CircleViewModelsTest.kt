@@ -189,6 +189,18 @@ class CircleViewModelsTest {
         assertEquals(listOf("c9"), repo.store.circleIds())
     }
 
+    @Test fun `a join that waits for approval does not open the circle or remember it`() = runTest {
+        val api = FakeApi().also { it.joinedCircleId = "c9"; it.joinPending = true }
+        val repo = repoWith(api)
+        val vm = CirclesListViewModel(repo)
+        vm.onPaste("GRACE-7K2Q"); vm.onJoinName("Ann")
+        var opened: String? = null
+        vm.join { opened = it }
+        assertNull(opened)
+        assertTrue(vm.join.value.pending)
+        assertEquals(emptyList<String>(), repo.store.circleIds())
+    }
+
     @Test fun `join failures become messages`() = runTest {
         val api = FakeApi()
         val vm = CirclesListViewModel(repoWith(api))

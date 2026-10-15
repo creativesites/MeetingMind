@@ -18,7 +18,9 @@ enum class PostType(val wire: String, val label: String, val verb: String, val a
     Study("study", "Study share", "Share from your study"),
     Encouragement("encouragement", "Encouragement", "Encourage the group"),
     Reading("reading", "Reading plan", "Post about the plan"),
-    Announcement("announcement", "Announcement", "Make an announcement", adminOnly = true);
+    Announcement("announcement", "Announcement", "Make an announcement", adminOnly = true),
+    /** Free-form: any member, any circle, published at once. Not in any template list. */
+    Note("note", "Free-form", "Share anything");
 
     companion object { fun from(wire: String?): PostType? = entries.firstOrNull { it.wire == wire } }
 }
@@ -34,6 +36,8 @@ data class CircleSettings(
     val allowedTypes: List<PostType>,
     val whoCanInvite: WhoCanInvite = WhoCanInvite.Admins,
     val prayerApproval: Boolean = true,
+    /** When on, a join waits for an admin (the Worker keeps a join request). Off keeps today's behaviour. */
+    val joinApproval: Boolean = false,
     val reactions: List<ReactionKind> = ReactionKind.entries,
     val guidelines: String = ""
 )
@@ -85,14 +89,20 @@ data class Circle(
     val vocab: String,
     val settings: CircleSettings,
     val memberCount: Int,
-    val ownerUid: String = ""
+    val ownerUid: String = "",
+    val description: String = "",
+    val pinnedPostId: String? = null,
+    /** Storage path of the cover photo, once one is set. */
+    val coverPath: String? = null,
+    val pinnedMessageId: String? = null
 ) {
     /** "Cell group" for the header: the group's own word, never a generic one. */
     val groupWord: String get() = vocab.ifBlank { "Circle" }
 }
 
+/** [title] is a display label such as "Pastor". It never changes what the person may do; [role] does. */
 @Immutable
-data class Member(val uid: String, val displayName: String, val role: Role, val muted: Boolean = false, val joinedAt: Long = 0L)
+data class Member(val uid: String, val displayName: String, val role: Role, val muted: Boolean = false, val joinedAt: Long = 0L, val title: String? = null, val lastReadAt: Long = 0L)
 
 @Immutable
 data class PostCounts(val prayed: Int = 0, val comments: Int = 0, val updates: Int = 0, val reactions: Map<ReactionKind, Int> = emptyMap())
@@ -134,10 +144,11 @@ data class Comment(
     val byRequester: Boolean = false
 )
 
-enum class MessageKind { Text, Card, Reply, Poll, Celebration, Chain, Unknown;
+enum class MessageKind { Text, Card, Reply, Poll, Celebration, Chain, Image, Voice, File, Unknown;
     companion object {
         fun from(wire: String?): MessageKind = when (wire) {
             "text" -> Text; "card" -> Card; "reply" -> Reply; "poll" -> Poll; "celebration" -> Celebration; "chain" -> Chain
+            "image" -> Image; "voice" -> Voice; "file" -> File
             else -> Unknown
         }
     }
@@ -169,7 +180,13 @@ data class ChatMessage(
     val companion: String? = null,
     val createdAt: Long = 0L,
     val editedAt: Long? = null,
-    val deleted: Boolean = false
+    val deleted: Boolean = false,
+    /** Image, voice or file messages only. Written by the Worker (sendMessage). */
+    val attachment: MediaAttachment? = null,
+    /** The id of the message this was forwarded from, when it was forwarded. */
+    val forwardedFrom: String? = null,
+    /** Uids of members mentioned with @name in the text. */
+    val mentions: List<String> = emptyList()
 )
 
 @Immutable
@@ -219,3 +236,68 @@ enum class CelebrationKind(val wire: String, val label: String) {
 
 /** The companion forms the Worker accepts, by id. */
 val COMPANION_IDS: List<String> = listOf("zuri", "nas", "wren", "page")
+
+/** Event fields as shown. [startsAt] and [endsAt] are epoch milliseconds (UTC); [timeZone] is the IANA zone to show them in. */
+@Immutable
+data class CircleEvent(
+    val id: String,
+    val title: String,
+    val description: String,
+    val location: String,
+    val onlineUrl: String?,
+    val startsAt: Long,
+    val endsAt: Long,
+    val timeZone: String,
+    val status: String,
+    val createdByName: String
+) {
+    val cancelled: Boolean get() = status == "cancelled"
+}
+
+enum class RsvpAnswer(val wire: String, val label: String) {
+    Going("going", "Going"), Maybe("maybe", "Maybe"), No("no", "Can't go");
+
+    companion object { fun from(wire: String?): RsvpAnswer? = entries.firstOrNull { it.wire == wire } }
+}
+
+@Immutable
+data class Rsvp(val uid: String, val displayName: String, val answer: RsvpAnswer)
+
+/** What an admin writes for an event. The Worker checks times, zone and link. */
+@Immutable
+data class EventDraft(
+    val title: String,
+    val description: String,
+    val location: String,
+    val onlineUrl: String?,
+    val startsAt: Long,
+    val endsAt: Long,
+    val timeZone: String
+)
+
+/** Someone waiting to be let in (joinApproval on). Admins see these; the Worker decides them. */
+@Immutable
+data class JoinRequest(val uid: String, val displayName: String, val createdAt: Long)
+
+/** The result of a join: the circle, and whether the person is still waiting for an admin. */
+data class JoinOutcome(val circleId: String, val pending: Boolean)
+
+/** The kinds of file the Worker accepts. Limits match the Worker (docs/CIRCLES_BACKEND_HANDOFF.md section 6). */
+enum class MediaKind(val wire: String, val maxBytes: Long, val mimes: List<String>) {
+    Image("image", 10_000_000L, listOf("image/jpeg", "image/png", "image/webp")),
+    Voice("voice", 25_000_000L, listOf("audio/mp4", "audio/aac", "audio/ogg")),
+    File("file", 25_000_000L, listOf("application/pdf"));
+
+    fun accepts(mime: String): Boolean = mime in mimes
+}
+
+/** A stored file as a message or post refers to it. [path] is `circles/{circleId}/media/{uuid}`. */
+@Immutable
+data class MediaAttachment(val path: String, val mime: String, val bytes: Long, val durationMs: Long? = null, val name: String? = null)
+
+data class UploadTicket(val ticketId: String, val path: String)
+
+/** Someone typing right now. Stale entries are dropped by the view model. */
+@Immutable
+data class TypingUser(val uid: String, val name: String, val updatedAt: Long)
+

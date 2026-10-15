@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.Comment
+import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.ui.mm.InsetPanel
@@ -35,14 +36,15 @@ import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 fun PostTypeSheet(circle: Circle, isAdmin: Boolean, onPick: (PostType) -> Unit, onDismiss: () -> Unit) {
     CircleSheet(onDismiss) {
         Text("New post", style = MM.type.title, color = MM.colors.ink)
-        circle.settings.allowedTypes.filter { !it.adminOnly || isAdmin }.forEach { t ->
+        // Free-form is always offered; the circle's own kinds follow.
+        (listOf(PostType.Note) + circle.settings.allowedTypes.filter { !it.adminOnly || isAdmin }).distinct().forEach { t ->
             ListRow(title = t.verb, subtitle = t.label, onClick = { onPick(t) })
         }
     }
 }
 
 @Composable
-fun ComposerSheet(circle: Circle, state: ComposerState, onBody: (String) -> Unit, onVerse: (String) -> Unit, onAnonymous: (Boolean) -> Unit, onSend: () -> Unit, onDismiss: () -> Unit) {
+fun ComposerSheet(circle: Circle, state: ComposerState, onBody: (String) -> Unit, onVerse: (String) -> Unit, onAnonymous: (Boolean) -> Unit, onSend: () -> Unit, onDismiss: () -> Unit, onRemovePhoto: (MediaAttachment) -> Unit = {}) {
     val type = state.type ?: return
     CircleSheet(onDismiss) {
         Text(type.verb, style = MM.type.title, color = MM.colors.ink)
@@ -52,6 +54,12 @@ fun ComposerSheet(circle: Circle, state: ComposerState, onBody: (String) -> Unit
             label = when (type) { PostType.Prayer -> "What would you like prayer for?"; PostType.Testimony -> "What did God do?"; else -> "Write something" },
             minLines = 4, maxLines = 10
         )
+        state.attachments.forEach { a ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Photo attached · ${formatBytes(a.bytes)}", style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.weight(1f))
+                TextAction("Remove", { onRemovePhoto(a) })
+            }
+        }
         if (type != PostType.Announcement) CircleField(state.verse, onVerse, "Verse (optional)", placeholder = "Psalm 23:1")
         if (type == PostType.Prayer) {
             ToggleRow("Post anonymously", "Nobody sees who asked, admins included.", state.anonymous, onAnonymous)

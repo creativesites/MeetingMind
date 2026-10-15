@@ -11,6 +11,7 @@ Updated: 2026-10-15. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git lo
 - The sun or moon sits over the headline in the Today quote card. It is the card's own illustration, not the companion. Not started.
 
 ## Circles (team report)
+- Redesign (branch `circles-redesign-m1`): backend and client are written end to end, NOT COMPILED. Client: Circle hero with cover photo, feed composer with photos, chat (pins, typing, read receipts, mentions, forwards, photos, PDFs, voice notes), members search and invites, event pickers and cancel confirmation. Backend for the local agent: `docs/CIRCLES_BACKEND_HANDOFF.md`.
 - Circles v2 first increment: creation is idempotent, clearer sign-in errors, v1 removed with migration 25 to 26. Worker live. Firestore rules deployed.
 - `.dev` build still lacks the Android OAuth client in `app/google-services.json`. Google sign-in on `.dev` will fail until the owner re-downloads the file and commits it. The owner's copy is on their machine only.
 - Not verified on device: push notifications, Google sign-in on any build, behaviour after reinstall.
@@ -45,7 +46,7 @@ Updated: 2026-10-15. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git lo
 
 ## Earlier open items (still open)
 - Circles: the Worker and `firestore.rules` must be redeployed by the owner. See `BACKEND.md`.
-- Circles: anonymous sign-in must be confirmed enabled in the Firebase console.
+- Circles: anonymous sign-in confirmed enabled in the Firebase console (owner, 2026-10-15).
 - Circles migration of the client to the Worker (V-0b3) and removal of old tables (V-0b6): not done.
 - Play workflow trigger watches branch `ccr-5e66b00c-btultn`, not the designated branch. Team to decide whether to move it. Documented as it is in `PLAY_STORE.md`.
 - Decided: no rewrite of old commit trailers from earlier sessions. Leave history as it is; new commits follow the trailer rule.

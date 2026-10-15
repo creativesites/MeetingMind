@@ -96,7 +96,7 @@ export class Firestore {
   }
 
   structured({ collection, where = [], limit }) {
-    const ops = { "==": "EQUAL", ">": "GREATER_THAN", in: "IN" };
+    const ops = { "==": "EQUAL", ">": "GREATER_THAN", in: "IN", "array-contains": "ARRAY_CONTAINS" };
     const filters = where.map(([f, op, v]) => ({ fieldFilter: { field: { fieldPath: f }, op: ops[op], value: encodeValue(v) } }));
     const q = { from: [{ collectionId: collection }] };
     if (filters.length === 1) q.where = filters[0];

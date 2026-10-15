@@ -1,7 +1,7 @@
 import test, { before, after, beforeEach } from "node:test";
 import { readFileSync } from "node:fs";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, serverTimestamp, Timestamp } from "firebase/firestore";
 
 const rules = readFileSync(new URL("./firestore.rules", import.meta.url), "utf8");
 const [host, port] = (process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8089").split(":");
@@ -173,6 +173,23 @@ test("chat: members only read; only members write; author == uid; time and size 
   await assertFails(setDoc(doc(as("member"), M("n10")), msg({ displayName: "x".repeat(41) })));
 });
 
+test("chat: mentions (at most 20) and forwardedFrom (at most 64) on text and reply messages only", async () => {
+  await assertSucceeds(setDoc(doc(as("member"), M("mn1")), msg({ mentions: ["admin", "owner"] })));
+  await assertSucceeds(setDoc(doc(as("member"), M("mn2")), msg({ kind: "reply", replyTo: "m1", mentions: ["admin"] })));
+  await assertSucceeds(setDoc(doc(as("member"), M("mn3")), msg({ forwardedFrom: "m1" })));
+  await assertSucceeds(setDoc(doc(as("member"), M("mn4")), msg({ forwardedFrom: "x".repeat(64) })));
+  await assertFails(setDoc(doc(as("member"), M("mn5")), msg({ mentions: Array.from({ length: 21 }, (_, i) => `u${i}`) })));
+  await assertFails(setDoc(doc(as("member"), M("mn6")), msg({ mentions: "admin" })));
+  await assertFails(setDoc(doc(as("member"), M("mn7")), msg({ forwardedFrom: "x".repeat(65) })));
+  await assertFails(setDoc(doc(as("member"), M("mn8")), msg({ forwardedFrom: "" })));
+  await assertFails(setDoc(doc(as("member"), M("mn9")), msg({ forwardedFrom: 42 })));
+  // The card itself is valid (templateId, text), so these fail only because of mentions / forwardedFrom on a card.
+  const card = { templateId: "x", text: "y", mood: "z" };
+  await assertSucceeds(setDoc(doc(as("member"), M("mnc0")), msg({ kind: "card", text: "", card })));
+  await assertFails(setDoc(doc(as("member"), M("mn10")), msg({ kind: "card", text: "", card, mentions: ["admin"] })));
+  await assertFails(setDoc(doc(as("member"), M("mn11")), msg({ kind: "card", text: "", card, forwardedFrom: "m1" })));
+});
+
 test("chat: Worker-only kinds (poll, celebration, chain) cannot be forged by clients", async () => {
   for (const kind of ["poll", "celebration", "chain", "system"]) {
     await assertFails(setDoc(doc(as("member"), M("f" + kind)), msg({ kind, pollId: "pl1" })));
@@ -269,4 +286,65 @@ test("prayer chain slots: valid hour, open chain, claim once, release own, Worke
   await assertSucceeds(deleteDoc(s("ch1", "6", "member")));
   await assertSucceeds(deleteDoc(s("ch1", "5", "owner"))); // admin clears
   await assertFails(setDoc(doc(as("owner"), `circles/${C}/chains/mine`), { title: "x", endsAt: new Date() }));
+});
+
+test("events: members read events and RSVPs; outsiders cannot; clients cannot write either", async () => {
+  await env.withSecurityRulesDisabled(async (c) => {
+    const db = c.firestore();
+    await setDoc(doc(db, `circles/${C}/events/ev1`), { title: "Breakfast", status: "scheduled", startsAt: 1, endsAt: 2 });
+    await setDoc(doc(db, `circles/${C}/events/ev1/rsvps/member`), { status: "going" });
+  });
+  await assertSucceeds(getDoc(doc(as("member"), `circles/${C}/events/ev1`)));
+  await assertSucceeds(getDoc(doc(as("member"), `circles/${C}/events/ev1/rsvps/member`)));
+  await assertFails(getDoc(doc(as("stranger"), `circles/${C}/events/ev1`)));
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/events/ev2`), { title: "Forged", status: "scheduled" }));
+  await assertFails(updateDoc(doc(as("admin"), `circles/${C}/events/ev1`), { status: "cancelled" }));
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/events/ev1/rsvps/member`), { status: "going" }));
+});
+
+test("join requests: admins and the owner can read them; members, outsiders and every client write are refused", async () => {
+  await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), `circles/${C}/joinRequests/ann`), { displayName: "Ann" }));
+  await assertSucceeds(getDoc(doc(as("admin"), `circles/${C}/joinRequests/ann`)));
+  await assertSucceeds(getDocs(collection(as("admin"), `circles/${C}/joinRequests`)));
+  await assertSucceeds(getDoc(doc(as("owner"), `circles/${C}/joinRequests/ann`)));
+  await assertSucceeds(getDocs(collection(as("owner"), `circles/${C}/joinRequests`)));
+  await assertFails(getDoc(doc(as("member"), `circles/${C}/joinRequests/ann`)));
+  await assertFails(getDocs(collection(as("member"), `circles/${C}/joinRequests`)));
+  await assertFails(getDocs(collection(as("stranger"), `circles/${C}/joinRequests`)));
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/joinRequests/member`), { displayName: "M" }));
+  await assertFails(setDoc(doc(as("admin"), `circles/${C}/joinRequests/ann`), { displayName: "Changed" }));
+  await assertFails(deleteDoc(doc(as("admin"), `circles/${C}/joinRequests/ann`)));
+});
+
+test("attachment messages are Worker-only: clients cannot create image, voice or file messages, or add an attachment", async () => {
+  await assertFails(setDoc(doc(as("member"), M("att1")), msg({ kind: "image", text: "", attachment: { path: `circles/${C}/media/x`, mime: "image/jpeg", bytes: 10 } })));
+  await assertFails(setDoc(doc(as("member"), M("att2")), msg({ kind: "voice", text: "", attachment: { path: `circles/${C}/media/x`, mime: "audio/mp4", bytes: 10 } })));
+  await assertFails(setDoc(doc(as("member"), M("att3")), msg({ kind: "file", text: "", attachment: { path: `circles/${C}/media/x`, mime: "application/pdf", bytes: 10 } })));
+  await assertFails(setDoc(doc(as("member"), M("att4")), msg({ attachment: { path: `circles/${C}/media/x`, mime: "image/jpeg", bytes: 10 } })));
+  await assertSucceeds(setDoc(doc(as("member"), M("att5")), msg({ text: "plain text still works" })));
+});
+
+test("read receipts: a member sets only their own lastReadAt, to the server time", async () => {
+  await assertSucceeds(updateDoc(doc(as("member"), `circles/${C}/members/member`), { lastReadAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(as("member"), `circles/${C}/members/admin`), { lastReadAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(as("member"), `circles/${C}/members/member`), { lastReadAt: serverTimestamp(), role: "admin" }));
+  await assertFails(updateDoc(doc(as("member"), `circles/${C}/members/member`), { lastReadAt: new Date("2020-01-01") }));
+  await assertFails(updateDoc(doc(as("stranger"), `circles/${C}/members/member`), { lastReadAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/members/newbie`), { role: "member", lastReadAt: serverTimestamp() }));
+});
+
+test("typing: members write only their own short-lived doc; name and expiry are capped", async () => {
+  const typing = (uid) => doc(as(uid), `circles/${C}/typing/${uid}`);
+  const now = () => Timestamp.fromMillis(Date.now() + 10_000);
+  await assertSucceeds(setDoc(typing("member"), { displayName: "M", updatedAt: serverTimestamp(), expiresAt: now() }));
+  await assertFails(setDoc(doc(as("member"), `circles/${C}/typing/admin`), { displayName: "A", updatedAt: serverTimestamp(), expiresAt: now() }));
+  await assertFails(setDoc(typing("member"), { displayName: "x".repeat(41), updatedAt: serverTimestamp(), expiresAt: now() }));
+  await assertFails(setDoc(typing("member"), { displayName: "M", updatedAt: serverTimestamp(), expiresAt: Timestamp.fromMillis(Date.now() + 120_000) }));
+  await assertFails(setDoc(typing("member"), { displayName: "M", updatedAt: new Date("2020-01-01"), expiresAt: now() }));
+  await assertFails(setDoc(typing("member"), { displayName: "M", updatedAt: serverTimestamp(), expiresAt: now(), role: "admin" }));
+  await assertFails(setDoc(typing("stranger"), { displayName: "S", updatedAt: serverTimestamp(), expiresAt: now() }));
+  await assertSucceeds(getDocs(collection(as("member"), `circles/${C}/typing`)));
+  await assertFails(getDocs(collection(as("stranger"), `circles/${C}/typing`)));
+  await assertSucceeds(deleteDoc(typing("member")));
+  await assertFails(deleteDoc(doc(as("member"), `circles/${C}/typing/admin`)));
 });

@@ -35,25 +35,33 @@ fun CircleSettingsContent(
     circle: Circle,
     me: Member?,
     onBack: () -> Unit,
-    onSave: (name: String, vocab: String, CircleSettings) -> Unit,
+    onSave: (name: String, vocab: String, description: String, CircleSettings) -> Unit,
     onMute: (Boolean) -> Unit,
     onLeave: () -> Unit,
     account: AccountUiState? = null,
     onLink: (android.content.Context) -> Unit = {},
     onSwitch: () -> Unit = {},
-    onDismissConflict: () -> Unit = {}
+    onDismissConflict: () -> Unit = {},
+    /** The cover photo picked on this phone. Admins only. */
+    onCover: (PickedFile) -> Unit = {}
 ) {
     val admin = me?.role?.isAdmin == true
     var name by rememberSaveable(circle.id, circle.name) { mutableStateOf(circle.name) }
     var vocab by rememberSaveable(circle.id, circle.vocab) { mutableStateOf(circle.vocab) }
     var types by remember(circle.settings) { mutableStateOf(circle.settings.allowedTypes) }
+    var description by rememberSaveable(circle.id, circle.description) { mutableStateOf(circle.description) }
     var approval by remember(circle.settings) { mutableStateOf(circle.settings.prayerApproval) }
+    var joinApproval by remember(circle.settings) { mutableStateOf(circle.settings.joinApproval) }
     var who by remember(circle.settings) { mutableStateOf(circle.settings.whoCanInvite) }
     var reactions by remember(circle.settings) { mutableStateOf(circle.settings.reactions) }
     var guidelines by remember(circle.settings) { mutableStateOf(circle.settings.guidelines) }
     var confirmLeave by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val pickCover = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri: android.net.Uri? ->
+        if (uri != null) readPicked(ctx, uri)?.let(onCover)
+    }
     val changed = admin && (name.trim() != circle.name || vocab.trim() != circle.vocab || types != circle.settings.allowedTypes ||
-        approval != circle.settings.prayerApproval || who != circle.settings.whoCanInvite || reactions != circle.settings.reactions || guidelines != circle.settings.guidelines)
+        description.trim() != circle.description || joinApproval != circle.settings.joinApproval || approval != circle.settings.prayerApproval || who != circle.settings.whoCanInvite || reactions != circle.settings.reactions || guidelines != circle.settings.guidelines)
 
     Column(Modifier.fillMaxSize().background(MM.colors.background).statusBarsPadding()) {
         ScreenHeader(
@@ -64,7 +72,9 @@ fun CircleSettingsContent(
             if (!admin) Text("Only admins can change these. You can still mute or leave.", style = MM.type.secondary, color = MM.colors.inkSecondary)
             SectionHeader("About")
             CircleField(name, { name = it.take(60) }, "Name")
+            if (admin) TextAction("Change cover photo", { pickCover.launch("image/*") })
             CircleField(vocab, { vocab = it.take(40) }, "What your group is called", placeholder = "Cell group")
+            CircleField(description, { description = it.take(300) }, "About this circle (optional)", placeholder = "Breakfast every second Wednesday.", minLines = 2, maxLines = 4)
             if (admin) {
                 SectionHeader("Posts")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
@@ -73,6 +83,7 @@ fun CircleSettingsContent(
                     }
                 }
                 ToggleRow("Admins approve prayer requests first", "Anonymous requests stay anonymous to admins too.", approval) { approval = it }
+                ToggleRow("Admins let new people in", "When on, people wait until an admin approves them.", joinApproval) { joinApproval = it }
                 SectionHeader("Reactions")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
                     ReactionKind.entries.forEach { k ->
@@ -82,7 +93,17 @@ fun CircleSettingsContent(
                 SectionHeader("Who can invite")
                 SegmentedControl(WhoCanInvite.entries.map { it.label }, WhoCanInvite.entries.indexOf(who), { who = WhoCanInvite.entries[it] })
                 CircleField(guidelines, { guidelines = it.take(1000) }, "Community guidelines (optional)", placeholder = "Be kind. What's shared here stays here.", minLines = 2, maxLines = 6)
-                PrimaryButton("Save changes", { onSave(name, vocab, CircleSettings(types, who, approval, reactions, guidelines.trim())) }, enabled = changed && name.isNotBlank(), modifier = Modifier.fillMaxWidth())
+                PrimaryButton(
+                    "Save changes",
+                    {
+                        onSave(name, vocab, description.trim(), CircleSettings(
+                            allowedTypes = types, whoCanInvite = who, prayerApproval = approval,
+                            joinApproval = joinApproval, reactions = reactions, guidelines = guidelines.trim()
+                        ))
+                    },
+                    enabled = changed && name.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                )
             } else if (circle.settings.guidelines.isNotBlank()) {
                 SectionHeader("Community guidelines")
                 Text(circle.settings.guidelines, style = MM.type.body, color = MM.colors.ink)

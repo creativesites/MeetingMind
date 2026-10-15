@@ -35,3 +35,73 @@ guidance received on the planning branch.
 | Open | Google sign-in not yet tested on a device. The `.dev` build may still fail Google sign-in. Cloudflare returns 1010 to Python-urllib, but OkHttp (the app) and browsers get 200. |
 
 Still open: device test of Google sign-in and the reinstall/link flow. Nothing else blocks the first increment. The chat and fun placeholder (decision 4) is the existing v2 surface.
+
+## Implementation milestone 1 (Circles redesign, branch `circles-redesign-m1`)
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| 17 | Circle creation failure | No defect found in the code path. The app's create payload matches the Worker's accepted values (post types, reactions, templates), the Worker create tests pass (33/33 before this milestone), and the default Worker URL is set in the build. Remaining failure modes are configuration: anonymous sign-in, a Worker or rules deploy that is out of date, and the `.dev` build's missing Android OAuth client. Next step: reproduce on a device and capture the error code. | Code and test reading, 2026-10-14. |
+| 18 | `joinApproval` setting | Added to `settings`, default **off**, so circles that exist today join as they do. The design shows it on; turning it on by default is a product decision still open. | Keeps behaviour unchanged for existing circles. |
+| 19 | Circle `description` | Added to the circle document on create and update, up to 300 characters, default empty. | Needed by the approved Circle home design. |
+
+Worker tests: 37 of 37 pass (4 new: description on create and update, description length cap, description default, join approval default and validation).
+
+## Implementation milestone 1, backend slice
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| 20 | Join approval | With `joinApproval` on, a join creates `joinRequests/{uid}` and returns `pending: true`. The invite is not used up until an admin approves. Admins approve or reject with `decideJoin`. | Approved design (Members page: requests to join). |
+| 21 | Free-form post | New post type `note`. Every circle allows it, and it publishes at once with no approval. Anonymous notes are refused. Existing circles get it without changing their settings. | Approved design; decision 2 recommended. |
+| 22 | Titles | `setTitle`, admin only, stored on the member as `title` (max 40). Titles never change permissions. | Approved design; the title/role split. |
+| 23 | Pinned post | `pinPost` (admin), stored as `pinnedPostId` on the circle. Only live posts can be pinned. | Approved design (pinned feed post). |
+| 24 | Events | `createEvent`, `updateEvent`, `cancelEvent` (admin only). Times are UTC milliseconds plus an IANA time zone. Links must be https. Rules: members read events and RSVPs; clients never write them. | Approved design; the events plan. |
+| 25 | RSVP | Any member, one answer each (`going`, `maybe`, `no`), stored under the event. Refused once the event is cancelled. | Events plan. |
+| 26 | Moderator role | **Not built.** The design shows a Moderator role for "create events" and "remove posts". Adding it touches the Role enum, the Worker, and the rules. It needs its own decision. Until then those actions are admin only. | Open. |
+
+Rules tests: 20 of 20 pass (2 new: events and RSVP reads and writes; join requests are Worker-only). Worker tests: 46 of 46 pass.
+
+Not done in this slice: the Android side (models, parsing, the new API calls, and every redesigned screen). The sandbox has no Android SDK, so the app cannot be compiled or tested here.
+
+## Implementation milestone 1, Android data layer
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| 27 | `join` return type | Now `CirclesResult<JoinOutcome>` (circle id plus `pending`). A pending join is not remembered as a circle, so the app does not open a circle the person is not in yet. | Needed for join approval. |
+| 28 | Event and RSVP reads | `CirclesData.observeEvents` and `observeRsvps` read the subcollections the rules allow. Writes all go through the Worker. | Rules from the backend slice. |
+| 29 | Compile status | Written without a compiler: the authoring sandbox has no Android SDK. Brace balance is checked; nothing is compiled or run. | Stated plainly. |
+
+Not done: the redesigned screens (Circle home hero, feed composer with free-form, chat, members, events UI, and the join-pending message on the list screen, which needs wiring to `JoinUiState.pending`).
+
+## Client UI pass (after the data layer)
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| 30 | Event times in the form | Quick choices (next Wednesday 7 pm, Sunday 10 am, Saturday 9 am) in the device zone, stored with the event's IANA zone. No full date picker yet. | Keeps the UI compile-safe without a date picker; replace once the UI can be built and tested. |
+| 31 | Cancel event | Cancels straight away, with no confirmation dialog. | Gap: add a confirmation before release. |
+| 32 | Join pending | The join sheet shows "Request sent" and does not open the circle. | Matches row 27. |
+| 33 | Chat redesign | Partly done: day dividers, a "new messages" divider from the last-read time, and grouped runs from the same person within five minutes. Still waiting on the backend (handoff section 5): pins, mentions, forwards, read receipts, typing, media. Its main features (read receipts, typing, mentions, pins, media) need the backend contracts in `docs/CIRCLES_BACKEND_HANDOFF.md` section 5 first. Building those UI parts before then would show features that cannot work. | Honest scope. |
+| 34 | Members page | Titles shown beside roles; admins set titles; waiting requests listed to admins only, with Let in and Decline. | Approved design; depends on handoff section 4 (admin read rule). |
+| 35 | Settings | Circle description and the "Admins let new people in" toggle are saved through `updateCircle`. | Rows 17-19. |
+
+Not compiled. Nothing in this pass has been built or run. `CirclesScreenshotTest` expects updated lambda arity, which is done here, but the screenshots themselves were not recorded.
+
+## Media storage (owner, 2026-10-15)
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| 36 | Media storage | Cloudflare R2 (`meetingmind-circles-media`), accessed only by the Worker, which proxies bytes. Replaces Firebase Storage. | Firebase Storage needs the Blaze plan; the project is on the free plan. R2 has no egress fees. |
+| 37 | Chat attachments | Decided: written through a `sendMessage` Worker endpoint. Clients cannot create attachment messages. | Owner, 2026-10-15. Firestore rules cannot check who uploaded an object. |
+| 38 | Ticket single use | Open: KV is eventually consistent, so the agent chooses between a Durable Object and a documented race window. | Found while reviewing the plan. |
+
+## Client UI, media and chat (not compiled)
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| 39 | Attachments on the client | Photos, PDFs and voice notes are uploaded through `createUploadTicket` and `uploadMedia`, then sent with `sendMessage` (chat) or `createPost` (feed). Large photos are shrunk to JPEG first. | Rows 36 and 37. |
+| 40 | Forwarding | Forward copies the message text into the composer and records `forwardedFrom`. Forwarding to another circle is not built. | Scope of the chat design. |
+| 41 | Read receipts and typing | Written from the client to `members/{uid}.lastReadAt` and `typing/{uid}`. Writes fail quietly until the rules in the handoff are deployed. | Handoff sections 5c and 5d. |
+| 42 | Presence (online dots) | Not built. The contract has no presence data. Add it to the handoff if the design needs it. | Gap. |
+| 43 | Cover photo | Admins pick it in settings. It shows on the feed's hero through the Worker. | Handoff section 6. |
+| 44 | Event times | Date and time pickers replace the quick choices. The times are kept in the circle's zone. | Row 30 superseded. |
+| 45 | Cancelling an event | Asks for confirmation first. | Row 31 superseded. |
+
