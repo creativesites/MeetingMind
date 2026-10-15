@@ -133,8 +133,6 @@ Optional keys go in `local.properties`, which is gitignored. Never commit them.
 
 ```properties
 sdk.dir=/path/to/Android/sdk
-# YouVersion Platform key, for licensed Bible translations (open ones work without it)
-youversion.appKey=...
 ```
 
 Gemini keys are never part of the build. Each person enters their own in

@@ -62,7 +62,7 @@ data class AppPreferencesState(
     val userName: String? = null,
     /** The workflow Record last started with. */
     val lastRecordingType: com.craftflowtechnologies.meetingmind.core.model.RecordingType = com.craftflowtechnologies.meetingmind.core.model.RecordingType.MEETING,
-    /** YouVersion Bible id for verse text. BSB by default: openly licensed, always available. */
+    /** Bible id for verse text. BSB by default: openly licensed, always available. Only open translations are kept. */
     val bibleVersionId: Int = com.craftflowtechnologies.meetingmind.core.scripture.BibleVersions.DEFAULT_ID,
     /** Faith notes need unlocking with fingerprint, face or screen lock (PLAN_V1 §6, privacy). */
     val faithLockEnabled: Boolean = false,
@@ -273,7 +273,7 @@ class UserPreferencesManager(private val context: Context) {
             lastRecordingType = prefs[LAST_RECORDING_TYPE]?.let {
                 runCatching { com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(it) }.getOrNull()
             } ?: com.craftflowtechnologies.meetingmind.core.model.RecordingType.MEETING,
-            bibleVersionId = prefs[BIBLE_VERSION_ID] ?: com.craftflowtechnologies.meetingmind.core.scripture.BibleVersions.DEFAULT_ID,
+            bibleVersionId = prefs[BIBLE_VERSION_ID]?.takeIf { it < 0 } ?: com.craftflowtechnologies.meetingmind.core.scripture.BibleVersions.DEFAULT_ID,
             faithLockEnabled = prefs[FAITH_LOCK] ?: false,
             appLockEnabled = prefs[APP_LOCK] ?: false,
             calendarEnabled = prefs[CALENDAR_ENABLED] ?: false,

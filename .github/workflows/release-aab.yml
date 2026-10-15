@@ -19,7 +19,7 @@ name: Release AAB (Play Store)
 #     Also set REVENUECAT_API_KEY so plans can be bought.
 #   TESTER (GEMINI_PROXY_URL not set): the built-in SYSTEM_GEMINI_API_KEY is baked in so closed testers can use
 #     Internet mode without setup. That secret is then required.
-# Optional for both: SYSTEM_DEEPSEEK_API_KEY (built-in fallback key), YOUVERSION_APP_KEY, DEEPSEEK_PROXY_URL.
+# Optional for both: SYSTEM_DEEPSEEK_API_KEY (built-in fallback key), DEEPSEEK_PROXY_URL.
 #
 # A TESTER BUNDLE CONTAINS THE BUILT-IN API KEYS. It is attached to a draft release, which only
 # people with access to the repository can see, and is never committed. Download it, upload it to
@@ -82,7 +82,6 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           SYSTEM_GEMINI_API_KEY: ${{ secrets.SYSTEM_GEMINI_API_KEY }}
           SYSTEM_DEEPSEEK_API_KEY: ${{ secrets.SYSTEM_DEEPSEEK_API_KEY }}
-          YOUVERSION_APP_KEY: ${{ secrets.YOUVERSION_APP_KEY }}
           DEEPSEEK_PROXY_URL: ${{ secrets.DEEPSEEK_PROXY_URL }}
           GEMINI_PROXY_URL: ${{ secrets.GEMINI_PROXY_URL }}
           REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}

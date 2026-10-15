@@ -751,7 +751,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             com.craftflowtechnologies.meetingmind.feature.study.StudyWorkspaceScreen(
                 editor = editor, vm = study, noteId = noteId,
                 meetingId = entry.arguments?.getString("meeting"),
-                initialRef = entry.arguments?.getString("ref")?.let { com.craftflowtechnologies.meetingmind.core.scripture.YouVersionScriptureProvider.parsePassageId(it) },
+                initialRef = entry.arguments?.getString("ref")?.let { com.craftflowtechnologies.meetingmind.core.scripture.PassageIds.parse(it) },
                 onNavigateBack = { navController.popBackStack() },
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
                 onOpenRecording = { m, ms -> navController.navigate(Routes.meetingDetailRoute(m, ms)) }
@@ -793,7 +793,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         ) { backStackEntry ->
             val vm: com.craftflowtechnologies.meetingmind.feature.bible.BibleViewModel = viewModel()
-            val ref = backStackEntry.arguments?.getString("ref")?.let { com.craftflowtechnologies.meetingmind.core.scripture.YouVersionScriptureProvider.parsePassageId(it) }
+            val ref = backStackEntry.arguments?.getString("ref")?.let { com.craftflowtechnologies.meetingmind.core.scripture.PassageIds.parse(it) }
             com.craftflowtechnologies.meetingmind.feature.bible.BibleScreen(
                 viewModel = vm,
                 initialReference = ref,
@@ -836,7 +836,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         ) { entry ->
             val vm: com.craftflowtechnologies.meetingmind.feature.bible.GuidedSessionViewModel = viewModel()
-            val passage = entry.arguments?.getString("ref")?.let { com.craftflowtechnologies.meetingmind.core.scripture.YouVersionScriptureProvider.parsePassageId(it) }
+            val passage = entry.arguments?.getString("ref")?.let { com.craftflowtechnologies.meetingmind.core.scripture.PassageIds.parse(it) }
             if (passage == null) { LaunchedEffect(Unit) { navController.popBackStack() } } else {
                 val kindKey = entry.arguments?.getString("kind")
                 val kind = com.craftflowtechnologies.meetingmind.core.biblestudy.SessionKind.byKey(kindKey) ?: com.craftflowtechnologies.meetingmind.core.biblestudy.SessionKind.SOAP

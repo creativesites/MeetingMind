@@ -105,7 +105,7 @@ class AndroidReadingHost(context: Context) : ReadingHost {
     private suspend fun loadPassage(id: String, options: ExtractOptions): LoadedNote? {
         val rest = id.removePrefix(PASSAGE_PREFIX)
         val version = rest.substringBefore(':').toIntOrNull()?.takeIf { it > 0 }
-        val reference = com.craftflowtechnologies.meetingmind.core.scripture.YouVersionScriptureProvider.parsePassageId(rest.substringAfter(':')) ?: return null
+        val reference = com.craftflowtechnologies.meetingmind.core.scripture.PassageIds.parse(rest.substringAfter(':')) ?: return null
         val ref = com.craftflowtechnologies.meetingmind.core.model.ScriptureRef(
             id = "r", noteId = id, blockId = "b", bookUsfm = reference.book.usfm, chapter = reference.chapter,
             verseStart = reference.verseStart, verseEnd = reference.verseEnd, versionId = version,

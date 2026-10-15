@@ -10,7 +10,7 @@ import kotlinx.coroutines.withContext
  * - Anything else comes from [remote]; when its licence allows copies, the chapter is kept, so a
  *   passage read once is there next time, offline.
  * - Search runs over what is on the phone ([BibleStore]), which is why a translation is
- *   downloaded whole before it can be searched. YouVersion has no search of its own.
+ *   downloaded whole before it can be searched.
  *
  * [store] is null in tests and anywhere a database isn't wanted; the library then simply passes
  * through to [remote].
@@ -63,9 +63,7 @@ class BibleLibrary(
     /** Version details, from the network when it answers, else from the phone. */
     suspend fun info(bibleId: Int): BibleInfo? =
         if (HelloAo.isHelloAo(bibleId)) io { store?.info(bibleId) } ?: helloAoCatalog().firstOrNull { it.intId == bibleId }?.info()
-        else (remote as? YouVersionScriptureProvider)?.let { runCatching { it.version(bibleId) }.getOrNull() }
-            ?: remote.bibles().firstOrNull { it.id == bibleId }
-            ?: io { store?.info(bibleId) }
+        else remote.bibles().firstOrNull { it.id == bibleId } ?: io { store?.info(bibleId) }
 
     override suspend fun chapter(bibleId: Int, book: BibleBook, chapter: Int): ChapterResult {
         stored(bibleId, book, chapter)?.let { return ChapterResult.Found(it) }

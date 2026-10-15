@@ -22,16 +22,6 @@ android {
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-    // YouVersion Platform app key (docs/PLAN_V1.md §7). Read from local.properties
-    // (youversion.appKey=...) or the YOUVERSION_APP_KEY environment variable — never committed to
-    // this public repository. It is designed to ship in the app; without it, verse text shows as
-    // unavailable and references still work.
-    val youVersionKey = run {
-      val props = Properties()
-      val local = rootProject.file("local.properties")
-      if (local.exists()) local.inputStream().use { props.load(it) }
-      props.getProperty("youversion.appKey") ?: System.getenv("YOUVERSION_APP_KEY") ?: ""
-    }
     // Circles (docs/mvp/FAITH_V2.md section 7): base URL of the deployed Worker in server/circles-api, e.g.
     // https://circles-api.<account>.workers.dev. From local.properties (circles.apiUrl=...) or the
     // CIRCLES_API_URL environment variable, else the deployed production Worker (not a secret: every call is
@@ -43,7 +33,6 @@ android {
       System.getenv("CIRCLES_API_URL") ?: props.getProperty("circles.apiUrl") ?: "https://meetingmind-circles.meetingmind.workers.dev"
     }
     buildConfigField("String", "CIRCLES_API_URL", "\"${circlesApiUrl.trim().replace("\"", "")}\"")
-    buildConfigField("String", "YOUVERSION_APP_KEY", "\"${youVersionKey.replace("\"", "")}\"")
     // System Gemini API key for closed testing (via SYSTEM_GEMINI_API_KEY env var)
     val systemGeminiKey = System.getenv("SYSTEM_GEMINI_API_KEY") ?: ""
     buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"${systemGeminiKey.replace("\"", "")}\"")

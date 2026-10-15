@@ -123,7 +123,7 @@ object SettingsRegistry {
         e(SettingId.DEEPSEEK, SettingsGroup.AI, "Backup AI (DeepSeek)", "deepseek fallback writer tokens key usage", advanced = true),
 
         // Faith
-        e(SettingId.BIBLE_TRANSLATION, SettingsGroup.FAITH, "Bible translation", "version niv kjv esv bsb youversion verses"),
+        e(SettingId.BIBLE_TRANSLATION, SettingsGroup.FAITH, "Bible translation", "version translation bsb kjv web open verses"),
         e(SettingId.BIBLE_OFFLINE, SettingsGroup.FAITH, "Bible on this phone", "offline copies download read search without internet"),
         e(SettingId.DEVOTIONAL, SettingsGroup.FAITH, "Devotional time & style", "devotional morning time tradition format length tone voice series language picture read aloud"),
         e(SettingId.PRAYER_REMINDERS, SettingsGroup.FAITH, "Prayer reminders", "prayer times daily office reading evening reflection quiet hours"),
