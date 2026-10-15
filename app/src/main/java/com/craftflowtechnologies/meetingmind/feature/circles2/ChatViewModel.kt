@@ -39,6 +39,8 @@ data class ChatUiState(
     val myName: String = "",
     val isAdmin: Boolean = false,
     val unread: Int = 0,
+    /** When I last read this chat (epoch ms). Messages after it are new to me. */
+    val readAt: Long = 0L,
     val failure: CirclesFailure? = null,
     val replyTo: ChatMessage? = null,
     val editing: ChatMessage? = null
@@ -77,6 +79,7 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
             myUid = uid,
             myName = repo.displayName,
             unread = list.count { it.createdAt > read && it.authorUid != uid && !it.deleted },
+            readAt = read,
             failure = (ms as? DataState.Failed)?.failure,
             replyTo = r, editing = e
         )

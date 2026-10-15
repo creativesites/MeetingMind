@@ -79,7 +79,7 @@ Not done: the redesigned screens (Circle home hero, feed composer with free-form
 | 30 | Event times in the form | Quick choices (next Wednesday 7 pm, Sunday 10 am, Saturday 9 am) in the device zone, stored with the event's IANA zone. No full date picker yet. | Keeps the UI compile-safe without a date picker; replace once the UI can be built and tested. |
 | 31 | Cancel event | Cancels straight away, with no confirmation dialog. | Gap: add a confirmation before release. |
 | 32 | Join pending | The join sheet shows "Request sent" and does not open the circle. | Matches row 27. |
-| 33 | Chat redesign | Not implemented in this pass. Its main features (read receipts, typing, mentions, pins, media) need the backend contracts in `docs/CIRCLES_BACKEND_HANDOFF.md` section 5 first. Building the UI before then would show features that cannot work. | Honest scope. |
+| 33 | Chat redesign | Partly done: day dividers, a "new messages" divider from the last-read time, and grouped runs from the same person within five minutes. Still waiting on the backend (handoff section 5): pins, mentions, forwards, read receipts, typing, media. Its main features (read receipts, typing, mentions, pins, media) need the backend contracts in `docs/CIRCLES_BACKEND_HANDOFF.md` section 5 first. Building those UI parts before then would show features that cannot work. | Honest scope. |
 | 34 | Members page | Titles shown beside roles; admins set titles; waiting requests listed to admins only, with Let in and Decline. | Approved design; depends on handoff section 4 (admin read rule). |
 | 35 | Settings | Circle description and the "Admins let new people in" toggle are saved through `updateCircle`. | Rows 17-19. |
 

@@ -6,7 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextAlign
 import com.craftflowtechnologies.meetingmind.core.circles2.CHAT_EMOJI
 import com.craftflowtechnologies.meetingmind.core.circles2.ChainState
 import com.craftflowtechnologies.meetingmind.core.circles2.ChatMessage
@@ -86,8 +87,15 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
                 Modifier.weight(1f), state = listState,
                 contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.s), verticalArrangement = Arrangement.spacedBy(MM.space.s)
             ) {
-                items(state.messages, key = { it.id }) { m ->
-                    MessageItem(m, state, now, actions, onLongPress = { sheetFor = m })
+                // Messages are oldest first. A day label starts each day; a divider marks where new messages begin.
+                val firstNew = if (state.unread > 0) state.messages.indexOfFirst { it.createdAt > state.readAt && it.authorUid != state.myUid && !it.deleted } else -1
+                itemsIndexed(state.messages, key = { _, m -> m.id }) { i, m ->
+                    val prev = state.messages.getOrNull(i - 1)
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                        if (prev == null || !sameDay(prev.createdAt, m.createdAt)) DayDivider(dayLabel(m.createdAt, now))
+                        if (i == firstNew) UnreadDivider(state.unread)
+                        MessageItem(m, state, now, actions, continued = prev != null && continues(prev, m), onLongPress = { sheetFor = m })
+                    }
                 }
             }
         }
@@ -102,8 +110,40 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+private const val GROUP_MS = 5 * 60_000L
+private const val DAY_MS = 86_400_000L
+
+private fun dayKey(t: Long): String = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date(t))
+private fun sameDay(a: Long, b: Long): Boolean = dayKey(a) == dayKey(b)
+
+/** Same person, within a few minutes, same day, and neither is a celebration or a deleted message. */
+private fun continues(prev: ChatMessage, m: ChatMessage): Boolean =
+    prev.authorUid == m.authorUid && !prev.deleted && !m.deleted &&
+        prev.kind != MessageKind.Celebration && m.kind != MessageKind.Celebration &&
+        m.createdAt >= prev.createdAt && m.createdAt - prev.createdAt < GROUP_MS && sameDay(prev.createdAt, m.createdAt)
+
+private fun dayLabel(t: Long, now: Long): String = when {
+    sameDay(t, now) -> "Today"
+    sameDay(t, now - DAY_MS) -> "Yesterday"
+    else -> java.text.SimpleDateFormat("EEEE d MMMM", java.util.Locale.getDefault()).format(java.util.Date(t))
+}
+
 @Composable
-private fun MessageItem(m: ChatMessage, state: ChatUiState, now: Long, actions: ChatActions, onLongPress: () -> Unit) {
+private fun DayDivider(label: String) {
+    Text(label, style = MM.type.caption, color = MM.colors.inkSecondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = MM.space.xs))
+}
+
+@Composable
+private fun UnreadDivider(count: Int) {
+    Text(
+        if (count == 1) "1 new message" else "$count new messages",
+        style = MM.type.caption, color = MM.colors.inkSecondary, textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(vertical = MM.space.xs)
+    )
+}
+
+@Composable
+private fun MessageItem(m: ChatMessage, state: ChatUiState, now: Long, actions: ChatActions, continued: Boolean = false, onLongPress: () -> Unit) {
     val c = MM.colors
     val mine = m.authorUid == state.myUid
     when {
@@ -113,7 +153,8 @@ private fun MessageItem(m: ChatMessage, state: ChatUiState, now: Long, actions: 
         )
         m.kind == MessageKind.Celebration -> CelebrationMessage(m, onLongPress)
         else -> Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-            Text(
+            // A message that continues the same person's run within a few minutes shows no name line again.
+            if (!continued) Text(
                 (if (mine) "You" else m.authorName) + " · " + relativeTime(now, m.createdAt) + (if (m.editedAt != null) " · edited" else ""),
                 style = MM.type.caption, color = c.inkSecondary
             )
