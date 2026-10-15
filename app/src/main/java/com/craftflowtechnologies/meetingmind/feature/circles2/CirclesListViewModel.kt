@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.craftflowtechnologies.meetingmind.core.circles2.fold
 
 /** The Join sheet: paste anything, see the code it contains, add a name, join. */
 data class JoinUiState(

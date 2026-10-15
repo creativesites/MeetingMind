@@ -35,6 +35,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.craftflowtechnologies.meetingmind.core.circles2.fold
 
 @Immutable
 data class ChatUiState(

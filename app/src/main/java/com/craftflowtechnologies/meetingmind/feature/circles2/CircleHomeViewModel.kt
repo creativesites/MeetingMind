@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.craftflowtechnologies.meetingmind.core.circles2.fold
 
 /** A post as the feed shows it: [mine] is true even for my anonymous posts (known only on this phone). */
 @Immutable
