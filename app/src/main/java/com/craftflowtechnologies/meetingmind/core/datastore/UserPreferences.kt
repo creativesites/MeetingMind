@@ -96,7 +96,13 @@ data class AppPreferencesState(
     val onboardingGoals: Set<String> = emptySet(),
     val onboardingOutcomes: Set<String> = emptySet(),
     /** They watched the example recording to its notes. This is never a personal recording. */
-    val sampleViewed: Boolean = false
+    val sampleViewed: Boolean = false,
+    /** When a paywall was last shown unasked (epoch ms), how often it was closed, and whether the first-result offer has been shown. */
+    val paywallLastShownAt: Long = 0,
+    val paywallDismissals: Int = 0,
+    val firstResultOfferShown: Boolean = false,
+    /** The last usage warning shown ("<period end>:<level>"), so each level is shown once a period. */
+    val usageWarned: String? = null
 )
 
 enum class HomeHeroDisplayMode {
@@ -165,6 +171,10 @@ class UserPreferencesManager(private val context: Context) {
     private val ONBOARDING_GOALS = stringSetPreferencesKey("onboarding_goals")
     private val ONBOARDING_OUTCOMES = stringSetPreferencesKey("onboarding_outcomes")
     private val SAMPLE_VIEWED = booleanPreferencesKey("sample_viewed")
+    private val PAYWALL_LAST_SHOWN = androidx.datastore.preferences.core.longPreferencesKey("paywall_last_shown_at")
+    private val PAYWALL_DISMISSALS = intPreferencesKey("paywall_dismissals")
+    private val FIRST_RESULT_OFFER_SHOWN = booleanPreferencesKey("first_result_offer_shown")
+    private val USAGE_WARNED = stringPreferencesKey("usage_warned")
     private val WORK_SETTINGS = stringPreferencesKey("work_settings")
     private val PULSE_SEEN_AT = androidx.datastore.preferences.core.longPreferencesKey("pulse_seen_at")
 
@@ -290,7 +300,11 @@ class UserPreferencesManager(private val context: Context) {
             onboardingEntryRoute = prefs[ONBOARDING_ENTRY],
             onboardingGoals = prefs[ONBOARDING_GOALS] ?: emptySet(),
             onboardingOutcomes = prefs[ONBOARDING_OUTCOMES] ?: emptySet(),
-            sampleViewed = prefs[SAMPLE_VIEWED] ?: false
+            sampleViewed = prefs[SAMPLE_VIEWED] ?: false,
+            paywallLastShownAt = prefs[PAYWALL_LAST_SHOWN] ?: 0L,
+            paywallDismissals = prefs[PAYWALL_DISMISSALS] ?: 0,
+            firstResultOfferShown = prefs[FIRST_RESULT_OFFER_SHOWN] ?: false,
+            usageWarned = prefs[USAGE_WARNED]
         )
     }
 
@@ -303,6 +317,22 @@ class UserPreferencesManager(private val context: Context) {
             it[ONBOARDING_GOALS] = goals
             it[ONBOARDING_OUTCOMES] = outcomes
         }
+    }
+
+    /** An unasked paywall was shown now. [firstResult] marks the one-time first-result offer as used. */
+    suspend fun markPaywallShown(nowMs: Long, firstResult: Boolean) {
+        context.dataStore.edit {
+            it[PAYWALL_LAST_SHOWN] = nowMs
+            if (firstResult) it[FIRST_RESULT_OFFER_SHOWN] = true
+        }
+    }
+
+    suspend fun markUsageWarned(tag: String) {
+        context.dataStore.edit { it[USAGE_WARNED] = tag }
+    }
+
+    suspend fun recordPaywallDismissed() {
+        context.dataStore.edit { it[PAYWALL_DISMISSALS] = (it[PAYWALL_DISMISSALS] ?: 0) + 1 }
     }
 
     suspend fun setSampleViewed(viewed: Boolean) {

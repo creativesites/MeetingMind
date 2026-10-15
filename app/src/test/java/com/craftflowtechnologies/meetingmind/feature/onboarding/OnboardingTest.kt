@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.compose.runtime.CompositionLocalProvider
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionForceCanvas
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionReducedMotion
+import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -84,6 +87,21 @@ class OnboardingTest {
             assertEquals(com.craftflowtechnologies.meetingmind.core.devotional.DevotionalSource.CLASSIC, profile.source)
             assertEquals("morning-and-evening", profile.planId)
         }
+    }
+
+    @Test @Config(qualifiers = "w320dp-h640dp-xxhdpi", sdk = [34])
+    fun `welcome pills stay readable on a narrow screen`() {
+        val vm = OnboardingViewModel(app)
+        compose.setContent { MeetMindTheme { OnboardingScreen(vm) { } } }
+        compose.waitForIdle()
+        listOf("welcome_pill_private", "welcome_pill_offline", "welcome_pill_ai").forEach { tag ->
+            val node = compose.onNodeWithTag(tag)
+            node.assertIsDisplayed()
+            // A squeezed pill is a tall sliver; a readable one is wider than it is tall.
+            val b = node.getUnclippedBoundsInRoot()
+            assertTrue("$tag is ${b.width} x ${b.height}", b.width > b.height)
+        }
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/onboarding_welcome_320.png")
     }
 
     @Test fun `record now skips the sample and finishes through the recorder`() {

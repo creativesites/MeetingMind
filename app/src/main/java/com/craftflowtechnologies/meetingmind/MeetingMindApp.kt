@@ -7,6 +7,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.File
+import com.craftflowtechnologies.meetingmind.core.billing.Billing
+import com.craftflowtechnologies.meetingmind.core.billing.DisabledBillingGateway
+import com.craftflowtechnologies.meetingmind.core.billing.RevenueCatBillingGateway
 
 /**
  * Installs the crash log before anything else runs, so a crash in a reminder, a widget, a worker
@@ -23,6 +26,10 @@ class MeetingMindApp : Application() {
         }
         removeTeachBackFiles()
         setUpReadToMe()
+        // Billing is set up once per process. With no RevenueCat key the app is simply free: nothing is offered and nothing breaks.
+        val key = BuildConfig.REVENUECAT_API_KEY
+        Billing.gateway = if (key.isBlank()) DisabledBillingGateway
+        else runCatching { RevenueCatBillingGateway(this, key) as com.craftflowtechnologies.meetingmind.core.billing.BillingGateway }.getOrDefault(DisabledBillingGateway)
     }
 
     /**

@@ -1206,6 +1206,16 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         }
 
         // SETTINGS
+        composable(
+            Routes.PAYWALL,
+            arguments = listOf(navArgument("trigger") { type = NavType.StringType; defaultValue = "SETTINGS" })
+        ) { entry ->
+            com.craftflowtechnologies.meetingmind.feature.paywall.PaywallScreen(
+                trigger = com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger.parse(entry.arguments?.getString("trigger")),
+                onClose = { navController.popBackStack() }
+            )
+        }
+
         composable(Routes.SETTINGS) {
             val vm: SettingsViewModel = viewModel()
             SettingsScreen(
@@ -1221,6 +1231,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
                 onOpenRecipes = { navController.navigate(Routes.RECIPES) },
                 onOpenCompanion = { navController.navigate(com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsRoute) },
+                onOpenSubscription = { navController.navigate(Routes.paywallRoute("SETTINGS")) { launchSingleTop = true } },
                 onReplayTour = {
                     recoveryScope.launch {
                         com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context).setTourCompleted(false)
@@ -1248,6 +1259,17 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
     }
+
+    // After a real recording's notes appear: one gentle, dismissible offer (never the sample, never more than weekly).
+    com.craftflowtechnologies.meetingmind.feature.paywall.PostResultOfferHost(
+        onResultScreen = currentRoute == Routes.MEETING_DETAIL,
+        onOpenPlans = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) { launchSingleTop = true } }
+    )
+
+    // A once-a-period heads-up when the managed cloud allowance is nearly or fully used.
+    com.craftflowtechnologies.meetingmind.feature.paywall.UsageAlertHost(
+        onOpenPlans = { trigger -> navController.navigate(Routes.paywallRoute(trigger.name)) { launchSingleTop = true } }
+    )
 
     // The minimised processing screen, on the main tabs and in the notes library.
     val showPill = activeProcessing != null && !onProcessingScreen &&
