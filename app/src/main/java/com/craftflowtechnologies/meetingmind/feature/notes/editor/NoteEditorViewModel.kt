@@ -136,13 +136,19 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
 
     val backlinks: StateFlow<List<Note>> = notes.observeBacklinks(noteId).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val recordings: StateFlow<Map<String, RecordingCard>> = database.noteDao().observeMeetingsForNote(noteId)
+    // Null until the database has answered, so the moment never plans on the empty first frame.
+    private val recordingCards = database.noteDao().observeMeetingsForNote(noteId)
         .map { list ->
             list.associate {
                 it.id to RecordingCard(it.id, it.title, it.durationMs, it.status, it.summaryText, it.audioFilePath)
             }
         }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val recordings: StateFlow<Map<String, RecordingCard>> = recordingCards.map { it.orEmpty() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    /** False until the note's recordings have been read. */
+    val recordingsLoaded: StateFlow<Boolean> = recordingCards.map { it != null }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** Titles of notes that NOTE_LINK blocks point to, kept current if a linked note is renamed. */
     val linkedTitles: StateFlow<Map<String, String>> = _blocks
