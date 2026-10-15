@@ -3,7 +3,7 @@ package com.craftflowtechnologies.meetingmind.core.circles2
 import androidx.compose.runtime.Immutable
 
 enum class Role(val wire: String, val label: String) {
-    Owner("owner", "Owner"), Admin("admin", "Admin"), Member("member", "Member");
+    Owner("owner", "Owner"), Admin("admin", "Admin"), Moderator("moderator", "Moderator"), Member("member", "Member");
 
     val isAdmin: Boolean get() = this == Owner || this == Admin
 

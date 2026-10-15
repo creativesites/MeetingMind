@@ -137,7 +137,8 @@ class FakeData : CirclesData {
     override fun observeChain(circleId: String, chainId: String, myUid: String): Flow<DataState<ChainState>> = flowOf(DataState.Loading)
     val typing = MutableStateFlow<DataState<List<TypingUser>>>(DataState.Ready(emptyList()))
     override fun observeTyping(circleId: String) = typing
-    override suspend fun setTyping(circleId: String, uid: String, name: String, typing: Boolean) = write("setTyping:$typing")
+    // A typing signal is not a message write: it is recorded, but it never uses up failNextWrite.
+    override suspend fun setTyping(circleId: String, uid: String, name: String, typing: Boolean): CirclesResult<Unit> { writes += "setTyping:$typing"; return CirclesResult.Ok(Unit) }
     override suspend fun markRead(circleId: String, uid: String) = write("markRead")
     override fun observeEvents(circleId: String) = events
     override fun observeRsvps(circleId: String, eventId: String): Flow<DataState<List<Rsvp>>> = flowOf(DataState.Ready(emptyList()))

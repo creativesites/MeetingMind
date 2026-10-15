@@ -50,7 +50,8 @@ class CircleViewModelsTest {
         // The payload type has no field that could carry identity.
         val fields = CreatePostRequest::class.java.declaredFields.map { it.name.lowercase() }
         assertTrue(fields.none { "uid" in it || "author" in it || "name" in it || "user" in it })
-        assertFalse(sent.toString().contains("me"))
+        // Whole word only: "attachments" contains the letters "me" and is not an identity.
+        assertFalse(Regex("\\bme\\b").containsMatchIn(sent.toString()))
     }
 
     @Test fun `only prayer requests can be anonymous`() = runTest {
@@ -262,8 +263,10 @@ class CircleViewModelsTest {
         val (vm, data, _) = chat()
         vm.setDraft("Hello circle"); vm.send()
         assertEquals(listOf<MessageDraft>(MessageDraft.Text("Hello circle")), data.sentDrafts); assertEquals("", vm.draft.value)
+        // Set after the draft: typing a letter also writes (a typing signal), which would use up the failure.
+        vm.setDraft("Second")
         data.failNextWrite = CirclesFailure.offline
-        vm.setDraft("Second"); vm.send()
+        vm.send()
         assertEquals("Second", vm.draft.value)
     }
 
@@ -279,7 +282,7 @@ class CircleViewModelsTest {
         val (vm, data, _) = chat()
         vm.startEdit(msg("m1", "me", text = "typo")); assertEquals("typo", vm.draft.value)
         vm.setDraft("fixed"); vm.send()
-        assertEquals(listOf("editMessage:fixed"), data.writes)
+        assertEquals(listOf("editMessage:fixed"), data.writes.filterNot { it.startsWith("setTyping") })
         vm.startEdit(msg("m2", "me", kind = MessageKind.Poll)); assertNull(vm.state.value.editing)
     }
 
