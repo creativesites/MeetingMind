@@ -43,6 +43,16 @@ Success: `{"ok":true,...}`. Failure: `{"ok":false,"error":{"code","message"}}` w
 | `setTitle` | admin | `circleId, targetUid, title` (max 40; `null` clears). A title is a label. It never changes permissions |
 | `pinPost` | admin | `circleId, postId` (`null` unpins). The post must be live |
 | `pinMessage` | admin | `circleId, messageId` (`null` unpins) -> `pinnedMessageId` on the circle. The message must be live |
+| `createUploadTicket` | member | `circleId, kind` (`image`, `voice`, `file`), `mime, bytes, durationMs?, name?` -> `ticketId, path, expiresAt`. Single use, 15 minutes; 60/h |
+| `sendMessage` | member, the uploader | `circleId, kind, uploadPath, text?` (caption, at most 2000), `replyTo?, durationMs?, name?` -> `messageId`. The only writer of attachment messages |
+| `deleteMedia` | uploader or admin | `circleId, path` |
+| `PUT /v1/media/upload/{ticketId}` | the ticket's owner | raw bytes; `Content-Type` must equal the ticket mime -> `path`. Checks length and the file header |
+| `GET /v1/media/{circleId}/{uuid}` | member | streams the file; 404 for non-members |
+
+Media lives in R2 (`MEDIA` binding, bucket `meetingmind-circles-media`) at `circles/{circleId}/media/{uuid}`. The Worker
+is the only reader or writer. Limits: images jpeg, png or webp up to 10 MB; voice mp4, aac or ogg and files PDF up to 25 MB.
+`createPost` takes `attachments` (at most 4 photos) and `updateCircle` takes `coverPath` (admin). The six-hourly cron deletes
+media older than 24 hours that no message, post, pending request or cover references.
 | `createEvent` | admin | `circleId, title (max 80), description? (max 1000), location? (max 200), onlineUrl? (https only), startsAt, endsAt (epoch ms), timeZone` (IANA) -> `eventId` |
 | `updateEvent` | admin | `circleId, eventId`, plus any event field. Refused once cancelled |
 | `cancelEvent` | admin | `circleId, eventId` |

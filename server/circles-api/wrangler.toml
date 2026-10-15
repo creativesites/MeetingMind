@@ -13,8 +13,13 @@ NOTIFY_MAX = "30"
 binding = "RATE"
 id = "f6258ac012c8448fae2c785dde588a03"
 
-# Daily prayer digest, 18:00 UTC.
+# Circles media (chat photos, voice notes, files, post photos, cover). Only the Worker touches this bucket.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "meetingmind-circles-media"
+
+# Daily prayer digest at 18:00 UTC; orphaned media sweep every six hours.
 [triggers]
-crons = ["0 18 * * *"]
+crons = ["0 18 * * *", "30 */6 * * *"]
 
 # Secret (never in git):  npx wrangler secret put SERVICE_ACCOUNT_JSON

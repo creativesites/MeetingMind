@@ -5,6 +5,7 @@ import { Firestore } from "./firestore.js";
 import { Fcm } from "./fcm.js";
 import { HANDLERS } from "./handlers.js";
 import { runDigest } from "./digest.js";
+import { uploadMedia, downloadMedia, sweepOrphans } from "./media.js";
 import { parseServiceAccount } from "./google.js";
 
 const MAX_BODY = 32 * 1024;
@@ -35,6 +36,10 @@ export async function handle(request, env, ctxExec, deps = {}) {
       return err(503, "service_misconfigured", "Circles service is temporarily unavailable.", requestId);
     }
   }
+  // Media moves raw bytes, so these routes skip the JSON body limit and the POST-only rule below.
+  const up = request.method === "PUT" ? /^\/v1\/media\/upload\/([^/]+)$/.exec(url.pathname) : null;
+  const dl = request.method === "GET" ? /^\/v1\/media\/([^/]+)\/([^/]+)$/.exec(url.pathname) : null;
+  if (up || dl) return mediaRoute(request, env, deps, requestId, up, dl);
   const m = /^\/v1\/([A-Za-z]+)$/.exec(url.pathname);
   const handler = m && Object.hasOwn(HANDLERS, m[1]) ? HANDLERS[m[1]] : null;
   if (request.method !== "POST" || !handler) return err(404, "not_found", "Not found", requestId);
@@ -66,9 +71,39 @@ export async function handle(request, env, ctxExec, deps = {}) {
   }
 }
 
+async function mediaRoute(request, env, deps, requestId, up, dl) {
+  try {
+    const { uid } = await (deps.authenticate || authenticate)(request, env);
+    const { db } = deps.services || services(env);
+    const ctx = { env, db, kv: env.RATE, uid, now: new Date(), requestId, request };
+    if (up) return json({ ok: true, ...(await uploadMedia(ctx, up[1])) }, 200, requestId);
+    const obj = await downloadMedia(ctx, dl[1], dl[2]);
+    return new Response(obj.body, {
+      status: 200,
+      headers: {
+        "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream",
+        "Content-Length": String(obj.size),
+        "Cache-Control": "private, max-age=3600",
+        "X-Request-Id": requestId,
+      },
+    });
+  } catch (e) {
+    if (e instanceof ApiError) return err(e.status, e.code, e.message, requestId);
+    console.error(JSON.stringify({ event: "circles_media_failed", requestId, reason: e?.name || "Error", detail: safeErrorDetail(e?.message) }));
+    return err(500, "internal", "Something went wrong. Please try again.", requestId);
+  }
+}
+
 export default {
   fetch: (request, env, ctx) => handle(request, env, ctx),
-  async scheduled(_event, env, ctx) {
+  async scheduled(event, env, ctx) {
+    // Six-hourly media sweep; the daily digest runs at 18:00 UTC.
+    if (event.cron === "30 */6 * * *") {
+      ctx.waitUntil(sweepOrphans({ env, db: services(env).db })
+        .then((r) => console.log(JSON.stringify({ event: "circles_media_sweep", ...r })))
+        .catch((e) => console.error("sweep", e?.message)));
+      return;
+    }
     ctx.waitUntil(runDigest({ ...services(env), env }).catch((e) => console.error("digest", e?.message)));
   },
 };

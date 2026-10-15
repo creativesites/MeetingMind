@@ -316,6 +316,14 @@ test("join requests: admins and the owner can read them; members, outsiders and 
   await assertFails(deleteDoc(doc(as("admin"), `circles/${C}/joinRequests/ann`)));
 });
 
+test("attachment messages are Worker-only: clients cannot create image, voice or file messages, or add an attachment", async () => {
+  await assertFails(setDoc(doc(as("member"), M("att1")), msg({ kind: "image", text: "", attachment: { path: `circles/${C}/media/x`, mime: "image/jpeg", bytes: 10 } })));
+  await assertFails(setDoc(doc(as("member"), M("att2")), msg({ kind: "voice", text: "", attachment: { path: `circles/${C}/media/x`, mime: "audio/mp4", bytes: 10 } })));
+  await assertFails(setDoc(doc(as("member"), M("att3")), msg({ kind: "file", text: "", attachment: { path: `circles/${C}/media/x`, mime: "application/pdf", bytes: 10 } })));
+  await assertFails(setDoc(doc(as("member"), M("att4")), msg({ attachment: { path: `circles/${C}/media/x`, mime: "image/jpeg", bytes: 10 } })));
+  await assertSucceeds(setDoc(doc(as("member"), M("att5")), msg({ text: "plain text still works" })));
+});
+
 test("read receipts: a member sets only their own lastReadAt, to the server time", async () => {
   await assertSucceeds(updateDoc(doc(as("member"), `circles/${C}/members/member`), { lastReadAt: serverTimestamp() }));
   await assertFails(updateDoc(doc(as("member"), `circles/${C}/members/admin`), { lastReadAt: serverTimestamp() }));

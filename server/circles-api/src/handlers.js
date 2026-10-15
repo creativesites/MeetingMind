@@ -5,6 +5,7 @@ import { hmacHex } from "./crypto.js";
 import { parseServiceAccount } from "./google.js";
 import { pushToUsers } from "./fcm.js";
 import { hit, check, record } from "./ratelimit.js";
+import { createUploadTicket, sendMessage, deleteMedia, checkPostAttachments, checkCover } from "./media.js";
 import {
   LIMITS, RATE, REACTIONS, POST_TYPES, TEMPLATES, validId, cleanText, cleanVerseRef, normalizeSettings,
   generateCode, extractCodes, CHAT, shapePoll, shapeCelebration, clampInvite, joinDecision, canInvite, isAdmin, shapePost, publishFromPending, assertNoAuthorLeak,
@@ -108,6 +109,7 @@ async function updateCircle(ctx) {
   if (ctx.body.name !== undefined) data.name = cleanText(ctx.body.name, "name", { max: LIMITS.nameMax });
   if (ctx.body.vocab !== undefined) data.vocab = cleanText(ctx.body.vocab, "vocab", { max: 40 });
   if (ctx.body.description !== undefined) data.description = cleanText(ctx.body.description, "description", { min: 0, max: LIMITS.descriptionMax });
+  if (ctx.body.coverPath !== undefined) data.coverPath = await checkCover(ctx, id, ctx.body.coverPath ?? null);
   if (ctx.body.settings !== undefined) data.settings = normalizeSettings({ ...circle.settings, ...ctx.body.settings }, circle.template);
   if (!Object.keys(data).length) throw new ApiError(400, "bad_request", "Nothing to change");
   await ctx.db.commit([w.update(C(id), data)]);
@@ -396,9 +398,12 @@ async function createPost(ctx) {
   if (b.type === "announcement" && !isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can post announcements.");
   const { pending, post, authorDoc } = shapePost({ type: b.type, body, verseRef, anonymous: b.anonymous === true ? true : b.anonymous === false ? false : undefined, uid: ctx.uid, authorName: member.displayName, settings: circle.settings, now: ctx.now });
   await hit(ctx.kv, `rl:createPost:${ctx.uid}`, RATE.createPost);
+  const attachments = await checkPostAttachments(ctx, circleId, b.attachments);
   const id = newId();
   let doc = post;
   if (pending) { doc = { ...post }; delete doc.authorUid; delete doc.authorName; }
+  // attachmentPaths lets the media sweep find which photos a post still uses.
+  if (attachments.length) { doc.attachments = attachments; doc.attachmentPaths = attachments.map((a) => a.path); }
   if (post.anonymous) assertNoAuthorLeak(doc, ctx.uid);
   await ctx.db.commit([
     w.create(`${C(circleId)}/postAuthors/${id}`, authorDoc),
@@ -707,5 +712,6 @@ export const HANDLERS = {
   prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken,
   createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
   decideJoin, setTitle, pinPost, pinMessage, createEvent, updateEvent, cancelEvent, rsvp,
+  createUploadTicket, sendMessage, deleteMedia,
 };
 export { POST_TYPES };
