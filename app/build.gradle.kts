@@ -17,8 +17,8 @@ android {
     applicationId = "com.craftflowtechnologies.meetingmind"
     minSdk = 24
     targetSdk = 36
-    versionCode = 45
-    versionName = "1.0-v45"
+    versionCode = 46
+    versionName = "1.0-v46"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -109,6 +109,9 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
       buildConfigField("Boolean", "COMPANION_LIVE_WHISPER", "false")
+      // Play builds never use the RevenueCat test key: RevenueCat refuses it in a release build and the app closes.
+      // Empty means billing is off and the app is free. Set a production (goog_) key here to turn billing on.
+      buildConfigField("String", "REVENUECAT_API_KEY", "\"\"")
       // Sign-in registrations for W13 (docs/INTEGRATION_CREDENTIALS.md)
       buildConfigField("String", "GOOGLE_CLIENT_ID", "\"785434731634-k9t9e8c1altm4boq43j5f5t4p06ksdhk.apps.googleusercontent.com\"")
       buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"658f22a9-30c8-40e6-8400-992ace977d57\"")
