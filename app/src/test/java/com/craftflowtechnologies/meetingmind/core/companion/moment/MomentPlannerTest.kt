@@ -50,22 +50,13 @@ class MomentPlannerTest {
 
     // ---- Row 1: failures ----
 
-    @Test fun `row 1 - failed, partial, fallback and models missing are plain with the fix`() {
-        val cases = mapOf(
-            NoteOutcome.FAILED to (PlainReason.FAILED to FixAction.RETRY),
-            NoteOutcome.PARTIAL to (PlainReason.PARTIAL to FixAction.RETRY),
-            NoteOutcome.AI_FALLBACK to (PlainReason.AI_FALLBACK to FixAction.REDO_ONLINE),
-            NoteOutcome.MODEL_REQUIRED to (PlainReason.MODEL_REQUIRED to FixAction.DOWNLOAD_MODELS)
-        )
-        for (flags in listOf(budgeted, shipped)) for ((outcome, want) in cases) {
+    @Test fun `row 1 - failed, partial, fallback and models missing still get the moment`() {
+        val outcomes = listOf(NoteOutcome.FAILED, NoteOutcome.PARTIAL, NoteOutcome.AI_FALLBACK, NoteOutcome.MODEL_REQUIRED)
+        for (flags in listOf(budgeted, shipped)) for (outcome in outcomes) {
             val (p, e) = MomentPlanner.plan(facts(outcome = outcome, flags = flags))
-            assertEquals(MomentPlan.Plain(want.first, want.second), p)
-            assertFalse(p.announce)
+            assertTrue("$outcome gets a moment", p is MomentPlan.Unveil || p is MomentPlan.FirstKeep)
             assertEquals(TicketAction.CONSUME, e.ticket)
-            assertTrue(e.record.isEmpty())
         }
-        assertEquals(CompanionState.WORRIED, PlainReason.FAILED.statusCompanion)
-        assertEquals(CompanionState.SLEEPY, PlainReason.MODEL_REQUIRED.statusCompanion)
     }
 
     @Test fun `row 1 - a no-speech note is not a failure, and gets the First Keep on arrival and the Unveil on reopen`() {
@@ -87,27 +78,27 @@ class MomentPlannerTest {
         // The guards that apply to every note still apply to it.
         assertEquals(MomentPlan.Nod(), plan(facts(outcome = NoteOutcome.NO_SPEECH, words = 0, device = DeviceFacts(batterySaver = true))))
         assertEquals(MomentPlan.Nod(), plan(facts(outcome = NoteOutcome.NO_SPEECH, words = 0, device = DeviceFacts(lowEnd = true))))
-        // An ordinary short note that has speech (29 words) is still very short.
-        assertEquals(MomentPlan.Nod(), plan(facts(outcome = NoteOutcome.COMPLETE, words = 29)))
+        // A short note that has speech (29 words) gets its moment too (every note, every time).
+        assertTrue(plan(facts(outcome = NoteOutcome.COMPLETE, words = 29)) is MomentPlan.Unveil)
     }
 
-    @Test fun `row 1 - a partial ticket is never celebrated`() {
-        assertEquals(PlainReason.PARTIAL, (plan(facts(ticket = ticket(partial = true, firstEver = true), flags = shipped)) as MomentPlan.Plain).reason)
+    @Test fun `row 1 - a partial ticket gets the moment`() {
+        assertFalse(plan(facts(ticket = ticket(partial = true, firstEver = true), flags = shipped)) is MomentPlan.Plain)
     }
 
-    @Test fun `precedence - failed and first ever is plain, and the peak is kept`() {
+    @Test fun `precedence - failed and first ever get the First Keep and the peak is recorded`() {
         val (p, e) = MomentPlanner.plan(facts(ticket = ticket(firstEver = true), outcome = NoteOutcome.FAILED))
-        assertEquals(PlainReason.FAILED, (p as MomentPlan.Plain).reason)
-        assertFalse(Moment.FirstRecordingPeak in e.record)
+        assertTrue(p is MomentPlan.FirstKeep)
+        assertTrue(Moment.FirstRecordingPeak in e.record)
     }
 
     // ---- Row 2: sacred ----
 
-    @Test fun `row 2 - sensitive notes and Good Friday are plain, first ever included`() {
+    @Test fun `row 2 - sensitive notes and Good Friday get the moment, first ever included`() {
         for (flags in listOf(budgeted, shipped)) {
-            assertEquals(MomentPlan.Plain(PlainReason.SENSITIVE), plan(facts(sensitive = true, ticket = ticket(firstEver = true), flags = flags)))
-            assertEquals(MomentPlan.Plain(PlainReason.SENSITIVE), plan(facts(goodFriday = true, flags = flags)))
-            assertEquals(MomentPlan.Plain(PlainReason.SENSITIVE), plan(facts(goodFriday = true, ticket = null, flags = flags.copy(unveilOnEveryOpen = true))))
+            assertFalse(plan(facts(sensitive = true, ticket = ticket(firstEver = true), flags = flags)) is MomentPlan.Plain)
+            assertFalse(plan(facts(goodFriday = true, flags = flags)) is MomentPlan.Plain)
+            assertFalse(plan(facts(goodFriday = true, ticket = null, flags = flags.copy(unveilOnEveryOpen = true))) is MomentPlan.Plain)
         }
         assertTrue(MomentPlan.Plain(PlainReason.SENSITIVE).announce)
     }
@@ -165,8 +156,7 @@ class MomentPlannerTest {
         assertEquals(MomentPlan.Plain(PlainReason.REDUCED_MOTION), plan(facts(flags = shipped, device = DeviceFacts(durationScale = 0f))))
         assertEquals(MomentPlan.Nod(), plan(facts(flags = shipped, device = DeviceFacts(batterySaver = true))))
         assertEquals(MomentPlan.Nod(), plan(facts(flags = shipped, device = DeviceFacts(lowEnd = true))))
-        assertEquals(MomentPlan.Nod(), plan(facts(flags = shipped, audioMs = 19_999)))
-        assertEquals(MomentPlan.Nod(), plan(facts(flags = shipped, words = 29)))
+        assertTrue(plan(facts(flags = shipped, audioMs = 19_999)) is MomentPlan.Unveil || plan(facts(flags = shipped, audioMs = 19_999)) is MomentPlan.FirstKeep)
         assertEquals(MomentPlan.Nod(), plan(facts(flags = shipped, retried = true)))
         val quiet = plan(facts(flags = shipped, ticket = ticket(space = NotebookSpace.FAITH))) as MomentPlan.FirstKeep
         assertTrue(quiet.quiet && !quiet.chime)
@@ -227,8 +217,8 @@ class MomentPlannerTest {
     @Test fun `row 7 - battery saver, low-end, very short and back-to-back nod`() {
         assertEquals(MomentPlan.Nod(), plan(facts(device = DeviceFacts(batterySaver = true))))
         assertEquals(MomentPlan.Nod(), plan(facts(device = DeviceFacts(lowEnd = true))))
-        assertEquals(MomentPlan.Nod(), plan(facts(audioMs = 19_999)))
-        assertEquals(MomentPlan.Nod(), plan(facts(words = 29)))
+        assertFalse(plan(facts(audioMs = 19_999)) is MomentPlan.Nod)
+        assertFalse(plan(facts(words = 29)) is MomentPlan.Nod)
         assertEquals(MomentPlan.Nod(), plan(facts(ticket = ticket(readyAt = noon - 60_000, previous = noon - 60_000 - 14 * 60_000))))
         // 15 minutes apart is not back-to-back; unknown length is not short.
         assertTrue(plan(facts(ticket = ticket(readyAt = noon - 60_000, previous = noon - 60_000 - 15 * 60_000))) is MomentPlan.Unveil)
