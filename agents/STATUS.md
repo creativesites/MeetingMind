@@ -1,6 +1,14 @@
 # Status
 
-Updated: 2026-10-15. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git log -1`.
+Updated: 2026-10-19. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git log -1`.
+
+## Latest UX, Onboarding, Paywall & Billing Update (2026-10-19)
+- **Moments & Companion Theater**: Fixed `FirstKeep` ticket claim lifecycle so processing notes wait and trigger celebration on finish; added `NoteUnveil` stage target layers in `NoteEditorScreen`; added Companion Processing Theater card in `MeetingDetailScreen` during background processing.
+- **Redesigned Onboarding**: Added Continuous Companion Guide Header across steps; streamlined sample transcript reveal (~2.1s) with a `"Skip to notes"` shortcut; removed raw BYOK Gemini key prompt from primary onboarding; added "Your Personal Space is Ready" summary on permissions step; verified readable layout on narrow screens (320x640).
+- **4-Tier Billing & Proxy**: Restored 4-tier model (`FREE`, `BYOK`, `PRO`, `CHURCH`). Free tier includes 30 mins cloud transcription & 30 AI actions taste; BYOK is a paid tier ($4.99/mo) unlocking all Pro features with personal key; Pro ($12.99/mo) and Church ($49.99/mo) with managed proxy routing.
+- **Closed Testing Toggle**: Added testing vs production tiering toggle in `Settings → AI & offline models → Plan and usage` (`TieringModeStore`), defaulting to `CLOSED_TESTING` (testers benefit: all Pro features unlocked without paywall blocks) with toggleable `PRODUCTION` tiering.
+- **Redesigned Paywall**: Trial timeline, weekly price anchoring, Founder bonus badges, RevenueCat package bindings.
+- **Unit Tests Verified**: `NoteMomentHostTest` (9/9 pass), `OnboardingTest` (5/5 pass), `BillingModelTest`, `PaywallPolicyTest`, `PaywallCopyTest` (all pass), and Cloudflare proxy test suite `logic.test.mjs` (28/28 pass).
 
 ## Where we are (what the founder sees on device, latest report)
 - Notes page crashed on open. Fixed on the branch in `5f120cf` (hero layout dropped a child when the latest-meeting bubble was empty). Unit tests pass. Not yet seen on device.
