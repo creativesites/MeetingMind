@@ -42,6 +42,7 @@ data class AppPreferencesState(
     val autoStopSilenceMinutes: Int = 15,
     val cloudSyncEnabled: Boolean = false,
     val themeMode: String = "DARK",
+    val selectedLanguage: String = com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
     val appearance: com.craftflowtechnologies.meetingmind.ui.theme.Appearance = com.craftflowtechnologies.meetingmind.ui.theme.Appearance(),
     /** Display-only: hides "uh"/"um"-style hesitation noise in the transcript. The verbatim ASR
      * text is always what's stored, so toggling this back off restores it exactly, with no
@@ -135,6 +136,7 @@ class UserPreferencesManager(private val context: Context) {
     }
 
     private val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+    private val SELECTED_LANGUAGE = stringPreferencesKey("selected_language")
     private val SELECTED_ASR_MODEL = stringPreferencesKey("selected_asr_model")
     private val SELECTED_LLM_MODEL = stringPreferencesKey("selected_llm_model")
     private val BATTERY_SAVER = booleanPreferencesKey("battery_saver")
@@ -254,6 +256,7 @@ class UserPreferencesManager(private val context: Context) {
             autoStopSilenceMinutes = prefs[AUTO_STOP_MINUTES] ?: 15,
             cloudSyncEnabled = prefs[CLOUD_SYNC_ENABLED] ?: false,
             themeMode = prefs[THEME_MODE] ?: "DARK",
+            selectedLanguage = prefs[SELECTED_LANGUAGE] ?: com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
             appearance = com.craftflowtechnologies.meetingmind.ui.theme.Appearance.decode(prefs[APPEARANCE], existingInstall = prefs[ONBOARDING_COMPLETED] == true),
             cleanFillerWords = prefs[CLEAN_FILLER_WORDS] ?: true,
             // A stored value from a future/renamed enum constant falls back to the current default
@@ -401,6 +404,15 @@ class UserPreferencesManager(private val context: Context) {
             // A new install settles on the default home (Everyday) now, so a later release can never move it.
             if (completed && it[APPEARANCE] == null) it[APPEARANCE] = com.craftflowtechnologies.meetingmind.ui.theme.Appearance().encode()
             it[ONBOARDING_COMPLETED] = completed
+        }
+    }
+
+    suspend fun setSelectedLanguage(languageCode: String) {
+        context.dataStore.edit {
+            it[SELECTED_LANGUAGE] = languageCode
+            if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(languageCode)) {
+                it[SELECTED_ASR_MODEL] = ModelCatalog.omnilingualAsr300mInt8.id
+            }
         }
     }
 

@@ -58,12 +58,17 @@ object ProcessingScheduler {
         val duration = durationMs?.takeIf { it > 0 } ?: meeting.durationMs.takeIf { it > 0 } ?: probeDurationMs(path)
         val speakers = expectedSpeakerCount ?: meeting.speakerCountPreference
         val prefs = UserPreferencesManager(context).preferencesFlow.first()
+        val asrModelId = if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(meeting.language)) {
+            com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.defaultModelIdForLanguage(meeting.language)
+        } else {
+            prefs.selectedAsrModelId
+        }
 
         val input = workDataOf(
             MeetingProcessingWorker.KEY_MEETING_ID to meetingId,
             MeetingProcessingWorker.KEY_AUDIO_PATH to path,
             MeetingProcessingWorker.KEY_DURATION_MS to duration,
-            MeetingProcessingWorker.KEY_MODEL_ID to prefs.selectedAsrModelId,
+            MeetingProcessingWorker.KEY_MODEL_ID to asrModelId,
             // Resolved (not raw) so a model the user selected and later deleted falls back to one
             // they still have, instead of failing with "no model installed".
             MeetingProcessingWorker.KEY_LLM_MODEL_ID to com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmModelResolver.resolve(

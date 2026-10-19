@@ -255,6 +255,7 @@ class MeetingRecordingService : Service() {
                         recordingType = recordingContext.recordingType,
                         customContext = recordingContext.customContext,
                         speakerCountPreference = recordingContext.speakerCountPreference,
+                        language = recordingContext.language ?: "en",
                         noteId = recordingContext.noteId
                     )
                 } catch (e: Exception) {

@@ -524,6 +524,8 @@ class MeetingProcessingPipeline(
                     processingMode = effectiveProfile.name,
                     transcriptionEngine = if (cloudWords != null) {
                         com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL
+                    } else if (modelId == ModelCatalog.omnilingualAsr300mInt8.id) {
+                        "omnilingual-asr-300m-ctc"
                     } else LOCAL_TRANSCRIPTION_ENGINE,
                     transcriptionModelId = if (cloudWords != null) {
                         com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL
