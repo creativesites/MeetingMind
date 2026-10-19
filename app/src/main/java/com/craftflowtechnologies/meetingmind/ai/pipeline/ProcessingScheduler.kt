@@ -8,6 +8,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.model.MeetingStatus
@@ -59,7 +60,11 @@ object ProcessingScheduler {
         val speakers = expectedSpeakerCount ?: meeting.speakerCountPreference
         val prefs = UserPreferencesManager(context).preferencesFlow.first()
         val asrModelId = if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(meeting.language)) {
-            com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.defaultModelIdForLanguage(meeting.language)
+            if (prefs.selectedAsrModelId == ModelCatalog.omnilingualAsr1bInt8.id || prefs.selectedAsrModelId == ModelCatalog.omnilingualAsr300mInt8.id) {
+                prefs.selectedAsrModelId
+            } else {
+                com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.defaultModelIdForLanguage(meeting.language)
+            }
         } else {
             prefs.selectedAsrModelId
         }

@@ -56,4 +56,34 @@ class ModelCatalogTest {
         assertEquals(1, ModelCatalog.sileroVad.files.size)
         assertEquals("silero_vad.onnx", ModelCatalog.sileroVad.files.first().fileName)
     }
+
+    @Test
+    fun `omnilingual 1b is a 2-file ctc model under 2GB`() {
+        val model = ModelCatalog.omnilingualAsr1bInt8
+        assertEquals(2, model.files.size)
+        val fileNames = model.files.map { it.fileName }.toSet()
+        assertEquals(setOf("model.int8.onnx", "tokens.txt"), fileNames)
+        assertTrue(model.sizeBytes in 1_000_000_000L..1_500_000_000L)
+    }
+
+    @Test
+    fun `whisper models have encoder, decoder, tokens and stay under 2GB`() {
+        val turbo = ModelCatalog.whisperTurboInt8
+        assertEquals(3, turbo.files.size)
+        assertEquals(setOf("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"), turbo.files.map { it.fileName }.toSet())
+        assertTrue(turbo.sizeBytes in 1_000_000_000L..1_500_000_000L)
+
+        val largeV3 = ModelCatalog.whisperLargeV3Int8
+        assertEquals(3, largeV3.files.size)
+        assertEquals(setOf("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"), largeV3.files.map { it.fileName }.toSet())
+        assertTrue(largeV3.sizeBytes in 1_500_000_000L..2_000_000_000L)
+    }
+
+    @Test
+    fun `deepseek r1 distill qwen 1_5b is under 2GB with 4096 context tokens`() {
+        val model = ModelCatalog.deepseekR1DistillQwen15b
+        assertEquals(1, model.files.size)
+        assertEquals(4096, model.contextLengthTokens)
+        assertTrue(model.sizeBytes in 1_500_000_000L..2_000_000_000L)
+    }
 }
