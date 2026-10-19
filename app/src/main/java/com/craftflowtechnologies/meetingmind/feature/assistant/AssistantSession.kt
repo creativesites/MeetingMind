@@ -108,7 +108,8 @@ class AssistantSession(
                 AssistantSuggestion("Plan a Bible study", "Help me plan a 4-week Bible study for a small group and create a note for it."),
                 AssistantSuggestion("What have I learned about…", "What have my notes and sermons said about "),
                 AssistantSuggestion("Explain a passage", "Explain Romans 8:28-39 with its context and two cross references."),
-                AssistantSuggestion("Prayer reminders", "Remind me to pray for my family every morning at 7.")
+                AssistantSuggestion("Add a prayer request", "Add a prayer request: "),
+                AssistantSuggestion("Mark a prayer answered", "What's on my prayer list? I'd like to mark one answered.")
             )
         }
     }
