@@ -114,6 +114,119 @@ object ModelCatalog {
     )
 
     /**
+     * Meta Omnilingual ASR CTC 1B, INT8-quantized ONNX export
+     * (csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-int8-2025-11-12 on Hugging Face).
+     * High-capacity 1B-parameter model supporting 1,600+ languages including Shona, Ndebele,
+     * Bemba, Nyanja, Tonga, Lozi, Zulu, Xhosa, Afrikaans, Swahili, etc.
+     * Offers significantly lower WER for Southern African languages on capable phones (~1.03 GB download).
+     * Apache-2.0 licensed, runs offline via sherpa-onnx.
+     */
+    val omnilingualAsr1bInt8 = AiModelInfo(
+        id = "asr_omnilingual_1b_ctc_int8",
+        name = "Omnilingual ASR 1B (African & Multilingual)",
+        capability = setOf(ModelCapability.TRANSCRIPTION),
+        files = listOf(
+            ModelFileSpec(
+                fileName = "model.int8.onnx",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-int8-2025-11-12/resolve/main/model.int8.onnx",
+                sha256 = "f7b74c964039162423b83e3fa950ce24810c9a635d9ff8468b5f4d142b7c1e8c",
+                sizeBytes = 1_031_628_252L
+            ),
+            ModelFileSpec(
+                fileName = "tokens.txt",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-int8-2025-11-12/resolve/main/tokens.txt",
+                sha256 = "a7a044c52cb29cbe8b0dc1953e92cefd4ca16b0ed968177b6beab21f9a7d0b31",
+                sizeBytes = 86_423L
+            )
+        ),
+        minimumRamMb = 3072,
+        recommendedRamMb = 6144,
+        version = "omnilingual-asr-1b-ctc-int8-2025-11-12",
+        description = "High-accuracy 1B-parameter African and multilingual on-device speech-to-text (Shona, Ndebele, Bemba, Nyanja, Tonga, Lozi, Zulu, Xhosa, Afrikaans, Swahili, etc.). Apache-2.0 licensed, runs offline via sherpa-onnx.",
+        parameterCount = "1B",
+        quantization = "int8",
+        tier = ModelTier.HIGH_QUALITY
+    )
+
+    /**
+     * OpenAI Whisper Turbo, INT8-quantized ONNX export
+     * (csukuangfj/sherpa-onnx-whisper-turbo on Hugging Face).
+     * 809M parameters, high-speed multilingual ASR with word-level timestamps (~1.04 GB download).
+     * MIT licensed, runs offline via sherpa-onnx.
+     */
+    val whisperTurboInt8 = AiModelInfo(
+        id = "asr_whisper_turbo_int8",
+        name = "Whisper Turbo (Fast Multilingual)",
+        capability = setOf(ModelCapability.TRANSCRIPTION),
+        files = listOf(
+            ModelFileSpec(
+                fileName = "encoder.int8.onnx",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-turbo/resolve/main/turbo-encoder.int8.onnx",
+                sha256 = "b02dcdf54f348741e93fe732b67d933c8dcb6735655f710640143081db38878b",
+                sizeBytes = 674_716_297L
+            ),
+            ModelFileSpec(
+                fileName = "decoder.int8.onnx",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-turbo/resolve/main/turbo-decoder.int8.onnx",
+                sha256 = "20accd02388482eb3a46bd615631adfdc85e1eb2c7db9ea3f02a40ffe6b81547",
+                sizeBytes = 361_080_764L
+            ),
+            ModelFileSpec(
+                fileName = "tokens.txt",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-turbo/resolve/main/turbo-tokens.txt",
+                sha256 = "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126",
+                sizeBytes = 816_730L
+            )
+        ),
+        minimumRamMb = 3072,
+        recommendedRamMb = 4096,
+        version = "whisper-turbo-int8",
+        description = "Optimized multilingual Whisper model (809M parameters, INT8) offering near-Large accuracy at significantly higher inference speed. MIT licensed, runs offline via sherpa-onnx.",
+        parameterCount = "809M",
+        quantization = "int8",
+        tier = ModelTier.RECOMMENDED
+    )
+
+    /**
+     * OpenAI Whisper Large-v3, INT8-quantized ONNX export
+     * (csukuangfj/sherpa-onnx-whisper-large-v3 on Hugging Face).
+     * State-of-the-art 1.5B multilingual Whisper model with word and segment timestamps (~1.78 GB download).
+     * MIT licensed, runs offline via sherpa-onnx.
+     */
+    val whisperLargeV3Int8 = AiModelInfo(
+        id = "asr_whisper_large_v3_int8",
+        name = "Whisper Large v3 (Multilingual)",
+        capability = setOf(ModelCapability.TRANSCRIPTION),
+        files = listOf(
+            ModelFileSpec(
+                fileName = "encoder.int8.onnx",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-large-v3/resolve/main/large-v3-encoder.int8.onnx",
+                sha256 = "d531cf17248acc43e8c09b472a0877055e770877857a5332fc1304b36534ec85",
+                sizeBytes = 766_671_985L
+            ),
+            ModelFileSpec(
+                fileName = "decoder.int8.onnx",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-large-v3/resolve/main/large-v3-decoder.int8.onnx",
+                sha256 = "ebc6bfd88e162a46cb3edee8a7e727e1dcbc65cabecb19e2573695e4d495e1af",
+                sizeBytes = 1_008_265_203L
+            ),
+            ModelFileSpec(
+                fileName = "tokens.txt",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-large-v3/resolve/main/large-v3-tokens.txt",
+                sha256 = "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126",
+                sizeBytes = 816_730L
+            )
+        ),
+        minimumRamMb = 4096,
+        recommendedRamMb = 6144,
+        version = "whisper-large-v3-int8",
+        description = "OpenAI's state-of-the-art 1.5B multilingual Whisper model quantized to INT8 (~1.78 GB download). High-precision transcription across 99+ languages with segment timestamps. MIT licensed, runs offline via sherpa-onnx.",
+        parameterCount = "1.5B",
+        quantization = "int8",
+        tier = ModelTier.HIGH_QUALITY
+    )
+
+    /**
      * Real offline speaker diarization: pyannote segmentation-3.0 (int8) finds "who is speaking
      * when" boundaries; 3D-Speaker CAM++ (English, VoxCeleb-trained) turns each segment into an
      * embedding for clustering. Both run via sherpa-onnx's OfflineSpeakerDiarization API.
@@ -247,6 +360,41 @@ object ModelCatalog {
     )
 
     /**
+     * DeepSeek-R1 Distill Qwen 1.5B (Reasoning-focused Meeting Intelligence).
+     * Published by Google's litert-community in MediaPipe `.task` format
+     * (litert-community/DeepSeek-R1-Distill-Qwen-1.5B on Hugging Face).
+     * MIT licensed and ungated. Runs through MediaPipe LlmInference (~1.83 GB download).
+     */
+    val deepseekR1DistillQwen15b = AiModelInfo(
+        id = "llm_deepseek_r1_distill_qwen_1_5b",
+        name = "DeepSeek-R1 Distill Qwen 1.5B (Reasoning)",
+        capability = setOf(
+            ModelCapability.SUMMARIZATION,
+            ModelCapability.TRANSCRIPT_CLEANUP,
+            ModelCapability.EXTRACTION,
+            ModelCapability.SYNTHESIS,
+            ModelCapability.ASK_MEETING,
+            ModelCapability.DIARIZATION_RECONCILIATION
+        ),
+        files = listOf(
+            ModelFileSpec(
+                fileName = "DeepSeek-R1-Distill-Qwen-1.5B-q8-ekv4096.task",
+                downloadUrl = "https://huggingface.co/litert-community/DeepSeek-R1-Distill-Qwen-1.5B/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B_multi-prefill-seq_q8_ekv4096.task",
+                sha256 = "16e43481814512d9fa339447d2e0ebf60d27d79281a083711ec1feda1ffe17bd",
+                sizeBytes = 1_834_078_546L
+            )
+        ),
+        minimumRamMb = 3072,
+        recommendedRamMb = 4608,
+        version = "DeepSeek-R1-Distill-Qwen-1.5B (litert-community, q8, 4096-token context)",
+        description = "Deep reasoning-distilled Meeting Intelligence model (~1.83 GB download). Excels at complex meeting synthesis, critical nuance extraction, action item identification, and nuanced follow-up Q&A. MIT licensed, runs via MediaPipe LlmInference.",
+        parameterCount = "1.5B",
+        quantization = "q8 (int8 weights)",
+        contextLengthTokens = 4096,
+        tier = ModelTier.HIGH_QUALITY
+    )
+
+    /**
      * Highest-quality Meeting Intelligence tier (Phase 3D). Microsoft's Phi-4-mini-instruct
      * (3.8B), MIT licensed and ungated, published by Google's litert-community in the same
      * MediaPipe `.task` format the other two LLM entries use — so it loads through exactly the
@@ -305,9 +453,13 @@ object ModelCatalog {
         sileroVad,
         parakeetTdtV3Int8,
         omnilingualAsr300mInt8,
+        omnilingualAsr1bInt8,
+        whisperTurboInt8,
+        whisperLargeV3Int8,
         speakerDiarization,
         qwen25_1_5bInstruct,
         qwen25_0_5bInstruct,
+        deepseekR1DistillQwen15b,
         phi4MiniInstruct
     )
 }

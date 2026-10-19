@@ -6,6 +6,7 @@ import android.content.Context
 import android.util.Log
 import com.craftflowtechnologies.meetingmind.ai.asr.SherpaOmnilingualSpeechRecognizer
 import com.craftflowtechnologies.meetingmind.ai.asr.SherpaParakeetSpeechRecognizer
+import com.craftflowtechnologies.meetingmind.ai.asr.SherpaWhisperSpeechRecognizer
 import com.craftflowtechnologies.meetingmind.ai.asr.SpeechRecognizer
 import com.craftflowtechnologies.meetingmind.ai.asr.TranscriptionOptions
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
@@ -540,6 +541,12 @@ class MeetingProcessingPipeline(
                         com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL
                     } else if (modelId == ModelCatalog.omnilingualAsr300mInt8.id) {
                         "omnilingual-asr-300m-ctc"
+                    } else if (modelId == ModelCatalog.omnilingualAsr1bInt8.id) {
+                        "omnilingual-asr-1b-ctc"
+                    } else if (modelId == ModelCatalog.whisperLargeV3Int8.id) {
+                        "whisper-large-v3-int8"
+                    } else if (modelId == ModelCatalog.whisperTurboInt8.id) {
+                        "whisper-turbo-int8"
                     } else LOCAL_TRANSCRIPTION_ENGINE,
                     transcriptionModelId = if (cloudWords != null) {
                         com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_TRANSCRIBE_MODEL
@@ -1191,14 +1198,24 @@ class MeetingProcessingPipeline(
     private fun recognizerFor(targetModelId: String): SpeechRecognizer {
         // If an explicit mock/stub or non-default recognizer was injected in tests, honor it.
         if (speechRecognizer !is SherpaParakeetSpeechRecognizer) return speechRecognizer
-        return if (targetModelId == ModelCatalog.omnilingualAsr300mInt8.id) {
-            SherpaOmnilingualSpeechRecognizer(
-                modelStorage = modelStorage,
-                modelId = targetModelId,
-                checkpoints = AsrCheckpointStore(asrCheckpointDir(context))
-            )
-        } else {
-            speechRecognizer
+        return when (targetModelId) {
+            ModelCatalog.omnilingualAsr300mInt8.id,
+            ModelCatalog.omnilingualAsr1bInt8.id -> {
+                SherpaOmnilingualSpeechRecognizer(
+                    modelStorage = modelStorage,
+                    modelId = targetModelId,
+                    checkpoints = AsrCheckpointStore(asrCheckpointDir(context))
+                )
+            }
+            ModelCatalog.whisperLargeV3Int8.id,
+            ModelCatalog.whisperTurboInt8.id -> {
+                SherpaWhisperSpeechRecognizer(
+                    modelStorage = modelStorage,
+                    modelId = targetModelId,
+                    checkpoints = AsrCheckpointStore(asrCheckpointDir(context))
+                )
+            }
+            else -> speechRecognizer
         }
     }
 

@@ -70,6 +70,7 @@ import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManag
 import com.craftflowtechnologies.meetingmind.core.ui.AppIconTile
 import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.Brand
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import kotlinx.coroutines.delay
 

@@ -111,5 +111,12 @@ class UserPreferencesManagerTest {
         val bemPrefs = manager.preferencesFlow.first()
         assertEquals("bem", bemPrefs.selectedLanguage)
         assertEquals(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.omnilingualAsr300mInt8.id, bemPrefs.selectedAsrModelId)
+
+        // Switching to 1B model should be preserved when switching between African languages
+        manager.setSelectedAsrModel(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.omnilingualAsr1bInt8.id)
+        manager.setSelectedLanguage("nya")
+        val nyaPrefs = manager.preferencesFlow.first()
+        assertEquals("nya", nyaPrefs.selectedLanguage)
+        assertEquals(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.omnilingualAsr1bInt8.id, nyaPrefs.selectedAsrModelId)
     }
 }

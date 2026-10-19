@@ -411,7 +411,10 @@ class UserPreferencesManager(private val context: Context) {
         context.dataStore.edit {
             it[SELECTED_LANGUAGE] = languageCode
             if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(languageCode)) {
-                it[SELECTED_ASR_MODEL] = ModelCatalog.omnilingualAsr300mInt8.id
+                val current = it[SELECTED_ASR_MODEL]
+                if (current != ModelCatalog.omnilingualAsr1bInt8.id) {
+                    it[SELECTED_ASR_MODEL] = ModelCatalog.omnilingualAsr300mInt8.id
+                }
             }
         }
     }

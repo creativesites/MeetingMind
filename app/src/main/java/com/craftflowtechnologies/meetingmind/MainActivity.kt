@@ -681,10 +681,15 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     },
                     onPray = { navController.popBackStack(); navController.navigate(Routes.devotionalRoute("prayer")) },
                     onShare = { story ->
-                        story.share?.let { c ->
-                            com.craftflowtechnologies.meetingmind.feature.share.ShareRequests.pending = com.craftflowtechnologies.meetingmind.feature.share.ShareRequest(c, theme = story.title ?: story.body.take(160), background = story.background)
-                            navController.navigate(Routes.SHARE)
-                        }
+                        val c = story.share ?: com.craftflowtechnologies.meetingmind.core.share.ShareCardContent(
+                            eyebrow = story.eyebrow,
+                            text = if (story.body.isNotBlank()) story.body else story.lines.joinToString("\n"),
+                            reference = story.title,
+                            attribution = story.footer,
+                            quoted = story.quoted
+                        )
+                        com.craftflowtechnologies.meetingmind.feature.share.ShareRequests.pending = com.craftflowtechnologies.meetingmind.feature.share.ShareRequest(c, theme = story.title ?: story.body.take(160), background = story.background)
+                        navController.navigate(Routes.SHARE)
                     }
                 )
             }

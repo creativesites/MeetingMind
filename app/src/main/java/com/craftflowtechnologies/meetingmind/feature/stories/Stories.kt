@@ -121,11 +121,16 @@ class StoryBuilder(private val context: Context, private val database: MeetMindD
                 val start = date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
                 val fmt = SimpleDateFormat("H:mm", Locale.getDefault())
                 val events = calendar.between(start, start + 86_400_000L)
-                if (events.isNotEmpty()) out += Story(
-                    StoryKind.DAY, "Your day", title = if (events.size == 1) "One thing today" else "${events.size} things today",
-                    body = "", background = bg(5),
-                    lines = events.sortedBy { it.begin }.take(7).map { e -> (if (e.allDay) "All day" else fmt.format(Date(e.begin))) + "  ·  " + e.title }
-                )
+                if (events.isNotEmpty()) {
+                    val eventLines = events.sortedBy { it.begin }.take(7).map { e -> (if (e.allDay) "All day" else fmt.format(Date(e.begin))) + "  ·  " + e.title }
+                    val dayTitle = if (events.size == 1) "One thing today" else "${events.size} things today"
+                    out += Story(
+                        StoryKind.DAY, "Your day", title = dayTitle,
+                        body = "", background = bg(5),
+                        lines = eventLines,
+                        share = ShareCardContent("Your day", eventLines.joinToString("\n"), dayTitle, null, quoted = false)
+                    )
+                }
             }
         }
 
@@ -135,8 +140,13 @@ class StoryBuilder(private val context: Context, private val database: MeetMindD
             if (plan != null) {
                 val day = plan.nextUnread ?: plan.dayFor(epoch)
                 val readings = plan.plan.days[day]
-                out += Story(StoryKind.READING, "Today's reading", title = "${plan.plan.name} · day ${day + 1}", body = com.craftflowtechnologies.meetingmind.core.faith.ReadingPlans.describe(readings),
-                    background = bg(8), footer = "${plan.percent}% of the way", open = StoryOpen.Passage(readings.first()), openLabel = "Read it")
+                val readingBody = com.craftflowtechnologies.meetingmind.core.faith.ReadingPlans.describe(readings)
+                val readingTitle = "${plan.plan.name} · day ${day + 1}"
+                out += Story(
+                    StoryKind.READING, "Today's reading", title = readingTitle, body = readingBody,
+                    background = bg(8), footer = "${plan.percent}% of the way", open = StoryOpen.Passage(readings.first()), openLabel = "Read it",
+                    share = ShareCardContent("Today's reading", readingBody, readingTitle, "${plan.percent}% of the way", quoted = false)
+                )
             }
         }
 
@@ -148,16 +158,25 @@ class StoryBuilder(private val context: Context, private val database: MeetMindD
             val start = if (requests.isEmpty()) 0 else Math.floorMod(epoch * 3, requests.size.toLong()).toInt()
             val todayRequests = (0 until minOf(3, requests.size)).map { requests[(start + it) % requests.size] }
             val lines = people.map { p -> p.name + if (p.note.isNotBlank()) " — ${p.note}" else "" } + todayRequests.map { it.title.ifBlank { "A prayer request" } }
-            if (lines.isNotEmpty()) out += Story(StoryKind.PRAYING_FOR, "Praying for", title = "Carry these today", body = "", background = bg(6),
-                lines = lines.take(6), open = todayRequests.firstOrNull()?.let { StoryOpen.Note(it.id) }, openLabel = "Open")
+            if (lines.isNotEmpty()) {
+                val prayingLines = lines.take(6)
+                out += Story(
+                    StoryKind.PRAYING_FOR, "Praying for", title = "Carry these today", body = "", background = bg(6),
+                    lines = prayingLines, open = todayRequests.firstOrNull()?.let { StoryOpen.Note(it.id) }, openLabel = "Open",
+                    share = ShareCardContent("Praying for", prayingLines.joinToString("\n"), "Carry these today", null, quoted = false)
+                )
+            }
         }
 
         runCatching {
             val memory = TimelineRepository(context, database).onThisDay(date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
                 .firstOrNull { it.workflow == null || identity.showsFaith || it.workflow !in com.craftflowtechnologies.meetingmind.core.model.Workflows.faith }
             memory?.let { m ->
-                out += Story(StoryKind.MEMORY, "On this day", title = m.subtitle, body = m.title, background = m.coverPath?.let { BackgroundSpec.Photo(it) } ?: bg(7),
-                    open = m.noteId?.let { StoryOpen.Note(it) }, openLabel = "Open")
+                out += Story(
+                    StoryKind.MEMORY, "On this day", title = m.subtitle, body = m.title, background = m.coverPath?.let { BackgroundSpec.Photo(it) } ?: bg(7),
+                    open = m.noteId?.let { StoryOpen.Note(it) }, openLabel = "Open",
+                    share = ShareCardContent("On this day", m.title, m.subtitle, null, quoted = false)
+                )
             }
         }
 

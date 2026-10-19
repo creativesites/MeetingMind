@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -218,5 +220,106 @@ fun relativeTime(now: Long, then: Long): String {
         s < 86_400 -> "${s / 3_600}h"
         s < 7 * 86_400 -> "${s / 86_400}d"
         else -> java.text.SimpleDateFormat("d MMM", java.util.Locale.getDefault()).format(java.util.Date(then))
+    }
+}
+
+/**
+ * Member details bottom sheet showing avatar, display name, role explanation, title,
+ * joined date, message shortcut, and moderation options.
+ */
+@Composable
+fun MemberInfoSheet(
+    member: com.craftflowtechnologies.meetingmind.core.circles2.Member,
+    isMe: Boolean,
+    me: com.craftflowtechnologies.meetingmind.core.circles2.Member?,
+    onDismiss: () -> Unit,
+    onMessage: (com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit,
+    onSetTitle: ((com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit)? = null,
+    onSetRole: ((com.craftflowtechnologies.meetingmind.core.circles2.Member, Role) -> Unit)? = null,
+    onRemove: ((com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit)? = null
+) {
+    val isOnline = isMe || member.lastReadAt > 0L || member.role == Role.Owner
+    val canChangeRole = me?.role == Role.Owner && !isMe
+    val canRemove = !isMe && me?.role?.isAdmin == true && member.role != Role.Owner && (member.role != Role.Admin || me.role == Role.Owner)
+    val canEditTitle = me?.role?.isAdmin == true
+    val roleDesc = when (member.role) {
+        Role.Owner -> "Circle Creator · Has full administrative control over this circle and its leadership."
+        Role.Admin -> "Admin · Can invite, approve posts, and manage circle settings."
+        Role.Moderator -> "Moderator · Helps keep conversations welcoming, safe, and focused."
+        Role.Member -> "Member · Participates in feeds, group chat, and shared moments."
+    }
+
+    CircleSheet(onDismiss) {
+        Row(
+            Modifier.fillMaxWidth().padding(top = MM.space.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(MM.space.m)
+        ) {
+            InitialsAvatar(member.displayName, size = 64.dp, online = isOnline)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                Text(
+                    if (isMe) "${member.displayName} (You)" else member.displayName,
+                    style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                    color = MM.colors.ink
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    member.title?.takeIf { it.isNotBlank() }?.let { TitleTag(it) }
+                    RoleTag(member.role)
+                }
+            }
+        }
+
+        com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard {
+            Text(roleDesc, style = MM.type.secondary, color = MM.colors.inkSecondary)
+            if (member.joinedAt > 0L) {
+                val joined = java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(member.joinedAt))
+                androidx.compose.material3.HorizontalDivider(
+                    modifier = Modifier.padding(vertical = MM.space.xs),
+                    color = MM.colors.line
+                )
+                Text("Member since $joined", style = MM.type.caption, color = MM.colors.inkMuted)
+            }
+        }
+
+        if (!isMe) {
+            com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton(
+                "Message in chat",
+                { onMessage(member) },
+                leadingIcon = Icons.Rounded.ChatBubbleOutline,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        if (canEditTitle || canChangeRole || canRemove) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (canEditTitle && onSetTitle != null) {
+                    com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton(
+                        "Set title",
+                        { onSetTitle(member) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (canRemove && onRemove != null) {
+                    com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton(
+                        "Remove",
+                        { onRemove(member) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton(
+            "Close",
+            onDismiss,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
