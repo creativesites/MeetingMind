@@ -60,9 +60,12 @@ object CirclesParsing {
         val type = PostType.from(str(d, "type")) ?: return null
         val anonymous = d["anonymous"] == true
         val attachments = (d["attachments"] as? List<*>)?.mapNotNull { attachment(map(it)) }.orEmpty()
+        val deleted = d["deleted"] == true
+        // A live post needs words or a photo; a deleted one is kept as a tombstone.
+        if (!deleted && str(d, "body").isNullOrBlank() && attachments.isEmpty()) return null
         return Post(
             id = id, type = type, body = str(d, "body").orEmpty(), verseRef = str(d, "verseRef")?.ifBlank { null },
-            anonymous = anonymous, answered = str(d, "status") == "answered", deleted = d["deleted"] == true,
+            anonymous = anonymous, answered = str(d, "status") == "answered", deleted = deleted,
             // Defence in depth: even if a bad doc carried an author, an anonymous post never shows one.
             authorUid = if (anonymous) null else str(d, "authorUid"), authorName = if (anonymous) null else str(d, "authorName"),
             counts = counts(map(d["counts"])), createdAt = millis(d["createdAt"]), editedAt = d["editedAt"]?.let { millis(it) }?.takeIf { it > 0 },
