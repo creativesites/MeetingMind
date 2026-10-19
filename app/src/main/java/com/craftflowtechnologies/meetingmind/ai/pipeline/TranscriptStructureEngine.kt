@@ -203,7 +203,15 @@ object DeterministicTranscriptStructureEngine : TranscriptStructureEngine {
     private val WHITESPACE_REGEX = Regex("\\s+")
     private val INCOMPLETE_SENTENCE_TRAILING_WORDS = setOf(
         "and", "but", "or", "so", "because", "if", "when", "while", "that", "which",
-        "the", "a", "an", "to", "of", "in", "on", "with", "for", "as"
+        "the", "a", "an", "to", "of", "in", "on", "with", "for", "as",
+        // Shona
+        "uye", "asi", "kana", "nekuti", "nokuti", "saka", "sezvo",
+        // Ndebele / Zulu
+        "futhi", "kodwa", "noma", "ngoba", "ngakhoke",
+        // Bemba
+        "na", "lelo", "pantu", "nga", "kanshi",
+        // Nyanja
+        "ndi", "koma", "kapena", "chifukwa"
     )
 }
 

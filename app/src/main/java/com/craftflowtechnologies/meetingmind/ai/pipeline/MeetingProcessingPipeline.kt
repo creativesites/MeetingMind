@@ -4,6 +4,7 @@ import com.craftflowtechnologies.meetingmind.ai.asr.AsrCheckpointStore
 
 import android.content.Context
 import android.util.Log
+import com.craftflowtechnologies.meetingmind.ai.asr.SherpaOmnilingualSpeechRecognizer
 import com.craftflowtechnologies.meetingmind.ai.asr.SherpaParakeetSpeechRecognizer
 import com.craftflowtechnologies.meetingmind.ai.asr.SpeechRecognizer
 import com.craftflowtechnologies.meetingmind.ai.asr.TranscriptionOptions
@@ -299,7 +300,7 @@ class MeetingProcessingPipeline(
                         if (speech.isNotEmpty() && restricted.isEmpty()) AiResult.Success(emptyList())
                         else {
                             updateJob("Transcribing with local AI...", 35, ProcessingStage.TRANSCRIBING)
-                            speechRecognizer.transcribe(
+                            recognizerFor(modelId).transcribe(
                                 audioFile = audioFile, totalDurationMs = totalDurationMs, meetingId = meetingId,
                                 speechRegions = restricted,
                                 options = TranscriptionOptions(modelId = modelId, vocabularyHints = vocabularyHints, onWindowDone = onRegion),
@@ -381,7 +382,7 @@ class MeetingProcessingPipeline(
                 AiResult.Failed(cloudDegradedReason ?: "Transcription didn't finish.")
             } else {
                 updateJob("Transcribing with local AI...", 35, ProcessingStage.TRANSCRIBING)
-                speechRecognizer.transcribe(
+                recognizerFor(modelId).transcribe(
                     audioFile = audioFile,
                     totalDurationMs = totalDurationMs,
                     meetingId = meetingId,
@@ -1152,6 +1153,20 @@ class MeetingProcessingPipeline(
             .toMap()
         Log.d(PERF_TAG, "Diarization reconciliation: merged ${reconciliation.mergedSpeakerIds} — ${reconciliation.reasons.joinToString("; ")}")
         return merges
+    }
+
+    private fun recognizerFor(targetModelId: String): SpeechRecognizer {
+        // If an explicit mock/stub or non-default recognizer was injected in tests, honor it.
+        if (speechRecognizer !is SherpaParakeetSpeechRecognizer) return speechRecognizer
+        return if (targetModelId == ModelCatalog.omnilingualAsr300mInt8.id) {
+            SherpaOmnilingualSpeechRecognizer(
+                modelStorage = modelStorage,
+                modelId = targetModelId,
+                checkpoints = AsrCheckpointStore(asrCheckpointDir(context))
+            )
+        } else {
+            speechRecognizer
+        }
     }
 
     private companion object {
