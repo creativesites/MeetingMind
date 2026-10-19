@@ -1,53 +1,66 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Forward
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Reply
 import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.rounded.Mic
-import androidx.compose.material.icons.rounded.Stop
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import android.net.Uri
-import com.craftflowtechnologies.meetingmind.core.circles2.MediaKind
-import com.craftflowtechnologies.meetingmind.core.circles2.Member
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import android.net.Uri
 import com.craftflowtechnologies.meetingmind.core.circles2.CHAT_EMOJI
 import com.craftflowtechnologies.meetingmind.core.circles2.ChainState
 import com.craftflowtechnologies.meetingmind.core.circles2.ChatMessage
 import com.craftflowtechnologies.meetingmind.core.circles2.DataState
+import com.craftflowtechnologies.meetingmind.core.circles2.MediaKind
+import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.MessageKind
 import com.craftflowtechnologies.meetingmind.core.circles2.MessageReaction
 import com.craftflowtechnologies.meetingmind.core.circles2.PollState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
-import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
@@ -82,7 +95,7 @@ class ChatActions(
     val onCancelForward: () -> Unit = {},
     val onPin: (ChatMessage) -> Unit = {},
     val onUnpin: () -> Unit = {},
-    /** A photo, file or voice note from the device, sent as a message. */
+    /** A photo, video, file or voice note from the device, sent as a message. */
     val onSendAttachment: (MediaKind, PickedFile) -> Unit = { _, _ -> },
     val onCancelUpload: () -> Unit = {},
     /** A one-line notice for the snackbar. */
@@ -104,6 +117,12 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
             if (file == null) actions.onNotice("That photo couldn't be read.") else actions.onSendAttachment(MediaKind.Image, file)
         }
     }
+    val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            val file = readPicked(context, uri)
+            if (file == null) actions.onNotice("That video couldn't be read or exceeds 50 MB.") else actions.onSendAttachment(MediaKind.Video, file)
+        }
+    }
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             val file = readPicked(context, uri)
@@ -120,13 +139,23 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
     Column(modifier.fillMaxSize()) {
         state.failure?.let { Column(Modifier.padding(horizontal = MM.space.l)) { StatusLine(StatusKind.Warning, it.message) } }
         state.pinned?.let { p ->
-            Surface(Modifier.fillMaxWidth().padding(horizontal = MM.space.l, vertical = MM.space.xs), shape = MM.radius.small, color = MM.colors.goldWash) {
-                Row(Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                Modifier.fillMaxWidth().padding(horizontal = MM.space.l, vertical = MM.space.xs),
+                shape = RoundedCornerShape(14.dp),
+                color = CirclesPalette.WarmBg,
+                border = BorderStroke(1.dp, CirclesPalette.WarmBorder)
+            ) {
+                Row(
+                    Modifier.padding(horizontal = MM.space.m, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("📌", fontSize = 15.sp)
                     Column(Modifier.weight(1f)) {
-                        Text("Pinned by ${p.authorName}", style = MM.type.caption, color = MM.colors.goldInk)
+                        Text("Pinned by ${p.authorName}", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = CirclesPalette.WarmInk)
                         Text((p.card?.text ?: p.text).ifBlank { "Pinned message" }, style = MM.type.secondary, color = MM.colors.ink, maxLines = 2)
                     }
-                    if (state.isAdmin) IconButton(onClick = actions.onUnpin) { Icon(Icons.Rounded.Close, "Unpin", tint = MM.colors.inkSecondary) }
+                    if (state.isAdmin) IconButton(onClick = actions.onUnpin) { Icon(Icons.Rounded.Close, "Unpin", tint = CirclesPalette.WarmInk) }
                 }
             }
         }
@@ -159,7 +188,7 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
             }
         }
         if (state.typing.isNotEmpty()) {
-            Text(typingText(state.typing), style = MM.type.caption, color = MM.colors.inkSecondary, modifier = Modifier.padding(horizontal = MM.space.l))
+            Text(typingText(state.typing), style = MM.type.caption, color = MM.colors.inkSecondary, modifier = Modifier.padding(horizontal = MM.space.l, vertical = 2.dp))
         }
         if (state.uploading) {
             Column(Modifier.fillMaxWidth().padding(horizontal = MM.space.l)) {
@@ -174,6 +203,7 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
             state, draft, actions,
             recording = recording,
             onAttachPhoto = { pickPhoto.launch("image/*") },
+            onAttachVideo = { pickVideo.launch("video/*") },
             onAttachFile = { pickFile.launch("application/pdf") },
             onMicStart = { micPermission.launch(android.Manifest.permission.RECORD_AUDIO) },
             onMicStop = {
@@ -185,7 +215,7 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
     }
     sheetFor?.let { m ->
         MessageActionsSheet(
-            m, mine = m.authorUid == state.myUid, isAdmin = state.isAdmin, actions = actions,
+            m, mine = m.authorUid == state.myUid, isAdmin = state.isAdmin, canModerate = state.canModerate || state.isAdmin, actions = actions,
             reactions = actions.reactionsFor(m.id), pinnedId = state.pinned?.id, onDismiss = { sheetFor = null }
         )
     }
@@ -212,14 +242,27 @@ private fun dayLabel(t: Long, now: Long): String = when {
 
 @Composable
 private fun DayDivider(label: String) {
-    Text(label, style = MM.type.caption, color = MM.colors.inkSecondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = MM.space.xs))
+    Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+        Surface(
+            shape = RoundedCornerShape(999.dp),
+            color = MM.colors.surface,
+            border = BorderStroke(1.dp, MM.colors.line)
+        ) {
+            Text(
+                label,
+                style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+                color = MM.colors.inkSecondary,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+        }
+    }
 }
 
 @Composable
 private fun UnreadDivider(count: Int) {
     Text(
         if (count == 1) "1 new message" else "$count new messages",
-        style = MM.type.caption, color = MM.colors.inkSecondary, textAlign = TextAlign.Center,
+        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.Accent, textAlign = TextAlign.Center,
         modifier = Modifier.fillMaxWidth().padding(vertical = MM.space.xs)
     )
 }
@@ -229,54 +272,113 @@ private fun UnreadDivider(count: Int) {
 private fun MessageItem(m: ChatMessage, state: ChatUiState, now: Long, actions: ChatActions, continued: Boolean = false, seen: Int = 0, onLongPress: () -> Unit) {
     val c = MM.colors
     val mine = m.authorUid == state.myUid
+    val isAccentBubble = mine && (m.kind == MessageKind.Text || m.kind == MessageKind.Reply || m.kind == MessageKind.Image)
+    val bubbleBg = if (isAccentBubble) CirclesPalette.Accent else c.surface
+    val bubbleFg = if (isAccentBubble) CirclesPalette.White else c.ink
+    val bubbleShape = if (mine) {
+        RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 6.dp)
+    } else {
+        RoundedCornerShape(topStart = 6.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp)
+    }
+
     when {
         m.deleted -> Text(
             "Message removed", style = MM.type.caption.copy(fontStyle = FontStyle.Italic), color = c.inkMuted,
             modifier = Modifier.fillMaxWidth().padding(vertical = MM.space.xs)
         )
         m.kind == MessageKind.Celebration -> CelebrationMessage(m, onLongPress)
-        else -> Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-            // A message that continues the same person's run within a few minutes shows no name line again.
-            if (!continued) Text(
-                (if (mine) "You" else m.authorName) + " · " + relativeTime(now, m.createdAt) + (if (m.editedAt != null) " · edited" else ""),
-                style = MM.type.caption, color = c.inkSecondary
-            )
-            Surface(
-                shape = MM.radius.card, color = if (mine) c.accentWash else c.surface,
-                modifier = Modifier.widthIn(max = MM.space.xxl * 10).combinedClickable(
-                    onClick = {}, onLongClick = onLongPress, onLongClickLabel = "Message actions"
-                )
-            ) {
-                Column(Modifier.padding(MM.space.m), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                    val quoted = state.byId(m.replyTo)
-                    if (m.kind == MessageKind.Reply && m.replyTo != null) {
-                        Surface(shape = MM.radius.small, color = c.surfaceSunk) {
+        else -> Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            if (!mine) {
+                if (!continued) {
+                    InitialsAvatar(m.authorName, size = 32.dp)
+                } else {
+                    Spacer(Modifier.width(32.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+            }
+            Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
+                if (!continued) {
+                    Text(
+                        (if (mine) "You" else m.authorName) + " · " + relativeTime(now, m.createdAt) + (if (m.editedAt != null) " · edited" else ""),
+                        style = MM.type.caption, color = c.inkSecondary,
+                        modifier = Modifier.padding(bottom = 2.dp, start = 4.dp, end = 4.dp)
+                    )
+                }
+                Surface(
+                    shape = bubbleShape,
+                    color = bubbleBg,
+                    border = if (isAccentBubble) null else BorderStroke(1.dp, c.line),
+                    modifier = Modifier.widthIn(max = MM.space.xxl * 10).combinedClickable(
+                        onClick = {}, onLongClick = onLongPress, onLongClickLabel = "Message actions"
+                    )
+                ) {
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                        val quoted = state.byId(m.replyTo)
+                        if (m.kind == MessageKind.Reply && m.replyTo != null) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isAccentBubble) CirclesPalette.White.copy(alpha = 0.16f) else c.surfaceSunk
+                            ) {
+                                Row(Modifier.height(IntrinsicSize.Min)) {
+                                    Box(
+                                        Modifier
+                                            .width(3.dp)
+                                            .fillMaxHeight()
+                                            .background(if (isAccentBubble) CirclesPalette.White else CirclesPalette.Accent)
+                                    )
+                                    Text(
+                                        quoted?.let { "${it.authorName}: ${if (it.deleted) "Message removed" else it.text.ifBlank { "Card" }}" } ?: "Earlier message",
+                                        style = MM.type.caption,
+                                        color = if (isAccentBubble) CirclesPalette.White.copy(alpha = 0.92f) else c.inkSecondary,
+                                        maxLines = 2,
+                                        modifier = Modifier.padding(horizontal = MM.space.s, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                        when (m.kind) {
+                            MessageKind.Image -> {
+                                m.attachment?.let { a ->
+                                    MediaImage(
+                                        state.circleId, a.path,
+                                        Modifier.fillMaxWidth().heightIn(max = 260.dp).clip(RoundedCornerShape(14.dp)),
+                                        "Photo from ${m.authorName}",
+                                        allowFullscreen = true
+                                    )
+                                }
+                                if (m.text.isNotBlank()) Text(m.text, style = MM.type.body, color = bubbleFg)
+                            }
+                            MessageKind.Video -> {
+                                m.attachment?.let { VideoBubble(state.circleId, it) }
+                                if (m.text.isNotBlank()) Text(m.text, style = MM.type.body, color = bubbleFg)
+                            }
+                            MessageKind.Voice -> m.attachment?.let { VoiceBubble(state.circleId, it) }
+                            MessageKind.File -> m.attachment?.let { FileBubble(state.circleId, it) }
+                            MessageKind.Card -> m.card?.let { ChatCard(it) }
+                            MessageKind.Poll -> m.pollId?.let { PollCard(m, actions) } ?: Text(m.text, style = MM.type.body, color = bubbleFg)
+                            MessageKind.Chain -> m.chainId?.let { ChainCard(m, actions) } ?: Text(m.text, style = MM.type.body, color = bubbleFg)
+                            else -> Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                                if (m.forwardedFrom != null) Text("Forwarded", style = MM.type.caption.copy(fontStyle = FontStyle.Italic), color = if (isAccentBubble) CirclesPalette.White.copy(alpha = 0.75f) else c.inkSecondary)
+                                Text(mentionText(m.text, state.members, isAccentBubble), style = MM.type.body, color = bubbleFg)
+                            }
+                        }
+                        if (isAccentBubble) {
                             Text(
-                                quoted?.let { "${it.authorName}: ${if (it.deleted) "Message removed" else it.text.ifBlank { "Card" }}" } ?: "Earlier message",
-                                style = MM.type.caption, color = c.inkSecondary, maxLines = 2,
-                                modifier = Modifier.padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                                (if (m.editedAt != null) "Edited · " else "") + relativeTime(now, m.createdAt) + " ✓✓",
+                                style = MM.type.caption.copy(fontSize = 10.sp),
+                                color = CirclesPalette.White.copy(alpha = 0.72f),
+                                modifier = Modifier.align(Alignment.End)
                             )
                         }
                     }
-                    when (m.kind) {
-                        MessageKind.Image -> {
-                            m.attachment?.let { a -> MediaImage(state.circleId, a.path, Modifier.fillMaxWidth().heightIn(max = 260.dp).clip(MM.radius.card), "Photo from ${m.authorName}") }
-                            if (m.text.isNotBlank()) Text(m.text, style = MM.type.body, color = c.ink)
-                        }
-                        MessageKind.Voice -> m.attachment?.let { VoiceBubble(state.circleId, it) }
-                        MessageKind.File -> m.attachment?.let { FileBubble(state.circleId, it) }
-                        MessageKind.Card -> m.card?.let { ChatCard(it) }
-                        MessageKind.Poll -> m.pollId?.let { PollCard(m, actions) } ?: Text(m.text, style = MM.type.body, color = c.ink)
-                        MessageKind.Chain -> m.chainId?.let { ChainCard(m, actions) } ?: Text(m.text, style = MM.type.body, color = c.ink)
-                        else -> Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-                            if (m.forwardedFrom != null) Text("Forwarded", style = MM.type.caption.copy(fontStyle = FontStyle.Italic), color = c.inkSecondary)
-                            Text(mentionText(m.text, state.members), style = MM.type.body, color = c.ink)
-                        }
-                    }
                 }
+                ReactionRow(m.id, actions, mine)
+                if (seen > 0) Text(if (seen == 1) "Seen" else "Seen by $seen", style = MM.type.caption, color = c.inkSecondary)
             }
-            ReactionRow(m.id, actions, mine)
-            if (seen > 0) Text(if (seen == 1) "Seen" else "Seen by $seen", style = MM.type.caption, color = c.inkSecondary)
         }
     }
 }
@@ -293,24 +395,48 @@ private fun ReactionRow(messageId: String, actions: ChatActions, mine: Boolean) 
 }
 
 @Composable
-private fun ChatInput(state: ChatUiState, draft: String, actions: ChatActions, recording: Boolean, onAttachPhoto: () -> Unit, onAttachFile: () -> Unit, onMicStart: () -> Unit, onMicStop: () -> Unit) {
+private fun ChatInput(
+    state: ChatUiState,
+    draft: String,
+    actions: ChatActions,
+    recording: Boolean,
+    onAttachPhoto: () -> Unit,
+    onAttachVideo: () -> Unit,
+    onAttachFile: () -> Unit,
+    onMicStart: () -> Unit,
+    onMicStop: () -> Unit
+) {
     val c = MM.colors
     var plus by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().background(c.background).navigationBarsPadding().imePadding()) {
-        val bar = state.editing?.let { "Editing your message" to actions.onCancelEdit }
-            ?: state.forwarding?.let { "Forwarding ${it.authorName}'s message" to actions.onCancelForward }
-            ?: state.replyTo?.let { "Replying to ${it.authorName}: ${it.text.take(60)}" to actions.onCancelReply }
+        val bar = state.editing?.let { Triple("Editing your message", it.text.take(60), actions.onCancelEdit) }
+            ?: state.forwarding?.let { Triple("Forwarding ${it.authorName}'s message", it.text.take(60), actions.onCancelForward) }
+            ?: state.replyTo?.let { Triple("Replying to ${it.authorName}", it.text.take(60), actions.onCancelReply) }
         if (bar != null) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = MM.space.l), verticalAlignment = Alignment.CenterVertically) {
-                Text(bar.first, style = MM.type.caption, color = c.inkSecondary, maxLines = 1, modifier = Modifier.weight(1f))
-                IconButton(onClick = bar.second) { Icon(Icons.Rounded.Close, "Cancel", tint = c.inkSecondary) }
+            Surface(
+                Modifier.fillMaxWidth().padding(horizontal = MM.space.l, vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = c.surface,
+                border = BorderStroke(1.dp, c.line)
+            ) {
+                Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(3.dp).fillMaxHeight().background(CirclesPalette.Accent))
+                    Column(Modifier.weight(1f).padding(horizontal = MM.space.m, vertical = 6.dp)) {
+                        Text(bar.first, style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = CirclesPalette.Accent, maxLines = 1)
+                        if (bar.second.isNotBlank()) {
+                            Text(bar.second, style = MM.type.caption, color = c.inkSecondary, maxLines = 1)
+                        }
+                    }
+                    IconButton(onClick = bar.third) { Icon(Icons.Rounded.Close, "Cancel", tint = c.inkSecondary) }
+                }
             }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = MM.space.s, vertical = MM.space.xs), verticalAlignment = Alignment.Bottom) {
             Box {
-                IconButton(onClick = { plus = true }) { Icon(Icons.Rounded.Add, "More: poll, card, prayer chain, celebrate", tint = c.accent) }
+                IconButton(onClick = { plus = true }) { Icon(Icons.Rounded.Add, "More: poll, card, prayer chain, celebrate", tint = CirclesPalette.Accent) }
                 DropdownMenu(plus, { plus = false }, containerColor = c.surfaceRaised) {
                     PlusItem("Send a photo") { plus = false; onAttachPhoto() }
+                    PlusItem("Send a video") { plus = false; onAttachVideo() }
                     PlusItem("Send a PDF") { plus = false; onAttachFile() }
                     PlusItem("Start a poll") { plus = false; actions.onNewPoll() }
                     PlusItem("Share a card") { plus = false; actions.onShareCard() }
@@ -320,11 +446,11 @@ private fun ChatInput(state: ChatUiState, draft: String, actions: ChatActions, r
             }
             CircleField(draft, actions.onDraft, "Message", modifier = Modifier.weight(1f), maxLines = 4)
             if (draft.isBlank()) {
-                if (recording) IconButton(onClick = onMicStop) { Icon(Icons.Rounded.Stop, "Stop and send voice note", tint = c.accent) }
-                else IconButton(onClick = onMicStart) { Icon(Icons.Rounded.Mic, "Record a voice note", tint = c.accent) }
+                if (recording) IconButton(onClick = onMicStop) { Icon(Icons.Rounded.Stop, "Stop and send voice note", tint = CirclesPalette.Accent) }
+                else IconButton(onClick = onMicStart) { Icon(Icons.Rounded.Mic, "Record a voice note", tint = CirclesPalette.Accent) }
             }
             IconButton(onClick = actions.onSend, enabled = draft.isNotBlank()) {
-                Icon(Icons.Rounded.Send, "Send", tint = if (draft.isNotBlank()) c.accent else c.inkMuted)
+                Icon(Icons.Rounded.Send, "Send", tint = if (draft.isNotBlank()) CirclesPalette.Accent else c.inkMuted)
             }
         }
     }
@@ -334,11 +460,17 @@ private fun ChatInput(state: ChatUiState, draft: String, actions: ChatActions, r
 private fun PlusItem(text: String, onClick: () -> Unit) =
     DropdownMenuItem(text = { Text(text, style = MM.type.body, color = MM.colors.ink) }, onClick = onClick)
 
-/** Long-press sheet: react, reply, copy, edit, report, delete. */
+/** Long-press sheet (`message_actions.html`): circular emoji bar + icon action rows + destructive Delete. */
 @Composable
 fun MessageActionsSheet(
-    m: ChatMessage, mine: Boolean, isAdmin: Boolean, actions: ChatActions,
-    reactions: Flow<List<MessageReaction>>, pinnedId: String? = null, onDismiss: () -> Unit
+    m: ChatMessage,
+    mine: Boolean,
+    isAdmin: Boolean,
+    actions: ChatActions,
+    reactions: Flow<List<MessageReaction>>,
+    pinnedId: String? = null,
+    canModerate: Boolean = isAdmin,
+    onDismiss: () -> Unit
 ) {
     val clipboard = LocalClipboardManager.current
     val current by remember(m.id) { reactions }.collectAsState(emptyList())
@@ -346,24 +478,59 @@ fun MessageActionsSheet(
     CircleSheet(onDismiss) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             CHAT_EMOJI.forEach { e ->
-                MMChip(e, selected = current.any { it.mine && it.emoji == e }, onClick = { actions.onToggleReaction(m.id, e, current); onDismiss() })
+                val selected = current.any { it.mine && it.emoji == e }
+                Surface(
+                    shape = CircleShape,
+                    color = if (selected) CirclesPalette.AccentSoft else MM.colors.surfaceSunk,
+                    border = if (selected) BorderStroke(1.5.dp, CirclesPalette.Accent) else null,
+                    modifier = Modifier.size(44.dp).clickable { actions.onToggleReaction(m.id, e, current); onDismiss() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(e, fontSize = 20.sp)
+                    }
+                }
             }
         }
-        ListRow("Reply", onClick = { actions.onReply(m); onDismiss() })
-        if (text.isNotBlank()) ListRow("Copy text", onClick = { clipboard.setText(AnnotatedString(text)); onDismiss() })
-        if (mine && (m.kind == MessageKind.Text || m.kind == MessageKind.Reply)) ListRow("Edit", onClick = { actions.onEdit(m); onDismiss() })
-        if (m.kind == MessageKind.Text || m.kind == MessageKind.Reply) ListRow("Forward", onClick = { actions.onForward(m); onDismiss() })
-        if (isAdmin) ListRow(if (pinnedId == m.id) "Unpin" else "Pin to top", onClick = { if (pinnedId == m.id) actions.onUnpin() else actions.onPin(m); onDismiss() })
-        if (!mine) ListRow("Report", onClick = { actions.onReport(m); onDismiss() })
-        if (mine || isAdmin) ListRow("Delete", onClick = { actions.onDelete(m); onDismiss() })
+        HorizontalDivider(color = MM.colors.line)
+        ActionSheetRow(Icons.Rounded.Reply, "Reply") { actions.onReply(m); onDismiss() }
+        if (text.isNotBlank()) ActionSheetRow(Icons.Rounded.ContentCopy, "Copy text") { clipboard.setText(AnnotatedString(text)); onDismiss() }
+        if (mine && (m.kind == MessageKind.Text || m.kind == MessageKind.Reply)) ActionSheetRow(Icons.Rounded.Edit, "Edit") { actions.onEdit(m); onDismiss() }
+        if (m.kind == MessageKind.Text || m.kind == MessageKind.Reply) ActionSheetRow(Icons.Rounded.Forward, "Forward") { actions.onForward(m); onDismiss() }
+        if (isAdmin) ActionSheetRow(Icons.Rounded.PushPin, if (pinnedId == m.id) "Unpin" else "Pin to top") { if (pinnedId == m.id) actions.onUnpin() else actions.onPin(m); onDismiss() }
+        if (!mine) ActionSheetRow(Icons.Rounded.Flag, "Report") { actions.onReport(m); onDismiss() }
+        if (mine || canModerate) {
+            ActionSheetRow(Icons.Rounded.DeleteOutline, "Delete", destructive = true) { actions.onDelete(m); onDismiss() }
+        }
+    }
+}
+
+@Composable
+private fun ActionSheetRow(icon: ImageVector, label: String, destructive: Boolean = false, onClick: () -> Unit) {
+    val fg = if (destructive) CirclesPalette.RoseInk else MM.colors.ink
+    val iconBg = if (destructive) CirclesPalette.RoseBg else MM.colors.surfaceSunk
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Surface(shape = RoundedCornerShape(10.dp), color = iconBg, modifier = Modifier.size(34.dp)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = fg, modifier = Modifier.size(18.dp))
+            }
+        }
+        Text(label, style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Medium), color = fg)
     }
 }
 
 /** "@Name" in a message, highlighted when it names a member. */
 @Composable
-private fun mentionText(text: String, members: List<Member>): androidx.compose.ui.text.AnnotatedString {
+private fun mentionText(text: String, members: List<Member>, onAccent: Boolean = false): androidx.compose.ui.text.AnnotatedString {
     val names = members.map { it.displayName }.filter { it.isNotBlank() }.sortedByDescending { it.length }
-    val accent = MM.colors.accent
+    val highlight = if (onAccent) CirclesPalette.White else CirclesPalette.Accent
     return buildAnnotatedString {
         var i = 0
         while (i < text.length) {
@@ -372,7 +539,7 @@ private fun mentionText(text: String, members: List<Member>): androidx.compose.u
             append(text.substring(i, at))
             val hit = names.firstOrNull { text.regionMatches(at + 1, it, 0, it.length, ignoreCase = true) }
             if (hit != null) {
-                pushStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = accent))
+                pushStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = highlight))
                 append(text.substring(at, at + 1 + hit.length))
                 pop()
                 i = at + 1 + hit.length

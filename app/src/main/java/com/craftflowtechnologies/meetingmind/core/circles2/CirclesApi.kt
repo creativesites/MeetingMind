@@ -82,8 +82,10 @@ interface CirclesApi {
     suspend fun uploadMedia(ticketId: String, mime: String, bytes: ByteArray): CirclesResult<String>
     /** Member only. The bytes of one stored file. */
     suspend fun downloadMedia(circleId: String, path: String): CirclesResult<ByteArray>
-    /** An image, voice or file message, from an upload the caller made. The Worker writes it. */
-    suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?): CirclesResult<Unit>
+    /** Deletes an uploaded media object (uploader or admin). */
+    suspend fun deleteMedia(circleId: String, path: String): CirclesResult<Unit>
+    /** An image, video, voice or file message, from an upload the caller made. The Worker writes it. */
+    suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?, requestId: String? = null): CirclesResult<Unit>
     suspend fun registerToken(token: String): CirclesResult<Unit>
     suspend fun unregisterToken(token: String): CirclesResult<Unit>
 }
@@ -98,7 +100,8 @@ object NotConfiguredCirclesApi : CirclesApi {
     override suspend fun createUploadTicket(circleId: String, kind: MediaKind, mime: String, bytes: Long, durationMs: Long?, name: String?) = no<UploadTicket>()
     override suspend fun uploadMedia(ticketId: String, mime: String, bytes: ByteArray) = no<String>()
     override suspend fun downloadMedia(circleId: String, path: String) = no<ByteArray>()
-    override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?) = no<Unit>()
+    override suspend fun deleteMedia(circleId: String, path: String) = no<Unit>()
+    override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?, requestId: String?) = no<Unit>()
     override suspend fun myCircles() = no<List<String>>()
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = no<Invite>()
     override suspend fun revokeInvite(code: String) = no<Unit>()
@@ -374,9 +377,12 @@ class HttpCirclesApi(
         }
     }
 
-    override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?): CirclesResult<Unit> =
+    override suspend fun deleteMedia(circleId: String, path: String): CirclesResult<Unit> =
+        unit("deleteMedia", JSONObject().put("circleId", circleId).put("path", path))
+
+    override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?, requestId: String?): CirclesResult<Unit> =
         unit("sendMessage", JSONObject().put("circleId", circleId).put("kind", kind.wire).put("uploadPath", uploadPath).put("text", text.take(2000))
-            .apply { replyTo?.let { put("replyTo", it) }; durationMs?.let { put("durationMs", it) }; name?.let { put("name", it.take(120)) } })
+            .apply { replyTo?.let { put("replyTo", it) }; durationMs?.let { put("durationMs", it) }; name?.let { put("name", it.take(120)) }; requestId?.let { put("requestId", it) } })
 
     override suspend fun registerToken(token: String) = unit("registerToken", JSONObject().put("token", token))
     override suspend fun unregisterToken(token: String) = unit("unregisterToken", JSONObject().put("token", token))

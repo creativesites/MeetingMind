@@ -132,7 +132,7 @@ private fun RecordingTypeChip(
 }
 
 @Composable
-private fun SpeakerCountOptionChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
+fun SpeakerCountOptionChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = if (isSelected) IndigoPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
@@ -151,3 +151,37 @@ private fun SpeakerCountOptionChip(label: String, isSelected: Boolean, onClick: 
         )
     }
 }
+
+/** Horizontal row of spoken languages supported for on-device transcription. */
+@Composable
+fun LanguagePickerRow(
+    selected: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val languages = listOf(
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH to "English",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.SHONA to "Shona",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.NORTH_NDEBELE to "Ndebele",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.BEMBA to "Bemba",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.NYANJA to "Nyanja",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.TONGA to "Tonga",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.LOZI to "Lozi",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ZULU to "isiZulu",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.XHOSA to "isiXhosa",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.AFRIKAANS to "Afrikaans",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.SWAHILI to "Kiswahili"
+    )
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.horizontalScroll(rememberScrollState())
+    ) {
+        languages.forEach { (code, name) ->
+            SpeakerCountOptionChip(
+                label = name,
+                isSelected = selected.equals(code, ignoreCase = true)
+            ) { onSelect(code) }
+        }
+    }
+}
+

@@ -82,6 +82,38 @@ object ModelCatalog {
     )
 
     /**
+     * Meta Omnilingual ASR CTC 300M, INT8-quantized ONNX export
+     * (csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12 on Hugging Face).
+     * Supports 1,600+ languages including Shona, Ndebele, Bemba, Nyanja, Tonga, Lozi, Zulu,
+     * Xhosa, Afrikaans, Swahili, English, etc. Apache-2.0 licensed, fully offline.
+     */
+    val omnilingualAsr300mInt8 = AiModelInfo(
+        id = "asr_omnilingual_300m_ctc_int8",
+        name = "Omnilingual ASR 300M (African & Multilingual)",
+        capability = setOf(ModelCapability.TRANSCRIPTION),
+        files = listOf(
+            ModelFileSpec(
+                fileName = "model.int8.onnx",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/resolve/main/model.int8.onnx",
+                sha256 = "e7c4e54ee4c4c47829cc6667d5d00ed8ea7bef1dcfeef0fce766f77752a2726c",
+                sizeBytes = 365_352_120L
+            ),
+            ModelFileSpec(
+                fileName = "tokens.txt",
+                downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/resolve/main/tokens.txt",
+                sha256 = "a7a044c52cb29cbe8b0dc1953e92cefd4ca16b0ed968177b6beab21f9a7d0b31",
+                sizeBytes = 86_423L
+            )
+        ),
+        minimumRamMb = 1536,
+        recommendedRamMb = 3072,
+        version = "omnilingual-asr-300m-ctc-int8-2025-11-12",
+        description = "Universal African and Southern African on-device speech-to-text (Shona, Ndebele, Bemba, Nyanja, Tonga, Lozi, Zulu, Xhosa, Afrikaans, Swahili, etc.). Apache-2.0 licensed, runs offline via sherpa-onnx.",
+        parameterCount = "300M",
+        quantization = "int8"
+    )
+
+    /**
      * Real offline speaker diarization: pyannote segmentation-3.0 (int8) finds "who is speaking
      * when" boundaries; 3D-Speaker CAM++ (English, VoxCeleb-trained) turns each segment into an
      * embedding for clustering. Both run via sherpa-onnx's OfflineSpeakerDiarization API.
@@ -272,6 +304,7 @@ object ModelCatalog {
     val entries: List<AiModelInfo> = listOf(
         sileroVad,
         parakeetTdtV3Int8,
+        omnilingualAsr300mInt8,
         speakerDiarization,
         qwen25_1_5bInstruct,
         qwen25_0_5bInstruct,

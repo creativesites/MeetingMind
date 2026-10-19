@@ -209,29 +209,33 @@ async function join(ctx) {
 async function decideJoin(ctx) {
   const circleId = str(ctx.body, "circleId");
   const targetUid = str(ctx.body, "uid");
-  const { circle, member } = await load(ctx, circleId);
-  if (!isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can let people in.");
+  const approve = ctx.body.approve === true;
   const requestPath = `${C(circleId)}/joinRequests/${targetUid}`;
-  const request = await ctx.db.get(requestPath);
-  if (!request) throw notFound("That request");
-  if (ctx.body.approve !== true) {
-    await ctx.db.commit([w.del(requestPath)]);
-    return {};
-  }
-  if (await ctx.db.get(`${C(circleId)}/members/${targetUid}`)) {
-    await ctx.db.commit([w.del(requestPath)]);
-    return {};
-  }
-  if (circle.memberCount >= LIMITS.membersPerCircle) throw new ApiError(409, "full", "This circle is full.");
-  const meta = await ctx.db.get(`userMeta/${targetUid}`);
-  const n = meta?.data.circleCount || 0;
-  if (n >= LIMITS.circlesPerUser) throw new ApiError(409, "too_many_circles", "That person is in the maximum of 10 circles.");
-  await ctx.db.commit([
-    w.create(`${C(circleId)}/members/${targetUid}`, { role: "member", displayName: request.data.displayName, joinedAt: ctx.now, muted: false }),
-    w.update(C(circleId), { memberCount: circle.memberCount + 1 }),
-    w.del(requestPath),
-    userMetaWrite(targetUid, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), circleId] }),
-  ]);
+  await ctx.db.runTx(async (tx) => {
+    const circleDoc = await tx.get(C(circleId));
+    const actorDoc = await tx.get(`${C(circleId)}/members/${ctx.uid}`);
+    if (!circleDoc || !actorDoc || circleDoc.data.closed) throw forbidden();
+    if (!isAdmin(actorDoc.data.role)) throw new ApiError(403, "forbidden", "Only admins can let people in.");
+    const request = await tx.get(requestPath);
+    if (!request) throw notFound("That request");
+    if (!approve) return [w.del(requestPath)];
+    if (await tx.get(`${C(circleId)}/members/${targetUid}`)) return [w.del(requestPath)];
+    const circle = circleDoc.data;
+    if (circle.memberCount >= LIMITS.membersPerCircle) throw new ApiError(409, "full", "This circle is full.");
+    const meta = await tx.get(`userMeta/${targetUid}`);
+    const n = meta?.data.circleCount || 0;
+    if (n >= LIMITS.circlesPerUser) throw new ApiError(409, "too_many_circles", "That person is in the maximum of 10 circles.");
+    const code = request.data.inviteCode;
+    const inviteDoc = code ? await tx.get(`invites/${code}`) : null;
+    const writes = [
+      w.create(`${C(circleId)}/members/${targetUid}`, { role: "member", displayName: request.data.displayName, joinedAt: ctx.now, muted: false }),
+      w.update(C(circleId), { memberCount: circle.memberCount + 1 }),
+      w.del(requestPath),
+      userMetaWrite(targetUid, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), circleId] }),
+    ];
+    if (inviteDoc) writes.push(w.update(`invites/${code}`, {}, { inc: { uses: 1 } }));
+    return writes;
+  });
   return {};
 }
 
@@ -393,7 +397,8 @@ async function createPost(ctx) {
   const b = ctx.body;
   const circleId = str(b, "circleId");
   const { circle, member } = await load(ctx, circleId);
-  const body = cleanText(b.body, "body", { max: LIMITS.bodyMax });
+  const hasPhotos = Array.isArray(b.attachments) && b.attachments.length > 0;
+  const body = cleanText(b.body ?? "", "body", { min: hasPhotos ? 0 : 1, max: LIMITS.bodyMax });
   const verseRef = cleanVerseRef(b.verseRef);
   if (b.type === "announcement" && !isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can post announcements.");
   const { pending, post, authorDoc } = shapePost({ type: b.type, body, verseRef, anonymous: b.anonymous === true ? true : b.anonymous === false ? false : undefined, uid: ctx.uid, authorName: member.displayName, settings: circle.settings, now: ctx.now });
@@ -492,10 +497,16 @@ async function deletePost(ctx) {
   const pend = await ctx.db.get(`${C(circleId)}/pending/${postId}`);
   if (pend) { // withdrawing / removing a request that was never published
     await ctx.db.commit([w.del(`${C(circleId)}/pending/${postId}`), w.del(`${C(circleId)}/postAuthors/${postId}`)]);
+    if (ctx.env?.MEDIA && Array.isArray(pend.data.attachmentPaths)) {
+      await Promise.all(pend.data.attachmentPaths.map((p) => ctx.env.MEDIA.delete(p)));
+    }
     return {};
   }
-  await livePost(ctx, circleId, postId);
-  await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, { deleted: true, body: "", verseRef: null })]);
+  const post = await livePost(ctx, circleId, postId);
+  await ctx.db.commit([w.update(`${C(circleId)}/posts/${postId}`, { deleted: true, body: "", verseRef: null, attachments: [], attachmentPaths: [] })]);
+  if (ctx.env?.MEDIA && Array.isArray(post.attachmentPaths)) {
+    await Promise.all(post.attachmentPaths.map((p) => ctx.env.MEDIA.delete(p)));
+  }
   return {};
 }
 

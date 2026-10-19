@@ -24,6 +24,58 @@ data class TranscriptionOptions(
     val onWindowDone: ((startMs: Long, endMs: Long, words: List<com.craftflowtechnologies.meetingmind.ai.transcript.CanonicalWord>) -> Unit)? = null
 )
 
+/** Supported local and regional languages with model resolution mapping. */
+object SupportedLanguages {
+    const val ENGLISH = "en"
+    const val SHONA = "sna"
+    const val NORTH_NDEBELE = "nde"
+    const val BEMBA = "bem"
+    const val NYANJA = "nya"
+    const val TONGA = "toi"
+    const val LOZI = "loz"
+    const val LUVALE = "lue"
+    const val LUNDA = "lun"
+    const val KAONDE = "kqn"
+    const val ZULU = "zul"
+    const val XHOSA = "xho"
+    const val AFRIKAANS = "afr"
+    const val SESOTHO = "sot"
+    const val SETSWANA = "tsn"
+    const val SWAHILI = "swa"
+
+    val SOUTHERN_AFRICAN_LANGUAGES = listOf(
+        SHONA, NORTH_NDEBELE, BEMBA, NYANJA, TONGA, LOZI,
+        LUVALE, LUNDA, KAONDE, ZULU, XHOSA, AFRIKAANS, SESOTHO, SETSWANA, SWAHILI
+    )
+
+    fun isAfricanLanguage(languageCode: String): Boolean =
+        SOUTHERN_AFRICAN_LANGUAGES.contains(languageCode.lowercase().trim())
+
+    fun defaultModelIdForLanguage(languageCode: String): String =
+        if (isAfricanLanguage(languageCode)) ModelCatalog.omnilingualAsr300mInt8.id
+        else ModelCatalog.parakeetTdtV3Int8.id
+
+    fun displayName(languageCode: String): String = when (languageCode.lowercase().trim()) {
+        SHONA -> "Shona (chiShona)"
+        NORTH_NDEBELE -> "Ndebele (isiNdebele)"
+        BEMBA -> "Bemba (iciBemba)"
+        NYANJA -> "Nyanja / Chichewa"
+        TONGA -> "Tonga (chiTonga)"
+        LOZI -> "Lozi (siLozi)"
+        LUVALE -> "Luvale"
+        LUNDA -> "Lunda"
+        KAONDE -> "Kaonde"
+        ZULU -> "isiZulu"
+        XHOSA -> "isiXhosa"
+        AFRIKAANS -> "Afrikaans"
+        SESOTHO -> "Sesotho"
+        SETSWANA -> "Setswana"
+        SWAHILI -> "Kiswahili"
+        ENGLISH -> "English"
+        else -> languageCode
+    }
+}
+
 /**
  * Converts recorded audio into a chronological stream of timed words.
  *

@@ -10,6 +10,21 @@ Updated: 2026-10-19. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git lo
 - **Redesigned Paywall**: Trial timeline, weekly price anchoring, Founder bonus badges, RevenueCat package bindings.
 - **Unit Tests Verified**: `NoteMomentHostTest` (9/9 pass), `OnboardingTest` (5/5 pass), `BillingModelTest`, `PaywallPolicyTest`, `PaywallCopyTest` (all pass), and Cloudflare proxy test suite `logic.test.mjs` (28/28 pass).
 
+## Southern African Language Transcription (MeetingMind Voice Intelligence)
+- Research & Planning complete: `docs/SOUTHERN_AFRICAN_ASR_RESEARCH_AND_PLAN.md` (12 sections, benchmark methodology, legal audit) and `docs/models/southern_african_asr_catalog.json` (26 fields across 12 candidate model checkpoints).
+- License guardrail: `facebook/mms-1b-all` formally rejected due to `CC-BY-NC 4.0` non-commercial restriction. `Meta Omnilingual ASR CTC 300M (INT8)` approved and selected (`Apache-2.0`, ~365 MB download, ~650 MB peak RAM).
+- Phase P0 & P1 implemented (`bd280b4`):
+  - `SherpaOmnilingualSpeechRecognizer.kt` integrated with sherpa-onnx offline CTC config.
+  - `ModelCatalog.omnilingualAsr300mInt8` wired with direct Hugging Face download URL and SHA-256 integrity hash.
+  - `MeetingProcessingPipeline.kt` updated to dynamically route to `SherpaOmnilingualSpeechRecognizer` when the multilingual model is selected.
+  - Discourse markers in `UtteranceBuilder.kt` and `TranscriptStructureEngine.kt` extended for Shona, Ndebele, Bemba, and Nyanja.
+- Phase P2 implemented (`629994a`):
+  - `LanguagePickerRow` Compose UI added to `RecordingContextPicker.kt` and integrated into `RecordingScreen.kt` recording setup flow.
+  - Spoken language selection persisted via `UserPreferencesManager.setSelectedLanguage` and tracked on `RecordingContext`.
+  - `ProcessingScheduler.kt` and `MeetingProcessingPipeline.kt` dynamically select Omnilingual ASR CTC 300M when an African language is chosen.
+  - Unit test suite added in `SupportedLanguagesTest.kt` and updated in `UserPreferencesManagerTest.kt`.
+
+
 ## Where we are (what the founder sees on device, latest report)
 - Notes page crashed on open. Fixed on the branch in `5f120cf` (hero layout dropped a child when the latest-meeting bubble was empty). Unit tests pass. Not yet seen on device.
 - Circles section on Home shows its label but no content. Circles v2 code is on the branch; the Home section needs checking.
@@ -19,10 +34,13 @@ Updated: 2026-10-19. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git lo
 - The sun or moon sits over the headline in the Today quote card. It is the card's own illustration, not the companion. Not started.
 
 ## Circles (team report)
-- Redesign (branch `circles-redesign-m1`): backend and client are written end to end, NOT COMPILED. Client: Circle hero with cover photo, feed composer with photos, chat (pins, typing, read receipts, mentions, forwards, photos, PDFs, voice notes), members search and invites, event pickers and cancel confirmation. Backend for the local agent: `docs/CIRCLES_BACKEND_HANDOFF.md`.
-- Circles v2 first increment: creation is idempotent, clearer sign-in errors, v1 removed with migration 25 to 26. Worker live. Firestore rules deployed.
-- `.dev` build still lacks the Android OAuth client in `app/google-services.json`. Google sign-in on `.dev` will fail until the owner re-downloads the file and commits it. The owner's copy is on their machine only.
-- Not verified on device: push notifications, Google sign-in on any build, behaviour after reinstall.
+- Milestone 1 Redesign & Architecture: Backend & client complete and COMPILED (`:app:compileDebugKotlin` clean pass).
+- Client redesign: All 7 screens upgraded to match `MeetingMind Circles Redesign.html` (`CirclesListScreen`, `CircleHomeScreen`/`FeedTab`, `ChatTab`, `MembersTab`, `CircleSettingsScreen`, `EventsSection`, `MediaViews`). Fullscreen photo viewer, video player dialog with `MediaKind.Video` support, 12-bar audio waveforms, L1/L2 media disk cache, pastel avatar initials palette with online dots, `Post.attachments` grid, and role/permission badges.
+- Fixed theme tokens: Circles palette moved to `CirclesFixedColors` in `FixedColors.kt`; `ColorLiteralGuardTest` compliance verified.
+- Backend (`server/circles-api`): 57/57 unit tests pass. R2 media bucket bindings (`meetingmind-circles-media`), `video` media validation (MP4/WebM, 50MB cap), idempotent `sendMessage` via `requestId`, photo-only `createPost`, R2 media deletion in `deletePost`, cursor-paginated `sweepOrphans` with expired `typing` cleanup, and moderator deletion permissions in `firestore.rules`.
+- Deployment automation: `server/circles-api/scripts/deploy-and-verify.sh` verified with live Worker smoke checks (`/health` 200, `/ready` 200, unauthenticated 401).
+- Google sign-in: OAuth client fixes merged from `circles/firebase-json` into `app/google-services.json`.
+- Not verified on device: push notifications, live R2 uploads on real device, Google sign-in on release builds.
 
 ## Latest dev build
 - `MeetingMind-Dev-4ddcdd2.apk` on the `apk-downloads` branch. Built from the designated branch after the no-speech change.

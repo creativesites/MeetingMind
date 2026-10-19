@@ -44,6 +44,7 @@ data class ChatUiState(
     val myUid: String? = null,
     val myName: String = "",
     val isAdmin: Boolean = false,
+    val canModerate: Boolean = false,
     val unread: Int = 0,
     /** When I last read this chat (epoch ms). Messages after it are new to me. */
     val readAt: Long = 0L,
@@ -105,12 +106,14 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
 
     val state: StateFlow<ChatUiState> = combine(core, extras, ticker) { c, x, now ->
         val list = c.ms.valueOr(emptyList())
+        val meRole = x.members.firstOrNull { it.uid == c.uid }?.role
         ChatUiState(
             loading = c.ms is DataState.Loading,
             messages = list,
             myUid = c.uid,
             myName = repo.displayName,
-            isAdmin = x.members.firstOrNull { it.uid == c.uid }?.role?.isAdmin == true,
+            isAdmin = meRole?.isAdmin == true,
+            canModerate = meRole?.canModerate == true,
             unread = list.count { it.createdAt > c.read && it.authorUid != c.uid && !it.deleted },
             readAt = c.read,
             failure = (c.ms as? DataState.Failed)?.failure,
@@ -178,19 +181,20 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
             .take(20)
 
     /**
-     * Sends a photo, voice note or file. The file is uploaded through the Worker and the Worker writes the
-     * message, so the caption and any reply come along with it.
+     * Sends a photo, video, voice note or file. The file is uploaded through the Worker and the Worker writes the
+     * message with a deterministic [requestId] so retries never duplicate the message.
      */
     fun sendAttachment(kind: MediaKind, file: PickedFile) {
         if (uploading.value) { say("One upload at a time."); return }
         val caption = draft.value.trim()
         val replyTo = reply.value?.id
+        val requestId = java.util.UUID.randomUUID().toString()
         uploading.value = true
         uploadJob = viewModelScope.launch {
             try {
                 when (val up = repo.uploadAttachment(circleId, kind, file.bytes, file.mime, file.name, file.durationMs)) {
                     is CirclesResult.Err -> fail(up.failure)
-                    is CirclesResult.Ok -> when (val sent = repo.api.sendMessage(circleId, kind, up.value.path, caption, replyTo, file.durationMs, file.name)) {
+                    is CirclesResult.Ok -> when (val sent = repo.api.sendMessage(circleId, kind, up.value.path, caption, replyTo, file.durationMs, file.name, requestId)) {
                         is CirclesResult.Ok -> { draft.value = ""; reply.value = null; typingPing(false) }
                         is CirclesResult.Err -> fail(sent.failure)
                     }
@@ -253,7 +257,17 @@ class ChatViewModel(val circleId: String, private val repo: CirclesRepository) :
     }
 
     fun delete(m: ChatMessage) {
-        viewModelScope.launch { repo.data.deleteMessage(circleId, m.id).fold(onOk = { }, onErr = ::fail) }
+        val mediaPath = m.attachment?.path
+        viewModelScope.launch {
+            repo.data.deleteMessage(circleId, m.id).fold(
+                onOk = {
+                    if (mediaPath != null) {
+                        repo.api.deleteMedia(circleId, mediaPath)
+                    }
+                },
+                onErr = ::fail
+            )
+        }
     }
 
     fun reportMessage(m: ChatMessage, reason: String = "") {

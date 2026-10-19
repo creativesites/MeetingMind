@@ -70,7 +70,7 @@ fun ComposerSheet(circle: Circle, state: ComposerState, onBody: (String) -> Unit
         state.error?.let { StatusLine(StatusKind.Error, it) }
         PrimaryButton(
             if (state.sending) "Sending..." else if (type == PostType.Prayer && circle.settings.prayerApproval) "Send for approval" else "Post",
-            onSend, enabled = !state.sending && state.body.isNotBlank(), modifier = Modifier.fillMaxWidth()
+            onSend, enabled = !state.sending && (state.body.isNotBlank() || state.attachments.isNotEmpty()), modifier = Modifier.fillMaxWidth()
         )
     }
 }

@@ -127,7 +127,7 @@ fun HomeBento(
                     DevotionalTile(data, actions.onDevotional, index = 1, modifier = Modifier.weight(1f))
                     PrayerTile(actions.onPrayer, index = 2, modifier = Modifier.weight(1f))
                 }
-                if (sections.personal) CreateAndCircles(actions, circles, index = 3)
+                CreateAndCircles(actions, circles, index = 3)
                 if (sections.work) WorkTile(data, actions.onWork, index = 4)
             }
             HomeLayout.WORK_PERSONAL -> {
@@ -144,7 +144,8 @@ fun HomeBento(
             }
             HomeLayout.WORK -> {
                 WorkTile(data, actions.onWork, index = 0)
-                PlanCard(data.plan, index = 1)
+                CreateAndCircles(actions, circles, index = 1)
+                PlanCard(data.plan, index = 3)
             }
         }
     }

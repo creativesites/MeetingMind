@@ -374,6 +374,7 @@ test("join approval: the request waits, the invite is kept, an admin lets the pe
   assert.equal(W.db.dump(`${C(id)}/members/ann`).role, "member");
   assert.equal(W.db.dump(C(id)).memberCount, 2);
   assert.equal(W.db.dump(`${C(id)}/joinRequests/ann`), undefined);
+  assert.equal(W.db.dump(`invites/${code}`).uses, 1, "invite use counted when approved");
 });
 
 test("join approval: rejecting removes the request; members cannot decide", async () => {

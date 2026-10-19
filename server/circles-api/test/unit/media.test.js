@@ -43,6 +43,8 @@ test("sniff: the first bytes must match the declared type", () => {
   assert.equal(sniffMime(pdf(), "application/pdf"), true);
   assert.equal(sniffMime(new TextEncoder().encode("OggS-----"), "audio/ogg"), true);
   assert.equal(sniffMime(new Uint8Array([0, 0, 0, 0x20, ...new TextEncoder().encode("ftyp")]), "audio/mp4"), true);
+  assert.equal(sniffMime(new Uint8Array([0, 0, 0, 0x18, ...new TextEncoder().encode("ftypmp42")]), "video/mp4"), true);
+  assert.equal(sniffMime(new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x01, 0x02]), "video/webm"), true);
   assert.equal(sniffMime(new Uint8Array([0xff, 0xf1, 0x50, 0x80]), "audio/aac"), true);
   assert.equal(sniffMime(new Uint8Array([0xff, 0xf3, 0x50, 0x80]), "audio/aac"), false); // layer bits must be 00
 });
@@ -116,13 +118,20 @@ test("delete: the uploader and admins can delete; other members cannot", async (
   assert.equal(W.r2.objs.has(second), false);
 });
 
-test("sendMessage: the uploader sends a photo, voice note or file; the Worker writes the server time", async () => {
+test("sendMessage: the uploader sends a photo, video, voice note or file; idempotent with requestId; the Worker writes the server time", async () => {
   const W = world();
   const id = await circle(W);
   await joinAs(W, "pat", id, "Pat");
   await joinAs(W, "eve", id, "Eve");
   const path = await uploadFile(W, "pat", id);
-  const { messageId } = await W.call("pat", "sendMessage", { circleId: id, kind: "image", uploadPath: path, text: "Our sunrise" });
+  const { messageId } = await W.call("pat", "sendMessage", { circleId: id, kind: "image", uploadPath: path, text: "Our sunrise", requestId: "req_msg_1" });
+  assert.equal(messageId, "req_msg_1");
+  // Retrying with the same requestId is idempotent for the same author
+  const retry = await W.call("pat", "sendMessage", { circleId: id, kind: "image", uploadPath: path, text: "Our sunrise", requestId: "req_msg_1" });
+  assert.equal(retry.messageId, "req_msg_1");
+  // Another member cannot reuse that requestId
+  assert.equal((await W.err("eve", "sendMessage", { circleId: id, kind: "image", uploadPath: path, requestId: "req_msg_1" })).status, 409);
+
   const msg = W.db.dump(C(id) + `/messages/${messageId}`);
   assert.equal(msg.authorUid, "pat");
   assert.equal(msg.displayName, "Pat");
@@ -136,6 +145,11 @@ test("sendMessage: the uploader sends a photo, voice note or file; the Worker wr
   const v = await W.call("pat", "sendMessage", { circleId: id, kind: "voice", uploadPath: voice, durationMs: 4200, name: "Prayer" });
   assert.equal(W.db.dump(C(id) + `/messages/${v.messageId}`).attachment.durationMs, 4200);
 
+  const video = await uploadFile(W, "pat", id, { kind: "video", mime: "video/mp4", data: new Uint8Array([0, 0, 0, 0x18, ...new TextEncoder().encode("ftypmp42"), ...Array(52).fill(2)]) });
+  const vidMsg = await W.call("pat", "sendMessage", { circleId: id, kind: "video", uploadPath: video, durationMs: 12000, name: "Clip.mp4" });
+  assert.equal(W.db.dump(C(id) + `/messages/${vidMsg.messageId}`).kind, "video");
+  assert.equal(W.db.dump(C(id) + `/messages/${vidMsg.messageId}`).attachment.durationMs, 12000);
+
   assert.equal((await W.err("eve", "sendMessage", { circleId: id, kind: "image", uploadPath: path })).status, 403);
   assert.equal((await W.err("pat", "sendMessage", { circleId: id, kind: "file", uploadPath: path })).code, "bad_request");
   assert.equal((await W.err("pat", "sendMessage", { circleId: id, kind: "image", uploadPath: `circles/${id}/media/00000000-0000-4000-8000-000000000000` })).status, 404);
@@ -144,14 +158,16 @@ test("sendMessage: the uploader sends a photo, voice note or file; the Worker wr
   assert.equal((await W.err("pat", "sendMessage", { circleId: id, kind: "image", uploadPath: `circles/other/media/${path.split("/").pop()}` })).code, "bad_request");
 });
 
-test("post photos: at most four, from this circle, uploaded by the poster, and images only", async () => {
+test("post photos: at most four, from this circle, uploaded by the poster, images only, photo-only allowed, and deletePost cleans up media", async () => {
   const W = world();
   const id = await circle(W);
   const a = await uploadFile(W, "owner", id);
   const b = await uploadFile(W, "owner", id, { kind: "file", mime: "application/pdf", data: pdf() });
   const att = (path, extra = {}) => ({ path, mime: "image/jpeg", bytes: 64, ...extra });
-  const { postId } = await W.call("owner", "createPost", { circleId: id, type: "testimony", body: "Thank you", anonymous: false, attachments: [att(a, { w: 800, h: 600 })] });
+  // Photo-only post (empty body) is allowed when attachments are present
+  const { postId } = await W.call("owner", "createPost", { circleId: id, type: "testimony", body: "", anonymous: false, attachments: [att(a, { w: 800, h: 600 })] });
   const post = W.db.dump(C(id) + `/posts/${postId}`);
+  assert.equal(post.body, "");
   assert.equal(post.attachments[0].path, a);
   assert.deepEqual(post.attachmentPaths, [a]);
   assert.equal(post.attachments[0].w, 800);
@@ -162,6 +178,14 @@ test("post photos: at most four, from this circle, uploaded by the poster, and i
   await joinAs(W, "pat", id, "Pat");
   assert.equal((await W.err("pat", "createPost", { circleId: id, type: "testimony", body: "x", anonymous: false, attachments: [att(a)] })).status, 403);
   assert.equal((await W.err("owner", "createPost", { circleId: id, type: "testimony", body: "x", anonymous: false, attachments: [att(`circles/${id}/media/00000000-0000-4000-8000-000000000000`)] })).status, 404);
+
+  // Deleting the post clears attachments/attachmentPaths and removes the R2 object
+  await W.call("owner", "deletePost", { circleId: id, postId });
+  const deletedPost = W.db.dump(C(id) + `/posts/${postId}`);
+  assert.equal(deletedPost.deleted, true);
+  assert.deepEqual(deletedPost.attachments, []);
+  assert.deepEqual(deletedPost.attachmentPaths, []);
+  assert.equal(W.r2.objs.has(a), false);
 });
 
 test("cover: an admin sets an uploaded image; members and non-images are refused; null clears it", async () => {
@@ -198,8 +222,13 @@ test("sweep: old unreferenced media goes; media a message, post, pending request
   W.db.seed(C(id) + "/posts/p1", { attachmentPaths: [inPost], deleted: false });
   W.db.seed(C(id) + "/pending/p2", { attachmentPaths: [inPending], deleted: false });
   W.db.seed(C(id), { ...W.db.dump(C(id)), coverPath: inCover });
+  W.db.seed(C(id) + "/typing/staleUser", { displayName: "Stale", updatedAt: day(120_000), expiresAt: day(60_000) });
+  W.db.seed(C(id) + "/typing/activeUser", { displayName: "Active", updatedAt: new Date(), expiresAt: new Date(Date.now() + 60_000) });
   const r = await sweepOrphans({ env: { MEDIA: W.r2 }, db: W.db });
   assert.equal(r.deleted, 1);
+  assert.equal(r.typingDeleted, 1);
+  assert.equal(W.db.dump(C(id) + "/typing/staleUser"), undefined);
+  assert.equal(W.db.dump(C(id) + "/typing/activeUser").displayName, "Active");
   assert.equal(W.r2.objs.has(orphan), false);
   for (const k of [inMessage, inPost, inPending, inCover, recent]) assert.equal(W.r2.objs.has(k), true, k);
 });

@@ -41,7 +41,15 @@ object UtteranceBuilder {
     internal val BACKCHANNELS = setOf(
         "yes", "yeah", "yep", "yup", "no", "nope", "right", "ok", "okay", "sure", "exactly",
         "correct", "true", "agreed", "absolutely", "definitely", "mhm", "mmhm", "uhhuh", "hmm",
-        "got", "gotcha", "understood", "thanks", "perfect", "great", "nice", "cool", "indeed"
+        "got", "gotcha", "understood", "thanks", "perfect", "great", "nice", "cool", "indeed",
+        // Shona
+        "hongu", "ehe", "kwete", "zvakanaka",
+        // Ndebele / Zulu
+        "yebo", "hayi", "kulungile",
+        // Bemba
+        "eeye", "ee", "awe", "chisuma",
+        // Nyanja
+        "inde", "ayi", "chabwino"
     )
 
     private const val MAX_BACKCHANNEL_WORDS = 3
@@ -156,6 +164,14 @@ object UtteranceBuilder {
 
     private val CONTINUATION_WORDS = setOf(
         "and", "but", "or", "so", "because", "if", "when", "while", "that", "which",
-        "the", "a", "an", "to", "of", "in", "on", "with", "for", "as", "at", "by", "from"
+        "the", "a", "an", "to", "of", "in", "on", "with", "for", "as", "at", "by", "from",
+        // Shona
+        "uye", "asi", "kana", "nekuti", "nokuti", "saka", "sezvo",
+        // Ndebele / Zulu
+        "futhi", "kodwa", "noma", "ngoba", "ngakhoke",
+        // Bemba
+        "na", "lelo", "pantu", "nga", "kanshi",
+        // Nyanja
+        "ndi", "koma", "kapena", "chifukwa"
     )
 }
