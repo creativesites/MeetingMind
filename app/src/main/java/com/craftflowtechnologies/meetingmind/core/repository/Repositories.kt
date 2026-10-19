@@ -76,6 +76,7 @@ class MeetingRepository(
         recordingType: com.craftflowtechnologies.meetingmind.core.model.RecordingType = com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
         customContext: String? = null,
         speakerCountPreference: Int? = null,
+        language: String = "en",
         /** File the recording into this note instead of giving it a new one ("record here"). */
         noteId: String? = null
     ): Meeting = withContext(Dispatchers.IO) {
@@ -88,7 +89,7 @@ class MeetingRepository(
             audioFilePath = audioFilePath,
             status = MeetingStatus.RECORDING.name,
             participantCount = 1,
-            language = "en",
+            language = language,
             summaryText = null,
             recordingType = recordingType.name,
             customContext = customContext,

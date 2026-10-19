@@ -96,4 +96,20 @@ class UserPreferencesManagerTest {
         manager.setAppLockEnabled(false)
         assertEquals(false, manager.preferencesFlow.first().appLockEnabled)
     }
+
+    @Test
+    fun `selectedLanguage defaults to English and switches ASR model when an African language is set`() = runBlocking {
+        val manager = UserPreferencesManager(ApplicationProvider.getApplicationContext())
+        assertEquals("en", AppPreferencesState().selectedLanguage)
+
+        manager.setSelectedLanguage("sna")
+        val snaPrefs = manager.preferencesFlow.first()
+        assertEquals("sna", snaPrefs.selectedLanguage)
+        assertEquals(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.omnilingualAsr300mInt8.id, snaPrefs.selectedAsrModelId)
+
+        manager.setSelectedLanguage("bem")
+        val bemPrefs = manager.preferencesFlow.first()
+        assertEquals("bem", bemPrefs.selectedLanguage)
+        assertEquals(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.omnilingualAsr300mInt8.id, bemPrefs.selectedAsrModelId)
+    }
 }

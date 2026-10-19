@@ -119,7 +119,8 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onNewEvent = { editingEvent = null; showEventForm = true },
             onOpenChat = { tab = HomeTab.Chat },
             onStartPost = home::openComposer,
-            onPhoto = home::addPhoto
+            onPhoto = home::addPhoto,
+            onInvite = { home.createInvite(); showInvite = true }
         )
         val chatActions = ChatActions(
             onDraft = chat::setDraft, onSend = chat::send, onReply = chat::startReply, onCancelReply = chat::cancelReply,
@@ -154,7 +155,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     if (showTypes && circle != null) PostTypeSheet(circle, state.isAdmin, onPick = { showTypes = false; home.openComposer(it) }, onDismiss = { showTypes = false })
     if (composer.open && circle != null) ComposerSheet(circle, composer, home::setBody, home::setVerse, home::setAnonymous, home::submitPost, home::closeComposer, home::removePhoto)
     val threadPost = thread?.let { t -> state.posts.firstOrNull { it.post.id == t.postId }?.post }
-    if (thread != null) ThreadSheet(threadPost, thread, state.myUid, state.isAdmin, now, onSend = { home.comment(thread!!.postId, it) }, onDeleteComment = { home.deleteComment(thread!!.postId, it.id) }, onDismiss = home::closeThread)
+    if (thread != null) ThreadSheet(threadPost, thread, state.myUid, state.canModerate, now, onSend = { home.comment(thread!!.postId, it) }, onDeleteComment = { home.deleteComment(thread!!.postId, it.id) }, onDismiss = home::closeThread)
     if (showInvite) InviteSheet(invite, home::createInvite) { showInvite = false; home.closeInvite() }
     editing?.let { p -> TextEditSheet("Edit post", p.body, "Save", { home.editPost(p, it) }, { editing = null }) }
     updating?.let { p -> TextEditSheet("Post an update", "", "Post update", { home.addUpdate(p, it) }, { updating = null }) }
@@ -168,7 +169,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     val liveEvent = openingEvent?.let { o -> state.events.firstOrNull { it.id == o.id } ?: o }
     liveEvent?.let { e ->
         EventSheet(
-            e, eventRsvps, state.myUid, state.isAdmin,
+            e, eventRsvps, state.myUid, state.canModerate,
             onRsvp = { home.rsvp(e.id, it) },
             onEdit = { openingEvent = null; home.openEvent(null); editingEvent = e; showEventForm = true },
             onCancel = { home.cancelEvent(e.id); openingEvent = null; home.openEvent(null) },

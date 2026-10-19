@@ -59,12 +59,14 @@ object CirclesParsing {
     fun post(id: String, d: Map<String, Any?>): Post? {
         val type = PostType.from(str(d, "type")) ?: return null
         val anonymous = d["anonymous"] == true
+        val attachments = (d["attachments"] as? List<*>)?.mapNotNull { attachment(map(it)) }.orEmpty()
         return Post(
             id = id, type = type, body = str(d, "body").orEmpty(), verseRef = str(d, "verseRef")?.ifBlank { null },
             anonymous = anonymous, answered = str(d, "status") == "answered", deleted = d["deleted"] == true,
             // Defence in depth: even if a bad doc carried an author, an anonymous post never shows one.
             authorUid = if (anonymous) null else str(d, "authorUid"), authorName = if (anonymous) null else str(d, "authorName"),
-            counts = counts(map(d["counts"])), createdAt = millis(d["createdAt"]), editedAt = d["editedAt"]?.let { millis(it) }?.takeIf { it > 0 }
+            counts = counts(map(d["counts"])), createdAt = millis(d["createdAt"]), editedAt = d["editedAt"]?.let { millis(it) }?.takeIf { it > 0 },
+            attachments = attachments
         )
     }
 

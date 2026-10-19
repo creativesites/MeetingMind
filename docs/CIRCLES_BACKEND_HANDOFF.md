@@ -128,6 +128,7 @@ Limits:
 | image | image/jpeg, image/png, image/webp | 10 MB |
 | voice | audio/mp4, audio/aac, audio/ogg | 25 MB |
 | file | application/pdf | 25 MB |
+| video | video/mp4, video/webm | 50 MB |
 
 - The Worker sniffs the file header and checks it matches the declared mime. It does not trust the Content-Type header alone.
 - Refuse an upload over its cap from `Content-Length` before reading the body in full.
@@ -137,18 +138,19 @@ Endpoints:
 - `POST /v1/createUploadTicket`: body `circleId, kind, mime, bytes, durationMs?, name?`. Checks membership, kind, mime, bytes, `name` at most 120 characters, and a rate limit per user (suggest 60 per hour). Returns `{ticketId, path, expiresAt}`. The ticket is stored in KV with uid, circleId, path, mime, bytes, a 15-minute expiry, and single use.
 - `PUT /v1/media/upload/{ticketId}`: raw bytes. `Content-Type` must equal the ticket mime. Checks the ticket exists, is unexpired and unused, belongs to the caller, the length equals the ticket bytes, and the header sniff matches the mime. Writes to R2 at the ticket path, marks the ticket used, returns `{ok, path}`.
 - `GET /v1/media/{circleId}/{uuid}`: member only. Non-members get 404, so existence is not revealed. Streams the object with `Cache-Control: private, max-age=3600`.
-- `POST /v1/deleteMedia`: body `circleId, path`. The uploader or an admin may delete. The Worker calls it on hard delete. Clients never delete objects.
-- Orphan cleanup, in the existing daily cron: delete objects older than 24 hours that no message or post references.
+- `POST /v1/deleteMedia`: body `circleId, path`. The uploader or an admin/moderator may delete. The Worker calls it on hard delete (and client calls it on attachment message soft-delete).
+- Orphan & typing cleanup, in the 6-hour cron (`sweepOrphans`): iterates R2 with multi-page cursor pagination (`sweep:cursor` in `env.RATE`, up to 5 pages of 200 objects per run) to delete unreferenced objects older than 24 hours, and sweeps expired `circles/{id}/typing/{uid}` documents where `expiresAt < now`.
 
 Client contracts added with the client UI (the backend must match):
 
-- `sendMessage` body also takes `durationMs?` (voice) and `name?` (file or voice name, at most 120 characters). The response is `{ok:true}`.
+- `sendMessage` body takes `circleId, kind` (`image`, `voice`, `file`, `video`), `uploadPath`, `text?`, `replyTo?`, `durationMs?` (voice or video), `name?` (file, voice, or video name, at most 120 characters), and optional `requestId?` (`^[A-Za-z0-9_-]{8,64}$`) for deterministic message ID (`m_${requestId}`) and idempotent retry. The response is `{ok:true, messageId}`.
 - `updateCircle` takes `coverPath?`: the path of an uploaded image (`circles/{circleId}/media/{uuid}`) that the circle's hero shows. Admins only. The circle document stores it as `coverPath`.
 - `pinMessage` takes `circleId, messageId` (null to unpin). The circle document stores it as `pinnedMessageId`.
 - `createUploadTicket` returns `{ok:true, ticketId, path, expiresAt}`. `uploadMedia` (PUT) returns `{ok:true, path}`. `downloadMedia` (GET) returns the raw bytes, with the Worker's error body on failure.
-- `createPost` takes `attachments`: an array of `{path, mime, bytes}`, at most four.
+- `createPost` takes `attachments`: an array of `{path, mime, bytes, w?, h?}`, at most four. Photo-only posts (empty `body` with non-empty `attachments`) are allowed. `deletePost` best-effort deletes attached R2 objects.
 - Clients write `members/{uid}.lastReadAt = serverTimestamp` for read receipts, and `typing/{uid}` with `displayName`, `updatedAt` and `expiresAt` for the typing line. Both are covered by section 5c and 5d.
 - Clients write `forwardedFrom` (the original message id) and `mentions` (uids, at most 20) on text messages (section 5b).
+- Moderators (`role == "moderator"`) can delete comments and soft-delete messages (clearing `attachment` to `null` or omitting it) in `firestore.rules`.
 
 Messages and posts: the field names in section 5e and section 7 stay exactly as written: `attachment {path, mime, bytes, durationMs?, name?}`, and the caption in `text` (at most 2000 characters).
 

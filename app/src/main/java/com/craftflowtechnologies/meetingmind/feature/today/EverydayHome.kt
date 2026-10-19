@@ -135,7 +135,11 @@ class EverydayActions(
     val onOpenNote: (String) -> Unit = {},
     val onAllNotes: () -> Unit = {},
     val onAllTasks: () -> Unit = {},
-    val onRecord: () -> Unit = {}
+    val onRecord: () -> Unit = {},
+    val onOpenCircles: () -> Unit = {},
+    val onOpenCircle: (String) -> Unit = {},
+    val onStartCircle: () -> Unit = {},
+    val onRetryCircles: () -> Unit = {}
 )
 
 private val CompanionSize = 56.dp
@@ -147,7 +151,8 @@ private val AvatarSize = 40.dp
 fun EverydayHomeContent(
     model: EverydayModel,
     actions: EverydayActions,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    circles: com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles? = null
 ) {
     val companionShown = rememberCompanionVisible(CompanionPage.HOME)
     val needs = model.needs.take(NEEDS_LIMIT)
@@ -182,6 +187,15 @@ fun EverydayHomeContent(
                 )
                 needs.forEach { NeedRow(it) }
             }
+        }
+        if (circles != null) item(key = "circles") {
+            com.craftflowtechnologies.meetingmind.feature.today.home.CirclesCard(
+                circles = circles,
+                onOpenCircles = actions.onOpenCircles,
+                onOpenCircle = actions.onOpenCircle,
+                onStartCircle = actions.onStartCircle,
+                onRetry = actions.onRetryCircles
+            )
         }
         if (model.recent.isNotEmpty()) item(key = "recent") {
             Column {
@@ -252,7 +266,12 @@ fun EverydayHome(
     onSearch: () -> Unit,
     onOpenDevotional: () -> Unit,
     onOpenTasks: () -> Unit,
-    onNavigateBottomNav: (BottomNavDestination) -> Unit
+    onNavigateBottomNav: (BottomNavDestination) -> Unit,
+    homeCircles: com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles? = null,
+    onOpenCircles: () -> Unit = {},
+    onOpenCircle: (String) -> Unit = {},
+    onStartCircle: () -> Unit = {},
+    onRetryCircles: () -> Unit = {}
 ) {
     val identity by viewModel.identity.collectAsState()
     val upNext by viewModel.upNext.collectAsState()
@@ -370,9 +389,14 @@ fun EverydayHome(
                 onOpenNote = onOpenNote,
                 onAllNotes = { onNavigateBottomNav(BottomNavDestination.NOTES) },
                 onAllTasks = onOpenTasks,
-                onRecord = onRecord
+                onRecord = onRecord,
+                onOpenCircles = onOpenCircles,
+                onOpenCircle = onOpenCircle,
+                onStartCircle = onStartCircle,
+                onRetryCircles = onRetryCircles
             ),
-            Modifier.fillMaxSize().statusBarsPadding().padding(bottom = padding.calculateBottomPadding())
+            Modifier.fillMaxSize().statusBarsPadding().padding(bottom = padding.calculateBottomPadding()),
+            circles = homeCircles
         )
     }
 }

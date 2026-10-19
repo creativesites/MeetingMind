@@ -108,7 +108,35 @@ class CirclesMediaParsingTest {
         assertTrue(MediaKind.Image.accepts("image/webp"))
         assertFalse(MediaKind.Image.accepts("application/pdf"))
         assertTrue(MediaKind.File.accepts("application/pdf"))
+        assertTrue(MediaKind.Video.accepts("video/mp4"))
+        assertTrue(MediaKind.Video.accepts("video/webm"))
+        assertFalse(MediaKind.Video.accepts("audio/mp4"))
         assertEquals(10_000_000L, MediaKind.Image.maxBytes)
+        assertEquals(50_000_000L, MediaKind.Video.maxBytes)
+    }
+
+    @Test fun `post - attachments are parsed and photo-only posts are accepted`() {
+        val p = CirclesParsing.post("p1", mapOf(
+            "type" to "note",
+            "body" to "",
+            "authorUid" to "u1",
+            "authorName" to "Ann",
+            "attachments" to listOf(
+                mapOf("path" to "circles/c1/media/photo1", "mime" to "image/jpeg", "bytes" to 4096L)
+            ),
+            "createdAt" to 100L
+        ))
+        assertEquals(1, p?.attachments?.size)
+        assertEquals("circles/c1/media/photo1", p?.attachments?.first()?.path)
+        assertNull(CirclesParsing.post("p2", mapOf("type" to "note", "body" to "")))
+    }
+
+    @Test fun `role - moderator can moderate but is not admin`() {
+        assertTrue(Role.Owner.isAdmin)
+        assertTrue(Role.Admin.isAdmin)
+        assertFalse(Role.Moderator.isAdmin)
+        assertTrue(Role.Moderator.canModerate)
+        assertFalse(Role.Member.canModerate)
     }
 }
 

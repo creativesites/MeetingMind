@@ -1,6 +1,8 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -11,7 +13,12 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.EventDraft
 import com.craftflowtechnologies.meetingmind.core.circles2.Rsvp
@@ -60,9 +67,11 @@ fun EventsSection(events: List<CircleEvent>, now: Long, onOpen: (CircleEvent) ->
 
 @Composable
 private fun EventRow(e: CircleEvent, onOpen: (CircleEvent) -> Unit) {
+    val where = e.location.takeIf { it.isNotBlank() }
+    val sub = if (where != null) "${whenText(e.startsAt, e.timeZone)} · $where" else whenText(e.startsAt, e.timeZone)
     ListRow(
         title = e.title,
-        subtitle = whenText(e.startsAt, e.timeZone),
+        subtitle = sub,
         meta = if (e.cancelled) "Cancelled" else null,
         leading = { DayTile(e) },
         onClick = { onOpen(e) }
@@ -71,9 +80,24 @@ private fun EventRow(e: CircleEvent, onOpen: (CircleEvent) -> Unit) {
 
 @Composable
 private fun DayTile(e: CircleEvent) {
-    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-        Text(dayPart(e.startsAt, e.timeZone, "d"), style = MM.type.heading, color = MM.colors.ink)
-        Text(dayPart(e.startsAt, e.timeZone, "MMM").uppercase(), style = MM.type.overline, color = MM.colors.inkSecondary)
+    Column(
+        modifier = Modifier
+            .size(width = 54.dp, height = 58.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(CirclesPalette.AccentSoft),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            dayPart(e.startsAt, e.timeZone, "MMM").uppercase(),
+            style = MM.type.overline.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+            color = CirclesPalette.Accent
+        )
+        Text(
+            dayPart(e.startsAt, e.timeZone, "d"),
+            style = MM.type.heading.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+            color = CirclesPalette.AccentDeep
+        )
     }
 }
 

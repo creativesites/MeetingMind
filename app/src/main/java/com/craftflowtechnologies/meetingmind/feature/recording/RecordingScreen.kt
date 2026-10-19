@@ -130,6 +130,16 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     val workSettings: StateFlow<com.craftflowtechnologies.meetingmind.core.work.WorkSettings> = com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(application).workSettings
         .stateIn(viewModelScope, SharingStarted.Eagerly, com.craftflowtechnologies.meetingmind.core.work.WorkSettings())
 
+    val preferencesState: StateFlow<com.craftflowtechnologies.meetingmind.core.datastore.AppPreferencesState> =
+        com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(application).preferencesFlow
+            .stateIn(viewModelScope, SharingStarted.Eagerly, com.craftflowtechnologies.meetingmind.core.datastore.AppPreferencesState())
+
+    fun setSelectedLanguage(languageCode: String) {
+        viewModelScope.launch {
+            com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(getApplication()).setSelectedLanguage(languageCode)
+        }
+    }
+
     private var currentMeetingId: String = UUID.randomUUID().toString()
     private var meetingTitle: String = "In-Person Discussion"
     private var recordingContext: com.craftflowtechnologies.meetingmind.core.model.RecordingContext = com.craftflowtechnologies.meetingmind.core.model.RecordingContext()
@@ -208,6 +218,8 @@ fun RecordingScreen(
     initialTitle: String? = null,
     /** Speaker count from the event's guest list; the person can still change it. */
     initialSpeakers: Int? = null,
+    /** Spoken language pre-selection (e.g. from space or note preferences). */
+    initialLanguage: String? = null,
     /** Shown under Quick record while offline setup isn't finished (the setup banner). */
     setupNotice: @Composable () -> Unit = {}
 ) {
@@ -218,15 +230,12 @@ fun RecordingScreen(
         )
     }
 
-    // Home's Quick Record FAB and the main Record entry both land here and both go through this
-    // same picker — "quick" only ever meant "fewer taps to reach the button", never "skip telling
-    // MeetingMind what this recording is." Recording type and speaker count are first-class inputs
-    // to the whole processing pipeline (see RecordingContext); silently defaulting them was exactly
-    // the "treats every recording like a meeting" problem this phase exists to fix.
+    val prefs by viewModel.preferencesState.collectAsState()
     var typeChosen by remember { mutableStateOf(false) }
     var selectedType by remember { mutableStateOf(initialType ?: RecordingType.MEETING) }
     var customContextText by remember { mutableStateOf("") }
     var meetingTitle by remember { mutableStateOf(initialTitle ?: (initialType ?: RecordingType.MEETING).displayName) }
+    var selectedLanguage by remember(prefs.selectedLanguage) { mutableStateOf(initialLanguage ?: prefs.selectedLanguage) }
     // Null = unspecified/"Not sure". Tracks whether the user has touched this control themselves
     // so a type-based suggestion never silently overwrites a choice they already made.
     var selectedSpeakerCount by remember { mutableStateOf(initialSpeakers ?: (initialType ?: RecordingType.MEETING).suggestedSpeakerCount()) }
@@ -236,7 +245,8 @@ fun RecordingScreen(
         recordingType = selectedType,
         speakerCountPreference = selectedSpeakerCount,
         customContext = customContextText.trim().ifBlank { null }.takeIf { selectedType == RecordingType.CUSTOM },
-        noteId = targetNoteId
+        noteId = targetNoteId,
+        language = selectedLanguage
     )
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -272,6 +282,7 @@ fun RecordingScreen(
             selected = selectedType,
             customContext = customContextText,
             selectedSpeakerCount = selectedSpeakerCount,
+            selectedLanguage = selectedLanguage,
             storageLine = storageLine,
             refuseToStart = refuseToStart,
             onSelect = {
@@ -283,6 +294,10 @@ fun RecordingScreen(
             onSelectSpeakerCount = {
                 speakerCountTouched = true
                 selectedSpeakerCount = it
+            },
+            onSelectLanguage = {
+                selectedLanguage = it
+                viewModel.setSelectedLanguage(it)
             },
             onStart = { typeChosen = true },
             onQuickRecord = {
@@ -363,11 +378,13 @@ private fun RecordingTypePickerScreen(
     selected: RecordingType,
     customContext: String,
     selectedSpeakerCount: Int?,
+    selectedLanguage: String,
     storageLine: String,
     refuseToStart: Boolean,
     onSelect: (RecordingType) -> Unit,
     onCustomContextChange: (String) -> Unit,
     onSelectSpeakerCount: (Int?) -> Unit,
+    onSelectLanguage: (String) -> Unit,
     onStart: () -> Unit,
     onQuickRecord: () -> Unit,
     onCancel: () -> Unit,
@@ -440,6 +457,22 @@ private fun RecordingTypePickerScreen(
                 Text("Who's speaking?", style = MM.type.heading, color = c.ink)
                 Text("Optional. It helps tell voices apart.", style = MM.type.caption, color = c.inkMuted)
                 com.craftflowtechnologies.meetingmind.core.ui.SpeakerCountRow(selected = selectedSpeakerCount, onSelect = onSelectSpeakerCount)
+            }
+            Column(Modifier.padding(horizontal = MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                Text("Spoken language", style = MM.type.heading, color = c.ink)
+                Text(
+                    text = if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(selectedLanguage)) {
+                        "${com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.displayName(selectedLanguage)} · Uses African & Multilingual pack"
+                    } else {
+                        "Language used for offline transcription"
+                    },
+                    style = MM.type.caption,
+                    color = c.inkMuted
+                )
+                com.craftflowtechnologies.meetingmind.core.ui.LanguagePickerRow(
+                    selected = selectedLanguage,
+                    onSelect = onSelectLanguage
+                )
             }
             Spacer(Modifier.height(MM.space.s))
         }

@@ -96,7 +96,8 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
         return reply("uploadMedia", "circles/c1/media/uuid-1")
     }
     override suspend fun downloadMedia(circleId: String, path: String) = reply("downloadMedia", ByteArray(0))
-    override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?) =
+    override suspend fun deleteMedia(circleId: String, path: String) = reply("deleteMedia", Unit)
+    override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?, requestId: String?) =
         reply("sendMessage", Unit)
     override suspend fun registerToken(token: String): CirclesResult<Unit> { registered += token; return reply("registerToken", Unit) }
     override suspend fun unregisterToken(token: String): CirclesResult<Unit> { unregistered += token; return reply("unregisterToken", Unit) }
