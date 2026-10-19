@@ -1,8 +1,8 @@
-# MeetingMind dev build: 978ab07
+# MeetingMind dev build: aac5b0b
 
-Install `MeetingMind-Dev-978ab07.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
+Install `MeetingMind-Dev-aac5b0b.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
 
-Built from `ccr-08b1bb9f-iljmtb` at `978ab07`, which merges `origin/claude/southern-african-asr-research` (`5c70b72`) into the designated branch.
+Built from `ccr-08b1bb9f-iljmtb` at `aac5b0b` (version code 47). It includes everything in the `978ab07` build plus the three commits pushed after it.
 
 ## What is new
 - **Settings test entry points:** Settings → About → Onboarding experience restarts onboarding from Welcome. Settings → About → Paywall and subscription opens the paywall. Settings → AI & offline models → Plan and usage has the closed testing toggle (on by default for testers).
@@ -13,7 +13,7 @@ Built from `ccr-08b1bb9f-iljmtb` at `978ab07`, which merges `origin/claude/south
 - **Moments:** every note gets its moment every time it is opened. Reduced motion, battery saver and low-end phones still get a plain open or a nod.
 
 ## Not verified
-- Unit suite: 3,177 tests, 1 failure: `WorkHomeLayoutTest.needsRespectsACustomCap`, which also fails on the base commit.
+- Unit suite: 3,177 tests, 2 failures. `WorkHomeLayoutTest.needsRespectsACustomCap` also fails on the base commit. `NotesLibraryScreenshotTest.populated` fails only in the full run with an uncaught coroutine exception leaked from an earlier test; it passes when its class runs alone.
 - Not verified on a device: the recording fixes (the 52% hang and crashes were fixed from code, not reproduced). A microphone revoked mid-recording is not handled yet. Google sign-in will fail on `.dev` (no Android OAuth client in `google-services.json`).
 - Paywall and onboarding entry points: unit tests only, not walked through on a device.
 
