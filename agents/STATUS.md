@@ -16,6 +16,15 @@ Updated: 2026-10-19. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git lo
 - **Redesigned Paywall & Dev Test Rows**: Trial timeline, weekly price anchoring, Founder bonus badges, RevenueCat package bindings. Added explicit test entry points in `Settings -> About` ("Onboarding experience" and "Paywall and subscription") as well as in `Settings -> AI & offline models` ("Plan and usage"), and searchable via Settings search.
 - **Unit Tests Verified**: `NoteMomentHostTest` (9/9 pass), `OnboardingTest` (5/5 pass), `SettingsRegistryTest` (8/8 pass), `BillingModelTest`, `PaywallPolicyTest`, `PaywallCopyTest` (all pass), and Cloudflare proxy test suite `logic.test.mjs` (28/28 pass).
 
+## Companion audit & assistant polish (branch `winston/companion-audit-design`, PR #8)
+- Audit + design artifact done, approved by the founder: `docs/mvp/COMPANION_AUDIT.md`, prototype at the artifact link in the PR.
+- Reliability fixes landed: `AssistantSession.send()` no longer silently swallows exceptions with no error/Try Again; `AiResult.Failed` now carries `retryable` so the UI stops offering Try Again for a failure a retry can't fix; `retry()` keeps a partially-completed turn's already-applied actions instead of discarding them.
+- Zuri (the companion mascot) is now shown in the shared `AssistantSheet` header for both Notes and Faith — Faith wears the Gold rim. New `CompanionPage.ASK`.
+- Consolidated the three duplicated "never speak for God" regex guards (`FaithGuard`, `AskSermon`) into one `FaithAuthorityGuard`; `Prompts.ALL` now lists every prompt asset on disk, with a test that keeps it honest.
+- New prayer-management tools on the shared assistant: `list_prayer_requests`, `create_prayer_request`, `mark_prayer_answered` (Faith scope only), wired to the existing prayer-request Note/NoteStatus system, with Undo.
+- **Not verified on device.** This sandbox has no Android SDK, so none of the above has been compiled or run — only reviewed by hand and unit-tested where Room/Robolectric made that possible. Needs a real build + device pass before merging.
+- Not done from the original brief: deep-link navigation from an assistant answer straight to a scripture passage or transcript timestamp (today only note/task open); broader device-level QA pass.
+
 ## Southern African Language Transcription (MeetingMind Voice Intelligence)
 - Research & Planning complete: `docs/SOUTHERN_AFRICAN_ASR_RESEARCH_AND_PLAN.md` (12 sections, benchmark methodology, legal audit) and `docs/models/southern_african_asr_catalog.json` (26 fields across 12 candidate model checkpoints).
 - License guardrail: `facebook/mms-1b-all` formally rejected due to `CC-BY-NC 4.0` non-commercial restriction. `Meta Omnilingual ASR CTC 300M (INT8)` approved and selected (`Apache-2.0`, ~365 MB download, ~650 MB peak RAM).

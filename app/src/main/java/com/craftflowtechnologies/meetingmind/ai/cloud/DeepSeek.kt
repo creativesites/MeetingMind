@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
+import com.craftflowtechnologies.meetingmind.ai.common.isRetryable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -67,7 +68,7 @@ class DeepSeek(private val context: Context, private val baseUrl: String = BASE_
     suspend fun complete(system: String, prompt: String, json: Boolean, timeoutMs: Long = 120_000L, maxTokens: Int = 4096): AiResult<String> = withContext(Dispatchers.IO) {
         GeminiLog.attach(context)
         if (usedThisMonth() >= MONTHLY_TOKENS) {
-            return@withContext AiResult.Failed("This month's built-in AI allowance is used up. It resets on the 1st, or add your own Gemini key in Settings.")
+            return@withContext AiResult.Failed("This month's built-in AI allowance is used up. It resets on the 1st, or add your own Gemini key in Settings.", retryable = false)
         }
         val proxy = proxyUrl
         val key = userKeyFlow.first() ?: systemKey
@@ -107,7 +108,8 @@ class DeepSeek(private val context: Context, private val baseUrl: String = BASE_
                             402 -> "The DeepSeek account is out of credit."
                             429 -> if (msg.contains("allowance", true)) msg else "DeepSeek is busy right now. Try again shortly."
                             else -> "DeepSeek couldn't answer (HTTP ${r.code}). $msg".trim()
-                        }
+                        },
+                        retryable = r.code != 401 && r.code != 402
                     )
                 }
                 val o = JSONObject(text)
@@ -184,7 +186,12 @@ class FallbackTransport(
             timeoutMs = request.timeoutMs ?: 120_000L
         )
         if (second is AiResult.Success) DeepSeek.lastProvider = "DeepSeek"
-        return if (second !is AiResult.Success && geminiError != null) AiResult.Failed("Gemini: $geminiError · DeepSeek: ${(second as? AiResult.Failed)?.message ?: "unavailable"}") else second
+        return if (second !is AiResult.Success && geminiError != null) {
+            AiResult.Failed(
+                "Gemini: $geminiError · DeepSeek: ${(second as? AiResult.Failed)?.message ?: "unavailable"}",
+                retryable = second.isRetryable()
+            )
+        } else second
     }
 }
 

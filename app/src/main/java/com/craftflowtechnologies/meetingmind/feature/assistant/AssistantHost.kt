@@ -12,6 +12,7 @@ import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.BlockSource
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlock
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlockType
+import com.craftflowtechnologies.meetingmind.core.model.NoteStatus
 import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.notes.MarkdownImport
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
@@ -80,6 +81,7 @@ class AppAssistantHost(
         AssistantTool.COMMENTARY -> commentary(call.str("reference"), call.str("source"))
         AssistantTool.COMPARE_TRANSLATIONS -> compare(call.str("reference"))
         AssistantTool.ORIGINAL -> original(call.str("reference"))
+        AssistantTool.LIST_PRAYER_REQUESTS -> listPrayerRequests()
         else -> ToolResult("Skipped", "not a read tool", ok = false)
     }
 
@@ -162,6 +164,24 @@ class AppAssistantHost(
                 if (blocks.isNotEmpty()) notes.saveBlocks(note.id, blocks)
                 undos[id] = { notes.moveToTrash(note.id) }
                 ToolResult("Created a note", "created note ${note.id} '$title'") to AssistantAction(id, "New note: $title", openNoteId = note.id)
+            }
+            AssistantTool.CREATE_PRAYER_REQUEST -> {
+                val title = call.str("title") ?: return fail(id, "create_prayer_request needs a title")
+                val request = notes.createNote(workflow = RecordingType.PRAYER_REQUEST, title = title, useTemplate = false)
+                val blocks = MarkdownImport.parse(call.str("markdown").orEmpty(), request.id, BlockSource.AI)
+                if (blocks.isNotEmpty()) notes.saveBlocks(request.id, blocks)
+                undos[id] = { notes.moveToTrash(request.id) }
+                ToolResult("Added a prayer request", "created prayer request ${request.id} '$title'") to AssistantAction(id, "Prayer request: $title", openNoteId = request.id)
+            }
+            AssistantTool.MARK_PRAYER_ANSWERED -> {
+                val requestId = call.str("request_id") ?: return fail(id, "mark_prayer_answered needs request_id")
+                val entity = db.noteDao().getById(requestId)
+                if (entity == null || entity.workflow != RecordingType.PRAYER_REQUEST.name) return fail(id, "no prayer request with id '$requestId'")
+                if (entity.status == NoteStatus.ANSWERED.name) return fail(id, "'${entity.title}' is already marked answered")
+                notes.markAnswered(requestId)
+                undos[id] = { notes.setStatus(requestId, NoteStatus.OPEN) }
+                val title = entity.title.ifBlank { "Prayer request" }
+                ToolResult("Marked answered", "marked prayer request '$title' answered") to AssistantAction(id, "Answered: $title", openNoteId = requestId)
             }
             else -> fail(id, "not a write tool")
         }
@@ -248,6 +268,14 @@ class AppAssistantHost(
             "v${w.verse} ${w.surface} (${w.translit}) = ${w.gloss} | lemma ${w.lemma} ${w.strongs} | $grammar" + (e?.let { " | dictionary: ${it.gloss}" } ?: "")
         }
         return ToolResult("Read ${ref.display()} in ${pack.language}", lines)
+    }
+
+    private suspend fun listPrayerRequests(): ToolResult {
+        val open = db.noteDao().getUpdatedSince(0, 400)
+            .filter { it.workflow == RecordingType.PRAYER_REQUEST.name && it.status == NoteStatus.OPEN.name && it.deletedAt == null }
+        if (open.isEmpty()) return ToolResult("No open prayer requests", "the prayer list has no open requests")
+        val text = open.joinToString("\n") { "${it.id}: ${it.title.ifBlank { "A prayer request" }}" }
+        return ToolResult("Read the prayer list · ${open.size} open", text)
     }
 
     private suspend fun compare(reference: String?): ToolResult {
