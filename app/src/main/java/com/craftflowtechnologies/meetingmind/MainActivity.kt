@@ -327,10 +327,14 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
 
     val openProcessing: (String) -> Unit = { meetingId ->
         recoveryScope.launch {
-            val meeting = MeetMindDatabase.getInstance(context).meetingDao().getMeetingById(meetingId) ?: return@launch
-            navController.navigate(Routes.processingRoute(meetingId, meeting.audioFilePath.orEmpty(), meeting.durationMs)) {
-                launchSingleTop = true
-            }
+            // A tap on a recording that is gone, or a route the NavHost refuses, must never take the
+            // app down: the worst outcome is that nothing opens.
+            runCatching {
+                val meeting = MeetMindDatabase.getInstance(context).meetingDao().getMeetingById(meetingId) ?: return@runCatching
+                navController.navigate(Routes.processingRoute(meetingId, meeting.audioFilePath.orEmpty(), meeting.durationMs)) {
+                    launchSingleTop = true
+                }
+            }.onFailure { android.util.Log.w("MainActivity", "Could not open processing for $meetingId: ${it.message}") }
         }
     }
 
@@ -1129,7 +1133,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         ) { backStackEntry ->
             val meetingId = backStackEntry.arguments?.getString("meetingId") ?: ""
             val rawPath = backStackEntry.arguments?.getString("audioPath") ?: ""
-            val audioPath = try { URLDecoder.decode(rawPath, "UTF-8") } catch (e: Exception) { rawPath }
+            val audioPath = Routes.processingAudioPath(rawPath)
             val durationMs = backStackEntry.arguments?.getLong("durationMs") ?: 0L
 
             val vm: ProcessingViewModel = viewModel()

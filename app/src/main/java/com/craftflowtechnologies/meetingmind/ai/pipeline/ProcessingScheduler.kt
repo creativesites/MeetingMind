@@ -54,7 +54,8 @@ object ProcessingScheduler {
 
         val database = MeetMindDatabase.getInstance(context)
         val meeting = database.meetingDao().getMeetingById(meetingId) ?: return null
-        val path = audioPath ?: meeting.audioFilePath ?: return null
+        // A blank path is no path: an empty one from a route must not hide the path on record.
+        val path = audioPath?.takeIf { it.isNotBlank() } ?: meeting.audioFilePath?.takeIf { it.isNotBlank() } ?: return null
         val duration = durationMs?.takeIf { it > 0 } ?: meeting.durationMs.takeIf { it > 0 } ?: probeDurationMs(path)
         val speakers = expectedSpeakerCount ?: meeting.speakerCountPreference
         val prefs = UserPreferencesManager(context).preferencesFlow.first()
