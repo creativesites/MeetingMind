@@ -337,6 +337,7 @@ private class SettingsActions(
     val onOpenCompanion: () -> Unit,
     val onReplayTour: () -> Unit,
     val onOpenSubscription: () -> Unit,
+    val onOpenOnboarding: () -> Unit,
     val editName: () -> Unit,
     val pickAvatar: () -> Unit,
     val showSpaces: () -> Unit,
@@ -400,6 +401,7 @@ fun SettingsScreen(
     onOpenCompanion: () -> Unit = {},
     onReplayTour: () -> Unit = {},
     onOpenSubscription: () -> Unit = {},
+    onOpenOnboarding: () -> Unit = {},
     startGroup: String? = null
 ) {
     val context = LocalContext.current
@@ -437,7 +439,7 @@ fun SettingsScreen(
 
     val actions = SettingsActions(
         onNavigateToModels, onOpenBible, onOpenSetup, onOpenDataBackup, onOpenAppearance, onOpenWork, onOpenIntegrations,
-        onOpenRecipes, onOpenCompanion, onReplayTour, onOpenSubscription,
+        onOpenRecipes, onOpenCompanion, onReplayTour, onOpenSubscription, onOpenOnboarding,
         editName = { showEditNameDialog = true },
         pickAvatar = { avatarPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
         showSpaces = { showSpaces = true },
@@ -891,6 +893,16 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
         )
 
         SettingId.REPLAY_TOUR -> SettingsNavRow("Show me around again", "Replay the quick tour of Home", a.onReplayTour)
+        SettingId.TEST_ONBOARDING -> SettingsNavRow(
+            "Onboarding experience",
+            "Walk through the full onboarding flow: companion pick, sample, goals, and setup",
+            a.onOpenOnboarding
+        )
+        SettingId.TEST_PAYWALL -> SettingsNavRow(
+            "Paywall and subscription",
+            "Preview the paywall screen, trial timeline, weekly price anchoring, and tiers",
+            a.onOpenSubscription
+        )
         SettingId.SHARE_APP -> SettingsNavRow("Share MeetingMind", "Invite friends, colleagues or study partners to try it", {
             val send = android.content.Intent().apply {
                 action = android.content.Intent.ACTION_SEND

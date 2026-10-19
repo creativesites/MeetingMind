@@ -1238,6 +1238,19 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenRecipes = { navController.navigate(Routes.RECIPES) },
                 onOpenCompanion = { navController.navigate(com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsRoute) },
                 onOpenSubscription = { navController.navigate(Routes.paywallRoute("SETTINGS")) { launchSingleTop = true } },
+                onOpenOnboarding = {
+                    recoveryScope.launch {
+                        com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context).setOnboardingCompleted(false)
+                        com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context).saveOnboardingProgress(
+                            0,
+                            com.craftflowtechnologies.meetingmind.feature.onboarding.OnboardingStep.WELCOME.name,
+                            null,
+                            emptySet(),
+                            emptySet()
+                        )
+                        navController.navigate(Routes.ONBOARDING)
+                    }
+                },
                 onReplayTour = {
                     recoveryScope.launch {
                         com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context).setTourCompleted(false)

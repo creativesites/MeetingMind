@@ -51,7 +51,7 @@ enum class SettingId {
     DATA_BACKUP, CLEAR_DATA,
 
     // About
-    REPLAY_TOUR, SHARE_APP, CRASH_REPORT, DIAGNOSTIC_LOG, AUDIO_BENCHMARK
+    REPLAY_TOUR, SHARE_APP, CRASH_REPORT, DIAGNOSTIC_LOG, AUDIO_BENCHMARK, TEST_ONBOARDING, TEST_PAYWALL
 }
 
 /** When a setting is drawn at all. Search skips an entry whose condition is false. */
@@ -148,6 +148,8 @@ object SettingsRegistry {
 
         // About
         e(SettingId.REPLAY_TOUR, SettingsGroup.ABOUT, "Show me around again", "tour tutorial intro welcome help"),
+        e(SettingId.TEST_ONBOARDING, SettingsGroup.ABOUT, "Onboarding experience", "onboarding welcome walkthrough start intro"),
+        e(SettingId.TEST_PAYWALL, SettingsGroup.ABOUT, "Paywall and subscription", "paywall subscription plans pricing trial upgrade"),
         e(SettingId.SHARE_APP, SettingsGroup.ABOUT, "Share MeetingMind", "invite friends tell"),
         e(SettingId.CRASH_REPORT, SettingsGroup.ABOUT, "Last crash report", "crash error closed unexpectedly", advanced = true, needs = Needs.CRASH_REPORT),
         e(SettingId.DIAGNOSTIC_LOG, SettingsGroup.ABOUT, "Gemini log", "diagnostics log requests errors support copy share", advanced = true),
