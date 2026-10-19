@@ -26,6 +26,8 @@ data class DecodedAudio(val samples: FloatArray, val sampleRate: Int)
 object AudioFormatConverter {
     const val TARGET_SAMPLE_RATE = 16000
     private const val DEQUEUE_TIMEOUT_US = 10_000L
+    /** Far longer than any healthy decode goes without a buffer moving; a real recording never gets near it. */
+    private const val DECODE_STALL_LIMIT_NS = 30_000_000_000L
 
     fun decodeToMono16k(audioFile: File): DecodedAudio {
         val extractor = MediaExtractor()
@@ -75,11 +77,16 @@ object AudioFormatConverter {
             val bufferInfo = MediaCodec.BufferInfo()
             var sawInputEos = false
             var sawOutputEos = false
+            // A damaged file can leave the codec neither taking input nor producing output, and
+            // this loop has no other exit: it must fail rather than spin, or the processing run
+            // that called it never finishes.
+            var lastProgressNs = System.nanoTime()
 
             while (!sawOutputEos) {
                 if (!sawInputEos) {
                     val inputIndex = codec.dequeueInputBuffer(DEQUEUE_TIMEOUT_US)
                     if (inputIndex >= 0) {
+                        lastProgressNs = System.nanoTime()
                         val inputBuffer = requireNotNull(codec.getInputBuffer(inputIndex))
                         val sampleSize = extractor.readSampleData(inputBuffer, 0)
                         if (sampleSize < 0) {
@@ -94,6 +101,7 @@ object AudioFormatConverter {
 
                 val outputIndex = codec.dequeueOutputBuffer(bufferInfo, DEQUEUE_TIMEOUT_US)
                 if (outputIndex >= 0) {
+                    lastProgressNs = System.nanoTime()
                     if (bufferInfo.size > 0) {
                         val outputBuffer = requireNotNull(codec.getOutputBuffer(outputIndex))
                         outputBuffer.position(bufferInfo.offset)
@@ -107,6 +115,9 @@ object AudioFormatConverter {
                     if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
                         sawOutputEos = true
                     }
+                }
+                if (!sawOutputEos && System.nanoTime() - lastProgressNs > DECODE_STALL_LIMIT_NS) {
+                    throw java.io.IOException("This recording could not be decoded: the audio codec stopped making progress")
                 }
                 // INFO_OUTPUT_FORMAT_CHANGED / INFO_TRY_AGAIN_LATER need no handling here: we
                 // already read channel count/sample rate from the track's input format, which

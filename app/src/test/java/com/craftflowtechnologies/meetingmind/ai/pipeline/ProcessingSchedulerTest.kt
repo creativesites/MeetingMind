@@ -100,4 +100,16 @@ class ProcessingSchedulerTest {
         assertTrue(ProcessingScheduler.resumeInterrupted(context).isEmpty())
         assertEquals(MeetingStatus.ERROR.name, database.meetingDao().getMeetingById("lost")!!.status)
     }
+
+    @Test
+    fun `a stuck recording whose audio is gone says why, in its job row`() = runBlocking {
+        database.meetingDao().insertMeeting(
+            MeetingEntity("lost-reason", "Gone", 0L, 0L, "LOCAL_RECORDING", "/nope.wav", MeetingStatus.PROCESSING.name, 1, "en", null)
+        )
+        ProcessingScheduler.resumeInterrupted(context)
+
+        val job = database.processingJobDao().getJobForMeeting("lost-reason").first()
+        assertTrue("The user must be told why, not shown a generic failure", !job?.errorMessage.isNullOrBlank())
+        assertTrue("The job must be terminal", job!!.isFailed && !job.isCompleted)
+    }
 }

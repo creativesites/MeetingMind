@@ -3,6 +3,8 @@ package com.craftflowtechnologies.meetingmind.ai.pipeline
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.testing.TestListenableWorkerBuilder
+import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -47,5 +49,28 @@ class MeetingProcessingWorkerTest {
         assertTrue(result is androidx.work.ListenableWorker.Result.Failure)
         val error = (result as androidx.work.ListenableWorker.Result.Failure).outputData.getString(MeetingProcessingWorker.KEY_ERROR)
         assertEquals("Missing audioPath", error)
+    }
+
+    @Test
+    fun `a run for a recording that no longer exists fails cleanly and leaves no processing row behind`() = runBlocking {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val missingId = "deleted-${System.nanoTime()}"
+        val worker = TestListenableWorkerBuilder<MeetingProcessingWorker>(context)
+            .setInputData(
+                androidx.work.workDataOf(
+                    MeetingProcessingWorker.KEY_MEETING_ID to missingId,
+                    MeetingProcessingWorker.KEY_AUDIO_PATH to "/nonexistent/audio.m4a"
+                )
+            )
+            .build()
+
+        val result = worker.doWork()
+
+        assertTrue("A run with nothing to process must fail, not report success", result is androidx.work.ListenableWorker.Result.Failure)
+        val job = MeetMindDatabase.getInstance(context).processingJobDao().getJobForMeeting(missingId).first()
+        assertEquals(
+            "A deleted recording must not leave a job row that shows as processing forever",
+            null, job
+        )
     }
 }

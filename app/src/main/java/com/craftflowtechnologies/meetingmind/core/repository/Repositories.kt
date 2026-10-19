@@ -138,11 +138,15 @@ class MeetingRepository(
     }
 
     suspend fun deleteMeeting(id: String) = withContext(Dispatchers.IO) {
+        // Stop any processing of this recording and drop its job rows first. A job row left behind
+        // for a recording that no longer exists would show as "processing" with nothing to open.
+        runCatching { com.craftflowtechnologies.meetingmind.ai.pipeline.ProcessingScheduler.cancel(context, id) }
         // Delete audio files from app-private storage
         val meetingDir = File(context.filesDir, "meetings/$id")
         if (meetingDir.exists()) {
             meetingDir.deleteRecursively()
         }
+        database.processingJobDao().deleteJobsForMeeting(id)
         meetingDao.deleteMeetingById(id)
     }
 

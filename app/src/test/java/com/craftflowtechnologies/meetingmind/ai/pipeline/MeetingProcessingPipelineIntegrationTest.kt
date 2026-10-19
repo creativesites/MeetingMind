@@ -33,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -721,5 +722,38 @@ class MeetingProcessingPipelineIntegrationTest {
         ) { _, _, _ -> }
 
         assertEquals("OFFLINE", meeting.processingProfile)
+    }
+
+    @Test
+    fun `a recording deleted while it is processing leaves no processing row behind`() = runBlocking {
+        val meetingId = UUID.randomUUID().toString()
+        insertRecordingMeeting(meetingId)
+        // The user deletes the note while speech detection is running, through the same repository
+        // call the app uses. The run must stop without writing its progress back.
+        val deletingVad = object : VoiceActivityDetector {
+            override suspend fun detectSpeechIntervals(audioFile: File, totalDurationMs: Long): AiResult<List<SpeechInterval>> {
+                com.craftflowtechnologies.meetingmind.core.repository.MeetingRepository(context, database).deleteMeeting(meetingId)
+                return AiResult.Success(listOf(SpeechInterval(startMs = 0L, endMs = totalDurationMs)))
+            }
+        }
+        val pipeline = buildPipeline(vad = deletingVad)
+
+        var failure: Throwable? = null
+        try {
+            pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
+        } catch (e: Throwable) {
+            failure = e
+        }
+
+        assertTrue(
+            "A deleted recording's run must stop, not report a transcript",
+            failure == null || failure is CancellationException
+        )
+        assertEquals(null, database.meetingDao().getMeetingById(meetingId))
+        assertEquals(
+            "No job row may remain for a recording that was deleted",
+            null, database.processingJobDao().getJobForMeeting(meetingId).first()
+        )
+        assertEquals(0, database.transcriptDao().getSegmentsForMeetingDirect(meetingId).size)
     }
 }

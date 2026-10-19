@@ -114,10 +114,20 @@ object Routes {
     /** [openMediaPicker] opens the photo picker as the note appears (Create → Photo or video). */
     fun noteRoute(noteId: String, openMediaPicker: Boolean = false) = "note/$noteId?media=$openMediaPicker"
 
+    /**
+     * Stands in for a missing or blank audio path. The NavHost can only match a non-empty path
+     * segment, so an empty one would make the navigation itself throw. No absolute path can equal it.
+     */
+    const val NO_AUDIO_PATH_SEGMENT = "none"
+
     fun processingRoute(meetingId: String, audioPath: String, durationMs: Long): String {
-        val encodedPath = java.net.URLEncoder.encode(audioPath, "UTF-8")
-        return "processing/$meetingId/$encodedPath/$durationMs"
+        val segment = if (audioPath.isBlank()) NO_AUDIO_PATH_SEGMENT else java.net.URLEncoder.encode(audioPath, "UTF-8")
+        return "processing/$meetingId/$segment/$durationMs"
     }
+
+    /** The audio path a processing route carries, back in its own form; "" when none was recorded. */
+    fun processingAudioPath(segment: String): String =
+        if (segment == NO_AUDIO_PATH_SEGMENT) "" else runCatching { java.net.URLDecoder.decode(segment, "UTF-8") }.getOrDefault(segment)
 
     /** [startAtMs] deep-links straight to a specific transcript moment — e.g. from a search
      * result — instead of just opening the recording at its Overview tab. */
