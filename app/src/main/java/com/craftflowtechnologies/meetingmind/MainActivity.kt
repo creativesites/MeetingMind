@@ -321,8 +321,11 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
 
     // Anything Android stopped mid-way (a force-stop, an app update) is picked up again.
     LaunchedEffect(Unit) {
-        com.craftflowtechnologies.meetingmind.core.notify.AppNotifications.ensureChannels(context)
-        com.craftflowtechnologies.meetingmind.ai.pipeline.ProcessingScheduler.resumeInterrupted(context)
+        // Runs on every app open. A failure here must never stop the app from opening.
+        runCatching {
+            com.craftflowtechnologies.meetingmind.core.notify.AppNotifications.ensureChannels(context)
+            com.craftflowtechnologies.meetingmind.ai.pipeline.ProcessingScheduler.resumeInterrupted(context)
+        }.onFailure { android.util.Log.w("MainActivity", "Resuming interrupted processing failed: ${it.message}") }
     }
 
     val openProcessing: (String) -> Unit = { meetingId ->

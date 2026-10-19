@@ -9,8 +9,11 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
+import com.craftflowtechnologies.meetingmind.core.database.MeetingEntity
+import com.craftflowtechnologies.meetingmind.core.database.ProcessingJobEntity
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.model.MeetingStatus
+import com.craftflowtechnologies.meetingmind.core.model.ProcessingStage
 import kotlinx.coroutines.flow.first
 import java.io.File
 import java.util.UUID
@@ -31,6 +34,9 @@ import java.util.concurrent.TimeUnit
  * never processed again because someone reopened a screen.
  */
 object ProcessingScheduler {
+
+    private const val TAG = "ProcessingScheduler"
+    private const val MISSING_AUDIO_MESSAGE = "The audio for this recording is no longer on this phone, so it cannot be processed."
 
     private val ACTIVE_STATES = setOf(WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED, WorkInfo.State.RUNNING)
 
@@ -110,16 +116,46 @@ object ProcessingScheduler {
     suspend fun resumeInterrupted(context: Context): List<String> {
         val database = MeetMindDatabase.getInstance(context)
         val stuck = database.meetingDao().getMeetingsWithStatus(MeetingStatus.PROCESSING.name)
+        // This runs every time the app opens. One recording that cannot be resumed must neither stop
+        // the others nor the app from opening, so each one is handled on its own.
         val resumed = stuck.mapNotNull { meeting ->
-            if (activeWork(context, meeting.id) != null) return@mapNotNull null
-            if (meeting.audioFilePath == null || !File(meeting.audioFilePath).exists()) {
-                database.meetingDao().updateMeeting(meeting.copy(status = MeetingStatus.ERROR.name))
-                return@mapNotNull null
+            try {
+                resumeOne(context, database, meeting)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "Could not resume ${meeting.id}: ${e.message}", e)
+                null
             }
-            enqueue(context, meeting.id)?.let { meeting.id }
         }
-        failOrphanedJobs(context, database)
+        runCatching { failOrphanedJobs(context, database) }
+            .onFailure { android.util.Log.w(TAG, "Could not fail orphaned jobs: ${it.message}") }
         return resumed
+    }
+
+    private suspend fun resumeOne(context: Context, database: MeetMindDatabase, meeting: MeetingEntity): String? {
+        if (activeWork(context, meeting.id) != null) return null
+        val path = meeting.audioFilePath
+        if (path.isNullOrBlank() || !File(path).exists()) {
+            // Nothing to process: say so on the recording, so the user is not shown a bare failure.
+            database.meetingDao().updateMeeting(meeting.copy(status = MeetingStatus.ERROR.name))
+            database.processingJobDao().insertOrUpdateJob(
+                ProcessingJobEntity(
+                    id = "job_${meeting.id}",
+                    meetingId = meeting.id,
+                    meetingTitle = meeting.title,
+                    currentStep = "Processing stopped",
+                    progressPercent = 0,
+                    isCompleted = false,
+                    isFailed = true,
+                    errorMessage = MISSING_AUDIO_MESSAGE,
+                    startedAt = System.currentTimeMillis(),
+                    stage = ProcessingStage.FAILED.name
+                )
+            )
+            return null
+        }
+        return enqueue(context, meeting.id)?.let { meeting.id }
     }
 
     /**
