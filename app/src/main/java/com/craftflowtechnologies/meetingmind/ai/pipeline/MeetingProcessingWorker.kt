@@ -15,6 +15,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
+import com.craftflowtechnologies.meetingmind.core.database.ProcessingJobEntity
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingStage
 import java.io.File
 import kotlinx.coroutines.NonCancellable
@@ -58,23 +59,27 @@ class MeetingProcessingWorker(
             com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile.fromNameOrDefault(inputData.getString(KEY_PROCESSING_PROFILE))
         )
 
-        AppNotifications.ensureChannels(applicationContext)
-        this.meetingId = meetingId
-        this.title = recordingTitle
-        setForeground(createForegroundInfo("Preparing audio…", 0))
-
-        // A foreground service keeps the process alive, but with the screen off the CPU still
-        // sleeps. Offline transcription is minutes of pure CPU work, so it holds a partial wake
-        // lock for as long as it runs — capped, so a hung run can never drain the battery.
-        val wakeLock = (applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager)
-            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MeetingMind:processing")
-            .apply { setReferenceCounted(false); acquire(WAKE_LOCK_TIMEOUT_MS) }
-
         val database = MeetMindDatabase.getInstance(applicationContext)
-        val pipeline = MeetingProcessingPipeline(applicationContext, database)
         var lastForegroundUpdate = 0L
+        var wakeLock: PowerManager.WakeLock? = null
 
+        // Everything from here on is inside the try: a failure before the pipeline's own handler
+        // exists (a refused foreground promotion, a wake lock, the pipeline's setup) must still end
+        // the job row and the recording's status, never leave them "processing" with nothing behind.
         return try {
+            AppNotifications.ensureChannels(applicationContext)
+            this.meetingId = meetingId
+            this.title = recordingTitle
+            promoteToForeground("Preparing audio…", 0)
+
+            // A foreground service keeps the process alive, but with the screen off the CPU still
+            // sleeps. Offline transcription is minutes of pure CPU work, so it holds a partial wake
+            // lock for as long as it runs — capped, so a hung run can never drain the battery.
+            wakeLock = (applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MeetingMind:processing")
+                .apply { setReferenceCounted(false); acquire(WAKE_LOCK_TIMEOUT_MS) }
+
+            val pipeline = MeetingProcessingPipeline(applicationContext, database)
             val resultMeeting = pipeline.processMeeting(
                 meetingId = meetingId,
                 audioFile = File(audioPath),
@@ -104,7 +109,7 @@ class MeetingProcessingWorker(
                         val now = System.currentTimeMillis()
                         if (now - lastForegroundUpdate > 1_000) {
                             lastForegroundUpdate = now
-                            setForeground(createForegroundInfo(step, percent))
+                            promoteToForeground(step, percent)
                         }
                     }
                 }
@@ -142,12 +147,67 @@ class MeetingProcessingWorker(
             }
             Result.failure(workDataOf(KEY_ERROR to "Cancelled"))
         } catch (t: Throwable) {
-            // Includes OutOfMemoryError and other Errors the pipeline's own handler may not have seen.
-            markJobInterrupted(database, meetingId)
-            AppNotifications.processingFinished(applicationContext, meetingId, recordingTitle, AppNotifications.Outcome.FAILED, t.message)
-            Result.failure(workDataOf(KEY_ERROR to (t.message ?: "Unknown processing error")))
+            // Includes OutOfMemoryError and other Errors the pipeline's own handler may not have seen,
+            // and anything that failed before the pipeline could record its own failure.
+            val reason = t.message?.takeIf { it.isNotBlank() } ?: "Processing stopped unexpectedly."
+            markFailed(database, meetingId, reason)
+            AppNotifications.processingFinished(applicationContext, meetingId, recordingTitle, AppNotifications.Outcome.FAILED, reason)
+            Result.failure(workDataOf(KEY_ERROR to reason))
         } finally {
-            runCatching { if (wakeLock.isHeld) wakeLock.release() }
+            runCatching { wakeLock?.takeIf { it.isHeld }?.release() }
+        }
+    }
+
+    /**
+     * Asks WorkManager to show this work as a foreground notification. Android refuses that when
+     * the work was started from the background, or when the notification permission was revoked;
+     * the refusal must never fail the recording, which can run perfectly well without it.
+     */
+    private suspend fun promoteToForeground(step: String, percent: Int) {
+        try {
+            setForeground(createForegroundInfo(step, percent))
+        } catch (e: java.util.concurrent.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "Processing continues without its progress notification: ${e.message}")
+        }
+    }
+
+    /**
+     * A run that ended with an error the pipeline did not record itself. The job must reach a
+     * terminal FAILED row with the reason, and a recording still marked PROCESSING must become
+     * ERROR, otherwise it shows progress forever. A recording that no longer exists gets no row at
+     * all: a job row for a deleted note would be a stale "processing" entry with nothing to open.
+     */
+    private suspend fun markFailed(database: MeetMindDatabase, meetingId: String, reason: String) {
+        withContext(NonCancellable) {
+            runCatching {
+                val meetingDao = database.meetingDao()
+                val meeting = meetingDao.getMeetingById(meetingId) ?: return@withContext
+                val dao = database.processingJobDao()
+                val job = dao.getJobForMeeting(meetingId).first()
+                if (job == null) {
+                    dao.insertOrUpdateJob(
+                        ProcessingJobEntity(
+                            id = "job_$meetingId",
+                            meetingId = meetingId,
+                            meetingTitle = meeting.title,
+                            currentStep = "Processing stopped",
+                            progressPercent = 0,
+                            isCompleted = false,
+                            isFailed = true,
+                            errorMessage = reason,
+                            startedAt = System.currentTimeMillis(),
+                            stage = ProcessingStage.FAILED.name
+                        )
+                    )
+                } else if (!job.isCompleted && !job.isFailed) {
+                    dao.insertOrUpdateJob(job.asInterrupted(reason))
+                }
+                if (meeting.status == MeetingStatus.PROCESSING.name) {
+                    meetingDao.updateMeeting(meeting.copy(status = MeetingStatus.ERROR.name, updatedAt = System.currentTimeMillis()))
+                }
+            }.onFailure { android.util.Log.w(TAG, "Could not record the failure for $meetingId: ${it.message}") }
         }
     }
 
@@ -203,6 +263,7 @@ class MeetingProcessingWorker(
     }
 
     companion object {
+        private const val TAG = "MeetingProcessingWorker"
         const val NOTIFICATION_ID = AppNotifications.ID_PROCESSING
         /** Six hours: far longer than any real run, short enough that a hang can't drain the battery. */
         private const val WAKE_LOCK_TIMEOUT_MS = 6 * 60 * 60 * 1000L
