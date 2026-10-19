@@ -128,7 +128,7 @@ class CirclesMediaParsingTest {
         ))
         assertEquals(1, p?.attachments?.size)
         assertEquals("circles/c1/media/photo1", p?.attachments?.first()?.path)
-        assertNull(CirclesParsing.post("p2", mapOf("type" to "note", "body" to "")))
+        assertNull(CirclesParsing.post("p2", mapOf("type" to "invalid", "body" to "")))
     }
 
     @Test fun `role - moderator can moderate but is not admin`() {

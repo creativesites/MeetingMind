@@ -69,6 +69,7 @@ import com.craftflowtechnologies.meetingmind.core.billing.PlanOffer
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.ui.AppIconTile
 import com.craftflowtechnologies.meetingmind.ui.theme.Brand
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import kotlinx.coroutines.delay
 
@@ -172,7 +173,7 @@ private fun manageSubscription(activity: Activity?) {
 private fun OutcomePage(outcome: OutcomeCopy) {
     Column(Modifier.fillMaxWidth().padding(top = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         AppIconTile(size = 84.dp)
-        Text(outcome.headline, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.SemiBold, lineHeight = 36.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 28.dp).testTag("paywall_headline"))
+        Text(outcome.headline, color = FixedWhite, fontSize = 30.sp, fontWeight = FontWeight.SemiBold, lineHeight = 36.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 28.dp).testTag("paywall_headline"))
         Text(outcome.line, color = Color.White.copy(alpha = 0.75f), fontSize = 16.sp, lineHeight = 23.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp))
         Text("You can keep using MeetingMind free. This just adds more.", color = Color.White.copy(alpha = 0.55f), fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 24.dp))
     }
@@ -181,7 +182,7 @@ private fun OutcomePage(outcome: OutcomeCopy) {
 /** What stays free and what a plan adds. Allowance sizes are the plan's published ones, shown in the plan details, not guessed here. */
 @Composable
 private fun IncludedPage() {
-    Text("What's included", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
+    Text("What's included", color = FixedWhite, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
     Row(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
         Spacer(Modifier.weight(1f)); HeaderCell("Free"); HeaderCell("Plan")
     }
@@ -215,7 +216,7 @@ private fun Mark(on: Boolean) {
 
 @Composable
 private fun PlansPage(state: PaywallUiState, showAll: Boolean, onToggleAll: () -> Unit, onSelect: (String) -> Unit) {
-    Text("Choose your plan", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
+    Text("Choose your plan", color = FixedWhite, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
     when {
         state.loading -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Brand.Cyan) }
         state.offers.isEmpty() -> Text("Plans aren't available right now. Check your connection and try again later. Your free app keeps working.", color = Color.White.copy(alpha = 0.75f), fontSize = 15.sp, lineHeight = 21.sp)
@@ -227,7 +228,7 @@ private fun PlansPage(state: PaywallUiState, showAll: Boolean, onToggleAll: () -
                     modifier = Modifier.padding(top = 4.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onToggleAll).padding(vertical = 8.dp).testTag("paywall_view_all"))
             }
             state.selected?.let { offer ->
-                Text("What happens next", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp))
+                Text("What happens next", color = FixedWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp))
                 PaywallCopy.timeline(offer).forEach { (whenText, what) ->
                     Row(Modifier.padding(vertical = 5.dp)) {
                         Text(whenText, color = Brand.Cyan, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(84.dp))
@@ -250,10 +251,10 @@ private fun PlanCard(offer: PlanOffer, selected: Boolean, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(offer.plan.label + " · " + offer.kind.name.lowercase(), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(offer.plan.label + " · " + offer.kind.name.lowercase(), color = FixedWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Text(if (offer.isLifetime) "One payment, never renews" else "Billed every ${offer.period}", color = Color.White.copy(alpha = 0.6f), fontSize = 12.5.sp)
         }
-        Text(if (offer.isLifetime) offer.priceText else "${offer.priceText} / ${offer.period}", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (offer.isLifetime) offer.priceText else "${offer.priceText} / ${offer.period}", color = FixedWhite, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -263,7 +264,7 @@ private fun PrimaryButton(label: String, tag: String, enabled: Boolean, onClick:
         Box(
             Modifier.background(Brush.horizontalGradient(if (enabled) listOf(Brand.Cyan, Brand.Indigo, Brand.Violet) else listOf(Color.White.copy(alpha = 0.18f), Color.White.copy(alpha = 0.18f)))).padding(vertical = 15.dp),
             contentAlignment = Alignment.Center
-        ) { Text(label, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
+        ) { Text(label, color = FixedWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
     }
 }
 
