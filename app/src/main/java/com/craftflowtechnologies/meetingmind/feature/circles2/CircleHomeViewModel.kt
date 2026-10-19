@@ -70,6 +70,7 @@ data class CircleHomeUiState(
     val gone: Boolean = false
 ) {
     val isAdmin: Boolean get() = me?.role?.isAdmin == true
+    val canModerate: Boolean get() = me?.role?.canModerate == true
     val myUid: String? get() = me?.uid
 }
 

@@ -215,7 +215,13 @@ test("chat: replies must point at an existing message; cards must be well-formed
   await assertFails(setDoc(doc(as("member"), M("c8")), msg({ kind: "card", text: "", card: { ...studio, verseText: "x".repeat(601) } })));
 });
 
-test("chat: edit own text only; soft-delete own; admins soft-delete any; no hard delete", async () => {
+test("chat: edit own text only; soft-delete own; admins and moderators soft-delete any; clears attachment; no hard delete", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, `circles/${C}/members/mod`), { role: "moderator", displayName: "Mod" });
+    await setDoc(doc(db, `circles/${C}/messages/matt`), { authorUid: "member", displayName: "M", kind: "image", text: "pic", attachment: { path: `circles/${C}/media/x`, mime: "image/jpeg", bytes: 10 }, createdAt: new Date(), deleted: false });
+    await setDoc(doc(db, `circles/${C}/posts/${P}/comments/cm_mod`), { authorUid: "member", body: "spam", createdAt: new Date() });
+  });
   await assertSucceeds(updateDoc(doc(as("member"), M("m1")), { text: "edited", editedAt: serverTimestamp() }));
   await assertFails(updateDoc(doc(as("member"), M("m1")), { text: "edited" })); // editedAt required
   await assertFails(updateDoc(doc(as("member"), M("m1")), { text: "", editedAt: serverTimestamp() }));
@@ -225,6 +231,8 @@ test("chat: edit own text only; soft-delete own; admins soft-delete any; no hard
   await assertFails(updateDoc(doc(as("member"), M("mp")), { deleted: true, text: "" })); // not theirs
   await assertFails(updateDoc(doc(as("member"), M("m1")), { deleted: true, text: "still here" }));
   await assertSucceeds(updateDoc(doc(as("admin"), M("m1")), { deleted: true, text: "" }));
+  await assertSucceeds(updateDoc(doc(as("mod"), M("matt")), { deleted: true, text: "", attachment: null }));
+  await assertSucceeds(deleteDoc(doc(as("mod"), `circles/${C}/posts/${P}/comments/cm_mod`)));
   await assertFails(updateDoc(doc(as("member"), M("m1")), { text: "zombie", editedAt: serverTimestamp() })); // deleted: no edits
   await assertSucceeds(updateDoc(doc(as("owner"), M("mp")), { deleted: true, text: "" }));
   await assertFails(deleteDoc(doc(as("owner"), M("mp"))));

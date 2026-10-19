@@ -112,7 +112,7 @@ service cloud.firestore {
             && request.resource.data.body.size() > 0
             && request.resource.data.body.size() <= 2000;
           allow delete: if isMember(circleId)
-            && (resource.data.authorUid == request.auth.uid || isAdmin(circleId));
+            && (resource.data.authorUid == request.auth.uid || isModerator(circleId));
         }
 
         // One reaction per user, doc id == uid. (The Worker's syncCounts keeps counters honest.)
@@ -195,13 +195,14 @@ service cloud.firestore {
           && request.resource.data.text.size() <= 2000
           && request.resource.data.editedAt == request.time;
 
-        // Soft-delete: own message, or any message for admins. Content is blanked.
+        // Soft-delete: own message, or any message for admins and moderators. Content and attachment are blanked.
         allow update: if isMember(circleId)
-          && (resource.data.authorUid == request.auth.uid || isAdmin(circleId))
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'text', 'card'])
+          && (resource.data.authorUid == request.auth.uid || isModerator(circleId))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'text', 'card', 'attachment'])
           && request.resource.data.deleted == true
           && request.resource.data.text == ''
-          && request.resource.data.get('card', null) == null;
+          && request.resource.data.get('card', null) == null
+          && request.resource.data.get('attachment', null) == null;
 
         allow delete: if false;
 

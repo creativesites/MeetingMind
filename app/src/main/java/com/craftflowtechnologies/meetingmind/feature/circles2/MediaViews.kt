@@ -39,43 +39,115 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 
-/** A photo, voice note or file read from the device, ready to upload. */
+import android.media.MediaMetadataRetriever
+import android.util.LruCache
+import android.widget.VideoView
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+
+/** A photo, video, voice note or file read from the device, ready to upload. */
 class PickedFile(val bytes: ByteArray, val mime: String, val name: String?, val durationMs: Long? = null)
 
 /**
- * A stored image, fetched through the Worker (members only). Shows a plain block until the bytes arrive,
- * and a plain block if they never do.
+ * Two-tier cache (L1 in-memory LRU up to 24 MB + L2 disk cache under cacheDir/circles_media)
+ * so scrolling lazy lists never re-downloads media bytes from the Worker on every recomposition.
+ */
+object CircleMediaCache {
+    private val memory = object : LruCache<String, ByteArray>(24 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: ByteArray): Int = value.size.coerceAtLeast(1)
+    }
+
+    private fun diskFile(context: Context, path: String, ext: String = "bin"): File {
+        val dir = File(context.cacheDir, "circles_media").apply { mkdirs() }
+        val safe = path.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+        return File(dir, "$safe.$ext")
+    }
+
+    suspend fun fetch(context: Context, circleId: String, path: String): ByteArray? = withContext(Dispatchers.IO) {
+        memory.get(path)?.let { return@withContext it }
+        val file = diskFile(context, path)
+        if (file.exists() && file.length() > 0L) {
+            val bytes = runCatching { file.readBytes() }.getOrNull()
+            if (bytes != null) {
+                if (bytes.size <= 8 * 1024 * 1024) memory.put(path, bytes)
+                return@withContext bytes
+            }
+        }
+        val repo = Circles2.repository(context)
+        val downloaded = repo.api.downloadMedia(circleId, path).okOrNull ?: return@withContext null
+        runCatching { file.writeBytes(downloaded) }
+        if (downloaded.size <= 8 * 1024 * 1024) memory.put(path, downloaded)
+        downloaded
+    }
+
+    suspend fun fetchToFile(context: Context, circleId: String, path: String, ext: String): File? = withContext(Dispatchers.IO) {
+        val file = diskFile(context, path, ext)
+        if (file.exists() && file.length() > 0L) return@withContext file
+        val bytes = fetch(context, circleId, path) ?: return@withContext null
+        runCatching { file.writeBytes(bytes) }
+        file.takeIf { it.exists() }
+    }
+}
+
+/**
+ * A stored image, fetched through the Worker (members only) and cached in L1/L2.
+ * Tapping opens a fullscreen preview dialog when [allowFullscreen] is true.
  */
 @Composable
-fun MediaImage(circleId: String, path: String?, modifier: Modifier = Modifier, contentDescription: String? = null) {
+fun MediaImage(
+    circleId: String,
+    path: String?,
+    modifier: Modifier = Modifier,
+    contentDescription: String? = null,
+    allowFullscreen: Boolean = false
+) {
     val context = LocalContext.current
-    val repo = remember(context) { Circles2.repository(context) }
+    var showFull by remember { mutableStateOf(false) }
     val bitmap by produceState<ImageBitmap?>(initialValue = null, circleId, path) {
         value = null
         if (path == null) return@produceState
-        val bytes = repo.api.downloadMedia(circleId, path).okOrNull ?: return@produceState
+        val bytes = CircleMediaCache.fetch(context, circleId, path) ?: return@produceState
         value = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
     }
     val loaded = bitmap
     if (loaded != null) {
-        Image(loaded, contentDescription, modifier, contentScale = ContentScale.Crop)
+        val imgMod = if (allowFullscreen) modifier.clickable { showFull = true } else modifier
+        Image(loaded, contentDescription, imgMod, contentScale = ContentScale.Crop)
+        if (showFull) {
+            Dialog(onDismissRequest = { showFull = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                Box(Modifier.fillMaxSize().background(MM.colors.background.copy(alpha = 0.96f)).clickable { showFull = false }) {
+                    Image(loaded, contentDescription, Modifier.fillMaxSize().padding(MM.space.m), contentScale = ContentScale.Fit)
+                    IconButton(onClick = { showFull = false }, modifier = Modifier.align(Alignment.TopEnd).padding(MM.space.m)) {
+                        Icon(Icons.Rounded.Close, "Close preview", tint = MM.colors.ink)
+                    }
+                }
+            }
+        }
     } else {
         Box(modifier.background(MM.colors.surfaceSunk))
     }
 }
 
-/** A voice note: play or pause. The bytes are fetched on the first tap and kept in the app cache. */
+/** A voice note: play or pause with a 12-bar audio waveform (`circle_chat.html`). */
 @Composable
-fun VoiceBubble(circleId: String, a: MediaAttachment) {
+fun VoiceBubble(circleId: String, a: MediaAttachment, tint: androidx.compose.ui.graphics.Color = CirclesPalette.Accent) {
     val context = LocalContext.current
-    val repo = remember(context) { Circles2.repository(context) }
     val scope = rememberCoroutineScope()
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var playing by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     DisposableEffect(a.path) { onDispose { player?.release(); player = null } }
+    val bars = remember { listOf(6, 12, 18, 10, 22, 14, 16, 8, 20, 12, 8, 14) }
 
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.padding(vertical = 2.dp)
+    ) {
         IconButton(
             onClick = {
                 val current = player
@@ -87,10 +159,8 @@ fun VoiceBubble(circleId: String, a: MediaAttachment) {
                 if (loading) return@IconButton
                 loading = true
                 scope.launch {
-                    val bytes = repo.api.downloadMedia(circleId, a.path).okOrNull
-                    if (bytes != null) {
-                        val file = File(context.cacheDir, "voice_${a.path.substringAfterLast('/')}.m4a")
-                        file.writeBytes(bytes)
+                    val file = CircleMediaCache.fetchToFile(context, circleId, a.path, "m4a")
+                    if (file != null) {
                         player = MediaPlayer().apply {
                             setDataSource(file.absolutePath)
                             setOnCompletionListener { playing = false }
@@ -102,14 +172,86 @@ fun VoiceBubble(circleId: String, a: MediaAttachment) {
                     loading = false
                 }
             },
-            modifier = Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).background(MM.colors.accent)
+            modifier = Modifier.size(36.dp).clip(androidx.compose.foundation.shape.CircleShape).background(tint)
         ) {
-            Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause voice note" else "Play voice note", tint = MM.colors.surface)
+            Icon(
+                if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                if (playing) "Pause voice note" else "Play voice note",
+                tint = CirclesPalette.White,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            modifier = Modifier.height(24.dp)
+        ) {
+            bars.forEachIndexed { idx, h ->
+                val active = playing || idx < 5
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .height(h.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                        .background(if (active) tint else MM.colors.line)
+                )
+            }
         }
         Text(
-            "Voice note · ${formatDuration(a.durationMs)}",
-            style = MM.type.caption, color = MM.colors.inkSecondary
+            formatDuration(a.durationMs),
+            style = MM.type.caption,
+            color = MM.colors.inkSecondary
         )
+    }
+}
+
+/** A video attachment: shows duration and size, and opens a fullscreen player when tapped. */
+@Composable
+fun VideoBubble(circleId: String, a: MediaAttachment) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var loading by remember { mutableStateOf(false) }
+    var videoFile by remember { mutableStateOf<File?>(null) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+        IconButton(
+            onClick = {
+                if (loading) return@IconButton
+                loading = true
+                scope.launch {
+                    val ext = if (a.mime == "video/webm") "webm" else "mp4"
+                    videoFile = CircleMediaCache.fetchToFile(context, circleId, a.path, ext)
+                    loading = false
+                }
+            },
+            modifier = Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).background(MM.colors.accent)
+        ) {
+            Icon(Icons.Rounded.Videocam, "Play video", tint = MM.colors.surface)
+        }
+        Column {
+            Text(a.name ?: "Video", style = MM.type.bodyStrong, color = MM.colors.ink)
+            Text(
+                listOfNotNull(a.durationMs?.takeIf { it > 0 }?.let(::formatDuration), formatBytes(a.bytes), if (loading) "Loading…" else null).joinToString(" · "),
+                style = MM.type.caption, color = MM.colors.inkSecondary
+            )
+        }
+    }
+    videoFile?.let { file ->
+        Dialog(onDismissRequest = { videoFile = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(MM.colors.background)) {
+                AndroidView(
+                    factory = { ctx ->
+                        VideoView(ctx).apply {
+                            setVideoPath(file.absolutePath)
+                            setOnPreparedListener { mp -> mp.isLooping = false; start() }
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize().align(Alignment.Center)
+                )
+                IconButton(onClick = { videoFile = null }, modifier = Modifier.align(Alignment.TopEnd).padding(MM.space.m)) {
+                    Icon(Icons.Rounded.Close, "Close video", tint = MM.colors.ink)
+                }
+            }
+        }
     }
 }
 
@@ -117,7 +259,6 @@ fun VoiceBubble(circleId: String, a: MediaAttachment) {
 @Composable
 fun FileBubble(circleId: String, a: MediaAttachment) {
     val context = LocalContext.current
-    val repo = remember(context) { Circles2.repository(context) }
     val scope = rememberCoroutineScope()
     var pending by remember { mutableStateOf<ByteArray?>(null) }
     val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(a.mime)) { uri: Uri? ->
@@ -133,7 +274,7 @@ fun FileBubble(circleId: String, a: MediaAttachment) {
         }
         TextAction("Save", {
             scope.launch {
-                val bytes = repo.api.downloadMedia(circleId, a.path).okOrNull ?: return@launch
+                val bytes = CircleMediaCache.fetch(context, circleId, a.path) ?: return@launch
                 pending = bytes
                 saver.launch(a.name ?: "file.pdf")
             }
@@ -156,6 +297,16 @@ fun readPicked(context: Context, uri: Uri): PickedFile? {
     if (mime.startsWith("image/")) {
         // Refuse a photo we can't decode rather than send it with its metadata intact.
         return reencodeToJpeg(raw)?.let { PickedFile(it, "image/jpeg", name) }
+    }
+    if (mime.startsWith("video/")) {
+        if (raw.size > MediaKind.Video.maxBytes) return null
+        val durationMs = runCatching {
+            MediaMetadataRetriever().use { r ->
+                r.setDataSource(context, uri)
+                r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+            }
+        }.getOrNull()
+        return PickedFile(raw, mime, name, durationMs)
     }
     return PickedFile(raw, mime, name)
 }

@@ -73,6 +73,7 @@ export class FakeKv {
   constructor() { this.m = new Map(); }
   async get(k) { return this.m.get(k) ?? null; }
   async put(k, v) { this.m.set(k, v); }
+  async delete(k) { this.m.delete(k); }
 }
 export class FakeFcm {
   constructor() { this.sent = []; }

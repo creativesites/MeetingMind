@@ -210,7 +210,7 @@ class FirestoreCirclesData(private val context: Context) : CirclesData {
     }
 
     override suspend fun deleteMessage(circleId: String, messageId: String) = write { d ->
-        ref(d, circleId).collection("messages").document(messageId).update(mapOf("deleted" to true, "text" to "", "card" to null)).await()
+        ref(d, circleId).collection("messages").document(messageId).update(mapOf("deleted" to true, "text" to "", "card" to null, "attachment" to null)).await()
     }
 
     override suspend fun setMessageReaction(circleId: String, messageId: String, uid: String, emoji: String?) = write { d ->

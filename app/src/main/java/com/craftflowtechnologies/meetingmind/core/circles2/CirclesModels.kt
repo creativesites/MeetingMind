@@ -6,6 +6,7 @@ enum class Role(val wire: String, val label: String) {
     Owner("owner", "Owner"), Admin("admin", "Admin"), Moderator("moderator", "Moderator"), Member("member", "Member");
 
     val isAdmin: Boolean get() = this == Owner || this == Admin
+    val canModerate: Boolean get() = isAdmin || this == Moderator
 
     companion object { fun from(wire: String?): Role = entries.firstOrNull { it.wire == wire } ?: Member }
 }
@@ -121,7 +122,9 @@ data class Post(
     val authorName: String? = null,
     val counts: PostCounts = PostCounts(),
     val createdAt: Long = 0L,
-    val editedAt: Long? = null
+    val editedAt: Long? = null,
+    /** Photos attached to this post (at most 4). */
+    val attachments: List<MediaAttachment> = emptyList()
 )
 
 /** A prayer request waiting for an admin. Carries no author. */
@@ -144,15 +147,17 @@ data class Comment(
     val byRequester: Boolean = false
 )
 
-enum class MessageKind { Text, Card, Reply, Poll, Celebration, Chain, Image, Voice, File, Unknown;
+enum class MessageKind { Text, Card, Reply, Poll, Celebration, Chain, Image, Video, Voice, File, Unknown;
     companion object {
         fun from(wire: String?): MessageKind = when (wire) {
             "text" -> Text; "card" -> Card; "reply" -> Reply; "poll" -> Poll; "celebration" -> Celebration; "chain" -> Chain
-            "image" -> Image; "voice" -> Voice; "file" -> File
+            "image" -> Image; "video" -> Video; "voice" -> Voice; "file" -> File
             else -> Unknown
         }
     }
 }
+
+enum class DeliveryState { Pending, Sent, Failed }
 
 /** A Create card shared into chat: template id + text + mood, rendered on each phone (no image upload). */
 @Immutable
@@ -181,12 +186,14 @@ data class ChatMessage(
     val createdAt: Long = 0L,
     val editedAt: Long? = null,
     val deleted: Boolean = false,
-    /** Image, voice or file messages only. Written by the Worker (sendMessage). */
+    /** Image, video, voice or file messages only. Written by the Worker (sendMessage). */
     val attachment: MediaAttachment? = null,
     /** The id of the message this was forwarded from, when it was forwarded. */
     val forwardedFrom: String? = null,
     /** Uids of members mentioned with @name in the text. */
-    val mentions: List<String> = emptyList()
+    val mentions: List<String> = emptyList(),
+    /** Client-side delivery state for optimistic messages. */
+    val deliveryState: DeliveryState = DeliveryState.Sent
 )
 
 @Immutable
@@ -285,6 +292,7 @@ data class JoinOutcome(val circleId: String, val pending: Boolean)
 /** The kinds of file the Worker accepts. Limits match the Worker (docs/CIRCLES_BACKEND_HANDOFF.md section 6). */
 enum class MediaKind(val wire: String, val maxBytes: Long, val mimes: List<String>) {
     Image("image", 10_000_000L, listOf("image/jpeg", "image/png", "image/webp")),
+    Video("video", 50_000_000L, listOf("video/mp4", "video/webm")),
     Voice("voice", 25_000_000L, listOf("audio/mp4", "audio/aac", "audio/ogg")),
     File("file", 25_000_000L, listOf("application/pdf"));
 

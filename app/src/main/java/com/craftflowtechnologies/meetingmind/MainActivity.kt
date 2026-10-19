@@ -414,6 +414,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             // The Circles card is on the Today and Work homes. Other homes never load circles, so no sign-in happens for them.
             val homeCirclesVm: com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel? =
                 if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY ||
+                    homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.EVERYDAY ||
                     homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.PROFESSIONAL) viewModel<com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel>(
                     factory = com.craftflowtechnologies.meetingmind.feature.today.home.HomeCirclesViewModel.Factory(
                         com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(context)
@@ -430,7 +431,12 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onSearch = openSearch,
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenTasks = { navController.navigate(Routes.TASKS) },
-                onNavigateBottomNav = navigateToPrimary
+                onNavigateBottomNav = navigateToPrimary,
+                homeCircles = homeCircles,
+                onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
+                onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
+                onStartCircle = { navController.navigate(Routes.CIRCLE_CREATE) },
+                onRetryCircles = { homeCirclesVm?.retry() }
             ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.PROFESSIONAL) com.craftflowtechnologies.meetingmind.feature.work.ProfessionalHome(
                 today = vm,
                 work = viewModel(viewModelStoreOwner = context as ComponentActivity),

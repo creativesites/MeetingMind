@@ -116,3 +116,30 @@ object BentoArtColors {
     val Rule = Color(0xFFD9D2C4)
     val CornerFold = Color(0xFFE9DCC2)
 }
+
+/** Fixed design-token palette for Circles (indigo accents, hero covers, status badges, and pastel avatars). */
+object CirclesFixedColors {
+    val White = Color.White
+    val Accent = Color(0xFF5B5BD6)
+    val AccentSoft = Color(0xFFECEAFD)
+    val AccentDeep = Color(0xFF4B3FC0)
+    val CoverStart = Color(0xFF312E81)
+    val CoverEnd = Color(0xFF818CF8)
+    val WarmBg = Color(0xFFFEF3C7)
+    val WarmBorder = Color(0xFFFDE68A)
+    val WarmInk = Color(0xFFB45309)
+    val GreenBg = Color(0xFFDCFCE7)
+    val GreenInk = Color(0xFF15803D)
+    val OnlineDot = Color(0xFF22C55E)
+    val RoseBg = Color(0xFFFEE2E2)
+    val RoseInk = Color(0xFFB91C1C)
+
+    val AvatarPairs = listOf(
+        Color(0xFFFBCFE8) to Color(0xFF9D174D), // Pink
+        Color(0xFFBFDBFE) to Color(0xFF1E40AF), // Blue
+        Color(0xFFFDE68A) to Color(0xFF92400E), // Amber
+        Color(0xFFD1FAE5) to Color(0xFF047857), // Emerald
+        Color(0xFFECEAFD) to Color(0xFF4B3FC0)  // Violet
+    )
+}
+

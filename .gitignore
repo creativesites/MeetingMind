@@ -30,3 +30,4 @@ local.properties
 release-secrets/
 
 firebase-debug.log
+.worktrees/

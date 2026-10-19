@@ -26,10 +26,13 @@ Updated: 2026-10-19. Branch: `claude/southern-african-asr-research`. Head: see `
 - The sun or moon sits over the headline in the Today quote card. It is the card's own illustration, not the companion. Not started.
 
 ## Circles (team report)
-- Redesign (branch `circles-redesign-m1`): backend and client are written end to end, NOT COMPILED. Client: Circle hero with cover photo, feed composer with photos, chat (pins, typing, read receipts, mentions, forwards, photos, PDFs, voice notes), members search and invites, event pickers and cancel confirmation. Backend for the local agent: `docs/CIRCLES_BACKEND_HANDOFF.md`.
-- Circles v2 first increment: creation is idempotent, clearer sign-in errors, v1 removed with migration 25 to 26. Worker live. Firestore rules deployed.
-- `.dev` build still lacks the Android OAuth client in `app/google-services.json`. Google sign-in on `.dev` will fail until the owner re-downloads the file and commits it. The owner's copy is on their machine only.
-- Not verified on device: push notifications, Google sign-in on any build, behaviour after reinstall.
+- Milestone 1 Redesign & Architecture: Backend & client complete and COMPILED (`:app:compileDebugKotlin` clean pass).
+- Client redesign: All 7 screens upgraded to match `MeetingMind Circles Redesign.html` (`CirclesListScreen`, `CircleHomeScreen`/`FeedTab`, `ChatTab`, `MembersTab`, `CircleSettingsScreen`, `EventsSection`, `MediaViews`). Fullscreen photo viewer, video player dialog with `MediaKind.Video` support, 12-bar audio waveforms, L1/L2 media disk cache, pastel avatar initials palette with online dots, `Post.attachments` grid, and role/permission badges.
+- Fixed theme tokens: Circles palette moved to `CirclesFixedColors` in `FixedColors.kt`; `ColorLiteralGuardTest` compliance verified.
+- Backend (`server/circles-api`): 57/57 unit tests pass. R2 media bucket bindings (`meetingmind-circles-media`), `video` media validation (MP4/WebM, 50MB cap), idempotent `sendMessage` via `requestId`, photo-only `createPost`, R2 media deletion in `deletePost`, cursor-paginated `sweepOrphans` with expired `typing` cleanup, and moderator deletion permissions in `firestore.rules`.
+- Deployment automation: `server/circles-api/scripts/deploy-and-verify.sh` verified with live Worker smoke checks (`/health` 200, `/ready` 200, unauthenticated 401).
+- Google sign-in: OAuth client fixes merged from `circles/firebase-json` into `app/google-services.json`.
+- Not verified on device: push notifications, live R2 uploads on real device, Google sign-in on release builds.
 
 ## Latest dev build
 - `MeetingMind-Dev-4ddcdd2.apk` on the `apk-downloads` branch. Built from the designated branch after the no-speech change.

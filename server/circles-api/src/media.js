@@ -9,6 +9,7 @@ import { cleanText, isAdmin, validId } from "./logic.js";
 const MB = 1024 * 1024;
 export const MEDIA = {
   image: { mimes: ["image/jpeg", "image/png", "image/webp"], max: 10 * MB },
+  video: { mimes: ["video/mp4", "video/webm"], max: 50 * MB },
   voice: { mimes: ["audio/mp4", "audio/aac", "audio/ogg"], max: 25 * MB },
   file: { mimes: ["application/pdf"], max: 25 * MB },
 };
@@ -46,7 +47,7 @@ async function loadMember(ctx, circleId) {
 /** Kind, mime and size limits. */
 export function checkFile({ kind, mime, bytes }) {
   const rule = MEDIA[kind];
-  if (!rule) throw bad("kind must be image, voice or file.");
+  if (!rule) throw bad("kind must be image, video, voice or file.");
   if (!rule.mimes.includes(mime)) throw new ApiError(415, "bad_mime", "That file type isn't allowed here.");
   if (!Number.isInteger(bytes) || bytes <= 0) throw bad("bytes must be a positive whole number.");
   if (bytes > rule.max) throw new ApiError(413, "too_large", "That file is too large.");
@@ -64,7 +65,9 @@ export function sniffMime(b, mime) {
     case "image/webp": return at(0, "RIFF") && at(8, "WEBP");
     case "application/pdf": return at(0, "%PDF-");
     case "audio/ogg": return at(0, "OggS");
-    case "audio/mp4": return at(4, "ftyp");
+    case "audio/mp4":
+    case "video/mp4": return at(4, "ftyp");
+    case "video/webm": return [0x1a, 0x45, 0xdf, 0xa3].every((v, i) => b[i] === v);
     // ADTS: 12-bit sync word 0xFFF, then layer bits 00.
     case "audio/aac": return b[0] === 0xff && (b[1] & 0xf6) === 0xf0;
     default: return false;
@@ -85,7 +88,7 @@ export async function createUploadTicket(ctx) {
   const { kind, mime, bytes } = ctx.body;
   checkFile({ kind, mime, bytes });
   const name = optName(ctx.body.name);
-  const durationMs = kind === "voice" ? optDuration(ctx.body.durationMs) : null;
+  const durationMs = kind === "voice" || kind === "video" ? optDuration(ctx.body.durationMs) : null;
   await hit(ctx.kv, `rl:media:${ctx.uid}`, MEDIA_RATE);
   const ticketId = crypto.randomUUID();
   const path = mediaPath(circleId, crypto.randomUUID());
@@ -147,13 +150,21 @@ export async function deleteMedia(ctx) {
   return {};
 }
 
-/** POST /v1/sendMessage: the only writer of image, voice and file messages. The Worker checks the uploader. */
+/** POST /v1/sendMessage: the only writer of image, video, voice and file messages. The Worker checks the uploader. */
 export async function sendMessage(ctx) {
   const circleId = validId(ctx.body.circleId, "circleId");
   const { kind, uploadPath } = ctx.body;
-  if (!MEDIA[kind]) throw bad("kind must be image, voice or file.");
+  if (!MEDIA[kind]) throw bad("kind must be image, video, voice or file.");
   uuidFromPath(circleId, uploadPath);
   const { member } = await loadMember(ctx, circleId);
+  const requestedId = ctx.body.requestId == null ? null : validId(ctx.body.requestId, "requestId");
+  if (requestedId) {
+    const existing = await ctx.db.get(`circles/${circleId}/messages/${requestedId}`);
+    if (existing) {
+      if (existing.data.authorUid === ctx.uid) return { messageId: requestedId };
+      throw new ApiError(409, "conflict", "That message ID is already taken.");
+    }
+  }
   const head = await ctx.env.MEDIA.head(uploadPath);
   if (!head) throw notFound("That upload");
   const meta = head.customMetadata || {};
@@ -167,13 +178,13 @@ export async function sendMessage(ctx) {
     const r = await ctx.db.get(`circles/${circleId}/messages/${replyTo}`);
     if (!r || r.data.deleted) throw notFound("That message");
   }
-  const durationMs = kind === "voice" ? optDuration(ctx.body.durationMs) : null;
+  const durationMs = kind === "voice" || kind === "video" ? optDuration(ctx.body.durationMs) : null;
   const name = optName(ctx.body.name);
   await hit(ctx.kv, `rl:send:${ctx.uid}`, SEND_RATE);
   const attachment = { path: uploadPath, mime, bytes: head.size };
   if (durationMs != null) attachment.durationMs = durationMs;
   if (name) attachment.name = name;
-  const messageId = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+  const messageId = requestedId || crypto.randomUUID().replace(/-/g, "").slice(0, 20);
   const msg = { authorUid: ctx.uid, displayName: member.displayName, kind, text, attachment, createdAt: ctx.now, editedAt: null, deleted: false };
   if (replyTo) msg.replyTo = replyTo;
   await ctx.db.commit([w.create(`circles/${circleId}/messages/${messageId}`, msg)]);
@@ -217,18 +228,51 @@ export async function checkCover(ctx, circleId, path) {
  * Deletes media nobody references, older than 24 hours. A reference is a live or deleted message, a post or pending
  * request, or a circle's cover. Runs from the scheduled handler; scans at most SWEEP_BATCH objects per run.
  */
-export async function sweepOrphans({ env, db, now = new Date() }) {
-  const listed = await env.MEDIA.list({ prefix: "circles/", limit: SWEEP_BATCH });
+export async function sweepOrphans({ env, db, now = new Date(), maxPages = 5 }) {
+  let cursor = (await env.RATE?.get("sweep:cursor")) || undefined;
+  let scanned = 0;
   let deleted = 0;
-  for (const obj of listed.objects) {
-    if (now.getTime() - new Date(obj.uploaded).getTime() < ORPHAN_AGE_MS) continue;
-    const circleId = obj.key.split("/")[1];
-    if (!(await referenced(db, circleId, obj.key))) {
-      await env.MEDIA.delete(obj.key);
-      deleted++;
+  let truncated = false;
+  for (let page = 0; page < maxPages; page++) {
+    const listed = await env.MEDIA.list({ prefix: "circles/", limit: SWEEP_BATCH, cursor });
+    scanned += listed.objects.length;
+    for (const obj of listed.objects) {
+      if (now.getTime() - new Date(obj.uploaded).getTime() < ORPHAN_AGE_MS) continue;
+      const circleId = obj.key.split("/")[1];
+      if (!(await referenced(db, circleId, obj.key))) {
+        await env.MEDIA.delete(obj.key);
+        deleted++;
+      }
+    }
+    if (listed.truncated && listed.cursor) {
+      cursor = listed.cursor;
+      truncated = true;
+    } else {
+      cursor = undefined;
+      truncated = false;
+      break;
     }
   }
-  return { scanned: listed.objects.length, deleted };
+  if (env.RATE) {
+    if (truncated && cursor) await env.RATE.put("sweep:cursor", cursor, { expirationTtl: 86_400 });
+    else await env.RATE.delete?.("sweep:cursor");
+  }
+  let typingDeleted = 0;
+  const circles = await db.query({ collection: "circles", limit: 100 });
+  const typingWrites = [];
+  for (const c of circles) {
+    const typingDocs = await db.query({ parent: `circles/${c.id}`, collection: "typing", limit: 100 });
+    for (const t of typingDocs) {
+      const exp = t.data.expiresAt instanceof Date ? t.data.expiresAt.getTime() : 0;
+      const upd = t.data.updatedAt instanceof Date ? t.data.updatedAt.getTime() : 0;
+      if ((exp && exp < now.getTime()) || (!exp && upd && now.getTime() - upd > 60_000)) {
+        typingWrites.push(w.del(`circles/${c.id}/typing/${t.id}`));
+        typingDeleted++;
+      }
+    }
+  }
+  if (typingWrites.length) await db.commit(typingWrites);
+  return { scanned, deleted, truncated, typingDeleted };
 }
 
 async function referenced(db, circleId, key) {
