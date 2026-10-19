@@ -4,6 +4,7 @@ import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
+import com.craftflowtechnologies.meetingmind.ai.common.isRetryable
 import com.craftflowtechnologies.meetingmind.ai.faith.Prompts
 import com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter
 import org.json.JSONArray
@@ -111,7 +112,10 @@ data class AssistantMessage(
     val text: String,
     val activity: List<String> = emptyList(),
     val actions: List<AssistantAction> = emptyList(),
-    val error: Boolean = false
+    val error: Boolean = false,
+    /** Only meaningful when [error]: whether asking again could plausibly help. False means the
+     * person needs to change something (a key, a quota, a setting) before trying again. */
+    val retryable: Boolean = true
 )
 
 class AssistantEngine(
@@ -163,7 +167,7 @@ class AssistantEngine(
             val prompt = context + if (results.isNotEmpty()) "\nTool results so far:\n$results\nContinue." else ""
             val res = transport.execute(GeminiRequest(model, systemPrompt(), prompt, timeoutMs = 60_000, temperature = 0.3f))
             if (res !is AiResult.Success) {
-                return AssistantMessage(false, res.describeFailure() ?: "The assistant couldn't answer just now.", activity, actions, error = true)
+                return AssistantMessage(false, res.describeFailure() ?: "The assistant couldn't answer just now.", activity, actions, error = true, retryable = res.isRetryable())
             }
             val turn = AssistantProtocol.parse(res.value)
             if (turn.say.isNotBlank()) say = turn.say

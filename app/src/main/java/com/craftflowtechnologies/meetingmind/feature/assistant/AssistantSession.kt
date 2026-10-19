@@ -49,7 +49,12 @@ class AssistantSession(
     private var job: Job? = null
     private var lastPrompt: String? = null
 
-    init { scope.launch { _scope.value = resolveScope() } }
+    init { scope.launch { _scope.value = runCatching { resolveScope() }.getOrElse { fallbackScope() } } }
+
+    private fun fallbackScope(): AssistantScope {
+        val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy"))
+        return AssistantScope(libraryLabel, faithLibrary, libraryLabel, today = today)
+    }
 
     private suspend fun resolveScope(): AssistantScope {
         val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy"))
@@ -71,7 +76,7 @@ class AssistantSession(
     }
 
     private suspend fun host(): AppAssistantHost =
-        host ?: AppAssistantHost(app, _scope.value ?: resolveScope().also { _scope.value = it }, bridge).also { host = it }
+        host ?: AppAssistantHost(app, _scope.value ?: runCatching { resolveScope() }.getOrElse { fallbackScope() }.also { _scope.value = it }, bridge).also { host = it }
 
     fun suggestions(): List<AssistantSuggestion> {
         val s = _scope.value
@@ -117,11 +122,23 @@ class AssistantSession(
         _working.value = "Thinking"
         job = scope.launch {
             try {
-                val engine = AssistantEngine(CloudAi.transport(app), host())
-                val reply = if (!CloudAi.transport(app).refreshConfigured()) {
-                    AssistantMessage(false, "The assistant needs Internet mode (a Gemini key) or the backup AI. You can set either up in Settings.", error = true)
-                } else engine.reply(history.filterNot { it.error }, prompt) { chip -> _working.value = chip }
+                // One transport instance for both the configured-check and the engine, so they can
+                // never disagree about whether Gemini or the DeepSeek backup is reachable.
+                val transport = CloudAi.transport(app)
+                val reply = if (!transport.refreshConfigured()) {
+                    AssistantMessage(false, "The assistant needs Internet mode (a Gemini key) or the backup AI. You can set either up in Settings.", error = true, retryable = false)
+                } else {
+                    val engine = AssistantEngine(transport, host())
+                    engine.reply(history.filterNot { it.error }, prompt) { chip -> _working.value = chip }
+                }
                 _messages.value = _messages.value + reply
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Anything that escapes the engine (a database read building the scope, an
+                // unexpected tool exception) must still end in a visible, retryable error — never
+                // a silently cleared spinner with nothing to retry.
+                _messages.value = _messages.value + AssistantMessage(false, "Something went wrong before I could answer. Try again.", error = true)
             } finally {
                 _working.value = null
             }
@@ -136,12 +153,20 @@ class AssistantSession(
 
     fun retry() {
         val p = lastPrompt ?: return
-        // Drop the failed reply and the prompt it answered, then ask again.
         val list = _messages.value.toMutableList()
-        if (list.lastOrNull()?.error == true) list.removeAt(list.lastIndex)
-        if (list.lastOrNull()?.fromUser == true) list.removeAt(list.lastIndex)
+        val failed = list.lastOrNull()?.takeIf { it.error && !it.fromUser }
+        // A failed reply that already read or wrote something real (a tool chip, an applied action)
+        // made partial progress: that progress stays visible — its writes already happened in the
+        // real note/tasks — and a fresh prompt never re-asks the model to redo it from scratch,
+        // which would risk a duplicate task or a duplicate insert. A failure with no progress at all
+        // is dropped and the exact original message is simply asked again, as before.
+        val hadProgress = failed != null && (failed.activity.isNotEmpty() || failed.actions.isNotEmpty())
+        if (failed != null) {
+            if (hadProgress) list[list.lastIndex] = failed.copy(error = false) else list.removeAt(list.lastIndex)
+        }
+        if (!hadProgress && list.lastOrNull()?.fromUser == true) list.removeAt(list.lastIndex)
         _messages.value = list
-        send(p)
+        send(if (hadProgress) "Please continue — don't repeat anything you already did above, just finish the rest." else p)
     }
 
     fun clear() { job?.cancel(); _working.value = null; _messages.value = emptyList() }

@@ -138,7 +138,7 @@ fun AssistantSheet(session: AssistantSession, onOpenNote: (String) -> Unit, onOp
                 }
                 items(messages.size) { i ->
                     val m = messages[i]
-                    if (m.fromUser) UserBubble(m.text) else AssistantBubble(m, session, onOpenNote, onOpenTasks, onRetry = if (m.error && i == messages.lastIndex) session::retry else null)
+                    if (m.fromUser) UserBubble(m.text) else AssistantBubble(m, session, onOpenNote, onOpenTasks, onRetry = if (m.error && m.retryable && i == messages.lastIndex) session::retry else null)
                 }
                 item("working") { if (working != null) Working(working!!) else Spacer(Modifier.height(1.dp)) }
             }
