@@ -251,6 +251,9 @@ interface ProcessingJobDao {
 
     @Query("DELETE FROM processing_jobs WHERE id = :id")
     suspend fun deleteJob(id: String)
+
+    @Query("DELETE FROM processing_jobs WHERE meetingId = :meetingId")
+    suspend fun deleteJobsForMeeting(meetingId: String)
 }
 
 @Dao

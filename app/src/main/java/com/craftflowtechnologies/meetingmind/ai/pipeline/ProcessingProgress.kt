@@ -41,6 +41,13 @@ class MonotonicProgress {
 
 const val PROCESSING_INTERRUPTED_MESSAGE = "Processing was interrupted — tap to retry"
 
+/**
+ * Ends a run whose recording was deleted while it was being processed. It is a cancellation, not a
+ * failure: there is no note left to report one against, so nothing more is written for it.
+ */
+class RecordingDeletedException(meetingId: String) :
+    kotlinx.coroutines.CancellationException("Recording $meetingId was deleted while it was processing")
+
 /** Shown on a finished recording whose audio contained no words the recognizer could hear. */
 const val NO_SPEECH_MESSAGE = "No speech was detected in this recording, so there is no transcript or summary. The audio is saved."
 

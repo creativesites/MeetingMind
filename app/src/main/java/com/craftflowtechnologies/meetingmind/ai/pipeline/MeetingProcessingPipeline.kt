@@ -227,6 +227,9 @@ class MeetingProcessingPipeline(
         // so the later stages' status lines don't hide it.
         var speakerNote: String? = null
         suspend fun updateJob(step: String, percent: Int, stage: ProcessingStage, failed: Boolean = false, completed: Boolean = false, error: String? = null) {
+            // A recording deleted mid-run must not get its job row back: the row would show as
+            // processing with nothing to open. Stop the run instead of writing anything further.
+            if (meetingDao.getMeetingById(meetingId) == null) throw RecordingDeletedException(meetingId)
             val terminal = failed || completed
             val shown = if (terminal) percent else monotonic.next(percent)
             jobDao.insertOrUpdateJob(
@@ -802,6 +805,8 @@ class MeetingProcessingPipeline(
 
             updatedMeeting
         } catch (e: CancellationException) {
+            // The recording is gone: there is nothing to record a cancellation against.
+            if (e is RecordingDeletedException) throw e
             // Once a coroutine is cancelled, any further suspend call (Room writes included) can
             // throw CancellationException immediately instead of running — without NonCancellable
             // this cleanup could silently no-op and leave the meeting stuck mid-processing.
@@ -813,6 +818,7 @@ class MeetingProcessingPipeline(
             }
             throw e
         } catch (e: Throwable) {
+            if (e is RecordingDeletedException) throw e
             withContext(kotlinx.coroutines.NonCancellable) {
                 SherpaEngineManager.releaseAll()
                 LlmEngineManager.release()
