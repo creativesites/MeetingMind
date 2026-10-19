@@ -431,6 +431,11 @@ class MeetingProcessingPipeline(
                 }
             }
 
+            // A recording with no words is a finished, honest result, not a failure: the audio is
+            // kept and the note says nothing was heard. Speaker separation and AI analysis are
+            // skipped below — there is nothing to attribute and nothing real to summarise.
+            val noSpeech = rawWords.isEmpty()
+
             // Resolved here because every layer below — structuring, cleanup, intelligence — is
             // shaped by what the user was actually recording.
             val recordingType = try {
@@ -452,6 +457,12 @@ class MeetingProcessingPipeline(
                 // Gemini's verbatim pass diarized as it transcribed, and GlobalSpeakerResolver has
                 // already made those labels recording-wide. Re-attributing here would overwrite
                 // real evidence with a second opinion derived from nothing.
+                emptyList()
+            } else if (noSpeech) {
+                // Nothing was said, so there is no word to give a speaker. Running the native
+                // separator over silence is the work that used to park the bar at 52% with no
+                // progress to show, and its result could only ever be thrown away.
+                updateJob(NO_SPEECH_STEP, ProcessingProgress.SPEAKERS_END, ProcessingStage.DIARIZING)
                 emptyList()
             } else if (singleSpeakerMode) {
                 updateJob("Single speaker confirmed — skipping speaker detection...", ProcessingProgress.SPEAKERS_START, ProcessingStage.DIARIZING)
@@ -544,7 +555,7 @@ class MeetingProcessingPipeline(
             // It proposes speaker-id merges only; the merge is then applied at the word layer and
             // the transcript re-assembled, so turns, utterances and paragraphs all reflect it
             // rather than only the projected segments.
-            if (!singleSpeakerMode && cloudWords == null) {
+            if (!singleSpeakerMode && cloudWords == null && !noSpeech) {
                 val projected = CanonicalTranscriptAssembler.projectToSegments(canonical)
                 val footprints = com.craftflowtechnologies.meetingmind.ai.diarization.computeSpeakerTranscriptFootprints(projected)
                 if (com.craftflowtechnologies.meetingmind.ai.diarization.shouldAttemptAiReconciliation(footprints, diarizationStrategy)) {
@@ -602,7 +613,7 @@ class MeetingProcessingPipeline(
             val intelligenceProfile = recordingType.intelligenceProfile()
             // What this step is actually doing depends on what this recording type actually
             // produces — a Lecture never claims to be "extracting decisions & action items".
-            updateJob(intelligenceProfile.analyzingStageLabel, 70, ProcessingStage.ANALYZING)
+            if (!noSpeech) updateJob(intelligenceProfile.analyzingStageLabel, 70, ProcessingStage.ANALYZING)
             val transcriptDomain = Transcript(
                 meetingId = meetingId,
                 segments = diarizedSegments,
@@ -618,7 +629,13 @@ class MeetingProcessingPipeline(
             // RealMeetingIntelligenceEngine's synthesis prompt) instead of running a second,
             // separate LLM pass purely for a title.
             val fallbackTitle = MeetingTitleGenerator.deterministicFallbackTitle(recordingType, existingMeeting.createdAt)
-            val summaryResult = effectiveIntelligenceEngine.processMeeting(transcriptDomain, fallbackTitle, recordingType, existingMeeting.customContext)
+            // No words means no model call at all: a language model given an empty transcript can
+            // only invent a summary, and this app never fabricates one.
+            val summaryResult = if (noSpeech) {
+                AiResult.Failed(NO_SPEECH_MESSAGE)
+            } else {
+                effectiveIntelligenceEngine.processMeeting(transcriptDomain, fallbackTitle, recordingType, existingMeeting.customContext)
+            }
             val summary = (summaryResult as? AiResult.Success)?.value
             val generatedTitle = MeetingTitleGenerator.sanitizeAndValidate(summary?.title) ?: fallbackTitle
             Log.d(PERF_TAG, "LLM (intelligence incl. title): ${System.currentTimeMillis() - llmStart}ms")
@@ -776,9 +793,11 @@ class MeetingProcessingPipeline(
                 percent = 100,
                 stage = ProcessingStage.COMPLETED,
                 completed = true,
-                error = if (summary == null) {
-                    "Transcript ready. " + (summaryResult.describeFailure() ?: "No local meeting intelligence model is installed.")
-                } else null
+                error = when {
+                    noSpeech -> NO_SPEECH_MESSAGE
+                    summary == null -> "Transcript ready. " + (summaryResult.describeFailure() ?: "No local meeting intelligence model is installed.")
+                    else -> null
+                }
             )
 
             updatedMeeting
@@ -834,6 +853,11 @@ class MeetingProcessingPipeline(
         /** Sizes the AI pass's time budget; 0 (unknown) gets the minimum budget. */
         audioDurationMs: Long = 0L
     ): List<TranscriptSegment> = withContext(Dispatchers.Default) {
+        // Nothing to clean: no words means no paragraphs, and no model call to make.
+        if (structuredSegments.isEmpty()) {
+            onEngineUsed("rule-based")
+            return@withContext structuredSegments
+        }
         val profile = recordingType.transcriptCleanupProfile(cleanupMode)
 
         onStatus("Cleaning up your transcript...")
