@@ -2,6 +2,12 @@
 
 Updated: 2026-10-19. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git log -1`.
 
+## Recording & processing reliability (2026-10-19)
+- **52% hang fixed**: a recording with no words skipped speaker separation (it ran over silence and parked the bar at 52%) and finishes COMPLETED with "No speech was detected". Covered by `NoSpeechRecordingTest`.
+- **Crashes fixed**: a processing route with no audio path could not be matched by the NavHost (opening it crashed); startup resume is isolated per recording; the decoder fails instead of spinning on a damaged file.
+- **Terminal states**: a failure before the pipeline's own handler now ends the job row FAILED with a reason and moves the recording to ERROR. Deleting a recording mid-run stops its work and leaves no job row.
+- **Not verified on a device**: the decoder stall guard, a real silent recording on the native recognizer, a mic revoked mid-recording (no error listener yet), and the notification refusal on Android 12+.
+
 ## Latest UX, Onboarding, Paywall & Billing Update (2026-10-19)
 - **Moments & Companion Theater**: Fixed `FirstKeep` ticket claim lifecycle so processing notes wait and trigger celebration on finish; added `NoteUnveil` stage target layers in `NoteEditorScreen`; added Companion Processing Theater card in `MeetingDetailScreen` during background processing.
 - **Redesigned Onboarding**: Added Continuous Companion Guide Header across steps; streamlined sample transcript reveal (~2.1s) with a `"Skip to notes"` shortcut; removed raw BYOK Gemini key prompt from primary onboarding; added "Your Personal Space is Ready" summary on permissions step; verified readable layout on narrow screens (320x640).
