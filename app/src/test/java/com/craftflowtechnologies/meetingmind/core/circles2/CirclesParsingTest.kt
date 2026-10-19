@@ -38,7 +38,7 @@ class CirclesParsingTest {
     }
 
     @Test fun `counts clamp and reactions map`() {
-        val p = CirclesParsing.post("p", mapOf("type" to "prayer", "counts" to mapOf("prayed" to -3, "comments" to 2L, "reactions" to mapOf("amen" to 4, "heart" to 0, "weird" to 9))))
+        val p = CirclesParsing.post("p", mapOf("type" to "prayer", "body" to "Pray for Ann", "counts" to mapOf("prayed" to -3, "comments" to 2L, "reactions" to mapOf("amen" to 4, "heart" to 0, "weird" to 9))))
         assertEquals(0, p?.counts?.prayed); assertEquals(2, p?.counts?.comments)
         assertEquals(mapOf(ReactionKind.Amen to 4), p?.counts?.reactions)
     }
