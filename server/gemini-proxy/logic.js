@@ -2,6 +2,23 @@
 
 export const GOOGLE_HOST = 'generativelanguage.googleapis.com';
 export const PLAN_RANK = { free: 0, byok: 1, pro: 2, pro_plus: 3, church: 3 };
+export const ENTITLEMENT_ALIASES = {
+  byok: 'byok',
+  meetingmind_byok: 'byok',
+  pro: 'pro',
+  meetingmind_pro: 'pro',
+  pro_plus: 'pro_plus',
+  meetingmind_pro_plus: 'pro_plus',
+  church: 'church',
+  meetingmind_church: 'church',
+};
+export const DEFAULT_ALLOWANCES = {
+  free: { audioSeconds: 1800, actions: 30 },
+  byok: { audioSeconds: 0, actions: 0 },
+  pro: { audioSeconds: 108000, actions: 400 },
+  pro_plus: { audioSeconds: 216000, actions: 1000 },
+  church: { audioSeconds: 360000, actions: 1500 },
+};
 /** Gemini counts audio at 32 tokens per second. */
 export const AUDIO_TOKENS_PER_SECOND = 32;
 
@@ -14,7 +31,7 @@ export function currentPeriod(nowMs) {
 }
 
 /**
- * PLAN_ALLOWANCES is a JSON object: { "free": {"audioSeconds":0,"actions":0}, "pro": {...}, ... }.
+ * PLAN_ALLOWANCES is a JSON object: { "free": {"audioSeconds":1800,"actions":30}, "pro": {...}, ... }.
  * Missing or malformed means NOT CONFIGURED, and the proxy refuses to serve rather than guess a limit.
  */
 export function parseAllowances(raw) {
@@ -100,7 +117,8 @@ export function audioSecondsFromUsage(usage) {
 /** The best plan among RevenueCat's active entitlements ("free" when none). */
 export function highestPlan(entitlements, nowMs) {
   let best = 'free';
-  for (const [id, ent] of Object.entries(entitlements ?? {})) {
+  for (const [rawId, ent] of Object.entries(entitlements ?? {})) {
+    const id = ENTITLEMENT_ALIASES[rawId] ?? rawId;
     if (!(id in PLAN_RANK) || id === 'free') continue;
     const exp = ent?.expires_date ? Date.parse(ent.expires_date) : null;
     if (exp !== null && !(exp > nowMs)) continue;

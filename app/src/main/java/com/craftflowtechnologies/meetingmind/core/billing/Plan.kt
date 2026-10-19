@@ -7,7 +7,9 @@ package com.craftflowtechnologies.meetingmind.core.billing
  */
 enum class Plan(val entitlementId: String, val rank: Int, val label: String) {
     FREE("", 0, "Free"),
-    PRO("meetingmind_pro", 1, "MeetingMind Pro");
+    BYOK("meetingmind_byok", 1, "MeetingMind BYOK"),
+    PRO("meetingmind_pro", 2, "MeetingMind Pro"),
+    CHURCH("meetingmind_church", 3, "MeetingMind Church");
 
     companion object {
         fun fromEntitlementId(id: String): Plan? = entries.firstOrNull { it != FREE && it.entitlementId == id }
@@ -15,13 +17,16 @@ enum class Plan(val entitlementId: String, val rank: Int, val label: String) {
 }
 
 /**
- * The products in the RevenueCat offering, by their package identifiers. Each is one package in the
- * current offering: "monthly" and "yearly" are subscriptions, "lifetime" is a one-time purchase.
+ * The products in the RevenueCat offering, by their package identifiers.
  */
-enum class OfferKind(val packageId: String, val period: String) {
-    MONTHLY("monthly", "month"),
-    YEARLY("yearly", "year"),
-    LIFETIME("lifetime", "one-time payment");
+enum class OfferKind(val packageId: String, val period: String, val defaultPlan: Plan = Plan.PRO) {
+    MONTHLY("monthly", "month", Plan.PRO),
+    YEARLY("yearly", "year", Plan.PRO),
+    LIFETIME("lifetime", "one-time payment", Plan.PRO),
+    BYOK_MONTHLY("byok_monthly", "month", Plan.BYOK),
+    BYOK_YEARLY("byok_yearly", "year", Plan.BYOK),
+    CHURCH_MONTHLY("church_monthly", "month", Plan.CHURCH),
+    CHURCH_YEARLY("church_yearly", "year", Plan.CHURCH);
 
     companion object {
         fun fromPackageId(id: String): OfferKind? = entries.firstOrNull { it.packageId == id }
@@ -31,12 +36,18 @@ enum class OfferKind(val packageId: String, val period: String) {
 /** What the user can do because of a plan. Local recording, notes, search and export are never gated. */
 enum class Capability {
     /** Cloud transcription and AI notes that MeetingMind pays for, within the plan's allowance. */
-    MANAGED_CLOUD_AI
+    MANAGED_CLOUD_AI,
+    /** Using a personal Gemini API key in Settings with all Pro features unlocked. */
+    BYOK_KEY,
+    /** Full Pro feature set (Ask across meetings, Speaker ID, Read-to-Me TTS, unlimited Circles). */
+    PRO_FEATURES
 }
 
 object PlanCapabilities {
     fun has(plan: Plan, capability: Capability): Boolean = when (capability) {
-        Capability.MANAGED_CLOUD_AI -> plan == Plan.PRO
+        Capability.MANAGED_CLOUD_AI -> plan == Plan.PRO || plan == Plan.CHURCH
+        Capability.BYOK_KEY -> plan == Plan.BYOK || plan == Plan.PRO || plan == Plan.CHURCH
+        Capability.PRO_FEATURES -> plan != Plan.FREE
     }
 }
 

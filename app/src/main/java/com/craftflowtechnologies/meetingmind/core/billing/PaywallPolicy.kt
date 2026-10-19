@@ -31,8 +31,16 @@ data class PaywallState(
 object PaywallPolicy {
     const val COOLDOWN_MS = 7L * 24 * 60 * 60 * 1000
 
-    fun shouldShow(trigger: PaywallTrigger, billing: BillingGateway, entitlements: Entitlements, state: PaywallState, nowMs: Long): Boolean {
+    fun shouldShow(
+        trigger: PaywallTrigger,
+        billing: BillingGateway,
+        entitlements: Entitlements,
+        state: PaywallState,
+        nowMs: Long,
+        tieringMode: TieringMode = TieringMode.PRODUCTION
+    ): Boolean {
         if (!billing.configured) return false
+        if (tieringMode == TieringMode.CLOSED_TESTING) return trigger == PaywallTrigger.SETTINGS
         if (trigger == PaywallTrigger.SETTINGS) return true
         if (entitlements.isPaid) return false
         // One uninvited full offer a week, however many triggers fire.

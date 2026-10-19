@@ -39,7 +39,12 @@ object GeminiRoutes {
      * build has one, then the tester key (private builds only). Null when none applies.
      */
     suspend fun resolve(credentials: GeminiCredentialStore, ownBaseUrl: String, managedUrl: String): GeminiRoute? {
-        credentials.getUserKey()?.let { return GeminiRoute(ownBaseUrl, it, emptyMap()) }
+        val tierMode = com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.current(credentials.appContext)
+        val canUseOwnKey = tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING ||
+            Billing.gateway.entitlements.value.has(com.craftflowtechnologies.meetingmind.core.billing.Capability.BYOK_KEY)
+        if (canUseOwnKey) {
+            credentials.getUserKey()?.let { return GeminiRoute(ownBaseUrl, it, emptyMap()) }
+        }
         managedBase(managedUrl)?.let { base ->
             val headers = mutableMapOf("X-Install-Id" to InstallId.get(credentials.appContext))
             Billing.gateway.appUserId()?.let { headers["X-RC-User"] = it }

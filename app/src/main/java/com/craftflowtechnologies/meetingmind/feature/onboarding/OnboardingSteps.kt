@@ -63,7 +63,7 @@ internal fun SampleStep(kind: SampleKind, onKind: (SampleKind) -> Unit, onViewed
 
     LaunchedEffect(kind, playing, shown) {
         if (playing && shown < sample.lines.size) {
-            delay(if (shown == 0) 500L else 1100L)
+            delay(if (shown == 0) 250L else 380L)
             shown++
         }
     }
@@ -93,7 +93,10 @@ internal fun SampleStep(kind: SampleKind, onKind: (SampleKind) -> Unit, onViewed
         if (!done) Text(if (playing) "Transcribing…" else "Paused", color = Color.White.copy(alpha = 0.5f), fontSize = 12.5.sp, modifier = Modifier.padding(top = 6.dp))
     }
     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (!done) TextAction(if (playing) "Pause" else "Play", "sample_play_pause") { playing = !playing }
+        if (!done) {
+            TextAction(if (playing) "Pause" else "Play", "sample_play_pause") { playing = !playing }
+            TextAction("Skip to notes", "sample_skip_to_notes") { shown = sample.lines.size }
+        }
         TextAction("Replay", "sample_replay") { shown = 0; asked = false; playing = true }
     }
 

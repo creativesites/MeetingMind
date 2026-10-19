@@ -332,7 +332,7 @@ fun NoteEditorScreen(
         titleWords = note?.title.orEmpty().split(' ').count { it.isNotBlank() }.coerceAtLeast(1)
     ) {
     Scaffold(
-        containerColor = SurfaceBase,
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             Row(
@@ -469,7 +469,11 @@ fun NoteEditorScreen(
                 }
             }
             item(key = "title") {
-                Column(Modifier.padding(start = 22.dp, top = 6.dp)) {
+                Column(
+                    Modifier
+                        .momentLayer(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.StageTarget.HEADER)
+                        .padding(start = 22.dp, top = 6.dp)
+                ) {
                     // The field owns what's being typed. The keyboard's word-in-progress is never
                     // reset by the saved (trimmed) title coming back from the database; an outside
                     // change (a restored version, a recording's name) shows when not typing.
@@ -577,6 +581,7 @@ fun NoteEditorScreen(
                 val dragging = drag.draggingId == block.id
                 Row(
                     Modifier
+                        .momentLayer(com.craftflowtechnologies.meetingmind.core.ui.mm.companion.moment.StageTarget.BODY, index.coerceAtMost(4))
                         .fillMaxWidth()
                         .zIndex(if (dragging) 1f else 0f)
                         .graphicsLayer {
@@ -655,12 +660,16 @@ fun NoteEditorScreen(
     }
     }
 
-    // The First Keep over the note (§2.2): its card shows the note's title and recording length only.
+    // The First Keep over the note (§2.2): its card shows the note's title, recording length, and key points.
     com.craftflowtechnologies.meetingmind.feature.moments.NoteFirstKeep(
         state = noteMoment,
         meta = momentCard?.let { Formatters.formatDurationHms(it.durationMs) }.orEmpty(),
-        keyPoints = emptyList(),
-        actionCount = 0,
+        keyPoints = remember(blocks, note?.title) {
+            blocks.filter { it.type.isText && it.content.text.isNotBlank() && it.content.text.trim() != note?.title?.trim() }
+                .map { it.content.text.trim() }
+                .take(3)
+        },
+        actionCount = remember(blocks) { blocks.count { it.type == NoteBlockType.CHECKLIST } },
         onShare = {
             createController.open(
                 com.craftflowtechnologies.meetingmind.core.create.CreateSeed(

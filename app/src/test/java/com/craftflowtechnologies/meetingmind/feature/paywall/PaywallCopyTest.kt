@@ -21,6 +21,10 @@ class PaywallCopyTest {
         assertTrue(lines.any { it.second.contains("\$79.99") })
         assertTrue(lines.any { it.first == "Every year" })
         assertTrue(lines.any { it.second.contains("Cancel in Google Play") })
+
+        val trialLines = PaywallCopy.timeline(PlanOffer("yearly", Plan.PRO, "\$79.99", OfferKind.YEARLY, trialDays = 7))
+        assertTrue(trialLines.any { it.second.contains("7-day free trial") })
+        assertTrue(trialLines.any { it.first == "Before day 7" })
     }
 
     @Test fun `the yearly individual plan is preselected`() {

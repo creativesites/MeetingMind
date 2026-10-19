@@ -148,8 +148,14 @@ fun PaywallScreen(trigger: PaywallTrigger, onClose: () -> Unit, vm: PaywallViewM
                     PrimaryButton("Continue", "paywall_next", enabled = true) { page++ }
                 } else {
                     val offer = state.selected
+                    val ctaLabel = when {
+                        state.busy -> "One moment…"
+                        offer == null -> "Plans unavailable"
+                        offer.trialDays != null && offer.trialDays > 0 -> "Start ${offer.trialDays}-day free trial"
+                        else -> "Start ${offer.plan.label}"
+                    }
                     PrimaryButton(
-                        if (state.busy) "One moment…" else if (offer != null) "Start ${offer.plan.label}" else "Plans unavailable",
+                        ctaLabel,
                         "paywall_buy", enabled = offer != null && !state.busy && !state.pending && activity != null
                     ) { activity?.let(vm::buy) }
                     Text("No commitment — cancel any time in Google Play", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
@@ -178,7 +184,7 @@ private fun OutcomePage(outcome: OutcomeCopy) {
     }
 }
 
-/** What stays free and what a plan adds. Allowance sizes are the plan's published ones, shown in the plan details, not guessed here. */
+/** What stays free and what BYOK, Pro and Church add. */
 @Composable
 private fun IncludedPage() {
     Text("What's included", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
@@ -186,9 +192,10 @@ private fun IncludedPage() {
         Spacer(Modifier.weight(1f)); HeaderCell("Free"); HeaderCell("Plan")
     }
     TableRow("Record, browse, search and export your notes", free = true, paid = true)
-    TableRow("On-device transcription and notes", free = true, paid = true)
-    TableRow("Cloud transcription and AI notes from MeetingMind, with a monthly allowance", free = false, paid = true)
-    TableRow("Bigger, published monthly allowances for cloud summaries and questions", free = false, paid = true)
+    TableRow("On-device transcription and notes + 30-min Cloud AI starter taste", free = true, paid = true)
+    TableRow("Full Pro features: Ask across all meetings, Speaker ID, Read-to-Me & Circles", free = false, paid = true)
+    TableRow("BYOK Tier: use your own Gemini API key with all Pro features unlocked", free = false, paid = true)
+    TableRow("Pro & Church Tiers: managed Cloud transcription & AI notes (30–100 hrs/mo)", free = false, paid = true)
     Text("Your notes and recordings are yours on every plan, and stay yours if a plan ends.", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 16.dp))
 }
 
@@ -223,7 +230,7 @@ private fun PlansPage(state: PaywallUiState, showAll: Boolean, onToggleAll: () -
             val shown = if (showAll) state.offers else state.headlineOffers
             shown.forEach { PlanCard(it, selected = it.id == state.selectedId) { onSelect(it.id) } }
             if (state.offers.size > shown.size || showAll) {
-                Text(if (showAll) "Show fewer plans" else "View all plans", color = Brand.Cyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                Text(if (showAll) "Show fewer plans" else "View all plans (including BYOK & Church)", color = Brand.Cyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 4.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onToggleAll).padding(vertical = 8.dp).testTag("paywall_view_all"))
             }
             state.selected?.let { offer ->
@@ -250,8 +257,22 @@ private fun PlanCard(offer: PlanOffer, selected: Boolean, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(offer.plan.label + " · " + offer.kind.name.lowercase(), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Text(if (offer.isLifetime) "One payment, never renews" else "Billed every ${offer.period}", color = Color.White.copy(alpha = 0.6f), fontSize = 12.5.sp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(offer.plan.label + " · " + offer.kind.name.lowercase().replace('_', ' '), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                if (offer.isYearly) {
+                    Text(
+                        "Best value",
+                        color = Color.White, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(Brush.horizontalGradient(listOf(Brand.Blue, Brand.Violet))).padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            val sub = buildString {
+                if (offer.isLifetime) append("One payment, never renews")
+                else append("Billed every ${offer.period}")
+                if (offer.trialDays != null && offer.trialDays > 0) append(" · ${offer.trialDays}-day free trial")
+            }
+            Text(sub, color = Color.White.copy(alpha = 0.6f), fontSize = 12.5.sp)
         }
         Text(if (offer.isLifetime) offer.priceText else "${offer.priceText} / ${offer.period}", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
     }
@@ -295,16 +316,18 @@ fun PostResultOfferHost(onResultScreen: Boolean, onOpenPlans: (PaywallTrigger) -
     val prefs by prefsManager.preferencesFlow.collectAsState(initial = null)
     val billing = Billing.gateway
     val owned by billing.entitlements.collectAsState()
+    val tierMode by com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.mode.collectAsState()
     var show by remember { mutableStateOf(false) }
     val saved = prefs
 
-    LaunchedEffect(onResultScreen, saved?.firstResultOfferShown) {
+    LaunchedEffect(onResultScreen, saved?.firstResultOfferShown, tierMode) {
+        com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.current(context)
         if (!onResultScreen) { show = false; return@LaunchedEffect }
         if (saved == null || show) return@LaunchedEffect
         delay(2500) // let them read their notes first
         val now = System.currentTimeMillis()
         val state = PaywallState(saved.paywallLastShownAt, saved.paywallDismissals, saved.firstResultOfferShown)
-        if (PaywallPolicy.shouldShow(PaywallTrigger.FIRST_RESULT, billing, owned.effective(now), state, now)) {
+        if (PaywallPolicy.shouldShow(PaywallTrigger.FIRST_RESULT, billing, owned.effective(now), state, now, tierMode)) {
             prefsManager.markPaywallShown(now, firstResult = true)
             com.craftflowtechnologies.meetingmind.core.analytics.Analytics.track(com.craftflowtechnologies.meetingmind.core.analytics.Events.PAYWALL_VIEWED, "placement" to "first_result_sheet")
             show = true
@@ -312,7 +335,7 @@ fun PostResultOfferHost(onResultScreen: Boolean, onOpenPlans: (PaywallTrigger) -
     }
     if (show) UpgradeDialog(
         title = "Get more from every recording",
-        body = "MeetingMind is free to keep using. A plan adds cloud transcription and AI notes with a monthly allowance. Your notes stay yours either way.",
+        body = "MeetingMind is free to keep using. A plan adds cloud transcription and AI notes with a monthly allowance, or BYOK with your own key. Your notes stay yours either way.",
         onSeePlans = { show = false; onOpenPlans(PaywallTrigger.FIRST_RESULT) },
         onNotNow = { show = false; com.craftflowtechnologies.meetingmind.core.analytics.Analytics.track(com.craftflowtechnologies.meetingmind.core.analytics.Events.PAYWALL_DISMISSED, "placement" to "first_result_sheet") }
     )

@@ -1120,6 +1120,54 @@ fun MeetingDetailScreen(
                 }
             }
 
+            if (meeting?.status == MeetingStatus.PROCESSING) {
+                val processingLines = remember {
+                    listOf(
+                        "Listening back to the room…",
+                        "Pulling out key takeaways and action items…",
+                        "Preparing your note…"
+                    )
+                }
+                var lineIndex by remember { mutableStateOf(0) }
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        kotlinx.coroutines.delay(2200L)
+                        lineIndex = (lineIndex + 1) % processingLines.size
+                    }
+                }
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = com.craftflowtechnologies.meetingmind.ui.theme.AccentWash),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("companion_processing_theater")
+                ) {
+                    Row(
+                        Modifier.padding(14.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot(
+                            com.craftflowtechnologies.meetingmind.core.companion.CompanionPage.NOTE_READY,
+                            40.dp,
+                            state = com.craftflowtechnologies.meetingmind.core.companion.CompanionState.THINKING,
+                            endGap = 12.dp
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                processingLines[lineIndex],
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = com.craftflowtechnologies.meetingmind.ui.theme.Ink
+                            )
+                            Text(
+                                "Your note moment will play as soon as this finishes.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
             // Processing failed: say why, in the pipeline's words, with the way forward.
             if (meeting?.status == MeetingStatus.ERROR) {
                 val processingError by viewModel.processingError.collectAsState()

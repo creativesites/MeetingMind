@@ -90,11 +90,15 @@ test('the best active entitlement wins, expired ones are ignored', () => {
   const future = '2026-11-14T00:00:00Z', past = '2026-09-01T00:00:00Z';
   assert.equal(L.highestPlan({ pro: { expires_date: future }, pro_plus: { expires_date: past } }, now), 'pro');
   assert.equal(L.highestPlan({ pro: { expires_date: future }, pro_plus: { expires_date: future } }, now), 'pro_plus');
+  assert.equal(L.highestPlan({ meetingmind_byok: { expires_date: future } }, now), 'byok');
+  assert.equal(L.highestPlan({ meetingmind_pro: { expires_date: future }, meetingmind_byok: { expires_date: future } }, now), 'pro');
+  assert.equal(L.highestPlan({ meetingmind_church: { expires_date: future }, meetingmind_pro: { expires_date: future } }, now), 'church');
   assert.equal(L.highestPlan({ pro: { expires_date: null } }, now), 'pro'); // lifetime / no end date
   assert.equal(L.highestPlan({ pro: { expires_date: past } }, now), 'free');
   assert.equal(L.highestPlan({ unknown: { expires_date: future } }, now), 'free');
   assert.equal(L.highestPlan({}, now), 'free');
   assert.equal(L.highestPlan(undefined, now), 'free');
+  assert.deepEqual(L.DEFAULT_ALLOWANCES.free, { audioSeconds: 1800, actions: 30 });
 });
 
 test('refusals distinguish "needs a plan" from "ran out"', () => {

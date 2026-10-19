@@ -363,9 +363,6 @@ class OnboardingViewModel(
                 }
                 SetupChoice.INTERNET -> {
                     prefs.setProcessingProfile(ProcessingProfile.INTERNET)
-                    _geminiKey.value.takeIf { it.isNotBlank() }?.let {
-                        com.craftflowtechnologies.meetingmind.ai.cloud.GeminiCredentialStore(getApplication<Application>()).setApiKey(it)
-                    }
                 }
                 SetupChoice.LATER -> Unit
             }
@@ -432,6 +429,10 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                             .background(if (i < index) Brush.horizontalGradient(Brand.sweep) else Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.15f)))))
                     }
                 }
+                val activeCompanion = companion
+                if (step != OnboardingStep.COMPANION && activeCompanion != null) {
+                    OnboardingCompanionGuideBar(step = step, form = activeCompanion, userName = userName)
+                }
             }
             AnimatedContent(
                 targetState = step,
@@ -462,7 +463,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
                             androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.loadPlans() }
                             PlanStep(planChoices, reading, viewModel::setReading)
                         }
-                        OnboardingStep.PERMISSIONS -> PermissionsStep()
+                        OnboardingStep.PERMISSIONS -> PermissionsStep(spaces = spaces, setup = setup, companion = companion)
                     }
                 }
             }
@@ -517,6 +518,41 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
 internal const val SampleNoteId = "onboarding.sample"
 
 @Composable
+private fun OnboardingCompanionGuideBar(step: OnboardingStep, form: CompanionForm, userName: String) {
+    val companionName = stringResource(CompanionRoster.displayName(form))
+    val state = when (step) {
+        OnboardingStep.SAMPLE -> com.craftflowtechnologies.meetingmind.core.companion.CompanionState.LISTENING
+        OnboardingStep.SETUP, OnboardingStep.BIBLE -> com.craftflowtechnologies.meetingmind.core.companion.CompanionState.THINKING
+        else -> com.craftflowtechnologies.meetingmind.core.companion.CompanionState.IDLE
+    }
+    val variant = when (step) {
+        OnboardingStep.GOALS, OnboardingStep.PLAN -> com.craftflowtechnologies.meetingmind.core.companion.CompanionVariant.Nod
+        else -> com.craftflowtechnologies.meetingmind.core.companion.CompanionVariant.Normal
+    }
+    val line = when (step) {
+        OnboardingStep.SAMPLE -> "$companionName is listening to the example recording with you…"
+        OnboardingStep.GOALS -> if (userName.isNotBlank()) "Nice to meet you, $userName. Tell me what you capture most." else "Pick what you capture so I can shape your home space."
+        OnboardingStep.SETUP -> "Built-in cloud AI is ready out of the box — or keep everything 100% on-device."
+        OnboardingStep.BIBLE -> "Pick a translation to keep offline for sermons and study."
+        OnboardingStep.PLAN -> "Choose a daily devotional rhythm — you can change it any time."
+        OnboardingStep.PERMISSIONS -> "Almost ready! Grant microphone and notifications so I can tell you when notes finish."
+        else -> ""
+    }
+    if (line.isEmpty()) return
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(16.dp)).background(SurfaceBase.copy(alpha = 0.08f))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp).testTag("onboarding_companion_guide"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        com.craftflowtechnologies.meetingmind.core.ui.mm.companion.Companion(form = form, state = state, size = 34.dp, variant = variant)
+        Spacer(Modifier.width(10.dp))
+        Text(line, color = Color.White.copy(alpha = 0.88f), fontSize = 13.sp, lineHeight = 18.sp)
+    }
+}
+
+@Composable
 private fun GradientButton(label: String, tag: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(onClick = onClick, shape = RoundedCornerShape(50), color = Color.Transparent, modifier = modifier.testTag(tag)) {
         Row(Modifier.background(Brush.horizontalGradient(listOf(Brand.Cyan, Brand.Indigo, Brand.Violet))).padding(horizontal = 24.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
@@ -532,21 +568,21 @@ private fun GradientButton(label: String, tag: String, modifier: Modifier = Modi
 private fun Welcome() {
     val t = rememberInfiniteTransition(label = "glow")
     val glow by t.animateFloat(0.85f, 1.12f, infiniteRepeatable(tween(2600), RepeatMode.Reverse), label = "g")
-    Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         // The launcher icon on the brand's soft light.
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(210.dp)) {
-            Box(Modifier.size(210.dp).graphicsLayer { scaleX = glow; scaleY = glow }.background(Brush.radialGradient(listOf(Brand.Indigo.copy(alpha = 0.45f), Color.Transparent)), CircleShape))
-            com.craftflowtechnologies.meetingmind.core.ui.AppIconTile(size = 120.dp)
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(160.dp)) {
+            Box(Modifier.size(160.dp).graphicsLayer { scaleX = glow; scaleY = glow }.background(Brush.radialGradient(listOf(Brand.Indigo.copy(alpha = 0.45f), Color.Transparent)), CircleShape))
+            com.craftflowtechnologies.meetingmind.core.ui.AppIconTile(size = 104.dp)
         }
-        Text("MeetingMind", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 8.dp))
-        Text("Your thoughts deserve to be remembered.", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 34.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 14.dp))
+        Text("MeetingMind", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 4.dp))
+        Text("Your thoughts deserve to be remembered.", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 32.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
         Text(
             "Turn conversations, ideas and lessons into knowledge you can return to.",
-            color = Color.White.copy(alpha = 0.72f), fontSize = 16.sp, lineHeight = 23.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp)
+            color = Color.White.copy(alpha = 0.72f), fontSize = 15.sp, lineHeight = 21.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp)
         )
         // Wraps to a second line on narrow screens instead of squeezing a pill into a column of letters.
         androidx.compose.foundation.layout.FlowRow(
-            Modifier.padding(top = 28.dp),
+            Modifier.padding(top = 18.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -574,29 +610,26 @@ internal fun StepTitle(title: String, line: String) {
 
 @Composable
 private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (SetupChoice) -> Unit, wifiOnly: Boolean, onWifiOnly: (Boolean) -> Unit) {
-    StepTitle("How should the AI run?", "Recording always works. Turning recordings into transcripts and summaries needs a little AI setup.")
+    StepTitle("How should the AI run?", "Recording always works. Pick whether you want instant cloud AI or 100% on-device processing.")
     ChoiceCard(
         selected = choice == SetupChoice.INTERNET, onClick = { onChoice(SetupChoice.INTERNET) },
         icon = Icons.Filled.Cloud, title = "Internet mode", badge = "Recommended",
-        line = "Fast, accurate notes with Google's Gemini. Needs a connection: recordings are sent to Google Gemini for processing.",
+        line = "Fast, accurate transcripts and structured notes with MeetingMind Cloud AI. Ready immediately — no setup or API key needed.",
         tag = "setup_choice_internet"
     ) {
         if (choice == SetupChoice.INTERNET) {
-            val key by vm.geminiKey.collectAsState()
-            val context = androidx.compose.ui.platform.LocalContext.current
-            Column(Modifier.padding(top = 10.dp)) {
-                OutlinedTextField(
-                    value = key, onValueChange = vm::setGeminiKey, singleLine = true,
-                    placeholder = { Text(if (vm.hasBuiltInKey) "Optional — a tester key is built in" else "Paste your Gemini API key") },
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth().testTag("setup_gemini_key")
-                )
+            Column(
+                Modifier.padding(top = 10.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                    .background(SurfaceBase.copy(alpha = 0.08f)).padding(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = Brand.Cyan, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Ready out of the box — includes 30 mins of cloud transcription & 30 AI actions free.", color = Color.White.copy(alpha = 0.9f), fontSize = 12.5.sp, lineHeight = 17.sp)
+                }
                 Text(
-                    "Get a free key at aistudio.google.com/apikey",
-                    color = Brand.Cyan, fontSize = 12.5.sp,
-                    modifier = Modifier.padding(top = 6.dp).clickable {
-                        runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://aistudio.google.com/apikey"))) }
-                    }
+                    "Have your own Gemini API key? You can unlock the BYOK tier with all Pro features any time in Settings.",
+                    color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.padding(top = 6.dp)
                 )
             }
         }
@@ -716,7 +749,11 @@ private fun BibleStep(vm: OnboardingViewModel) {
 }
 
 @Composable
-private fun PermissionsStep() {
+private fun PermissionsStep(
+    spaces: Set<com.craftflowtechnologies.meetingmind.core.model.NotebookSpace> = emptySet(),
+    setup: SetupChoice = SetupChoice.INTERNET,
+    companion: CompanionForm? = CompanionForm.ZURI
+) {
     val context = LocalContext.current
     fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
     var mic by remember { mutableStateOf(granted(Manifest.permission.RECORD_AUDIO)) }
@@ -737,6 +774,27 @@ private fun PermissionsStep() {
     }
 
     StepTitle("Two quick permissions", "So recording and reminders work when you need them. You can change these in Android settings.")
+    if (spaces.isNotEmpty()) {
+        Column(
+            Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(RoundedCornerShape(18.dp))
+                .background(SurfaceBase.copy(alpha = 0.08f))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(18.dp))
+                .padding(14.dp).testTag("onboarding_ready_summary")
+        ) {
+            Text("YOUR PERSONAL SPACE IS READY", color = Brand.Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+            Text(
+                "Spaces: " + spaces.sortedBy { it.ordinal }.joinToString(" · ") { it.displayName },
+                color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp)
+            )
+            val modeLabel = when (setup) {
+                SetupChoice.INTERNET -> "Cloud AI (30 mins + 30 AI actions included)"
+                SetupChoice.OFFLINE_PACK -> "100% On-device Offline Pack"
+                SetupChoice.LATER -> "Decide AI mode later"
+            }
+            val companionLabel = companion?.let { stringResource(CompanionRoster.displayName(it)) } ?: "Quiet mode"
+            Text("AI: $modeLabel · Companion: $companionLabel", color = Color.White.copy(alpha = 0.7f), fontSize = 12.5.sp, modifier = Modifier.padding(top = 2.dp))
+        }
+    }
     PermissionRow(Icons.Filled.Mic, "Microphone", "To record. In Internet mode, recordings are sent to Google Gemini; the offline pack keeps audio on this phone.", mic, "perm_mic", micDenied) {
         micLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }

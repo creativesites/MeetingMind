@@ -71,6 +71,7 @@ class NoteMomentHostTest {
     private lateinit var store: MomentLedgerStore
 
     @Before fun setUp() {
+        NoteReadyEvents.drain()
         context = ApplicationProvider.getApplicationContext()
         db = Room.inMemoryDatabaseBuilder(context, MeetMindDatabase::class.java).allowMainThreadQueries().build()
         MeetMindDatabase.setInstanceForTest(db)
@@ -79,6 +80,7 @@ class NoteMomentHostTest {
     }
 
     @After fun tearDown() {
+        NoteReadyEvents.drain()
         MeetMindDatabase.setInstanceForTest(null)
         db.close()
     }
@@ -94,8 +96,8 @@ class NoteMomentHostTest {
     private var lastOutcome: NoteOutcome? = null
 
     @Composable
-    private fun Host(noteId: String) {
-        val state = rememberNoteMoment(noteId)
+    private fun Host(noteId: String, refreshKey: Any? = null) {
+        val state = rememberNoteMoment(noteId, refreshKey = refreshKey)
         lastPlan = state.plan
         lastOutcome = state.facts?.outcome
         Box(Modifier.fillMaxSize()) {
@@ -153,7 +155,8 @@ class NoteMomentHostTest {
         assertNull(runBlocking { store.peekTicket("m2", System.currentTimeMillis()) })
         compose.setContent { Harness { Host("m2") } }
         awaitPlan()
-        assertEquals(MomentPlan.Plain(PlainReason.FAILED, com.craftflowtechnologies.meetingmind.core.companion.FixAction.RETRY), lastPlan)
+        // Founder decision (2026-10-15): every note gets its Unveil moment on open, but a failed note gets no First Keep ticket.
+        assertTrue("expected Unveil without First Keep for failed note, got $lastPlan", lastPlan is MomentPlan.Unveil)
         compose.onAllNodesWithText("Open note").assertCountEquals(0)
     }
 
@@ -167,7 +170,7 @@ class NoteMomentHostTest {
         }
         awaitPlan()
         compose.waitForIdle()
-        assertTrue(lastPlan is MomentPlan.Plain)
+        assertTrue("expected a moment on partial note per every-note rule, got $lastPlan", lastPlan is MomentPlan.FirstKeep || lastPlan is MomentPlan.Unveil)
         assertEquals(NoteOutcome.PARTIAL, lastOutcome)
         compose.onNodeWithText("The transcript is ready. The summary didn't finish.").assertExists()
         compose.onNodeWithText("Try again").assertExists()
@@ -202,5 +205,27 @@ class NoteMomentHostTest {
         compose.setContent { Harness { NoteReadySnackbar(ReadyLine.Many(2), onAction = {}) } }
         compose.onNodeWithText("2 notes are ready.").assertExists()
         compose.onNodeWithText("Show").assertExists()
+    }
+
+    @Test fun `opening while processing waits and then plays First Keep when ready`() {
+        meeting("m4", MeetingStatus.PROCESSING, null, 0)
+        var status by androidx.compose.runtime.mutableStateOf(MeetingStatus.PROCESSING)
+        compose.setContent { Harness { Host("m4", refreshKey = status) } }
+        compose.waitForIdle()
+        assertNull("processing note must not plan prematurely", lastPlan)
+
+        runBlocking {
+            db.meetingDao().insertMeeting(
+                MeetingEntity("m4", "Lunch with Grace", 0L, 18 * 60_000L, "LOCAL_RECORDING", null, MeetingStatus.READY.name, 1, "en", "We planned June.")
+            )
+            db.transcriptDao().insertSegments(
+                listOf(TranscriptSegmentEntity("m4-s", "m4", null, null, 0L, 1000L, List(60) { "word" }.joinToString(" "), null))
+            )
+            onNoteProcessed(context, "m4", store = store)
+        }
+        compose.runOnIdle { status = MeetingStatus.READY }
+        awaitPlan()
+        assertTrue("expected FirstKeep after processing completes, got $lastPlan", lastPlan is MomentPlan.FirstKeep)
+        compose.onNodeWithText("Book the cabin").assertExists()
     }
 }

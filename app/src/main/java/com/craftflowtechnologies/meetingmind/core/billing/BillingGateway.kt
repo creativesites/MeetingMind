@@ -11,9 +11,11 @@ data class PlanOffer(
     val plan: Plan,
     /** The store's formatted price, e.g. "$49.99". */
     val priceText: String,
-    val kind: OfferKind
+    val kind: OfferKind,
+    /** Introductory free-trial duration in days from the store, or null when no trial applies. */
+    val trialDays: Int? = null
 ) {
-    val isYearly: Boolean get() = kind == OfferKind.YEARLY
+    val isYearly: Boolean get() = kind == OfferKind.YEARLY || kind == OfferKind.BYOK_YEARLY || kind == OfferKind.CHURCH_YEARLY
     val isLifetime: Boolean get() = kind == OfferKind.LIFETIME
     /** "month", "year" or "one-time payment". */
     val period: String get() = kind.period

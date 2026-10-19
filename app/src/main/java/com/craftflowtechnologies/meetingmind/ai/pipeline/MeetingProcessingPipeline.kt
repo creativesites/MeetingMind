@@ -766,6 +766,7 @@ class MeetingProcessingPipeline(
             // The recording's note picks up its generated title and summary. A failure here must
             // never fail a recording that processed successfully.
             runCatching { com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database).syncFromRecording(meetingId) }
+            runCatching { com.craftflowtechnologies.meetingmind.feature.moments.onNoteProcessed(context, meetingId) }
 
             updateJob(
                 step = "Completed",

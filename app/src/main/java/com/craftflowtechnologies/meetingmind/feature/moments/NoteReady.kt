@@ -83,6 +83,13 @@ object NoteFactsRules {
 suspend fun readNoteFacts(context: Context, meetingId: String): NoteFacts? {
     val db = MeetMindDatabase.getInstance(context)
     val m: MeetingEntity = db.meetingDao().getMeetingById(meetingId) ?: return null
+    if (m.status in setOf(
+            MeetingStatus.RECORDING.name,
+            MeetingStatus.SAVED.name,
+            MeetingStatus.QUEUED.name,
+            MeetingStatus.PROCESSING.name
+        )
+    ) return null
     val segments = runCatching { db.transcriptDao().getSegmentsForMeetingDirect(meetingId) }.getOrDefault(emptyList())
     val words = NoteFactsRules.words(segments.map { it.cleanedText ?: it.text })
     val type = runCatching { RecordingType.valueOf(m.recordingType) }.getOrDefault(RecordingType.GENERAL)
@@ -207,6 +214,7 @@ suspend fun onNoteProcessed(
 ): NoteFacts? {
     val facts = runCatching { readNoteFacts(context, meetingId) }.getOrNull() ?: return null
     if (facts.outcome == NoteOutcome.FAILED || facts.outcome == NoteOutcome.MODEL_REQUIRED) return facts
+    if (runCatching { store.peekTicket(meetingId, nowMs) }.getOrNull() != null) return facts
     val db = MeetMindDatabase.getInstance(context)
     val readyCount = runCatching { db.meetingDao().getMeetingsWithStatus(MeetingStatus.READY.name).size }.getOrDefault(2)
     val firstEver = readyCount <= 1

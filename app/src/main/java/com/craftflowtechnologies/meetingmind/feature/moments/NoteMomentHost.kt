@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,15 +80,17 @@ fun rememberNoteMoment(noteId: String, refreshKey: Any? = null): NoteMomentState
     val provided = LocalMomentLedgerStore.current
     val store = remember(provided, context) { provided ?: MomentLedgerStore(context) }
     val shown by rememberUpdatedState(rememberCompanionVisible(CompanionPage.NOTE_READY))
-    LaunchedEffect(noteId, refreshKey) {
+    val pendingReady by NoteReadyEvents.pending.collectAsState()
+    val hasPendingReady = pendingReady.any { it.noteId == noteId }
+    LaunchedEffect(noteId, refreshKey, hasPendingReady) {
+        if (noteId.isBlank()) return@LaunchedEffect
         val facts = readNoteFacts(context, noteId) ?: readTypedNoteFacts(context, noteId) ?: return@LaunchedEffect
         state.facts = facts
-        if (!session.claim()) {
+        if (session.claimed && !(hasPendingReady && state.plan !is MomentPlan.FirstKeep)) {
             // Not a fresh open: the note just shows (a moment never replays).
             if (state.plan == null) state.plan = MomentPlan.Plain(PlainReason.NOT_FRESH)
             return@LaunchedEffect
         }
-        NoteReadyEvents.dismiss(noteId)
         val now = System.currentTimeMillis()
         val clock = LocalClock(now, TimeZone.getDefault().getOffset(now).toLong())
         val today = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate()
@@ -104,6 +107,8 @@ fun rememberNoteMoment(noteId: String, refreshKey: Any? = null): NoteMomentState
                 )
             }.plan
         }.getOrElse { MomentPlan.Plain(PlainReason.NOT_FRESH) }
+        session.claim()
+        NoteReadyEvents.dismiss(noteId)
         state.plan = planned
         state.overlay = planned is MomentPlan.FirstKeep
     }

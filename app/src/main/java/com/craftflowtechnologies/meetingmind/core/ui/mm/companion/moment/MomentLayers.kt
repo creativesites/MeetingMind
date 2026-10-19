@@ -180,7 +180,7 @@ internal fun BoxScope.HeaderCompanion(scope: MomentScope, form: CompanionForm, p
             val dir = if (scope.rtl) -1f else 1f
             val half = box.toPx() / 2f
             translationX = cx + m.stage(StageTarget.COMPANION, StageProp.X_DP, t, 0f).dp.toPx() * dir - half
-            translationY = top + m.stage(StageTarget.COMPANION, StageProp.Y_DP, t, 0f).dp.toPx() - half
+            translationY = (top + m.stage(StageTarget.COMPANION, StageProp.Y_DP, t, 0f).dp.toPx() - half).coerceAtLeast(24.dp.toPx())
             val s = m.stage(StageTarget.COMPANION, StageProp.SCALE, t, 1f)
             scaleX = s; scaleY = s
         }

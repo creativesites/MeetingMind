@@ -769,7 +769,21 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
         SettingId.PLAN_USAGE -> PlanAndUsageRow(a.onOpenSubscription)
         SettingId.SETUP_GUIDE -> SettingsNavRow("Setup guide", "What the app needs to transcribe and summarise, and one tap to get it", a.onOpenSetup)
         SettingId.AI_ENGINE -> SettingsNavRow("AI Engine", "On-device models: download, pause, resume or remove", a.onNavigateToModels)
-        SettingId.GEMINI_KEY -> GeminiApiKeyRow(env.geminiKeyDisplay, { vm.setGeminiApiKey(it) }, { vm.clearGeminiApiKey() })
+        SettingId.GEMINI_KEY -> {
+            val tierMode by com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.mode.collectAsState()
+            val owned by com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway.entitlements.collectAsState()
+            if (tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.PRODUCTION &&
+                !owned.has(com.craftflowtechnologies.meetingmind.core.billing.Capability.BYOK_KEY)
+            ) {
+                SettingsNavRow(
+                    "Gemini API key (BYOK Tier)",
+                    "Upgrade to MeetingMind BYOK or Pro to use your own Gemini key with all Pro features.",
+                    a.onOpenSubscription
+                )
+            } else {
+                GeminiApiKeyRow(env.geminiKeyDisplay, { vm.setGeminiApiKey(it) }, { vm.clearGeminiApiKey() })
+            }
+        }
         SettingId.WIFI_ONLY -> SettingsSwitchRow(
             "Download models over Wi-Fi only",
             "Off by default, so model downloads may use mobile data. Turn this on on a limited plan.",
@@ -1374,19 +1388,41 @@ internal object GeminiKeyProbe {
     }
 }
 
-/** The plan and this month's Gemini use. Only shown when this build can sell something; otherwise the app is simply free. */
+/** The plan, this month's Gemini use, and the Closed Testing vs Production tiering toggle. */
 @Composable
 private fun PlanAndUsageRow(onOpen: () -> Unit) {
+    val context = LocalContext.current
     val billing = com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway
-    if (!billing.configured) return
     val owned by billing.entitlements.collectAsState()
     val usage by com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.state.collectAsState()
-    val context = LocalContext.current
-    androidx.compose.runtime.LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.refresh(context) }
-    SettingsNavRow(
-        title = "Plan and usage",
-        subtitle = (if (owned.isPaid) "${owned.plan.label} · manage or change your plan" else "Free · see what a plan adds") +
-            usage.summary().takeIf { usage.known && it.isNotEmpty() }?.let { "\nThis month: $it" }.orEmpty(),
-        onClick = onOpen
-    )
+    val tierMode by com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.mode.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.current(context)
+        if (billing.configured) com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.refresh(context)
+    }
+    Column(Modifier.fillMaxWidth()) {
+        SettingsNavRow(
+            title = "Plan and usage",
+            subtitle = (when {
+                tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING ->
+                    "${owned.plan.label} (Closed Testing — all Pro features unlocked)"
+                owned.isPaid -> "${owned.plan.label} · manage or change your plan"
+                else -> "Free · see what BYOK, Pro or Church adds"
+            }) + usage.summary().takeIf { usage.known && it.isNotEmpty() }?.let { "\nThis month: $it" }.orEmpty(),
+            onClick = onOpen
+        )
+        SettingsSwitchRow(
+            "Closed testing mode (no tiering)",
+            "Tester's benefit: unlocks all Pro features and disables paywall interruptions while testing. Turn off to test Production tiering and paywalls.",
+            tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING,
+            { checked ->
+                com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.set(
+                    context,
+                    if (checked) com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING
+                    else com.craftflowtechnologies.meetingmind.core.billing.TieringMode.PRODUCTION
+                )
+            },
+            "settings_tiering_mode_switch"
+        )
+    }
 }

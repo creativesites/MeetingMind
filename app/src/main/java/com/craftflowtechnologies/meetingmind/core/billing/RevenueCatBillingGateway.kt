@@ -56,7 +56,15 @@ class RevenueCatBillingGateway(app: Application, apiKey: String) : BillingGatewa
         packages = available.associateBy { it.identifier }
         return available.mapNotNull { p ->
             OfferKind.fromPackageId(p.identifier)?.let { kind ->
-                PlanOffer(p.identifier, Plan.PRO, p.product.price.formatted, kind)
+                val trialDays = p.product.subscriptionOptions?.freeTrial?.pricingPhases?.firstOrNull()?.billingPeriod?.let { bp ->
+                    when (bp.unit.name) {
+                        "DAY" -> bp.value
+                        "WEEK" -> bp.value * 7
+                        "MONTH" -> bp.value * 30
+                        else -> null
+                    }
+                }
+                PlanOffer(p.identifier, kind.defaultPlan, p.product.price.formatted, kind, trialDays)
             }
         }
     }
@@ -99,17 +107,22 @@ class RevenueCatBillingGateway(app: Application, apiKey: String) : BillingGatewa
     }
 
     /**
-     * Reads the one paid entitlement by its exact identifier. A billing problem keeps access during the
-     * store's grace period; a trial counts as paid. Lifetime purchases have no expiry.
+     * Reads the highest-ranked active paid entitlement across Church, Pro and BYOK. A billing problem
+     * keeps access during the store's grace period; a trial counts as paid. Lifetime purchases have no expiry.
      */
     private fun map(info: CustomerInfo): Entitlements {
         val now = System.currentTimeMillis()
-        val ent = info.entitlements.active[Plan.PRO.entitlementId] ?: return Entitlements(verifiedAtMs = now)
+        val matchedPlan = Plan.entries
+            .filter { it != Plan.FREE }
+            .sortedByDescending { it.rank }
+            .firstOrNull { info.entitlements.active[it.entitlementId] != null }
+            ?: return Entitlements(verifiedAtMs = now)
+        val ent = info.entitlements.active[matchedPlan.entitlementId] ?: return Entitlements(verifiedAtMs = now)
         val state = when {
             ent.billingIssueDetectedAt != null -> EntitlementState.GRACE
             ent.periodType == PeriodType.TRIAL -> EntitlementState.TRIAL
             else -> EntitlementState.ACTIVE
         }
-        return Entitlements(Plan.PRO, state, ent.expirationDate?.time, ent.willRenew, now)
+        return Entitlements(matchedPlan, state, ent.expirationDate?.time, ent.willRenew, now)
     }
 }
