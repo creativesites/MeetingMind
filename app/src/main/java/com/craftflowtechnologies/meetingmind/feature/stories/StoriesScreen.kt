@@ -242,7 +242,7 @@ fun StoryPager(
                 Spacer(Modifier.weight(1f))
                 // Three buttons don't fit a phone's width with a labelled Share, so it becomes a circle.
                 val crowded = story.open != null && story.kind == StoryKind.PRAYER && onAction != null
-                if (story.share != null) Surface(onClick = { onShare(story) }, shape = RoundedCornerShape(50), color = Color.White, modifier = Modifier.testTag("story_share")) {
+                Surface(onClick = { onShare(story) }, shape = RoundedCornerShape(50), color = Color.White, modifier = Modifier.testTag("story_share")) {
                     Row(Modifier.padding(horizontal = if (crowded) 12.dp else 16.dp, vertical = if (crowded) 12.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Share, contentDescription = if (crowded) "Share" else null, tint = Color.Black, modifier = Modifier.size(16.dp))
                         if (!crowded) {

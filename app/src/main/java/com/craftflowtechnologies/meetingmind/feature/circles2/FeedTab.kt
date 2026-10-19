@@ -43,6 +43,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.net.Uri
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import com.craftflowtechnologies.meetingmind.core.scripture.PassageResult
+import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
+import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser
+import com.craftflowtechnologies.meetingmind.core.share.ShareHelper
+import com.craftflowtechnologies.meetingmind.feature.scripture.rememberPassage
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.PendingPost
@@ -89,7 +95,11 @@ class FeedActions(
     /** A photo picked for the next post. */
     val onPhoto: (PickedFile) -> Unit = {},
     /** Opens the invite sheet for this circle. */
-    val onInvite: () -> Unit = {}
+    val onInvite: () -> Unit = {},
+    /** Opens scripture passage reader bottom sheet. */
+    val onOpenVerse: (ScriptureReference) -> Unit = {},
+    /** Opens member profile info sheet. */
+    val onMemberClick: (String) -> Unit = {}
 ) { companion object { val None = FeedActions() } }
 
 @Composable
@@ -102,7 +112,7 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
     val canPost = circle.settings.allowedTypes.any { !it.adminOnly || state.isAdmin }
     val sharedPhotos = remember(state.posts) { state.posts.flatMap { it.post.attachments }.take(6) }
     LazyColumn(
-        modifier, contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.s),
+        modifier, contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, top = MM.space.s, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
         state.failure?.let { f -> item { StatusLine(StatusKind.Warning, f.message) } }
@@ -134,7 +144,6 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
                 item { PostCard(pinned, circle, state.isAdmin, now, actions, pinned = true, canModerate = state.canModerate) }
             }
             items(state.posts.filter { it.post.id != state.pinnedPostId }, key = { it.post.id }) { PostCard(it, circle, state.isAdmin, now, actions, canModerate = state.canModerate) }
-            if (canPost) item { Row(Modifier.fillMaxWidth().padding(vertical = MM.space.s), horizontalArrangement = Arrangement.Center) { PrimaryButton("New post", actions.onNewPost, leadingIcon = Icons.Rounded.Add) } }
         }
     }
 }
@@ -335,6 +344,7 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
     val post = item.post
     val c = MM.colors
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     val who = when {
         post.anonymous -> "Anonymous"
@@ -347,10 +357,19 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
                 Surface(shape = MM.radius.pill, color = c.surfaceSunk, modifier = Modifier.size(MMSize.minTouch)) {
                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Person, null, tint = c.inkMuted) }
                 }
-            } else InitialsAvatar(who, size = 42.dp)
+            } else InitialsAvatar(
+                who,
+                size = 42.dp,
+                modifier = Modifier.clickable { actions.onMemberClick(post.authorUid ?: who) }
+            )
             Spacer(Modifier.width(MM.space.m))
             Column(Modifier.weight(1f)) {
-                Text(who, style = MM.type.bodyStrong, color = c.ink)
+                Text(
+                    who,
+                    style = MM.type.bodyStrong,
+                    color = c.ink,
+                    modifier = if (!post.anonymous) Modifier.clickable { actions.onMemberClick(post.authorUid ?: who) } else Modifier
+                )
                 Text("${post.type.label} · ${relativeTime(now, post.createdAt)}${if (post.editedAt != null) " · edited" else ""}", style = MM.type.caption, color = c.inkSecondary)
             }
             PostTypeBadge(post.type)
@@ -358,6 +377,17 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
                 IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More actions", tint = c.inkSecondary) }
                 DropdownMenu(menu, { menu = false }, containerColor = c.surfaceRaised) {
                     if (post.body.isNotBlank()) MenuItem("Copy text") { clipboard.setText(AnnotatedString(post.body)); menu = false }
+                    MenuItem("Share post") {
+                        menu = false
+                        val shareText = buildString {
+                            append(post.body)
+                            if (!post.verseRef.isNullOrBlank()) {
+                                append("\n\n— ")
+                                append(post.verseRef)
+                            }
+                        }
+                        ShareHelper.shareText(context, "${circle.name} · ${post.type.label}", shareText, "Share Post")
+                    }
                     if (item.mine && post.type == PostType.Prayer && !post.answered) {
                         MenuItem("Post an update") { menu = false; actions.onUpdate(post) }
                         MenuItem("Mark answered") { menu = false; actions.onMarkAnswered(post) }
@@ -379,18 +409,7 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
             Column {
                 if (post.body.isNotBlank()) Text(post.body, style = MM.type.body, color = c.ink, modifier = Modifier.padding(top = MM.space.m))
                 post.verseRef?.let {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = CirclesPalette.WarmBg,
-                        modifier = Modifier.fillMaxWidth().padding(top = MM.space.s)
-                    ) {
-                        Text(
-                            it,
-                            style = MM.type.scripture,
-                            color = CirclesPalette.WarmInk,
-                            modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.s)
-                        )
-                    }
+                    PostVerseCard(it, actions.onOpenVerse)
                 }
             }
         }
@@ -495,4 +514,102 @@ private fun PrayButton(count: Int, prayed: Boolean, onClick: () -> Unit) {
             }
         }
     } else SecondaryButton(label, onClick)
+}
+
+/**
+ * A scripture verse on a post: displays the reference, translation abbreviation,
+ * the actual passage text in serif, and provides chapter navigation on click.
+ */
+@Composable
+fun PostVerseCard(
+    verseRef: String,
+    onOpenVerse: (ScriptureReference) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val ref = remember(verseRef) { ScriptureReferenceParser.parse(verseRef.trim()) }
+    val passageResult = ref?.let { rememberPassage(it) }
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = CirclesPalette.WarmBg,
+        border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = MM.space.s)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(enabled = ref != null) { ref?.let(onOpenVerse) }
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.MenuBook,
+                        contentDescription = null,
+                        tint = CirclesPalette.WarmInk,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        ref?.display() ?: verseRef,
+                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp),
+                        color = CirclesPalette.WarmInk
+                    )
+                }
+                (passageResult as? PassageResult.Found)?.let { found ->
+                    Text(
+                        found.passage.versionAbbreviation,
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+                        color = CirclesPalette.WarmInk.copy(alpha = 0.8f)
+                    )
+                }
+            }
+
+            when (passageResult) {
+                is PassageResult.Found -> {
+                    Text(
+                        "“${passageResult.passage.text.trim().trim('“', '”')}”",
+                        style = MM.type.scripture.copy(fontSize = 14.sp, lineHeight = 21.sp),
+                        color = MM.colors.ink,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    if (passageResult.passage.attribution.isNotBlank()) {
+                        Text(
+                            passageResult.passage.attribution,
+                            style = MM.type.caption.copy(fontSize = 10.5.sp),
+                            color = MM.colors.inkMuted,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+                null -> {
+                    if (ref != null) {
+                        Text(
+                            "Loading scripture…",
+                            style = MM.type.caption,
+                            color = MM.colors.inkMuted,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                }
+                else -> Unit
+            }
+
+            if (ref != null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Read chapter →",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+                        color = CirclesPalette.WarmInk
+                    )
+                }
+            }
+        }
+    }
 }

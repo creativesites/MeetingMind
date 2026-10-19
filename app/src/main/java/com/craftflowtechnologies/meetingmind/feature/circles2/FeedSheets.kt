@@ -1,35 +1,55 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.Comment
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
+import com.craftflowtechnologies.meetingmind.core.scripture.PassageResult
+import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser
 import com.craftflowtechnologies.meetingmind.core.ui.mm.InsetPanel
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
+import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.feature.scripture.rememberPassage
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
-import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
 /** Which kind of post to write. Admin-only kinds are hidden from members. */
 @Composable
@@ -44,33 +64,223 @@ fun PostTypeSheet(circle: Circle, isAdmin: Boolean, onPick: (PostType) -> Unit, 
 }
 
 @Composable
-fun ComposerSheet(circle: Circle, state: ComposerState, onBody: (String) -> Unit, onVerse: (String) -> Unit, onAnonymous: (Boolean) -> Unit, onSend: () -> Unit, onDismiss: () -> Unit, onRemovePhoto: (MediaAttachment) -> Unit = {}) {
+fun ComposerSheet(
+    circle: Circle,
+    state: ComposerState,
+    onBody: (String) -> Unit,
+    onVerse: (String) -> Unit,
+    onAnonymous: (Boolean) -> Unit,
+    onSend: () -> Unit,
+    onDismiss: () -> Unit,
+    onRemovePhoto: (MediaAttachment) -> Unit = {},
+    onTypeChange: (PostType) -> Unit = {},
+    onPhoto: (PickedFile) -> Unit = {}
+) {
+    val context = LocalContext.current
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) readPicked(context, uri)?.let { onPhoto(it) }
+    }
     val type = state.type ?: return
+    val availableTypes = remember(circle) {
+        (listOf(PostType.Note) + circle.settings.allowedTypes).distinct()
+    }
+    val parsedRef = remember(state.verse) {
+        if (state.verse.isNotBlank()) ScriptureReferenceParser.parse(state.verse.trim()) else null
+    }
+    val passageResult = parsedRef?.let { rememberPassage(it) }
+
     CircleSheet(onDismiss) {
-        Text(type.verb, style = MM.type.title, color = MM.colors.ink)
-        if (state.fromAnswered) Text("Thank God with the group. Edit this however you like.", style = MM.type.secondary, color = MM.colors.inkSecondary)
-        CircleField(
-            state.body, onBody,
-            label = when (type) { PostType.Prayer -> "What would you like prayer for?"; PostType.Testimony -> "What did God do?"; else -> "Write something" },
-            minLines = 4, maxLines = 10
-        )
-        state.attachments.forEach { a ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Photo attached · ${formatBytes(a.bytes)}", style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.weight(1f))
-                TextAction("Remove", { onRemovePhoto(a) })
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(type.verb, style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                Text(
+                    "Posting to ${circle.name}",
+                    style = MM.type.caption,
+                    color = MM.colors.inkSecondary
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Rounded.Close, "Cancel", tint = MM.colors.inkSecondary)
             }
         }
-        if (type != PostType.Announcement) CircleField(state.verse, onVerse, "Verse (optional)", placeholder = "Psalm 23:1")
+
+        // Type switcher chips
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+        ) {
+            availableTypes.forEach { t ->
+                MMChip(t.label, selected = t == type, onClick = { onTypeChange(t) })
+            }
+        }
+
+        if (state.fromAnswered) {
+            StatusLine(StatusKind.Info, "Thank God with the group! Edit this testimony however you like.")
+        }
+
+        Column(Modifier.fillMaxWidth()) {
+            CircleField(
+                state.body,
+                { onBody(it.take(4000)) },
+                label = when (type) {
+                    PostType.Prayer -> "What would you like prayer for?"
+                    PostType.Testimony -> "What did God do?"
+                    PostType.Encouragement -> "Encouraging word or reflection"
+                    else -> "Write something to share"
+                },
+                placeholder = when (type) {
+                    PostType.Prayer -> "Share your prayer request with details or specific prayer points…"
+                    PostType.Testimony -> "Tell the story of how God moved or answered prayer…"
+                    PostType.Encouragement -> "Share a thought, verse reflection, or word of encouragement…"
+                    else -> "Share an update, question, or note with the circle…"
+                },
+                minLines = 4,
+                maxLines = 10
+            )
+            Row(
+                Modifier.fillMaxWidth().padding(top = 4.dp, end = 4.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Text(
+                    "${state.body.length} / 4000",
+                    style = MM.type.caption.copy(fontSize = 11.sp),
+                    color = if (state.body.length > 3800) CirclesPalette.RoseInk else MM.colors.inkMuted
+                )
+            }
+        }
+
+        // Photos gallery
+        if (state.attachments.isNotEmpty()) {
+            Text("Photos attached (${state.attachments.size})", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.inkSecondary)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                state.attachments.forEach { a ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MM.colors.surfaceSunk,
+                        border = BorderStroke(1.dp, MM.colors.line),
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Rounded.Image, contentDescription = null, tint = CirclesPalette.Accent, modifier = Modifier.size(16.dp))
+                            Text(formatBytes(a.bytes), style = MM.type.caption.copy(fontWeight = FontWeight.Medium), color = MM.colors.ink)
+                            IconButton(onClick = { onRemovePhoto(a) }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Rounded.Close, "Remove photo", tint = MM.colors.inkSecondary, modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Scripture verse section with live preview
+        if (type != PostType.Announcement) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                CircleField(
+                    state.verse,
+                    onVerse,
+                    label = "Scripture verse (optional)",
+                    placeholder = "e.g. Romans 8:28, Psalm 23:1, John 3:16"
+                )
+                if (parsedRef != null) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = CirclesPalette.WarmBg,
+                        border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.MenuBook,
+                                        contentDescription = null,
+                                        tint = CirclesPalette.WarmInk,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        parsedRef.display(),
+                                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                                        color = CirclesPalette.WarmInk
+                                    )
+                                }
+                                (passageResult as? PassageResult.Found)?.let { found ->
+                                    Text(
+                                        found.passage.versionAbbreviation,
+                                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+                                        color = CirclesPalette.WarmInk.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                            when (passageResult) {
+                                is PassageResult.Found -> {
+                                    Text(
+                                        "“${passageResult.passage.text.trim().trim('“', '”')}”",
+                                        style = MM.type.scripture.copy(fontSize = 13.5.sp, lineHeight = 20.sp),
+                                        color = MM.colors.ink,
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    )
+                                    if (passageResult.passage.attribution.isNotBlank()) {
+                                        Text(
+                                            passageResult.passage.attribution,
+                                            style = MM.type.caption.copy(fontSize = 10.5.sp),
+                                            color = MM.colors.inkMuted,
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                    }
+                                }
+                                null -> Text("Looking up scripture passage…", style = MM.type.caption, color = MM.colors.inkMuted, modifier = Modifier.padding(top = 4.dp))
+                                else -> Unit
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add photo launcher button
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SecondaryButton(
+                "Add photo",
+                { pickPhoto.launch("image/*") },
+                leadingIcon = Icons.Rounded.Image,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        // Anonymous toggle for prayer requests
         if (type == PostType.Prayer) {
             ToggleRow("Post anonymously", "Nobody sees who asked, admins included.", state.anonymous, onAnonymous)
             if (circle.settings.prayerApproval) {
                 StatusLine(StatusKind.Info, "An admin reviews prayer requests before they appear in the circle.")
             }
         }
+
         state.error?.let { StatusLine(StatusKind.Error, it) }
+
         PrimaryButton(
-            if (state.sending) "Sending..." else if (type == PostType.Prayer && circle.settings.prayerApproval) "Send for approval" else "Post",
-            onSend, enabled = !state.sending && (state.body.isNotBlank() || state.attachments.isNotEmpty()), modifier = Modifier.fillMaxWidth()
+            if (state.sending) "Posting..." else if (type == PostType.Prayer && circle.settings.prayerApproval) "Send for approval" else "Share with circle",
+            onSend,
+            enabled = !state.sending && (state.body.isNotBlank() || state.attachments.isNotEmpty()),
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
@@ -97,44 +307,218 @@ fun ReportSheet(onReport: (String) -> Unit, onDismiss: () -> Unit) {
     }
 }
 
-/** A post with its updates and comments. */
+/** A post with its updates and comments, styled with distinct pastel author bubbles and quick actions. */
 @Composable
 fun ThreadSheet(
-    post: Post?, thread: ThreadUiState?, myUid: String?, isAdmin: Boolean, now: Long,
-    onSend: (String) -> Unit, onDeleteComment: (Comment) -> Unit, onDismiss: () -> Unit
+    post: Post?,
+    thread: ThreadUiState?,
+    myUid: String?,
+    isAdmin: Boolean,
+    now: Long,
+    onSend: (String) -> Unit,
+    onDeleteComment: (Comment) -> Unit,
+    onDismiss: () -> Unit,
+    onMemberClick: ((String) -> Unit)? = null
 ) {
     var text by remember { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
     CircleSheet(onDismiss) {
-        Text("Comments", style = MM.type.title, color = MM.colors.ink)
-        if (post != null) {
-            InsetPanel { SelectionContainer { Text(post.body, style = MM.type.secondary, color = MM.colors.inkSecondary, maxLines = 4) } }
-        }
-        thread?.failure?.let { StatusLine(StatusKind.Warning, it.message) }
-        if (thread != null) {
-            thread.updates.forEach { u ->
-                InsetPanel {
-                    Text("Update from the author · ${relativeTime(now, u.createdAt)}", style = MM.type.caption, color = MM.colors.inkSecondary)
-                    SelectionContainer { Text(u.body, style = MM.type.body, color = MM.colors.ink) }
-                }
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                if (thread != null && thread.comments.isNotEmpty()) "Comments (${thread.comments.size})" else "Comments",
+                style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                color = MM.colors.ink
+            )
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Rounded.Close, "Close", tint = MM.colors.inkSecondary)
             }
-            if (thread.comments.isEmpty() && !thread.loading) Text("No comments yet. Be the first to encourage.", style = MM.type.secondary, color = MM.colors.inkSecondary)
-            LazyColumn(Modifier.heightIn(max = MMSize.minTouch * 6), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                items(thread.comments, key = { it.id }) { cm ->
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("${cm.authorName} · ${relativeTime(now, cm.createdAt)}", style = MM.type.caption, color = MM.colors.inkSecondary, modifier = Modifier.weight(1f))
-                            if ((cm.authorUid != null && cm.authorUid == myUid) || isAdmin) TextAction("Delete", { onDeleteComment(cm) })
-                        }
-                        SelectionContainer { Text(cm.body, style = MM.type.body, color = MM.colors.ink) }
+        }
+
+        if (post != null) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MM.colors.surfaceSunk,
+                border = BorderStroke(1.dp, MM.colors.line),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        InitialsAvatar(
+                            post.authorName ?: "Member",
+                            size = 28.dp,
+                            modifier = Modifier.clickable { onMemberClick?.invoke(post.authorUid ?: post.authorName.orEmpty()) }
+                        )
+                        Text(
+                            post.authorName ?: "Member",
+                            style = MM.type.bodyStrong.copy(fontSize = 13.sp),
+                            color = MM.colors.ink,
+                            modifier = Modifier.clickable { onMemberClick?.invoke(post.authorUid ?: post.authorName.orEmpty()) }
+                        )
+                        PostTypeBadge(post.type)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            relativeTime(now, post.createdAt),
+                            style = MM.type.caption,
+                            color = MM.colors.inkSecondary
+                        )
+                    }
+                    SelectionContainer {
+                        Text(
+                            post.body,
+                            style = MM.type.body,
+                            color = MM.colors.ink,
+                            maxLines = 4
+                        )
+                    }
+                    if (!post.verseRef.isNullOrBlank()) {
+                        Text(
+                            post.verseRef,
+                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                            color = CirclesPalette.WarmInk
+                        )
                     }
                 }
             }
         }
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-            CircleField(text, { text = it.take(2000) }, "Add a comment", modifier = Modifier.weight(1f), maxLines = 4)
-            IconButton(onClick = { onSend(text); text = "" }, enabled = text.isNotBlank()) {
-                Icon(Icons.Rounded.Send, "Send comment", tint = if (text.isNotBlank()) MM.colors.accent else MM.colors.inkMuted)
+
+        thread?.failure?.let { StatusLine(StatusKind.Warning, it.message) }
+
+        if (thread != null) {
+            thread.updates.forEach { u ->
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = CirclesPalette.AccentSoft,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(
+                            "Author update · ${relativeTime(now, u.createdAt)}",
+                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                            color = CirclesPalette.AccentDeep
+                        )
+                        SelectionContainer {
+                            Text(u.body, style = MM.type.body, color = MM.colors.ink, modifier = Modifier.padding(top = 4.dp))
+                        }
+                    }
+                }
+            }
+
+            if (thread.comments.isEmpty() && !thread.loading) {
+                Text(
+                    "No comments yet. Be the first to share an encouraging word or prayer.",
+                    style = MM.type.secondary,
+                    color = MM.colors.inkSecondary,
+                    modifier = Modifier.padding(vertical = MM.space.m)
+                )
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 340.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(thread.comments, key = { it.id }) { cm ->
+                        val isMyComment = cm.authorUid != null && cm.authorUid == myUid
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            InitialsAvatar(
+                                cm.authorName,
+                                size = 36.dp,
+                                modifier = Modifier.clickable { onMemberClick?.invoke(cm.authorUid ?: cm.authorName) }
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
+                                color = MM.colors.surfaceSunk,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            cm.authorName,
+                                            style = MM.type.bodyStrong.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                                            color = MM.colors.ink,
+                                            modifier = Modifier.clickable { onMemberClick?.invoke(cm.authorUid ?: cm.authorName) }
+                                        )
+                                        Text(
+                                            relativeTime(now, cm.createdAt),
+                                            style = MM.type.caption.copy(fontSize = 11.sp),
+                                            color = MM.colors.inkSecondary
+                                        )
+                                    }
+                                    SelectionContainer {
+                                        Text(
+                                            cm.body,
+                                            style = MM.type.body.copy(fontSize = 14.sp),
+                                            color = MM.colors.ink,
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                    }
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(top = 4.dp),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextAction("Copy", { clipboard.setText(AnnotatedString(cm.body)) })
+                                        if (isMyComment || isAdmin) {
+                                            Spacer(Modifier.width(10.dp))
+                                            TextAction("Delete", { onDeleteComment(cm) })
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+        ) {
+            CircleField(
+                text,
+                { text = it.take(2000) },
+                label = "Add a comment",
+                placeholder = "Write an encouraging comment…",
+                modifier = Modifier.weight(1f),
+                maxLines = 4
+            )
+            Surface(
+                shape = CircleShape,
+                color = if (text.isNotBlank()) CirclesPalette.Accent else MM.colors.surfaceSunk,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .clickable(enabled = text.isNotBlank()) {
+                        val toSend = text.trim()
+                        if (toSend.isNotBlank()) {
+                            onSend(toSend)
+                            text = ""
+                        }
+                    }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Rounded.Send,
+                        "Send comment",
+                        tint = if (text.isNotBlank()) CirclesPalette.White else MM.colors.inkMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }

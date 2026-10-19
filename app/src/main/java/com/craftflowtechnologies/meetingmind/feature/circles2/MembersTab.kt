@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -35,7 +36,9 @@ class MemberActions(
     /** Opens the title editor for this member. Admins only. */
     val onSetTitle: (Member) -> Unit = {},
     /** Let a waiting person in (true) or turn them away (false). Admins only. */
-    val onDecideJoin: (JoinRequest, Boolean) -> Unit = { _, _ -> }
+    val onDecideJoin: (JoinRequest, Boolean) -> Unit = { _, _ -> },
+    /** View profile / info for this member. */
+    val onMemberClick: (Member) -> Unit = {}
 ) { companion object { val None = MemberActions() } }
 
 @Composable
@@ -50,7 +53,7 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
 
     LazyColumn(
         modifier,
-        contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.s),
+        contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, top = MM.space.s, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
         if (canInvite) item {
@@ -140,7 +143,10 @@ private fun MemberRow(m: Member, me: Member?, actions: MemberActions) {
     val canEditTitle = me?.role?.isAdmin == true
     val online = isMe || m.lastReadAt > 0L || m.role == Role.Owner
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { actions.onMemberClick(m) }
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {

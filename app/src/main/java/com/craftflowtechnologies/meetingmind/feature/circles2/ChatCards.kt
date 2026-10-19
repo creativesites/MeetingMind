@@ -19,6 +19,24 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.craftflowtechnologies.meetingmind.core.create.CreateCardRenderer
 import com.craftflowtechnologies.meetingmind.core.create.CreateChatCard
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.craftflowtechnologies.meetingmind.core.share.ShareHelper
+import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
+import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Modifier
@@ -67,32 +85,132 @@ fun SharedCard(card: CardPayload, modifier: Modifier = Modifier) {
 /**
  * A card in chat. Cards made in the Create studio are drawn with the Create renderer from their fields (template,
  * words, verse), so they look the same as on the sender's phone. Anything else, or if drawing fails, is the simple [SharedCard].
+ * Tapping opens [CardDetailSheet] to view in full and share.
  */
 @Composable
 fun ChatCard(card: CardPayload, modifier: Modifier = Modifier) {
+    var showDetail by remember { mutableStateOf(false) }
     val input = remember(card) { CreateChatCard.renderInput(card) }
-    if (input == null) { SharedCard(card, modifier); return }
     val context = LocalContext.current
     val drawn: ImageBitmap? by produceState<ImageBitmap?>(null, input) {
-        value = withContext(Dispatchers.Default) {
-            runCatching { CreateCardRenderer.render(context, input, 0.3f).asImageBitmap() }.getOrNull()
+        if (input != null) {
+            value = withContext(Dispatchers.Default) {
+                runCatching { CreateCardRenderer.render(context, input, 0.3f).asImageBitmap() }.getOrNull()
+            }
         }
     }
     val image = drawn
-    if (image == null) {
-        // Still drawing (or it failed): the simple card keeps the words readable meanwhile.
-        SharedCard(card, modifier)
-        return
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(MM.radius.card)
+            .clickable { showDetail = true },
+        verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+    ) {
+        if (image != null) {
+            Image(
+                image, contentDescription = null, contentScale = ContentScale.FillWidth,
+                modifier = Modifier.fillMaxWidth().clip(MM.radius.card).semantics { contentDescription = "Card: " + card.text.take(120) }
+            )
+            val caption = listOfNotNull(
+                CreateChatCard.moodLabel(card),
+                card.verseRef.takeIf { card.verseText == null }
+            ).joinToString(" · ")
+            if (caption.isNotEmpty()) Text(caption, style = MM.type.caption, color = MM.colors.inkSecondary)
+        } else {
+            SharedCard(card)
+        }
     }
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-        Image(
-            image, contentDescription = null, contentScale = ContentScale.FillWidth,
-            modifier = Modifier.fillMaxWidth().clip(MM.radius.card).semantics { contentDescription = "Card: " + card.text.take(120) }
+
+    if (showDetail) {
+        CardDetailSheet(card = card, image = image, onDismiss = { showDetail = false })
+    }
+}
+
+/** Bottom sheet to preview and share a card tapped from chat or feed. */
+@Composable
+fun CardDetailSheet(card: CardPayload, image: ImageBitmap?, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val mood = CARD_MOODS.firstOrNull { it.first == card.mood }?.second
+    val caption = listOfNotNull(
+        mood,
+        card.verseRef.takeIf { card.verseText == null }
+    ).joinToString(" · ")
+
+    CircleSheet(onDismiss) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                if (mood != null) "$mood Card" else "Shared Card",
+                style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                color = MM.colors.ink
+            )
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Rounded.Close, "Close", tint = MM.colors.inkSecondary)
+            }
+        }
+
+        if (image != null) {
+            Image(
+                image,
+                contentDescription = "Card preview",
+                contentScale = ContentScale.FillWidth,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MM.radius.card)
+            )
+        } else {
+            SharedCard(card)
+        }
+
+        if (caption.isNotEmpty()) {
+            Text(
+                caption,
+                style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                color = MM.colors.inkSecondary
+            )
+        }
+
+        PrimaryButton(
+            "Share card",
+            {
+                val textToShare = buildString {
+                    append(card.text)
+                    if (!card.verseRef.isNullOrBlank()) {
+                        append("\n\n— ")
+                        append(card.verseRef)
+                    }
+                }
+                ShareHelper.shareText(context, "Card", textToShare, "Share Card")
+            },
+            leadingIcon = Icons.Rounded.Share,
+            modifier = Modifier.fillMaxWidth()
         )
-        val caption = listOfNotNull(
-            CreateChatCard.moodLabel(card),
-            card.verseRef.takeIf { card.verseText == null }
-        ).joinToString(" · ")
-        if (caption.isNotEmpty()) Text(caption, style = MM.type.caption, color = MM.colors.inkSecondary)
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SecondaryButton(
+                "Copy words",
+                {
+                    clipboard.setText(AnnotatedString(card.text))
+                    onDismiss()
+                },
+                leadingIcon = Icons.Rounded.ContentCopy,
+                modifier = Modifier.weight(1f)
+            )
+            SecondaryButton(
+                "Close",
+                onDismiss,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }

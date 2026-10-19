@@ -3,8 +3,10 @@ package com.craftflowtechnologies.meetingmind.feature.circles2
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
@@ -12,10 +14,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
@@ -77,6 +84,8 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     var openingEvent by remember { mutableStateOf<CircleEvent?>(null) }
     var showEventForm by remember { mutableStateOf(false) }
     var editingEvent by remember { mutableStateOf<CircleEvent?>(null) }
+    var activeVerse by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference?>(null) }
+    var activeMemberInfo by remember { mutableStateOf<Member?>(null) }
     val eventRsvps by home.eventRsvps.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val now = remember(state.posts, chatState.messages) { System.currentTimeMillis() }
@@ -120,7 +129,12 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onOpenChat = { tab = HomeTab.Chat },
             onStartPost = home::openComposer,
             onPhoto = home::addPhoto,
-            onInvite = { home.createInvite(); showInvite = true }
+            onInvite = { home.createInvite(); showInvite = true },
+            onOpenVerse = { activeVerse = it },
+            onMemberClick = { idOrName ->
+                activeMemberInfo = state.members.firstOrNull { it.uid == idOrName || it.displayName.equals(idOrName, ignoreCase = true) }
+                    ?: Member(uid = idOrName, displayName = idOrName, role = com.craftflowtechnologies.meetingmind.core.circles2.Role.Member)
+            }
         )
         val chatActions = ChatActions(
             onDraft = chat::setDraft, onSend = chat::send, onReply = chat::startReply, onCancelReply = chat::cancelReply,
@@ -144,7 +158,8 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             feed = feed, chatActions = chatActions,
             members = MemberActions(
                 onInvite = { home.createInvite(); showInvite = true }, onSetRole = home::setRole, onRemove = home::remove,
-                onSetTitle = { titling = it }, onDecideJoin = home::decideJoin
+                onSetTitle = { titling = it }, onDecideJoin = home::decideJoin,
+                onMemberClick = { activeMemberInfo = it }
             ),
             snackbar = snackbar, onBack = onBack, onSettings = { showSettings = true },
             onInvite = { home.createInvite(); showInvite = true }, onRetry = { }
@@ -153,9 +168,43 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
 
     // ---- sheets and dialogs ----
     if (showTypes && circle != null) PostTypeSheet(circle, state.isAdmin, onPick = { showTypes = false; home.openComposer(it) }, onDismiss = { showTypes = false })
-    if (composer.open && circle != null) ComposerSheet(circle, composer, home::setBody, home::setVerse, home::setAnonymous, home::submitPost, home::closeComposer, home::removePhoto)
+    if (composer.open && circle != null) ComposerSheet(
+        circle, composer, home::setBody, home::setVerse, home::setAnonymous, home::submitPost, home::closeComposer,
+        home::removePhoto, onTypeChange = home::openComposer, onPhoto = home::addPhoto
+    )
     val threadPost = thread?.let { t -> state.posts.firstOrNull { it.post.id == t.postId }?.post }
-    if (thread != null) ThreadSheet(threadPost, thread, state.myUid, state.canModerate, now, onSend = { home.comment(thread!!.postId, it) }, onDeleteComment = { home.deleteComment(thread!!.postId, it.id) }, onDismiss = home::closeThread)
+    if (thread != null) ThreadSheet(
+        threadPost, thread, state.myUid, state.canModerate, now,
+        onSend = { home.comment(thread!!.postId, it) },
+        onDeleteComment = { home.deleteComment(thread!!.postId, it.id) },
+        onDismiss = home::closeThread,
+        onMemberClick = { idOrName ->
+            activeMemberInfo = state.members.firstOrNull { it.uid == idOrName || it.displayName.equals(idOrName, ignoreCase = true) }
+                ?: Member(uid = idOrName, displayName = idOrName, role = com.craftflowtechnologies.meetingmind.core.circles2.Role.Member)
+        }
+    )
+    activeMemberInfo?.let { m ->
+        MemberInfoSheet(
+            member = m,
+            isMe = m.uid == state.myUid,
+            me = state.me,
+            onDismiss = { activeMemberInfo = null },
+            onMessage = {
+                activeMemberInfo = null
+                tab = HomeTab.Chat
+                chat.setDraft("@${m.displayName} ")
+            },
+            onSetTitle = { titling = it; activeMemberInfo = null },
+            onSetRole = { mem, role -> home.setRole(mem, role); activeMemberInfo = null },
+            onRemove = { mem -> home.remove(mem); activeMemberInfo = null }
+        )
+    }
+    activeVerse?.let { ref ->
+        com.craftflowtechnologies.meetingmind.feature.scripture.VerseSheet(
+            reference = ref,
+            onDismiss = { activeVerse = null }
+        )
+    }
     if (showInvite) InviteSheet(invite, home::createInvite) { showInvite = false; home.closeInvite() }
     editing?.let { p -> TextEditSheet("Edit post", p.body, "Save", { home.editPost(p, it) }, { editing = null }) }
     updating?.let { p -> TextEditSheet("Post an update", "", "Post update", { home.addUpdate(p, it) }, { updating = null }) }
@@ -251,6 +300,37 @@ fun CircleHomeContent(
                 }
             }
         }
-        SnackbarHost(snackbar, Modifier.align(androidx.compose.ui.Alignment.BottomCenter).navigationBarsPadding().padding(MM.space.l))
+        val canPost = circle != null && circle.settings.allowedTypes.any { !it.adminOnly || state.isAdmin }
+        if (tab == HomeTab.Feed && canPost) {
+            Surface(
+                onClick = feed.onNewPost,
+                shape = RoundedCornerShape(999.dp),
+                color = CirclesPalette.Accent,
+                shadowElevation = 6.dp,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(bottom = 20.dp, end = 20.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Add,
+                        contentDescription = "New post",
+                        tint = CirclesPalette.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        "New post",
+                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
+                        color = CirclesPalette.White
+                    )
+                }
+            }
+        }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(MM.space.l))
     }
 }
