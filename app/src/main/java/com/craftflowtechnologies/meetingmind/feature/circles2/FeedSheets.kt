@@ -1,5 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.compose.material.icons.rounded.Videocam
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -74,11 +76,12 @@ fun ComposerSheet(
     onDismiss: () -> Unit,
     onRemovePhoto: (MediaAttachment) -> Unit = {},
     onTypeChange: (PostType) -> Unit = {},
-    onPhoto: (PickedFile) -> Unit = {}
+    onPhoto: (PickedFile) -> Unit = {},
+    onPhotoRefused: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        if (uri != null) readPicked(context, uri)?.let { onPhoto(it) }
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
+        if (uri != null) readPicked(context, uri)?.let { onPhoto(it) } ?: onPhotoRefused()
     }
     val type = state.type ?: return
     val availableTypes = remember(circle) {
@@ -155,7 +158,7 @@ fun ComposerSheet(
 
         // Photos gallery
         if (state.attachments.isNotEmpty()) {
-            Text("Photos attached (${state.attachments.size})", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.inkSecondary)
+            Text("Attached (${state.attachments.size})", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.inkSecondary)
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -172,10 +175,16 @@ fun ComposerSheet(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Rounded.Image, contentDescription = null, tint = CirclesPalette.Accent, modifier = Modifier.size(16.dp))
-                            Text(formatBytes(a.bytes), style = MM.type.caption.copy(fontWeight = FontWeight.Medium), color = MM.colors.ink)
+                            Icon(
+                                if (a.isVideo) Icons.Rounded.Videocam else Icons.Rounded.Image,
+                                contentDescription = null, tint = CirclesPalette.Accent, modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                listOfNotNull(a.durationMs?.takeIf { it > 0 }?.let(::formatDuration), formatBytes(a.bytes)).joinToString(" · "),
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Medium), color = MM.colors.ink
+                            )
                             IconButton(onClick = { onRemovePhoto(a) }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Rounded.Close, "Remove photo", tint = MM.colors.inkSecondary, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Rounded.Close, "Remove attachment", tint = MM.colors.inkSecondary, modifier = Modifier.size(14.dp))
                             }
                         }
                     }
@@ -260,7 +269,7 @@ fun ComposerSheet(
         ) {
             SecondaryButton(
                 "Add photo",
-                { pickPhoto.launch("image/*") },
+                { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
                 leadingIcon = Icons.Rounded.Image,
                 modifier = Modifier.weight(1f)
             )
