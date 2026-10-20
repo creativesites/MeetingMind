@@ -43,6 +43,31 @@ class AppLanguageTest {
     }
 
     @Test
+    fun `fromTag resolves regional variants accurately`() {
+        assertEquals(AppLanguage.SHONA, AppLanguage.fromTag("sn-ZW"))
+        assertEquals(AppLanguage.SHONA, AppLanguage.fromTag("sn_zw"))
+        assertEquals(AppLanguage.PORTUGUESE, AppLanguage.fromTag("pt-BR"))
+        assertEquals(AppLanguage.SWAHILI, AppLanguage.fromTag("sw-KE"))
+        assertEquals(AppLanguage.NYANJA, AppLanguage.fromTag("ny-MW"))
+        assertEquals(AppLanguage.ZULU, AppLanguage.fromTag("zu-ZA"))
+        assertEquals(AppLanguage.BEMBA, AppLanguage.fromTag("bem-ZM"))
+    }
+
+    @Test
+    fun `areLocalesEquivalent matches base and regional variants`() {
+        assertTrue(AppLocaleManager.areLocalesEquivalent("sn", "sn-ZW"))
+        assertTrue(AppLocaleManager.areLocalesEquivalent("sn-ZW", "sn"))
+        assertTrue(AppLocaleManager.areLocalesEquivalent("sn", "sn"))
+        assertTrue(AppLocaleManager.areLocalesEquivalent(null, null))
+        assertTrue(AppLocaleManager.areLocalesEquivalent("", null))
+        assertTrue(AppLocaleManager.areLocalesEquivalent("pt-BR", "pt-PT"))
+        
+        org.junit.Assert.assertFalse(AppLocaleManager.areLocalesEquivalent("sn", "en"))
+        org.junit.Assert.assertFalse(AppLocaleManager.areLocalesEquivalent("sn", null))
+        org.junit.Assert.assertFalse(AppLocaleManager.areLocalesEquivalent(null, "sn"))
+    }
+
+    @Test
     fun `every language has non-empty native and english display names`() {
         AppLanguage.SUPPORTED.forEach { lang ->
             assertTrue("${lang.tag} has blank native name", lang.nativeName.isNotBlank())

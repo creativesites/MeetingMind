@@ -10,12 +10,14 @@ Updated: 2026-10-20. Designated branch: `claude/meetingmind-localization`. Head:
   - `AppLocaleManager`: Handles runtime per-app locale switching on Android 13+ (API 33+ `LocaleManager`) and backward-compatible context wrapping (`Configuration` update and JVM `Locale.setDefault()`) on API 24–32.
   - `locales_config.xml` & `AndroidManifest.xml`: Wired `android:localeConfig="@xml/locales_config"` for system-level per-app language settings.
   - `UserPreferences`: Persists `appLanguage` in DataStore preferences with fallback to system default.
+  - **Flashing Loop Bug Fixed**: Android OS normalizes Shona to regional `sn-ZW`, which caused string equality mismatches against `sn`, triggering repeated activity recreations in `LaunchedEffect`. Resolved by adding `areLocalesEquivalent` language-code comparison, underscore/hyphen normalization, double-lock loop guards in `AppLocaleManager` and `MainActivity`, and synchronous SharedPreferences persistence.
 - **UI & Navigation Integration**:
-  - `LanguageSelectionScreen`: Accessible from `Settings → Appearance → Language`, displaying native and English language names, system language option, and check indicators.
+  - **Easy Access from Settings**: Added a prominent Language quick-card right at the top of `SettingsHub` displaying the active language with one-tap access, plus a dedicated Language icon button in the Settings header.
+  - `LanguageSelectionScreen`: Accessible from Settings header, Settings Hub, and `Settings → Appearance → Language`, displaying native and English language names, system language option, and check indicators.
   - `SettingsRegistry`: Added `SettingId.LANGUAGE` in `SettingsGroup.APPEARANCE` (keeping primary row count <= 4).
   - `OnboardingScreen`: Added language choice pill on Welcome step with `OnboardingLanguageDialog` allowing interface language selection before completing onboarding.
   - `BottomNavigation`: Localized all primary tab destinations (Home/Today, Notes, Work, Search, Settings).
-- **Unit Tests Verified**: `AppLanguageTest` (4/4 pass), `LocaleResourcesIntegrityTest` (3/3 pass across all 8 localized resource directories), `SettingsRegistryTest` (8/8 pass), and `UserPreferencesManagerTest` (pass).
+- **Unit Tests Verified**: `AppLanguageTest` (6/6 pass including regional variants & equivalence), `LocaleResourcesIntegrityTest` (3/3 pass across all 8 localized resource directories), `SettingsRegistryTest` (8/8 pass), and `UserPreferencesManagerTest` (pass).
 - **Not verified on device**: Native Android 13+ per-app language picker sync from Android OS Settings vs in-app switcher.
 
 ## Recording & processing reliability (2026-10-19)

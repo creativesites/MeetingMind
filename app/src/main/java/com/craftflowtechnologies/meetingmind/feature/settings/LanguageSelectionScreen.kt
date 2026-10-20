@@ -202,7 +202,7 @@ fun LanguageSelectionScreen(
                         )
                     }
 
-                    val isSelected = !isSystemDefault && currentTag.equals(lang.tag, ignoreCase = true)
+                    val isSelected = !isSystemDefault && AppLocaleManager.areLocalesEquivalent(currentTag, lang.tag)
 
                     Row(
                         Modifier
