@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Navigation -->
+    <string name="nav_today">Nhasi</string>
+    <string name="nav_notes">Notes</string>
+    <string name="nav_circles">Circles</string>
+    <string name="nav_faith">Kutenda</string>
+    <string name="nav_work">Basa</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Common Actions & Feedback -->
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Kanzura</string>
+    <string name="action_done">Zvapera</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_edit">Chinja</string>
+    <string name="action_back">Dzokera</string>
+    <string name="action_close">Vhara</string>
+    <string name="action_share">Share</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_retry">Edza zvakare</string>
+    <string name="action_search">Search</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_apply">Apply</string>
+    <string name="action_remove">Bvisa</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="state_loading">Kurodha…</string>
+    <string name="state_empty">Hapana chiri pano parizvino</string>
+    <string name="state_error">Pane chambomira zvakanaka</string>
+
+    <!-- Language Selection (Settings) -->
+    <string name="settings_language_title">Language</string>
+    <string name="settings_language_description">Sarudza mutauro unoshandiswa mu MeetingMind. Speech transcription ne Bhaibheri zvinogona kuiswa zvakazvimirira.</string>
+    <string name="settings_language_follow_system">Tevedzera language ye phone</string>
+    <string name="settings_language_follow_system_summary">Default (kutevedzera settings dze phone)</string>
+    <string name="settings_language_all_header">MITAURO YESE</string>
+    <string name="settings_language_asr_notice">Mutauro we app wakazvimirira kubva pamutauro weku rekodha audio.</string>
+
+    <!-- Recording & Transcription -->
+    <string name="recording_button_record">Record</string>
+    <string name="recording_button_pause">Pause</string>
+    <string name="recording_button_resume">Enderera mberi</string>
+    <string name="recording_button_finish">Zvapera</string>
+    <string name="recording_button_discard">Rasa</string>
+    <string name="recording_status_recording">Kurekodha…</string>
+    <string name="recording_status_paused">Pambomira</string>
+    <string name="recording_status_processing">Kugadzira audio…</string>
+    <string name="recording_ready_title">Note yako yagadzirwa</string>
+    <string name="recording_empty_prompt">Baya Record kuti utange kuchengeta ma conversations, pfungwa, kana mharidzo.</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_headline">Pfungwa dzenyu dzakakosha kuyeukwa.</string>
+    <string name="onboarding_body">Chinja ma conversations, ma ideas nezvidzidzo kuva ruzivo rwaunogona kudzokera kwariri chero nguva.</string>
+    <string name="onboarding_pill_private">Private kwauri wega</string>
+    <string name="onboarding_pill_offline">Option yeku shandisa pasina internet</string>
+    <string name="onboarding_pill_ai">Ma notes e AI</string>
+    <string name="onboarding_button_get_started">Tanga pano</string>
+    <string name="onboarding_button_continue">Enderera</string>
+    <string name="onboarding_button_skip">Darika</string>
+    <string name="onboarding_button_explore_sample">Ona sample</string>
+    <string name="onboarding_button_record_now">Rekodha chimwe chinhu izvozvi</string>
+    <string name="onboarding_button_make_it_mine">Iite ive yangu</string>
+    <string name="onboarding_button_skip_for_now">Darika parizvino</string>
+    <string name="onboarding_button_start_using">Tanga kushandisa MeetingMind</string>
+    <string name="onboarding_button_start_recording">Tanga kurekodha</string>
+    <string name="onboarding_language_selector_hint">Mutauro we app</string>
+
+    <!-- Notes & Search -->
+    <string name="notes_screen_title">Notes</string>
+    <string name="notes_search_hint">Tsvaga ma notes, ma transcript, nema tags…</string>
+    <string name="notes_empty_state_title">Hapana ma notes parizvino</string>
+    <string name="notes_filter_all">Ese</string>
+    <string name="notes_filter_meetings">Meetings</string>
+    <string name="notes_filter_sermons">Mharidzo</string>
+    <string name="notes_filter_ideas">Ideas</string>
+    <string name="notes_tab_summary">Summary</string>
+    <string name="notes_tab_transcript">Transcript</string>
+    <string name="notes_tab_actions">Action items</string>
+    <string name="notes_menu_export">Export</string>
+    <string name="notes_menu_archive">Archive</string>
+
+    <!-- Faith & Devotional -->
+    <string name="faith_screen_title">Kutenda</string>
+    <string name="faith_tab_today">Nhasi</string>
+    <string name="faith_tab_plans">Plans</string>
+    <string name="faith_tab_prayer">Munamato</string>
+    <string name="faith_tab_bible">Bhaibheri</string>
+    <string name="faith_daily_devotional_title">Chikafu chemweya chezuva nezuva</string>
+    <string name="faith_verse_of_day_title">Vhesi yanhasi</string>
+    <string name="faith_prayer_list_title">Prayer list</string>
+    <string name="faith_add_prayer_prompt">Isa prayer request</string>
+    <string name="faith_evening_reflection_title">Kufunga kwemanheru</string>
+
+    <!-- Circles -->
+    <string name="circles_screen_title">Circles</string>
+    <string name="circles_tab_feed">Feed</string>
+    <string name="circles_tab_chat">Chat</string>
+    <string name="circles_tab_members">Members</string>
+    <string name="circles_action_new_circle">Circle Itsva</string>
+    <string name="circles_action_share_story">Share ku Circle</string>
+    <string name="circles_action_comment">Comment</string>
+    <string name="circles_action_like">Like</string>
+
+    <!-- Work & Tasks -->
+    <string name="work_screen_title">Basa</string>
+    <string name="work_tab_tasks">Tasks</string>
+    <string name="work_tab_projects">Projects</string>
+    <string name="work_tab_review">Weekly review</string>
+    <string name="work_action_new_task">Task itsva</string>
+    <string name="work_filter_due_today">Zvinodiwa nhasi</string>
+
+    <!-- Offline Models & Storage -->
+    <string name="models_screen_title">AI nema offline models</string>
+    <string name="models_asr_whisper_title">Speech recognition (Whisper)</string>
+    <string name="models_action_download">Download</string>
+    <string name="models_status_downloading">Kurodha pasi…</string>
+    <string name="models_status_ready">Yadhawunirodha yagadzirira</string>
+    <string name="models_setting_wifi_only">Download pa Wi-Fi chete</string>
+    <string name="models_storage_used_label">Storage yakashandiswa</string>
+
+    <!-- Subscription & Billing / Paywall -->
+    <string name="paywall_screen_title">Vhura MeetingMind Yose</string>
+    <string name="paywall_tagline">Sarudza plan inoenderana nebasa rako neminamato yako.</string>
+    <string name="paywall_action_restore">Dzosera ma purchases</string>
+    <string name="paywall_action_upgrade">Simudzira plan</string>
+    <string name="paywall_tier_annual">Patsika yegore</string>
+    <string name="paywall_tier_monthly">Pamwedzi</string>
+</resources>

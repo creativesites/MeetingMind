@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Navigation -->
+    <string name="nav_today">Leo</string>
+    <string name="nav_notes">Maelezo</string>
+    <string name="nav_circles">Vikundi</string>
+    <string name="nav_faith">Imani</string>
+    <string name="nav_work">Kazi</string>
+    <string name="nav_settings">Mipangilio</string>
+
+    <!-- Common Actions & Feedback -->
+    <string name="action_save">Hifadhi</string>
+    <string name="action_cancel">Ghairi</string>
+    <string name="action_done">Imekamilika</string>
+    <string name="action_delete">Futa</string>
+    <string name="action_edit">Hariri</string>
+    <string name="action_back">Rudi</string>
+    <string name="action_close">Funga</string>
+    <string name="action_share">Shiriki</string>
+    <string name="action_copy">Nakili</string>
+    <string name="action_retry">Jaribu tena</string>
+    <string name="action_search">Tafuta</string>
+    <string name="action_confirm">Thibitisha</string>
+    <string name="action_apply">Tumia</string>
+    <string name="action_remove">Ondoa</string>
+    <string name="action_dismiss">Puuza</string>
+    <string name="state_loading">Inapakia…</string>
+    <string name="state_empty">Hakuna kitu bado</string>
+    <string name="state_error">Kumetokea hitilafu</string>
+
+    <!-- Language Selection (Settings) -->
+    <string name="settings_language_title">Lugha</string>
+    <string name="settings_language_description">Chagua lugha inayotumika katika MeetingMind. Unukuzi wa sauti na tafsiri za Biblia vinaweza kuwekwa kando.</string>
+    <string name="settings_language_follow_system">Fuata lugha ya mfumo</string>
+    <string name="settings_language_follow_system_summary">Chaguo-msingi (kulingana na simu yako)</string>
+    <string name="settings_language_all_header">LUGHA ZOTE</string>
+    <string name="settings_language_asr_notice">Lugha ya programu imejitegemea kutoka kwenye lugha ya kurekodi sauti.</string>
+
+    <!-- Recording & Transcription -->
+    <string name="recording_button_record">Rekodi</string>
+    <string name="recording_button_pause">Sitisha</string>
+    <string name="recording_button_resume">Endelea</string>
+    <string name="recording_button_finish">Imekamilika</string>
+    <string name="recording_button_discard">Tupa</string>
+    <string name="recording_status_recording">Inarekodi…</string>
+    <string name="recording_status_paused">Imesitishwa</string>
+    <string name="recording_status_processing">Inachakata sauti…</string>
+    <string name="recording_ready_title">Maelezo yako yapo tayari</string>
+    <string name="recording_empty_prompt">Gusa Rekodi ili kuanza kuhifadhi mazungumzo, mawazo, au mahubiri.</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_headline">Mawazo yako yanastahili kukumbukwa.</string>
+    <string name="onboarding_body">Badilisha mazungumzo, mawazo na mafunzo kuwa maarifa unayoweza kurejelea wakati wowote.</string>
+    <string name="onboarding_pill_private">Faragha kwa hiari yako</string>
+    <string name="onboarding_pill_offline">Inafanya kazi bila intaneti</string>
+    <string name="onboarding_pill_ai">Muhtasari wa AI</string>
+    <string name="onboarding_button_get_started">Anza sasa</string>
+    <string name="onboarding_button_continue">Endelea</string>
+    <string name="onboarding_button_skip">Ruka</string>
+    <string name="onboarding_button_explore_sample">Tazama mfano</string>
+    <string name="onboarding_button_record_now">Rekodi sasa</string>
+    <string name="onboarding_button_make_it_mine">Fanya iwe yangu</string>
+    <string name="onboarding_button_skip_for_now">Ruka kwa sasa</string>
+    <string name="onboarding_button_start_using">Anza kutumia MeetingMind</string>
+    <string name="onboarding_button_start_recording">Anza kurekodi</string>
+    <string name="onboarding_language_selector_hint">Lugha ya programu</string>
+
+    <!-- Notes & Search -->
+    <string name="notes_screen_title">Maelezo</string>
+    <string name="notes_search_hint">Tafuta maelezo, nakala, na lebo…</string>
+    <string name="notes_empty_state_title">Hakuna maelezo bado</string>
+    <string name="notes_filter_all">Yote</string>
+    <string name="notes_filter_meetings">Mikutano</string>
+    <string name="notes_filter_sermons">Mahubiri</string>
+    <string name="notes_filter_ideas">Mawazo</string>
+    <string name="notes_tab_summary">Muhtasari</string>
+    <string name="notes_tab_transcript">Nakala ya sauti</string>
+    <string name="notes_tab_actions">Mambo ya kufanya</string>
+    <string name="notes_menu_export">Hamisha</string>
+    <string name="notes_menu_archive">Hifadhi kwenye kumbukumbu</string>
+
+    <!-- Faith & Devotional -->
+    <string name="faith_screen_title">Imani</string>
+    <string name="faith_tab_today">Leo</string>
+    <string name="faith_tab_plans">Mipango</string>
+    <string name="faith_tab_prayer">Maombi</string>
+    <string name="faith_tab_bible">Biblia</string>
+    <string name="faith_daily_devotional_title">Ibada ya kila siku</string>
+    <string name="faith_verse_of_day_title">Aya ya siku</string>
+    <string name="faith_prayer_list_title">Orodha ya maombi</string>
+    <string name="faith_add_prayer_prompt">Ongeza ombi la maombi</string>
+    <string name="faith_evening_reflection_title">Tathmini ya jioni</string>
+
+    <!-- Circles -->
+    <string name="circles_screen_title">Vikundi</string>
+    <string name="circles_tab_feed">Ujumbe</string>
+    <string name="circles_tab_chat">Gumzo</string>
+    <string name="circles_tab_members">Wanachama</string>
+    <string name="circles_action_new_circle">Kikundi Kipya</string>
+    <string name="circles_action_share_story">Shiriki kwenye Kikundi</string>
+    <string name="circles_action_comment">Toa maoni</string>
+    <string name="circles_action_like">Penda</string>
+
+    <!-- Work & Tasks -->
+    <string name="work_screen_title">Kazi</string>
+    <string name="work_tab_tasks">Majukumu</string>
+    <string name="work_tab_projects">Miradi</string>
+    <string name="work_tab_review">Tathmini ya wiki</string>
+    <string name="work_action_new_task">Jukumu jipya</string>
+    <string name="work_filter_due_today">Yanayohitajika leo</string>
+
+    <!-- Offline Models & Storage -->
+    <string name="models_screen_title">AI na mifano ya nje ya mtandao</string>
+    <string name="models_asr_whisper_title">Utambuzi wa sauti (Whisper)</string>
+    <string name="models_action_download">Pakua</string>
+    <string name="models_status_downloading">Inapakua…</string>
+    <string name="models_status_ready">Imepakuliwa na iko tayari</string>
+    <string name="models_setting_wifi_only">Pakua kwenye Wi-Fi pekee</string>
+    <string name="models_storage_used_label">Nafasi iliyotumika</string>
+
+    <!-- Subscription & Billing / Paywall -->
+    <string name="paywall_screen_title">Pata MeetingMind Kamili</string>
+    <string name="paywall_tagline">Chagua mpango unaofaa kazi na maombi yako.</string>
+    <string name="paywall_action_restore">Rejesha ununuzi</string>
+    <string name="paywall_action_upgrade">Boresha mpango</string>
+    <string name="paywall_tier_annual">Mwaka</string>
+    <string name="paywall_tier_monthly">Mwezi</string>
+</resources>

@@ -118,5 +118,20 @@ class UserPreferencesManagerTest {
         val nyaPrefs = manager.preferencesFlow.first()
         assertEquals("nya", nyaPrefs.selectedLanguage)
         assertEquals(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.omnilingualAsr1bInt8.id, nyaPrefs.selectedAsrModelId)
+
+    }
+
+    @Test
+    fun `app language preference field round-trips correctly`() = runBlocking {
+        val manager = UserPreferencesManager(ApplicationProvider.getApplicationContext())
+        assertNull(AppPreferencesState().appLanguage)
+
+        manager.setAppLanguage("sw")
+        val prefs = manager.preferencesFlow.first()
+        assertEquals("sw", prefs.appLanguage)
+
+        manager.setAppLanguage(null)
+        val resetPrefs = manager.preferencesFlow.first()
+        assertNull(resetPrefs.appLanguage)
     }
 }

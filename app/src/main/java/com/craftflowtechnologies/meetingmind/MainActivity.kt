@@ -81,6 +81,11 @@ import androidx.lifecycle.lifecycleScope
 class MainActivity : FragmentActivity() {
     private val appLock: AppLockViewModel by viewModels()
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        val tag = com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.getActiveLocaleTag(newBase)
+        super.attachBaseContext(com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.wrapContext(newBase, tag))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -121,6 +126,9 @@ class MainActivity : FragmentActivity() {
                     statusBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(transparent) else androidx.activity.SystemBarStyle.light(transparent, transparent),
                     navigationBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(transparent) else androidx.activity.SystemBarStyle.light(transparent, transparent)
                 )
+            }
+            androidx.compose.runtime.LaunchedEffect(themePrefs?.appLanguage) {
+                com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.applyLocale(applicationContext, themePrefs?.appLanguage)
             }
             MeetMindTheme(darkTheme = dark, appearance = themePrefs?.appearance ?: com.craftflowtechnologies.meetingmind.ui.theme.Appearance(homeStyle = com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY)) {
                 // Who the app is for — spaces, look, name, avatar — available to every screen.
@@ -721,6 +729,10 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val vm: com.craftflowtechnologies.meetingmind.feature.settings.AppearanceViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.settings.AppearanceScreen(vm, onNavigateBack = { navController.popBackStack() })
         }
+        composable(Routes.LANGUAGE) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.settings.LanguageSelectionViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.settings.LanguageSelectionScreen(vm, onNavigateBack = { navController.popBackStack() })
+        }
         composable(Routes.TASKS) {
             val vm: com.craftflowtechnologies.meetingmind.feature.tasks.TasksViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.tasks.TasksScreen(
@@ -1245,6 +1257,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenSetup = { navController.navigate(Routes.SETUP) },
                 onOpenDataBackup = { navController.navigate(Routes.DATA_BACKUP) },
                 onOpenAppearance = { navController.navigate(Routes.APPEARANCE) },
+                onOpenLanguage = { navController.navigate(Routes.LANGUAGE) },
                 onOpenWork = { navController.navigate(Routes.WORK_SETTINGS) },
                 onOpenIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
                 onOpenRecipes = { navController.navigate(Routes.RECIPES) },

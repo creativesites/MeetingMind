@@ -331,6 +331,7 @@ private class SettingsActions(
     val onOpenSetup: () -> Unit,
     val onOpenDataBackup: () -> Unit,
     val onOpenAppearance: () -> Unit,
+    val onOpenLanguage: () -> Unit,
     val onOpenWork: () -> Unit,
     val onOpenIntegrations: () -> Unit,
     val onOpenRecipes: () -> Unit,
@@ -395,6 +396,7 @@ fun SettingsScreen(
     onOpenSetup: () -> Unit = {},
     onOpenDataBackup: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
+    onOpenLanguage: () -> Unit = {},
     onOpenWork: () -> Unit = {},
     onOpenIntegrations: () -> Unit = {},
     onOpenRecipes: () -> Unit = {},
@@ -438,7 +440,7 @@ fun SettingsScreen(
     }
 
     val actions = SettingsActions(
-        onNavigateToModels, onOpenBible, onOpenSetup, onOpenDataBackup, onOpenAppearance, onOpenWork, onOpenIntegrations,
+        onNavigateToModels, onOpenBible, onOpenSetup, onOpenDataBackup, onOpenAppearance, onOpenLanguage, onOpenWork, onOpenIntegrations,
         onOpenRecipes, onOpenCompanion, onReplayTour, onOpenSubscription, onOpenOnboarding,
         editName = { showEditNameDialog = true },
         pickAvatar = { avatarPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
@@ -846,6 +848,11 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
                 ),
                 a.onOpenCompanion
             )
+        }
+        SettingId.LANGUAGE -> {
+            val lang = com.craftflowtechnologies.meetingmind.core.i18n.AppLanguage.fromTag(prefs.appLanguage)
+            val subtitle = if (lang != null) "${lang.nativeName} (${lang.englishName})" else stringResource(R.string.settings_language_follow_system)
+            SettingsNavRow(stringResource(R.string.settings_language_title), subtitle, a.onOpenLanguage)
         }
         SettingId.HERO_MODE -> SettingsChoiceBlock("Home hero card") {
             com.craftflowtechnologies.meetingmind.core.datastore.HomeHeroDisplayMode.entries.forEach { mode ->
