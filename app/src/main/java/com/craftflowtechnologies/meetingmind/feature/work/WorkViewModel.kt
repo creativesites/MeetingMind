@@ -94,6 +94,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         t.filter { !it.waitingOn } + c.filter { it.id !in taskIds }
     }.state(emptyList())
     val toReview: StateFlow<List<MeetingRow>> = work.observeToReview().state(emptyList())
+    val failed: StateFlow<List<MeetingRow>> = work.observeFailed().state(emptyList())
     val followUps: StateFlow<List<MeetingRow>> = work.observeFollowUps().state(emptyList())
     val decisions: StateFlow<List<FindingRow>> = work.observeDecisions().state(emptyList())
     /** Promises nobody could place, waiting to be settled or dismissed. */

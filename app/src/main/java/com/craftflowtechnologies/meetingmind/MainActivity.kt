@@ -943,6 +943,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
                 onOpenSettings = { navController.navigate(Routes.WORK_SETTINGS) },
                 onSearch = openSearch,
+                onOpenProcessing = openProcessing,
                 onImport = { navController.navigate(Routes.IMPORT) },
                 onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
                 onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) },

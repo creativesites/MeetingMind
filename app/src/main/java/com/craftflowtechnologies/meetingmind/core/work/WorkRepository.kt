@@ -85,8 +85,13 @@ class WorkRepository(private val database: MeetMindDatabase) {
     /** Work recordings with findings nobody has reviewed yet (Home and Work → To review). */
     fun observeToReview(): Flow<List<MeetingRow>> = work.observeUnreviewed().map { list ->
         withContext(Dispatchers.IO) {
-            list.filter { isWork(it.recordingType) || it.recordingType == "GENERAL" }.filter { hasFindings(it.id) }.map { it.row() }
+            list.filter { isWork(it.recordingType) || it.recordingType == "GENERAL" || it.recordingType == "CUSTOM" }.filter { hasFindings(it.id) }.map { it.row() }
         }
+    }
+
+    /** Recordings whose processing failed (see [WorkDao.observeFailed]). Shown under Needs you, with Open. */
+    fun observeFailed(): Flow<List<MeetingRow>> = work.observeFailed().map { list ->
+        withContext(Dispatchers.IO) { list.map { it.row() } }
     }
 
     fun observeRecentWork(limit: Int = 12): Flow<List<MeetingRow>> = work.observeByTypes(WorkTypeNames, limit).map { l -> l.map { it.row() } }

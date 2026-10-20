@@ -97,7 +97,7 @@ Updated: 2026-10-20. Designated branch: `claude/meetingmind-localization`. Head:
 - Circles section on Home shows its label but no content. Circles v2 code is on the branch; the Home section needs checking.
 - Bible study and Faith home: the redesigns are merged but the founder reports they are only partly there. Not yet traced screen by screen.
 - Read to Me is wired into the Bible reader (top-bar listen icon, "Listen here" on a selection, the study flow, the verse sheet). The founder cannot see it on device. Cause not confirmed. Check the entry point on device first.
-- Work home has a large gap. Not started.
+- Work UX: audit and design artifact done, **awaiting founder approval**. Report: `docs/mvp/WORK_UX_AUDIT.md` (15 ranked findings, 7 decisions D1–D7). Artifact: https://claude.ai/artifact/H9dnBur8ZzwowA25eWeUzV. Redesign of Today, Tasks and Projects implemented on `work-ux-redesign` (sunset header, quick actions, card rows); Notes unchanged. Not compiled or run: no Android SDK in this sandbox. Still open: the Work page back arrow (W-01), failed-recording recovery (W-04), and the Work home.
 - The sun or moon sits over the headline in the Today quote card. It is the card's own illustration, not the companion. Not started.
 
 ## Circles (team report)

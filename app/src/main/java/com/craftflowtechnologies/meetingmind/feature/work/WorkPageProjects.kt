@@ -3,14 +3,17 @@ package com.craftflowtechnologies.meetingmind.feature.work
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Lock
@@ -31,7 +34,10 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
-/** The Projects segment: each project with its counts. Tap opens the project hub. */
+/**
+ * The Projects segment: where each project stands, at a glance. A card per project with its status, and three
+ * figures (notes, open tasks, last activity). Tapping opens the project page.
+ */
 @Composable
 internal fun ProjectsContent(
     projects: List<ProjectCard>,
@@ -46,7 +52,7 @@ internal fun ProjectsContent(
     LazyColumn(
         modifier.testTag("work_projects_list"), state = listState,
         contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, top = MM.space.s, bottom = MM.space.xxl),
-        verticalArrangement = Arrangement.spacedBy(MM.space.s)
+        verticalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
         if (projects.isEmpty()) {
             item(key = "empty") {
@@ -58,33 +64,44 @@ internal fun ProjectsContent(
             }
         } else {
             item(key = "header") { SectionHeader(projectsWord, count = projects.size) }
-            items(projects, key = { it.notebook.id }) { p -> ProjectRow(p, now, onClick = { onOpen(p) }) }
+            items(projects, key = { it.notebook.id }) { p -> ProjectCardRow(p, now, onClick = { onOpen(p) }) }
             item(key = "new") { SecondaryButton("New ${projectWord.lowercase()}", onNew, Modifier.fillMaxWidth(), leadingIcon = Icons.Rounded.Add) }
         }
     }
 }
 
 @Composable
-private fun ProjectRow(p: ProjectCard, now: Long, onClick: () -> Unit) {
-    val counts = listOfNotNull(
-        "${p.notes} ${if (p.notes == 1) "note" else "notes"}",
-        "${p.openTasks} open ${if (p.openTasks == 1) "task" else "tasks"}".takeIf { p.openTasks > 0 },
-        p.lastActivity?.let { "active ${dayLabel(it, now).lowercase()}" }
-    ).joinToString(" · ")
-    val summary = listOfNotNull(p.notebook.name, p.org, p.notebook.status, counts).joinToString(", ")
+private fun ProjectCardRow(p: ProjectCard, now: Long, onClick: () -> Unit) {
+    val last = p.lastActivity?.let { dayLabel(it, now) } ?: "None yet"
+    val summary = listOfNotNull(p.notebook.name, p.org, p.notebook.status, "${p.notes} notes", "${p.openTasks} open tasks", "last activity $last").joinToString(", ")
     MMCard(Modifier.semantics(mergeDescendants = true) { contentDescription = summary }, onClick = onClick) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(MM.space.m).background(projectColor(p), MM.radius.pill))
-            Text(
-                p.notebook.name, style = MM.type.heading, color = MM.colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(horizontal = MM.space.m)
-            )
-            if (p.notebook.confidential) Icon(Icons.Rounded.Lock, "Confidential", Modifier.size(MMSize.iconSmall), tint = MM.colors.inkMuted)
+        Row(verticalAlignment = Alignment.Top) {
+            Box(Modifier.width(MMSize.marker).fillMaxHeight().background(projectColor(p), MM.radius.pill))
+            Column(Modifier.weight(1f).padding(start = MM.space.m)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        p.notebook.name, style = MM.type.heading, color = MM.colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (p.notebook.confidential) Icon(Icons.Rounded.Lock, "Confidential", Modifier.size(MMSize.iconSmall), tint = MM.colors.inkMuted)
+                }
+                listOfNotNull(p.org, p.notebook.status.takeIf { it.isNotBlank() }).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
+                    Text(it, style = MM.type.secondary, color = MM.colors.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = MM.space.xs))
+                }
+                Row(Modifier.fillMaxWidth().padding(top = MM.space.m), horizontalArrangement = Arrangement.spacedBy(MM.space.l)) {
+                    ProjectFigure(p.notes.toString(), if (p.notes == 1) "note" else "notes")
+                    ProjectFigure(p.openTasks.toString(), if (p.openTasks == 1) "open task" else "open tasks")
+                    ProjectFigure(last, "last activity")
+                }
+            }
         }
-        Text(
-            listOfNotNull(p.org, p.notebook.status).joinToString(" · ").ifEmpty { " " }, style = MM.type.secondary, color = MM.colors.inkSecondary,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = MM.space.xs)
-        )
-        Text(counts, style = MM.type.caption, color = MM.colors.inkMuted, modifier = Modifier.padding(top = MM.space.xs))
+    }
+}
+
+@Composable
+private fun ProjectFigure(value: String, label: String) {
+    Column {
+        Text(value, style = MM.type.bodyStrong, color = MM.colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, style = MM.type.caption, color = MM.colors.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
