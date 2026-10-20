@@ -74,4 +74,21 @@ class FallbackTransportTest {
         assertEquals(AiResult.Success("hello"), FallbackTransport(gemini, deepSeek).execute(GeminiRequest("m", "", "hi")))
         assertEquals(0, gemini.calls)
     }
+
+    @Test fun `when both fail permanently, the combined failure is not offered a retry`() = runBlocking {
+        val gemini = FakeGemini(AiResult.Failed("Your Gemini API key was rejected.", retryable = false))
+        server.enqueue(MockResponse().setResponseCode(401).setBody(JSONObject().put("error", JSONObject().put("message", "bad key")).toString()))
+        val r = FallbackTransport(gemini, deepSeek).execute(GeminiRequest("m", "", "hi"))
+        assertTrue(r is AiResult.Failed)
+        assertTrue((r as AiResult.Failed).message.contains("Gemini"))
+        assertTrue(!r.retryable)
+    }
+
+    @Test fun `when Gemini fails permanently but DeepSeek's own failure is transient, a retry could still help`() = runBlocking {
+        val gemini = FakeGemini(AiResult.Failed("Your Gemini API key was rejected.", retryable = false))
+        server.enqueue(MockResponse().setResponseCode(500))
+        val r = FallbackTransport(gemini, deepSeek).execute(GeminiRequest("m", "", "hi"))
+        assertTrue(r is AiResult.Failed)
+        assertTrue((r as AiResult.Failed).retryable)
+    }
 }

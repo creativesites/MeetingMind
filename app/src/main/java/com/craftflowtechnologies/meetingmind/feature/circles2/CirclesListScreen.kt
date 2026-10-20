@@ -165,7 +165,6 @@ fun CirclesListContent(
             "Circles", Modifier.padding(horizontal = MM.space.s),
             leading = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.inkSecondary) } },
             actions = {
-                if (com.craftflowtechnologies.meetingmind.BuildConfig.DEBUG) TextAction("Debug", onDiagnostics)
                 if (canAct) {
                     Surface(
                         shape = RoundedCornerShape(999.dp),

@@ -5,7 +5,7 @@ import { hmacHex } from "./crypto.js";
 import { parseServiceAccount } from "./google.js";
 import { pushToUsers } from "./fcm.js";
 import { hit, check, record } from "./ratelimit.js";
-import { createUploadTicket, sendMessage, deleteMedia, checkPostAttachments, checkCover } from "./media.js";
+import { createUploadTicket, sendMessage, deleteMedia, checkPostAttachments, checkCover, avatarField, removeAvatar } from "./media.js";
 import {
   LIMITS, RATE, REACTIONS, POST_TYPES, TEMPLATES, validId, cleanText, cleanVerseRef, normalizeSettings,
   generateCode, extractCodes, CHAT, shapePoll, shapeCelebration, clampInvite, joinDecision, canInvite, isAdmin, canModerate, shapePost, publishFromPending, assertNoAuthorLeak,
@@ -92,7 +92,7 @@ async function createCircle(ctx) {
     if (n >= LIMITS.circlesPerUser) throw new ApiError(409, "too_many_circles", "You're in the maximum of 10 circles. Leave one to create another.");
     return [
       w.create(C(id), { name: nm, template, vocab, description, settings, ownerUid: ctx.uid, memberCount: 1, orgId: null, closed: false, createdAt: ctx.now }),
-      w.create(`${C(id)}/members/${ctx.uid}`, { role: "owner", displayName, joinedAt: ctx.now, muted: false }),
+      w.create(`${C(id)}/members/${ctx.uid}`, { role: "owner", displayName, joinedAt: ctx.now, muted: false, ...avatarField(meta) }),
       userMetaWrite(ctx.uid, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), id] }),
       w.create(idempotencyPath, { circleId: id, createdAt: ctx.now }),
     ];
@@ -190,7 +190,7 @@ async function join(ctx) {
         return [w.create(requestPath, { displayName, createdAt: ctx.now, inviteCode: code })];
       }
       return [
-        w.create(`${C(invite.circleId)}/members/${ctx.uid}`, { role: "member", displayName, joinedAt: ctx.now, muted: false }),
+        w.create(`${C(invite.circleId)}/members/${ctx.uid}`, { role: "member", displayName, joinedAt: ctx.now, muted: false, ...avatarField(meta) }),
         w.update(C(invite.circleId), { memberCount: circle.memberCount + 1 }),
         w.update(`invites/${code}`, {}, { inc: { uses: 1 } }),
         userMetaWrite(ctx.uid, { circleCount: (meta?.data.circleCount || 0) + 1, circleIds: [...(meta?.data.circleIds || []), invite.circleId] }),
@@ -228,7 +228,7 @@ async function decideJoin(ctx) {
     const code = request.data.inviteCode;
     const inviteDoc = code ? await tx.get(`invites/${code}`) : null;
     const writes = [
-      w.create(`${C(circleId)}/members/${targetUid}`, { role: "member", displayName: request.data.displayName, joinedAt: ctx.now, muted: false }),
+      w.create(`${C(circleId)}/members/${targetUid}`, { role: "member", displayName: request.data.displayName, joinedAt: ctx.now, muted: false, ...avatarField(meta) }),
       w.update(C(circleId), { memberCount: circle.memberCount + 1 }),
       w.del(requestPath),
       userMetaWrite(targetUid, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), circleId] }),
@@ -723,6 +723,6 @@ export const HANDLERS = {
   prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken,
   createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,
   decideJoin, setTitle, pinPost, pinMessage, createEvent, updateEvent, cancelEvent, rsvp,
-  createUploadTicket, sendMessage, deleteMedia,
+  createUploadTicket, sendMessage, deleteMedia, removeAvatar,
 };
 export { POST_TYPES };
