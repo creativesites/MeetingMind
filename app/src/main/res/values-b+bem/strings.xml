@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Navigation -->
+    <string name="nav_today">Lelo</string>
+    <string name="nav_notes">Notes</string>
+    <string name="nav_circles">Circles</string>
+    <string name="nav_faith">Icitetekelo</string>
+    <string name="nav_work">Incito</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Common Actions & Feedback -->
+    <string name="action_save">Sungeni</string>
+    <string name="action_cancel">Kanseni</string>
+    <string name="action_done">Capwa</string>
+    <string name="action_delete">Fumyenipo</string>
+    <string name="action_edit">Aluleni</string>
+    <string name="action_back">Bwelelamo</string>
+    <string name="action_close">Isaleni</string>
+    <string name="action_share">Akaneni</string>
+    <string name="action_copy">Kopololeni</string>
+    <string name="action_retry">Esheshaponse</string>
+    <string name="action_search">Fwayeni</string>
+    <string name="action_confirm">Shininkisheni</string>
+    <string name="action_apply">Bikeni pa ncito</string>
+    <string name="action_remove">Fumyeni</string>
+    <string name="action_dismiss">Lekenipo</string>
+    <string name="state_loading">Kuleteeka…</string>
+    <string name="state_empty">Tapali ifili pano pali ino nshita</string>
+    <string name="state_error">Kwali icilubene panono</string>
+
+    <!-- Language Selection (Settings) -->
+    <string name="settings_language_title">Ululimi</string>
+    <string name="settings_language_description">Saleni ululimi lwakubomfya muli MeetingMind. Amashiwi ya kurekoda ne Baibolo fyakwata ifilankhulo fya fiko fyeka.</string>
+    <string name="settings_language_follow_system">Koonkeni ululimi lwa foni</string>
+    <string name="settings_language_follow_system_summary">Default (kulingana na settings sha foni)</string>
+    <string name="settings_language_all_header">INDIMI SHONSE</string>
+    <string name="settings_language_asr_notice">Ululimi lwa ma menu lwaba ulwapusana no lulimi lwa kurekodelapo amashiwi.</string>
+
+    <!-- Recording & Transcription -->
+    <string name="recording_button_record">Record</string>
+    <string name="recording_button_pause">Pause</string>
+    <string name="recording_button_resume">Konkanyeni</string>
+    <string name="recording_button_finish">Capwa</string>
+    <string name="recording_button_discard">Pooseni</string>
+    <string name="recording_status_recording">Kurekoda…</string>
+    <string name="recording_status_paused">Paiminine panono</string>
+    <string name="recording_status_processing">Kuteleka kuli audio…</string>
+    <string name="recording_ready_title">Note yenu naipwa</string>
+    <string name="recording_empty_prompt">Tineni Record pa kuti mutampe ukusunga ifyebo, amano, nelyo amashiko.</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_headline">Amatontonkanyo yenu yalicindama ukuyebukisha.</string>
+    <string name="onboarding_body">Aluleni ukulanshanya, amano ne fyo musambilila ukuba amano ayo mwingabwelelako inshita iili yonse.</string>
+    <string name="onboarding_pill_private">Private kuli imwe mweka</string>
+    <string name="onboarding_pill_offline">Option yakubomfya ukwabula internet</string>
+    <string name="onboarding_pill_ai">Ma notes ya AI</string>
+    <string name="onboarding_button_get_started">Tampeni</string>
+    <string name="onboarding_button_continue">Konkanyenipo</string>
+    <string name="onboarding_button_skip">Cilukenipo</string>
+    <string name="onboarding_button_explore_sample">Moneni ica kumwenako</string>
+    <string name="onboarding_button_record_now">Rekodeni nombaline</string>
+    <string name="onboarding_button_make_it_mine">Ibe yandi</string>
+    <string name="onboarding_button_skip_for_now">Cilukenipo pali ino nshita</string>
+    <string name="onboarding_button_start_using">Tampeni ukubomfya MeetingMind</string>
+    <string name="onboarding_button_start_recording">Tampeni ukurekoda</string>
+    <string name="onboarding_language_selector_hint">Ululimi lwa app</string>
+
+    <!-- Notes & Search -->
+    <string name="notes_screen_title">Notes</string>
+    <string name="notes_search_hint">Fwayeni ma notes, ma transcript, na ma tag…</string>
+    <string name="notes_empty_state_title">Takuli ma notes pali ino nshita</string>
+    <string name="notes_filter_all">Shonse</string>
+    <string name="notes_filter_meetings">Meetings</string>
+    <string name="notes_filter_sermons">Amashiko</string>
+    <string name="notes_filter_ideas">Amano</string>
+    <string name="notes_tab_summary">Summary</string>
+    <string name="notes_tab_transcript">Transcript</string>
+    <string name="notes_tab_actions">Ifyakucita</string>
+    <string name="notes_menu_export">Export</string>
+    <string name="notes_menu_archive">Archive</string>
+
+    <!-- Faith & Devotional -->
+    <string name="faith_screen_title">Icitetekelo</string>
+    <string name="faith_tab_today">Lelo</string>
+    <string name="faith_tab_plans">Amapulani</string>
+    <string name="faith_tab_prayer">Ipepo</string>
+    <string name="faith_tab_bible">Baibolo</string>
+    <string name="faith_daily_devotional_title">Ukupepa kwa cila bushiku</string>
+    <string name="faith_verse_of_day_title">Ilembo lya lelo</string>
+    <string name="faith_prayer_list_title">Umutande wa mapepo</string>
+    <string name="faith_add_prayer_prompt">Bikenipo ipepo</string>
+    <string name="faith_evening_reflection_title">Ukutontonkanya kwa cungulo</string>
+
+    <!-- Circles -->
+    <string name="circles_screen_title">Circles</string>
+    <string name="circles_tab_feed">Feed</string>
+    <string name="circles_tab_chat">Chat</string>
+    <string name="circles_tab_members">Amalwele</string>
+    <string name="circles_action_new_circle">Circle Ipya</string>
+    <string name="circles_action_share_story">Akaneni muli Circle</string>
+    <string name="circles_action_comment">Comment</string>
+    <string name="circles_action_like">Like</string>
+
+    <!-- Work & Tasks -->
+    <string name="work_screen_title">Incito</string>
+    <string name="work_tab_tasks">Tasks</string>
+    <string name="work_tab_projects">Projects</string>
+    <string name="work_tab_review">Weekly review</string>
+    <string name="work_action_new_task">Task ipya</string>
+    <string name="work_filter_due_today">Ifilekabilwa lelo</string>
+
+    <!-- Offline Models & Storage -->
+    <string name="models_screen_title">AI na ma model ya offline</string>
+    <string name="models_asr_whisper_title">Kwiluka amashiwi (Whisper)</string>
+    <string name="models_action_download">Download</string>
+    <string name="models_status_downloading">Kutentula…</string>
+    <string name="models_status_ready">Yalitentuka kabili naiteyanya</string>
+    <string name="models_setting_wifi_only">Download pali Wi-Fi yeka</string>
+    <string name="models_storage_used_label">Storage yabomfiwa</string>
+
+    <!-- Subscription & Billing / Paywall -->
+    <string name="paywall_screen_title">Isuleni MeetingMind Yonse</string>
+    <string name="paywall_tagline">Saleni plan iilelingana ne ncito yenu na mapepo yenu.</string>
+    <string name="paywall_action_restore">Bwelekesheni ifyashitilwe</string>
+    <string name="paywall_action_upgrade">Kushisheni plan</string>
+    <string name="paywall_tier_annual">Pamu mwaka</string>
+    <string name="paywall_tier_monthly">Pamu mweshi</string>
+</resources>

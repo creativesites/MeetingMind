@@ -138,4 +138,18 @@ class UserPreferencesManagerTest {
         assertEquals("es", multiPrefs.translationTargetLanguage)
         assertTrue(multiPrefs.autoDetectLanguage)
     }
+
+    @Test
+    fun `app language preference field round-trips correctly`() = runBlocking {
+        val manager = UserPreferencesManager(ApplicationProvider.getApplicationContext())
+        assertNull(AppPreferencesState().appLanguage)
+
+        manager.setAppLanguage("sw")
+        val prefs = manager.preferencesFlow.first()
+        assertEquals("sw", prefs.appLanguage)
+
+        manager.setAppLanguage(null)
+        val resetPrefs = manager.preferencesFlow.first()
+        assertNull(resetPrefs.appLanguage)
+    }
 }

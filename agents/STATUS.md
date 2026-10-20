@@ -1,6 +1,22 @@
 # Status
 
-Updated: 2026-10-19. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git log -1`.
+Updated: 2026-10-20. Designated branch: `claude/meetingmind-localization`. Head: see `git log -1`.
+
+## App Localization (i18n & l10n) (2026-10-20)
+- **9 Languages Supported**: English (`en` source & fallback), French (`fr`), Spanish (`es`), Portuguese (`pt`), Swahili (`sw`), Nyanja/Chichewa (`ny`), Shona (`sn`), Zulu (`zu`), and Bemba (`b+bem` via AAPT2 BCP-47 qualifier).
+- **Architectural Decoupling**: Interface language is strictly independent of speech recognition (ASR) language, AI prompt response language, and transcript translation language.
+- **Natural Phrasing**: African Bantu languages (Shona, Bemba, Nyanja, Zulu) adopt modern spoken code-switching conventions ("Englishified" where there is no direct or meaningful native translation, e.g., Settings, Account, Audio, AI, Wi-Fi).
+- **Core i18n Foundation**:
+  - `AppLocaleManager`: Handles runtime per-app locale switching on Android 13+ (API 33+ `LocaleManager`) and backward-compatible context wrapping (`Configuration` update and JVM `Locale.setDefault()`) on API 24–32.
+  - `locales_config.xml` & `AndroidManifest.xml`: Wired `android:localeConfig="@xml/locales_config"` for system-level per-app language settings.
+  - `UserPreferences`: Persists `appLanguage` in DataStore preferences with fallback to system default.
+- **UI & Navigation Integration**:
+  - `LanguageSelectionScreen`: Accessible from `Settings → Appearance → Language`, displaying native and English language names, system language option, and check indicators.
+  - `SettingsRegistry`: Added `SettingId.LANGUAGE` in `SettingsGroup.APPEARANCE` (keeping primary row count <= 4).
+  - `OnboardingScreen`: Added language choice pill on Welcome step with `OnboardingLanguageDialog` allowing interface language selection before completing onboarding.
+  - `BottomNavigation`: Localized all primary tab destinations (Home/Today, Notes, Work, Search, Settings).
+- **Unit Tests Verified**: `AppLanguageTest` (4/4 pass), `LocaleResourcesIntegrityTest` (3/3 pass across all 8 localized resource directories), `SettingsRegistryTest` (8/8 pass), and `UserPreferencesManagerTest` (pass).
+- **Not verified on device**: Native Android 13+ per-app language picker sync from Android OS Settings vs in-app switcher.
 
 ## Recording & processing reliability (2026-10-19)
 - **52% hang fixed**: a recording with no words skipped speaker separation (it ran over silence and parked the bar at 52%) and finishes COMPLETED with "No speech was detected". Covered by `NoSpeechRecordingTest`.

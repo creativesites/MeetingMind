@@ -52,6 +52,7 @@ object Routes {
     const val PRAYER_LIST = "prayer_list"
     const val TASKS = "tasks"
     const val APPEARANCE = "appearance"
+    const val LANGUAGE = "language"
     const val PRAY = "pray?mode={mode}"
     const val SETUP = "setup"
     // Work (docs/PLAN_PROFESSIONAL.md §6–7).

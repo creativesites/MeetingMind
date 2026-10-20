@@ -47,6 +47,7 @@ data class AppPreferencesState(
     val summaryLanguage: String = com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
     val translationTargetLanguage: String = com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
     val autoDetectLanguage: Boolean = false,
+    val appLanguage: String? = null,
     val appearance: com.craftflowtechnologies.meetingmind.ui.theme.Appearance = com.craftflowtechnologies.meetingmind.ui.theme.Appearance(),
     /** Display-only: hides "uh"/"um"-style hesitation noise in the transcript. The verbatim ASR
      * text is always what's stored, so toggling this back off restores it exactly, with no
@@ -145,6 +146,7 @@ class UserPreferencesManager(private val context: Context) {
     private val SUMMARY_LANGUAGE = stringPreferencesKey("summary_language")
     private val TRANSLATION_TARGET_LANGUAGE = stringPreferencesKey("translation_target_language")
     private val AUTO_DETECT_LANGUAGE = booleanPreferencesKey("auto_detect_language")
+    private val APP_LANGUAGE = stringPreferencesKey("app_language")
     private val SELECTED_ASR_MODEL = stringPreferencesKey("selected_asr_model")
     private val SELECTED_LLM_MODEL = stringPreferencesKey("selected_llm_model")
     private val BATTERY_SAVER = booleanPreferencesKey("battery_saver")
@@ -269,6 +271,7 @@ class UserPreferencesManager(private val context: Context) {
             summaryLanguage = prefs[SUMMARY_LANGUAGE] ?: com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
             translationTargetLanguage = prefs[TRANSLATION_TARGET_LANGUAGE] ?: com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
             autoDetectLanguage = prefs[AUTO_DETECT_LANGUAGE] ?: false,
+            appLanguage = prefs[APP_LANGUAGE],
             appearance = com.craftflowtechnologies.meetingmind.ui.theme.Appearance.decode(prefs[APPEARANCE], existingInstall = prefs[ONBOARDING_COMPLETED] == true),
             cleanFillerWords = prefs[CLEAN_FILLER_WORDS] ?: true,
             // A stored value from a future/renamed enum constant falls back to the current default
@@ -511,5 +514,12 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setHomeHeroDisplayMode(mode: HomeHeroDisplayMode) {
         context.dataStore.edit { it[HOME_HERO_DISPLAY_MODE] = mode.name }
+    }
+
+    suspend fun setAppLanguage(tag: String?) {
+        context.dataStore.edit {
+            val trimmed = tag?.trim()
+            if (trimmed.isNullOrEmpty()) it.remove(APP_LANGUAGE) else it[APP_LANGUAGE] = trimmed
+        }
     }
 }

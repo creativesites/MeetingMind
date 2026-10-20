@@ -39,4 +39,131 @@
     <string name="app_lock_setup_dismiss">Not now</string>
     <string name="app_lock_change_locked_out">Too many attempts. Wait a moment and try again. App Lock was not changed.</string>
     <string name="app_lock_change_error">We couldn\'t verify it\'s you, so App Lock was not changed.</string>
+
+    <!-- Navigation -->
+    <string name="nav_today">Today</string>
+    <string name="nav_notes">Notes</string>
+    <string name="nav_circles">Circles</string>
+    <string name="nav_faith">Faith</string>
+    <string name="nav_work">Work</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Common Actions & Feedback -->
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_done">Done</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_back">Back</string>
+    <string name="action_close">Close</string>
+    <string name="action_share">Share</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_search">Search</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_apply">Apply</string>
+    <string name="action_remove">Remove</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="state_loading">Loading…</string>
+    <string name="state_empty">Nothing here yet</string>
+    <string name="state_error">Something went wrong</string>
+
+    <!-- Language Selection (Settings) -->
+    <string name="settings_language_title">Language</string>
+    <string name="settings_language_description">Choose the language used throughout MeetingMind. Speech transcription and Bible translations can be set separately.</string>
+    <string name="settings_language_follow_system">Follow system language</string>
+    <string name="settings_language_follow_system_summary">Default (based on phone settings)</string>
+    <string name="settings_language_all_header">ALL LANGUAGES</string>
+    <string name="settings_language_asr_notice">MeetingMind interface language is separate from speech recording language.</string>
+
+    <!-- Recording & Transcription -->
+    <string name="recording_button_record">Record</string>
+    <string name="recording_button_pause">Pause</string>
+    <string name="recording_button_resume">Resume</string>
+    <string name="recording_button_finish">Done</string>
+    <string name="recording_button_discard">Discard</string>
+    <string name="recording_status_recording">Recording…</string>
+    <string name="recording_status_paused">Paused</string>
+    <string name="recording_status_processing">Processing audio…</string>
+    <string name="recording_ready_title">Your note is ready</string>
+    <string name="recording_empty_prompt">Tap Record to start capturing conversations, thoughts, or sermons.</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_headline">Your thoughts deserve to be remembered.</string>
+    <string name="onboarding_body">Turn conversations, ideas and lessons into knowledge you can return to.</string>
+    <string name="onboarding_pill_private">Private by choice</string>
+    <string name="onboarding_pill_offline">Offline option</string>
+    <string name="onboarding_pill_ai">AI notes</string>
+    <string name="onboarding_button_get_started">Get started</string>
+    <string name="onboarding_button_continue">Continue</string>
+    <string name="onboarding_button_skip">Skip</string>
+    <string name="onboarding_button_explore_sample">Explore a sample</string>
+    <string name="onboarding_button_record_now">Record something now</string>
+    <string name="onboarding_button_make_it_mine">Make it mine</string>
+    <string name="onboarding_button_skip_for_now">Skip for now</string>
+    <string name="onboarding_button_start_using">Start using MeetingMind</string>
+    <string name="onboarding_button_start_recording">Start recording</string>
+    <string name="onboarding_language_selector_hint">Interface language</string>
+
+    <!-- Notes & Search -->
+    <string name="notes_screen_title">Notes</string>
+    <string name="notes_search_hint">Search notes, transcripts, and tags…</string>
+    <string name="notes_empty_state_title">No notes yet</string>
+    <string name="notes_filter_all">All</string>
+    <string name="notes_filter_meetings">Meetings</string>
+    <string name="notes_filter_sermons">Sermons</string>
+    <string name="notes_filter_ideas">Ideas</string>
+    <string name="notes_tab_summary">Summary</string>
+    <string name="notes_tab_transcript">Transcript</string>
+    <string name="notes_tab_actions">Action items</string>
+    <string name="notes_menu_export">Export</string>
+    <string name="notes_menu_archive">Archive</string>
+
+    <!-- Faith & Devotional -->
+    <string name="faith_screen_title">Faith</string>
+    <string name="faith_tab_today">Today</string>
+    <string name="faith_tab_plans">Plans</string>
+    <string name="faith_tab_prayer">Prayer</string>
+    <string name="faith_tab_bible">Bible</string>
+    <string name="faith_daily_devotional_title">Daily devotional</string>
+    <string name="faith_verse_of_day_title">Verse of the day</string>
+    <string name="faith_prayer_list_title">Prayer list</string>
+    <string name="faith_add_prayer_prompt">Add prayer request</string>
+    <string name="faith_evening_reflection_title">Evening reflection</string>
+
+    <!-- Circles -->
+    <string name="circles_screen_title">Circles</string>
+    <string name="circles_tab_feed">Feed</string>
+    <string name="circles_tab_chat">Chat</string>
+    <string name="circles_tab_members">Members</string>
+    <string name="circles_action_new_circle">New Circle</string>
+    <string name="circles_action_share_story">Share to Circle</string>
+    <string name="circles_action_comment">Comment</string>
+    <string name="circles_action_like">Like</string>
+
+    <!-- Work & Tasks -->
+    <string name="work_screen_title">Work</string>
+    <string name="work_tab_tasks">Tasks</string>
+    <string name="work_tab_projects">Projects</string>
+    <string name="work_tab_review">Weekly review</string>
+    <string name="work_action_new_task">New task</string>
+    <string name="work_filter_due_today">Due today</string>
+
+    <!-- Offline Models & Storage -->
+    <string name="models_screen_title">AI &amp; offline models</string>
+    <string name="models_asr_whisper_title">Speech recognition (Whisper)</string>
+    <string name="models_action_download">Download</string>
+    <string name="models_status_downloading">Downloading…</string>
+    <string name="models_status_ready">Downloaded &amp; ready</string>
+    <string name="models_setting_wifi_only">Download on Wi-Fi only</string>
+    <string name="models_storage_used_label">Storage used</string>
+
+    <!-- Subscription & Billing / Paywall -->
+    <string name="paywall_screen_title">Unlock MeetingMind</string>
+    <string name="paywall_tagline">Choose the plan that fits how you work and pray.</string>
+    <string name="paywall_action_restore">Restore purchase</string>
+    <string name="paywall_action_upgrade">Upgrade plan</string>
+    <string name="paywall_tier_annual">Annual</string>
+    <string name="paywall_tier_monthly">Monthly</string>
 </resources>
+

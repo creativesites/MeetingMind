@@ -101,11 +101,16 @@ import com.craftflowtechnologies.meetingmind.core.model.DeviceCapabilities
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
 import com.craftflowtechnologies.meetingmind.core.setup.SetupGuide
 import com.craftflowtechnologies.meetingmind.core.setup.SetupPart
+import com.craftflowtechnologies.meetingmind.core.i18n.AppLanguage
+import com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager
 import com.craftflowtechnologies.meetingmind.ui.theme.Brand
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** How the person wants the app's AI to run, chosen on the setup step. */
@@ -120,6 +125,17 @@ class OnboardingViewModel(
     constructor(application: Application) : this(application, CompanionSettingsStore(application))
 
     private val prefs = UserPreferencesManager(application)
+
+    val appLanguage: StateFlow<String?> = prefs.preferencesFlow
+        .map { it.appLanguage }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun setAppLanguage(tag: String?) {
+        viewModelScope.launch {
+            AppLocaleManager.applyLocale(getApplication(), tag)
+            prefs.setAppLanguage(tag)
+        }
+    }
 
     /** Who keeps the person company (Z-15). Zuri is pre-selected; null is "No companion". Saved on Continue. */
     private val _companion = MutableStateFlow<CompanionForm?>(CompanionForm.ZURI)
@@ -422,7 +438,47 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
             .background(Brush.radialGradient(listOf(Brand.Cyan.copy(alpha = 0.14f), Color.Transparent)), CircleShape))
 
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-            if (step != OnboardingStep.WELCOME) {
+            if (step == OnboardingStep.WELCOME) {
+                var showLanguagePicker by rememberSaveable { mutableStateOf(false) }
+                val currentLanguageTag by viewModel.appLanguage.collectAsState()
+                val activeLang = AppLanguage.fromTag(currentLanguageTag)
+                val displayLabel = activeLang?.nativeName ?: stringResource(R.string.settings_language_follow_system)
+
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.White.copy(alpha = 0.12f))
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(50))
+                            .clickable { showLanguagePicker = true }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "🌐 $displayLabel ▾",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                if (showLanguagePicker) {
+                    OnboardingLanguageDialog(
+                        currentTag = currentLanguageTag,
+                        onSelect = { tag ->
+                            viewModel.setAppLanguage(tag)
+                            showLanguagePicker = false
+                        },
+                        onDismiss = { showLanguagePicker = false }
+                    )
+                }
+            } else {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     repeat((steps.size - 1).coerceAtLeast(1)) { i ->
                         Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp))
@@ -469,25 +525,25 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
             }
             if (step == OnboardingStep.WELCOME) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    GradientButton("Explore a sample", "onboarding_next_btn", Modifier.fillMaxWidth()) { forward = true; viewModel.startSample() }
+                    GradientButton(stringResource(R.string.onboarding_button_explore_sample), "onboarding_next_btn", Modifier.fillMaxWidth()) { forward = true; viewModel.startSample() }
                     Text(
-                        "Record something now", color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        stringResource(R.string.onboarding_button_record_now), color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).clickable { forward = true; viewModel.startRecordNow() }.padding(horizontal = 16.dp, vertical = 12.dp).testTag("onboarding_record_now_btn")
                     )
                 }
             } else {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Back", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { back() }.padding(vertical = 12.dp, horizontal = 4.dp).testTag("onboarding_back_btn"))
+                    Text(stringResource(R.string.action_back), color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { back() }.padding(vertical = 12.dp, horizontal = 4.dp).testTag("onboarding_back_btn"))
                     Spacer(Modifier.weight(1f))
                     val last = index >= steps.lastIndex
                     GradientButton(
                         when {
-                            step == OnboardingStep.SAMPLE -> "Make it mine"
-                            step == OnboardingStep.BIBLE -> if (bible == null) "Skip for now" else "Download and continue"
-                            step == OnboardingStep.PLAN -> if (readingTouched) "Continue" else "Skip for now"
-                            last && route == EntryRoute.RECORD -> "Start recording"
-                            last -> "Start using MeetingMind"
-                            else -> "Continue"
+                            step == OnboardingStep.SAMPLE -> stringResource(R.string.onboarding_button_make_it_mine)
+                            step == OnboardingStep.BIBLE -> if (bible == null) stringResource(R.string.onboarding_button_skip_for_now) else "Download and continue"
+                            step == OnboardingStep.PLAN -> if (readingTouched) stringResource(R.string.onboarding_button_continue) else stringResource(R.string.onboarding_button_skip_for_now)
+                            last && route == EntryRoute.RECORD -> stringResource(R.string.onboarding_button_start_recording)
+                            last -> stringResource(R.string.onboarding_button_start_using)
+                            else -> stringResource(R.string.onboarding_button_continue)
                         },
                         "onboarding_next_btn"
                     ) { next() }
@@ -575,9 +631,9 @@ private fun Welcome() {
             com.craftflowtechnologies.meetingmind.core.ui.AppIconTile(size = 104.dp)
         }
         Text("MeetingMind", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 4.dp))
-        Text("Your thoughts deserve to be remembered.", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 32.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
+        Text(stringResource(R.string.onboarding_headline), color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 32.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
         Text(
-            "Turn conversations, ideas and lessons into knowledge you can return to.",
+            stringResource(R.string.onboarding_body),
             color = Color.White.copy(alpha = 0.72f), fontSize = 15.sp, lineHeight = 21.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp)
         )
         // Wraps to a second line on narrow screens instead of squeezing a pill into a column of letters.
@@ -586,9 +642,131 @@ private fun Welcome() {
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Pill(Icons.Filled.Lock, "Private by choice", "welcome_pill_private")
-            Pill(Icons.Filled.PhoneAndroid, "Offline option", "welcome_pill_offline")
-            Pill(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, "AI notes", "welcome_pill_ai")
+            Pill(Icons.Filled.Lock, stringResource(R.string.onboarding_pill_private), "welcome_pill_private")
+            Pill(Icons.Filled.PhoneAndroid, stringResource(R.string.onboarding_pill_offline), "welcome_pill_offline")
+            Pill(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, stringResource(R.string.onboarding_pill_ai), "welcome_pill_ai")
+        }
+    }
+}
+
+@Composable
+private fun OnboardingLanguageDialog(
+    currentTag: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(SurfaceBase)
+                .padding(20.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.settings_language_title),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = com.craftflowtechnologies.meetingmind.ui.theme.Ink
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.settings_language_asr_notice),
+                fontSize = 12.5.sp,
+                color = com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary,
+                lineHeight = 17.sp
+            )
+            Spacer(Modifier.height(14.dp))
+
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // System default option
+                val isDefault = currentTag.isNullOrBlank()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isDefault) com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised else Color.Transparent)
+                        .clickable { onSelect(null) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_language_follow_system),
+                            fontSize = 15.sp,
+                            fontWeight = if (isDefault) FontWeight.SemiBold else FontWeight.Normal,
+                            color = com.craftflowtechnologies.meetingmind.ui.theme.Ink
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_language_follow_system_summary),
+                            fontSize = 12.sp,
+                            color = com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
+                        )
+                    }
+                    if (isDefault) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                AppLanguage.SUPPORTED.forEach { lang ->
+                    val isSelected = !isDefault && currentTag.equals(lang.tag, ignoreCase = true)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised else Color.Transparent)
+                            .clickable { onSelect(lang.tag) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = lang.nativeName,
+                                fontSize = 15.sp,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = com.craftflowtechnologies.meetingmind.ui.theme.Ink
+                            )
+                            Text(
+                                text = lang.englishName,
+                                fontSize = 12.sp,
+                                color = com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
+                            )
+                        }
+                        if (isSelected) {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                androidx.compose.material3.TextButton(onClick = onDismiss) {
+                    Text(
+                        stringResource(R.string.action_done),
+                        color = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
         }
     }
 }
