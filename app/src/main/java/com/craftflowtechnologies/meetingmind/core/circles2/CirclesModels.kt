@@ -103,7 +103,8 @@ data class Circle(
 
 /** [title] is a display label such as "Pastor". It never changes what the person may do; [role] does. */
 @Immutable
-data class Member(val uid: String, val displayName: String, val role: Role, val muted: Boolean = false, val joinedAt: Long = 0L, val title: String? = null, val lastReadAt: Long = 0L)
+/** [avatarVersion] is null when the person has no profile photo. The photo itself is fetched by uid and version. */
+data class Member(val uid: String, val displayName: String, val role: Role, val muted: Boolean = false, val joinedAt: Long = 0L, val title: String? = null, val lastReadAt: Long = 0L, val avatarVersion: Long? = null)
 
 @Immutable
 data class PostCounts(val prayed: Int = 0, val comments: Int = 0, val updates: Int = 0, val reactions: Map<ReactionKind, Int> = emptyMap())

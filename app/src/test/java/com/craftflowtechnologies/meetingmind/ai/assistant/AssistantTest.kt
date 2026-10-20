@@ -93,7 +93,18 @@ class AssistantTest {
         }
         val r = AssistantEngine(failing, Host(AssistantScope("x", false, "Note", noteId = "n"))).reply(emptyList(), "hi")
         assertTrue(r.error)
+        assertTrue(r.retryable)
         assertTrue(r.text.contains("Network down"))
+    }
+
+    @Test fun permanentFailureIsNotOfferedARetry() = runBlocking {
+        val rejectedKey = object : GeminiTransport {
+            override suspend fun execute(request: GeminiRequest): AiResult<String> = AiResult.Failed("Your Gemini API key was rejected.", retryable = false)
+            override fun isConfigured() = true
+        }
+        val r = AssistantEngine(rejectedKey, Host(AssistantScope("x", false, "Note", noteId = "n"))).reply(emptyList(), "hi")
+        assertTrue(r.error)
+        assertFalse(r.retryable)
     }
 
     // ---- organise keeps what was generated before

@@ -111,6 +111,17 @@ class CirclesRepository(
         return CirclesResult.Ok(MediaAttachment(path, mime, bytes.size.toLong(), durationMs, name?.take(120)))
     }
 
+    /** My profile photo, as a JPEG the caller has already made square and small (see avatarJpeg). */
+    suspend fun setProfilePhoto(jpeg: ByteArray): CirclesResult<Long> {
+        if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
+        return api.uploadAvatar(jpeg, "image/jpeg")
+    }
+
+    suspend fun removeProfilePhoto(): CirclesResult<Unit> {
+        if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
+        return api.removeAvatar()
+    }
+
     suspend fun join(pasted: String, displayName: String): CirclesResult<JoinOutcome> {
         if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
         val code = InviteCodes.extract(pasted)

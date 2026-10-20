@@ -21,6 +21,7 @@ class CompanionPresenceTest {
             CompanionPage.EMPTY to Triple(true, false, false),
             CompanionPage.MILESTONE to Triple(true, true, false),
             CompanionPage.READ_ALOUD to Triple(true, false, false),
+            CompanionPage.ASK to Triple(true, true, false),
             CompanionPage.ONBOARDING to Triple(true, true, true),
             CompanionPage.QUICK_SHEET to Triple(true, true, true),
             CompanionPage.COMPANION_SETTINGS to Triple(true, true, true)

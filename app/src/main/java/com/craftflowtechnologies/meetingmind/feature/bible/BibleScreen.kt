@@ -487,7 +487,7 @@ private fun paragraphText(verses: List<ChapterVerse>, selection: IntRange?, high
 }
 
 @Composable
-private fun SelectionBar(
+internal fun SelectionBar(
     reference: ScriptureReference,
     insertLabel: String,
     insertIcon: androidx.compose.ui.graphics.vector.ImageVector,

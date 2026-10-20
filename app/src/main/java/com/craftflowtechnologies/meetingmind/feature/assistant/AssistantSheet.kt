@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -65,6 +66,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.ai.assistant.AssistantAction
 import com.craftflowtechnologies.meetingmind.ai.assistant.AssistantMessage
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
+import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.displayName
+import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings
 import com.craftflowtechnologies.meetingmind.ui.icons.AiMark
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
@@ -74,6 +80,9 @@ import com.craftflowtechnologies.meetingmind.ui.theme.InkFaint
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.LineSoft
+import com.craftflowtechnologies.meetingmind.ui.theme.LocalMMColors
+import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMAccent
 import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
 import com.craftflowtechnologies.meetingmind.ui.theme.Success
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
@@ -101,11 +110,28 @@ fun AssistantSheet(session: AssistantSession, onOpenNote: (String) -> Unit, onOp
     ) {
         Column(Modifier.fillMaxHeight().imePadding().navigationBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(34.dp).clip(CircleShape).background(AccentWash), contentAlignment = Alignment.Center) {
-                    Icon(AiMark, null, tint = Accent, modifier = Modifier.size(19.dp))
+                val companionSettings by rememberCompanionSettings()
+                val lastReply = messages.lastOrNull { !it.fromUser }
+                val companionState = when {
+                    working != null -> CompanionState.THINKING
+                    lastReply?.error == true -> CompanionState.WORRIED
+                    else -> CompanionState.IDLE
+                }
+                val form = companionSettings.form
+                if (form != null) {
+                    // Faith wears the space's warm gold rim (ZURI_EXPERIENCE §2.6); Notes keeps the
+                    // user's own accent. Scoped to just the avatar so nothing else in the sheet shifts hue.
+                    val avatarColors = if (scope?.faith == true) MMAccent.Gold.on(MM.colors) else MM.colors
+                    CompositionLocalProvider(LocalMMColors provides avatarColors) {
+                        ZuriSlot(page = CompanionPage.ASK, size = 34.dp, state = companionState)
+                    }
+                } else {
+                    Box(Modifier.size(34.dp).clip(CircleShape).background(AccentWash), contentAlignment = Alignment.Center) {
+                        Icon(AiMark, null, tint = Accent, modifier = Modifier.size(19.dp))
+                    }
                 }
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Assistant", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                    Text(form?.let { companionSettings.displayName(it) } ?: "Assistant", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                     Text(
                         scope?.let { "${it.kindLabel} · ${it.title}" } ?: "", fontSize = 12.sp, color = InkMuted,
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -138,7 +164,7 @@ fun AssistantSheet(session: AssistantSession, onOpenNote: (String) -> Unit, onOp
                 }
                 items(messages.size) { i ->
                     val m = messages[i]
-                    if (m.fromUser) UserBubble(m.text) else AssistantBubble(m, session, onOpenNote, onOpenTasks, onRetry = if (m.error && i == messages.lastIndex) session::retry else null)
+                    if (m.fromUser) UserBubble(m.text) else AssistantBubble(m, session, onOpenNote, onOpenTasks, onRetry = if (m.error && m.retryable && i == messages.lastIndex) session::retry else null)
                 }
                 item("working") { if (working != null) Working(working!!) else Spacer(Modifier.height(1.dp)) }
             }
