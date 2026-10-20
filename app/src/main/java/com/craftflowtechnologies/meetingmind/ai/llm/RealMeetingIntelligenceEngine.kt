@@ -70,7 +70,7 @@ class RealMeetingIntelligenceEngine(
 
         for (chunk in chunks) {
             val validSegmentIds = chunk.segments.map { it.id }.toSet()
-            val prompt = buildExtractionPrompt(chunk.segments, focusGuidance, profile, recordingType)
+            val prompt = buildExtractionPrompt(chunk.segments, focusGuidance, profile, recordingType, transcript.language)
             val result = languageModel.generate(prompt, maxOutputTokens = EXTRACTION_OUTPUT_TOKENS)
             val rawText = (result as? AiResult.Success)?.value ?: continue
             anyChunkSucceeded = true
@@ -113,7 +113,7 @@ class RealMeetingIntelligenceEngine(
         // items, so the evidence block came back empty and the model — having never been shown
         // what was actually said — could only produce "nothing specific was discussed" about a
         // recording with perfectly good content in it.
-        val synthesisPrompt = buildSynthesisPrompt(transcript.segments, chunkSummaries, decisions, actionItems, focusGuidance, profile)
+        val synthesisPrompt = buildSynthesisPrompt(transcript.segments, chunkSummaries, decisions, actionItems, focusGuidance, profile, transcript.language)
         val synthesis = when (val result = languageModel.generate(synthesisPrompt, maxOutputTokens = SYNTHESIS_OUTPUT_TOKENS)) {
             is AiResult.Success -> MeetingIntelligenceJsonParser.parseSynthesis(result.value, meetingTitle)
             else -> SynthesisResult(meetingTitle, "", emptyList())
@@ -186,9 +186,18 @@ class RealMeetingIntelligenceEngine(
      * actually given is far more reliable than one asked to selectively ignore part of it). See
      * [MeetingIntelligenceGroundingTest] for the parsing side of this contract.
      */
-    private fun buildExtractionPrompt(segments: List<TranscriptSegment>, focusGuidance: String, profile: IntelligenceProfile, recordingType: RecordingType = RecordingType.GENERAL): String {
+    private fun buildExtractionPrompt(
+        segments: List<TranscriptSegment>,
+        focusGuidance: String,
+        profile: IntelligenceProfile,
+        recordingType: RecordingType = RecordingType.GENERAL,
+        language: String = "en"
+    ): String {
         val transcriptText = renderSegments(segments, includeIds = true)
         val focusLine = if (focusGuidance.isNotBlank()) "\n            $focusGuidance\n" else ""
+        val codeSwitchingGuidance = if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(language)) {
+            "\n            Language & code-switching note: Conversational speech in Zambia, Zimbabwe, and the region routinely code-switches with English loanwords for technical, business, and modern terms. Preserve English loanwords cleanly as spoken (e.g. 'meeting', 'budget', 'deadline', 'system') rather than forcing archaic translations.\n"
+        } else ""
 
         val schemaFields = mutableListOf("\"briefSummary\":string")
         if (profile.extractDecisions) schemaFields += "\"decisions\":[{\"text\":string,\"type\":\"DECISION\"|\"SUGGESTION\"|\"DISCUSSION\"|\"POSSIBILITY\",\"sourceSegmentIds\":[string]}]"
@@ -227,7 +236,7 @@ class RealMeetingIntelligenceEngine(
 
         return """
             You are analyzing a real transcript excerpt. Extract ONLY information explicitly supported by the transcript below. Never invent names, dates, deadlines, decisions, or commitments that are not actually stated.
-            $focusLine
+            $focusLine$codeSwitchingGuidance
             "briefSummary" is REQUIRED and must always be filled in: 2-3 plain sentences saying what this excerpt is actually about, in the speaker's own subject matter. Write it even when nothing was decided and nothing was assigned — a personal note, a passing idea, or a casual chat still has real content to describe. Never write that nothing was discussed.
             $listsGuidance$decisionGuidance$sourceIdGuidance$signalGuidance
             Respond with ONLY a single JSON object, no markdown, no commentary, matching exactly this shape:
@@ -262,7 +271,8 @@ class RealMeetingIntelligenceEngine(
         decisions: List<com.craftflowtechnologies.meetingmind.core.model.Decision>,
         actionItems: List<com.craftflowtechnologies.meetingmind.core.model.ActionItem>,
         focusGuidance: String,
-        profile: IntelligenceProfile
+        profile: IntelligenceProfile,
+        language: String = "en"
     ): String {
         val evidence = buildString {
             if (chunkSummaries.isNotEmpty()) {
@@ -281,9 +291,12 @@ class RealMeetingIntelligenceEngine(
         }
         val transcriptExcerpt = renderTranscriptWithinBudget(allSegments, evidence.length)
         val focusLine = if (focusGuidance.isNotBlank()) "\n            $focusGuidance\n" else ""
+        val loanwordGuidance = if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(language)) {
+            "\n            Preserve English loanwords cleanly where appropriate for conversational Southern African speech.\n"
+        } else ""
         return """
             Write a concise, specific title and summary of the recording below. Use ONLY what the transcript and evidence actually contain — never your own general knowledge, and never invented facts.
-            $focusLine
+            $focusLine$loanwordGuidance
             The summary must describe what was actually said, in its real subject matter. A recording with no decisions and no assigned tasks is still summarizable — a quick note, an idea, or a casual conversation all have real content. Never respond that nothing specific was discussed, and never pad with filler like "the meeting was productive". If the recording is short, a single accurate sentence is the right answer.
 
             The title must be under 10 words, describe what this recording was actually about, and contain no surrounding quotes. Do not use a generic title like "Team Meeting" or "Meeting Summary" unless nothing more specific is supported — a caller-provided fallback title is used automatically when this isn't possible, so an unhelpful generic title here is worse than a short, honest one.

@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -99,7 +100,8 @@ class UserPreferencesManagerTest {
 
     @Test
     fun `selectedLanguage defaults to English and switches ASR model when an African language is set`() = runBlocking {
-        val manager = UserPreferencesManager(ApplicationProvider.getApplicationContext())
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val manager = UserPreferencesManager(context)
         assertEquals("en", AppPreferencesState().selectedLanguage)
 
         manager.setSelectedLanguage("sna")
@@ -118,5 +120,22 @@ class UserPreferencesManagerTest {
         val nyaPrefs = manager.preferencesFlow.first()
         assertEquals("nya", nyaPrefs.selectedLanguage)
         assertEquals(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.omnilingualAsr1bInt8.id, nyaPrefs.selectedAsrModelId)
+
+        // Whisper preferred language auto-selects Whisper Turbo
+        manager.setSelectedLanguage("ja")
+        val jaPrefs = manager.preferencesFlow.first()
+        assertEquals("ja", jaPrefs.selectedLanguage)
+        assertEquals(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.whisperTurboInt8.id, jaPrefs.selectedAsrModelId)
+
+        // Multilingual response, summary, translation, and auto-detect settings
+        manager.setAiResponseLanguage("fr")
+        manager.setSummaryLanguage("de")
+        manager.setTranslationTargetLanguage("es")
+        manager.setAutoDetectLanguage(true)
+        val multiPrefs = manager.preferencesFlow.first()
+        assertEquals("fr", multiPrefs.aiResponseLanguage)
+        assertEquals("de", multiPrefs.summaryLanguage)
+        assertEquals("es", multiPrefs.translationTargetLanguage)
+        assertTrue(multiPrefs.autoDetectLanguage)
     }
 }

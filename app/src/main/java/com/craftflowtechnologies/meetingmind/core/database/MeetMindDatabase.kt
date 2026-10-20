@@ -56,13 +56,15 @@ import androidx.room.migration.Migration
         ReviewScheduleEntity::class,
         CreateCardEntity::class,
         RecordingMarkerEntity::class,
-        LegacyNoteMarkEntity::class
+        LegacyNoteMarkEntity::class,
+        TranscriptTranslationEntity::class
     ],
     version = MeetMindDatabase.VERSION,
     exportSchema = true
 )
 abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun meetingDao(): MeetingDao
+    abstract fun transcriptTranslationDao(): TranscriptTranslationDao
     abstract fun workDao(): WorkDao
     abstract fun itemDao(): ItemDao
     abstract fun signalDao(): SignalDao
@@ -599,8 +601,37 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "UPDATE meetings SET recordingOrder = (SELECT COUNT(*) FROM meetings AS earlier WHERE earlier.noteId = meetings.noteId AND (earlier.createdAt < meetings.createdAt OR (earlier.createdAt = meetings.createdAt AND earlier.id < meetings.id))) WHERE noteId IS NOT NULL"
         )
 
+        /**
+         * Schema 27: Non-destructive transcript translation (Phase P3).
+         * Adds `transcript_translations` table to store translated title, summary, and segment text
+         * without mutating or replacing original verbatim transcript data.
+         */
+        val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_26_27_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_26_27_SQL: List<String> = listOf(
+            """CREATE TABLE IF NOT EXISTS `transcript_translations` (
+                `id` TEXT NOT NULL,
+                `meetingId` TEXT NOT NULL,
+                `sourceLanguage` TEXT NOT NULL,
+                `targetLanguage` TEXT NOT NULL,
+                `translationEngine` TEXT NOT NULL,
+                `translatedTitle` TEXT,
+                `translatedSummary` TEXT,
+                `translatedSegmentsJson` TEXT NOT NULL DEFAULT '[]',
+                `createdAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS `index_transcript_translations_meetingId` ON `transcript_translations` (`meetingId`)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_transcript_translations_meetingId_targetLanguage` ON `transcript_translations` (`meetingId`, `targetLanguage`)"
+        )
+
         /** Every step from schema 1 to [VERSION]; the app and the migration tests open the database with the same list. */
-        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26)
+        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27)
 
         internal val MIGRATION_21_22_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `learning_sessions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `meetingId` TEXT, `title` TEXT NOT NULL, `courseName` TEXT, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `lastStudiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
@@ -764,7 +795,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 26
+        const val VERSION = 27
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {

@@ -379,3 +379,36 @@ data class VocabularyEntity(
     val frequency: Int,
     val lastConfirmedAt: Long
 )
+
+/**
+ * Non-destructive translation of a meeting's transcript, title, and summary (Phase P3).
+ *
+ * Stored as a separate entity alongside the verbatim transcript:
+ * the original spoken transcript in [TranscriptSegmentEntity] is never mutated or replaced.
+ */
+@Entity(
+    tableName = "transcript_translations",
+    foreignKeys = [
+        ForeignKey(
+            entity = MeetingEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["meetingId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["meetingId"]),
+        Index(value = ["meetingId", "targetLanguage"], unique = true)
+    ]
+)
+data class TranscriptTranslationEntity(
+    @PrimaryKey val id: String,
+    val meetingId: String,
+    val sourceLanguage: String,
+    val targetLanguage: String,
+    val translationEngine: String,
+    val translatedTitle: String? = null,
+    val translatedSummary: String? = null,
+    val translatedSegmentsJson: String = "[]",
+    val createdAt: Long = System.currentTimeMillis()
+)

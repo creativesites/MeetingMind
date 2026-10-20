@@ -308,3 +308,24 @@ interface VocabularyDao {
     @Query("DELETE FROM vocabulary WHERE id = :id")
     suspend fun deleteById(id: String)
 }
+
+@Dao
+interface TranscriptTranslationDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrReplace(translation: TranscriptTranslationEntity)
+
+    @Query("SELECT * FROM transcript_translations WHERE meetingId = :meetingId AND targetLanguage = :targetLanguage LIMIT 1")
+    suspend fun getTranslation(meetingId: String, targetLanguage: String): TranscriptTranslationEntity?
+
+    @Query("SELECT * FROM transcript_translations WHERE meetingId = :meetingId ORDER BY createdAt DESC")
+    suspend fun getTranslationsForMeeting(meetingId: String): List<TranscriptTranslationEntity>
+
+    @Query("SELECT * FROM transcript_translations WHERE meetingId = :meetingId ORDER BY createdAt DESC")
+    fun observeTranslationsForMeeting(meetingId: String): Flow<List<TranscriptTranslationEntity>>
+
+    @Query("DELETE FROM transcript_translations WHERE meetingId = :meetingId AND targetLanguage = :targetLanguage")
+    suspend fun deleteTranslation(meetingId: String, targetLanguage: String)
+
+    @Query("DELETE FROM transcript_translations WHERE meetingId = :meetingId")
+    suspend fun deleteForMeeting(meetingId: String)
+}

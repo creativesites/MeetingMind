@@ -72,6 +72,12 @@ object ProcessingScheduler {
             } else {
                 com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.defaultModelIdForLanguage(meeting.language)
             }
+        } else if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isWhisperPreferredLanguage(meeting.language)) {
+            if (prefs.selectedAsrModelId == ModelCatalog.whisperLargeV3Int8.id || prefs.selectedAsrModelId == ModelCatalog.whisperTurboInt8.id) {
+                prefs.selectedAsrModelId
+            } else {
+                com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.defaultModelIdForLanguage(meeting.language)
+            }
         } else {
             prefs.selectedAsrModelId
         }
@@ -81,6 +87,7 @@ object ProcessingScheduler {
             MeetingProcessingWorker.KEY_AUDIO_PATH to path,
             MeetingProcessingWorker.KEY_DURATION_MS to duration,
             MeetingProcessingWorker.KEY_MODEL_ID to asrModelId,
+            MeetingProcessingWorker.KEY_LANGUAGE to meeting.language,
             // Resolved (not raw) so a model the user selected and later deleted falls back to one
             // they still have, instead of failing with "no model installed".
             MeetingProcessingWorker.KEY_LLM_MODEL_ID to com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmModelResolver.resolve(

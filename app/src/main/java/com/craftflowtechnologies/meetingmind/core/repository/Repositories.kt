@@ -890,7 +890,8 @@ class ModelRepository(
     // (Silero VAD, Parakeet TDT). Pass UnconfiguredModelDownloader() explicitly for any future
     // catalog entry that has no production source yet.
     private val modelDownloader: ModelDownloader = OkHttpModelDownloader(),
-    private val modelVerifier: ModelVerifier = Sha256ModelVerifier()
+    private val modelVerifier: ModelVerifier = Sha256ModelVerifier(),
+    private val userPreferencesManager: com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager? = null
 ) {
     private val aiModelDao = database.aiModelDao()
 
@@ -1021,12 +1022,26 @@ class ModelRepository(
         AiResult.Success(Unit)
     }
 
-    suspend fun deleteModel(modelId: String) = withContext(Dispatchers.IO) {
+    suspend fun deleteModel(modelId: String): AiResult<Unit> = withContext(Dispatchers.IO) {
+        val unfinished = database.processingJobDao().getUnfinishedJobs()
+        if (unfinished.isNotEmpty()) {
+            return@withContext AiResult.Failed("Cannot delete model while background processing is active.")
+        }
+        userPreferencesManager?.let { prefsMgr ->
+            val prefs = prefsMgr.preferencesFlow.first()
+            if (prefs.selectedAsrModelId == modelId) {
+                prefsMgr.setSelectedAsrModel(ModelCatalog.parakeetTdtV3Int8.id)
+            }
+            if (prefs.selectedLlmModelId == modelId) {
+                prefsMgr.setSelectedLlmModel(ModelCatalog.qwen25_1_5bInstruct.id)
+            }
+        }
         modelStorage.delete(modelId)
         val existing = aiModelDao.getModelById(modelId)
         if (existing != null) {
             aiModelDao.updateModel(existing.copy(isInstalled = false, isDownloading = false, downloadProgress = 0f))
         }
+        AiResult.Success(Unit)
     }
 
     private fun AiModelEntity.toDomain(): AiModelInfo = AiModelInfo(

@@ -461,10 +461,13 @@ private fun RecordingTypePickerScreen(
             Column(Modifier.padding(horizontal = MM.space.l), verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
                 Text("Spoken language", style = MM.type.heading, color = c.ink)
                 Text(
-                    text = if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(selectedLanguage)) {
-                        "${com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.displayName(selectedLanguage)} · Uses African & Multilingual pack"
-                    } else {
-                        "Language used for offline transcription"
+                    text = when {
+                        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(selectedLanguage) ->
+                            "${com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.displayName(selectedLanguage)} · Uses African & Multilingual pack"
+                        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isWhisperPreferredLanguage(selectedLanguage) ->
+                            "${com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.displayName(selectedLanguage)} · Uses Whisper Multilingual pack"
+                        else ->
+                            "${com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.displayName(selectedLanguage)} · Uses English & European pack"
                     },
                     style = MM.type.caption,
                     color = c.inkMuted

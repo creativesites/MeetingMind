@@ -39,6 +39,31 @@ Updated: 2026-10-19. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git lo
   - User preference preservation in `ProcessingScheduler.kt` and `UserPreferences.kt` ensuring selected 1B model is preserved across African language switches.
   - Verified with comprehensive unit test suites in `SherpaWhisperSpeechRecognizerTest.kt`, `ModelCatalogTest.kt`, and `UserPreferencesManagerTest.kt`.
 
+## Multilingual Speech & AI (MeetingMind Voice Intelligence)
+- Technical audit and design complete: `docs/MULTILINGUAL_SPEECH_AND_AI_AUDIT_DESIGN.md` (principles, model inventory, Southern African Englishification, benchmark matrix, multi-engine routing, room migration 27, and commercial licensing gate).
+- Phase P1 (Pipeline Wiring & Language Parameter Propagation):
+  - `SpeechRecognizer.kt`: Extended `SupportedLanguages` with Tier A international languages (Spanish, French, Portuguese, German, Italian, Dutch, Japanese, Korean, Mandarin, Hindi, Arabic) and Tier C. Added `isWhisperPreferredLanguage(code)` and capability routing in `defaultModelIdForLanguage(code)`.
+  - `SherpaWhisperSpeechRecognizer.kt`: Dynamically passes `whisperLanguage` into `OfflineWhisperModelConfig` and caches `recognizer` by `"$modelId:$whisperLanguage"`.
+  - `MeetingProcessingPipeline.kt`: Added `language: String? = null` parameter to `processMeeting`, resolved `effectiveLanguage`, passed `language = effectiveLanguage` to `TranscriptionOptions` across hybrid and offline local ASR paths, and set `Transcript(..., language = effectiveLanguage)`.
+  - `MeetingProcessingWorker.kt`: Added `KEY_LANGUAGE = "language"` in companion object, extracted and passed to `pipeline.processMeeting`.
+  - `ProcessingScheduler.kt`: Added Whisper model auto-routing for Whisper-preferred languages, passed `MeetingProcessingWorker.KEY_LANGUAGE to meeting.language`.
+- Phase P2 (Multilingual AI Behavior & Southern African Englishification):
+  - `GeminiIntelligenceEngine.kt`: Injected spoken language and Southern African Englishification & code-switching directives to `buildExtractionPrompt`.
+  - `RealMeetingIntelligenceEngine.kt`: Updated `buildExtractionPrompt` and `buildSynthesisPrompt` to accept `language` and inject English loanword preservation guidance. Passed `transcript.language` from `processMeeting`.
+  - `UserPreferences.kt`: Added `aiResponseLanguage`, `summaryLanguage`, `translationTargetLanguage`, and `autoDetectLanguage` to `AppPreferencesState` and `preferencesFlow`, with setters and intelligent Whisper model switching.
+  - `RecordingContextPicker.kt`: Added Tier A international languages to `LanguagePickerRow`.
+  - `RecordingScreen.kt`: Updated spoken language subtitle to reflect active pack (`African & Multilingual pack`, `Whisper Multilingual pack`, `English & European pack`).
+- Phase P3 (Non-Destructive Transcript Translation & Room Schema 27):
+  - `Entities.kt`: Added `TranscriptTranslationEntity` (table `transcript_translations` with `id`, `meetingId` FK cascade, `sourceLanguage`, `targetLanguage`, `translationEngine`, `translatedTitle`, `translatedSummary`, `translatedSegmentsJson`, `createdAt`). Original verbatim transcripts are preserved intact.
+  - `Daos.kt`: Added `TranscriptTranslationDao` with `insertOrReplace`, `getTranslation`, `getTranslationsForMeeting`, `observeTranslationsForMeeting`, `deleteTranslation`, `deleteForMeeting`.
+  - `MeetMindDatabase.kt`: Registered `TranscriptTranslationEntity`, added `transcriptTranslationDao()`, added `MIGRATION_26_27` and `MIGRATION_26_27_SQL`, bumped `VERSION = 27`.
+  - `TranslationEngine.kt`: Created interface and data models (`TranslatedTranscript`, `TranslatedSegment`) in `app/src/main/java/com/craftflowtechnologies/meetingmind/ai/translation/`.
+  - `GeminiTranslationEngine.kt`: Created cloud translation engine enforcing `isConfigured()` check, structured JSON schema response, and regional Englishification loanword directives.
+- Phase P4 (Model Management Hardening):
+  - `Repositories.kt`: Hardened `ModelRepository.deleteModel(modelId)` to block deletion during background processing and reset active model preferences to defaults if deleted.
+  - `ModelManagerScreen.kt`: Connected user preferences and deletion error messages.
+- Unit test verification:
+  - `GeminiTranslationEngineTest`, `ModelRepositoryTest`, `Migration26To27Test`, `SupportedLanguagesTest`, `UserPreferencesManagerTest` (all green).
 
 ## Where we are (what the founder sees on device, latest report)
 - Notes page crashed on open. Fixed on the branch in `5f120cf` (hero layout dropped a child when the latest-meeting bubble was empty). Unit tests pass. Not yet seen on device.

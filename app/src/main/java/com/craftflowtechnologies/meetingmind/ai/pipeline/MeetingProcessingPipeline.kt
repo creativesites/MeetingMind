@@ -148,6 +148,7 @@ class MeetingProcessingPipeline(
         audioFile: File,
         totalDurationMs: Long,
         modelId: String = ModelCatalog.parakeetTdtV3Int8.id,
+        language: String? = null,
         expectedSpeakerCount: Int? = null,
         // Null (the default, and what every existing constructor-injected-fake test uses) keeps
         // the intelligenceEngine this pipeline was constructed with. A real caller that knows the
@@ -204,6 +205,7 @@ class MeetingProcessingPipeline(
 
         val existingMeeting = meetingDao.getMeetingById(meetingId)
             ?: throw IllegalArgumentException("Meeting $meetingId not found")
+        val effectiveLanguage = language ?: existingMeeting.language ?: "en"
 
         // If the app/process was killed mid-run (e.g. by the OS while backgrounded), WorkManager
         // restarts this same worker from scratch — it has no way to resume partway through. Every
@@ -307,7 +309,7 @@ class MeetingProcessingPipeline(
                             recognizerFor(modelId).transcribe(
                                 audioFile = audioFile, totalDurationMs = totalDurationMs, meetingId = meetingId,
                                 speechRegions = restricted,
-                                options = TranscriptionOptions(modelId = modelId, vocabularyHints = vocabularyHints, onWindowDone = onRegion),
+                                options = TranscriptionOptions(modelId = modelId, language = effectiveLanguage, vocabularyHints = vocabularyHints, onWindowDone = onRegion),
                                 onProgress = { prog, status -> onProg(prog, status); emit(status, ProcessingProgress.asr(prog.toFloat()), ProcessingStage.TRANSCRIBING) }
                             )
                         }
@@ -391,7 +393,7 @@ class MeetingProcessingPipeline(
                     totalDurationMs = totalDurationMs,
                     meetingId = meetingId,
                     speechRegions = speechRegions,
-                    options = TranscriptionOptions(modelId = modelId, vocabularyHints = vocabularyHints),
+                    options = TranscriptionOptions(modelId = modelId, language = effectiveLanguage, vocabularyHints = vocabularyHints),
                     onProgress = { prog, status ->
                         emit(status, ProcessingProgress.asr(prog.toFloat()), ProcessingStage.TRANSCRIBING)
                     }
@@ -627,7 +629,7 @@ class MeetingProcessingPipeline(
             val transcriptDomain = Transcript(
                 meetingId = meetingId,
                 segments = diarizedSegments,
-                language = "en",
+                language = effectiveLanguage,
                 createdAt = existingMeeting.createdAt
             )
 

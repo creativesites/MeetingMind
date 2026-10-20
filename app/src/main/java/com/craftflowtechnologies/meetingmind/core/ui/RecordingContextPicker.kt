@@ -161,6 +161,17 @@ fun LanguagePickerRow(
 ) {
     val languages = listOf(
         com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH to "English",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.SPANISH to "Spanish",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.FRENCH to "French",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.PORTUGUESE to "Portuguese",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.GERMAN to "German",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ITALIAN to "Italian",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.DUTCH to "Dutch",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.JAPANESE to "Japanese",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.KOREAN to "Korean",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.MANDARIN to "Mandarin",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.HINDI to "Hindi",
+        com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ARABIC to "Arabic",
         com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.SHONA to "Shona",
         com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.NORTH_NDEBELE to "Ndebele",
         com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.BEMBA to "Bemba",

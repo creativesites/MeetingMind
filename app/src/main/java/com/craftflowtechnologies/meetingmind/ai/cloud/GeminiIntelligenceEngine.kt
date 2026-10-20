@@ -164,6 +164,12 @@ class GeminiIntelligenceEngine(
         appendLine("Recording title: $meetingTitle")
         val focus = customContext?.takeIf { it.isNotBlank() } ?: recordingType.focusGuidance()
         if (focus.isNotBlank()) appendLine("Focus: $focus")
+        if (transcript.language.isNotBlank()) {
+            appendLine("Spoken language: ${transcript.language}")
+            if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isAfricanLanguage(transcript.language)) {
+                appendLine("Language & code-switching note: Conversational speech in Zambia, Zimbabwe, and the region routinely code-switches with English loanwords for technical, business, and modern terms. Preserve English loanwords cleanly as spoken (e.g. 'meeting', 'budget', 'deadline', 'system') rather than forcing archaic translations.")
+            }
+        }
         com.craftflowtechnologies.meetingmind.core.work.SignalPrompts.section(recordingType).takeIf { it.isNotBlank() }?.let { appendLine(it) }
         appendLine()
         appendLine("Transcript. Each paragraph is prefixed with the id you must cite for it:")

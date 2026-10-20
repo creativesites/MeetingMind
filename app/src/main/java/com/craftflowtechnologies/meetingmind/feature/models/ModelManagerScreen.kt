@@ -91,8 +91,8 @@ import kotlinx.coroutines.launch
 
 class ModelManagerViewModel(application: Application) : AndroidViewModel(application) {
     private val database = MeetMindDatabase.getInstance(application)
-    private val modelRepository = ModelRepository(database, LocalModelStorage(application))
     private val userPrefs = UserPreferencesManager(application)
+    private val modelRepository = ModelRepository(database, LocalModelStorage(application), userPreferencesManager = userPrefs)
     val deviceCapabilities: DeviceCapabilities = DeviceCapabilityDetector.detect(application)
 
     val models: StateFlow<List<AiModelInfo>> = modelRepository.models.stateIn(
@@ -213,7 +213,10 @@ class ModelManagerViewModel(application: Application) : AndroidViewModel(applica
 
     fun deleteModel(modelId: String) {
         viewModelScope.launch {
-            modelRepository.deleteModel(modelId)
+            val result = modelRepository.deleteModel(modelId)
+            if (result is com.craftflowtechnologies.meetingmind.ai.common.AiResult.Failed) {
+                _statusMessage.value = result.message
+            }
         }
     }
 
