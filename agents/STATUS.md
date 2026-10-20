@@ -54,7 +54,7 @@ Updated: 2026-10-19. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git lo
 - Circles section on Home shows its label but no content. Circles v2 code is on the branch; the Home section needs checking.
 - Bible study and Faith home: the redesigns are merged but the founder reports they are only partly there. Not yet traced screen by screen.
 - Read to Me is wired into the Bible reader (top-bar listen icon, "Listen here" on a selection, the study flow, the verse sheet). The founder cannot see it on device. Cause not confirmed. Check the entry point on device first.
-- Work home has a large gap. Not started.
+- Work UX: audit and design artifact done, **awaiting founder approval**. Report: `docs/mvp/WORK_UX_AUDIT.md` (15 ranked findings, 7 decisions D1–D7). Artifact: https://claude.ai/artifact/H9dnBur8ZzwowA25eWeUzV. No production UI changed on branch `work-ux-redesign`. Not built or run on device (no Android SDK in this sandbox).
 - The sun or moon sits over the headline in the Today quote card. It is the card's own illustration, not the companion. Not started.
 
 ## Circles (team report)
