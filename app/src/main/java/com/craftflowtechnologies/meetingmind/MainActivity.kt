@@ -127,11 +127,13 @@ class MainActivity : FragmentActivity() {
                     navigationBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(transparent) else androidx.activity.SystemBarStyle.light(transparent, transparent)
                 )
             }
-            androidx.compose.runtime.LaunchedEffect(themePrefs?.appLanguage) {
-                val prefTag = themePrefs?.appLanguage
+            // themePrefs is null until DataStore emits; that is not the same as "follow system" (see shouldApplySavedLanguage).
+            val prefsLoaded = themePrefs != null
+            val savedLanguageTag = themePrefs?.appLanguage
+            androidx.compose.runtime.LaunchedEffect(prefsLoaded, savedLanguageTag) {
                 val activeTag = com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.getActiveLocaleTag(applicationContext)
-                if (!com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.areLocalesEquivalent(prefTag, activeTag)) {
-                    com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.applyLocale(applicationContext, prefTag)
+                if (com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.shouldApplySavedLanguage(prefsLoaded, savedLanguageTag, activeTag)) {
+                    com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.applyLocale(applicationContext, savedLanguageTag)
                 }
             }
             MeetMindTheme(darkTheme = dark, appearance = themePrefs?.appearance ?: com.craftflowtechnologies.meetingmind.ui.theme.Appearance(homeStyle = com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY)) {

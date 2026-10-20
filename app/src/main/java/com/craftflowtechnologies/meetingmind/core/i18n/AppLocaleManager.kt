@@ -38,6 +38,16 @@ object AppLocaleManager {
     }
 
     /**
+     * Whether the saved language preference should be applied to the running app.
+     *
+     * A null saved tag means "follow system", but it is also what the preference flow holds before
+     * DataStore has loaded. Until [prefsLoaded] is true the saved value is unknown, so nothing is
+     * applied. Otherwise a null would reset a language the person chose and loop activity recreation.
+     */
+    fun shouldApplySavedLanguage(prefsLoaded: Boolean, savedTag: String?, activeTag: String?): Boolean =
+        prefsLoaded && !areLocalesEquivalent(savedTag, activeTag)
+
+    /**
      * Applies the requested interface language tag (e.g. "fr", "sw", "bem", "sn").
      * Passing null or blank resets the app to the device system language.
      *

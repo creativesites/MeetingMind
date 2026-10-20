@@ -67,8 +67,9 @@ class LanguageSelectionViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectLanguage(tag: String?) {
         viewModelScope.launch {
-            AppLocaleManager.applyLocale(getApplication(), tag)
+            // Save first: applying can recreate the activity, which must then read the new value.
             prefs.setAppLanguage(tag)
+            AppLocaleManager.applyLocale(getApplication(), tag)
         }
     }
 }

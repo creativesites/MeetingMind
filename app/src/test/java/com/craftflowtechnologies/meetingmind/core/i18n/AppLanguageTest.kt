@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.core.i18n
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -65,6 +66,32 @@ class AppLanguageTest {
         org.junit.Assert.assertFalse(AppLocaleManager.areLocalesEquivalent("sn", "en"))
         org.junit.Assert.assertFalse(AppLocaleManager.areLocalesEquivalent("sn", null))
         org.junit.Assert.assertFalse(AppLocaleManager.areLocalesEquivalent(null, "sn"))
+    }
+
+    @Test
+    fun `saved language is not applied before preferences load`() {
+        // Before DataStore emits, the saved value is unknown (null), not "follow system".
+        // The old check (!areLocalesEquivalent(null, "fr")) returned true here and reset the app.
+        assertFalse(AppLocaleManager.shouldApplySavedLanguage(prefsLoaded = false, savedTag = null, activeTag = "fr"))
+        assertFalse(AppLocaleManager.shouldApplySavedLanguage(prefsLoaded = false, savedTag = "fr", activeTag = null))
+    }
+
+    @Test
+    fun `saved language is applied once loaded when it differs from the active one`() {
+        assertTrue(AppLocaleManager.shouldApplySavedLanguage(prefsLoaded = true, savedTag = "fr", activeTag = null))
+        assertTrue(AppLocaleManager.shouldApplySavedLanguage(prefsLoaded = true, savedTag = "sw", activeTag = "fr"))
+    }
+
+    @Test
+    fun `loaded system default resets a language the app still has active`() {
+        assertTrue(AppLocaleManager.shouldApplySavedLanguage(prefsLoaded = true, savedTag = null, activeTag = "fr"))
+    }
+
+    @Test
+    fun `no apply when the saved and active languages already match`() {
+        assertFalse(AppLocaleManager.shouldApplySavedLanguage(prefsLoaded = true, savedTag = "fr", activeTag = "fr"))
+        assertFalse(AppLocaleManager.shouldApplySavedLanguage(prefsLoaded = true, savedTag = "sn", activeTag = "sn-ZW"))
+        assertFalse(AppLocaleManager.shouldApplySavedLanguage(prefsLoaded = true, savedTag = null, activeTag = null))
     }
 
     @Test
