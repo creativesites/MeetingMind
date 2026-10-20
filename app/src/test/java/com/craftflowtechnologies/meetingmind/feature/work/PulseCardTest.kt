@@ -68,7 +68,7 @@ class PulseCardTest {
         show(PulseUi(coldStart = true), PulseActions(onRecord = { recorded++ }, onTemplates = { templates++ }))
         compose.onNodeWithText("Start with one conversation").assertIsDisplayed()
         compose.onNodeWithText("● Record a conversation").performClick()
-        compose.onNodeWithText("Use a template").performClick()
+        compose.onNodeWithText("Open Work").performClick()
         assertEquals(1 to 1, recorded to templates)
     }
 

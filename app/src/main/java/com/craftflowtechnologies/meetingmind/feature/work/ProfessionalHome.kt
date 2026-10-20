@@ -282,7 +282,7 @@ fun ProfessionalHome(
                     WorkCaptureRow(
                         onRecord = onRecord,
                         onNote = onNewNote,
-                        onTask = { onOpenAll(WorkTab.MINE) },
+                        onTask = { PendingWorkSegment.request.value = WorkSegment.TASKS; onOpenWork() },
                         onImport = onImport,
                         onWork = onOpenWork
                     )
@@ -401,7 +401,7 @@ fun ProfessionalHome(
             item {
                 Box(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)) {
                     WorkListCard(
-                        title = "My tasks",
+                        title = "Mine",
                         trailing = if (myTasks.isNotEmpty()) "All ${myTasks.size}" else null,
                         onTrailing = { onOpenAll(WorkTab.MINE) }, tag = "work_home_tasks", index = 5
                     ) {

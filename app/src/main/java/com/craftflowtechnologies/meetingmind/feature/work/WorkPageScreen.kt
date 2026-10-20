@@ -49,6 +49,7 @@ import com.craftflowtechnologies.meetingmind.feature.today.UpNextTile
 import com.craftflowtechnologies.meetingmind.feature.today.timeFormat
 import com.craftflowtechnologies.meetingmind.feature.today.timeLabel
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -78,6 +79,7 @@ fun WorkPageScreen(
     onOpenInbox: () -> Unit = {},
     onOpenWeeklyReview: () -> Unit = {},
     onOpenPerson: (String) -> Unit = {},
+    onOpenProcessing: (String) -> Unit = {},
     /** Set when Work is the bar's fourth slot: the page then carries the bar, with Work current. */
     onNavigateBottomNav: ((com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit)? = null
 ) {
@@ -89,6 +91,7 @@ fun WorkPageScreen(
     val settings by viewModel.settings.collectAsState()
     val myTasks by viewModel.myTasks.collectAsState()
     val toReview by viewModel.toReview.collectAsState()
+    val failed by viewModel.failed.collectAsState()
     val followUps by viewModel.followUps.collectAsState()
     val projects by viewModel.projects.collectAsState()
     val recentNotes by viewModel.workNotes.collectAsState()
@@ -128,6 +131,10 @@ fun WorkPageScreen(
     val pendingPrep by com.craftflowtechnologies.meetingmind.core.work.PendingPrepare.event.collectAsState()
     pendingPrep?.let { e -> PrepareSheet(PrepTarget.Event(e), viewModel, onOpenMeeting, onDismiss = { com.craftflowtechnologies.meetingmind.core.work.PendingPrepare.event.value = null }) }
 
+    // Another screen (the Work home's Task button) can ask for a segment; it is taken once and then cleared.
+    val requestedSegment by PendingWorkSegment.request.collectAsState()
+    LaunchedEffect(requestedSegment) { requestedSegment?.let { page.select(it); PendingWorkSegment.request.value = null } }
+
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { page.onResume(); today.tick() }
     // Pulse reads today's calendar to say what is still open from last time.
     LaunchedEffect(todayItems, now / 60_000) {
@@ -149,7 +156,7 @@ fun WorkPageScreen(
     // ---------------------------------------------------------------- today's figures
     val endOfToday = DueDates.startOfDay(now) + 86_400_000L
     val meetings = remember(todayItems) { todayItems.filter { it.kind == ItemKind.EVENT && !it.allDay && it.target is DeepTarget.Event } }
-    val needs = remember(myTasks, toReview, followUps, titles, now / 60_000) {
+    val needs = remember(myTasks, toReview, followUps, failed, titles, now / 60_000) {
         buildList {
             val due = myTasks.filter { it.dueAt != null && it.dueAt < endOfToday }.sortedBy { it.dueAt }
             val (late, soon) = due.partition { it.isOverdue(now) }
@@ -157,6 +164,7 @@ fun WorkPageScreen(
             late.forEach { add(task(it)) }
             toReview.forEach { r -> add(NeedsItem("r-${r.meetingId}", r.title, "${r.type.displayName} · ${dayLabel(r.at, now)} · ready to wrap up", "Review") { onOpenWrapUp(r.meetingId, false) }) }
             followUps.forEach { r -> add(NeedsItem("f-${r.meetingId}", r.title, "${r.type.displayName} · ${dayLabel(r.at, now)} · follow-up not sent", "Send") { onOpenWrapUp(r.meetingId, true) }) }
+            failed.forEach { r -> add(NeedsItem("x-${r.meetingId}", r.title, "${r.type.displayName} · ${dayLabel(r.at, now)} · didn't process", "Open") { onOpenProcessing(r.meetingId) }) }
             soon.forEach { add(task(it)) }
         }
     }
@@ -280,7 +288,7 @@ fun WorkPageScreen(
                 } else {
                     WorkPageHeader(
                         contextLine = contextLine(now, meetings.size, needs.size), addActions = addActions, moreActions = moreActions,
-                        onSearch = onSearch, onBack = if (onNavigateBottomNav == null) onNavigateBack else null
+                        onSearch = onSearch, onBack = if (onNavigateBottomNav != null && settings.tabSlot == TabSlot.WORK) null else onNavigateBack
                     )
                 }
                 SegmentedControl(WorkSegment.entries.map { it.label }, segment?.ordinal ?: -1, { page.select(WorkSegment.entries[it]) })
@@ -345,6 +353,11 @@ fun WorkPageScreen(
 
 private const val DEFAULT_WAIT_MS = 400L
 private const val RECENT_NOTES = 5
+
+/** A segment another screen asks the Work page to open. Set it, then open Work; the page takes it and clears it. */
+object PendingWorkSegment {
+    val request = MutableStateFlow<WorkSegment?>(null)
+}
 
 private fun pulseEventOf(e: CalendarEvent) =
     PulseEvent(e.key, e.title, e.begin, e.end, e.otherPeople, e.attendees.filter { a -> !a.isSelf }.mapNotNull { a -> a.email })
