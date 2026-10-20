@@ -393,11 +393,12 @@ class GeminiHttpTransport(
         // Never log the body: a failed transcription request's error can echo prompt content.
         Log.w(TAG, "$stage failed with HTTP $code")
         return when (code) {
-            400 -> AiResult.Failed("$stage failed: Gemini rejected the request. ${serverMessage.orEmpty()}".trim())
+            400 -> AiResult.Failed("$stage failed: Gemini rejected the request. ${serverMessage.orEmpty()}".trim(), retryable = false)
             401, 403 -> AiResult.Failed(
-                "$stage failed: your Gemini API key was rejected. Check it in Settings. ${serverMessage.orEmpty()}".trim()
+                "$stage failed: your Gemini API key was rejected. Check it in Settings. ${serverMessage.orEmpty()}".trim(), retryable = false
             )
-            402 -> AiResult.Failed("$stage needs a MeetingMind plan. See Plans in Settings, or process this recording offline.")
+            402 -> AiResult.Failed("$stage needs a MeetingMind plan. See Plans in Settings, or process this recording offline.", retryable = false)
+            // A quota reached now may well have room again shortly, so this one stays retryable.
             429 -> AiResult.Failed("$stage failed: the cloud allowance or quota is used up. Try again later, or process this recording offline.")
             in 500..599 -> AiResult.Failed("$stage failed: Gemini is unavailable right now. Try again shortly.")
             else -> AiResult.Failed("$stage failed (HTTP $code). ${serverMessage.orEmpty()}".trim())

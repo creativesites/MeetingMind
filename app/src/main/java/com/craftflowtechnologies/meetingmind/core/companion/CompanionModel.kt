@@ -48,6 +48,9 @@ enum class Presence { AROUND, MOMENTS, OFF }
 /** Where a companion slot sits, for the presence filter (§3.3). */
 enum class CompanionPage {
     HOME, RECORDING, PROCESSING, NOTE_READY, FIRST_RECORDING, WORRIED, EMPTY, MILESTONE, READ_ALOUD,
+    /** The assistant sheet header (Notes and Faith alike): the companion appears because the
+     * person explicitly opened it, so it always shows regardless of ambient presence. */
+    ASK,
     /** The user is choosing a companion here, so it always shows. */
     ONBOARDING, QUICK_SHEET, COMPANION_SETTINGS;
 

@@ -8,11 +8,12 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.Canvas
-import com.craftflowtechnologies.meetingmind.feature.today.home.rememberSceneTime
+import androidx.compose.foundation.Image
+import com.craftflowtechnologies.meetingmind.R
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -48,6 +49,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -72,6 +76,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
 import com.craftflowtechnologies.meetingmind.ui.icons.AiMark
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import java.text.SimpleDateFormat
@@ -216,13 +221,13 @@ internal fun LatestMeetingCard(
     val date = remember(whenMs) { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(whenMs)) }
     val meta = listOfNotNull(date, item.durationMs?.let(NoteLabels::duration)).joinToString("  ·  ")
     val cards = heroCards(tiles)
-    val time = rememberSceneTime()
-    val scene = notesHeroScene(sky = c.accentWash, horizon = c.surface, hill = c.accent.copy(alpha = 0.32f), sun = c.gold)
+    // The sunset image sits behind the card under a scrim, so its type is fixed white in both themes.
     Box(
         modifier.fillMaxWidth().heightIn(min = 300.dp).clip(MM.radius.card).background(c.accentWash)
             .clickable(role = Role.Button, onClick = onOpen)
     ) {
-        Canvas(Modifier.matchParentSize()) { scene(time.value) }
+        Image(painterResource(R.drawable.work_header_sunset), contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.2f), Color.Black.copy(alpha = 0.75f)))))
         Column(Modifier.fillMaxWidth().padding(MM.space.l)) {
             Row(
                 Modifier.background(c.surface.copy(alpha = 0.8f), MM.radius.pill).padding(horizontal = MM.space.m, vertical = MM.space.xs),
@@ -234,8 +239,8 @@ internal fun LatestMeetingCard(
             }
             // Room for the companion, which sits in the top-right corner above this card.
             Spacer(Modifier.height(96.dp))
-            Text(note.title.ifBlank { "Untitled note" }, style = MM.type.title, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(meta, style = MM.type.secondary, color = c.inkSecondary, modifier = Modifier.padding(top = MM.space.xs))
+            Text(note.title.ifBlank { "Untitled note" }, style = MM.type.title, color = FixedWhite, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(meta, style = MM.type.secondary, color = FixedWhite.copy(alpha = 0.85f), modifier = Modifier.padding(top = MM.space.xs))
             if (cards.isNotEmpty()) {
                 Spacer(Modifier.height(MM.space.l))
                 Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {

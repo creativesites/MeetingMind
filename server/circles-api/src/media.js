@@ -4,7 +4,7 @@
 import { ApiError } from "./errors.js";
 import { w } from "./firestore.js";
 import { hit } from "./ratelimit.js";
-import { cleanText, isAdmin, validId } from "./logic.js";
+import { cleanText, isAdmin, validId, LIMITS } from "./logic.js";
 
 const MB = 1024 * 1024;
 export const MEDIA = {
@@ -14,6 +14,13 @@ export const MEDIA = {
   file: { mimes: ["application/pdf"], max: 25 * MB },
 };
 export const MEDIA_RATE = { limit: 60, ttl: 3600 };
+/** Kinds a post may carry. Chat takes every kind in MEDIA; a post is a photo or a video. */
+const POST_KINDS = ["image", "video"];
+/** A profile photo: one per user, shared by all their circles. Small enough to send as one raw PUT. */
+export const AVATAR = { mimes: ["image/jpeg", "image/png", "image/webp"], max: 2 * MB };
+export const AVATAR_RATE = { limit: 20, ttl: 3600 };
+const avatarPath = (uid) => `avatars/${uid}`;
+const C = (id) => `circles/${id}`;
 export const SEND_RATE = { limit: 120, ttl: 3600 };
 const TICKET_TTL_S = 900;
 const ORPHAN_AGE_MS = 24 * 3600 * 1000;
@@ -192,15 +199,15 @@ export async function sendMessage(ctx) {
 }
 
 /**
- * Checks the photos on a post before it is written: at most 4, under this circle, uploaded by the caller, images.
- * Returns the stored form, with the mime and size taken from the object rather than the client.
+ * Checks the attachments on a post before it is written: at most 4 photos or videos, under this circle, uploaded by the
+ * caller. Returns the stored form, with the mime and size taken from the object rather than the client.
  */
 export async function checkPostAttachments(ctx, circleId, list) {
   if (list == null) return [];
-  if (!Array.isArray(list) || list.length > 4) throw bad("A post can have at most 4 photos.");
+  if (!Array.isArray(list) || list.length > 4) throw bad("A post can have at most 4 photos or videos.");
   const out = [];
   for (const a of list) {
-    if (!a || typeof a !== "object") throw bad("Bad photo.");
+    if (!a || typeof a !== "object") throw bad("Bad attachment.");
     uuidFromPath(circleId, a.path);
     const dim = (v) => v == null || (Number.isInteger(v) && v > 0 && v <= 10000);
     if (!dim(a.w) || !dim(a.h)) throw bad("Bad photo size.");
@@ -208,8 +215,10 @@ export async function checkPostAttachments(ctx, circleId, list) {
     if (!head) throw notFound("That photo");
     const meta = head.customMetadata || {};
     if (meta.uploader !== ctx.uid) throw notMine("That photo");
-    if (meta.kind !== "image") throw bad("Photos must be images.");
-    out.push({ path: a.path, mime: head.httpMetadata?.contentType, bytes: head.size, w: a.w ?? null, h: a.h ?? null });
+    if (!POST_KINDS.includes(meta.kind)) throw bad("Posts can only include photos or videos.");
+    const item = { path: a.path, kind: meta.kind, mime: head.httpMetadata?.contentType, bytes: head.size, w: a.w ?? null, h: a.h ?? null };
+    if (meta.kind === "video") item.durationMs = optDuration(a.durationMs);
+    out.push(item);
   }
   return out;
 }
@@ -284,4 +293,61 @@ async function referenced(db, circleId, key) {
     db.query({ collection: "circles", where: [["coverPath", "==", key]], limit: 1 }),
   ]);
   return hits.some((h) => h.length > 0);
+}
+
+/** The avatar fields a new member doc carries, from the user's meta. Empty when the user has no photo. */
+export const avatarField = (meta) => (meta?.data.avatarVersion ? { avatarVersion: meta.data.avatarVersion } : {});
+
+/**
+ * Writes the avatar version onto the caller's member doc in every circle they are in, and on their meta, so the other
+ * members' apps know to fetch a new photo (or fall back to initials when the version is null).
+ */
+async function setAvatarVersion(ctx, version) {
+  const meta = await ctx.db.get(`userMeta/${ctx.uid}`);
+  const ids = (meta?.data.circleIds || []).slice(0, LIMITS.circlesPerUser);
+  const members = ids.length ? await ctx.db.batchGet(ids.map((id) => `${C(id)}/members/${ctx.uid}`)) : [];
+  const writes = ids.filter((_, i) => members[i]).map((id) => w.update(`${C(id)}/members/${ctx.uid}`, { avatarVersion: version }));
+  writes.push(w.update(`userMeta/${ctx.uid}`, { avatarVersion: version }, { mustExist: false }));
+  await ctx.db.commit(writes);
+}
+
+/** PUT /v1/avatar: the caller's profile photo, as raw bytes. Replaces the last one. Returns the new version. */
+export async function uploadAvatar(ctx) {
+  const mime = (ctx.request.headers.get("Content-Type") || "").split(";")[0].trim();
+  if (!AVATAR.mimes.includes(mime)) throw new ApiError(415, "bad_mime", "Profile photos must be JPEG, PNG or WebP.");
+  const declared = Number(ctx.request.headers.get("Content-Length") || 0);
+  if (declared > AVATAR.max) throw new ApiError(413, "too_large", "That photo is too large.");
+  await hit(ctx.kv, `rl:avatar:${ctx.uid}`, AVATAR_RATE);
+  const data = new Uint8Array(await ctx.request.arrayBuffer());
+  if (data.byteLength === 0 || data.byteLength > AVATAR.max) throw new ApiError(413, "too_large", "That photo is too large.");
+  if (!sniffMime(data, mime)) throw new ApiError(415, "bad_mime", "The file contents don't match its type.");
+  await ctx.env.MEDIA.put(avatarPath(ctx.uid), data, {
+    httpMetadata: { contentType: mime },
+    customMetadata: { uid: ctx.uid, updatedAt: ctx.now.toISOString() },
+  });
+  const avatarVersion = ctx.now.getTime();
+  await setAvatarVersion(ctx, avatarVersion);
+  return { avatarVersion };
+}
+
+/**
+ * GET /v1/avatar/{circleId}/{uid}: a member's photo, for members of the same circle only. The target must have a photo
+ * (a null avatarVersion in that circle means none). Returns the R2 object; the caller builds the Response.
+ */
+export async function downloadAvatar(ctx, circleId, uid) {
+  validId(circleId, "circleId");
+  validId(uid, "uid");
+  try { await loadMember(ctx, circleId); } catch { throw notFound("That photo"); }
+  const target = await ctx.db.get(`${C(circleId)}/members/${uid}`);
+  if (!target?.data.avatarVersion) throw notFound("That photo");
+  const obj = await ctx.env.MEDIA.get(avatarPath(uid));
+  if (!obj) throw notFound("That photo");
+  return obj;
+}
+
+/** POST /v1/removeAvatar: deletes the caller's profile photo and clears it in every circle. */
+export async function removeAvatar(ctx) {
+  await ctx.env.MEDIA.delete(avatarPath(ctx.uid));
+  await setAvatarVersion(ctx, null);
+  return {};
 }

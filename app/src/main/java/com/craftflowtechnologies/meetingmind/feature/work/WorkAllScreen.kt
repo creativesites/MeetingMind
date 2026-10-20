@@ -55,7 +55,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.text.style.TextOverflow
 
-enum class WorkTab(val label: String) { MINE("You owe"), WAITING("They owe"), DECISIONS("Decisions"), QUESTIONS("Open questions"), RISKS("Risks"), PEOPLE("People") }
+enum class WorkTab(val label: String) { MINE("Mine"), WAITING("Waiting on"), DECISIONS("Decisions"), QUESTIONS("Open questions"), RISKS("Risks"), PEOPLE("People") }
 
 /**
  * Everything in Work, one list at a time (docs/PLAN_PROFESSIONAL.md §7.4, W14 Views): what you owe, what
