@@ -28,11 +28,16 @@ enum class AppLanguage(
         /** All supported languages in display order */
         val SUPPORTED = entries.toList()
 
-        /** Find language by BCP-47 tag, or null if unknown or system default */
+        /** Find language by BCP-47 tag (including regional variants like sn-ZW, pt-BR), or null if unknown or system default */
         fun fromTag(tag: String?): AppLanguage? {
             if (tag.isNullOrBlank()) return null
-            val normalized = tag.lowercase().trim()
+            val normalized = tag.lowercase().trim().replace('_', '-')
             return entries.firstOrNull { it.tag.lowercase() == normalized }
+                ?: entries.firstOrNull { normalized.startsWith(it.tag.lowercase() + "-") }
+                ?: runCatching {
+                    val langCode = java.util.Locale.forLanguageTag(normalized).language.lowercase()
+                    entries.firstOrNull { it.tag.lowercase() == langCode }
+                }.getOrNull()
         }
     }
 }

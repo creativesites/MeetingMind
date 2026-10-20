@@ -41,6 +41,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.res.stringResource
 import com.craftflowtechnologies.meetingmind.R
@@ -597,11 +598,45 @@ private fun SettingsHub(env: SettingsEnv, onBack: () -> Unit) {
         item {
             ScreenHeader(
                 "Settings", Modifier.statusBarsPadding(),
-                leading = { IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back_btn")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MM.colors.inkSecondary) } }
+                leading = { IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back_btn")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MM.colors.inkSecondary) } },
+                actions = {
+                    IconButton(onClick = env.actions.onOpenLanguage, modifier = Modifier.testTag("settings_hub_language_btn")) {
+                        Icon(Icons.Outlined.Language, contentDescription = stringResource(R.string.settings_language_title), tint = MM.colors.inkSecondary)
+                    }
+                }
             )
         }
         item { SettingsSearchField(query) { query = it } }
         if (query.isBlank()) {
+            item {
+                val currentTag = env.prefs.appLanguage
+                val activeLanguage = com.craftflowtechnologies.meetingmind.core.i18n.AppLanguage.fromTag(currentTag)
+                val displayLanguageName = if (activeLanguage != null) {
+                    "${activeLanguage.nativeName} (${activeLanguage.englishName})"
+                } else {
+                    stringResource(R.string.settings_language_follow_system)
+                }
+
+                MMCard(contentPadding = MM.space.xs, modifier = Modifier.padding(bottom = MM.space.m)) {
+                    ListRow(
+                        title = stringResource(R.string.settings_language_title),
+                        subtitle = displayLanguageName,
+                        leading = {
+                            Icon(
+                                Icons.Outlined.Language,
+                                contentDescription = null,
+                                tint = MM.colors.accent,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        },
+                        trailing = {
+                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MM.colors.inkMuted)
+                        },
+                        onClick = env.actions.onOpenLanguage,
+                        modifier = Modifier.padding(horizontal = MM.space.m).testTag("settings_hub_language")
+                    )
+                }
+            }
             item {
                 MMCard(contentPadding = MM.space.xs) {
                     SettingsRegistry.groups.filter { it != SettingsGroup.FAITH || env.prefs.identity.showsFaith }.forEachIndexed { i, group ->
