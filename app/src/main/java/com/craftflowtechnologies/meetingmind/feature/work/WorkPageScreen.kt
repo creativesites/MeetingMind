@@ -98,6 +98,8 @@ fun WorkPageScreen(
     val upNext by today.upNext.collectAsState()
     val now by today.now.collectAsState()
     val todayItems by today.today.collectAsState()
+    val decisionLog by viewModel.decisionLog.collectAsState()
+    val openQuestions by viewModel.openQuestions.collectAsState()
     val terms = settings.terms
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -111,6 +113,7 @@ fun WorkPageScreen(
     var editing by remember { mutableStateOf<WorkTask?>(null) }
     var nudging by remember { mutableStateOf<WorkTask?>(null) }
     var savedViews by remember { mutableStateOf(false) }
+    var asking by remember { mutableStateOf(false) }
     var savedFilter by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.SavedFilter?>(null) }
     var selectedIds by rememberSaveable(stateSaver = listSaver<Set<String>, String>({ it.toList() }, { it.toSet() })) { mutableStateOf(emptySet<String>()) }
     val snackbar = remember { SnackbarHostState() }
@@ -207,7 +210,12 @@ fun WorkPageScreen(
                     title = n.title.ifBlank { n.workflow.displayName }, preview = previewOf(n.plainText), spaceColor = projectColors[n.notebookId] ?: fallbackColor,
                     timeLabel = noteTimeLabel(n.eventDate ?: n.updatedAt, now), pinned = n.pinned, isPrivate = n.isPrivate
                 )) { onOpenNote(n.id) }
-            }
+            },
+            glance = TodayGlance(
+                openTasks = myTasks.size,
+                decisionsThisWeek = decisionLog.count { it.createdAt > now - 7 * 86_400_000L },
+                openQuestions = openQuestions.size
+            )
         )
     }
 
@@ -282,7 +290,11 @@ fun WorkPageScreen(
                     null -> Unit
                     WorkSegment.TODAY -> TodayContent(
                         todayModel, todayList, onAllNotes = { page.select(WorkSegment.NOTES) },
-                        onRecord = { recordPicker = true }, onWriteNote = { writePicker = true }
+                        onRecord = { recordPicker = true }, onWriteNote = { writePicker = true },
+                        onAddTask = { page.select(WorkSegment.TASKS); page.setWaiting(false) },
+                        onShowTasks = { page.select(WorkSegment.TASKS) },
+                        onAsk = { asking = true },
+                        onOpenList = onOpenAll
                     )
                     WorkSegment.NOTES -> NotesContent(query, notes, now, projects, selectedIds, notesList, notesActions)
                     WorkSegment.TASKS -> TasksContent(waiting, tasks, now, titles, tasksList, tasksActions)
@@ -315,6 +327,7 @@ fun WorkPageScreen(
         "Move to ${terms.project.lowercase()}", projects, moving.singleOrNull()?.notebookId, noneLabel = "No ${terms.project.lowercase()}",
         onPick = { id -> moving.forEach { page.move(it, id) }; moving = emptyList(); selectedIds = emptySet() }, onDismiss = { moving = emptyList() }
     )
+    if (asking) ScopedAskSheet(com.craftflowtechnologies.meetingmind.ai.assistant.AskScope(), viewModel, onOpenMeeting, onOpenNote, onDismiss = { asking = false })
     preparing?.let { PrepareSheet(it, viewModel, onOpenMeeting, onDismiss = { preparing = null }) }
     nudging?.let { NudgeSheet(it, viewModel) { nudging = null } }
     editing?.let { t ->
