@@ -1,6 +1,13 @@
 # Status
 
-Updated: 2026-10-20. Designated branch: `claude/meetingmind-localization`. Head: see `git log -1`.
+Updated: 2026-10-22. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git log -1`.
+
+## Work & Read to Me Decisions Implemented (2026-10-22, commit `d1628f7`)
+- **Decision D1 (Retire Duplicate Work Home)**: Retired `ProfessionalHome.kt` and removed `PROFESSIONAL` from `HomeStyle.SELECTABLE`. `WorkPageScreen` is now the single, canonical surface for all Work workflows, eliminating UI drift and duplicate maintenance.
+- **W-01 Fixed (Work Page Back Navigation Trap)**: Connected `onNavigateBack` directly to `onBack` in `WorkPageScreen.kt`. Users pushing into Work from Today or Home now always have a visible and functional back button.
+- **Decision D2 (Read to Me Bible AI Reflection Restriction)**: Restricted cloud AI speech/reflection strictly to public-domain translations (KJV and WEB only). `ReadToMeLicencePolicy.SEND_LICENSED_TEXT_TO_CLOUD = false` and `BibleLicensing.KJV_TREATED_AS_OPEN = true`. All licensed translations (NIV, ESV, NLT, etc.) remain strictly on-device on the phone's voice.
+- **Unit Tests Verified**: `ReadToMeLicencePolicyTest` (3/3 pass: licensed text blocked from cloud, KJV treated as open, open translations allowed).
+- **Build / Toolchain**: Fixed `ProcessNavigationXmlTask` serialization failure by disabling configuration cache in `gradle.properties`. Verified compilation and unit tests with `-Xmx6g --max-workers=2`.
 
 ## App Localization (i18n & l10n) (2026-10-20)
 - **9 Languages Supported**: English (`en` source & fallback), French (`fr`), Spanish (`es`), Portuguese (`pt`), Swahili (`sw`), Nyanja/Chichewa (`ny`), Shona (`sn`), Zulu (`zu`), and Bemba (`b+bem` via AAPT2 BCP-47 qualifier).
