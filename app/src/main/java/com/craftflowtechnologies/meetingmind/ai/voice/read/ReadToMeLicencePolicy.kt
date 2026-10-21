@@ -10,7 +10,7 @@ package com.craftflowtechnologies.meetingmind.ai.voice.read
  * the cautious behaviour (phone voice and short-lived audio for display-only translations).
  */
 object ReadToMeLicencePolicy {
-    const val SEND_LICENSED_TEXT_TO_CLOUD = true
+    const val SEND_LICENSED_TEXT_TO_CLOUD = false
 
     /** Whether the text of a passage may go to the cloud voice, given whether its translation is open. */
     fun cloudOk(openForCloud: Boolean, sendLicensed: Boolean = SEND_LICENSED_TEXT_TO_CLOUD): Boolean =

@@ -34,8 +34,8 @@ enum class HomeStyle(val label: String, val description: String) {
     PROFESSIONAL("Work", "A briefing for the working day: next meeting and prep, what needs you, your schedule, tasks, projects and people — with everything else still here");
 
     companion object {
-        /** The homes a person can choose in Settings. Everyday and Focus are retired and no longer offered. */
-        val SELECTABLE: List<HomeStyle> = listOf(TODAY, PROFESSIONAL, CALM)
+        /** The homes a person can choose in Settings. Everyday, Focus and Professional (Work) are retired and no longer offered. */
+        val SELECTABLE: List<HomeStyle> = listOf(TODAY, CALM)
 
         /** The home a new install opens. People who finished onboarding before it existed keep [TODAY]. */
         val DEFAULT_FOR_NEW_INSTALLS = TODAY

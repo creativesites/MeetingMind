@@ -98,8 +98,7 @@ object BibleLicensing {
         bibleId < 0 || offlineAllowed(abbreviation, attribution)
 
     /**
-     * The KJV is public domain in most places but is not on the open list above, and the owner has not
-     * decided to add it. This one switch is where that decision goes.
+     * The KJV is public domain in most places and is treated as open per owner decision D2.
      */
-    const val KJV_TREATED_AS_OPEN = false
+    const val KJV_TREATED_AS_OPEN = true
 }

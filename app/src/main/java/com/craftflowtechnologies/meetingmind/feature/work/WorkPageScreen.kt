@@ -288,7 +288,7 @@ fun WorkPageScreen(
                 } else {
                     WorkPageHeader(
                         contextLine = contextLine(now, meetings.size, needs.size), addActions = addActions, moreActions = moreActions,
-                        onSearch = onSearch, onBack = if (onNavigateBottomNav != null && settings.tabSlot == TabSlot.WORK) null else onNavigateBack
+                        onSearch = onSearch, onBack = onNavigateBack
                     )
                 }
                 SegmentedControl(WorkSegment.entries.map { it.label }, segment?.ordinal ?: -1, { page.select(WorkSegment.entries[it]) })

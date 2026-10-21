@@ -458,42 +458,6 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
                 onStartCircle = { navController.navigate(Routes.CIRCLE_CREATE) },
                 onRetryCircles = { homeCirclesVm?.retry() }
-            ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.PROFESSIONAL) com.craftflowtechnologies.meetingmind.feature.work.ProfessionalHome(
-                today = vm,
-                work = viewModel(viewModelStoreOwner = context as ComponentActivity),
-                onRecord = { navController.navigate(Routes.RECORDING) },
-                onRecordType = { navController.navigate(Routes.recordTypeRoute(it)) },
-                onRecordEvent = { noteId, type, title, speakers -> navController.navigate(Routes.recordEventRoute(noteId, type, title, speakers)) },
-                onNewNote = { openNewNote(false) },
-                onImport = { navController.navigate(Routes.IMPORT) },
-                onSearch = openSearch,
-                onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
-                onOpenProcessing = openProcessing,
-                onOpenMeeting = { id, at -> navController.navigate(Routes.meetingDetailRoute(id, at)) },
-                onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
-                onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
-                onOpenWork = { navController.navigate(Routes.WORK) },
-                onOpenFaith = { navController.navigate(Routes.FAITH) },
-                onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
-                onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
-                onOpenTestimonies = { navController.navigate(Routes.TESTIMONIES) },
-                onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
-                homeCircles = homeCircles,
-                onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
-                onStartCircle = { navController.navigate(Routes.CIRCLE_CREATE) },
-                onRetryCircles = { homeCirclesVm?.retry() },
-                onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
-                onOpenWrapUp = { id, compose -> navController.navigate(Routes.wrapUpRoute(id, compose)) },
-                onOpenProject = { navController.navigate(Routes.projectRoute(it)) },
-                onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
-                onCustomize = { navController.navigate(Routes.APPEARANCE) },
-                onOpenContext = { t, id -> navController.navigate(Routes.context(t, id)) },
-                onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
-                onShare = { req ->
-                    com.craftflowtechnologies.meetingmind.feature.share.ShareRequests.pending = req
-                    navController.navigate(Routes.SHARE)
-                },
-                onNavigateBottomNav = navigateToPrimary
             ) else if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.CALM) com.craftflowtechnologies.meetingmind.feature.today.home.CalmHome(
                 today = vm,
                 onRecord = { navController.navigate(Routes.RECORDING) },
