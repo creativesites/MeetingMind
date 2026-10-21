@@ -8,7 +8,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,8 +39,10 @@ import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
 import com.craftflowtechnologies.meetingmind.core.circles2.WhoCanInvite
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
+import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
+import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SegmentedControl
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
@@ -86,6 +91,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     var editingEvent by remember { mutableStateOf<CircleEvent?>(null) }
     var activeVerse by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference?>(null) }
     var activeMemberInfo by remember { mutableStateOf<Member?>(null) }
+    var showSearch by remember { mutableStateOf(false) }
     val eventRsvps by home.eventRsvps.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val now = remember(state.posts, chatState.messages) { System.currentTimeMillis() }
@@ -162,7 +168,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
                 onMemberClick = { activeMemberInfo = it }
             ),
             snackbar = snackbar, onBack = onBack, onSettings = { showSettings = true },
-            onInvite = { home.createInvite(); showInvite = true }, onRetry = { }
+            onInvite = { home.createInvite(); showInvite = true }, onSearch = { showSearch = true }, onRetry = { }
         )
     }
 
@@ -245,6 +251,21 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     if (showCard) CardShareSheet({ chat.shareCard(it) }, { showCard = false })
     chainTitle?.let { t -> ChainSheet(t, { chat.startChain(it, chainPost) }, { chainTitle = null; chainPost = null }) }
     if (showCelebrate) CelebrateSheet(companionId, { k, text -> chat.celebrate(k, text, companionId) }, { showCelebrate = false })
+    if (showSearch) {
+        CircleSearchSheet(
+            state = state,
+            chat = chatState,
+            now = now,
+            onOpenPost = { post ->
+                tab = HomeTab.Feed
+                home.openThread(post.id)
+            },
+            onOpenChat = {
+                tab = HomeTab.Chat
+            },
+            onDismiss = { showSearch = false }
+        )
+    }
     deleting?.let { p ->
         AlertDialog(
             onDismissRequest = { deleting = null }, containerColor = MM.colors.surfaceRaised,
@@ -272,6 +293,7 @@ fun CircleHomeContent(
     onBack: () -> Unit,
     onSettings: () -> Unit,
     onInvite: () -> Unit,
+    onSearch: () -> Unit = {},
     onRetry: () -> Unit
 ) {
     val circle = state.circle
@@ -282,6 +304,7 @@ fun CircleHomeContent(
                 circle?.name ?: "Circle", Modifier.padding(horizontal = MM.space.s),
                 leading = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.inkSecondary) } },
                 actions = {
+                    if (circle != null) IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search in circle", tint = MM.colors.inkSecondary) }
                     if (canInvite) IconButton(onClick = onInvite) { Icon(Icons.Rounded.PersonAdd, "Invite people", tint = MM.colors.inkSecondary) }
                     if (circle != null) IconButton(onClick = onSettings) { Icon(Icons.Rounded.Settings, "Circle settings", tint = MM.colors.inkSecondary) }
                 }
@@ -343,3 +366,90 @@ fun CircleHomeContent(
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(MM.space.l))
     }
 }
+
+@Composable
+fun CircleSearchSheet(
+    state: CircleHomeUiState,
+    chat: ChatUiState,
+    now: Long,
+    onOpenPost: (Post) -> Unit,
+    onOpenChat: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    val q = query.trim()
+    val matchingPosts = remember(q, state.posts) {
+        if (q.isBlank()) emptyList()
+        else state.posts.map { it.post }.filter { p ->
+            p.body.contains(q, ignoreCase = true) ||
+            p.authorName?.contains(q, ignoreCase = true) == true ||
+            p.type.label.contains(q, ignoreCase = true)
+        }
+    }
+    val matchingMessages = remember(q, chat.messages) {
+        if (q.isBlank()) emptyList()
+        else chat.messages.filter { m ->
+            m.text.contains(q, ignoreCase = true) ||
+            m.authorName.contains(q, ignoreCase = true)
+        }
+    }
+    CircleSheet(onDismiss) {
+        Text(
+            "Search in ${state.circle?.name ?: "Circle"}",
+            style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+            color = MM.colors.ink
+        )
+        CircleField(
+            value = query,
+            onValueChange = { query = it },
+            label = "Search",
+            placeholder = "Type keyword, person, or topic…",
+            leadingIcon = { Icon(Icons.Rounded.Search, null, tint = MM.colors.inkSecondary) }
+        )
+        if (q.isNotBlank()) {
+            if (matchingPosts.isEmpty() && matchingMessages.isEmpty()) {
+                Text(
+                    "No results found for \"$q\"",
+                    style = MM.type.body,
+                    color = MM.colors.inkSecondary,
+                    modifier = Modifier.padding(vertical = MM.space.m)
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.s)
+                ) {
+                    if (matchingPosts.isNotEmpty()) {
+                        item { SectionHeader("Feed Posts", count = matchingPosts.size) }
+                        items(matchingPosts, key = { "post_${it.id}" }) { post ->
+                            MMCard(onClick = { onOpenPost(post); onDismiss() }) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(post.authorName ?: "Member", style = MM.type.bodyStrong, color = MM.colors.ink)
+                                        Text(post.body.take(120), style = MM.type.secondary, color = MM.colors.inkSecondary, maxLines = 2)
+                                    }
+                                    PostTypeBadge(post.type)
+                                }
+                            }
+                        }
+                    }
+                    if (matchingMessages.isNotEmpty()) {
+                        item { SectionHeader("Chat Messages", count = matchingMessages.size) }
+                        items(matchingMessages, key = { "msg_${it.id}" }) { msg ->
+                            MMCard(onClick = { onOpenChat(); onDismiss() }) {
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(msg.authorName, style = MM.type.bodyStrong, color = MM.colors.ink, modifier = Modifier.weight(1f))
+                                        Text(relativeTime(now, msg.createdAt), style = MM.type.caption, color = MM.colors.inkMuted)
+                                    }
+                                    Text(msg.text.take(120), style = MM.type.secondary, color = MM.colors.inkSecondary, maxLines = 2)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

@@ -49,6 +49,7 @@ class FakeApi(override val isConfigured: Boolean = true) : CirclesApi {
     override suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String?, coverPath: String?) = reply("updateCircle", Unit)
     override suspend fun myCircles() = reply("myCircles", myCirclesResult)
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = reply("createInvite", Invite("GRACE-7K2Q", null, 50))
+    override suspend fun createEmailInvite(circleId: String, email: String, expiresInDays: Int, maxUses: Int) = reply("createEmailInvite", Invite("GRACE-EMAIL", null, maxUses))
     override suspend fun revokeInvite(code: String) = reply("revokeInvite", Unit)
     override suspend fun join(pasted: String, displayName: String): CirclesResult<JoinOutcome> { lastJoinText = pasted; return reply("join", JoinOutcome(joinedCircleId, joinPending)) }
     override suspend fun leave(circleId: String) = reply("leave", Unit)

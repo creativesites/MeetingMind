@@ -65,9 +65,10 @@ async function createCircle(ctx) {
   const b = ctx.body;
   const template = typeof b.template === "string" ? b.template : "";
   if (!TEMPLATES[template]) throw new ApiError(400, "bad_request", "Unknown template");
+  const space = b.space === "work" ? "work" : "faith";
   const nm = cleanText(b.name, "name", { max: LIMITS.nameMax });
-  const vocab = cleanText(b.vocab, "vocab", { min: 0, max: 40, optional: true }) ?? "Circle";
-  const settings = normalizeSettings(b.settings, template);
+  const vocab = cleanText(b.vocab, "vocab", { min: 0, max: 40, optional: true }) ?? (space === "work" ? "Team" : "Circle");
+  const settings = normalizeSettings(b.settings, template, space);
   const description = cleanText(b.description, "description", { min: 0, max: LIMITS.descriptionMax, optional: true }) ?? "";
   const displayName = name(b.displayName);
   // Older app builds do not send a key yet; keep them working, while newer builds
@@ -91,7 +92,7 @@ async function createCircle(ctx) {
     const n = meta?.data.circleCount || 0;
     if (n >= LIMITS.circlesPerUser) throw new ApiError(409, "too_many_circles", "You're in the maximum of 10 circles. Leave one to create another.");
     return [
-      w.create(C(id), { name: nm, template, vocab, description, settings, ownerUid: ctx.uid, memberCount: 1, orgId: null, closed: false, createdAt: ctx.now }),
+      w.create(C(id), { name: nm, template, space, vocab, description, settings, ownerUid: ctx.uid, memberCount: 1, orgId: null, closed: false, createdAt: ctx.now }),
       w.create(`${C(id)}/members/${ctx.uid}`, { role: "owner", displayName, joinedAt: ctx.now, muted: false, ...avatarField(meta) }),
       userMetaWrite(ctx.uid, { circleCount: n + 1, circleIds: [...(meta?.data.circleIds || []), id] }),
       w.create(idempotencyPath, { circleId: id, createdAt: ctx.now }),
@@ -110,7 +111,8 @@ async function updateCircle(ctx) {
   if (ctx.body.vocab !== undefined) data.vocab = cleanText(ctx.body.vocab, "vocab", { max: 40 });
   if (ctx.body.description !== undefined) data.description = cleanText(ctx.body.description, "description", { min: 0, max: LIMITS.descriptionMax });
   if (ctx.body.coverPath !== undefined) data.coverPath = await checkCover(ctx, id, ctx.body.coverPath ?? null);
-  if (ctx.body.settings !== undefined) data.settings = normalizeSettings({ ...circle.settings, ...ctx.body.settings }, circle.template);
+  const space = circle.space || circle.settings?.space || "faith";
+  if (ctx.body.settings !== undefined) data.settings = normalizeSettings({ ...circle.settings, ...ctx.body.settings }, circle.template, space);
   if (!Object.keys(data).length) throw new ApiError(400, "bad_request", "Nothing to change");
   await ctx.db.commit([w.update(C(id), data)]);
   return {};
@@ -132,8 +134,9 @@ async function createInvite(ctx) {
   const { days, uses } = clampInvite(ctx.body);
   await hit(ctx.kv, `rl:createInvite:${ctx.uid}`, RATE.createInvite);
   const expiresAt = new Date(ctx.now.getTime() + days * 86_400_000);
+  const space = circle.space || circle.settings?.space || "faith";
   for (let i = 0; i < 6; i++) {
-    const code = generateCode();
+    const code = generateCode(undefined, space);
     try {
       await ctx.db.commit([w.create(`invites/${code}`, { circleId: id, createdBy: ctx.uid, expiresAt, maxUses: uses, uses: 0, revoked: false, createdAt: ctx.now })]);
       return { code, expiresAt: expiresAt.toISOString(), maxUses: uses };
@@ -142,6 +145,43 @@ async function createInvite(ctx) {
     }
   }
   throw new ApiError(503, "try_again", "Couldn't make a code just now. Try again.");
+}
+
+async function createEmailInvite(ctx) {
+  const id = str(ctx.body, "circleId");
+  const emailRaw = ctx.body.email;
+  if (typeof emailRaw !== "string" || !/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(emailRaw.trim())) {
+    throw new ApiError(400, "bad_request", "A valid email address is required.");
+  }
+  const email = emailRaw.trim().toLowerCase();
+  if (email.length > 120) throw new ApiError(400, "bad_request", "Email is too long.");
+  const { circle, member } = await load(ctx, id);
+  if (!canInvite(member.role, circle.settings)) throw new ApiError(403, "forbidden", "Only admins can invite to this circle.");
+  const { days, uses } = clampInvite(ctx.body);
+  await hit(ctx.kv, `rl:createInvite:${ctx.uid}`, RATE.createInvite);
+  const expiresAt = new Date(ctx.now.getTime() + days * 86_400_000);
+  const space = circle.space || circle.settings?.space || "faith";
+  for (let i = 0; i < 6; i++) {
+    const code = generateCode(undefined, space);
+    try {
+      await ctx.db.commit([
+        w.create(`invites/${code}`, {
+          circleId: id,
+          email,
+          createdBy: ctx.uid,
+          expiresAt,
+          maxUses: uses,
+          uses: 0,
+          revoked: false,
+          createdAt: ctx.now
+        })
+      ]);
+      return { code, email, expiresAt: expiresAt.toISOString(), maxUses: uses };
+    } catch (e) {
+      if (!(e instanceof FirestoreError && e.code === "ALREADY_EXISTS")) throw e;
+    }
+  }
+  throw new ApiError(503, "try_again", "Couldn't make an email invite just now. Try again.");
 }
 
 async function revokeInvite(ctx) {
@@ -718,7 +758,7 @@ async function unregisterToken(ctx) {
 }
 
 export const HANDLERS = {
-  createCircle, updateCircle, createInvite, revokeInvite, join, leave, removeMember, setRole, setMute,
+  createCircle, updateCircle, createInvite, createEmailInvite, revokeInvite, join, leave, removeMember, setRole, setMute,
   createPost, approvePost, rejectPost, editPost, addUpdate, markAnswered, deletePost,
   prayed, react, syncCounts, commentAsAuthor, report, registerToken, unregisterToken,
   createPoll, closePoll, startChain, celebrate, myCircles, reportMessage,

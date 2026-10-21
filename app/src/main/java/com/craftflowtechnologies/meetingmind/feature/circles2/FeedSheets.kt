@@ -133,13 +133,23 @@ fun ComposerSheet(
                     PostType.Prayer -> "What would you like prayer for?"
                     PostType.Testimony -> "What did God do?"
                     PostType.Encouragement -> "Encouraging word or reflection"
+                    PostType.Task -> "Action item & assignee"
+                    PostType.Decision -> "Decision & context"
+                    PostType.Brief -> "Meeting brief or summary"
+                    PostType.Standup -> "Status update"
+                    PostType.Blocker -> "What is blocking you?"
                     else -> "Write something to share"
                 },
                 placeholder = when (type) {
                     PostType.Prayer -> "Share your prayer request with details or specific prayer points…"
                     PostType.Testimony -> "Tell the story of how God moved or answered prayer…"
                     PostType.Encouragement -> "Share a thought, verse reflection, or word of encouragement…"
-                    else -> "Share an update, question, or note with the circle…"
+                    PostType.Task -> "e.g. Update API client for work circles (@Jane, by Friday)…"
+                    PostType.Decision -> "e.g. Decided to adopt Jetpack Compose for all new flows…"
+                    PostType.Brief -> "Summary of meeting key points, next steps and milestones…"
+                    PostType.Standup -> "What did you complete? What are you working on next?"
+                    PostType.Blocker -> "What's in the way, who can help, and what's needed to unblock?"
+                    else -> if (circle.isWork) "Share an update, question, or note with the team…" else "Share an update, question, or note with the circle…"
                 },
                 minLines = 4,
                 maxLines = 10
@@ -192,8 +202,8 @@ fun ComposerSheet(
             }
         }
 
-        // Scripture verse section with live preview
-        if (type != PostType.Announcement) {
+        // Scripture verse section with live preview (for faith circles)
+        if (!circle.isWork && type != PostType.Announcement) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 CircleField(
                     state.verse,
@@ -286,7 +296,10 @@ fun ComposerSheet(
         state.error?.let { StatusLine(StatusKind.Error, it) }
 
         PrimaryButton(
-            if (state.sending) "Posting..." else if (type == PostType.Prayer && circle.settings.prayerApproval) "Send for approval" else "Share with circle",
+            if (state.sending) "Posting..."
+            else if (type == PostType.Prayer && circle.settings.prayerApproval) "Send for approval"
+            else if (circle.isWork) "Share with team"
+            else "Share with circle",
             onSend,
             enabled = !state.sending && (state.body.isNotBlank() || state.attachments.isNotEmpty()),
             modifier = Modifier.fillMaxWidth()

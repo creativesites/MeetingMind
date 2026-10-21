@@ -1,6 +1,26 @@
 # Status
 
-Updated: 2026-10-20. Designated branch: `claude/meetingmind-localization`. Head: see `git log -1`.
+Updated: 2026-10-21. Designated branch: `claude/meetingmind-mvp-planning-7dgowm`. Active integration branch: `work-circles-integration`. Head: see `git log -1`.
+
+## Work Circles & Post-Meeting Collaboration (2026-10-21)
+- **Work Circles Architecture & Domain Extension**:
+  - Space-aware Circles (`work` vs `faith`): `Circle.isWork`, `Circle.groupWord` ("Team", "Department", "Project", "Workspace" for Work; "Circle", "Cell Group", "Fellowship" for Faith).
+  - Work-tailored templates: `project_team`, `client_engagement`, `exec_board`, `department`, `custom_work` with automatic work defaults (e.g., prayer approval disabled).
+  - Professional post types (`task`, `decision`, `brief`, `standup`, `blocker`) and professional reactions (`ack` 👀, `approved` ✅, `priority` 🎯, `reviewing` 🔍, `win` 🚀).
+  - Professional invite dictionary words (e.g., `TEAM`, `SPRINT`, `LAUNCH`, `CLIENT`, `PROJ`, `SYNC`) for memorable codes.
+  - Email & Google Workspace invitations: added `createEmailInvite` API and backend handling with email validation and audit logging.
+- **Post-Meeting "Share to Circle" Integration**:
+  - Created `ShareToCircleSheet` in `feature/work`: post-meeting flow enables one-tap publishing of Meeting Brief, Decisions, and Action Items (with assignees and due dates) directly to a chosen Work Circle.
+  - Integrated into `WrapUpScreen`: primary "Share to Circle" action button alongside "Draft follow-up" and "Done", with direct navigation to create a new circle if none exist.
+- **In-Circle Search & Feed Experience**:
+  - Added in-circle search bar/sheet in `CircleHomeScreen` allowing real-time searching through posts and chat messages.
+  - Work-aware `FeedTab` composer cards with quick chips (`Task`, `Decision`, `Brief`, `Standup`) and tailored placeholders in `FeedSheets`.
+  - Task completion toggling on feed cards (`Mark completed`) with visual status pills (`Completed ✅` / `Action item`).
+- **Tests & Verification**:
+  - Server unit tests (`server/circles-api/test/unit/work_circles.test.js`): 67/67 tests passing.
+  - Android unit tests: `CirclesScreenshotTest`, `CirclesFakes`.
+- **Not verified on device**: End-to-end multi-device email invite acceptance flow against live production backend.
+
 
 ## App Localization (i18n & l10n) (2026-10-20)
 - **9 Languages Supported**: English (`en` source & fallback), French (`fr`), Spanish (`es`), Portuguese (`pt`), Swahili (`sw`), Nyanja/Chichewa (`ny`), Shona (`sn`), Zulu (`zu`), and Bemba (`b+bem` via AAPT2 BCP-47 qualifier).
