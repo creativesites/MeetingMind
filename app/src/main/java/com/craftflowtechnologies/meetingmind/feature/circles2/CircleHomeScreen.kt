@@ -194,7 +194,10 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             member = m,
             isMe = m.uid == state.myUid,
             me = state.me,
+            circleId = home.circleId,
             onDismiss = { activeMemberInfo = null },
+            onSetPhoto = home::setProfilePhoto,
+            onRemovePhoto = home::removeProfilePhoto,
             onMessage = {
                 activeMemberInfo = null
                 tab = HomeTab.Chat

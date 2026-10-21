@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatAlignCenter
 import androidx.compose.material.icons.filled.FormatAlignLeft
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -132,6 +133,7 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
     var showThemeEdit by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
+    var showCirclePicker by remember { mutableStateOf(false) }
 
     fun generatePicture(styleToUse: ImageStyle) {
         if (generating) return
@@ -175,6 +177,24 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
         }
     }
 
+    // The card goes into one of my circles' chats as an image, rendered the same way as the other targets.
+    fun sendToCircle(circle: com.craftflowtechnologies.meetingmind.core.circles2.Circle) {
+        if (sending) return
+        showCirclePicker = false
+        sending = true
+        scope.launch {
+            val bytes = withContext(Dispatchers.Default) {
+                val bitmap = ShareCardRenderer.render(context, request.content, style)
+                java.io.ByteArrayOutputStream().use { out -> bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out); out.toByteArray() }
+            }
+            val result = com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(context)
+                .sendImage(circle.id, bytes, "image/jpeg", request.caption.orEmpty())
+            message = if (result.failureOrNull == null) "Sent to ${circle.name}." else result.failureOrNull?.message ?: "Couldn't send that."
+            sending = false
+        }
+    }
+
+    if (showCirclePicker) ShareToCircleSheet(onPick = ::sendToCircle, onDismiss = { showCirclePicker = false })
     if (showLibrary) BackgroundsSheet(
         onDismiss = { showLibrary = false; libraryVersion++ },
         onPick = { img -> showLibrary = false; libraryVersion++; style = style.copy(background = BackgroundSpec.Photo(img.file.path)) }
@@ -276,6 +296,7 @@ fun ShareStudioScreen(request: ShareRequest, onNavigateBack: () -> Unit, renderL
                 Target("Instagram", Color(0xFFE1306C), "IG") { send(ShareTarget.INSTAGRAM_STORY) }
                 TargetIcon("Save", Icons.Filled.Download) { send(ShareTarget.SAVE) }
                 request.audioPath?.let { path -> TargetIcon("Audio", Icons.Filled.GraphicEq) { message = ShareActions.shareAudio(context, File(path), request.caption) } }
+                TargetIcon("Circle", Icons.Filled.Groups) { showCirclePicker = true }
                 TargetIcon("More", Icons.Filled.Share) { send(ShareTarget.ANY) }
             }
         }
