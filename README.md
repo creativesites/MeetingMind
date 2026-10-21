@@ -1,21 +1,22 @@
-# MeetingMind dev build: 5f39cd1
+# MeetingMind dev build: 4e7a3bf
 
-Install `MeetingMind-Dev-5f39cd1.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
+Install `MeetingMind-Dev-4e7a3bf.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
 
-Built from `ccr-08b1bb9f-iljmtb` at `5f39cd1`. It includes everything in the `8797a89` build, the Circles work from `ccr-c4d22493-kjxz3d` (`d2c1b6a`), and the Bible selection sheet redesign from `claude/meetingmind-localization` (`518e962`).
+Built from `ccr-08b1bb9f-iljmtb` at `4e7a3bf`. It includes everything in the `5f39cd1` build, plus the work-circles integration from `origin/work-circles-integration` (`fa4d00c`, `d91757d`).
 
 ## What is new
-- **Circles:** profile photo controls, sending a card to a circle chat, Pro-gated Google sign-in with threaded comments and a comment composer (`8cd8858`, `d2c1b6a`). Google sign-in is part of Pro; free accounts see a note and their circles stay on the phone.
-- **Bible:** the selection sheet is redesigned, with horizontal scrolling and rounded corners.
-- **Compile fixes:** two compile errors in the merged Circles and share code are fixed in `5f39cd1`.
-
-## Not in this build
-- The devotional share rules (`6e7816d`, Circles devotional messages). It is committed only in a local checkout on the Circles side and has not been pushed, so this build does not include it.
+- **Work Circles:** Circles adapt to work. Work workspaces use Team, Department, Project and Workspace wording, with templates for project teams, client engagements, leadership boards, departments and custom work groups. Work posts can be task, decision, brief, standup or blocker, with work reactions (acknowledged, approved, priority, reviewing, win).
+- **Email invitations:** invite people to a circle by email or Google Workspace address (backend endpoint and app repository).
+- **Share to Circle after a meeting:** the wrap-up screen can publish a meeting brief, decisions and action items to a chosen work circle.
+- **Search and tasks in a circle:** a search bar in the circle, and a status and completion toggle on action items in the feed.
+- **Short recordings:** a recording that is stopped very early is handled safely.
+- **Backup:** credential stores are excluded from cloud backup and device transfer.
+- **Fixes in this build:** unknown circle templates fall back to the faith custom circle. Two test files were updated for the new templates and the Circles screenshot tests.
 
 ## Not verified
-- Unit suite on `5f39cd1`: 3,210 tests. `WorkHomeLayoutTest.needsRespectsACustomCap` fails and also fails on the base commit. The four `AccountLinkingTest` failures from the merged Circles code are fixed; that test passes (5 of 5) when run alone.
-- The Circles work came from another session and was not compiled there (the Maven rate limit blocked their build). The two compile errors were fixed here.
-- Not verified on a device: the Circles changes, the Bible selection sheet, the Work redesign, the language switch, and the language loop fix. A microphone revoked mid-recording is not handled yet. Google sign-in will fail on `.dev` (no Android OAuth client in `google-services.json`).
+- Unit suite on `4e7a3bf`: 3,212 tests, 1 failure: `WorkHomeLayoutTest.needsRespectsACustomCap`, which also fails on the base commit.
+- The work-circles backend tests (`server/circles-api/test/unit/work_circles.test.js`) were not run in this build. The other session reports 67 of 67 passing.
+- Not verified on a device: the work Circles flows, the share-to-circle flow, email invitations (the backend must be deployed first), the short-recording fix, and the Circles changes from earlier builds. A microphone revoked mid-recording is not handled yet. Google sign-in will fail on `.dev` (no Android OAuth client in `google-services.json`). The language loop fix, the Work redesign, and the Bible sheet are also not verified on a device.
 
 ## Install
 1. Enable install from unknown sources for your file manager.
