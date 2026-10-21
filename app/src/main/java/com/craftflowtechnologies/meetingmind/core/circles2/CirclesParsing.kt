@@ -46,7 +46,7 @@ object CirclesParsing {
     }
 
     fun member(uid: String, d: Map<String, Any?>): Member =
-        Member(uid, str(d, "displayName")?.ifBlank { null } ?: "Member", Role.from(str(d, "role")), d["muted"] == true, millis(d["joinedAt"]), str(d, "title")?.ifBlank { null }, millis(d["lastReadAt"]))
+        Member(uid, str(d, "displayName")?.ifBlank { null } ?: "Member", Role.from(str(d, "role")), d["muted"] == true, millis(d["joinedAt"]), str(d, "title")?.ifBlank { null }, millis(d["lastReadAt"]), (d["avatarVersion"] as? Number)?.toLong())
 
     private fun counts(m: Map<String, Any?>): PostCounts {
         val r = map(m["reactions"])

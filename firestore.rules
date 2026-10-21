@@ -38,6 +38,15 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/circles/$(circleId)/polls/$(pollId))
         && pollDoc(circleId, pollId).closed == false;
     }
+    // A shared devotional: the date key (yyyy-MM-dd) and the reading it opens. Clients write it directly.
+    function validDevotional(d) {
+      return d is map
+        && d.keys().hasOnly(['date', 'title', 'reference'])
+        && d.keys().hasAll(['date', 'title', 'reference'])
+        && d.date is string && d.date.size() == 10
+        && d.title is string && d.title.size() >= 1 && d.title.size() <= 120
+        && d.reference is string && d.reference.size() <= 80;
+    }
     function validCard(c) {
       return c is map
         && c.keys().hasOnly(['templateId', 'text', 'mood', 'verseRef', 'verseText'])
@@ -152,19 +161,21 @@ service cloud.firestore {
         allow get, list: if isMember(circleId);
 
         allow create: if isMember(circleId)
-          && request.resource.data.keys().hasOnly(['authorUid', 'displayName', 'kind', 'text', 'replyTo', 'card', 'createdAt', 'deleted', 'mentions', 'forwardedFrom'])
+          && request.resource.data.keys().hasOnly(['authorUid', 'displayName', 'kind', 'text', 'replyTo', 'card', 'devotional', 'createdAt', 'deleted', 'mentions', 'forwardedFrom'])
           && request.resource.data.keys().hasAll(['authorUid', 'kind', 'text', 'createdAt', 'deleted'])
           && request.resource.data.authorUid == request.auth.uid
           && request.resource.data.deleted == false
           && request.resource.data.createdAt == request.time
-          && request.resource.data.kind in ['text', 'card', 'reply']
+          && request.resource.data.kind in ['text', 'card', 'reply', 'devotional']
           && request.resource.data.text is string
           && request.resource.data.text.size() <= 2000
           && (!('displayName' in request.resource.data)
               || (request.resource.data.displayName is string && request.resource.data.displayName.size() <= 40))
           && (request.resource.data.kind == 'card'
-              ? (request.resource.data.keys().hasAll(['card']) && validCard(request.resource.data.card) && !('replyTo' in request.resource.data))
-              : (request.resource.data.text.size() > 0 && !('card' in request.resource.data)))
+              ? (request.resource.data.keys().hasAll(['card']) && validCard(request.resource.data.card) && !('replyTo' in request.resource.data) && !('devotional' in request.resource.data))
+              : request.resource.data.kind == 'devotional'
+                ? (request.resource.data.keys().hasAll(['devotional']) && validDevotional(request.resource.data.devotional) && !('replyTo' in request.resource.data) && !('card' in request.resource.data))
+                : (request.resource.data.text.size() > 0 && !('card' in request.resource.data) && !('devotional' in request.resource.data)))
           && (request.resource.data.kind == 'reply'
               ? (request.resource.data.replyTo is string
                  && request.resource.data.replyTo.size() > 0 && request.resource.data.replyTo.size() <= 40

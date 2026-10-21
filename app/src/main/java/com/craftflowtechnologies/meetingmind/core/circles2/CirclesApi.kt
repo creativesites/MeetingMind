@@ -88,6 +88,13 @@ interface CirclesApi {
     suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?, requestId: String? = null): CirclesResult<Unit>
     suspend fun registerToken(token: String): CirclesResult<Unit>
     suspend fun unregisterToken(token: String): CirclesResult<Unit>
+
+    /** Sets my profile photo. Returns the new avatar version, which the Worker writes onto each of my member docs. */
+    suspend fun uploadAvatar(bytes: ByteArray, mime: String): CirclesResult<Long> = CirclesFailure.notConnected.asResult()
+    /** Removes my profile photo everywhere. */
+    suspend fun removeAvatar(): CirclesResult<Unit> = CirclesFailure.notConnected.asResult()
+    /** A member's profile photo, for members of [circleId] only. */
+    suspend fun downloadAvatar(circleId: String, uid: String): CirclesResult<ByteArray> = CirclesFailure.notConnected.asResult()
 }
 
 /** Used when CIRCLES_API_URL is empty. Every call says so plainly. */
@@ -386,6 +393,53 @@ class HttpCirclesApi(
 
     override suspend fun registerToken(token: String) = unit("registerToken", JSONObject().put("token", token))
     override suspend fun unregisterToken(token: String) = unit("unregisterToken", JSONObject().put("token", token))
+
+    override suspend fun uploadAvatar(bytes: ByteArray, mime: String): CirclesResult<Long> {
+        if (!isConfigured) return CirclesFailure.notConnected.asResult()
+        val token = when (val t = tokenProvider()) {
+            is CirclesResult.Ok -> t.value
+            is CirclesResult.Err -> return t
+        }
+        return withContext(Dispatchers.IO) {
+            val request = try {
+                Request.Builder().url("$root/v1/avatar").header("Authorization", "Bearer $token")
+                    .put(bytes.toRequestBody(mime.toMediaType())).build()
+            } catch (e: IllegalArgumentException) {
+                return@withContext CirclesFailure.notConnected.asResult()
+            }
+            runRequest(request).flatMap { o ->
+                val version = o.optLong("avatarVersion", 0L)
+                if (version > 0L) CirclesResult.Ok(version) else CirclesFailure.server().asResult()
+            }
+        }
+    }
+
+    override suspend fun removeAvatar(): CirclesResult<Unit> = unit("removeAvatar", JSONObject())
+
+    override suspend fun downloadAvatar(circleId: String, uid: String): CirclesResult<ByteArray> {
+        if (!isConfigured) return CirclesFailure.notConnected.asResult()
+        val token = when (val t = tokenProvider()) {
+            is CirclesResult.Ok -> t.value
+            is CirclesResult.Err -> return t
+        }
+        return withContext(Dispatchers.IO) {
+            val request = try {
+                Request.Builder().url("$root/v1/avatar/$circleId/$uid").header("Authorization", "Bearer $token").get().build()
+            } catch (e: IllegalArgumentException) {
+                return@withContext CirclesFailure.notConnected.asResult()
+            }
+            try {
+                client.newCall(request).execute().use { res ->
+                    if (res.isSuccessful) CirclesResult.Ok(res.body?.bytes() ?: ByteArray(0))
+                    else CirclesResult.Err(failureFrom(res.code, null, res.header("X-Request-Id")))
+                }
+            } catch (e: IOException) {
+                CirclesFailure.offline.asResult()
+            } catch (e: RuntimeException) {
+                CirclesFailure.server().asResult()
+            }
+        }
+    }
 
     private fun post(circleId: String, postId: String) = JSONObject().put("circleId", circleId).put("postId", postId)
     private fun str(o: JSONObject, key: String): CirclesResult<String> =

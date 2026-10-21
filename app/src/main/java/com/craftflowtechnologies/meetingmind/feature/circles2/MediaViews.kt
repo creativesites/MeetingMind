@@ -9,6 +9,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -27,6 +29,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
@@ -90,6 +97,140 @@ object CircleMediaCache {
         val bytes = fetch(context, circleId, path) ?: return@withContext null
         runCatching { file.writeBytes(bytes) }
         file.takeIf { it.exists() }
+    }
+
+    /**
+     * A member's profile photo. The version is part of the key, so a new photo is fetched and an old one is never shown:
+     * the Worker bumps the version whenever the photo changes or is removed.
+     */
+    suspend fun fetchAvatar(context: Context, circleId: String, uid: String, version: Long): ByteArray? = withContext(Dispatchers.IO) {
+        val key = "avatar/$circleId/$uid/$version"
+        memory.get(key)?.let { return@withContext it }
+        val file = diskFile(context, key, "jpg")
+        if (file.exists() && file.length() > 0L) {
+            runCatching { file.readBytes() }.getOrNull()?.let { bytes ->
+                memory.put(key, bytes)
+                return@withContext bytes
+            }
+        }
+        val bytes = Circles2.repository(context).api.downloadAvatar(circleId, uid).okOrNull ?: return@withContext null
+        runCatching { file.writeBytes(bytes) }
+        memory.put(key, bytes)
+        bytes
+    }
+}
+
+/** A profile photo: a centre-cropped square, at most 512 px, as JPEG. Re-encoding drops any EXIF. Null if it can't be read. */
+fun avatarJpeg(bytes: ByteArray): ByteArray? {
+    val source = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+    val side = minOf(source.width, source.height)
+    val square = Bitmap.createBitmap(source, (source.width - side) / 2, (source.height - side) / 2, side, side)
+    val sized = if (side > 512) Bitmap.createScaledBitmap(square, 512, 512, true) else square
+    val out = ByteArrayOutputStream()
+    sized.compress(Bitmap.CompressFormat.JPEG, 88, out)
+    return out.toByteArray().takeIf { it.isNotEmpty() }
+}
+
+/**
+ * A member's photo, or their initials until it loads or when they have none. Photos are fetched through the Worker
+ * for members of [circleId] and cached by version.
+ */
+@Composable
+fun MemberAvatar(
+    circleId: String,
+    uid: String?,
+    name: String,
+    avatarVersion: Long?,
+    modifier: Modifier = Modifier,
+    size: Dp = 40.dp,
+    online: Boolean = false
+) {
+    val context = LocalContext.current
+    val photo by produceState<ImageBitmap?>(initialValue = null, circleId, uid, avatarVersion) {
+        value = null
+        if (uid == null || avatarVersion == null) return@produceState
+        val bytes = CircleMediaCache.fetchAvatar(context, circleId, uid, avatarVersion) ?: return@produceState
+        value = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    }
+    Crossfade(targetState = photo, label = "member avatar") { loaded ->
+        if (loaded != null) {
+            Box(modifier.size(size).clip(CircleShape).clearAndSetSemantics { }) {
+                Image(loaded, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            }
+        } else {
+            InitialsAvatar(name, modifier, size, online)
+        }
+    }
+}
+
+/** Whether a stored attachment is a video. */
+val MediaAttachment.isVideo: Boolean get() = mime.startsWith("video/")
+
+/** A photo or video on a post. Photos open fullscreen; videos play in a player when tapped. */
+@Composable
+fun AttachmentTile(circleId: String, a: MediaAttachment, modifier: Modifier, contentDescription: String) {
+    if (a.isVideo) VideoTile(circleId, a, modifier, contentDescription)
+    else MediaImage(circleId = circleId, path = a.path, modifier = modifier, contentDescription = contentDescription, allowFullscreen = true)
+}
+
+/** A video on a post, as a tile: the length and size, and a play button. */
+@Composable
+private fun VideoTile(circleId: String, a: MediaAttachment, modifier: Modifier, contentDescription: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var loading by remember { mutableStateOf(false) }
+    var videoFile by remember { mutableStateOf<File?>(null) }
+    Box(
+        modifier
+            .background(MM.colors.surfaceSunk)
+            .clickable(enabled = !loading) {
+                loading = true
+                scope.launch {
+                    videoFile = CircleMediaCache.fetchToFile(context, circleId, a.path, if (a.mime == "video/webm") "webm" else "mp4")
+                    loading = false
+                }
+            }
+            .semantics { this.contentDescription = contentDescription },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            Modifier.size(52.dp).clip(CircleShape).background(CirclesPalette.Accent),
+            contentAlignment = Alignment.Center
+        ) {
+            if (loading) {
+                CircularProgressIndicator(Modifier.size(22.dp), color = CirclesPalette.White, strokeWidth = 2.dp)
+            } else {
+                Icon(Icons.Rounded.PlayArrow, null, tint = CirclesPalette.White, modifier = Modifier.size(28.dp))
+            }
+        }
+        Text(
+            listOfNotNull(a.durationMs?.takeIf { it > 0 }?.let(::formatDuration), formatBytes(a.bytes)).joinToString(" · "),
+            style = MM.type.caption,
+            color = MM.colors.inkSecondary,
+            modifier = Modifier.align(Alignment.BottomStart).padding(MM.space.s)
+        )
+    }
+    videoFile?.let { file -> VideoPlayerDialog(file) { videoFile = null } }
+}
+
+/** A fullscreen video player for a file already on disk. */
+@Composable
+fun VideoPlayerDialog(file: File, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(MM.colors.background)) {
+            AndroidView(
+                factory = { ctx ->
+                    VideoView(ctx).apply {
+                        setVideoPath(file.absolutePath)
+                        setOnPreparedListener { mp -> mp.isLooping = false; start() }
+                    }
+                },
+                modifier = Modifier.fillMaxSize().align(Alignment.Center)
+            )
+            IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).padding(MM.space.m)) {
+                Icon(Icons.Rounded.Close, "Close video", tint = MM.colors.ink)
+            }
+        }
     }
 }
 
@@ -235,24 +376,7 @@ fun VideoBubble(circleId: String, a: MediaAttachment) {
             )
         }
     }
-    videoFile?.let { file ->
-        Dialog(onDismissRequest = { videoFile = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Box(Modifier.fillMaxSize().background(MM.colors.background)) {
-                AndroidView(
-                    factory = { ctx ->
-                        VideoView(ctx).apply {
-                            setVideoPath(file.absolutePath)
-                            setOnPreparedListener { mp -> mp.isLooping = false; start() }
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize().align(Alignment.Center)
-                )
-                IconButton(onClick = { videoFile = null }, modifier = Modifier.align(Alignment.TopEnd).padding(MM.space.m)) {
-                    Icon(Icons.Rounded.Close, "Close video", tint = MM.colors.ink)
-                }
-            }
-        }
-    }
+    videoFile?.let { file -> VideoPlayerDialog(file) { videoFile = null } }
 }
 
 /** A file: its name and size, and a save action that writes the bytes where the person chooses. */
@@ -289,6 +413,11 @@ fun FileBubble(circleId: String, a: MediaAttachment) {
 fun readPicked(context: Context, uri: Uri): PickedFile? {
     val resolver = context.contentResolver
     val mime = resolver.getType(uri) ?: return null
+    // A video is checked by size before it is read, so a long clip can't exhaust memory.
+    if (mime.startsWith("video/")) {
+        val size = resolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+        if (size > MediaKind.Video.maxBytes) return null
+    }
     val raw = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
     val name = resolver.query(uri, null, null, null, null)?.use { c ->
         val index = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)

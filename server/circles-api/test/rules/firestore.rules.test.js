@@ -332,6 +332,31 @@ test("attachment messages are Worker-only: clients cannot create image, voice or
   await assertSucceeds(setDoc(doc(as("member"), M("att5")), msg({ text: "plain text still works" })));
 });
 
+test("shared devotionals: date (10 characters), title (1-120), reference (0-80), caption may be empty; no extra keys", async () => {
+  const dev = (over = {}) => ({ date: "2026-10-21", title: "Morning light", reference: "Psalm 23", ...over });
+  const devMsg = (over = {}) => msg({ kind: "devotional", text: "", devotional: dev(), ...over });
+  await assertSucceeds(setDoc(doc(as("member"), M("dv1")), devMsg()));
+  await assertSucceeds(setDoc(doc(as("member"), M("dv2")), devMsg({ text: "Read this with me" })));
+  await assertSucceeds(setDoc(doc(as("member"), M("dv3")), devMsg({ devotional: dev({ title: "x".repeat(120) }) })));
+  await assertSucceeds(setDoc(doc(as("member"), M("dv4")), devMsg({ devotional: dev({ reference: "" }) })));
+  await assertSucceeds(setDoc(doc(as("member"), M("dv5")), devMsg({ devotional: dev({ reference: "x".repeat(80) }) })));
+  await assertFails(setDoc(doc(as("member"), M("dv6")), devMsg({ devotional: dev({ date: "2026-10-2" }) })));
+  await assertFails(setDoc(doc(as("member"), M("dv7")), devMsg({ devotional: dev({ date: "2026-10-211" }) })));
+  await assertFails(setDoc(doc(as("member"), M("dv8")), devMsg({ devotional: dev({ title: "" }) })));
+  await assertFails(setDoc(doc(as("member"), M("dv9")), devMsg({ devotional: dev({ title: "x".repeat(121) }) })));
+  await assertFails(setDoc(doc(as("member"), M("dv10")), devMsg({ devotional: dev({ reference: "x".repeat(81) }) })));
+  await assertFails(setDoc(doc(as("member"), M("dv11")), devMsg({ devotional: dev({ verse: "John 3:16" }) })));
+  await assertFails(setDoc(doc(as("member"), M("dv12")), devMsg({ devotional: { date: "2026-10-21", title: "T" } })));
+  await assertFails(setDoc(doc(as("member"), M("dv13")), msg({ kind: "devotional", text: "" })));
+  await assertFails(setDoc(doc(as("member"), M("dv14")), devMsg({ replyTo: "m1" })));
+  await assertFails(setDoc(doc(as("member"), M("dv15")), devMsg({ card: { templateId: "x", text: "y" } })));
+  await assertFails(setDoc(doc(as("member"), M("dv16")), devMsg({ mentions: ["admin"] })));
+  await assertFails(setDoc(doc(as("member"), M("dv17")), devMsg({ text: "x".repeat(2001) })));
+  await assertFails(setDoc(doc(as("stranger"), M("dv18")), devMsg({ authorUid: "stranger" })));
+  // Other kinds still need text and cannot carry a devotional.
+  await assertFails(setDoc(doc(as("member"), M("dv19")), msg({ text: "", devotional: dev() })));
+});
+
 test("read receipts: a member sets only their own lastReadAt, to the server time", async () => {
   await assertSucceeds(updateDoc(doc(as("member"), `circles/${C}/members/member`), { lastReadAt: serverTimestamp() }));
   await assertFails(updateDoc(doc(as("member"), `circles/${C}/members/admin`), { lastReadAt: serverTimestamp() }));

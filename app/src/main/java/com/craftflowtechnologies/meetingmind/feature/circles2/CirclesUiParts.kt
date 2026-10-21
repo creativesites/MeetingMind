@@ -1,5 +1,8 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -232,11 +236,15 @@ fun MemberInfoSheet(
     member: com.craftflowtechnologies.meetingmind.core.circles2.Member,
     isMe: Boolean,
     me: com.craftflowtechnologies.meetingmind.core.circles2.Member?,
+    circleId: String,
     onDismiss: () -> Unit,
     onMessage: (com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit,
     onSetTitle: ((com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit)? = null,
     onSetRole: ((com.craftflowtechnologies.meetingmind.core.circles2.Member, Role) -> Unit)? = null,
-    onRemove: ((com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit)? = null
+    onRemove: ((com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit)? = null,
+    /** My own profile photo: set from a picked image, or removed. Only used when [isMe]. */
+    onSetPhoto: ((PickedFile) -> Unit)? = null,
+    onRemovePhoto: (() -> Unit)? = null
 ) {
     val isOnline = isMe || member.lastReadAt > 0L || member.role == Role.Owner
     val canChangeRole = me?.role == Role.Owner && !isMe
@@ -255,7 +263,14 @@ fun MemberInfoSheet(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(MM.space.m)
         ) {
-            InitialsAvatar(member.displayName, size = 64.dp, online = isOnline)
+            MemberAvatar(
+                circleId = circleId,
+                uid = member.uid,
+                name = member.displayName,
+                avatarVersion = member.avatarVersion,
+                size = 64.dp,
+                online = isOnline
+            )
             Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
                 Text(
                     if (isMe) "${member.displayName} (You)" else member.displayName,
@@ -293,6 +308,10 @@ fun MemberInfoSheet(
             )
         }
 
+        if (isMe) {
+            ProfilePhotoActions(hasPhoto = member.avatarVersion != null, onSetPhoto = onSetPhoto, onRemovePhoto = onRemovePhoto)
+        }
+
         if (canEditTitle || canChangeRole || canRemove) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -321,5 +340,31 @@ fun MemberInfoSheet(
             onDismiss,
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+/**
+ * My profile photo. One photo is shared across all my circles. Pick an image to set it; Remove clears it everywhere.
+ * The picked image is re-encoded by [readPicked], which drops any location data in its metadata.
+ */
+@Composable
+private fun ProfilePhotoActions(hasPhoto: Boolean, onSetPhoto: ((PickedFile) -> Unit)?, onRemovePhoto: (() -> Unit)?) {
+    val context = LocalContext.current
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) readPicked(context, uri)?.takeIf { it.mime.startsWith("image/") }?.let { onSetPhoto?.invoke(it) }
+    }
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+    ) {
+        com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton(
+            if (hasPhoto) "Change photo" else "Add a photo",
+            { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            modifier = Modifier.weight(1f)
+        )
+        if (hasPhoto && onRemovePhoto != null) {
+            com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction("Remove", onRemovePhoto)
+        }
     }
 }

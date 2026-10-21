@@ -111,6 +111,33 @@ class CirclesRepository(
         return CirclesResult.Ok(MediaAttachment(path, mime, bytes.size.toLong(), durationMs, name?.take(120)))
     }
 
+    /**
+     * Sends a rendered card into a circle's chat as an image message. The upload and the message are two steps; the
+     * request id makes a retried send land once.
+     */
+    suspend fun sendImage(circleId: String, bytes: ByteArray, mime: String, caption: String): CirclesResult<Unit> {
+        if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
+        val attachment = when (val a = uploadAttachment(circleId, MediaKind.Image, bytes, mime, "card", null)) {
+            is CirclesResult.Ok -> a.value
+            is CirclesResult.Err -> return a
+        }
+        return api.sendMessage(
+            circleId, MediaKind.Image, attachment.path, caption.trim().take(2000),
+            replyTo = null, durationMs = null, name = null, requestId = java.util.UUID.randomUUID().toString()
+        )
+    }
+
+    /** My profile photo, as a JPEG the caller has already made square and small (see avatarJpeg). */
+    suspend fun setProfilePhoto(jpeg: ByteArray): CirclesResult<Long> {
+        if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
+        return api.uploadAvatar(jpeg, "image/jpeg")
+    }
+
+    suspend fun removeProfilePhoto(): CirclesResult<Unit> {
+        if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
+        return api.removeAvatar()
+    }
+
     suspend fun join(pasted: String, displayName: String): CirclesResult<JoinOutcome> {
         if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
         val code = InviteCodes.extract(pasted)
