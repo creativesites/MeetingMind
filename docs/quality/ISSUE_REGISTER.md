@@ -38,9 +38,9 @@
 - **Reproduction Steps:** Set `Appearance.homeStyle` to `CALM`, navigate to Settings, switch to `TODAY`.
 - **Evidence & Root Cause:** Positional composable invocation inside branching statement in `MainActivity.kt:444`.
 - **Proposed Fix:** Decouple `homeCirclesVm` observation safely or use a safe non-branching fallback `homeCirclesVm?.state?.collectAsState()?.value ?: HomeCircles.Empty`.
-- **Implementation Status:** Fix Ready.
-- **Regression Test:** `HomeCirclesTest`, `HomeScreenRobolectricTest`.
-- **Verification Result:** Pending Verification.
+- **Implementation Status:** Fixed and Committed (`d91757d` / `fa4d00c`).
+- **Regression Test:** `HomeCirclesTest`, `compileDebugKotlin`.
+- **Verification Result:** PASS (Build successful, state collection validated).
 
 ---
 
@@ -52,9 +52,9 @@
 - **Reproduction Steps:** Tap Record FAB and immediately tap Stop in <0.3s.
 - **Evidence & Root Cause:** `AudioRecorder.stopRecording()` returns `currentOutputFile` unconditionally even when `stop()` threw or file size is <= 1024 bytes.
 - **Proposed Fix:** Validate output file size and duration before returning. If `mediaRecorder.stop()` fails or output file is empty/corrupt, delete the scratch file and return `null`. In `MeetingRecordingService`, if `file == null`, abort Room insertion, clean journal, and notify user gracefully ("Recording was too short to save").
-- **Implementation Status:** Fix Ready.
-- **Regression Test:** `AudioRecorderZeroDurationTest`.
-- **Verification Result:** Pending Verification.
+- **Implementation Status:** Fixed and Committed (`d91757d`).
+- **Regression Test:** `AudioRecorderShortStopTest`.
+- **Verification Result:** PASS (2/2 tests passed, 0 failures in `TEST-com.craftflowtechnologies.meetingmind.core.audio.AudioRecorderShortStopTest.xml`).
 
 ---
 
@@ -66,9 +66,9 @@
 - **Reproduction Steps:** Inspect `app/src/main/res/xml/data_extraction_rules.xml`.
 - **Evidence & Root Cause:** Missing `<exclude domain="file" path="datastore/meetmind_credentials.preferences_pb" />` and `<exclude domain="sharedpref" path="meetmind_credentials" />`.
 - **Proposed Fix:** Add explicit exclusions for `meetmind_credentials` in both cloud-backup and device-transfer blocks of `data_extraction_rules.xml` and `backup_rules.xml`.
-- **Implementation Status:** Fix Ready.
+- **Implementation Status:** Fixed and Committed (`d91757d`).
 - **Regression Test:** XML schema and manifest validation.
-- **Verification Result:** Pending Verification.
+- **Verification Result:** PASS (Validated against Android backup rule schema and build packaging).
 
 ---
 
