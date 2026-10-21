@@ -183,14 +183,22 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         _boundService.value?.discardRecording()
     }
 
-    fun finishRecording(onComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit) {
+    fun finishRecording(
+        onComplete: (meetingId: String, audioPath: String, durationMs: Long) -> Unit,
+        onDiscardedOrEmpty: () -> Unit = {}
+    ) {
         val service = _boundService.value ?: return
         service.stopRecording { meetingId, file, duration ->
             val marks = com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.take()
             viewModelScope.launch {
                 // The recording exists now, so its marks can be kept on its note.
-                if (file != null) runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.save(com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(getApplication()), meetingId, marks) }
-                if (file != null) onComplete(meetingId, file.absolutePath, duration)
+                if (file != null) {
+                    runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.save(com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(getApplication()), meetingId, marks) }
+                    onComplete(meetingId, file.absolutePath, duration)
+                } else {
+                    android.widget.Toast.makeText(getApplication(), "Recording was too short to save", android.widget.Toast.LENGTH_SHORT).show()
+                    onDiscardedOrEmpty()
+                }
             }
         }
     }
@@ -331,7 +339,7 @@ fun RecordingScreen(
             if (state == RecordingState.RECORDING) viewModel.pauseRecording()
             else if (state == RecordingState.PAUSED) viewModel.resumeRecording()
         },
-        onFinish = { viewModel.finishRecording { meetingId, path, dur -> onRecordingComplete(meetingId, path, dur) } },
+        onFinish = { viewModel.finishRecording(onComplete = { meetingId, path, dur -> onRecordingComplete(meetingId, path, dur) }, onDiscardedOrEmpty = onNavigateBack) },
         marks = marks,
         onAction = { action, text -> viewModel.mark(action.kind, text) },
         onUndoMark = viewModel::undoMark,
