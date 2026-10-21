@@ -1,0 +1,15 @@
+{
+  "agents": [
+    {
+      "id": "gantry",
+      "symbol": "📦",
+      "team": "meetingmind",
+      "primary_domain": "Android Build Pipelines, Release Packaging & Diagnostic Auditing",
+      "declared_capabilities": ["gradle-builds", "apk-packaging", "credential-scanning", "release-gating"],
+      "declared_responsibilities": ["Build Engineer", "Release Guardian"],
+      "status": "AVAILABLE",
+      "inbox": "community/inboxes/gantry/",
+      "registered_at": "2026-10-21T19:40:00Z"
+    }
+  ]
+}
