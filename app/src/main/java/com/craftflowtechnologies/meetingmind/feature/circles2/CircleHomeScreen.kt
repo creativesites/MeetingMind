@@ -284,8 +284,8 @@ fun CircleHomeContent(
     onBack: () -> Unit,
     onSettings: () -> Unit,
     onInvite: () -> Unit,
-    onSearch: () -> Unit = {},
-    onRetry: () -> Unit
+    onRetry: () -> Unit = {},
+    onSearch: () -> Unit = {}
 ) {
     val circle = state.circle
     val canInvite = circle != null && state.me != null && (state.isAdmin || circle.settings.whoCanInvite == WhoCanInvite.Members)
