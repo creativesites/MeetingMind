@@ -174,8 +174,14 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     )
     val threadPost = thread?.let { t -> state.posts.firstOrNull { it.post.id == t.postId }?.post }
     if (thread != null) ThreadSheet(
-        threadPost, thread, state.myUid, state.canModerate, now,
-        onSend = { home.comment(thread!!.postId, it) },
+        circleId = home.circleId,
+        post = threadPost,
+        thread = thread,
+        members = state.members,
+        myUid = state.myUid,
+        isAdmin = state.canModerate,
+        now = now,
+        onSend = { text, parentId -> home.comment(thread!!.postId, text, parentId) },
         onDeleteComment = { home.deleteComment(thread!!.postId, it.id) },
         onDismiss = home::closeThread,
         onMemberClick = { idOrName ->

@@ -7,12 +7,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.craftflowtechnologies.meetingmind.core.billing.Billing
+import com.craftflowtechnologies.meetingmind.core.billing.Capability
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesRepository
 import com.craftflowtechnologies.meetingmind.core.circles2.LinkResult
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
@@ -24,6 +27,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** The line shown wherever Google sign-in is locked for a free account. */
+const val GOOGLE_SIGN_IN_PRO_NOTE = "Signing in with Google is part of MeetingMind Pro. Your circles stay on this phone until you upgrade."
+
+/** Whether this person may link a Google account now: a paid plan (or closed testing) that hasn't lapsed. */
+fun googleSignInUnlocked(nowMs: Long = System.currentTimeMillis()): Boolean =
+    Billing.gateway.entitlements.value.effective(nowMs).has(Capability.PRO_FEATURES)
 
 /** "Keep your circles on any phone": whether this Circles account is tied to Google, and what's in progress. */
 data class AccountUiState(
@@ -46,6 +56,7 @@ class AccountViewModel(private val repo: CirclesRepository) : ViewModel() {
     /** [activityContext] must be an Activity (the Google picker needs one). */
     fun link(activityContext: Context) {
         if (_state.value.busy) return
+        if (!googleSignInUnlocked()) { _state.update { it.copy(message = GOOGLE_SIGN_IN_PRO_NOTE) }; return }
         _state.update { it.copy(busy = true, message = null) }
         viewModelScope.launch { apply(repo.auth.linkGoogle(activityContext)) }
     }
@@ -97,12 +108,16 @@ tailrec fun Context.findHostActivity(): android.app.Activity? = when (this) {
 @Composable
 fun KeepCirclesOffer(state: AccountUiState, onLink: (Context) -> Unit, onSwitch: () -> Unit, onDismissConflict: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    // Recomposes when the plan changes, so an upgrade unlocks the offer without leaving the screen.
+    val owned by Billing.gateway.entitlements.collectAsState()
+    val unlocked = owned.effective(System.currentTimeMillis()).has(Capability.PRO_FEATURES)
     if (!state.linked) {
         Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
             StatusLine(
                 StatusKind.Info,
-                state.message ?: "Keep your circles on any phone. Sign in with Google so they come with you if you change or lose this one.",
-                actionLabel = if (state.busy) null else "Sign in with Google",
+                state.message ?: if (unlocked) "Keep your circles on any phone. Sign in with Google so they come with you if you change or lose this one."
+                else GOOGLE_SIGN_IN_PRO_NOTE,
+                actionLabel = if (state.busy || !unlocked) null else "Sign in with Google",
                 onAction = { onLink(context.findHostActivity() ?: context) }
             )
         }
@@ -114,6 +129,8 @@ fun KeepCirclesOffer(state: AccountUiState, onLink: (Context) -> Unit, onSwitch:
 @Composable
 fun AccountSection(state: AccountUiState, onLink: (Context) -> Unit, onSwitch: () -> Unit, onDismissConflict: () -> Unit) {
     val context = LocalContext.current
+    val owned by Billing.gateway.entitlements.collectAsState()
+    val unlocked = owned.effective(System.currentTimeMillis()).has(Capability.PRO_FEATURES)
     Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
         if (state.linked) {
             Text(
@@ -125,7 +142,18 @@ fun AccountSection(state: AccountUiState, onLink: (Context) -> Unit, onSwitch: (
                 "This phone holds your circles right now. Sign in with Google to keep them if you change or lose it.",
                 style = MM.type.secondary, color = MM.colors.inkSecondary
             )
-            SecondaryButton(if (state.busy) "Opening Google..." else "Keep your circles on any phone", { onLink(context.findHostActivity() ?: context) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth())
+            // Locked for free accounts: the button stays visible, disabled, with the Pro note under it.
+            SecondaryButton(
+                when {
+                    !unlocked -> "Keep your circles on any phone · Pro"
+                    state.busy -> "Opening Google..."
+                    else -> "Keep your circles on any phone"
+                },
+                { onLink(context.findHostActivity() ?: context) },
+                enabled = unlocked && !state.busy,
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (!unlocked) Text(GOOGLE_SIGN_IN_PRO_NOTE, style = MM.type.caption, color = MM.colors.inkMuted)
         }
         state.message?.let { StatusLine(StatusKind.Info, it) }
     }
