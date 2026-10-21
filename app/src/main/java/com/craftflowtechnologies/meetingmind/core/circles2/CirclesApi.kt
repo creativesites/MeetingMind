@@ -23,7 +23,7 @@ data class CreatePostRequest(
 )
 
 data class CreatedPost(val postId: String, val pending: Boolean)
-data class CreateCircleRequest(val name: String, val template: String, val vocab: String, val displayName: String, val settings: CircleSettings, val requestId: String = java.util.UUID.randomUUID().toString(), val description: String = "")
+data class CreateCircleRequest(val name: String, val template: String, val vocab: String, val displayName: String, val settings: CircleSettings, val requestId: String = java.util.UUID.randomUUID().toString(), val description: String = "", val space: String = "faith")
 
 /** The Worker's endpoints (server/circles-api). Every call returns a result: nothing here throws to the UI. */
 interface CirclesApi {
@@ -34,6 +34,7 @@ interface CirclesApi {
     suspend fun updateCircle(circleId: String, name: String?, vocab: String?, settings: CircleSettings?, description: String? = null, coverPath: String? = null): CirclesResult<Unit>
     suspend fun myCircles(): CirclesResult<List<String>>
     suspend fun createInvite(circleId: String, expiresInDays: Int = 7, maxUses: Int = 50): CirclesResult<Invite>
+    suspend fun createEmailInvite(circleId: String, email: String, expiresInDays: Int = 7, maxUses: Int = 50): CirclesResult<Invite>
     suspend fun revokeInvite(code: String): CirclesResult<Unit>
     /** [pasted] is whatever the person pasted; the Worker extracts the code. Returns the circle id. */
     suspend fun join(pasted: String, displayName: String): CirclesResult<JoinOutcome>
@@ -111,6 +112,7 @@ object NotConfiguredCirclesApi : CirclesApi {
     override suspend fun sendMessage(circleId: String, kind: MediaKind, uploadPath: String, text: String, replyTo: String?, durationMs: Long?, name: String?, requestId: String?) = no<Unit>()
     override suspend fun myCircles() = no<List<String>>()
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) = no<Invite>()
+    override suspend fun createEmailInvite(circleId: String, email: String, expiresInDays: Int, maxUses: Int) = no<Invite>()
     override suspend fun revokeInvite(code: String) = no<Unit>()
     override suspend fun join(pasted: String, displayName: String) = no<JoinOutcome>()
     override suspend fun decideJoin(circleId: String, uid: String, approve: Boolean) = no<Unit>()
@@ -154,6 +156,7 @@ object CirclesJson {
         .put("joinApproval", s.joinApproval)
         .put("reactions", JSONArray(s.reactions.map { it.wire }))
         .put("guidelines", s.guidelines)
+        .put("space", s.space)
 
     fun event(circleId: String, d: EventDraft): JSONObject = JSONObject()
         .put("circleId", circleId).put("title", d.title).put("description", d.description)
@@ -173,7 +176,10 @@ object CirclesJson {
     fun createCircle(r: CreateCircleRequest): JSONObject = JSONObject()
         .put("name", r.name).put("template", r.template).put("vocab", r.vocab)
         .put("displayName", r.displayName).put("settings", settings(r.settings)).put("requestId", r.requestId)
-        .put("description", r.description)
+        .put("description", r.description).put("space", r.space)
+
+    fun emailInvite(circleId: String, email: String, expiresInDays: Int, maxUses: Int): JSONObject = JSONObject()
+        .put("circleId", circleId).put("email", email).put("expiresInDays", expiresInDays).put("maxUses", maxUses)
 }
 
 /**
@@ -275,6 +281,13 @@ class HttpCirclesApi(
 
     override suspend fun createInvite(circleId: String, expiresInDays: Int, maxUses: Int) =
         call("createInvite", JSONObject().put("circleId", circleId).put("expiresInDays", expiresInDays).put("maxUses", maxUses))
+            .flatMap { o ->
+                val code = o.optString("code")
+                if (code.isBlank()) CirclesFailure.server().asResult() else CirclesResult.Ok(Invite(code, o.optString("expiresAt").ifBlank { null }, if (o.has("maxUses")) o.optInt("maxUses") else null))
+            }
+
+    override suspend fun createEmailInvite(circleId: String, email: String, expiresInDays: Int, maxUses: Int): CirclesResult<Invite> =
+        call("createEmailInvite", CirclesJson.emailInvite(circleId, email, expiresInDays, maxUses))
             .flatMap { o ->
                 val code = o.optString("code")
                 if (code.isBlank()) CirclesFailure.server().asResult() else CirclesResult.Ok(Invite(code, o.optString("expiresAt").ifBlank { null }, if (o.has("maxUses")) o.optInt("maxUses") else null))

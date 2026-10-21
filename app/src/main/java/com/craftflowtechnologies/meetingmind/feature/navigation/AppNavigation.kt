@@ -27,7 +27,8 @@ object Routes {
     const val TESTIMONIES = "faith_testimonies"
     const val FELLOWSHIP = "fellowship"
     const val CIRCLE_DETAIL = "fellowship_circle/{circleId}"
-    const val CIRCLE_CREATE = "circle_create"
+    const val CIRCLE_CREATE = "circle_create?space={space}"
+    fun circleCreateRoute(space: String? = null) = "circle_create" + (space?.let { "?space=$it" } ?: "")
     fun circleDetailRoute(circleId: String) = "fellowship_circle/$circleId"
     const val FAITH_JOURNEY = "faith_journey"
     const val FAITH_SCRIPTURE = "faith_scripture"

@@ -62,11 +62,11 @@ class CirclesScreenshotTest {
 
     @Test fun create() = shot("create", {
         CreateCircleContent(
-            CreateUiState(name = "Tuesday Night", displayName = "Ann"), {}, {}, {}, {}, {}, {}, {}, {}, {}
+            CreateUiState(name = "Tuesday Night", displayName = "Ann"), {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
         )
     })
     @Test fun createError() = shot("create_error", {
-        CreateCircleContent(CreateUiState(name = "", error = "Give your cell group a name."), {}, {}, {}, {}, {}, {}, {}, {}, {})
+        CreateCircleContent(CreateUiState(name = "", error = "Give your cell group a name."), {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     })
 
     // ---------- circle home ----------

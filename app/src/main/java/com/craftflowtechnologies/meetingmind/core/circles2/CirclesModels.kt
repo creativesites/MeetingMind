@@ -13,6 +13,7 @@ enum class Role(val wire: String, val label: String) {
 
 /** What people post (FAITH_V2 section 2.2). [wire] is the value the Worker and Firestore use. */
 enum class PostType(val wire: String, val label: String, val verb: String, val adminOnly: Boolean = false) {
+    // Faith & general post types
     Prayer("prayer", "Prayer request", "Ask for prayer"),
     Testimony("testimony", "Testimony", "Share a testimony"),
     Achievement("achievement", "Achievement", "Share a win"),
@@ -20,14 +21,25 @@ enum class PostType(val wire: String, val label: String, val verb: String, val a
     Encouragement("encouragement", "Encouragement", "Encourage the group"),
     Reading("reading", "Reading plan", "Post about the plan"),
     Announcement("announcement", "Announcement", "Make an announcement", adminOnly = true),
+    // Work vertical post types
+    Task("task", "Action item", "Assign an action"),
+    Decision("decision", "Decision", "Record a decision"),
+    Brief("brief", "Meeting brief", "Share meeting summary"),
+    Standup("standup", "Status update", "Share an update"),
+    Blocker("blocker", "Blocker", "Ask for unblock"),
     /** Free-form: any member, any circle, published at once. Not in any template list. */
     Note("note", "Free-form", "Share anything");
+
+    val isWork: Boolean get() = this in setOf(Task, Decision, Brief, Standup, Blocker)
 
     companion object { fun from(wire: String?): PostType? = entries.firstOrNull { it.wire == wire } }
 }
 
 enum class ReactionKind(val wire: String, val emoji: String, val label: String) {
-    Praying("praying", "🙏", "Praying"), Amen("amen", "Amen", "Amen"), Heart("heart", "❤️", "Love"), Celebrate("celebrate", "🎉", "Celebrate");
+    // Faith & general reactions
+    Praying("praying", "🙏", "Praying"), Amen("amen", "Amen", "Amen"), Heart("heart", "❤️", "Love"), Celebrate("celebrate", "🎉", "Celebrate"),
+    // Work vertical reactions
+    Ack("ack", "👍", "On it"), Approved("approved", "✅", "Approved"), Priority("priority", "🔥", "Urgent"), Reviewing("reviewing", "👀", "Looking"), Win("win", "🎉", "Win");
 
     companion object { fun from(wire: String?): ReactionKind? = entries.firstOrNull { it.wire == wire } }
 }
@@ -40,7 +52,8 @@ data class CircleSettings(
     /** When on, a join waits for an admin (the Worker keeps a join request). Off keeps today's behaviour. */
     val joinApproval: Boolean = false,
     val reactions: List<ReactionKind> = ReactionKind.entries,
-    val guidelines: String = ""
+    val guidelines: String = "",
+    val space: String = "faith"
 )
 
 enum class WhoCanInvite(val wire: String, val label: String) {
@@ -57,11 +70,15 @@ data class CircleTemplate(
     val blurb: String,
     val types: List<PostType>,
     /** Words for the group. The first is the default; the creator may type their own. */
-    val vocab: List<String>
+    val vocab: List<String>,
+    val space: String = "faith"
 ) {
+    val isWork: Boolean get() = space.equals("work", ignoreCase = true)
+
     companion object {
         private val everyType = PostType.entries.toList()
         val all: List<CircleTemplate> = listOf(
+            // Faith templates
             CircleTemplate("small_group", "Small group", "A cell or home group that meets and prays together.",
                 listOf(PostType.Prayer, PostType.Testimony, PostType.Study, PostType.Encouragement),
                 listOf("Cell group", "Small group", "Home fellowship", "Life group")),
@@ -75,7 +92,23 @@ data class CircleTemplate(
             CircleTemplate("ministry_team", "Ministry team", "Announcements, prayer and study for a team.",
                 listOf(PostType.Prayer, PostType.Announcement, PostType.Study), listOf("Team")),
             CircleTemplate("custom", "Custom", "You choose what to share.",
-                listOf(PostType.Prayer, PostType.Testimony, PostType.Encouragement), listOf("Circle"))
+                listOf(PostType.Prayer, PostType.Testimony, PostType.Encouragement), listOf("Circle")),
+            // Work templates
+            CircleTemplate("project_team", "Project team", "A team collaborating on deliverables, decisions and tasks.",
+                listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Announcement, PostType.Note),
+                listOf("Team", "Project", "Squad"), space = "work"),
+            CircleTemplate("client_engagement", "Client engagement", "External client or partner collaboration workspace.",
+                listOf(PostType.Decision, PostType.Brief, PostType.Task, PostType.Announcement, PostType.Note),
+                listOf("Project", "Engagement", "Team"), space = "work"),
+            CircleTemplate("exec_board", "Leadership & Board", "Executive team, board or advisory committee.",
+                listOf(PostType.Decision, PostType.Brief, PostType.Announcement, PostType.Note),
+                listOf("Committee", "Board", "Leadership"), space = "work"),
+            CircleTemplate("department", "Department", "Functional department or division sharing updates.",
+                listOf(PostType.Announcement, PostType.Standup, PostType.Task, PostType.Decision, PostType.Note),
+                listOf("Department", "Division", "Team"), space = "work"),
+            CircleTemplate("custom_work", "Custom work group", "Configure your own collaborative team space.",
+                listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Announcement, PostType.Note),
+                listOf("Team", "Group", "Circle"), space = "work")
         )
 
         fun byId(id: String?): CircleTemplate = all.firstOrNull { it.id == id } ?: all.last()
@@ -95,10 +128,12 @@ data class Circle(
     val pinnedPostId: String? = null,
     /** Storage path of the cover photo, once one is set. */
     val coverPath: String? = null,
-    val pinnedMessageId: String? = null
+    val pinnedMessageId: String? = null,
+    val space: String = "faith"
 ) {
-    /** "Cell group" for the header: the group's own word, never a generic one. */
-    val groupWord: String get() = vocab.ifBlank { "Circle" }
+    val isWork: Boolean get() = space.equals("work", ignoreCase = true) || template in setOf("project_team", "client_engagement", "exec_board", "department", "custom_work")
+    /** "Cell group" or "Team" for the header: the group's own word, never a generic one. */
+    val groupWord: String get() = vocab.ifBlank { if (isWork) "Team" else "Circle" }
 }
 
 /** [title] is a display label such as "Pastor". It never changes what the person may do; [role] does. */

@@ -21,16 +21,20 @@ object CirclesParsing {
     @Suppress("UNCHECKED_CAST")
     private fun strings(v: Any?): List<String> = (v as? List<Any?>).orEmpty().filterIsInstance<String>()
 
-    fun settings(m: Map<String, Any?>, fallbackTemplate: String?): CircleSettings {
+    fun settings(m: Map<String, Any?>, fallbackTemplate: String?, fallbackSpace: String? = null): CircleSettings {
+        val sp = str(m, "space") ?: fallbackSpace ?: if (fallbackTemplate in setOf("project_team", "client_engagement", "exec_board", "department", "custom_work")) "work" else "faith"
+        val isWork = sp.equals("work", ignoreCase = true)
+        val defaultReactions = if (isWork) listOf(ReactionKind.Ack, ReactionKind.Approved, ReactionKind.Priority, ReactionKind.Reviewing, ReactionKind.Win) else listOf(ReactionKind.Praying, ReactionKind.Amen, ReactionKind.Heart, ReactionKind.Celebrate)
         val types = strings(m["allowedTypes"]).mapNotNull { PostType.from(it) }.ifEmpty { CircleTemplate.byId(fallbackTemplate).types }
-        val reactions = strings(m["reactions"]).mapNotNull { ReactionKind.from(it) }.ifEmpty { ReactionKind.entries }
+        val reactions = strings(m["reactions"]).mapNotNull { ReactionKind.from(it) }.ifEmpty { defaultReactions }
         return CircleSettings(
             allowedTypes = types,
             whoCanInvite = WhoCanInvite.from(str(m, "whoCanInvite")),
-            prayerApproval = m["prayerApproval"] as? Boolean ?: true,
+            prayerApproval = m["prayerApproval"] as? Boolean ?: !isWork,
             joinApproval = m["joinApproval"] as? Boolean ?: false,
             reactions = reactions,
-            guidelines = str(m, "guidelines").orEmpty()
+            guidelines = str(m, "guidelines").orEmpty(),
+            space = sp
         )
     }
 
@@ -38,10 +42,12 @@ object CirclesParsing {
         if (d == null || d["closed"] == true) return null
         val name = str(d, "name") ?: return null
         val template = str(d, "template") ?: "custom"
+        val space = str(d, "space") ?: (map(d["settings"])["space"] as? String) ?: if (template in setOf("project_team", "client_engagement", "exec_board", "department", "custom_work")) "work" else "faith"
         return Circle(
-            id, name, template, str(d, "vocab").orEmpty(), settings(map(d["settings"]), template), int(d, "memberCount"), str(d, "ownerUid").orEmpty(),
+            id, name, template, str(d, "vocab").orEmpty(), settings(map(d["settings"]), template, space), int(d, "memberCount"), str(d, "ownerUid").orEmpty(),
             description = str(d, "description").orEmpty(), pinnedPostId = str(d, "pinnedPostId")?.ifBlank { null },
-            coverPath = str(d, "coverPath")?.ifBlank { null }, pinnedMessageId = str(d, "pinnedMessageId")?.ifBlank { null }
+            coverPath = str(d, "coverPath")?.ifBlank { null }, pinnedMessageId = str(d, "pinnedMessageId")?.ifBlank { null },
+            space = space
         )
     }
 

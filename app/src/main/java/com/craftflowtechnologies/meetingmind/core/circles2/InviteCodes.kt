@@ -9,11 +9,17 @@ package com.craftflowtechnologies.meetingmind.core.circles2
  */
 object InviteCodes {
     /** Same word list as the Worker. A pasted "self-care" must not look like a code. */
-    val WORDS = listOf(
+    val FAITH_WORDS = listOf(
         "GRACE", "FAITH", "HOPE", "LIGHT", "PEACE", "JOY", "AMEN", "MERCY", "TRUST", "PRAISE", "SHEPHERD", "COVENANT",
         "ANCHOR", "BEACON", "CEDAR", "DOVE", "EMBER", "FIELD", "GARDEN", "HARVEST", "OLIVE", "RIVER", "ROCK", "SPRING",
         "STAR", "VINE", "WILLOW", "WINGS", "LAMP", "PATH", "SALT", "SEED"
     )
+    val WORK_WORDS = listOf(
+        "SPRINT", "FOCUS", "LAUNCH", "ALIGN", "IMPACT", "STRIDE", "TALENT", "VISION", "TARGET", "MATRIX",
+        "NEXUS", "VECTOR", "DELTA", "APEX", "SUMMIT", "PULSE", "BRIDGE", "PIVOT", "THRIVE", "FORGE",
+        "CLIMB", "SCALE", "DRIVE", "RESOLVE", "QUEST", "SYNC", "PRISM", "SIGNAL", "CHORD", "SYNERGY"
+    )
+    val WORDS = (FAITH_WORDS + WORK_WORDS).distinct()
     const val ALPHABET = "23456789BCDFGHJKMNPQRSTVWXZ"
 
     private const val MAX_SCAN = 2000
