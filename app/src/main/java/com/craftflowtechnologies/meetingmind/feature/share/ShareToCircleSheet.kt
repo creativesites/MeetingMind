@@ -34,7 +34,8 @@ import com.craftflowtechnologies.meetingmind.ui.theme.MM
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShareToCircleSheet(onPick: (Circle) -> Unit, onDismiss: () -> Unit) {
-    val repo = remember { Circles2.repository(LocalContext.current) }
+    val context = LocalContext.current
+    val repo = remember { Circles2.repository(context) }
     val state by repo.circles().collectAsState(initial = CirclesListState.Loading)
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp)) {

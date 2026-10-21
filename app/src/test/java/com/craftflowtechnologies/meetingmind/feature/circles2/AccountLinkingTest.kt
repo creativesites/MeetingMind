@@ -1,6 +1,12 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import android.content.Context
+import com.craftflowtechnologies.meetingmind.core.billing.Billing
+import com.craftflowtechnologies.meetingmind.core.billing.DisabledBillingGateway
+import com.craftflowtechnologies.meetingmind.core.billing.Entitlements
+import com.craftflowtechnologies.meetingmind.core.billing.EntitlementState
+import com.craftflowtechnologies.meetingmind.core.billing.FakeBillingGateway
+import com.craftflowtechnologies.meetingmind.core.billing.Plan
 import com.craftflowtechnologies.meetingmind.core.circles2.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -23,8 +29,16 @@ import androidx.test.core.app.ApplicationProvider
 @RunWith(RobolectricTestRunner::class)
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountLinkingTest {
-    @Before fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
-    @After fun tearDown() = Dispatchers.resetMain()
+    @Before fun setUp() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        // Google sign-in is part of Pro: these tests linking an account need an active Pro plan.
+        val now = System.currentTimeMillis()
+        Billing.gateway = FakeBillingGateway().apply { set(Entitlements(Plan.PRO, EntitlementState.ACTIVE, now + 86_400_000L, true, now)) }
+    }
+    @After fun tearDown() {
+        Billing.gateway = DisabledBillingGateway
+        Dispatchers.resetMain()
+    }
 
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
