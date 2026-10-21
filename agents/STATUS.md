@@ -18,7 +18,8 @@ Updated: 2026-10-21. Designated branch: `claude/meetingmind-mvp-planning-7dgowm`
   - Task completion toggling on feed cards (`Mark completed`) with visual status pills (`Completed ✅` / `Action item`).
 - **Tests & Verification**:
   - Server unit tests (`server/circles-api/test/unit/work_circles.test.js`): 67/67 tests passing.
-  - Android unit tests: `CirclesScreenshotTest`, `CirclesFakes`.
+  - Android unit tests: 110/110 tests passing across `CirclesApiTest`, `CirclesParsingTest`, `CirclesRedesignM1Test`, `CirclesMediaParsingTest`, `PushTokensTest`, `Migration25To26Test`, `CircleViewModelsTest`, `CirclesScreenshotTest`, `HomeCirclesScreenshotTest`, `HomeCirclesSectionTest`, `HomeCirclesTest`, and `ColorLiteralGuardTest`.
+  - Audio recording safety tests: `AudioRecorderShortStopTest` (2/2 tests passing).
 - **Not verified on device**: End-to-end multi-device email invite acceptance flow against live production backend.
 
 
