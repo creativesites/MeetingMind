@@ -77,7 +77,8 @@ class CirclesParsingTest {
     }
 
     @Test fun `templates match the spec`() {
-        assertEquals(7, CircleTemplate.all.size)
+        assertEquals(7, CircleTemplate.all.count { !it.isWork })
+        assertEquals(5, CircleTemplate.all.count { it.isWork })
         assertEquals(listOf("Cell group", "Small group", "Home fellowship", "Life group"), CircleTemplate.byId("small_group").vocab)
         assertEquals(PostType.entries.toList(), CircleTemplate.byId("youth").types)
         assertEquals("custom", CircleTemplate.byId("unknown").id)

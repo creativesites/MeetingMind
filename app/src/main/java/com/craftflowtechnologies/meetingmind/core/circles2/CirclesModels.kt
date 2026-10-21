@@ -111,7 +111,8 @@ data class CircleTemplate(
                 listOf("Team", "Group", "Circle"), space = "work")
         )
 
-        fun byId(id: String?): CircleTemplate = all.firstOrNull { it.id == id } ?: all.last()
+        /** An unknown or missing id is a faith circle: the work templates are listed after it, so the fallback names it. */
+        fun byId(id: String?): CircleTemplate = all.firstOrNull { it.id == id } ?: all.first { it.id == "custom" }
     }
 }
 
