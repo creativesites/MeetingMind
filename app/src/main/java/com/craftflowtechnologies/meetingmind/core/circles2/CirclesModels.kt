@@ -77,8 +77,7 @@ data class CircleTemplate(
 
     companion object {
         private val everyType = PostType.entries.toList()
-        val all: List<CircleTemplate> = listOf(
-            // Faith templates
+        val faithTemplates: List<CircleTemplate> = listOf(
             CircleTemplate("small_group", "Small group", "A cell or home group that meets and prays together.",
                 listOf(PostType.Prayer, PostType.Testimony, PostType.Study, PostType.Encouragement),
                 listOf("Cell group", "Small group", "Home fellowship", "Life group")),
@@ -92,8 +91,10 @@ data class CircleTemplate(
             CircleTemplate("ministry_team", "Ministry team", "Announcements, prayer and study for a team.",
                 listOf(PostType.Prayer, PostType.Announcement, PostType.Study), listOf("Team")),
             CircleTemplate("custom", "Custom", "You choose what to share.",
-                listOf(PostType.Prayer, PostType.Testimony, PostType.Encouragement), listOf("Circle")),
-            // Work templates
+                listOf(PostType.Prayer, PostType.Testimony, PostType.Encouragement), listOf("Circle"))
+        )
+
+        val workTemplates: List<CircleTemplate> = listOf(
             CircleTemplate("project_team", "Project team", "A team collaborating on deliverables, decisions and tasks.",
                 listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Announcement, PostType.Note),
                 listOf("Team", "Project", "Squad"), space = "work"),
@@ -111,7 +112,14 @@ data class CircleTemplate(
                 listOf("Team", "Group", "Circle"), space = "work")
         )
 
-        fun byId(id: String?): CircleTemplate = all.firstOrNull { it.id == id } ?: all.last()
+        val all: List<CircleTemplate> get() = faithTemplates
+        val allTemplates: List<CircleTemplate> get() = faithTemplates + workTemplates
+
+        fun forSpace(space: String?): List<CircleTemplate> =
+            if (space.equals("work", ignoreCase = true)) workTemplates else faithTemplates
+
+        fun byId(id: String?): CircleTemplate =
+            (faithTemplates + workTemplates).firstOrNull { it.id == id } ?: faithTemplates.last()
     }
 }
 

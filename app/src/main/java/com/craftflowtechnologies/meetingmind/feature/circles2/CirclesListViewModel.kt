@@ -73,9 +73,9 @@ class CirclesListViewModel(private val repo: CirclesRepository) : ViewModel() {
 data class CreateUiState(
     val template: CircleTemplate = CircleTemplate.all.first(),
     val name: String = "",
-    val vocab: String = CircleTemplate.all.first().vocab.first(),
+    val vocab: String = CircleTemplate.forSpace(null).first().vocab.first(),
     val displayName: String = "",
-    val types: List<PostType> = CircleTemplate.all.first().types,
+    val types: List<PostType> = CircleTemplate.forSpace(null).first().types,
     val prayerApproval: Boolean = true,
     val whoCanInvite: WhoCanInvite = WhoCanInvite.Admins,
     val spaceTab: String = "work",
@@ -87,9 +87,9 @@ data class CreateUiState(
 }
 
 class CreateCircleViewModel(private val repo: CirclesRepository, initialSpace: String? = null) : ViewModel() {
-    private val defaultTemplate = initialSpace?.let { sp -> CircleTemplate.all.firstOrNull { it.space == sp } }
-        ?: CircleTemplate.all.firstOrNull { it.isWork }
-        ?: CircleTemplate.all.first()
+    private val defaultTemplate = initialSpace?.let { sp -> CircleTemplate.forSpace(sp).firstOrNull() }
+        ?: CircleTemplate.forSpace("work").firstOrNull()
+        ?: CircleTemplate.forSpace("faith").first()
 
     private val _state = MutableStateFlow(
         CreateUiState(
@@ -104,7 +104,7 @@ class CreateCircleViewModel(private val repo: CirclesRepository, initialSpace: S
     val state: StateFlow<CreateUiState> = _state
 
     fun setSpaceTab(space: String) = _state.update { s ->
-        val candidate = CircleTemplate.all.firstOrNull { it.space == space } ?: s.template
+        val candidate = CircleTemplate.forSpace(space).firstOrNull() ?: s.template
         s.copy(
             spaceTab = space,
             template = candidate,

@@ -96,7 +96,7 @@ fun CreateCircleContent(
 
             SectionHeader("What kind of group?")
             Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                val visibleTemplates = CircleTemplate.all.filter { it.space == state.spaceTab }
+                val visibleTemplates = CircleTemplate.forSpace(state.spaceTab)
                 visibleTemplates.forEach { t ->
                     val selected = t.id == state.template.id
                     MMCard(onClick = { onTemplate(t) }, modifier = Modifier.semantics { }) {
