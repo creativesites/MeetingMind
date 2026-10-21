@@ -123,6 +123,10 @@ import com.craftflowtechnologies.meetingmind.core.share.ShareCardContent
 import com.craftflowtechnologies.meetingmind.feature.share.ShareRequest
 import kotlinx.coroutines.launch
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+
 private val Gold: Color @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable get() = com.craftflowtechnologies.meetingmind.ui.theme.FaithGold
 private val SelectedWash = Color(0x33F2C94C)
 
@@ -501,41 +505,67 @@ internal fun SelectionBar(
     onListenHere: (() -> Unit)? = null,
     onCard: (() -> Unit)? = null
 ) {
-    Surface(color = SurfaceBase, shadowElevation = 10.dp, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(reference.display(), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
-                IconButton(onClick = onClear) { Icon(Icons.Filled.Close, contentDescription = "Clear selection", tint = InkSecondary) }
-            }
-            // Highlight colours, then study and listen.
-            Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HighlightColors.forEach { (name, color) ->
-                    Box(Modifier.size(28.dp).clip(CircleShape).background(color).border(1.dp, Color(0x22000000).forTheme(), CircleShape).clickable { onHighlight(name) }.testTag("highlight_$name"))
+    Surface(
+        color = SurfaceBase,
+        shadowElevation = 10.dp,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        // Hard cap: the bar can never take over the reader, whatever the parent offers.
+        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).testTag("selection_bar")
+    ) {
+        Column(
+            Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // 1. Reference + close
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    reference.display(), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onClear, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.Close, contentDescription = "Clear selection", tint = InkSecondary)
                 }
-                Box(Modifier.size(28.dp).clip(CircleShape).border(1.dp, Line, CircleShape).clickable { onHighlight(null) }, contentAlignment = Alignment.Center) {
+            }
+
+            // 2. Highlight colours + study tools, one scrollable row
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                HighlightColors.forEach { (name, color) ->
+                    Box(
+                        Modifier.size(32.dp).clip(CircleShape).background(color)
+                            .border(1.dp, Color(0x22000000).forTheme(), CircleShape)
+                            .clickable { onHighlight(name) }.testTag("highlight_$name")
+                    )
+                }
+                Box(
+                    Modifier.size(32.dp).clip(CircleShape).border(1.dp, Line, CircleShape).clickable { onHighlight(null) },
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(Icons.Filled.Close, contentDescription = "Remove highlight", tint = InkMuted, modifier = Modifier.size(14.dp))
                 }
-                Spacer(Modifier.weight(1f))
-                Surface(onClick = onStudy, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("bible_study")) {
-                    Text("Explain", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                }
-                onCard?.let { make ->
-                    Surface(onClick = make, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = Modifier.testTag("bible_card")) {
-                        Text("Card", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                    }
-                }
-                onListenHere?.let { go ->
-                    Surface(onClick = go, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line)) {
-                        Text("Read from here", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                    }
-                }
+                Spacer(Modifier.width(6.dp))
+                ToolChip("Explain", onStudy, Modifier.testTag("bible_study"))
+                onCard?.let { ToolChip("Card", it, Modifier.testTag("bible_card")) }
+                onListenHere?.let { ToolChip("Read from here", it) }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Surface(onClick = onPrimary, shape = RoundedCornerShape(12.dp), color = Ink, modifier = Modifier.weight(1.6f).testTag("bible_insert")) {
-                    Row(Modifier.padding(vertical = 11.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+
+            // 3. Primary action + quick actions
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(
+                    onClick = onPrimary, shape = RoundedCornerShape(12.dp), color = Ink,
+                    modifier = Modifier.weight(1.6f).testTag("bible_insert")
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 11.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(insertIcon, contentDescription = null, tint = OnInk, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(insertLabel, color = OnInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(insertLabel, color = OnInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
                 }
                 SmallAction(Icons.Filled.BookmarkAdd, "Note", onSave, Modifier.weight(1f))
@@ -543,6 +573,16 @@ internal fun SelectionBar(
                 SmallAction(Icons.Filled.Share, "Share", onShare, Modifier.weight(1f))
             }
         }
+    }
+}
+
+@Composable
+private fun ToolChip(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(50), color = SurfaceSunk, border = BorderStroke(1.dp, Line), modifier = modifier) {
+        Text(
+            label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+        )
     }
 }
 
