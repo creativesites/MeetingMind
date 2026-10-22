@@ -1,22 +1,24 @@
-# MeetingMind dev build: 4e7a3bf
+# MeetingMind dev build: 1cb6654
 
-Install `MeetingMind-Dev-4e7a3bf.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
+Install `MeetingMind-Dev-1cb6654.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
 
-Built from `ccr-08b1bb9f-iljmtb` at `4e7a3bf`. It includes everything in the `5f39cd1` build, plus the work-circles integration from `origin/work-circles-integration` (`fa4d00c`, `d91757d`).
+Built from `ccr-08b1bb9f-iljmtb` at `1cb6654`. It includes everything in the `4e7a3bf` build, plus the Work consolidation, navigation fix, and Read to Me Bible license policies (`d1628f7`, `c57c4bc`, `1cb6654`).
 
 ## What is new
-- **Work Circles:** Circles adapt to work. Work workspaces use Team, Department, Project and Workspace wording, with templates for project teams, client engagements, leadership boards, departments and custom work groups. Work posts can be task, decision, brief, standup or blocker, with work reactions (acknowledged, approved, priority, reviewing, win).
-- **Email invitations:** invite people to a circle by email or Google Workspace address (backend endpoint and app repository).
-- **Share to Circle after a meeting:** the wrap-up screen can publish a meeting brief, decisions and action items to a chosen work circle.
-- **Search and tasks in a circle:** a search bar in the circle, and a status and completion toggle on action items in the feed.
-- **Short recordings:** a recording that is stopped very early is handled safely.
-- **Backup:** credential stores are excluded from cloud backup and device transfer.
-- **Fixes in this build:** unknown circle templates fall back to the faith custom circle. Two test files were updated for the new templates and the Circles screenshot tests.
+- **Unified Work Surface (Decision D1)**: Retired `ProfessionalHome.kt` and removed `PROFESSIONAL` style from settings. `WorkPageScreen` is now the single, canonical surface for all Work workflows, eliminating UI drift and duplicate code paths.
+- **Work Back Navigation Trap Fixed (W-01)**: Connected `onNavigateBack` directly to `onBack` in `WorkPageScreen.kt`. Navigating into Work from Home or Today now provides a functional back arrow.
+- **Read to Me Bible AI Restriction (Decision D2)**: Restricted cloud AI reflection strictly to public-domain translations (KJV and WEB). Licensed translations (NIV, ESV, NLT, etc.) remain 100% on-device on the system TTS voice.
+- **Work Circles Collaboration**: Space-aware Circles (`work` vs `faith`), work-tailored templates (Project Team, Client Engagement, Exec Board, Department), professional post types (`task`, `decision`, `brief`, `standup`, `blocker`), professional reactions, and memorable invite codes.
+- **Post-Meeting "Share to Circle"**: Wrap-up screen one-tap publishing of meeting brief, decisions, and action items to a chosen Work Circle.
+- **In-Circle Search & Feed Experience**: Real-time post search within circles and task completion toggle on feed action cards.
+- **Audio & Reliability**: Safe handling for very short recordings and credential exclusion from cloud backup.
+- **Build Toolchain Fix**: Configuration cache serialization resolved for AGP 8.x XML tasks.
 
-## Not verified
-- Unit suite on `4e7a3bf`: 3,212 tests, 1 failure: `WorkHomeLayoutTest.needsRespectsACustomCap`, which also fails on the base commit.
-- The work-circles backend tests (`server/circles-api/test/unit/work_circles.test.js`) were not run in this build. The other session reports 67 of 67 passing.
-- Not verified on a device: the work Circles flows, the share-to-circle flow, email invitations (the backend must be deployed first), the short-recording fix, and the Circles changes from earlier builds. A microphone revoked mid-recording is not handled yet. Google sign-in will fail on `.dev` (no Android OAuth client in `google-services.json`). The language loop fix, the Work redesign, and the Bible sheet are also not verified on a device.
+## Not verified on a device
+- The newly wired `WorkPageScreen` back navigation and layout on various screen densities.
+- The Read to Me public-domain filter behavior with diverse user network conditions.
+- End-to-end multi-device email invite acceptance flow against live production backend.
+- Google sign-in on `.dev` (no Android OAuth client configured in `google-services.json`).
 
 ## Install
 1. Enable install from unknown sources for your file manager.
