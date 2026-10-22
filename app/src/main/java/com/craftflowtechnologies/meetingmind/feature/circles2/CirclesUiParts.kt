@@ -191,6 +191,11 @@ fun PostTypeBadge(type: PostType, modifier: Modifier = Modifier) {
     val (bg, fg) = when (type) {
         PostType.Prayer -> CirclesPalette.WarmBg to CirclesPalette.WarmInk
         PostType.Testimony, PostType.Achievement -> CirclesPalette.GreenBg to CirclesPalette.GreenInk
+        PostType.Task -> CirclesPalette.AccentSoft to CirclesPalette.AccentDeep
+        PostType.Decision -> CirclesPalette.RoseBg to CirclesPalette.RoseInk
+        PostType.Brief -> CirclesPalette.WarmBg to CirclesPalette.WarmInk
+        PostType.Standup -> CirclesPalette.GreenBg to CirclesPalette.GreenInk
+        PostType.Blocker -> CirclesPalette.RoseBg to CirclesPalette.RoseInk
         else -> CirclesPalette.AccentSoft to CirclesPalette.AccentDeep
     }
     Surface(shape = RoundedCornerShape(999.dp), color = bg, modifier = modifier) {

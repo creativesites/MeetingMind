@@ -62,11 +62,11 @@ class CirclesScreenshotTest {
 
     @Test fun create() = shot("create", {
         CreateCircleContent(
-            CreateUiState(name = "Tuesday Night", displayName = "Ann"), {}, {}, {}, {}, {}, {}, {}, {}, {}
+            CreateUiState(name = "Tuesday Night", displayName = "Ann"), {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
         )
     })
     @Test fun createError() = shot("create_error", {
-        CreateCircleContent(CreateUiState(name = "", error = "Give your cell group a name."), {}, {}, {}, {}, {}, {}, {}, {}, {})
+        CreateCircleContent(CreateUiState(name = "", error = "Give your cell group a name."), {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     })
 
     // ---------- circle home ----------
@@ -93,7 +93,7 @@ class CirclesScreenshotTest {
     )
 
     private fun home(state: CircleHomeUiState, chat: ChatUiState = ChatUiState(loading = false, myUid = "me", myName = "Ann Mensah"), tab: HomeTab = HomeTab.Feed, chatActions: ChatActions = ChatActions.None) = @Composable {
-        CircleHomeContent(state, chat, "", tab, {}, now, FeedActions.None, chatActions, MemberActions.None, SnackbarHostState(), {}, {}, {}, {})
+        CircleHomeContent(state, chat, "", tab, {}, now, FeedActions.None, chatActions, MemberActions.None, SnackbarHostState(), {}, {}, {}, {}, {})
     }
 
     @Test fun feed() = shot("feed", home(homeState()))
@@ -104,7 +104,7 @@ class CirclesScreenshotTest {
         PendingPost("pp2", PostType.Prayer, "Safe travel for the mission team next week.", null, false, now - 90 * minute)
     ))))
     @Test fun members() = shot("members", home(homeState(), tab = HomeTab.Members))
-    @Test fun gone() = shot("gone", { CircleHomeContent(CircleHomeUiState(loading = false, gone = true), ChatUiState(), "", HomeTab.Feed, {}, now, FeedActions.None, ChatActions.None, MemberActions.None, SnackbarHostState(), {}, {}, {}, {}) })
+    @Test fun gone() = shot("gone", { CircleHomeContent(CircleHomeUiState(loading = false, gone = true), ChatUiState(), "", HomeTab.Feed, {}, now, FeedActions.None, ChatActions.None, MemberActions.None, SnackbarHostState(), {}, {}, {}, {}, {}) })
 
     // ---------- chat ----------
 

@@ -9,6 +9,25 @@ Updated: 2026-10-22. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git lo
 - **Unit Tests Verified**: `ReadToMeLicencePolicyTest` (3/3 pass: licensed text blocked from cloud, KJV treated as open, open translations allowed).
 - **Build / Toolchain**: Fixed `ProcessNavigationXmlTask` serialization failure by disabling configuration cache in `gradle.properties`. Verified compilation and unit tests with `-Xmx6g --max-workers=2`.
 
+## Work Circles & Post-Meeting Collaboration (2026-10-21)
+- **Work Circles Architecture & Domain Extension**:
+  - Space-aware Circles (`work` vs `faith`): `Circle.isWork`, `Circle.groupWord` ("Team", "Department", "Project", "Workspace" for Work; "Circle", "Cell Group", "Fellowship" for Faith).
+  - Work-tailored templates: `project_team`, `client_engagement`, `exec_board`, `department`, `custom_work` with automatic work defaults (e.g., prayer approval disabled).
+  - Professional post types (`task`, `decision`, `brief`, `standup`, `blocker`) and professional reactions (`ack` 👀, `approved` ✅, `priority` 🎯, `reviewing` 🔍, `win` 🚀).
+  - Professional invite dictionary words (e.g., `TEAM`, `SPRINT`, `LAUNCH`, `CLIENT`, `PROJ`, `SYNC`) for memorable codes.
+  - Email & Google Workspace invitations: added `createEmailInvite` API and backend handling with email validation and audit logging.
+- **Post-Meeting "Share to Circle" Integration**:
+  - Created `ShareToCircleSheet` in `feature/work`: post-meeting flow enables one-tap publishing of Meeting Brief, Decisions, and Action Items (with assignees and due dates) directly to a chosen Work Circle.
+  - Integrated into `WrapUpScreen`: primary "Share to Circle" action button alongside "Draft follow-up" and "Done", with direct navigation to create a new circle if none exist.
+- **In-Circle Search & Feed Experience**:
+  - Added in-circle search bar/sheet in `CircleHomeScreen` allowing real-time searching through posts and chat messages.
+  - Work-aware `FeedTab` composer cards with quick chips (`Task`, `Decision`, `Brief`, `Standup`) and tailored placeholders in `FeedSheets`.
+  - Task completion toggling on feed cards (`Mark completed`) with visual status pills (`Completed ✅` / `Action item`).
+- **Tests & Verification**:
+  - Server unit tests (`server/circles-api/test/unit/work_circles.test.js`): 67/67 tests passing.
+  - Android unit tests: `CirclesScreenshotTest`, `CirclesFakes`.
+- **Not verified on device**: End-to-end multi-device email invite acceptance flow against live production backend.
+
 ## App Localization (i18n & l10n) (2026-10-20)
 - **9 Languages Supported**: English (`en` source & fallback), French (`fr`), Spanish (`es`), Portuguese (`pt`), Swahili (`sw`), Nyanja/Chichewa (`ny`), Shona (`sn`), Zulu (`zu`), and Bemba (`b+bem` via AAPT2 BCP-47 qualifier).
 - **Architectural Decoupling**: Interface language is strictly independent of speech recognition (ASR) language, AI prompt response language, and transcript translation language.

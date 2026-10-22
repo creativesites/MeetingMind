@@ -441,8 +441,10 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                         com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(context)
                     )
                 ) else null
-            val homeCircles = if (homeCirclesVm != null) homeCirclesVm.state.collectAsState().value
-                else com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles.Loading
+            val homeCirclesFlow = remember(homeCirclesVm) {
+                homeCirclesVm?.state ?: kotlinx.coroutines.flow.flowOf(com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles.Empty)
+            }
+            val homeCircles by homeCirclesFlow.collectAsState(initial = com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles.Empty)
             if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.EVERYDAY) com.craftflowtechnologies.meetingmind.feature.today.EverydayHome(
                 viewModel = vm,
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
@@ -620,12 +622,17 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onInitialCodeHandled = { com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.consume() }
             )
         }
-        composable(Routes.CIRCLE_CREATE) {
+        composable(
+            Routes.CIRCLE_CREATE,
+            arguments = listOf(navArgument("space") { type = NavType.StringType; nullable = true; defaultValue = null })
+        ) { entry ->
+            val initialSpace = entry.arguments?.getString("space")
             com.craftflowtechnologies.meetingmind.feature.circles2.CreateCircleScreen(
                 onBack = { navController.popBackStack() },
                 onCreated = { circleId ->
                     navController.navigate(Routes.circleDetailRoute(circleId)) { popUpTo(Routes.CIRCLE_CREATE) { inclusive = true } }
-                }
+                },
+                initialSpace = initialSpace
             )
         }
         composable(
@@ -1018,7 +1025,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 },
                 onPlay = { at -> navController.navigate(Routes.meetingDetailRoute(meetingId, at)) },
                 onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
-                startComposing = entry.arguments?.getBoolean("compose") == true
+                startComposing = entry.arguments?.getBoolean("compose") == true,
+                onStartCircle = { navController.navigate(Routes.circleCreateRoute("work")) }
             )
         }
         composable(Routes.WORK_SETTINGS) {

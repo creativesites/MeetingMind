@@ -2,18 +2,31 @@
 import { ApiError } from "./errors.js";
 
 export const LIMITS = { membersPerCircle: 50, circlesPerUser: 10, bodyMax: 4000, commentMax: 2000, nameMax: 60, descriptionMax: 300, maxTokensPerUser: 5, maxUpdates: 50 };
-// "note" is the free-form post. Every circle allows it, so it is not in any template or allowedTypes list.
-export const POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement", "note"];
-export const REACTIONS = ["praying", "amen", "heart", "celebrate"];
+// Post types for Faith and Work verticals. "note" is the universal free-form post.
+export const FAITH_POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement", "note"];
+export const WORK_POST_TYPES = ["task", "decision", "brief", "standup", "blocker", "announcement", "note"];
+export const POST_TYPES = [...new Set([...FAITH_POST_TYPES, ...WORK_POST_TYPES])];
+
+export const FAITH_REACTIONS = ["praying", "amen", "heart", "celebrate"];
+export const WORK_REACTIONS = ["ack", "approved", "priority", "reviewing", "win"];
+export const REACTIONS = [...new Set([...FAITH_REACTIONS, ...WORK_REACTIONS])];
+
 const ALL = POST_TYPES;
 export const TEMPLATES = {
+  // Faith templates
   small_group: ["prayer", "testimony", "study", "encouragement"],
   prayer_partners: ["prayer", "encouragement"],
   bible_study: ["study", "reading", "prayer"],
   family: ["prayer", "testimony", "encouragement", "achievement"],
-  youth: ALL,
+  youth: FAITH_POST_TYPES,
   ministry_team: ["prayer", "announcement", "study"],
   custom: ["prayer", "testimony", "encouragement"],
+  // Work templates
+  project_team: ["task", "decision", "brief", "standup", "announcement", "note"],
+  client_engagement: ["decision", "brief", "task", "announcement", "note"],
+  exec_board: ["decision", "brief", "announcement", "note"],
+  department: ["announcement", "standup", "task", "decision", "note"],
+  custom_work: ["task", "decision", "brief", "standup", "announcement", "note"],
 };
 
 const bad = (code, msg) => new ApiError(400, code, msg);
@@ -39,12 +52,22 @@ export function cleanVerseRef(v) {
 }
 
 // ---- settings ----
-export function normalizeSettings(input, template) {
+export function normalizeSettings(input, template, space = "faith") {
   const s = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const tpl = TEMPLATES[template];
   if (!tpl) throw bad("bad_request", "Unknown template");
+  const isWork = space === "work" || s.space === "work";
+  const defaultReactions = isWork ? [...WORK_REACTIONS] : [...FAITH_REACTIONS];
   // joinApproval defaults off so circles that exist today keep joining as they do.
-  const out = { allowedTypes: [...tpl], whoCanInvite: "admins", prayerApproval: true, joinApproval: false, reactions: [...REACTIONS], guidelines: "" };
+  const out = {
+    allowedTypes: [...tpl],
+    whoCanInvite: "admins",
+    prayerApproval: isWork ? false : true,
+    joinApproval: false,
+    reactions: defaultReactions,
+    guidelines: "",
+    space: isWork ? "work" : "faith"
+  };
   if (s.allowedTypes !== undefined) {
     if (!Array.isArray(s.allowedTypes) || s.allowedTypes.length === 0 || s.allowedTypes.some((t) => !POST_TYPES.includes(t))) throw bad("bad_request", "Invalid post types");
     out.allowedTypes = [...new Set(s.allowedTypes)];
@@ -70,18 +93,22 @@ export function normalizeSettings(input, template) {
 }
 
 // ---- invite codes ----
-export const CODE_WORDS = ["GRACE", "FAITH", "HOPE", "LIGHT", "PEACE", "JOY", "AMEN", "MERCY", "TRUST", "PRAISE", "SHEPHERD", "COVENANT", "ANCHOR", "BEACON", "CEDAR", "DOVE", "EMBER", "FIELD", "GARDEN", "HARVEST", "OLIVE", "RIVER", "ROCK", "SPRING", "STAR", "VINE", "WILLOW", "WINGS", "LAMP", "PATH", "SALT", "SEED"];
+export const FAITH_CODE_WORDS = ["GRACE", "FAITH", "HOPE", "LIGHT", "PEACE", "JOY", "AMEN", "MERCY", "TRUST", "PRAISE", "SHEPHERD", "COVENANT", "ANCHOR", "BEACON", "CEDAR", "DOVE", "EMBER", "FIELD", "GARDEN", "HARVEST", "OLIVE", "RIVER", "ROCK", "SPRING", "STAR", "VINE", "WILLOW", "WINGS", "LAMP", "PATH", "SALT", "SEED"];
+export const WORK_CODE_WORDS = ["SPRINT", "FOCUS", "LAUNCH", "ALIGN", "IMPACT", "STRIDE", "TALENT", "VISION", "TARGET", "MATRIX", "NEXUS", "VECTOR", "DELTA", "APEX", "SUMMIT", "PULSE", "BRIDGE", "PIVOT", "THRIVE", "FORGE", "CLIMB", "SCALE", "DRIVE", "RESOLVE", "QUEST", "SYNC", "PRISM", "SIGNAL", "CHORD", "SYNERGY"];
+export const CODE_WORDS = FAITH_CODE_WORDS;
+export const ALL_CODE_WORDS = [...new Set([...FAITH_CODE_WORDS, ...WORK_CODE_WORDS])];
 // No vowels (no accidental words), no 0/1/I/L/O lookalikes.
 export const CODE_ALPHABET = "23456789BCDFGHJKMNPQRSTVWXZ";
 
-export function generateCode(randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n))) {
+export function generateCode(randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n)), space = "faith") {
   const pick = (max) => { // rejection sampling: no modulo bias
     const lim = 256 - (256 % max);
     for (;;) { const b = randomBytes(1)[0]; if (b < lim) return b % max; }
   };
+  const words = space === "work" ? WORK_CODE_WORDS : FAITH_CODE_WORDS;
   let suffix = "";
   for (let i = 0; i < 4; i++) suffix += CODE_ALPHABET[pick(CODE_ALPHABET.length)];
-  return `${CODE_WORDS[pick(CODE_WORDS.length)]}-${suffix}`;
+  return `${words[pick(words.length)]}-${suffix}`;
 }
 
 /** Pull candidate codes out of whatever was pasted (whole share message, URL, lowercase...). */
@@ -91,7 +118,7 @@ export function extractCodes(text, max = 3) {
   const found = [];
   for (const m of text.slice(0, 2000).matchAll(re)) {
     const code = `${m[1]}-${m[2]}`.toUpperCase();
-    if (!CODE_WORDS.includes(m[1].toUpperCase())) continue;
+    if (!ALL_CODE_WORDS.includes(m[1].toUpperCase())) continue;
     if (!found.includes(code)) found.push(code);
     if (found.length >= max) break;
   }
