@@ -2,6 +2,33 @@
 
 Updated: 2026-10-22. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git log -1`.
 
+## Circles Redesign, Work Execution Space & Safety Gate (2026-10-22)
+- **Work Circles Execution & Continuity Space**:
+  - Created `WorkOverviewTab.kt`: Dedicated execution and continuity space answering "what changed, what needs a decision, who owns the next commitment, and the latest meeting brief".
+  - Structured into Active Blockers (high priority alerts with "Help unblock"), Latest Meeting Brief, Commitments & Action Items (interactive status checkbox), Key Decisions log, and Standups / Updates.
+  - Added Work Quick Operations row (`+ Action item`, `+ Decision`, `+ Meeting brief`, `+ Status update`, `+ Blocker`).
+  - Redesigned navigation in `CircleHomeScreen.kt`: Work circles present `Overview` · `Updates` · `Chat` · `Team`, while Faith circles maintain `Feed` · `Chat` · `Members`.
+- **Work Meeting Sharing Privacy Safety Gate**:
+  - Enforced `WorkPrivacy.mustStayOnDevice` in `ShareToCircleSheet.kt`: confidential/on-device meeting notes are strictly prohibited from leaking to server-side circles.
+  - Filtered circle selection strictly to Work spaces (`Circle.isWork == true`).
+  - Added item-level tracking (`publishedIds`) for partial failures, enabling safe retry without duplicate posts.
+  - Wired in `WrapUpScreen.kt:340`.
+- **Faith Devotional Post Type (End-to-End)**:
+  - Added `PostType.Devotional` in `CirclesModels.kt` and `server/circles-api/src/logic.js`.
+  - Added theme-aware gold badge in `CirclesUiParts.kt`, composer placeholder in `FeedSheets.kt`, and quick chip in `FeedTab.kt`.
+- **Visual & Usability Bug Fixes**:
+  - **Verse Dark Mode Styling**: Fixed washed-out/gray appearance in `FeedTab.kt`, `FeedSheets.kt`, and `CommentThread.kt` using semantic theme tokens (`surfaceSunk`, `gold`, `goldWash`, and `line`).
+  - **Avatars**: Replaced placeholder initials with `MemberAvatar` hooked to `avatarVersion` in `FeedTab`, `CommentThread`, and `ChatTab`.
+  - **Chat Media & PDF Uploads**: Added file extension fallback and magic-byte MIME sniffing in `MediaViews.kt` and normalized `application/x-pdf` alongside `application/pdf` on client and server (`server/circles-api/src/media.js`).
+  - **Card-to-Chat Flow**: Added prominent "Send to chat" button across all creator steps in `CreateStudioContent.kt`.
+  - **Chat Input Redesign**: Modern pill container with animated cursor and attachment buttons in `ChatTab.kt`.
+  - **Events Redesign**: Theme-aware calendar day tiles and rich metadata layout in `EventsSection.kt`.
+- **Tests & Verification**:
+  - Cloudflare Worker: 67/67 unit tests pass (`npm test` in `server/circles-api`).
+  - Android build: `compileDebugKotlin` passed with 0 errors.
+  - Android unit tests: `com.craftflowtechnologies.meetingmind.core.circles2.*`, `CircleViewModelsTest`, and `AccountLinkingTest` passed.
+- **Not verified on device**: End-to-end real camera/photo picker hardware handoff on a physical phone.
+
 ## Audio Hardware Resilience & Work QuickAdd Focus (2026-10-22, commit `8d38132`)
 - **STAB-02 Fixed (Hardware Error Listener on AudioRecorder)**:
   - Added `RecorderState.ERROR` and `onErrorListener: ((what: Int, extra: Int) -> Unit)?` callback on `AudioRecorder`.

@@ -131,7 +131,7 @@ fun ThreadSheet(
             }
         }
 
-        if (post != null) PostSummary(post, now, onMemberClick)
+        if (post != null) PostSummary(circleId, post, membersByUid, now, onMemberClick)
 
         thread?.failure?.let { StatusLine(StatusKind.Warning, it.message) }
 
@@ -208,7 +208,8 @@ fun ThreadSheet(
 
 /** The post at the top of the thread: who wrote it, its type, and its text. */
 @Composable
-private fun PostSummary(post: Post, now: Long, onMemberClick: ((String) -> Unit)?) {
+private fun PostSummary(circleId: String, post: Post, membersByUid: Map<String, Member>, now: Long, onMemberClick: ((String) -> Unit)?) {
+    val author = post.authorUid?.let { membersByUid[it] }
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MM.colors.surfaceSunk,
@@ -217,13 +218,23 @@ private fun PostSummary(post: Post, now: Long, onMemberClick: ((String) -> Unit)
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InitialsAvatar(
-                    post.authorName ?: "Member",
-                    size = 28.dp,
-                    modifier = Modifier.clickable { onMemberClick?.invoke(post.authorUid ?: post.authorName.orEmpty()) }
-                )
+                if (post.anonymous) {
+                    InitialsAvatar(
+                        "Anonymous",
+                        size = 28.dp
+                    )
+                } else {
+                    MemberAvatar(
+                        circleId = circleId,
+                        uid = post.authorUid,
+                        name = post.authorName ?: "Member",
+                        avatarVersion = author?.avatarVersion,
+                        size = 28.dp,
+                        modifier = Modifier.clickable { onMemberClick?.invoke(post.authorUid ?: post.authorName.orEmpty()) }
+                    )
+                }
                 Text(
-                    post.authorName ?: "Member",
+                    if (post.anonymous) "Anonymous" else (post.authorName ?: "Member"),
                     style = MM.type.bodyStrong.copy(fontSize = 13.sp),
                     color = MM.colors.ink,
                     modifier = Modifier.clickable { onMemberClick?.invoke(post.authorUid ?: post.authorName.orEmpty()) }
@@ -234,7 +245,7 @@ private fun PostSummary(post: Post, now: Long, onMemberClick: ((String) -> Unit)
             }
             Text(post.body, style = MM.type.body, color = MM.colors.ink, maxLines = 4, overflow = TextOverflow.Ellipsis)
             if (!post.verseRef.isNullOrBlank()) {
-                Text(post.verseRef, style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.WarmInk)
+                Text(post.verseRef, style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = if (MM.colors.isDark) MM.colors.gold else CirclesPalette.WarmInk)
             }
         }
     }

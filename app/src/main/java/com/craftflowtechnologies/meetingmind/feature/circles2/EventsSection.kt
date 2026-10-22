@@ -1,12 +1,20 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -16,14 +24,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.EventDraft
 import com.craftflowtechnologies.meetingmind.core.circles2.Rsvp
 import com.craftflowtechnologies.meetingmind.core.circles2.RsvpAnswer
-import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
@@ -55,48 +64,106 @@ fun EventsSection(events: List<CircleEvent>, now: Long, onOpen: (CircleEvent) ->
     Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
         SectionHeader("Coming up", count = upcoming.size)
         if (upcoming.isEmpty()) {
-            Text("No events planned yet.", style = MM.type.secondary, color = MM.colors.inkSecondary)
+            MMCard {
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.m)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MM.colors.surfaceSunk,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.CalendarMonth, null, tint = MM.colors.inkMuted, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("No events planned yet", style = MM.type.bodyStrong, color = MM.colors.ink)
+                        Text("Schedule a prayer session, bible study or team sync.", style = MM.type.caption, color = MM.colors.inkSecondary)
+                    }
+                }
+            }
         } else {
             MMCard {
-                upcoming.take(5).forEach { e -> EventRow(e, onOpen) }
+                upcoming.take(5).forEachIndexed { idx, e ->
+                    if (idx > 0) HorizontalDivider(color = MM.colors.line.copy(alpha = 0.6f))
+                    EventRow(e, onOpen)
+                }
             }
         }
-        if (onNew != null) SecondaryButton("New event", onNew, modifier = Modifier.fillMaxWidth())
+        if (onNew != null) SecondaryButton("New event", onNew, leadingIcon = Icons.Rounded.CalendarMonth, modifier = Modifier.fillMaxWidth())
     }
 }
 
 @Composable
 private fun EventRow(e: CircleEvent, onOpen: (CircleEvent) -> Unit) {
-    val where = e.location.takeIf { it.isNotBlank() }
-    val sub = if (where != null) "${whenText(e.startsAt, e.timeZone)} · $where" else whenText(e.startsAt, e.timeZone)
-    ListRow(
-        title = e.title,
-        subtitle = sub,
-        meta = if (e.cancelled) "Cancelled" else null,
-        leading = { DayTile(e) },
-        onClick = { onOpen(e) }
-    )
+    val where = e.location.takeIf { it.isNotBlank() } ?: e.onlineUrl?.takeIf { it.isNotBlank() }?.let { "Online" }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onOpen(e) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        DayTile(e)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                e.title,
+                style = MM.type.bodyStrong.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                color = MM.colors.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                whenText(e.startsAt, e.timeZone),
+                style = MM.type.caption,
+                color = MM.colors.inkSecondary
+            )
+            if (where != null) {
+                Text(
+                    where,
+                    style = MM.type.caption.copy(fontSize = 11.5.sp),
+                    color = MM.colors.inkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (e.cancelled) {
+            Surface(shape = RoundedCornerShape(999.dp), color = CirclesPalette.RoseBg) {
+                Text("Cancelled", style = MM.type.caption.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold), color = CirclesPalette.RoseInk, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+            }
+        } else {
+            Icon(Icons.Rounded.ChevronRight, null, tint = MM.colors.inkMuted, modifier = Modifier.size(18.dp))
+        }
+    }
 }
 
 @Composable
 private fun DayTile(e: CircleEvent) {
+    val isDark = MM.colors.isDark
     Column(
         modifier = Modifier
-            .size(width = 54.dp, height = 58.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(CirclesPalette.AccentSoft),
+            .size(width = 50.dp, height = 54.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (isDark) MM.colors.surfaceSunk else CirclesPalette.AccentSoft)
+            .border(1.dp, if (isDark) MM.colors.line else Color.Transparent, RoundedCornerShape(14.dp)),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(
             dayPart(e.startsAt, e.timeZone, "MMM").uppercase(),
-            style = MM.type.overline.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
-            color = CirclesPalette.Accent
+            style = MM.type.overline.copy(fontSize = 9.5.sp, fontWeight = FontWeight.Bold),
+            color = if (isDark) MM.colors.accent else CirclesPalette.Accent
         )
         Text(
             dayPart(e.startsAt, e.timeZone, "d"),
-            style = MM.type.heading.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
-            color = CirclesPalette.AccentDeep
+            style = MM.type.heading.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+            color = if (isDark) MM.colors.ink else CirclesPalette.AccentDeep
         )
     }
 }

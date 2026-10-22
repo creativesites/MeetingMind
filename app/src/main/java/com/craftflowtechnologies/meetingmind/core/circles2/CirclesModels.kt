@@ -19,6 +19,7 @@ enum class PostType(val wire: String, val label: String, val verb: String, val a
     Achievement("achievement", "Achievement", "Share a win"),
     Study("study", "Study share", "Share from your study"),
     Encouragement("encouragement", "Encouragement", "Encourage the group"),
+    Devotional("devotional", "Devotional", "Share a devotional"),
     Reading("reading", "Reading plan", "Post about the plan"),
     Announcement("announcement", "Announcement", "Make an announcement", adminOnly = true),
     // Work vertical post types
@@ -80,19 +81,19 @@ data class CircleTemplate(
         val all: List<CircleTemplate> = listOf(
             // Faith templates
             CircleTemplate("small_group", "Small group", "A cell or home group that meets and prays together.",
-                listOf(PostType.Prayer, PostType.Testimony, PostType.Study, PostType.Encouragement),
+                listOf(PostType.Prayer, PostType.Testimony, PostType.Devotional, PostType.Study, PostType.Encouragement),
                 listOf("Cell group", "Small group", "Home fellowship", "Life group")),
             CircleTemplate("prayer_partners", "Prayer partners", "Two to six people who pray for each other.",
                 listOf(PostType.Prayer, PostType.Encouragement), listOf("Prayer partners")),
             CircleTemplate("bible_study", "Bible study", "Read and discuss together.",
-                listOf(PostType.Study, PostType.Reading, PostType.Prayer), listOf("Bible study")),
+                listOf(PostType.Study, PostType.Reading, PostType.Devotional, PostType.Prayer), listOf("Bible study")),
             CircleTemplate("family", "Family", "Pray, celebrate and encourage at home.",
                 listOf(PostType.Prayer, PostType.Testimony, PostType.Encouragement, PostType.Achievement), listOf("Family")),
             CircleTemplate("youth", "Youth or campus", "Everything on, including cards and fun.", everyType, listOf("Youth", "Campus group")),
             CircleTemplate("ministry_team", "Ministry team", "Announcements, prayer and study for a team.",
                 listOf(PostType.Prayer, PostType.Announcement, PostType.Study), listOf("Team")),
             CircleTemplate("custom", "Custom", "You choose what to share.",
-                listOf(PostType.Prayer, PostType.Testimony, PostType.Encouragement), listOf("Circle")),
+                listOf(PostType.Prayer, PostType.Testimony, PostType.Devotional, PostType.Encouragement), listOf("Circle")),
             // Work templates
             CircleTemplate("project_team", "Project team", "A team collaborating on deliverables, decisions and tasks.",
                 listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Announcement, PostType.Note),
@@ -331,7 +332,7 @@ enum class MediaKind(val wire: String, val maxBytes: Long, val mimes: List<Strin
     Image("image", 10_000_000L, listOf("image/jpeg", "image/png", "image/webp")),
     Video("video", 50_000_000L, listOf("video/mp4", "video/webm")),
     Voice("voice", 25_000_000L, listOf("audio/mp4", "audio/aac", "audio/ogg")),
-    File("file", 25_000_000L, listOf("application/pdf"));
+    File("file", 25_000_000L, listOf("application/pdf", "application/x-pdf"));
 
     fun accepts(mime: String): Boolean = mime in mimes
 }

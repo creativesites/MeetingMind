@@ -11,7 +11,7 @@ export const MEDIA = {
   image: { mimes: ["image/jpeg", "image/png", "image/webp"], max: 10 * MB },
   video: { mimes: ["video/mp4", "video/webm"], max: 50 * MB },
   voice: { mimes: ["audio/mp4", "audio/aac", "audio/ogg"], max: 25 * MB },
-  file: { mimes: ["application/pdf"], max: 25 * MB },
+  file: { mimes: ["application/pdf", "application/x-pdf"], max: 25 * MB },
 };
 export const MEDIA_RATE = { limit: 60, ttl: 3600 };
 /** Kinds a post may carry. Chat takes every kind in MEDIA; a post is a photo or a video. */
@@ -70,6 +70,7 @@ export function sniffMime(b, mime) {
     case "image/jpeg": return b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
     case "image/png": return [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((v, i) => b[i] === v);
     case "image/webp": return at(0, "RIFF") && at(8, "WEBP");
+    case "application/x-pdf":
     case "application/pdf": return at(0, "%PDF-");
     case "audio/ogg": return at(0, "OggS");
     case "audio/mp4":

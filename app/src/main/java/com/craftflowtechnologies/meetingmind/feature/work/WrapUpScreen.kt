@@ -338,6 +338,8 @@ fun WrapUpScreen(
     contactFor?.let { p -> ContactDialog(p, onDismiss = { contactFor = null }) { e, ph -> viewModel.addContact(p, e, ph); contactFor = null } }
     if (showShareCircle) {
         ShareToCircleSheet(
+            meetingId = meeting?.id,
+            isPrivate = note?.isPrivate == true,
             meetingTitle = meeting?.title ?: "Meeting",
             summary = note?.plainText,
             decisions = decisions,

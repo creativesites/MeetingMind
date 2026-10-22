@@ -156,7 +156,17 @@ fun CreateStudioContent(
             title = "Create",
             modifier = Modifier.padding(start = MM.space.s, end = MM.space.l),
             leading = { IconButton(onClick = actions.onClose) { Icon(Icons.Rounded.Close, "Close", tint = c.inkSecondary) } },
-            actions = { TextAction("My creations", actions.onGallery) }
+            actions = {
+                if (actions.onSend != null) {
+                    PrimaryButton(
+                        "Send to ${actions.sendLabel ?: "chat"}",
+                        onClick = actions.onSend,
+                        enabled = ui.canWrite
+                    )
+                } else {
+                    TextAction("My creations", actions.onGallery)
+                }
+            }
         )
         // The card, exactly as it will be sent.
         Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = MM.space.xl, vertical = MM.space.s), contentAlignment = Alignment.Center) {

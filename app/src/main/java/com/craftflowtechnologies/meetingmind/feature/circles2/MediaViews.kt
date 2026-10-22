@@ -7,6 +7,7 @@ import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
@@ -412,17 +413,41 @@ fun FileBubble(circleId: String, a: MediaAttachment) {
  */
 fun readPicked(context: Context, uri: Uri): PickedFile? {
     val resolver = context.contentResolver
-    val mime = resolver.getType(uri) ?: return null
-    // A video is checked by size before it is read, so a long clip can't exhaust memory.
-    if (mime.startsWith("video/")) {
-        val size = resolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
-        if (size > MediaKind.Video.maxBytes) return null
-    }
-    val raw = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
     val name = resolver.query(uri, null, null, null, null)?.use { c ->
         val index = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
         if (c.moveToFirst() && index >= 0) c.getString(index) else null
     }
+    var mime = resolver.getType(uri)
+    if (mime == null || mime == "application/octet-stream") {
+        val ext = (name?.substringAfterLast('.', "") ?: MimeTypeMap.getFileExtensionFromUrl(uri.toString())).lowercase()
+        if (ext.isNotBlank()) {
+            mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+        }
+    }
+    if (mime == "application/x-pdf") {
+        mime = "application/pdf"
+    }
+
+    // A video is checked by size before it is read, so a long clip can't exhaust memory.
+    if (mime?.startsWith("video/") == true) {
+        val size = runCatching { resolver.openFileDescriptor(uri, "r")?.use { it.statSize } }.getOrNull() ?: -1L
+        if (size > MediaKind.Video.maxBytes) return null
+    }
+
+    val raw = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull() ?: return null
+
+    // If MIME is still unresolved or generic, sniff magic bytes
+    if (mime == null || mime == "application/octet-stream") {
+        mime = when {
+            raw.size >= 3 && (raw[0].toInt() and 0xFF) == 0xFF && (raw[1].toInt() and 0xFF) == 0xD8 && (raw[2].toInt() and 0xFF) == 0xFF -> "image/jpeg"
+            raw.size >= 8 && (raw[0].toInt() and 0xFF) == 0x89 && (raw[1].toInt() and 0xFF) == 0x50 && (raw[2].toInt() and 0xFF) == 0x4E -> "image/png"
+            raw.size >= 5 && raw.take(5).toByteArray().toString(Charsets.US_ASCII) == "%PDF-" -> "application/pdf"
+            raw.size >= 8 && raw.take(4).toByteArray().toString(Charsets.US_ASCII) == "RIFF" && raw.drop(8).take(4).toByteArray().toString(Charsets.US_ASCII) == "WEBP" -> "image/webp"
+            raw.size >= 8 && raw.drop(4).take(4).toByteArray().toString(Charsets.US_ASCII) == "ftyp" -> "video/mp4"
+            else -> mime ?: return null
+        }
+    }
+
     if (mime.startsWith("image/")) {
         // Refuse a photo we can't decode rather than send it with its metadata intact.
         return reencodeToJpeg(raw)?.let { PickedFile(it, "image/jpeg", name) }
@@ -430,12 +455,13 @@ fun readPicked(context: Context, uri: Uri): PickedFile? {
     if (mime.startsWith("video/")) {
         if (raw.size > MediaKind.Video.maxBytes) return null
         val durationMs = runCatching {
-            MediaMetadataRetriever().use { r ->
+            android.media.MediaMetadataRetriever().use { r ->
                 r.setDataSource(context, uri)
-                r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
             }
         }.getOrNull()
-        return PickedFile(raw, mime, name, durationMs)
+        val normalizedMime = if (raw.size >= 8 && raw.drop(4).take(4).toByteArray().toString(Charsets.US_ASCII) == "ftyp") "video/mp4" else mime
+        return PickedFile(raw, normalizedMime, name, durationMs)
     }
     return PickedFile(raw, mime, name)
 }

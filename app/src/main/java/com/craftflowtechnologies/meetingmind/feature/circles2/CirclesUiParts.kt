@@ -98,8 +98,8 @@ fun CircleField(
         minLines = minLines, maxLines = maxLines, singleLine = singleLine, keyboardOptions = keyboardOptions,
         colors = TextFieldDefaults.colors(
             focusedContainerColor = c.surfaceSunk, unfocusedContainerColor = c.surfaceSunk, disabledContainerColor = c.surfaceSunk,
-            focusedIndicatorColor = CirclesPalette.Accent, unfocusedIndicatorColor = c.line,
-            focusedLabelColor = CirclesPalette.Accent, unfocusedLabelColor = c.inkSecondary, cursorColor = CirclesPalette.Accent,
+            focusedIndicatorColor = c.accent, unfocusedIndicatorColor = c.line,
+            focusedLabelColor = c.accent, unfocusedLabelColor = c.inkSecondary, cursorColor = c.accent,
             focusedTextColor = c.ink, unfocusedTextColor = c.ink
         )
     )
@@ -188,15 +188,25 @@ fun TitleTag(title: String, modifier: Modifier = Modifier) {
 /** Post type pill badge on feed cards ("Prayer", "Testimony", "Free-form", etc.). */
 @Composable
 fun PostTypeBadge(type: PostType, modifier: Modifier = Modifier) {
-    val (bg, fg) = when (type) {
-        PostType.Prayer -> CirclesPalette.WarmBg to CirclesPalette.WarmInk
-        PostType.Testimony, PostType.Achievement -> CirclesPalette.GreenBg to CirclesPalette.GreenInk
-        PostType.Task -> CirclesPalette.AccentSoft to CirclesPalette.AccentDeep
-        PostType.Decision -> CirclesPalette.RoseBg to CirclesPalette.RoseInk
-        PostType.Brief -> CirclesPalette.WarmBg to CirclesPalette.WarmInk
-        PostType.Standup -> CirclesPalette.GreenBg to CirclesPalette.GreenInk
-        PostType.Blocker -> CirclesPalette.RoseBg to CirclesPalette.RoseInk
-        else -> CirclesPalette.AccentSoft to CirclesPalette.AccentDeep
+    val isDark = MM.colors.isDark
+    val (bg, fg) = if (isDark) {
+        when (type) {
+            PostType.Prayer, PostType.Brief, PostType.Devotional -> MM.colors.goldWash to MM.colors.gold
+            PostType.Testimony, PostType.Achievement, PostType.Standup -> MM.colors.success.copy(alpha = 0.15f) to MM.colors.success
+            PostType.Decision, PostType.Blocker -> MM.colors.dangerWash to MM.colors.danger
+            else -> MM.colors.accentWash to MM.colors.accent
+        }
+    } else {
+        when (type) {
+            PostType.Prayer, PostType.Devotional -> CirclesPalette.WarmBg to CirclesPalette.WarmInk
+            PostType.Testimony, PostType.Achievement -> CirclesPalette.GreenBg to CirclesPalette.GreenInk
+            PostType.Task -> CirclesPalette.AccentSoft to CirclesPalette.AccentDeep
+            PostType.Decision -> CirclesPalette.RoseBg to CirclesPalette.RoseInk
+            PostType.Brief -> CirclesPalette.WarmBg to CirclesPalette.WarmInk
+            PostType.Standup -> CirclesPalette.GreenBg to CirclesPalette.GreenInk
+            PostType.Blocker -> CirclesPalette.RoseBg to CirclesPalette.RoseInk
+            else -> CirclesPalette.AccentSoft to CirclesPalette.AccentDeep
+        }
     }
     Surface(shape = RoundedCornerShape(999.dp), color = bg, modifier = modifier) {
         Text(

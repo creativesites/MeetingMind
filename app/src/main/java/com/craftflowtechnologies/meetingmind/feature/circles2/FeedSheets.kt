@@ -132,6 +132,7 @@ fun ComposerSheet(
                 label = when (type) {
                     PostType.Prayer -> "What would you like prayer for?"
                     PostType.Testimony -> "What did God do?"
+                    PostType.Devotional -> "Devotional reflection & insights"
                     PostType.Encouragement -> "Encouraging word or reflection"
                     PostType.Task -> "Action item & assignee"
                     PostType.Decision -> "Decision & context"
@@ -143,6 +144,7 @@ fun ComposerSheet(
                 placeholder = when (type) {
                     PostType.Prayer -> "Share your prayer request with details or specific prayer points…"
                     PostType.Testimony -> "Tell the story of how God moved or answered prayer…"
+                    PostType.Devotional -> "Share what God spoke to you through today's devotional passage or reflection…"
                     PostType.Encouragement -> "Share a thought, verse reflection, or word of encouragement…"
                     PostType.Task -> "e.g. Update API client for work circles (@Jane, by Friday)…"
                     PostType.Decision -> "e.g. Decided to adopt Jetpack Compose for all new flows…"
@@ -212,10 +214,15 @@ fun ComposerSheet(
                     placeholder = "e.g. Romans 8:28, Psalm 23:1, John 3:16"
                 )
                 if (parsedRef != null) {
+                    val isDark = MM.colors.isDark
+                    val cardBg = if (isDark) MM.colors.surfaceSunk else CirclesPalette.WarmBg
+                    val cardBorder = if (isDark) MM.colors.gold.copy(alpha = 0.35f) else CirclesPalette.WarmBorder
+                    val primaryInk = if (isDark) MM.colors.gold else CirclesPalette.WarmInk
+                    val secondaryInk = if (isDark) MM.colors.gold.copy(alpha = 0.85f) else CirclesPalette.WarmInk.copy(alpha = 0.8f)
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = CirclesPalette.WarmBg,
-                        border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
+                        color = cardBg,
+                        border = BorderStroke(1.dp, cardBorder),
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                     ) {
                         Column(Modifier.padding(14.dp)) {
@@ -228,20 +235,20 @@ fun ComposerSheet(
                                     Icon(
                                         Icons.AutoMirrored.Filled.MenuBook,
                                         contentDescription = null,
-                                        tint = CirclesPalette.WarmInk,
+                                        tint = primaryInk,
                                         modifier = Modifier.size(15.dp)
                                     )
                                     Text(
                                         parsedRef.display(),
                                         style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
-                                        color = CirclesPalette.WarmInk
+                                        color = primaryInk
                                     )
                                 }
                                 (passageResult as? PassageResult.Found)?.let { found ->
                                     Text(
                                         found.passage.versionAbbreviation,
                                         style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
-                                        color = CirclesPalette.WarmInk.copy(alpha = 0.8f)
+                                        color = secondaryInk
                                     )
                                 }
                             }

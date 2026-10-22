@@ -50,7 +50,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionSettings
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 
-enum class HomeTab(val label: String) { Feed("Feed"), Chat("Chat"), Members("Members") }
+enum class HomeTab(val label: String) { Overview("Overview"), Feed("Feed"), Chat("Chat"), Members("Members") }
 
 /** Entry point: wires the two view models and the sheets around [CircleHomeContent]. */
 @Composable
@@ -72,7 +72,9 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     val accountState by account.state.collectAsState()
     val create = rememberCreateController()
 
-    var tab by rememberSaveable { mutableStateOf(HomeTab.Feed) }
+    val circle = state.circle
+    var userTab by rememberSaveable { mutableStateOf<HomeTab?>(null) }
+    val tab = userTab ?: if (circle?.isWork == true) HomeTab.Overview else HomeTab.Feed
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showTypes by remember { mutableStateOf(false) }
     var showInvite by remember { mutableStateOf(false) }
@@ -104,14 +106,13 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
         val t = target ?: return@LaunchedEffect
         if (t.circleId != circleId) return@LaunchedEffect
         showSettings = false
-        tab = if (t.destination == com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat) HomeTab.Chat else HomeTab.Feed
+        userTab = if (t.destination == com.craftflowtechnologies.meetingmind.core.circles2.CircleDestination.Chat) HomeTab.Chat else if (circle?.isWork == true) HomeTab.Overview else HomeTab.Feed
         t.postId?.let(home::openThread)
         com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.consumeTarget()
     }
     LaunchedEffect(tab, chatState.messages.size) { if (tab == HomeTab.Chat) chat.markRead() }
     BackHandler(showSettings) { showSettings = false }
 
-    val circle = state.circle
     if (showSettings && circle != null) {
         CircleSettingsContent(
             circle = circle, me = state.me, onBack = { showSettings = false },
@@ -132,7 +133,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onPinPost = home::pinFeedPost,
             onOpenEvent = { openingEvent = it; home.openEvent(it.id) },
             onNewEvent = { editingEvent = null; showEventForm = true },
-            onOpenChat = { tab = HomeTab.Chat },
+            onOpenChat = { userTab = HomeTab.Chat },
             onStartPost = home::openComposer,
             onPhoto = home::addPhoto,
             onInvite = { home.createInvite(); showInvite = true },
@@ -160,7 +161,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onNotice = chat::notice
         )
         CircleHomeContent(
-            state = state, chat = chatState, draft = draft, tab = tab, onTab = { tab = it }, now = now,
+            state = state, chat = chatState, draft = draft, tab = tab, onTab = { userTab = it }, now = now,
             feed = feed, chatActions = chatActions,
             members = MemberActions(
                 onInvite = { home.createInvite(); showInvite = true }, onSetRole = home::setRole, onRemove = home::remove,
@@ -206,7 +207,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onRemovePhoto = home::removeProfilePhoto,
             onMessage = {
                 activeMemberInfo = null
-                tab = HomeTab.Chat
+                userTab = HomeTab.Chat
                 chat.setDraft("@${m.displayName} ")
             },
             onSetTitle = { titling = it; activeMemberInfo = null },
@@ -257,11 +258,11 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             chat = chatState,
             now = now,
             onOpenPost = { post ->
-                tab = HomeTab.Feed
+                userTab = HomeTab.Feed
                 home.openThread(post.id)
             },
             onOpenChat = {
-                tab = HomeTab.Chat
+                userTab = HomeTab.Chat
             },
             onDismiss = { showSearch = false }
         )
@@ -320,11 +321,30 @@ fun CircleHomeContent(
                 }
                 else -> {
                     Text("${circle.groupWord} · ${if (circle.memberCount == 1) "1 member" else "${circle.memberCount} members"}", style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(horizontal = MM.space.l))
+                    val visibleTabs = if (circle.isWork) {
+                        listOf(HomeTab.Overview, HomeTab.Feed, HomeTab.Chat, HomeTab.Members)
+                    } else {
+                        listOf(HomeTab.Feed, HomeTab.Chat, HomeTab.Members)
+                    }
+                    val tabLabels = visibleTabs.map { t ->
+                        when (t) {
+                            HomeTab.Overview -> "Overview"
+                            HomeTab.Feed -> if (circle.isWork) "Updates" else "Feed"
+                            HomeTab.Chat -> if (chat.unread > 0 && tab != HomeTab.Chat) "Chat · ${chat.unread}" else "Chat"
+                            HomeTab.Members -> if (circle.isWork) "Team" else "Members"
+                        }
+                    }
+                    val selectedIndex = visibleTabs.indexOf(tab).let { if (it >= 0) it else 0 }
                     SegmentedControl(
-                        listOf("Feed", if (chat.unread > 0 && tab != HomeTab.Chat) "Chat · ${chat.unread}" else "Chat", "Members"),
-                        tab.ordinal, { onTab(HomeTab.entries[it]) }, Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s)
+                        tabLabels,
+                        selectedIndex, { onTab(visibleTabs[it]) }, Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s)
                     )
                     when (tab) {
+                        HomeTab.Overview -> if (circle.isWork) {
+                            WorkOverviewTab(state, now, feed, Modifier.weight(1f))
+                        } else {
+                            FeedTab(state, now, feed, Modifier.weight(1f))
+                        }
                         HomeTab.Feed -> FeedTab(state, now, feed, Modifier.weight(1f))
                         HomeTab.Chat -> ChatTab(chat, draft, now, chatActions, Modifier.weight(1f))
                         HomeTab.Members -> MembersTab(state, members, Modifier.weight(1f))
@@ -333,7 +353,7 @@ fun CircleHomeContent(
             }
         }
         val canPost = circle != null && circle.settings.allowedTypes.any { !it.adminOnly || state.isAdmin }
-        if (tab == HomeTab.Feed && canPost) {
+        if ((tab == HomeTab.Feed || (tab == HomeTab.Overview && circle?.isWork == true)) && canPost) {
             Surface(
                 onClick = feed.onNewPost,
                 shape = RoundedCornerShape(999.dp),

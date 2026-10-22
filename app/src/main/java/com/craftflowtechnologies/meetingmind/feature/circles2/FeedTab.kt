@@ -53,6 +53,7 @@ import com.craftflowtechnologies.meetingmind.feature.scripture.rememberPassage
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
+import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.PendingPost
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
@@ -144,9 +145,9 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
             // The pinned post leads the feed; it is not repeated below.
             state.posts.firstOrNull { it.post.id == state.pinnedPostId }?.let { pinned ->
                 item { SectionHeader("Pinned") }
-                item { PostCard(pinned, circle, state.isAdmin, now, actions, pinned = true, canModerate = state.canModerate) }
+                item { PostCard(pinned, circle, state.isAdmin, now, actions, pinned = true, canModerate = state.canModerate, members = state.members) }
             }
-            items(state.posts.filter { it.post.id != state.pinnedPostId }, key = { it.post.id }) { PostCard(it, circle, state.isAdmin, now, actions, canModerate = state.canModerate) }
+            items(state.posts.filter { it.post.id != state.pinnedPostId }, key = { it.post.id }) { PostCard(it, circle, state.isAdmin, now, actions, canModerate = state.canModerate, members = state.members) }
         }
     }
 }
@@ -180,7 +181,7 @@ private fun CircleHero(circle: Circle, state: CircleHomeUiState, actions: FeedAc
                     horizontalArrangement = Arrangement.spacedBy((-8).dp)
                 ) {
                     state.members.take(5).forEachIndexed { idx, m ->
-                        InitialsAvatar(m.displayName, size = 34.dp, online = idx < 2)
+                        MemberAvatar(circleId = circle.id, uid = m.uid, name = m.displayName, avatarVersion = m.avatarVersion, size = 34.dp, online = idx < 2)
                     }
                     if (state.members.size > 5) {
                         Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.6f), modifier = Modifier.size(34.dp)) {
@@ -253,7 +254,7 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
     val myName = state.me?.displayName?.ifBlank { "You" } ?: "You"
     MMCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
-            InitialsAvatar(myName, size = 38.dp)
+            MemberAvatar(circleId = circle.id, uid = state.me?.uid, name = myName, avatarVersion = state.me?.avatarVersion, size = 38.dp)
             Text(
                 if (circle.isWork) "Share an update, task or decision with ${circle.name}…"
                 else "Share anything with ${circle.name}…",
@@ -266,7 +267,7 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
             listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup)
                 .filter { it in circle.settings.allowedTypes }
         } else {
-            listOf(PostType.Prayer, PostType.Testimony, PostType.Encouragement)
+            listOf(PostType.Prayer, PostType.Testimony, PostType.Devotional, PostType.Encouragement)
                 .filter { it in circle.settings.allowedTypes }
         }
         Row(
@@ -350,7 +351,7 @@ private fun PendingCard(p: PendingPost, actions: FeedActions) {
 }
 
 @Composable
-fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, actions: FeedActions, pinned: Boolean = false, canModerate: Boolean = isAdmin) {
+fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, actions: FeedActions, pinned: Boolean = false, canModerate: Boolean = isAdmin, members: List<Member> = emptyList()) {
     val post = item.post
     val c = MM.colors
     val clipboard = LocalClipboardManager.current
@@ -361,14 +362,20 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
         item.mine -> "You"
         else -> post.authorName ?: "Member"
     }
+    val authorAvatar = remember(post.authorUid, members) {
+        members.firstOrNull { it.uid == post.authorUid }?.avatarVersion
+    }
     MMCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (post.anonymous) {
                 Surface(shape = MM.radius.pill, color = c.surfaceSunk, modifier = Modifier.size(MMSize.minTouch)) {
                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Person, null, tint = c.inkMuted) }
                 }
-            } else InitialsAvatar(
-                who,
+            } else MemberAvatar(
+                circleId = circle.id,
+                uid = post.authorUid,
+                name = who,
+                avatarVersion = authorAvatar,
                 size = 42.dp,
                 modifier = Modifier.clickable { actions.onMemberClick(post.authorUid ?: who) }
             )
@@ -562,11 +569,16 @@ fun PostVerseCard(
 ) {
     val ref = remember(verseRef) { ScriptureReferenceParser.parse(verseRef.trim()) }
     val passageResult = ref?.let { rememberPassage(it) }
+    val isDark = MM.colors.isDark
+    val cardBg = if (isDark) MM.colors.surfaceSunk else CirclesPalette.WarmBg
+    val cardBorder = if (isDark) MM.colors.gold.copy(alpha = 0.35f) else CirclesPalette.WarmBorder
+    val primaryInk = if (isDark) MM.colors.gold else CirclesPalette.WarmInk
+    val secondaryInk = if (isDark) MM.colors.gold.copy(alpha = 0.85f) else CirclesPalette.WarmInk.copy(alpha = 0.8f)
 
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = CirclesPalette.WarmBg,
-        border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
+        color = cardBg,
+        border = BorderStroke(1.dp, cardBorder),
         modifier = modifier
             .fillMaxWidth()
             .padding(top = MM.space.s)
@@ -583,20 +595,20 @@ fun PostVerseCard(
                     Icon(
                         Icons.AutoMirrored.Filled.MenuBook,
                         contentDescription = null,
-                        tint = CirclesPalette.WarmInk,
+                        tint = primaryInk,
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
                         ref?.display() ?: verseRef,
                         style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp),
-                        color = CirclesPalette.WarmInk
+                        color = primaryInk
                     )
                 }
                 (passageResult as? PassageResult.Found)?.let { found ->
                     Text(
                         found.passage.versionAbbreviation,
                         style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
-                        color = CirclesPalette.WarmInk.copy(alpha = 0.8f)
+                        color = secondaryInk
                     )
                 }
             }

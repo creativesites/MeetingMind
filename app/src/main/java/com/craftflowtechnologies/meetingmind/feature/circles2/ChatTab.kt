@@ -1,11 +1,19 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -294,7 +302,8 @@ private fun MessageItem(m: ChatMessage, state: ChatUiState, now: Long, actions: 
         ) {
             if (!mine) {
                 if (!continued) {
-                    InitialsAvatar(m.authorName, size = 32.dp)
+                    val authorMember = state.members.firstOrNull { it.uid == m.authorUid }
+                    MemberAvatar(circleId = state.circleId, uid = m.authorUid, name = m.authorName, avatarVersion = authorMember?.avatarVersion, size = 32.dp)
                 } else {
                     Spacer(Modifier.width(32.dp))
                 }
@@ -408,6 +417,11 @@ private fun ChatInput(
 ) {
     val c = MM.colors
     var plus by remember { mutableStateOf(false) }
+    var focused by remember { mutableStateOf(false) }
+    val canSend = draft.isNotBlank()
+    val sendScale by animateFloatAsState(if (canSend) 1f else 0.9f, label = "send scale")
+    val inputBorder by animateColorAsState(if (focused) CirclesPalette.Accent else c.line, label = "chat input border")
+
     Column(Modifier.fillMaxWidth().background(c.background).navigationBarsPadding().imePadding()) {
         val bar = state.editing?.let { Triple("Editing your message", it.text.take(60), actions.onCancelEdit) }
             ?: state.forwarding?.let { Triple("Forwarding ${it.authorName}'s message", it.text.take(60), actions.onCancelForward) }
@@ -431,9 +445,22 @@ private fun ChatInput(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = MM.space.s, vertical = MM.space.xs), verticalAlignment = Alignment.Bottom) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = MM.space.m, vertical = 8.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Box {
-                IconButton(onClick = { plus = true }) { Icon(Icons.Rounded.Add, "More: poll, card, prayer chain, celebrate", tint = CirclesPalette.Accent) }
+                Surface(
+                    shape = CircleShape,
+                    color = c.surfaceSunk,
+                    border = BorderStroke(1.dp, c.line),
+                    modifier = Modifier.size(44.dp).clickable { plus = true }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.Add, "More options", tint = CirclesPalette.Accent, modifier = Modifier.size(22.dp))
+                    }
+                }
                 DropdownMenu(plus, { plus = false }, containerColor = c.surfaceRaised) {
                     PlusItem("Send a photo") { plus = false; onAttachPhoto() }
                     PlusItem("Send a video") { plus = false; onAttachVideo() }
@@ -444,13 +471,58 @@ private fun ChatInput(
                     PlusItem("Celebrate something") { plus = false; actions.onCelebrate() }
                 }
             }
-            CircleField(draft, actions.onDraft, "Message", modifier = Modifier.weight(1f), maxLines = 4)
-            if (draft.isBlank()) {
-                if (recording) IconButton(onClick = onMicStop) { Icon(Icons.Rounded.Stop, "Stop and send voice note", tint = CirclesPalette.Accent) }
-                else IconButton(onClick = onMicStart) { Icon(Icons.Rounded.Mic, "Record a voice note", tint = CirclesPalette.Accent) }
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = c.surfaceSunk,
+                border = BorderStroke(if (focused) 1.5.dp else 1.dp, inputBorder),
+                modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+            ) {
+                Box(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+                    if (draft.isEmpty()) {
+                        Text("Message…", style = MM.type.body, color = c.inkMuted)
+                    }
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = actions.onDraft,
+                        textStyle = MM.type.body.copy(color = c.ink),
+                        cursorBrush = SolidColor(CirclesPalette.Accent),
+                        maxLines = 5,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { focused = it.isFocused }
+                    )
+                }
             }
-            IconButton(onClick = actions.onSend, enabled = draft.isNotBlank()) {
-                Icon(Icons.Rounded.Send, "Send", tint = if (draft.isNotBlank()) CirclesPalette.Accent else c.inkMuted)
+            if (canSend) {
+                Surface(
+                    shape = CircleShape,
+                    color = CirclesPalette.Accent,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .graphicsLayer { scaleX = sendScale; scaleY = sendScale }
+                        .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = actions.onSend)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.Send, "Send", tint = CirclesPalette.White, modifier = Modifier.size(20.dp))
+                    }
+                }
+            } else {
+                Surface(
+                    shape = CircleShape,
+                    color = if (recording) CirclesPalette.RoseBg else c.surfaceSunk,
+                    border = BorderStroke(1.dp, if (recording) CirclesPalette.RoseInk else c.line),
+                    modifier = Modifier.size(44.dp).clickable(onClick = if (recording) onMicStop else onMicStart)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            if (recording) Icons.Rounded.Stop else Icons.Rounded.Mic,
+                            contentDescription = if (recording) "Stop recording" else "Record voice note",
+                            tint = if (recording) CirclesPalette.RoseInk else CirclesPalette.Accent,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
         }
     }

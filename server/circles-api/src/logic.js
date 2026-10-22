@@ -3,7 +3,7 @@ import { ApiError } from "./errors.js";
 
 export const LIMITS = { membersPerCircle: 50, circlesPerUser: 10, bodyMax: 4000, commentMax: 2000, nameMax: 60, descriptionMax: 300, maxTokensPerUser: 5, maxUpdates: 50 };
 // Post types for Faith and Work verticals. "note" is the universal free-form post.
-export const FAITH_POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement", "note"];
+export const FAITH_POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "devotional", "reading", "announcement", "note"];
 export const WORK_POST_TYPES = ["task", "decision", "brief", "standup", "blocker", "announcement", "note"];
 export const POST_TYPES = [...new Set([...FAITH_POST_TYPES, ...WORK_POST_TYPES])];
 
@@ -14,13 +14,13 @@ export const REACTIONS = [...new Set([...FAITH_REACTIONS, ...WORK_REACTIONS])];
 const ALL = POST_TYPES;
 export const TEMPLATES = {
   // Faith templates
-  small_group: ["prayer", "testimony", "study", "encouragement"],
+  small_group: ["prayer", "testimony", "devotional", "study", "encouragement"],
   prayer_partners: ["prayer", "encouragement"],
-  bible_study: ["study", "reading", "prayer"],
+  bible_study: ["study", "reading", "devotional", "prayer"],
   family: ["prayer", "testimony", "encouragement", "achievement"],
   youth: FAITH_POST_TYPES,
   ministry_team: ["prayer", "announcement", "study"],
-  custom: ["prayer", "testimony", "encouragement"],
+  custom: ["prayer", "testimony", "devotional", "encouragement"],
   // Work templates
   project_team: ["task", "decision", "brief", "standup", "announcement", "note"],
   client_engagement: ["decision", "brief", "task", "announcement", "note"],

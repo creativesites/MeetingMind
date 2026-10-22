@@ -27,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState
+import com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
@@ -53,6 +55,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.work.Finding
+import com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy
 import com.craftflowtechnologies.meetingmind.feature.circles2.CircleSheet
 import com.craftflowtechnologies.meetingmind.feature.circles2.CirclesPalette
 import com.craftflowtechnologies.meetingmind.feature.circles2.PostTypeBadge
@@ -61,6 +64,8 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun ShareToCircleSheet(
+    meetingId: String? = null,
+    isPrivate: Boolean = false,
     meetingTitle: String,
     summary: String?,
     decisions: List<Finding>,
@@ -74,14 +79,40 @@ fun ShareToCircleSheet(
     val circlesState by repo.circles().collectAsState(CirclesListState.Loading)
     val scope = rememberCoroutineScope()
 
+    var privacyBlocked by remember { mutableStateOf(isPrivate) }
+    var privacyReason by remember { mutableStateOf<String?>(if (isPrivate) "This meeting is marked private and cannot be shared to a server-side Circle." else null) }
+
+    LaunchedEffect(meetingId, isPrivate) {
+        if (!isPrivate && meetingId != null) {
+            val mustStay = WorkPrivacy.mustStayOnDevice(context, meetingId = meetingId)
+            if (mustStay) {
+                privacyBlocked = true
+                privacyReason = "This meeting contains confidential information or on-device work policy and cannot be shared to a server-side Circle."
+            }
+        }
+    }
+
     var shareSummary by rememberSaveable { mutableStateOf(!summary.isNullOrBlank()) }
     val selectedDecisions = remember { mutableStateListOf<String>().also { list -> list.addAll(decisions.map { it.id }) } }
     val selectedTasks = remember { mutableStateListOf<String>().also { list -> list.addAll(tasks.map { it.id }) } }
+    val publishedIds = remember { mutableSetOf<String>() }
     var selectedCircleId by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
     CircleSheet(onDismiss) {
+        if (privacyBlocked) {
+            Column(Modifier.fillMaxWidth().padding(vertical = MM.space.m), verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+                Text(
+                    "Work Privacy Protection",
+                    style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                    color = MM.colors.ink
+                )
+                StatusLine(StatusKind.Warning, privacyReason ?: "This meeting cannot be shared to Circles due to privacy settings.")
+                PrimaryButton("Dismiss", onDismiss, Modifier.fillMaxWidth())
+            }
+            return@CircleSheet
+        }
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -116,36 +147,36 @@ fun ShareToCircleSheet(
                 )
             }
             is CirclesListState.Ready -> {
-                if (state.circles.isEmpty()) {
+                val workCircles = state.circles.filter { it.isWork }
+                if (workCircles.isEmpty()) {
                     Column(
                         Modifier.padding(vertical = MM.space.m),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(MM.space.s)
                     ) {
                         Text(
-                            "You don't have any circles yet. Start a Work Circle for your project team to collaborate seamlessly.",
+                            "You don't have any Work Circles yet. Start a Work Circle (Team, Project, Department) to collaborate seamlessly.",
                             style = MM.type.body,
                             color = MM.colors.inkSecondary
                         )
-                        PrimaryButton("Start a team circle", {
+                        PrimaryButton("Start a Work Circle", {
                             onDismiss()
                             onNavigateCreateCircle()
                         })
                     }
                 } else {
-                    val circles = state.circles
-                    val defaultPick = selectedCircleId ?: circles.firstOrNull { it.isWork }?.id ?: circles.first().id
+                    val defaultPick = selectedCircleId ?: workCircles.first().id
                     if (selectedCircleId == null) {
                         selectedCircleId = defaultPick
                     }
-                    val currentCircle = circles.firstOrNull { it.id == selectedCircleId } ?: circles.first()
+                    val currentCircle = workCircles.firstOrNull { it.id == selectedCircleId } ?: workCircles.first()
 
-                    SectionHeader("Target Circle")
+                    SectionHeader("Target Work Circle")
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        circles.forEach { c ->
+                        workCircles.forEach { c ->
                             val isSelected = c.id == currentCircle.id
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
@@ -270,26 +301,64 @@ fun ShareToCircleSheet(
                             sending = true
                             errorMsg = null
                             scope.launch {
-                                var count = 0
-                                if (shareSummary && !summary.isNullOrBlank()) {
+                                var successCount = 0
+                                var lastError: String? = null
+
+                                if (shareSummary && !summary.isNullOrBlank() && "brief" !in publishedIds) {
                                     val briefContent = "📋 Meeting Brief: $meetingTitle\n\n$summary"
-                                    repo.createPost(currentCircle.id, briefContent, PostType.Brief, anonymous = false)
-                                    count++
+                                    when (val res = repo.createPost(currentCircle.id, briefContent, PostType.Brief, anonymous = false)) {
+                                        is CirclesResult.Ok -> {
+                                            publishedIds.add("brief")
+                                            shareSummary = false
+                                            successCount++
+                                        }
+                                        is CirclesResult.Err -> {
+                                            lastError = res.failure.message
+                                        }
+                                    }
                                 }
-                                decisions.filter { it.id in selectedDecisions }.forEach { d ->
-                                    repo.createPost(currentCircle.id, d.text, PostType.Decision, anonymous = false)
-                                    count++
+
+                                decisions.filter { it.id in selectedDecisions && it.id !in publishedIds }.forEach { d ->
+                                    when (val res = repo.createPost(currentCircle.id, d.text, PostType.Decision, anonymous = false)) {
+                                        is CirclesResult.Ok -> {
+                                            publishedIds.add(d.id)
+                                            selectedDecisions.remove(d.id)
+                                            successCount++
+                                        }
+                                        is CirclesResult.Err -> {
+                                            lastError = res.failure.message
+                                        }
+                                    }
                                 }
-                                tasks.filter { it.id in selectedTasks }.forEach { t ->
+
+                                tasks.filter { it.id in selectedTasks && it.id !in publishedIds }.forEach { t ->
                                     val ownerTag = if (!t.ownerName.isNullOrBlank()) " · Assigned to @${t.ownerName}" else ""
                                     val dueTag = if (!t.dueText.isNullOrBlank()) " (Due: ${t.dueText})" else ""
                                     val taskContent = "${t.text}$ownerTag$dueTag"
-                                    repo.createPost(currentCircle.id, taskContent, PostType.Task, anonymous = false)
-                                    count++
+                                    when (val res = repo.createPost(currentCircle.id, taskContent, PostType.Task, anonymous = false)) {
+                                        is CirclesResult.Ok -> {
+                                            publishedIds.add(t.id)
+                                            selectedTasks.remove(t.id)
+                                            successCount++
+                                        }
+                                        is CirclesResult.Err -> {
+                                            lastError = res.failure.message
+                                        }
+                                    }
                                 }
+
                                 sending = false
-                                onShared(currentCircle.name, count)
-                                onDismiss()
+                                if (lastError != null) {
+                                    errorMsg = "Couldn't publish all items: $lastError. Remaining items can be retried."
+                                    if (successCount > 0) {
+                                        onShared(currentCircle.name, successCount)
+                                    }
+                                } else {
+                                    if (successCount > 0) {
+                                        onShared(currentCircle.name, successCount)
+                                    }
+                                    onDismiss()
+                                }
                             }
                         },
                         enabled = !sending && totalSelected > 0,
