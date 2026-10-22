@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -61,7 +62,9 @@ internal class TasksActions(
     val onNudge: (WorkTaskRow) -> Unit = {},
     val onLoadMore: () -> Unit = {},
     val onRetry: () -> Unit = {},
-    val onRefresh: () -> Unit = {}
+    val onRefresh: () -> Unit = {},
+    val autoFocusQuickAdd: Boolean = false,
+    val onAutoFocusConsumed: () -> Unit = {}
 )
 
 /**
@@ -80,13 +83,20 @@ internal fun TasksContent(
     modifier: Modifier = Modifier
 ) {
     val entries = remember(state.items, now / 60_000L) { groupTasks(state.items, now) }
+    val focusRequester = remember { FocusRequester() }
     LaunchedEffect(listState, entries.size) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
             .collect { last -> if (entries.isNotEmpty() && last >= entries.size - LOAD_AHEAD) actions.onLoadMore() }
     }
+    LaunchedEffect(actions.autoFocusQuickAdd, waiting) {
+        if (actions.autoFocusQuickAdd && !waiting) {
+            focusRequester.requestFocus()
+            actions.onAutoFocusConsumed()
+        }
+    }
     Column(modifier.fillMaxSize()) {
         SegmentedControl(listOf("Mine", "Waiting on"), if (waiting) 1 else 0, { actions.onWaiting(it == 1) }, Modifier.padding(horizontal = MM.space.l))
-        if (!waiting) QuickAdd(actions.onAdd, Modifier.padding(horizontal = MM.space.l, vertical = MM.space.m))
+        if (!waiting) QuickAdd(actions.onAdd, modifier = Modifier.padding(horizontal = MM.space.l, vertical = MM.space.m), focusRequester = focusRequester)
         PullToRefreshBox(isRefreshing = state.isRefreshing, onRefresh = actions.onRefresh, modifier = Modifier.weight(1f)) {
             LazyColumn(
                 Modifier.fillMaxSize().testTag("work_tasks_list"), state = listState,
@@ -124,13 +134,14 @@ internal fun TasksContent(
 }
 
 @Composable
-private fun QuickAdd(onAdd: (String) -> Unit, modifier: Modifier = Modifier) {
+private fun QuickAdd(onAdd: (String) -> Unit, modifier: Modifier = Modifier, focusRequester: FocusRequester? = null) {
     var text by rememberSaveable { mutableStateOf("") }
     val submit = { if (text.isNotBlank()) { onAdd(text); text = "" } }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         WorkTextField(
             text, { text = it }, "Add a task, e.g. “Send the proposal Friday”", Icons.Rounded.Add,
-            modifier = Modifier.weight(1f).testTag("work_add_task"), imeAction = ImeAction.Done, onAction = submit
+            modifier = Modifier.weight(1f).testTag("work_add_task"), imeAction = ImeAction.Done, onAction = submit,
+            focusRequester = focusRequester
         )
         if (text.isNotBlank()) TextAction("Add", submit)
     }

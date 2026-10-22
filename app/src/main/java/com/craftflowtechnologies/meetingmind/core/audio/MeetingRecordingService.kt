@@ -137,7 +137,15 @@ class MeetingRecordingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        audioRecorder = AudioRecorder(applicationContext)
+        audioRecorder = AudioRecorder(applicationContext).apply {
+            onErrorListener = { what, extra ->
+                Log.e(TAG, "AudioRecorder runtime failure: what=$what extra=$extra. Setting state to FAILED.")
+                _state.value = RecordingState.FAILED
+                abandonAudioFocus()
+                releaseWakeLock()
+                writeJournal()
+            }
+        }
         meetingRepository = MeetingRepository(applicationContext, MeetMindDatabase.getInstance(applicationContext))
         journalStore = RecordingJournalStore(applicationContext)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager

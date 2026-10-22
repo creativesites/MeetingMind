@@ -117,6 +117,7 @@ fun WorkPageScreen(
     var nudging by remember { mutableStateOf<WorkTask?>(null) }
     var savedViews by remember { mutableStateOf(false) }
     var asking by remember { mutableStateOf(false) }
+    var focusQuickAddTask by remember { mutableStateOf(false) }
     var savedFilter by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.SavedFilter?>(null) }
     var selectedIds by rememberSaveable(stateSaver = listSaver<Set<String>, String>({ it.toList() }, { it.toSet() })) { mutableStateOf(emptySet<String>()) }
     val snackbar = remember { SnackbarHostState() }
@@ -243,11 +244,13 @@ fun WorkPageScreen(
             onRecord = { recordPicker = true }, onWriteNote = { writePicker = true }
         )
     }
-    val tasksActions = remember(page, titles) {
+    val tasksActions = remember(page, titles, focusQuickAddTask) {
         TasksActions(
             onWaiting = page::setWaiting, onAdd = { page.addTask(it) }, onDone = { page.completeTask(it) }, onEdit = { editing = it.task },
             onOpenSource = { r -> r.task.meetingId?.let { onOpenMeeting(it, r.task.startMs) } }, onNudge = { nudging = it.task },
-            onLoadMore = page::loadMoreTasks, onRetry = page::retryTasks, onRefresh = page::refreshTasks
+            onLoadMore = page::loadMoreTasks, onRetry = page::retryTasks, onRefresh = page::refreshTasks,
+            autoFocusQuickAdd = focusQuickAddTask,
+            onAutoFocusConsumed = { focusQuickAddTask = false }
         )
     }
     val selectedNotes = notes.items.filter { it.id in selectedIds }
@@ -255,7 +258,7 @@ fun WorkPageScreen(
     val addActions = listOf(
         WorkMenuAction("Record meeting") { recordPicker = true },
         WorkMenuAction("Write note") { writePicker = true },
-        WorkMenuAction("Add task") { page.select(WorkSegment.TASKS); page.setWaiting(false) },
+        WorkMenuAction("Add task") { page.select(WorkSegment.TASKS); page.setWaiting(false); focusQuickAddTask = true },
         WorkMenuAction("Import", onClick = onImport)
     )
     val moreActions = listOfNotNull(
@@ -299,7 +302,7 @@ fun WorkPageScreen(
                     WorkSegment.TODAY -> TodayContent(
                         todayModel, todayList, onAllNotes = { page.select(WorkSegment.NOTES) },
                         onRecord = { recordPicker = true }, onWriteNote = { writePicker = true },
-                        onAddTask = { page.select(WorkSegment.TASKS); page.setWaiting(false) },
+                        onAddTask = { page.select(WorkSegment.TASKS); page.setWaiting(false); focusQuickAddTask = true },
                         onShowTasks = { page.select(WorkSegment.TASKS) },
                         onAsk = { asking = true },
                         onOpenList = onOpenAll

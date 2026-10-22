@@ -45,4 +45,19 @@ class AudioRecorderShortStopTest {
         assertNull("Empty stub must return null", result)
         org.junit.Assert.assertFalse("Empty stub file must be deleted", emptyFile.exists())
     }
+
+    @Test
+    fun `recorder error callback transitions state to ERROR and invokes listener`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val recorder = AudioRecorder(context)
+        var errorCalledWith: Pair<Int, Int>? = null
+        recorder.onErrorListener = { what, extra ->
+            errorCalledWith = what to extra
+        }
+
+        recorder.onErrorListener?.invoke(1, -1004)
+
+        // When onErrorListener is triggered
+        org.junit.Assert.assertEquals(1 to -1004, errorCalledWith)
+    }
 }

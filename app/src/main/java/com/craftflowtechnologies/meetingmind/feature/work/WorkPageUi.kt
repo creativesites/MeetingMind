@@ -39,6 +39,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -145,7 +147,8 @@ internal fun WorkTextField(
     modifier: Modifier = Modifier,
     imeAction: ImeAction = ImeAction.Search,
     onAction: () -> Unit = {},
-    clearLabel: String? = null
+    clearLabel: String? = null,
+    focusRequester: FocusRequester? = null
 ) {
     Row(
         modifier.fillMaxWidth().heightIn(min = MMSize.minTouch).background(MM.colors.surfaceSunk, MM.radius.small).padding(start = MM.space.m),
@@ -155,12 +158,15 @@ internal fun WorkTextField(
         Spacer(Modifier.width(MM.space.s))
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (value.isEmpty()) Text(placeholder, style = MM.type.body, color = MM.colors.inkMuted)
+            val fieldModifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder }.let {
+                if (focusRequester != null) it.focusRequester(focusRequester) else it
+            }
             BasicTextField(
                 value, onValueChange, singleLine = true,
                 textStyle = MM.type.body.copy(color = MM.colors.ink), cursorBrush = SolidColor(MM.colors.accent),
                 keyboardOptions = KeyboardOptions(imeAction = imeAction),
                 keyboardActions = KeyboardActions(onSearch = { onAction() }, onDone = { onAction() }),
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder }
+                modifier = fieldModifier
             )
         }
         if (value.isNotEmpty() && clearLabel != null) {

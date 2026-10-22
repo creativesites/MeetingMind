@@ -20,7 +20,8 @@ enum class RecorderState {
     IDLE,
     RECORDING,
     PAUSED,
-    STOPPED
+    STOPPED,
+    ERROR
 }
 
 class AudioRecorder(private val context: Context) {
@@ -28,6 +29,9 @@ class AudioRecorder(private val context: Context) {
     private var currentOutputFile: File? = null
     private var amplitudeJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default)
+
+    /** Optional callback invoked when MediaRecorder encounters a fatal runtime hardware or stream error. */
+    var onErrorListener: ((what: Int, extra: Int) -> Unit)? = null
 
     private val _state = MutableStateFlow(RecorderState.IDLE)
     val state: StateFlow<RecorderState> = _state.asStateFlow()
@@ -61,6 +65,15 @@ class AudioRecorder(private val context: Context) {
                 setAudioEncodingBitRate(128000)
                 setAudioSamplingRate(16000)
                 setOutputFile(outputFile.absolutePath)
+                setOnErrorListener { _, what, extra ->
+                    Log.e("AudioRecorder", "MediaRecorder fatal error: what=$what extra=$extra")
+                    _state.value = RecorderState.ERROR
+                    amplitudeJob?.cancel()
+                    onErrorListener?.invoke(what, extra)
+                }
+                setOnInfoListener { _, what, extra ->
+                    Log.i("AudioRecorder", "MediaRecorder info: what=$what extra=$extra")
+                }
                 prepare()
                 start()
             }
