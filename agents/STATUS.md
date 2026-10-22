@@ -2,6 +2,18 @@
 
 Updated: 2026-10-22. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git log -1`.
 
+## Audio Hardware Resilience & Work QuickAdd Focus (2026-10-22, commit `8d38132`)
+- **STAB-02 Fixed (Hardware Error Listener on AudioRecorder)**:
+  - Added `RecorderState.ERROR` and `onErrorListener: ((what: Int, extra: Int) -> Unit)?` callback on `AudioRecorder`.
+  - Configured `setOnErrorListener` and `setOnInfoListener` on `MediaRecorder` in `startRecording()`.
+  - Wired `MeetingRecordingService` to transition to `RecordingState.FAILED`, abandon audio focus, release wake locks, and immediately flush the recovery journal if the microphone permission is revoked or the media server dies mid-stream.
+  - Verified with unit tests in `AudioRecorderShortStopTest` (3/3 pass).
+- **W-03 Fixed (Work QuickAdd Focus on Action Selection)**:
+  - Added `FocusRequester` parameter to `WorkTextField`, attaching directly to `BasicTextField`.
+  - Added `autoFocusQuickAdd` and `onAutoFocusConsumed` to `TasksActions` in `WorkPageTasks.kt`.
+  - When the user selects "Add task" in the header menu or "Task" in quick actions, `TasksContent` immediately requests focus and opens the soft keyboard.
+  - Verified with `WorkPageLogicTest` and `WorkPageViewModelTest` (pass).
+
 ## Work & Read to Me Decisions Implemented (2026-10-22, commit `d1628f7`)
 - **Decision D1 (Retire Duplicate Work Home)**: Retired `ProfessionalHome.kt` and removed `PROFESSIONAL` from `HomeStyle.SELECTABLE`. `WorkPageScreen` is now the single, canonical surface for all Work workflows, eliminating UI drift and duplicate maintenance.
 - **W-01 Fixed (Work Page Back Navigation Trap)**: Connected `onNavigateBack` directly to `onBack` in `WorkPageScreen.kt`. Users pushing into Work from Today or Home now always have a visible and functional back button.
