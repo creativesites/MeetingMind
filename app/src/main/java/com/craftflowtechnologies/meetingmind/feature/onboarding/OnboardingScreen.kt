@@ -57,8 +57,11 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -91,6 +94,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.R
+import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.core.common.DeviceCapabilityDetector
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionForm
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionRoster
@@ -376,7 +380,9 @@ class OnboardingViewModel(
             when (_setup.value) {
                 SetupChoice.OFFLINE_PACK -> runCatching {
                     val app = getApplication<Application>()
+                    prefs.setSelectedAsrModel(_selectedModel.value)
                     SetupGuide.downloadMissing(app, SetupGuide.observe(app).first(), _wifiOnly.value)
+                    com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker.enqueue(app, _selectedModel.value, _wifiOnly.value)
                 }
                 SetupChoice.INTERNET -> {
                     prefs.setProcessingProfile(ProcessingProfile.INTERNET)
@@ -819,16 +825,47 @@ private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (S
         line = "Everything stays on the phone. Three pieces, one download (${SetupGuide.formatBytes(vm.packBytes)}) that keeps going in the background.",
         tag = "setup_choice_offline"
     ) {
-        Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            vm.pack.forEach { (part, models) ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+        val selectedModel by vm.selectedModel.collectAsState()
+        Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Speech recognition model", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            listOf(
+                Triple(
+                    ModelCatalog.parakeetTdtV3Int8.id,
+                    "Parakeet TDT 0.6B (English & European)",
+                    "Fast and highly accurate for English and 24 European languages (~670 MB)"
+                ),
+                Triple(
+                    ModelCatalog.omnilingualAsr300mInt8.id,
+                    "Omnilingual 300M (African & Multilingual)",
+                    "Supports Shona, Ndebele, Bemba, Nyanja, Zulu, Swahili & 1,600+ languages (~365 MB)"
+                ),
+                Triple(
+                    ModelCatalog.omnilingualAsr1bInt8.id,
+                    "Omnilingual 1B (High-Capacity Multilingual)",
+                    "Deep linguistic accuracy for African & global languages (~1.2 GB)"
+                ),
+                Triple(
+                    ModelCatalog.whisperTurboInt8.id,
+                    "Whisper Turbo (Multilingual)",
+                    "General global multilingual transcription (~810 MB)"
+                )
+            ).forEach { (id, title, desc) ->
+                val isSel = selectedModel == id
+                Surface(
+                    onClick = { vm.selectModel(id) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSel) SurfaceBase.copy(alpha = 0.2f) else SurfaceBase.copy(alpha = 0.05f),
+                    border = BorderStroke(1.dp, if (isSel) Brand.Cyan else Color.White.copy(alpha = 0.1f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = isSel, onClick = { vm.selectModel(id) }, colors = RadioButtonDefaults.colors(selectedColor = Brand.Cyan))
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(title, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                            Text(desc, color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp, lineHeight = 15.sp)
+                        }
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Text("${part.title}: ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text(part.job.removeSuffix("."), color = Color.White.copy(alpha = 0.65f), fontSize = 12.5.sp, maxLines = 1, modifier = Modifier.weight(1f))
-                    Text(SetupGuide.formatBytes(models.sumOf { it.sizeBytes }), color = Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp)
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
