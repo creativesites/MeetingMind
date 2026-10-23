@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -158,8 +159,9 @@ fun CreateStudioContent(
             leading = { IconButton(onClick = actions.onClose) { Icon(Icons.Rounded.Close, "Close", tint = c.inkSecondary) } },
             actions = {
                 if (actions.onSend != null) {
+                    val label = actions.sendLabel?.let { if (it.length > 16) "Send to chat" else "Send to $it" } ?: "Send to chat"
                     PrimaryButton(
-                        "Send to ${actions.sendLabel ?: "chat"}",
+                        label,
                         onClick = actions.onSend,
                         enabled = ui.canWrite
                     )
@@ -272,6 +274,11 @@ private fun WordsStep(ui: CreateUi, a: CreateActions) {
             MMChip(if (ui.working == r.label) "${r.label}…" else r.label, selected = false, onClick = { if (ui.canWrite) a.onRemix(r) })
         }
         if (card.canUndo) TextAction("Undo", a.onUndo)
+    }
+    if (a.onSend != null) {
+        val label = a.sendLabel?.let { if (it.length > 20) "Send to chat" else "Send to $it" } ?: "Send to chat"
+        Spacer(Modifier.height(MM.space.xs))
+        PrimaryButton(label, onClick = a.onSend, enabled = ui.canWrite, modifier = Modifier.fillMaxWidth())
     }
 }
 
@@ -441,7 +448,10 @@ private fun ShareStep(ui: CreateUi, hasCompanion: Boolean, a: CreateActions) {
     // One primary button: "Send to <circle>" when the card is for a circle's chat, otherwise the first share app.
     val send = a.onSend
     val primaryTaken = send != null
-    if (send != null) PrimaryButton("Send to ${a.sendLabel ?: "the chat"}", onClick = send, enabled = ui.canWrite, modifier = Modifier.fillMaxWidth())
+    if (send != null) {
+        val label = a.sendLabel?.let { if (it.length > 20) "Send to chat" else "Send to $it" } ?: "Send to the chat"
+        PrimaryButton(label, onClick = send, enabled = ui.canWrite, modifier = Modifier.fillMaxWidth())
+    }
     if (ui.installed.whatsapp) {
         if (primaryTaken) SecondaryButton("WhatsApp status", onClick = { a.onShare(ShareTarget.WHATSAPP) }, enabled = ui.canWrite, modifier = Modifier.fillMaxWidth())
         else PrimaryButton("WhatsApp status", onClick = { a.onShare(ShareTarget.WHATSAPP) }, enabled = ui.canWrite, modifier = Modifier.fillMaxWidth(), leadingIcon = Icons.Rounded.Share)

@@ -136,6 +136,12 @@ data class Circle(
     val isWork: Boolean get() = space.equals("work", ignoreCase = true) || template in setOf("project_team", "client_engagement", "exec_board", "department", "custom_work")
     /** "Cell group" or "Team" for the header: the group's own word, never a generic one. */
     val groupWord: String get() = vocab.ifBlank { if (isWork) "Team" else "Circle" }
+    /**
+     * Every kind of post this circle offers: free-form always, devotional and study shares always in a faith circle
+     * (the Worker accepts them whatever the template listed), then the circle's own kinds.
+     */
+    val offeredTypes: List<PostType> get() =
+        (listOf(PostType.Note) + (if (isWork) emptyList() else listOf(PostType.Devotional, PostType.Study)) + settings.allowedTypes).distinct()
 }
 
 /** [title] is a display label such as "Pastor". It never changes what the person may do; [role] does. */
@@ -330,11 +336,11 @@ data class JoinOutcome(val circleId: String, val pending: Boolean)
 /** The kinds of file the Worker accepts. Limits match the Worker (docs/CIRCLES_BACKEND_HANDOFF.md section 6). */
 enum class MediaKind(val wire: String, val maxBytes: Long, val mimes: List<String>) {
     Image("image", 10_000_000L, listOf("image/jpeg", "image/png", "image/webp")),
-    Video("video", 50_000_000L, listOf("video/mp4", "video/webm")),
+    Video("video", 50_000_000L, listOf("video/mp4", "video/webm", "video/quicktime", "video/3gpp")),
     Voice("voice", 25_000_000L, listOf("audio/mp4", "audio/aac", "audio/ogg")),
     File("file", 25_000_000L, listOf("application/pdf", "application/x-pdf"));
 
-    fun accepts(mime: String): Boolean = mime in mimes
+    fun accepts(mime: String): Boolean = mime.lowercase().split(";")[0].trim() in mimes
 }
 
 /** A stored file as a message or post refers to it. [path] is `circles/{circleId}/media/{uuid}`. */

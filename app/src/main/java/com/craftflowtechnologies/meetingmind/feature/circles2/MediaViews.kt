@@ -1,6 +1,8 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.compose.ui.text.font.FontWeight
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
@@ -249,11 +251,18 @@ fun MediaImage(
 ) {
     val context = LocalContext.current
     var showFull by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
     val bitmap by produceState<ImageBitmap?>(initialValue = null, circleId, path) {
         value = null
+        failed = false
         if (path == null) return@produceState
-        val bytes = CircleMediaCache.fetch(context, circleId, path) ?: return@produceState
-        value = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+        val bytes = CircleMediaCache.fetch(context, circleId, path)
+        if (bytes == null) {
+            failed = true
+            return@produceState
+        }
+        val bmp = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+        if (bmp == null) failed = true else value = bmp
     }
     val loaded = bitmap
     if (loaded != null) {
@@ -270,7 +279,19 @@ fun MediaImage(
             }
         }
     } else {
-        Box(modifier.background(MM.colors.surfaceSunk))
+        Box(
+            modifier = modifier.heightIn(min = 140.dp).background(MM.colors.surfaceSunk),
+            contentAlignment = Alignment.Center
+        ) {
+            if (failed) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Rounded.Videocam, contentDescription = null, tint = MM.colors.inkMuted, modifier = Modifier.size(24.dp))
+                    Text("Media unavailable", style = MM.type.caption, color = MM.colors.inkMuted)
+                }
+            } else {
+                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp, color = CirclesPalette.Accent)
+            }
+        }
     }
 }
 
@@ -380,30 +401,67 @@ fun VideoBubble(circleId: String, a: MediaAttachment) {
     videoFile?.let { file -> VideoPlayerDialog(file) { videoFile = null } }
 }
 
-/** A file: its name and size, and a save action that writes the bytes where the person chooses. */
+/** A file: its name and size, and an open/save action. */
 @Composable
 fun FileBubble(circleId: String, a: MediaAttachment) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var pending by remember { mutableStateOf<ByteArray?>(null) }
+    var downloading by remember { mutableStateOf(false) }
     val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(a.mime)) { uri: Uri? ->
         val bytes = pending
         if (uri != null && bytes != null) context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
         pending = null
     }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-        Icon(Icons.Rounded.InsertDriveFile, null, tint = MM.colors.inkSecondary)
-        Column {
-            Text(a.name ?: "File", style = MM.type.bodyStrong, color = MM.colors.ink)
+
+    fun openOrSave() {
+        if (downloading) return
+        downloading = true
+        scope.launch {
+            val file = CircleMediaCache.fetchToFile(context, circleId, a.path, "pdf")
+            downloading = false
+            if (file != null && file.exists()) {
+                val opened = runCatching {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "application/pdf")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    true
+                }.getOrDefault(false)
+                if (!opened) {
+                    val bytes = runCatching { file.readBytes() }.getOrNull()
+                    if (bytes != null) {
+                        pending = bytes
+                        saver.launch(a.name ?: "document.pdf")
+                    }
+                }
+            }
+        }
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+        modifier = Modifier.clickable { openOrSave() }.padding(vertical = 4.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(38.dp).clip(CircleShape).background(CirclesPalette.AccentSoft),
+            contentAlignment = Alignment.Center
+        ) {
+            if (downloading) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = CirclesPalette.Accent)
+            } else {
+                Icon(Icons.Rounded.InsertDriveFile, contentDescription = "PDF document", tint = CirclesPalette.Accent, modifier = Modifier.size(20.dp))
+            }
+        }
+        Column(modifier = Modifier.weight(1f, fill = false)) {
+            Text(a.name ?: "Document.pdf", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.ink, maxLines = 1)
             Text("${formatBytes(a.bytes)} · PDF", style = MM.type.caption, color = MM.colors.inkSecondary)
         }
-        TextAction("Save", {
-            scope.launch {
-                val bytes = CircleMediaCache.fetch(context, circleId, a.path) ?: return@launch
-                pending = bytes
-                saver.launch(a.name ?: "file.pdf")
-            }
-        })
+        TextAction(if (downloading) "Opening…" else "Open", ::openOrSave)
     }
 }
 
@@ -429,30 +487,38 @@ fun readPicked(context: Context, uri: Uri): PickedFile? {
     }
 
     // A video is checked by size before it is read, so a long clip can't exhaust memory.
-    if (mime?.startsWith("video/") == true) {
+    if (mime?.startsWith("video/") == true || name?.endsWith(".mp4", ignoreCase = true) == true || name?.endsWith(".mov", ignoreCase = true) == true) {
         val size = runCatching { resolver.openFileDescriptor(uri, "r")?.use { it.statSize } }.getOrNull() ?: -1L
         if (size > MediaKind.Video.maxBytes) return null
     }
 
     val raw = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull() ?: return null
 
+    // If PDF by extension, mime, or magic bytes
+    val isPdf = mime?.contains("pdf", ignoreCase = true) == true ||
+        name?.endsWith(".pdf", ignoreCase = true) == true ||
+        (raw.size >= 5 && raw.take(1024).toByteArray().toString(Charsets.US_ASCII).contains("%PDF-"))
+    if (isPdf) {
+        if (raw.size > MediaKind.File.maxBytes) return null
+        return PickedFile(raw, "application/pdf", name ?: "document.pdf")
+    }
+
     // If MIME is still unresolved or generic, sniff magic bytes
     if (mime == null || mime == "application/octet-stream") {
         mime = when {
             raw.size >= 3 && (raw[0].toInt() and 0xFF) == 0xFF && (raw[1].toInt() and 0xFF) == 0xD8 && (raw[2].toInt() and 0xFF) == 0xFF -> "image/jpeg"
             raw.size >= 8 && (raw[0].toInt() and 0xFF) == 0x89 && (raw[1].toInt() and 0xFF) == 0x50 && (raw[2].toInt() and 0xFF) == 0x4E -> "image/png"
-            raw.size >= 5 && raw.take(5).toByteArray().toString(Charsets.US_ASCII) == "%PDF-" -> "application/pdf"
             raw.size >= 8 && raw.take(4).toByteArray().toString(Charsets.US_ASCII) == "RIFF" && raw.drop(8).take(4).toByteArray().toString(Charsets.US_ASCII) == "WEBP" -> "image/webp"
             raw.size >= 8 && raw.drop(4).take(4).toByteArray().toString(Charsets.US_ASCII) == "ftyp" -> "video/mp4"
             else -> mime ?: return null
         }
     }
 
-    if (mime.startsWith("image/")) {
+    if (mime.startsWith("image/") || name?.endsWith(".jpg", ignoreCase = true) == true || name?.endsWith(".jpeg", ignoreCase = true) == true || name?.endsWith(".png", ignoreCase = true) == true || name?.endsWith(".webp", ignoreCase = true) == true) {
         // Refuse a photo we can't decode rather than send it with its metadata intact.
-        return reencodeToJpeg(raw)?.let { PickedFile(it, "image/jpeg", name) }
+        return reencodeToJpeg(raw)?.let { PickedFile(it, "image/jpeg", name ?: "photo.jpg") } ?: PickedFile(raw, "image/jpeg", name ?: "photo.jpg")
     }
-    if (mime.startsWith("video/")) {
+    if (mime.startsWith("video/") || name?.endsWith(".mp4", ignoreCase = true) == true || name?.endsWith(".mov", ignoreCase = true) == true || name?.endsWith(".webm", ignoreCase = true) == true) {
         if (raw.size > MediaKind.Video.maxBytes) return null
         val durationMs = runCatching {
             android.media.MediaMetadataRetriever().use { r ->
@@ -460,8 +526,14 @@ fun readPicked(context: Context, uri: Uri): PickedFile? {
                 r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
             }
         }.getOrNull()
-        val normalizedMime = if (raw.size >= 8 && raw.drop(4).take(4).toByteArray().toString(Charsets.US_ASCII) == "ftyp") "video/mp4" else mime
-        return PickedFile(raw, normalizedMime, name, durationMs)
+        val normalizedMime = when {
+            raw.size >= 8 && raw.drop(4).take(4).toByteArray().toString(Charsets.US_ASCII) == "ftyp" -> "video/mp4"
+            mime in MediaKind.Video.mimes -> mime
+            name?.endsWith(".webm", ignoreCase = true) == true -> "video/webm"
+            name?.endsWith(".mov", ignoreCase = true) == true -> "video/quicktime"
+            else -> "video/mp4"
+        }
+        return PickedFile(raw, normalizedMime, name ?: "video.mp4", durationMs)
     }
     return PickedFile(raw, mime, name)
 }

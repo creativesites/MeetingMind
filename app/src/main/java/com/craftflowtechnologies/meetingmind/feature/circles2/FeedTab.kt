@@ -265,10 +265,10 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
         }
         val quickTypes = if (circle.isWork) {
             listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup)
-                .filter { it in circle.settings.allowedTypes }
+                .filter { it in circle.offeredTypes }
         } else {
-            listOf(PostType.Prayer, PostType.Testimony, PostType.Devotional, PostType.Encouragement)
-                .filter { it in circle.settings.allowedTypes }
+            listOf(PostType.Devotional, PostType.Prayer, PostType.Testimony, PostType.Study, PostType.Encouragement)
+                .filter { it in circle.offeredTypes }
         }
         Row(
             Modifier.padding(top = MM.space.m).horizontalScroll(rememberScrollState()),
@@ -569,11 +569,11 @@ fun PostVerseCard(
 ) {
     val ref = remember(verseRef) { ScriptureReferenceParser.parse(verseRef.trim()) }
     val passageResult = ref?.let { rememberPassage(it) }
-    val isDark = MM.colors.isDark
-    val cardBg = if (isDark) MM.colors.surfaceSunk else CirclesPalette.WarmBg
-    val cardBorder = if (isDark) MM.colors.gold.copy(alpha = 0.35f) else CirclesPalette.WarmBorder
-    val primaryInk = if (isDark) MM.colors.gold else CirclesPalette.WarmInk
-    val secondaryInk = if (isDark) MM.colors.gold.copy(alpha = 0.85f) else CirclesPalette.WarmInk.copy(alpha = 0.8f)
+    val vt = VerseTokens.current()
+    val cardBg = vt.background
+    val cardBorder = vt.border
+    val primaryInk = vt.title
+    val secondaryInk = vt.meta
 
     Surface(
         shape = RoundedCornerShape(14.dp),
@@ -618,14 +618,14 @@ fun PostVerseCard(
                     Text(
                         "“${passageResult.passage.text.trim().trim('“', '”')}”",
                         style = MM.type.scripture.copy(fontSize = 14.sp, lineHeight = 21.sp),
-                        color = MM.colors.ink,
+                        color = vt.scripture,
                         modifier = Modifier.padding(top = 8.dp)
                     )
                     if (passageResult.passage.attribution.isNotBlank()) {
                         Text(
                             passageResult.passage.attribution,
                             style = MM.type.caption.copy(fontSize = 10.5.sp),
-                            color = MM.colors.inkMuted,
+                            color = vt.muted,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
@@ -652,7 +652,7 @@ fun PostVerseCard(
                     Text(
                         "Read chapter →",
                         style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
-                        color = CirclesPalette.WarmInk
+                        color = vt.title
                     )
                 }
             }

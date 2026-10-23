@@ -18,7 +18,7 @@ import java.util.Locale
  * are grouped under headers. No Android and no database here, so each rule has a plain unit test.
  */
 
-enum class WorkSegment(val label: String) { TODAY("Today"), NOTES("Notes"), TASKS("Tasks"), PROJECTS("Projects") }
+enum class WorkSegment(val label: String) { TODAY("Today"), NOTES("Notes"), TASKS("Tasks"), PROJECTS("Projects"), CIRCLES("Circles") }
 
 /** Today when there are meetings or items that need the person today; otherwise the notes. */
 fun defaultSegment(meetingsToday: Int, needsYou: Int): WorkSegment =

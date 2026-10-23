@@ -173,6 +173,7 @@ export const RATE = {
 export const rateExceeded = (count, limit) => count >= limit;
 
 // ---- post shaping ----
+export const ALWAYS_ON_TYPES = ["note", "devotional", "study"];
 export const hourFloor = (d) => new Date(Math.floor(d.getTime() / 3_600_000) * 3_600_000);
 
 /**
@@ -181,7 +182,8 @@ export const hourFloor = (d) => new Date(Math.floor(d.getTime() / 3_600_000) * 3
  */
 export function shapePost({ type, body, verseRef, anonymous, uid, authorName, settings, now }) {
   if (!POST_TYPES.includes(type)) throw bad("bad_request", "Unknown post type");
-  if (type !== "note" && !settings.allowedTypes.includes(type)) throw new ApiError(403, "type_not_allowed", "This circle doesn't use that kind of post.");
+  // Free-form, devotional and study shares are always on, whatever the circle's template listed.
+  if (!ALWAYS_ON_TYPES.includes(type) && !settings.allowedTypes.includes(type)) throw new ApiError(403, "type_not_allowed", "This circle doesn't use that kind of post.");
   if (typeof anonymous !== "boolean") throw bad("bad_request", "anonymous must be true or false");
   if (anonymous && type !== "prayer") throw bad("bad_request", "Only prayer requests can be anonymous");
   const pending = type === "prayer" && settings.prayerApproval !== false;

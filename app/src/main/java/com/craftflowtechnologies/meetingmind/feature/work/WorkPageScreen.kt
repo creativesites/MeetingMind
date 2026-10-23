@@ -5,6 +5,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -15,6 +17,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -80,6 +83,7 @@ fun WorkPageScreen(
     onOpenWeeklyReview: () -> Unit = {},
     onOpenPerson: (String) -> Unit = {},
     onOpenProcessing: (String) -> Unit = {},
+    onOpenCircles: () -> Unit = {},
     /** Set when Work is the bar's fourth slot: the page then carries the bar, with Work current. */
     onNavigateBottomNav: ((com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit)? = null
 ) {
@@ -313,6 +317,7 @@ fun WorkPageScreen(
                         projects, terms.project, terms.projects, now, projectsList,
                         onOpen = { onOpenProject(it.notebook.id) }, onNew = { newProject = true }
                     )
+                    WorkSegment.CIRCLES -> WorkCirclesContent(onOpenCircles)
                 }
             }
         }
@@ -364,3 +369,30 @@ object PendingWorkSegment {
 
 private fun pulseEventOf(e: CalendarEvent) =
     PulseEvent(e.key, e.title, e.begin, e.end, e.otherPeople, e.attendees.filter { a -> !a.isSelf }.mapNotNull { a -> a.email })
+
+/** Circles in Work: a shared space for a project, client, department or leadership group. */
+@Composable
+private fun WorkCirclesContent(onOpen: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(MM.space.l),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(MM.space.m)
+    ) {
+        Text("Team Circles", style = MM.type.title, color = MM.colors.ink)
+        Text(
+            "One shared place for a project, client engagement, department or leadership group: what changed, what needs a decision, who owns the next step, and the latest meeting brief.",
+            style = MM.type.secondary, color = MM.colors.inkSecondary
+        )
+        listOf(
+            "Project team" to "Tasks, decisions, briefs and stand-ups",
+            "Client engagement" to "Decisions and briefs shared with a client or partner",
+            "Leadership & Board" to "Decisions and announcements for a committee",
+            "Department" to "Updates and action items for a function"
+        ).forEach { (t, b) ->
+            com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard {
+                Text(t, style = MM.type.bodyStrong, color = MM.colors.ink)
+                Text(b, style = MM.type.caption, color = MM.colors.inkMuted)
+            }
+        }
+        com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton("Open Circles", onClick = onOpen, modifier = Modifier.fillMaxWidth())
+    }
+}

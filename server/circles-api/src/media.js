@@ -9,7 +9,7 @@ import { cleanText, isAdmin, validId, LIMITS } from "./logic.js";
 const MB = 1024 * 1024;
 export const MEDIA = {
   image: { mimes: ["image/jpeg", "image/png", "image/webp"], max: 10 * MB },
-  video: { mimes: ["video/mp4", "video/webm"], max: 50 * MB },
+  video: { mimes: ["video/mp4", "video/webm", "video/quicktime", "video/3gpp"], max: 50 * MB },
   voice: { mimes: ["audio/mp4", "audio/aac", "audio/ogg"], max: 25 * MB },
   file: { mimes: ["application/pdf", "application/x-pdf"], max: 25 * MB },
 };
@@ -71,10 +71,16 @@ export function sniffMime(b, mime) {
     case "image/png": return [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((v, i) => b[i] === v);
     case "image/webp": return at(0, "RIFF") && at(8, "WEBP");
     case "application/x-pdf":
-    case "application/pdf": return at(0, "%PDF-");
+    case "application/pdf": {
+      if (at(0, "%PDF-")) return true;
+      const slice = String.fromCharCode(...b.slice(0, 64));
+      return slice.includes("%PDF-");
+    }
     case "audio/ogg": return at(0, "OggS");
     case "audio/mp4":
     case "video/mp4": return at(4, "ftyp");
+    case "video/quicktime": return at(4, "ftyp") || at(4, "moov") || at(4, "wide");
+    case "video/3gpp": return at(4, "ftyp") || at(4, "3gp");
     case "video/webm": return [0x1a, 0x45, 0xdf, 0xa3].every((v, i) => b[i] === v);
     // ADTS: 12-bit sync word 0xFFF, then layer bits 00.
     case "audio/aac": return b[0] === 0xff && (b[1] & 0xf6) === 0xf0;

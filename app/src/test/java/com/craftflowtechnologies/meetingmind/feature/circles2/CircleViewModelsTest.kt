@@ -100,8 +100,18 @@ class CircleViewModelsTest {
     @Test fun `types the circle does not use cannot be opened`() = runTest {
         val r = rig()
         r.data.circle.value = DataState.Ready(testCircle(types = listOf(PostType.Prayer)))
-        r.vm.openComposer(PostType.Study)
+        r.vm.openComposer(PostType.Reading)
         assertFalse(r.vm.composer.value.open)
+    }
+
+    @Test fun `devotional and study shares are always offered in a faith circle`() = runTest {
+        val r = rig()
+        r.data.circle.value = DataState.Ready(testCircle(types = listOf(PostType.Prayer)))
+        r.vm.openComposer(PostType.Devotional)
+        assertTrue(r.vm.composer.value.open)
+        r.vm.closeComposer()
+        r.vm.openComposer(PostType.Study)
+        assertTrue(r.vm.composer.value.open)
     }
 
     @Test fun `my own anonymous post is recognised as mine only on this phone`() = runTest {

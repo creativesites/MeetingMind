@@ -2,6 +2,13 @@ package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Image
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.Image as ImageIcon
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -118,23 +125,24 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
     val context = LocalContext.current
     val recorder = remember { VoiceRecorder(context) }
     var recording by remember { mutableStateOf(false) }
+    var pendingAttachment by remember { mutableStateOf<Pair<MediaKind, PickedFile>?>(null) }
     DisposableEffect(Unit) { onDispose { recorder.cancel() } }
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             val file = readPicked(context, uri)
-            if (file == null) actions.onNotice("That photo couldn't be read.") else actions.onSendAttachment(MediaKind.Image, file)
+            if (file == null) actions.onNotice("That photo couldn't be read.") else pendingAttachment = MediaKind.Image to file
         }
     }
     val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             val file = readPicked(context, uri)
-            if (file == null) actions.onNotice("That video couldn't be read or exceeds 50 MB.") else actions.onSendAttachment(MediaKind.Video, file)
+            if (file == null) actions.onNotice("That video couldn't be read or exceeds 50 MB.") else pendingAttachment = MediaKind.Video to file
         }
     }
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             val file = readPicked(context, uri)
-            if (file == null) actions.onNotice("That file couldn't be read.") else actions.onSendAttachment(MediaKind.File, file)
+            if (file == null) actions.onNotice("That file couldn't be read.") else pendingAttachment = MediaKind.File to file
         }
     }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -209,6 +217,8 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
         }
         ChatInput(
             state, draft, actions,
+            pendingAttachment = pendingAttachment,
+            onRemoveAttachment = { pendingAttachment = null },
             recording = recording,
             onAttachPhoto = { pickPhoto.launch("image/*") },
             onAttachVideo = { pickVideo.launch("video/*") },
@@ -218,6 +228,15 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
                 val file = recorder.stop()
                 recording = false
                 if (file == null) actions.onNotice("That was too short to keep.") else actions.onSendAttachment(MediaKind.Voice, file)
+            },
+            onSend = {
+                val staged = pendingAttachment
+                if (staged != null) {
+                    actions.onSendAttachment(staged.first, staged.second)
+                    pendingAttachment = null
+                } else {
+                    actions.onSend()
+                }
             }
         )
     }
@@ -365,9 +384,10 @@ private fun MessageItem(m: ChatMessage, state: ChatUiState, now: Long, actions: 
                                 m.attachment?.let { VideoBubble(state.circleId, it) }
                                 if (m.text.isNotBlank()) Text(m.text, style = MM.type.body, color = bubbleFg)
                             }
-                            MessageKind.Voice -> m.attachment?.let { VoiceBubble(state.circleId, it) }
-                            MessageKind.File -> m.attachment?.let { FileBubble(state.circleId, it) }
-                            MessageKind.Card -> m.card?.let { ChatCard(it) }
+                            MessageKind.File -> {
+                                m.attachment?.let { FileBubble(state.circleId, it) }
+                                if (m.text.isNotBlank()) Text(m.text, style = MM.type.body, color = bubbleFg)
+                            }
                             MessageKind.Poll -> m.pollId?.let { PollCard(m, actions) } ?: Text(m.text, style = MM.type.body, color = bubbleFg)
                             MessageKind.Chain -> m.chainId?.let { ChainCard(m, actions) } ?: Text(m.text, style = MM.type.body, color = bubbleFg)
                             else -> Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
@@ -408,17 +428,20 @@ private fun ChatInput(
     state: ChatUiState,
     draft: String,
     actions: ChatActions,
+    pendingAttachment: Pair<MediaKind, PickedFile>?,
+    onRemoveAttachment: () -> Unit,
     recording: Boolean,
     onAttachPhoto: () -> Unit,
     onAttachVideo: () -> Unit,
     onAttachFile: () -> Unit,
     onMicStart: () -> Unit,
-    onMicStop: () -> Unit
+    onMicStop: () -> Unit,
+    onSend: () -> Unit
 ) {
     val c = MM.colors
     var plus by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
-    val canSend = draft.isNotBlank()
+    val canSend = draft.isNotBlank() || pendingAttachment != null
     val sendScale by animateFloatAsState(if (canSend) 1f else 0.9f, label = "send scale")
     val inputBorder by animateColorAsState(if (focused) CirclesPalette.Accent else c.line, label = "chat input border")
 
@@ -445,6 +468,82 @@ private fun ChatInput(
                 }
             }
         }
+
+        // Staged attachment banner: photo, video or document thumbnail + details + remove button
+        pendingAttachment?.let { (kind, file) ->
+            Surface(
+                Modifier.fillMaxWidth().padding(horizontal = MM.space.m, vertical = 4.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = c.surfaceRaised,
+                border = BorderStroke(1.dp, CirclesPalette.Accent.copy(alpha = 0.4f))
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    when (kind) {
+                        MediaKind.Image -> {
+                            val bmp = remember(file) {
+                                runCatching { BitmapFactory.decodeByteArray(file.bytes, 0, file.bytes.size) }.getOrNull()
+                            }
+                            if (bmp != null) {
+                                Image(
+                                    bmp.asImageBitmap(), contentDescription = "Attached photo",
+                                    modifier = Modifier.size(46.dp).clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    Modifier.size(46.dp).clip(RoundedCornerShape(8.dp)).background(CirclesPalette.AccentSoft),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Rounded.ImageIcon, contentDescription = null, tint = CirclesPalette.Accent, modifier = Modifier.size(24.dp))
+                                }
+                            }
+                        }
+                        MediaKind.Video -> {
+                            Box(
+                                Modifier.size(46.dp).clip(RoundedCornerShape(8.dp)).background(CirclesPalette.AccentSoft),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Rounded.Videocam, contentDescription = null, tint = CirclesPalette.Accent, modifier = Modifier.size(26.dp))
+                            }
+                        }
+                        MediaKind.File -> {
+                            Box(
+                                Modifier.size(46.dp).clip(RoundedCornerShape(8.dp)).background(CirclesPalette.AccentSoft),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Rounded.InsertDriveFile, contentDescription = null, tint = CirclesPalette.Accent, modifier = Modifier.size(24.dp))
+                            }
+                        }
+                        else -> Unit
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            file.name ?: when (kind) {
+                                MediaKind.Image -> "Photo"
+                                MediaKind.Video -> "Video"
+                                MediaKind.File -> "Document.pdf"
+                                else -> "Attachment"
+                            },
+                            style = MM.type.bodyStrong.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp),
+                            color = c.ink, maxLines = 1
+                        )
+                        val details = listOfNotNull(
+                            file.durationMs?.takeIf { it > 0 }?.let(::formatDuration),
+                            formatBytes(file.bytes.size.toLong())
+                        ).joinToString(" · ")
+                        Text(details, style = MM.type.caption, color = c.inkSecondary)
+                    }
+                    IconButton(onClick = onRemoveAttachment, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Rounded.Close, "Remove attachment", tint = c.inkSecondary, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+
         Row(
             Modifier.fillMaxWidth().padding(horizontal = MM.space.m, vertical = 8.dp),
             verticalAlignment = Alignment.Bottom,
@@ -479,7 +578,10 @@ private fun ChatInput(
             ) {
                 Box(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
                     if (draft.isEmpty()) {
-                        Text("Message…", style = MM.type.body, color = c.inkMuted)
+                        Text(
+                            if (pendingAttachment != null) "Add a caption…" else "Message…",
+                            style = MM.type.body, color = c.inkMuted
+                        )
                     }
                     BasicTextField(
                         value = draft,
@@ -501,7 +603,7 @@ private fun ChatInput(
                     modifier = Modifier
                         .size(44.dp)
                         .graphicsLayer { scaleX = sendScale; scaleY = sendScale }
-                        .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = actions.onSend)
+                        .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onSend)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Rounded.Send, "Send", tint = CirclesPalette.White, modifier = Modifier.size(20.dp))

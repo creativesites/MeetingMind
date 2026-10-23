@@ -178,7 +178,7 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     fun openComposer(type: PostType) {
         val circle = state.value.circle
         // Free-form is always on: it is not one of the circle's listed kinds.
-        if (circle != null && type != PostType.Note && type !in circle.settings.allowedTypes) return
+        if (circle != null && type !in circle.offeredTypes) return
         composer.value = ComposerState(type = type)
     }
     fun closeComposer() { composer.value = ComposerState() }

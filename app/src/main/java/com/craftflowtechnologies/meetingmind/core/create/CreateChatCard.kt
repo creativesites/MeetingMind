@@ -15,7 +15,7 @@ object CreateChatCard {
 
     /** The payload for a finished studio card, or null when it has no words and no verse (nothing to send). */
     fun toPayload(card: CreateCard, scripture: ResolvedScripture?): CardPayload? {
-        val words = card.text.trim()
+        val words = card.text.trim().ifEmpty { card.sourceText.trim() }
         val verseWords = scripture?.text?.trim()?.trim('“', '”', '"')?.takeIf { it.isNotEmpty() }
         val text = words.ifEmpty { verseWords.orEmpty() }.take(MAX_TEXT)
         if (text.isEmpty()) return null

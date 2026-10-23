@@ -33,8 +33,18 @@ android {
       System.getenv("CIRCLES_API_URL") ?: props.getProperty("circles.apiUrl") ?: "https://meetingmind-circles.meetingmind.workers.dev"
     }
     buildConfigField("String", "CIRCLES_API_URL", "\"${circlesApiUrl.trim().replace("\"", "")}\"")
-    // System Gemini API key for closed testing (via SYSTEM_GEMINI_API_KEY env var)
-    val systemGeminiKey = System.getenv("SYSTEM_GEMINI_API_KEY") ?: ""
+    // System Gemini API key for closed testing (via SYSTEM_GEMINI_API_KEY or GEMINI_API_KEY env var, or local.properties)
+    val systemGeminiKey = (
+      System.getenv("SYSTEM_GEMINI_API_KEY")
+        ?: System.getenv("GEMINI_API_KEY")
+        ?: {
+          val props = Properties()
+          val local = rootProject.file("local.properties")
+          if (local.exists()) local.inputStream().use { props.load(it) }
+          props.getProperty("system.gemini.api.key") ?: props.getProperty("gemini.api.key")
+        }()
+        ?: ""
+    ).trim()
     buildConfigField("String", "SYSTEM_GEMINI_API_KEY", "\"${systemGeminiKey.replace("\"", "")}\"")
     // DeepSeek, the fallback for AI text. The key stays out of public builds: production goes
     // through the proxy in server/deepseek-proxy (DEEPSEEK_PROXY_URL), which holds the key and

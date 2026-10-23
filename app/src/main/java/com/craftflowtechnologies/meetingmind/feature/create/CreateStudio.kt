@@ -141,7 +141,12 @@ fun CreateStudioDialog(seed: CreateSeed, reopen: CreateCard? = null, openId: Int
                 onPickPhoto = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 onShare = { t -> vm.share(t, companionBitmap) },
                 sendLabel = sendTarget?.label,
-                onSend = sendTarget?.let { target -> { target.onShare(CreateShareResult(ui.card, ui.scripture)); close() } },
+                onSend = sendTarget?.let { target -> {
+                    val text = ui.card.text.trim().ifEmpty { ui.prompt.trim() }.ifEmpty { ui.card.sourceText.trim() }
+                    val cardToSend = if (ui.card.text.isBlank() && text.isNotBlank()) ui.card.copy(current = ui.card.current.copy(text = text)) else ui.card
+                    target.onShare(CreateShareResult(cardToSend, ui.scripture))
+                    close()
+                } },
                 onCopy = { copy(context, vm.plainText()); vm.dismissMessage() }
             )
         )
