@@ -1,6 +1,22 @@
 # Status
 
-Updated: 2026-10-22. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: see `git log -1`.
+Updated: 2026-10-23. Designated branch: `ccr-08b1bb9f-iljmtb`. Head: `3014407`.
+
+## Dev Build & Release Verification (2026-10-23)
+- **Artifact**: `MeetingMind-Dev-3014407.apk` published to branch `apk-downloads` (commit `5592806`).
+- **Source**: Built from `ccr-08b1bb9f-iljmtb` at `3014407`.
+- **Highlights**:
+  1. Built-in internal API key embedded in dev builds (`BuildConfig.SYSTEM_GEMINI_API_KEY`) ensuring onboarding recordings & transcription succeed immediately without user configuration.
+  2. Circles Feed: "Share Devotional" and "Share from Study" always offered in Faith Circles with interactive modal pickers (`DevotionalPickerSheet`, `StudyNotesPickerSheet`).
+  3. Redesigned Post Composer: 20dp curved sheet, contextual tool pills, character counters, quick-action banners.
+  4. Theme-Aware Verse Cards: `VerseTokens` with high-contrast surfaces and illuminated text tokens for dark mode.
+  5. Chat Media Uploads & Attachments: Staged attachments preview banner with delete button; simultaneous media and text captioning; FileProvider tap-to-open for PDFs.
+  6. Card Creator Chat Handoff: Resolved empty draft payload issue; prompt/source fallback; prominent "Send to chat" action.
+  7. Work Circles Tab: Direct access to Team Circles execution space added to Work Page navigation.
+  8. Onboarding Offline Models: Multi-model picker in onboarding (`SetupStep`) with Parakeet 0.6B (English/Euro), Omnilingual 300M (African & Multilingual), Omnilingual 1B (High-Capacity), and Whisper Turbo.
+- **Physical Verification**: 74.75 MB (78,382,042 bytes), SHA-256 verified.
+- **Mandatory Credential Leak Gate**: PASSED. Audit detected zero private keys (only Google Services Firebase client key in `resources.arsc`).
+- **Download Link**: `https://github.com/creativesites/meetingmind/raw/apk-downloads/MeetingMind-Dev-3014407.apk`
 
 ## Circles Redesign, Work Execution Space & Safety Gate (2026-10-22)
 - **Work Circles Execution & Continuity Space**:
