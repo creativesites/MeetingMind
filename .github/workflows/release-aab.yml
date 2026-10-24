@@ -12,24 +12,21 @@ name: Release AAB (Play Store)
 #   KEYSTORE_BASE64    the upload keystore file, base64-encoded (base64 -w0 upload.jks)
 #   KEYSTORE_PASSWORD  its store password
 #   KEY_PASSWORD       the password of the key "upload" inside it
-# Two kinds of bundle, chosen by whether the GEMINI_PROXY_URL secret is set:
-#   MANAGED (GEMINI_PROXY_URL set): Gemini goes through server/gemini-proxy, which holds the Google key and
-#     enforces each plan's allowance. NO Gemini key is built in (SYSTEM_GEMINI_API_KEY is ignored), and the
-#     build FAILS if one is found in the bundle. This is the kind to put in front of the public.
-#     Also set REVENUECAT_API_KEY so plans can be bought.
-#   TESTER (GEMINI_PROXY_URL not set): the built-in SYSTEM_GEMINI_API_KEY is baked in so closed testers can use
-#     Internet mode without setup. That secret is then required.
-# Optional for both: SYSTEM_DEEPSEEK_API_KEY (built-in fallback key), DEEPSEEK_PROXY_URL.
+# The Play bundle is MANAGED (founder decision 2026-10-25, amending B1):
+#   GEMINI_PROXY_URL   Gemini goes through server/gemini-proxy, which holds the Google key and
+#                      enforces each plan's allowance. NO raw Gemini key is built in, and the build
+#                      FAILS if one is found in the bundle.
+#   REVENUECAT_API_KEY the real (goog_) Play SDK key, so plans can be bought.
+# Both are required; without either, the bundle is not built. Optional: DEEPSEEK_PROXY_URL.
 #
-# A TESTER BUNDLE CONTAINS THE BUILT-IN API KEYS. It is attached to a draft release, which only
-# people with access to the repository can see, and is never committed. Download it, upload it to
-# Play, then DELETE the release so the keys are not left lying around.
+# The bundle is attached to a draft release, which only people with access to the repository can
+# see, and is never committed. Download it, upload it to Play, then delete the release.
 on:
   push:
     tags:
       - 'aab-*'
     branches:
-      - ccr-5e66b00c-btultn
+      - release/1.0-paid-launch
 
 permissions:
   contents: write
@@ -61,12 +58,10 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          SYSTEM_GEMINI_API_KEY: ${{ secrets.SYSTEM_GEMINI_API_KEY }}
           GEMINI_PROXY_URL: ${{ secrets.GEMINI_PROXY_URL }}
+          REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
         run: |
-          required="KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_PASSWORD"
-          # A tester bundle needs the built-in key; a managed bundle must not have one.
-          if [ -z "${GEMINI_PROXY_URL:-}" ]; then required="$required SYSTEM_GEMINI_API_KEY"; fi
+          required="KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_PASSWORD GEMINI_PROXY_URL REVENUECAT_API_KEY"
           for name in $required; do
             if [ -z "${!name}" ]; then echo "::error::Secret $name is not set"; exit 1; fi
           done
@@ -80,28 +75,27 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          SYSTEM_GEMINI_API_KEY: ${{ secrets.SYSTEM_GEMINI_API_KEY }}
-          SYSTEM_DEEPSEEK_API_KEY: ${{ secrets.SYSTEM_DEEPSEEK_API_KEY }}
           DEEPSEEK_PROXY_URL: ${{ secrets.DEEPSEEK_PROXY_URL }}
           GEMINI_PROXY_URL: ${{ secrets.GEMINI_PROXY_URL }}
           REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
         run: |
           set -euo pipefail
-          # Decision B1 (founder, 2026-10-22): every build carries the raw Gemini key.
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           export KEYSTORE_PATH="$RUNNER_TEMP/upload.jks"
           ./gradlew bundleRelease
           rm -f "$RUNNER_TEMP/upload.jks"
 
-      - name: Check the bundle has the built-in key
-        # Every release carries the built-in Gemini key so first-time recordings work out of the box.
+      - name: Check the bundle carries no Gemini key
+        # A Play bundle must reach AI only through the metered proxy. A raw Google key in the
+        # artifact can be extracted and spent by anyone, so its presence fails the release.
         run: |
           set -euo pipefail
           aab="$(ls app/build/outputs/bundle/release/*.aab)"
-          found=no
-          if unzip -p "$aab" 'base/dex/*' | strings | grep -qE 'AIzaSy[0-9A-Za-z_-]{33}|AQ\.[0-9A-Za-z_-]{20,}'; then found=yes; fi
-          if [ "$found" = no ]; then echo "::error::the built-in Gemini key is missing from the bundle"; exit 1; fi
-          echo "Release bundle: built-in Gemini key verified."
+          if unzip -p "$aab" 'base/dex/*' | strings | grep -qE 'AIzaSy[0-9A-Za-z_-]{33}|AQ\.[0-9A-Za-z_-]{20,}'; then
+            echo "::error::a Google API key is present in the bundle; release builds must use the proxy only"
+            exit 1
+          fi
+          echo "Release bundle: no raw Google API key, as required."
 
       - name: Name the bundle
         run: |

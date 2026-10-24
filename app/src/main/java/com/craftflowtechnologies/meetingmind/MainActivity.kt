@@ -268,7 +268,15 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         if (RecordingRecovery.checked) return@LaunchedEffect
         RecordingRecovery.checked = true
         val entry = journalStore.read()
-        if (entry != null && (entry.state == RecordingState.RECORDING.name || entry.state == RecordingState.PAUSED.name)) {
+        // A process death mid-capture (RECORDING/PAUSED) and a finished recording whose database
+        // row could not be written (SAVE_FAILED) both leave a real audio file that the app has not
+        // indexed yet. Both are offered on the next launch; neither is silently discarded.
+        if (entry != null && (
+                entry.state == RecordingState.RECORDING.name ||
+                    entry.state == RecordingState.PAUSED.name ||
+                    entry.state == RecordingState.SAVE_FAILED.name
+                )
+        ) {
             RecordingRecovery.entry.value = entry
         }
     }
@@ -1393,17 +1401,26 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     )
 
     recoveryEntry?.let { entry ->
+        val notYetSaved = entry.state == RecordingState.SAVE_FAILED.name
         AlertDialog(
             onDismissRequest = { /* Never auto-dismiss into a silent discard — spec §3.7. Back
                 gesture just closes this composition's state; the same journal is read again and
                 re-prompted on the next app launch since nothing here has cleared it. */ RecordingRecovery.entry.value = null },
-            title = { Text("We found an unfinished recording.") },
+            title = {
+                Text(if (notYetSaved) "We couldn't add your recording to your notes." else "We found an unfinished recording.")
+            },
             text = {
                 Text(
-                    "MeetingMind closed unexpectedly while recording \"${entry.title}\" " +
-                        "(about ${Formatters.formatDurationHms(entry.lastKnownDurationMs)} captured). " +
-                        "Continuing this recording isn't supported yet, but you can save what was " +
-                        "already captured or delete it."
+                    if (notYetSaved) {
+                        "\"${entry.title}\" was recorded (about ${Formatters.formatDurationHms(entry.lastKnownDurationMs)}), " +
+                            "but adding it to your notes didn't complete. The audio is still on this phone. " +
+                            "Add it now, or delete it."
+                    } else {
+                        "MeetingMind closed unexpectedly while recording \"${entry.title}\" " +
+                            "(about ${Formatters.formatDurationHms(entry.lastKnownDurationMs)} captured). " +
+                            "Continuing this recording isn't supported yet, but you can save what was " +
+                            "already captured or delete it."
+                    }
                 )
             },
             confirmButton = {
@@ -1414,20 +1431,32 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                         } catch (e: Exception) {
                             RecordingType.GENERAL
                         }
-                        recoveryMeetingRepository.createInitialMeeting(
-                            id = entry.meetingId,
-                            title = entry.title,
-                            source = MeetingSource.LOCAL_RECORDING,
-                            audioFilePath = entry.audioFilePath,
-                            recordingType = recordingType
-                        )
+                        // The journal is cleared only if the row is actually written. A failure
+                        // here leaves the recording offered again rather than losing it.
+                        val saved = runCatching {
+                            recoveryMeetingRepository.createInitialMeeting(
+                                id = entry.meetingId,
+                                title = entry.title,
+                                source = MeetingSource.LOCAL_RECORDING,
+                                audioFilePath = entry.audioFilePath,
+                                recordingType = recordingType
+                            )
+                        }.isSuccess
+                        if (!saved) {
+                            android.widget.Toast.makeText(
+                                context,
+                                "Still couldn't add it. The recording is safe on this phone; we'll offer it again next time.",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                            return@launch
+                        }
                         journalStore.clear()
                         RecordingRecovery.entry.value = null
                         navController.navigate(
                             Routes.processingRoute(entry.meetingId, entry.audioFilePath, entry.lastKnownDurationMs)
                         )
                     }
-                }) { Text("Save recording") }
+                }) { Text(if (notYetSaved) "Add it now" else "Save recording") }
             },
             dismissButton = {
                 TextButton(onClick = {

@@ -155,10 +155,10 @@ class MeetingRecordingService : Service() {
         when (intent?.action) {
             ACTION_PAUSE -> pauseRecording()
             ACTION_RESUME -> resumeRecording()
-            ACTION_STOP -> stopRecording { id, file, _ ->
+            ACTION_STOP -> stopRecording { id, file, _, persisted ->
                 // Stopped from the notification: the marks tapped so far still belong on the recording's note.
                 val marks = com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.take()
-                if (file != null && marks.isNotEmpty()) scope.launch {
+                if (persisted && file != null && marks.isNotEmpty()) scope.launch {
                     runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.save(MeetMindDatabase.getInstance(applicationContext), id, marks) }
                 }
             }
@@ -235,8 +235,13 @@ class MeetingRecordingService : Service() {
      * only then reports back and tears the service down — so [onSaved] always describes a
      * recording that genuinely exists in Room, never just a file that might still be orphaned if
      * the process died a moment later. Behavior (what happens after saving) is entirely the
-     * caller's decision via [onSaved]; this method only guarantees the save itself completed. */
-    fun stopRecording(onSaved: (meetingId: String, file: File?, durationMs: Long) -> Unit) {
+     * caller's decision via [onSaved]; this method only guarantees the save itself completed.
+     *
+     * [onSaved]'s last argument is the guarantee: `persisted == true` means the row exists and the
+     * caller may open the recording. `persisted == false` means the audio is complete but the row
+     * is not, and the caller must tell the person the truth and leave the recording recoverable —
+     * never navigate to a recording that has no row. */
+    fun stopRecording(onSaved: (meetingId: String, file: File?, durationMs: Long, persisted: Boolean) -> Unit) {
         if (_state.value != RecordingState.RECORDING && _state.value != RecordingState.PAUSED) return
         _state.value = RecordingState.STOPPING
         val finalDurationMs = durationMs.value
@@ -246,25 +251,40 @@ class MeetingRecordingService : Service() {
         scope.launch {
             if (id != null && file != null) {
                 _state.value = RecordingState.SAVING
-                try {
-                    meetingRepository.createInitialMeeting(
-                        id = id,
-                        title = meetingTitle,
-                        source = MeetingSource.LOCAL_RECORDING,
-                        audioFilePath = file.absolutePath,
-                        recordingType = recordingContext.recordingType,
-                        customContext = recordingContext.customContext,
-                        speakerCountPreference = recordingContext.speakerCountPreference,
-                        language = recordingContext.language ?: "en",
-                        noteId = recordingContext.noteId
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to persist finished recording $id — audio file is still on disk at ${file.absolutePath}", e)
+                val persisted = RecordingStopFinalizer.finalize(
+                    persist = {
+                        meetingRepository.createInitialMeeting(
+                            id = id,
+                            title = meetingTitle,
+                            source = MeetingSource.LOCAL_RECORDING,
+                            audioFilePath = file.absolutePath,
+                            recordingType = recordingContext.recordingType,
+                            customContext = recordingContext.customContext,
+                            speakerCountPreference = recordingContext.speakerCountPreference,
+                            language = recordingContext.language ?: "en",
+                            noteId = recordingContext.noteId
+                        )
+                    },
+                    // Cleared only after the row is durable; a failure keeps the journal, and the
+                    // next launch offers the recording again instead of losing it.
+                    clearJournal = { journalStore.clear() }
+                )
+                if (!persisted) {
+                    _state.value = RecordingState.SAVE_FAILED
+                    // Written while meetingId and outputFile are still set, so it survives teardown.
+                    writeJournal()
+                    onSaved(id, file, finalDurationMs, false)
+                    teardown()
+                    return@launch
                 }
+                _state.value = RecordingState.SAVED
+                onSaved(id, file, finalDurationMs, true)
+                teardown()
+                return@launch
             }
             _state.value = RecordingState.SAVED
             journalStore.clear()
-            onSaved(id.orEmpty(), file, finalDurationMs)
+            onSaved(id.orEmpty(), file, finalDurationMs, false)
             teardown()
         }
     }

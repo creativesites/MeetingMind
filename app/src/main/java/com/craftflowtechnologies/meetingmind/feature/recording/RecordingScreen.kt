@@ -188,16 +188,30 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         onDiscardedOrEmpty: () -> Unit = {}
     ) {
         val service = _boundService.value ?: return
-        service.stopRecording { meetingId, file, duration ->
+        service.stopRecording { meetingId, file, duration, persisted ->
             val marks = com.craftflowtechnologies.meetingmind.core.work.RecordingMarks.take()
             viewModelScope.launch {
-                // The recording exists now, so its marks can be kept on its note.
-                if (file != null) {
-                    runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.save(com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(getApplication()), meetingId, marks) }
-                    onComplete(meetingId, file.absolutePath, duration)
-                } else {
-                    android.widget.Toast.makeText(getApplication(), "Recording was too short to save", android.widget.Toast.LENGTH_SHORT).show()
-                    onDiscardedOrEmpty()
+                when {
+                    // The row is durable: open the recording and keep its marks on its note.
+                    persisted && file != null -> {
+                        runCatching { com.craftflowtechnologies.meetingmind.core.work.Marks.save(com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase.getInstance(getApplication()), meetingId, marks) }
+                        onComplete(meetingId, file.absolutePath, duration)
+                    }
+                    // The audio is complete but the row could not be written. Never open a
+                    // recording that has no row: say what actually happened, and leave it in the
+                    // recovery journal so the next launch offers it again.
+                    file != null -> {
+                        android.widget.Toast.makeText(
+                            getApplication(),
+                            "Your recording is saved on this phone, but it couldn't be added to your notes yet. We'll offer it to you the next time you open MeetingMind.",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                        onDiscardedOrEmpty()
+                    }
+                    else -> {
+                        android.widget.Toast.makeText(getApplication(), "Recording was too short to save", android.widget.Toast.LENGTH_SHORT).show()
+                        onDiscardedOrEmpty()
+                    }
                 }
             }
         }

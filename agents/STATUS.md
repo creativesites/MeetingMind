@@ -1,6 +1,16 @@
 # Status
 
-Updated: 2026-10-22. Designated branch: `claude/meetingmind-mvp-planning-7dgowm`. Active integration branch: `work-circles-integration`. Head: see `git log -1`.
+Updated: 2026-10-25. **Shipping branch: `release/1.0-paid-launch`** (cut from `work-circles-integration` + one checkpoint commit of the in-flight tree, `a3ca467`). The earlier designated branch is a 233-commit ancestor and is no longer the working branch. Head: see `git log -1`.
+
+## Paid launch starts (2026-10-25, founder decisions, CTO session)
+- **The Play launch is paid.** RevenueCat account exists but has no products, entitlements or offerings yet. Setup guide with the exact identifiers the code expects: `docs/RELEASE_BILLING_SETUP.md`.
+- **The managed Gemini proxy is approved for release builds** (`server/gemini-proxy`). This amends decision B1: Play bundles carry **no raw Google key**; debug keeps it. `agents/PRODUCT.md` updated.
+- **Release config now enforces the launch:** `REVENUECAT_API_KEY` is per build type (debug reads `revenuecat.testApiKey` from gitignored `local.properties`; release reads CI secrets), `SYSTEM_GEMINI_API_KEY` is empty in release, `GEMINI_PROXY_URL` comes from CI, and `bundleRelease`/`assembleRelease` **fail** when the store key or proxy URL is missing. Version 47 → 48.
+- **CI** (`.github/workflows/release-aab.yml`): builds the managed bundle on `release/1.0-paid-launch`, requires `REVENUECAT_API_KEY` + `GEMINI_PROXY_URL`, and fails if any Google API key is found in the bundle. The `SYSTEM_GEMINI_API_KEY` secret should be deleted.
+- **Recording durability fixed (P0):** `stopRecording` now retries the Room insert, and clears the recovery journal **only** after the row is durable. A failed save ends in the new `RecordingState.SAVE_FAILED`, the audio and journal are kept, the person is told the truth, and the next launch offers to add it again. New tests: `RecordingStopFinalizerTest` (4 cases). Recovery dialog now handles both the crash and the failed-save cases.
+- **In flight, not yet merged:** title reliability (`wt-title-reliability`) and billing/tiering/paywall truthfulness (`wt-billing-tiers`), each in its own worktree.
+- **Not done yet:** onboarding truthfulness, Work convergence, proxy deploy (needs the founder's Cloudflare account), Play Console/RevenueCat setup, device verification.
+- **Team:** registered as **Vega ✶** (MeetingMind CTO) in the CreativeSites MyaOS hub; briefs sent to Themis, Synapse, Ledger, Mira, Forge, Sentinel, Gantry and Hermes. No MeetingMind squad agent had a live runtime at the time.
 
 ## Dev Build & Release Verification (2026-10-22, Gantry 📦)
 - **Artifact**: `MeetingMind-Dev-1cb6654.apk` published to branch `apk-downloads` (commit `e5883f8`).
