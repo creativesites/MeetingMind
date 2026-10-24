@@ -284,6 +284,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
     // People is built from history, once, after the work schema arrives (PLAN_PROFESSIONAL.md §5.1).
     LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.core.work.WorkStartup.run(context) }
+    // A model downloaded after a recording was processed can now give it a real title. Bounded,
+    // off the main thread, and a no-op until some engine is actually available — see the object.
+    LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.ai.pipeline.RecordingTitleBackfill.run(context) }
     val pendingCircleInvite by com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.pendingCode.collectAsState()
     LaunchedEffect(pendingCircleInvite) {
         if (pendingCircleInvite != null) {

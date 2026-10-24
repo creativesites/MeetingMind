@@ -78,7 +78,15 @@ class MeetingRepository(
         speakerCountPreference: Int? = null,
         language: String = "en",
         /** File the recording into this note instead of giving it a new one ("record here"). */
-        noteId: String? = null
+        noteId: String? = null,
+        /**
+         * Where the initial [title] came from. Recording flows and bad import file names leave this
+         * at [com.craftflowtechnologies.meetingmind.core.model.TitleSource.AI] so processing may
+         * replace a placeholder; a usable imported file name passes
+         * [com.craftflowtechnologies.meetingmind.core.model.TitleSource.IMPORT] so it is kept.
+         */
+        titleSource: com.craftflowtechnologies.meetingmind.core.model.TitleSource =
+            com.craftflowtechnologies.meetingmind.core.model.TitleSource.AI
     ): Meeting = withContext(Dispatchers.IO) {
         val entity = MeetingEntity(
             id = id,
@@ -93,7 +101,8 @@ class MeetingRepository(
             summaryText = null,
             recordingType = recordingType.name,
             customContext = customContext,
-            speakerCountPreference = speakerCountPreference
+            speakerCountPreference = speakerCountPreference,
+            titleSource = titleSource.name
         )
         meetingDao.insertMeeting(entity)
         // Every recording lives in a note (docs/PLAN_V1.md §2).
@@ -107,9 +116,20 @@ class MeetingRepository(
         entity.toDomain()
     }
 
+    /**
+     * A manual rename. The title is the person's, so it is marked
+     * [com.craftflowtechnologies.meetingmind.core.model.TitleSource.USER] — no reprocess or
+     * backfill may replace it afterwards.
+     */
     suspend fun updateMeetingTitle(id: String, newTitle: String) = withContext(Dispatchers.IO) {
         val existing = meetingDao.getMeetingById(id) ?: return@withContext
-        meetingDao.updateMeeting(existing.copy(title = newTitle, updatedAt = System.currentTimeMillis()))
+        meetingDao.updateMeeting(
+            existing.copy(
+                title = newTitle,
+                titleSource = com.craftflowtechnologies.meetingmind.core.model.TitleSource.USER.name,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
         NoteRepository(context, database).syncFromRecording(id)
     }
 
@@ -173,7 +193,8 @@ class MeetingRepository(
             recordingType = try { com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(recordingType) } catch (e: Exception) { com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL },
             customContext = customContext,
             speakerCountPreference = speakerCountPreference,
-            noteId = noteId
+            noteId = noteId,
+            titleSource = com.craftflowtechnologies.meetingmind.core.model.TitleSource.fromStored(titleSource)
         )
     }
 }

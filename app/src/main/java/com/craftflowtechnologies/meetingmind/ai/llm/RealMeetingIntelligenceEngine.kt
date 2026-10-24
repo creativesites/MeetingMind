@@ -138,6 +138,34 @@ class RealMeetingIntelligenceEngine(
         )
     }
 
+    /**
+     * One short title-only pass, not a second synthesis. A first answer that does not survive
+     * [RecordingTitles.parseTitleCandidate] gets exactly one stricter retry; after that the caller
+     * falls back to content (see [RecordingTitles]) rather than asking the model again.
+     */
+    override suspend fun suggestTitle(
+        transcript: Transcript,
+        recordingType: RecordingType
+    ): AiResult<String> {
+        if (transcript.segments.isEmpty()) return AiResult.Failed("No transcript is available to title.")
+        val first = languageModel.generate(
+            RecordingTitles.titlePrompt(transcript, recordingType),
+            maxOutputTokens = TITLE_OUTPUT_TOKENS
+        )
+        val firstTitle = (first as? AiResult.Success)?.value?.let(RecordingTitles::parseTitleCandidate)
+        if (firstTitle != null) return AiResult.Success(firstTitle)
+
+        val retry = languageModel.generate(
+            RecordingTitles.titlePrompt(transcript, recordingType, strict = true),
+            maxOutputTokens = TITLE_OUTPUT_TOKENS
+        )
+        val retryTitle = (retry as? AiResult.Success)?.value?.let(RecordingTitles::parseTitleCandidate)
+        if (retryTitle != null) return AiResult.Success(retryTitle)
+        return AiResult.Failed(
+            retry.describeFailure() ?: first.describeFailure() ?: "The model did not return a usable title."
+        )
+    }
+
     override suspend fun askMeeting(
         question: String,
         transcript: Transcript,
@@ -385,6 +413,8 @@ class RealMeetingIntelligenceEngine(
     private companion object {
         const val EXTRACTION_OUTPUT_TOKENS = 700
         const val SYNTHESIS_OUTPUT_TOKENS = 500
+        /** A title is 3–8 words; this is generous slack, not room for an essay. */
+        const val TITLE_OUTPUT_TOKENS = 40
         const val ASK_OUTPUT_TOKENS = 300
         const val MAX_SOURCE_QUOTES = 3
         /** Rough token cost of the synthesis prompt's fixed instruction text. */
