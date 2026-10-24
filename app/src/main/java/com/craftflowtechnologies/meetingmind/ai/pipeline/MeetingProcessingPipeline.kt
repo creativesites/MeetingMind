@@ -61,6 +61,7 @@ import com.craftflowtechnologies.meetingmind.core.database.QuestionEntity
 import com.craftflowtechnologies.meetingmind.core.database.SpeakerEntity
 import com.craftflowtechnologies.meetingmind.core.database.TopicEntity
 import com.craftflowtechnologies.meetingmind.core.database.TranscriptSegmentEntity
+import com.craftflowtechnologies.meetingmind.ai.llm.RecordingTitles
 import com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator
 import com.craftflowtechnologies.meetingmind.core.repository.toWordsJson
 import com.craftflowtechnologies.meetingmind.core.model.MeetingStatus
@@ -426,7 +427,29 @@ class MeetingProcessingPipeline(
                         completed = !isCrash,
                         error = message
                     )
+                    // No words exist to derive content from, but "what failed" must not leave a
+                    // generic placeholder either: a usable existing title is kept, otherwise the
+                    // localized date fallback (never a fabricated one) is used.
+                    val failedType = try {
+                        com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(existingMeeting.recordingType)
+                    } catch (e: Exception) {
+                        com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL
+                    }
+                    val failedSource = com.craftflowtechnologies.meetingmind.core.model.TitleSource
+                        .fromStored(existingMeeting.titleSource)
+                    val keepExisting = existingMeeting.title.isNotBlank() && (
+                        failedSource == com.craftflowtechnologies.meetingmind.core.model.TitleSource.USER ||
+                            failedSource == com.craftflowtechnologies.meetingmind.core.model.TitleSource.IMPORT ||
+                            com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator
+                                .sanitizeAndValidate(existingMeeting.title) != null
+                        )
                     val updatedMeeting = existingMeeting.copy(
+                        title = if (keepExisting) existingMeeting.title else RecordingTitles.provisionalTitle(
+                            recordingType = failedType,
+                            createdAtMs = existingMeeting.createdAt,
+                            transcriptTexts = emptyList()
+                        ),
+                        titleSource = if (keepExisting) failedSource.name else com.craftflowtechnologies.meetingmind.core.model.TitleSource.DATE.name,
                         status = (if (isCrash) MeetingStatus.ERROR else MeetingStatus.MODEL_REQUIRED).name,
                         durationMs = totalDurationMs,
                         summaryText = null,
@@ -634,22 +657,61 @@ class MeetingProcessingPipeline(
             )
 
             val llmStart = System.currentTimeMillis()
-            // A deterministic, non-fabricated fallback built only from the recording's real type
-            // and creation date — used both as processMeeting's own synthesis fallback and as the
-            // final title whenever the model is unavailable or its title candidate doesn't
-            // validate. Title generation is folded into this one structured-JSON call (see
-            // RealMeetingIntelligenceEngine's synthesis prompt) instead of running a second,
-            // separate LLM pass purely for a title.
-            val fallbackTitle = MeetingTitleGenerator.deterministicFallbackTitle(recordingType, existingMeeting.createdAt)
+            // A title is content. When there are words, the fallback handed to synthesis is
+            // content-derived too, so unparseable model output can only echo real content back —
+            // never a date. The final decision, including the dedicated title pass, is made by
+            // RecordingTitles below.
+            val titleTexts = diarizedSegments.map { it.cleanedText ?: it.text }
+            val provisionalTitle = RecordingTitles.provisionalTitle(
+                recordingType = recordingType,
+                createdAtMs = existingMeeting.createdAt,
+                transcriptTexts = titleTexts
+            )
             // No words means no model call at all: a language model given an empty transcript can
             // only invent a summary, and this app never fabricates one.
             val summaryResult = if (noSpeech) {
                 AiResult.Failed(NO_SPEECH_MESSAGE)
             } else {
-                effectiveIntelligenceEngine.processMeeting(transcriptDomain, fallbackTitle, recordingType, existingMeeting.customContext)
+                effectiveIntelligenceEngine.processMeeting(transcriptDomain, provisionalTitle, recordingType, existingMeeting.customContext)
             }
             val summary = (summaryResult as? AiResult.Success)?.value
-            val generatedTitle = MeetingTitleGenerator.sanitizeAndValidate(summary?.title) ?: fallbackTitle
+
+            // A person's own title (or a usable imported file name) is never re-generated. Skipping
+            // the title model call here also avoids spending a whole LLM pass on a title that
+            // cannot be used.
+            val desiredExistingSource = com.craftflowtechnologies.meetingmind.core.model.TitleSource
+                .fromStored(existingMeeting.titleSource)
+            val titleLocked = (desiredExistingSource == com.craftflowtechnologies.meetingmind.core.model.TitleSource.USER ||
+                desiredExistingSource == com.craftflowtechnologies.meetingmind.core.model.TitleSource.IMPORT) &&
+                existingMeeting.title.isNotBlank()
+            val modelTitle = if (!noSpeech && !titleLocked) {
+                when (val titleResult = effectiveIntelligenceEngine.suggestTitle(transcriptDomain, recordingType)) {
+                    is AiResult.Success -> titleResult.value
+                    else -> {
+                        Log.d(PERF_TAG, "Dedicated title unavailable: ${titleResult.describeFailure() ?: "no reason given"}")
+                        null
+                    }
+                }
+            } else null
+
+            val (dayFrom, dayTo) = RecordingTitles.dayBounds(existingMeeting.createdAt)
+            val siblingTitles = meetingDao
+                .getMeetingsOfTypeBetween(recordingType.name, dayFrom, dayTo, meetingId)
+                .map { it.title }
+                .toSet()
+            val titleDecision = RecordingTitles.resolve(
+                existingTitle = existingMeeting.title,
+                existingTitleSource = desiredExistingSource,
+                recordingType = recordingType,
+                createdAtMs = existingMeeting.createdAt,
+                transcriptTexts = titleTexts,
+                intelligence = summary,
+                modelTitle = modelTitle,
+                synthesisFallbackTitle = provisionalTitle,
+                siblingTitles = siblingTitles
+            )
+            val generatedTitle = titleDecision.title
+            Log.d(PERF_TAG, "Title (${titleDecision.source}): ${generatedTitle.take(80)}")
             Log.d(PERF_TAG, "LLM (intelligence incl. title): ${System.currentTimeMillis() - llmStart}ms")
             // Free the ~1.5GB local LLM allocation as soon as intelligence extraction is done.
             LlmEngineManager.release()
@@ -776,6 +838,7 @@ class MeetingProcessingPipeline(
 
             val updatedMeeting = existingMeeting.copy(
                 title = generatedTitle,
+                titleSource = titleDecision.source.name,
                 status = MeetingStatus.READY.name,
                 durationMs = totalDurationMs,
                 participantCount = uniqueSpeakers.size.coerceAtLeast(1),
@@ -832,7 +895,46 @@ class MeetingProcessingPipeline(
                 SherpaEngineManager.releaseAll()
                 LlmEngineManager.release()
                 updateJob("Failed", 0, ProcessingStage.FAILED, failed = true, error = e.localizedMessage ?: "Unknown processing error")
-                meetingDao.updateMeeting(existingMeeting.copy(status = MeetingStatus.ERROR.name))
+                // A failure between transcription and saving must not leave a generic placeholder
+                // either. Whatever transcript was already persisted is real content, so derive a
+                // title from it when there is one; otherwise the honest date fallback. A title the
+                // person set, or a usable imported name, is never touched by a failure.
+                val failedSource = com.craftflowtechnologies.meetingmind.core.model.TitleSource
+                    .fromStored(existingMeeting.titleSource)
+                val existingGood = existingMeeting.title.isNotBlank() && (
+                    failedSource == com.craftflowtechnologies.meetingmind.core.model.TitleSource.USER ||
+                        failedSource == com.craftflowtechnologies.meetingmind.core.model.TitleSource.IMPORT ||
+                        com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator
+                            .sanitizeAndValidate(existingMeeting.title) != null
+                    )
+                val failedMeeting = if (existingGood) {
+                    existingMeeting.copy(status = MeetingStatus.ERROR.name)
+                } else {
+                    val persisted = runCatching { transcriptDao.getSegmentsForMeetingDirect(meetingId) }
+                        .getOrDefault(emptyList())
+                    val contentTitle = RecordingTitles.contentTitle(
+                        null,
+                        persisted.map { it.cleanedText ?: it.text }
+                    )
+                    val type = runCatching {
+                        com.craftflowtechnologies.meetingmind.core.model.RecordingType
+                            .valueOf(existingMeeting.recordingType)
+                    }.getOrDefault(com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL)
+                    if (contentTitle != null) {
+                        existingMeeting.copy(
+                            title = contentTitle,
+                            titleSource = com.craftflowtechnologies.meetingmind.core.model.TitleSource.CONTENT.name,
+                            status = MeetingStatus.ERROR.name
+                        )
+                    } else {
+                        existingMeeting.copy(
+                            title = MeetingTitleGenerator.deterministicFallbackTitle(type, existingMeeting.createdAt),
+                            titleSource = com.craftflowtechnologies.meetingmind.core.model.TitleSource.DATE.name,
+                            status = MeetingStatus.ERROR.name
+                        )
+                    }
+                }
+                meetingDao.updateMeeting(failedMeeting)
             }
             throw e
         }

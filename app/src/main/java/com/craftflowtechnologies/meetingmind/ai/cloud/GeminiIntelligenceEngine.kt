@@ -94,6 +94,44 @@ class GeminiIntelligenceEngine(
         )
     }
 
+    /**
+     * Title-only cloud call — one attempt, then one stricter retry. Deliberately not another
+     * structured synthesis: this exists precisely for the case where synthesis failed or answered
+     * without a usable title, so it must be cheap and independent.
+     */
+    override suspend fun suggestTitle(
+        transcript: Transcript,
+        recordingType: RecordingType
+    ): AiResult<String> {
+        val model = modelIdOrNull() ?: return unavailable()
+        if (transcript.segments.isEmpty()) {
+            return AiResult.Failed("There is no transcript to title yet.")
+        }
+
+        suspend fun attempt(strict: Boolean): AiResult<String> {
+            val response = transport.execute(
+                GeminiRequest(
+                    modelId = model,
+                    systemInstruction = TITLE_SYSTEM_INSTRUCTION,
+                    prompt = com.craftflowtechnologies.meetingmind.ai.llm.RecordingTitles.titlePrompt(
+                        transcript, recordingType, strict = strict
+                    )
+                )
+            )
+            if (response is AiResult.Success) {
+                com.craftflowtechnologies.meetingmind.ai.llm.RecordingTitles
+                    .parseTitleCandidate(response.value)
+                    ?.let { return AiResult.Success(it) }
+                return AiResult.Failed("The cloud model did not return a usable title.")
+            }
+            return AiResult.Failed(response.describeFailure() ?: "Cloud title generation failed.")
+        }
+
+        val first = attempt(strict = false)
+        if (first is AiResult.Success) return first
+        return attempt(strict = true)
+    }
+
     override suspend fun askMeeting(
         question: String,
         transcript: Transcript,
@@ -215,6 +253,11 @@ class GeminiIntelligenceEngine(
                 "from, copied exactly, so the answer can be checked against the recording. If you mention anything that did not come from this meeting, label it " +
                 "explicitly as outside information and keep it separate from what the meeting " +
                 "actually said — never present the two as one."
+
+        const val TITLE_SYSTEM_INSTRUCTION =
+            "You write titles for recordings. Return only a 3–8 word title that describes what " +
+                "the transcript is actually about, using nothing but what the transcript says. " +
+                "No quotes, no trailing punctuation, no generic labels like Meeting or Recording."
 
         /**
          * Typed schema for extraction. Structured output rather than prose parsing is the point:

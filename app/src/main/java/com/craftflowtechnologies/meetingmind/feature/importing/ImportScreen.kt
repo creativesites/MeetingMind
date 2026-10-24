@@ -125,11 +125,23 @@ class ImportViewModel(application: Application) : AndroidViewModel(application) 
                 val meetingId = UUID.randomUUID().toString()
                 val info = audioExtractor.importAndExtract(uri, meetingId)
 
+                val importedName = info.fileName.substringBeforeLast(".")
                 val meeting = meetingRepository.createInitialMeeting(
                     id = meetingId,
-                    title = info.fileName.substringBeforeLast("."),
+                    title = importedName,
                     source = if (info.isVideo) MeetingSource.IMPORTED_VIDEO else MeetingSource.IMPORTED_AUDIO,
-                    audioFilePath = info.outputFile.absolutePath
+                    audioFilePath = info.outputFile.absolutePath,
+                    // A recorder's "AUD_0042" is not a title. Only a name that actually says
+                    // something about the content is frozen as IMPORT; everything else keeps the
+                    // AI source so processing can give it a real title from what was said.
+                    titleSource = if (
+                        com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator
+                            .isUsableImportedTitle(importedName)
+                    ) {
+                        com.craftflowtechnologies.meetingmind.core.model.TitleSource.IMPORT
+                    } else {
+                        com.craftflowtechnologies.meetingmind.core.model.TitleSource.AI
+                    }
                 )
 
                 _importState.value = ImportMediaState(

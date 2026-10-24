@@ -353,7 +353,7 @@ class MeetingProcessingPipelineIntegrationTest {
     }
 
     @Test
-    fun `falls back to a deterministic, non-fabricated title when meeting intelligence is unavailable`() = runBlocking {
+    fun `uses a content-derived, non-fabricated title when meeting intelligence is unavailable`() = runBlocking {
         val meetingId = UUID.randomUUID().toString()
         insertRecordingMeeting(meetingId)
         val unavailableIntelligence = object : MeetingIntelligenceEngine {
@@ -380,17 +380,20 @@ class MeetingProcessingPipelineIntegrationTest {
 
         val result = pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
 
-        // "General" is insertRecordingMeeting's default recordingType — never a guessed name.
-        val expectedFallback = com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator.deterministicFallbackTitle(
+        // The fake transcript really says "We will ship on Friday." — a title is content, so it
+        // must come from that, not from the recording's date.
+        assertEquals("CONTENT", result.titleSource)
+        assertTrue("Expected a content title, got ${result.title}", result.title.contains("ship", ignoreCase = true))
+        val dateFallback = com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator.deterministicFallbackTitle(
             com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
             result.createdAt
         )
-        assertEquals(expectedFallback, result.title)
+        assertTrue("A date-only title is not acceptable when there is speech", result.title != dateFallback)
         assertEquals(MeetingStatus.READY.name, result.status)
     }
 
     @Test
-    fun `falls back to a deterministic title when the model's own title candidate is generic and unhelpful`() = runBlocking {
+    fun `uses a content title when the model's own title candidate is generic and unhelpful`() = runBlocking {
         val meetingId = UUID.randomUUID().toString()
         insertRecordingMeeting(meetingId)
         val genericTitleIntelligence = object : MeetingIntelligenceEngine {
@@ -426,11 +429,8 @@ class MeetingProcessingPipelineIntegrationTest {
 
         val result = pipeline.processMeeting(meetingId, audioFile, 4000L) { _, _, _ -> }
 
-        val expectedFallback = com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator.deterministicFallbackTitle(
-            com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL,
-            result.createdAt
-        )
-        assertEquals(expectedFallback, result.title)
+        assertEquals("CONTENT", result.titleSource)
+        assertTrue("Expected a content title, got ${result.title}", result.title.contains("ship", ignoreCase = true))
     }
 
     // --- Single-speaker fast path: a confirmed solo recording must never run diarization ---

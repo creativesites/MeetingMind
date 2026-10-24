@@ -39,6 +39,20 @@ class FallbackMeetingIntelligenceEngine(
         return fallback.processMeeting(transcript, meetingTitle, recordingType, customContext)
     }
 
+    /**
+     * The dedicated title pass follows exactly the same rule as synthesis: a local title is worse
+     * than a cloud one, but a real title is much better than none. A successful cloud title is
+     * never second-guessed.
+     */
+    override suspend fun suggestTitle(
+        transcript: Transcript,
+        recordingType: RecordingType
+    ): AiResult<String> {
+        val first = primary.suggestTitle(transcript, recordingType)
+        if (first is AiResult.Success || fallback == null) return first
+        return fallback.suggestTitle(transcript, recordingType)
+    }
+
     override suspend fun askMeeting(
         question: String,
         transcript: Transcript,

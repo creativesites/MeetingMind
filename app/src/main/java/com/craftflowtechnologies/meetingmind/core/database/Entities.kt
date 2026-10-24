@@ -56,7 +56,14 @@ data class MeetingEntity(
      * meaningful while [noteId] is set. Set on attach and backfilled by creation time; reordering
      * changes note-wide positions only, never this recording's local timestamps.
      */
-    @ColumnInfo(defaultValue = "0") val recordingOrder: Int = 0
+    @ColumnInfo(defaultValue = "0") val recordingOrder: Int = 0,
+    /**
+     * Where [title] came from (schema 28) — one of
+     * [com.craftflowtechnologies.meetingmind.core.model.TitleSource]'s names. Existing rows
+     * migrate to `AI`, so an upgrade never mass-retitles a library. A `USER` or `IMPORT` title is
+     * never replaced by a reprocess or a backfill.
+     */
+    @ColumnInfo(defaultValue = "AI") val titleSource: String = "AI"
 )
 
 @Entity(
