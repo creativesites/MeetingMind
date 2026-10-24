@@ -1,41 +1,22 @@
-# MeetingMind dev build: 3014407
+# MeetingMind dev build: d90ed5b
 
-Install `MeetingMind-Dev-3014407.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
+Install `MeetingMind-Dev-d90ed5b.apk` (arm64 phones). The app id is `com.craftflowtechnologies.meetingmind.dev`, so it installs beside the tester app.
 
-Built from `ccr-08b1bb9f-iljmtb` at `3014407`. It includes the complete Circles & Work implementation, built-in Gemini API key, modern staged media attachments with text, Devotional and Study note pickers, redesigned composer, and multi-model speech recognition selection (`3014407`, `01877e2`, `d54baec`).
+Built from `wt-transcription-crash-guard` at `d90ed5b`: everything in dev build `3014407` (`ccr-08b1bb9f-iljmtb`) plus the transcription crash fix below. Built-in Gemini key included.
 
-## What is new
-- **Built-in System API Key**:
-  - Embedded `BuildConfig.SYSTEM_GEMINI_API_KEY` into dev and test builds. Testers and onboarding users can record and transcribe immediately without entering an API key or waiting for offline downloads.
-- **Modern Staged Media & Caption Uploads**:
-  - Staged attachment preview banner with thumbnail, video badge, or PDF icon and remove action.
-  - Send media (photos, videos, PDFs) alongside typed text in a single message.
-  - Full tap-to-open view for PDFs via `FileProvider` with download progress indicators.
-  - Video MIME and QuickTime/3GPP video support on both client and Cloudflare Worker.
-- **First-Class Devotional & Study Sharing on Feed**:
-  - "Share a devotional" and "Share from your study" are always offered in faith circles.
-  - **Devotional Picker Sheet**: Choose Today's reading or browse saved/classic devotionals; pre-fills reflections and scripture reference.
-  - **Study Notes Picker Sheet**: Choose from Bible study, sermon, or personal reflection notes.
-- **Redesigned Post Composer UI**:
-  - Modern curved container with rounded card styling (`RoundedCornerShape(20.dp)`).
-  - Quick action banners for Devotionals and Study Notes.
-  - Integrated tool pills for Photos, Videos, and Scripture Verses.
-  - Theme-aware illuminated dark mode tokens (`Color(0xFF231F1A)`, gold accents, warm off-white scripture) avoiding dull grey surfaces.
-- **Reliable Card Creation & Chat Handoff**:
-  - `CreateChatCard.toPayload` falls back to prompt or source text when draft text is blank, guaranteeing cards created in Create Studio can be shared directly into Circle chat.
-  - Prominent "Send to chat" CTA in the studio header and Words/Share steps.
-- **Circles in Work Vertical**:
-  - Added "Circles" tab (`WorkSegment.CIRCLES`) to Work Page navigation with direct links to Team Circles.
-- **Multi-Model Offline Selection in Onboarding**:
-  - Onboarding `SetupStep` allows choosing speech recognition models tailored to the user's needs:
-    - **Parakeet TDT 0.6B**: High accuracy for English and European languages.
-    - **Omnilingual 300M**: Lightweight model optimized for African and Southern African languages (Shona, Ndebele, Bemba, Nyanja, Zulu, Swahili, etc.).
-    - **Omnilingual 1B**: High-capacity multilingual model for deep African language coverage.
-    - **Whisper Turbo**: Global multilingual transcription.
+## What is new: transcription can no longer lock you out of the app
+- **No more crash loop.** If offline processing closes the app (it was dying at 52%, speaker detection), the next run skips the step that closed it. Speaker detection and on-device AI are skipped; offline speech recognition stops with a clear message. After two such closes the recording is not restarted on its own; tap Retry to try again. The app always opens.
+- **Much less memory.** Audio is converted as it is read instead of loading the whole recording several times over, and the app may use a larger memory allowance. Speaker detection is skipped, with a note, when a recording is too long for the phone's free memory.
+- **Better crash reports.** If the app is closed by a native crash, by Android for low memory, or because it froze, the next launch saves that in Settings → crash report, so you can copy it and send it.
+
+## Please test
+1. Turn on airplane mode. Record 2 to 5 minutes with two people talking, and let it process offline. Does it pass 52% and finish?
+2. A long recording (30+ minutes) offline. Does it finish, perhaps with "Not enough free memory to separate speakers"?
+3. If the app closes at any point: reopen it. It should open and show the recording as stopped or skipped, not crash again.
+4. After any close, open Settings and copy the crash report into your feedback.
 
 ## Not verified on a device
-- Physical camera hardware handoff and video playback on a real physical Android phone.
-- Google sign-in on `.dev` (no Android OAuth client configured in `google-services.json`).
+- No emulator or phone was available for this build. The fix is covered by 177 passing unit tests, including new ones for the crash guard and the audio conversion.
 
 ## Install
 1. Enable install from unknown sources for your file manager.
