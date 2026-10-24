@@ -957,6 +957,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
                 onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) },
                 onOpenWeeklyReview = { navController.navigate(Routes.WEEKLY_REVIEW) },
+                onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
+                onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
+                onStartCircle = { navController.navigate(Routes.circleCreateRoute("work")) },
                 onNavigateBottomNav = navigateToPrimary
             )
         }

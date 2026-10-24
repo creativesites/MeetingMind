@@ -1,6 +1,20 @@
 # Status
 
-Updated: 2026-10-21. Designated branch: `claude/meetingmind-mvp-planning-7dgowm`. Active integration branch: `work-circles-integration`. Head: see `git log -1`.
+Updated: 2026-10-22. Designated branch: `claude/meetingmind-mvp-planning-7dgowm`. Active integration branch: `work-circles-integration`. Head: see `git log -1`.
+
+## Dev Build & Release Verification (2026-10-22, Gantry 📦)
+- **Artifact**: `MeetingMind-Dev-1cb6654.apk` published to branch `apk-downloads` (commit `e5883f8`).
+- **Source**: Built from `ccr-08b1bb9f-iljmtb` at `1cb6654`. Includes Work consolidation (Decision D1, `WorkPageScreen`), Work navigation back button (W-01), Read to Me Bible license filter (Decision D2), short recording crash guard, and build toolchain fixes.
+- **Physical Verification**: 76,375,512 bytes (~72.8 MB), SHA-256: `086f1b6842b83b97a5d0166c5917dd3006e1a4716c8c4748a465c3c122407fb6`.
+- **Mandatory Credential Leak Gate**: PASSED. Unpacked APK audited; zero private keys leaked (only Google Services Firebase client key in `resources.arsc`).
+- **Download Link**: `https://github.com/creativesites/meetingmind/raw/apk-downloads/MeetingMind-Dev-1cb6654.apk`
+
+## Initial mission audit (2026-10-21)
+- Evidence-based discovery and independent Product, Engineering and QA reviews are documented in `docs/quality/INITIAL_MISSION_AUDIT_2026-10-21.md`.
+- First priority: recording persistence failure can clear the recovery journal before a Room row is durable. Next release gates: reconcile shipping source/artifact, configure and verify production billing for a paid launch, verify low-RAM/offline reliability, and confirm deployed Circles rules and authenticated flows.
+- The current Circle Home timeout can appear as an empty state; onboarding still exposes Learning despite the MVP exclusion. Both are source-confirmed P2 findings.
+- This pass ran no tests or build and performed no device walkthrough. Worker health/readiness returned HTTP 200 only; that does not verify authenticated Circles flows.
+- No implementation has started. The designated branch is 233 commits behind `work-circles-integration`; resolve the shipping baseline before delivery work. Preserve the existing Mira entry in `agents/README.md` and the concurrent untracked `docs/planning/` assessment.
 
 ## Work Circles & Post-Meeting Collaboration (2026-10-21)
 - **Work Circles Architecture & Domain Extension**:
@@ -119,7 +133,7 @@ Updated: 2026-10-21. Designated branch: `claude/meetingmind-mvp-planning-7dgowm`
 - Circles section on Home shows its label but no content. Circles v2 code is on the branch; the Home section needs checking.
 - Bible study and Faith home: the redesigns are merged but the founder reports they are only partly there. Not yet traced screen by screen.
 - Read to Me is wired into the Bible reader (top-bar listen icon, "Listen here" on a selection, the study flow, the verse sheet). The founder cannot see it on device. Cause not confirmed. Check the entry point on device first.
-- Work UX: audit and design artifact done, **awaiting founder approval**. Report: `docs/mvp/WORK_UX_AUDIT.md` (15 ranked findings, 7 decisions D1–D7). Artifact: https://claude.ai/artifact/H9dnBur8ZzwowA25eWeUzV. Redesign of Today, Tasks and Projects implemented on `work-ux-redesign` (sunset header, quick actions, card rows); Notes unchanged. Not compiled or run: no Android SDK in this sandbox. Still open: the Work page back arrow (W-01), failed-recording recovery (W-04), and the Work home.
+- Work UX: audit and design artifact done; founder approved D1–D7 as written (2026-10-22), so W-01 and W-04 can start. Report: `docs/mvp/WORK_UX_AUDIT.md` (15 ranked findings, 7 decisions D1–D7). Artifact: https://claude.ai/artifact/H9dnBur8ZzwowA25eWeUzV. Redesign of Today, Tasks and Projects implemented on `work-ux-redesign` (sunset header, quick actions, card rows); Notes unchanged. Not compiled or run: no Android SDK in this sandbox. Still open: the Work page back arrow (W-01), failed-recording recovery (W-04), and the Work home.
 - The sun or moon sits over the headline in the Today quote card. It is the card's own illustration, not the companion. Not started.
 
 ## Circles (team report)
@@ -163,11 +177,17 @@ Updated: 2026-10-21. Designated branch: `claude/meetingmind-mvp-planning-7dgowm`
 - Data Safety now describes anonymous Circles sign-in and optional Google linking.
 - Not built into an AAB yet. Build waits for Circles and the remaining fixes. Owner wants the AAB pushed to GitHub, with a download link.
 
+## Decisions recorded (founder, 2026-10-21)
+- **Closed Testing Toggle**: Stays active in release builds for now since the app is in closed testing (testers have full Pro features unlocked).
+- **Circles Member Cap**: Reconciled to **50 members** (matches Cloudflare Worker enforcement).
+- **Circles Backend Deployment**: Founder will assign an agent to deploy `server/circles-api` and `firestore.rules` to production.
+- **Host Disk Health & Release Readiness**: Build & Release Engineer (Gantry 📦) has taken responsibility for keeping host free space healthy (recovered to 16 GiB available).
+
 ## Open, needs a decision
 - Licensed Bible text to Gemini (Read to Me). Options are in the Data Safety doc. The code currently sends all translations.
 
 ## Earlier open items (still open)
-- Circles: the Worker and `firestore.rules` must be redeployed by the owner. See `BACKEND.md`.
+- Circles: the Worker and `firestore.rules` deployment to be assigned to an agent by the founder. See `BACKEND.md`.
 - Circles: anonymous sign-in confirmed enabled in the Firebase console (owner, 2026-10-15).
 - Circles migration of the client to the Worker (V-0b3) and removal of old tables (V-0b6): not done.
 - Play workflow trigger watches branch `ccr-5e66b00c-btultn`, not the designated branch. Team to decide whether to move it. Documented as it is in `PLAY_STORE.md`.

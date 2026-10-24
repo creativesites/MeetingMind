@@ -80,6 +80,9 @@ fun WorkPageScreen(
     onOpenWeeklyReview: () -> Unit = {},
     onOpenPerson: (String) -> Unit = {},
     onOpenProcessing: (String) -> Unit = {},
+    onOpenCircle: (String) -> Unit = {},
+    onOpenCircles: () -> Unit = {},
+    onStartCircle: () -> Unit = {},
     /** Set when Work is the bar's fourth slot: the page then carries the bar, with Work current. */
     onNavigateBottomNav: ((com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit)? = null
 ) {
@@ -106,6 +109,31 @@ fun WorkPageScreen(
     val terms = settings.terms
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    val circlesRepo = remember {
+        try {
+            com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(context)
+        } catch (_: Exception) {
+            null
+        }
+    }
+    val circlesState by (circlesRepo?.circles() ?: kotlinx.coroutines.flow.flowOf(com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState.NotConnected)).collectAsState(com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState.Loading)
+    val workCircles = remember(circlesState) {
+        when (val s = circlesState) {
+            is com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState.Ready -> {
+                s.circles.filter { it.isWork }.map { c ->
+                    WorkCircleItem(
+                        id = c.id,
+                        name = c.name,
+                        groupWord = c.groupWord,
+                        memberCount = c.memberCount,
+                        onClick = { onOpenCircle(c.id) }
+                    )
+                }
+            }
+            else -> emptyList()
+        }
+    }
 
     var recordPicker by remember { mutableStateOf(false) }
     var writePicker by remember { mutableStateOf(false) }
@@ -223,7 +251,10 @@ fun WorkPageScreen(
                 openTasks = myTasks.size,
                 decisionsThisWeek = decisionLog.count { it.createdAt > now - 7 * 86_400_000L },
                 openQuestions = openQuestions.size
-            )
+            ),
+            circles = workCircles,
+            onStartCircle = onStartCircle,
+            onAllCircles = onOpenCircles
         )
     }
 
@@ -256,10 +287,12 @@ fun WorkPageScreen(
         WorkMenuAction("Record meeting") { recordPicker = true },
         WorkMenuAction("Write note") { writePicker = true },
         WorkMenuAction("Add task") { page.select(WorkSegment.TASKS); page.setWaiting(false) },
+        WorkMenuAction("Start team circle", onClick = onStartCircle),
         WorkMenuAction("Import", onClick = onImport)
     )
     val moreActions = listOfNotNull(
         WorkMenuAction("Inbox", inboxCount, onOpenInbox),
+        WorkMenuAction("Team circles", onClick = onOpenCircles),
         WorkMenuAction("Weekly review", onClick = onOpenWeeklyReview),
         WorkMenuAction("Brief") { onOpenBrief(BriefTarget.weekly) },
         WorkMenuAction("People & ${terms.organisations.lowercase()}") { onOpenAll(WorkTab.PEOPLE) },

@@ -33,6 +33,7 @@ class ClassicDevotionals(private val readings: List<ClassicReading>, val plan: D
     val title get() = plan.title
     val author get() = plan.author
     val attribution get() = plan.attribution
+    val allReadings: List<ClassicReading> get() = readings
 
     /**
      * The reading for [date]; 29 February falls back to the 28th. A plan with a single reading a day

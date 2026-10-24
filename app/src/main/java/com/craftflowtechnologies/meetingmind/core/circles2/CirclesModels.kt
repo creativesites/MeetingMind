@@ -17,6 +17,7 @@ enum class PostType(val wire: String, val label: String, val verb: String, val a
     Prayer("prayer", "Prayer request", "Ask for prayer"),
     Testimony("testimony", "Testimony", "Share a testimony"),
     Achievement("achievement", "Achievement", "Share a win"),
+    Devotional("devotional", "Devotional", "Share a devotional"),
     Study("study", "Study share", "Share from your study"),
     Encouragement("encouragement", "Encouragement", "Encourage the group"),
     Reading("reading", "Reading plan", "Post about the plan"),
@@ -79,19 +80,19 @@ data class CircleTemplate(
         private val everyType = PostType.entries.toList()
         val faithTemplates: List<CircleTemplate> = listOf(
             CircleTemplate("small_group", "Small group", "A cell or home group that meets and prays together.",
-                listOf(PostType.Prayer, PostType.Testimony, PostType.Study, PostType.Encouragement),
+                listOf(PostType.Prayer, PostType.Testimony, PostType.Devotional, PostType.Study, PostType.Encouragement),
                 listOf("Cell group", "Small group", "Home fellowship", "Life group")),
             CircleTemplate("prayer_partners", "Prayer partners", "Two to six people who pray for each other.",
                 listOf(PostType.Prayer, PostType.Encouragement), listOf("Prayer partners")),
             CircleTemplate("bible_study", "Bible study", "Read and discuss together.",
-                listOf(PostType.Study, PostType.Reading, PostType.Prayer), listOf("Bible study")),
+                listOf(PostType.Devotional, PostType.Study, PostType.Reading, PostType.Prayer), listOf("Bible study")),
             CircleTemplate("family", "Family", "Pray, celebrate and encourage at home.",
-                listOf(PostType.Prayer, PostType.Testimony, PostType.Encouragement, PostType.Achievement), listOf("Family")),
+                listOf(PostType.Prayer, PostType.Testimony, PostType.Devotional, PostType.Encouragement, PostType.Achievement), listOf("Family")),
             CircleTemplate("youth", "Youth or campus", "Everything on, including cards and fun.", everyType, listOf("Youth", "Campus group")),
-            CircleTemplate("ministry_team", "Ministry team", "Announcements, prayer and study for a team.",
-                listOf(PostType.Prayer, PostType.Announcement, PostType.Study), listOf("Team")),
+            CircleTemplate("ministry_team", "Ministry team", "Announcements, prayer, devotionals and study for a team.",
+                listOf(PostType.Prayer, PostType.Announcement, PostType.Devotional, PostType.Study), listOf("Team")),
             CircleTemplate("custom", "Custom", "You choose what to share.",
-                listOf(PostType.Prayer, PostType.Testimony, PostType.Encouragement), listOf("Circle"))
+                listOf(PostType.Prayer, PostType.Testimony, PostType.Devotional, PostType.Encouragement), listOf("Circle"))
         )
 
         val workTemplates: List<CircleTemplate> = listOf(

@@ -263,10 +263,10 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
             )
         }
         val quickTypes = if (circle.isWork) {
-            listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup)
+            listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Blocker)
                 .filter { it in circle.settings.allowedTypes }
         } else {
-            listOf(PostType.Prayer, PostType.Testimony, PostType.Encouragement)
+            listOf(PostType.Devotional, PostType.Study, PostType.Prayer, PostType.Testimony, PostType.Encouragement)
                 .filter { it in circle.settings.allowedTypes }
         }
         Row(

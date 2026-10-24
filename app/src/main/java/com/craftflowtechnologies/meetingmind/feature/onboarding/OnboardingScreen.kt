@@ -59,6 +59,8 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -153,12 +155,16 @@ class OnboardingViewModel(
     private val _selectedModel = MutableStateFlow(deviceCapabilities.recommendedAsrModelId)
     val selectedModel: StateFlow<String> = _selectedModel.asStateFlow()
 
+    private val _selectedLlmModel = MutableStateFlow(DeviceCapabilityDetector.recommendedLlmModelId(deviceCapabilities.totalRamGb))
+    val selectedLlmModel: StateFlow<String> = _selectedLlmModel.asStateFlow()
+
     /** What the user typed on the identity step — never pre-filled from the device name, Google
      * account, or any contact data (Phase 15 §5). Staying blank is a valid choice. */
     private val _userName = MutableStateFlow("")
     val userName: StateFlow<String> = _userName.asStateFlow()
 
     fun selectModel(modelId: String) { _selectedModel.value = modelId }
+    fun selectLlmModel(modelId: String) { _selectedLlmModel.value = modelId }
     fun setUserName(name: String) { _userName.value = name }
 
     // Where the person is in the flow. Saved on every move, so a killed app resumes here.
@@ -357,6 +363,7 @@ class OnboardingViewModel(
         viewModelScope.launch {
             companionSettings.setForm(_companion.value)
             prefs.setSelectedAsrModel(_selectedModel.value)
+            prefs.setSelectedLlmModel(_selectedLlmModel.value)
             prefs.setUserName(_userName.value)
             prefs.setSpaces(_spaces.value)
             prefs.setLook(_look.value)
@@ -376,7 +383,11 @@ class OnboardingViewModel(
             when (_setup.value) {
                 SetupChoice.OFFLINE_PACK -> runCatching {
                     val app = getApplication<Application>()
-                    SetupGuide.downloadMissing(app, SetupGuide.observe(app).first(), _wifiOnly.value)
+                    val wifi = _wifiOnly.value
+                    com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker.enqueue(app, com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.sileroVad.id, wifi)
+                    com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker.enqueue(app, _selectedModel.value, wifi)
+                    com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker.enqueue(app, _selectedLlmModel.value, wifi)
+                    com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker.enqueue(app, com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.speakerDiarization.id, wifi)
                 }
                 SetupChoice.INTERNET -> {
                     prefs.setProcessingProfile(ProcessingProfile.INTERNET)
@@ -813,24 +824,155 @@ private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (S
             }
         }
     }
+    val selectedAsr by vm.selectedModel.collectAsState()
+    val selectedLlm by vm.selectedLlmModel.collectAsState()
+    var showCustomModels by remember { mutableStateOf(false) }
+    val asrModel = remember(selectedAsr) { com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.entries.find { it.id == selectedAsr } ?: com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8 }
+    val llmModel = remember(selectedLlm) { com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.entries.find { it.id == selectedLlm } ?: com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.qwen25_1_5bInstruct }
+    val totalOfflineBytes = remember(asrModel, llmModel) {
+        asrModel.sizeBytes + llmModel.sizeBytes + com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.sileroVad.sizeBytes + com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.speakerDiarization.sizeBytes
+    }
+
     ChoiceCard(
         selected = choice == SetupChoice.OFFLINE_PACK, onClick = { onChoice(SetupChoice.OFFLINE_PACK) },
         icon = Icons.Filled.PhoneAndroid, title = "Offline pack", badge = "Most private",
-        line = "Everything stays on the phone. Three pieces, one download (${SetupGuide.formatBytes(vm.packBytes)}) that keeps going in the background.",
+        line = "Everything stays on the phone. One download (${SetupGuide.formatBytes(totalOfflineBytes)}) that keeps going in the background.",
         tag = "setup_choice_offline"
     ) {
-        Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            vm.pack.forEach { (part, models) ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+        Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("Speech recognition: ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(asrModel.name, color = Color.White.copy(alpha = 0.7f), fontSize = 12.5.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                Text(SetupGuide.formatBytes(asrModel.sizeBytes), color = Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("AI Summaries: ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(llmModel.name, color = Color.White.copy(alpha = 0.7f), fontSize = 12.5.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                Text(SetupGuide.formatBytes(llmModel.sizeBytes), color = Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("Voice & Speakers: ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("VAD & Diarization", color = Color.White.copy(alpha = 0.7f), fontSize = 12.5.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                Text(SetupGuide.formatBytes(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.sileroVad.sizeBytes + com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.speakerDiarization.sizeBytes), color = Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp)
+            }
+
+            // Custom models accordion toggle
+            Text(
+                if (showCustomModels) "▲ Hide model options" else "▼ Choose specific models (languages, sizes & RAM)",
+                color = Brand.Cyan,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(vertical = 4.dp).clickable { showCustomModels = !showCustomModels }
+            )
+
+            if (showCustomModels) {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .background(SurfaceBase.copy(alpha = 0.08f)).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("Choose Speech-to-Text Model", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+
+                    val asrChoices = listOf(
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.omnilingualAsr300mInt8,
+                            "Meta Omnilingual 300M (African Languages)",
+                            "Best for Shona, Ndebele, Bemba, Nyanja, Tonga, Lozi, Zulu, Swahili, etc. · 365 MB · Runs smoothly on all phones"
+                        ),
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.omnilingualAsr1bInt8,
+                            "Meta Omnilingual 1B (High Accuracy)",
+                            "1B parameter model with lowest error rate for African languages · 1.03 GB · Needs 6 GB RAM"
+                        ),
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8,
+                            "Parakeet TDT 0.6B (English & European)",
+                            "Fastest on-device model for English and 24 European languages · 652 MB · Needs 4 GB RAM"
+                        ),
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.whisperTurboInt8,
+                            "Whisper Turbo (Fast Multilingual)",
+                            "809M parameter multilingual model with word-level timestamps · 1.04 GB · Needs 4 GB RAM"
+                        ),
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.whisperLargeV3Int8,
+                            "Whisper Large v3 (Full Precision)",
+                            "State-of-the-art 1.5B multilingual Whisper model · 1.78 GB · Needs 6 GB RAM"
+                        )
+                    )
+
+                    asrChoices.forEach { (model, title, desc) ->
+                        val isSelected = selectedAsr == model.id
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) SurfaceBase.copy(alpha = 0.12f) else Color.Transparent)
+                                .clickable { vm.selectModel(model.id) }.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = { vm.selectModel(model.id) },
+                                colors = RadioButtonDefaults.colors(selectedColor = Brand.Cyan)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(title, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text(desc, color = Color.White.copy(alpha = 0.6f), fontSize = 11.5.sp, lineHeight = 15.sp)
+                            }
+                        }
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Text("${part.title}: ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text(part.job.removeSuffix("."), color = Color.White.copy(alpha = 0.65f), fontSize = 12.5.sp, maxLines = 1, modifier = Modifier.weight(1f))
-                    Text(SetupGuide.formatBytes(models.sumOf { it.sizeBytes }), color = Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp)
+
+                    Spacer(Modifier.height(4.dp))
+                    Text("Choose AI Meeting Intelligence Model", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+
+                    val llmChoices = listOf(
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.qwen25_1_5bInstruct,
+                            "Qwen2.5 1.5B Instruct (Recommended)",
+                            "4096-token context for comprehensive summaries, decisions & action items · 1.6 GB · Needs 4.5 GB RAM"
+                        ),
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.qwen25_0_5bInstruct,
+                            "Qwen2.5 0.5B Instruct (Lightweight)",
+                            "Fast, efficient on phones with lower memory (<4 GB RAM) · 546 MB · Needs 3 GB RAM"
+                        )
+                    )
+
+                    llmChoices.forEach { (model, title, desc) ->
+                        val isSelected = selectedLlm == model.id
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) SurfaceBase.copy(alpha = 0.12f) else Color.Transparent)
+                                .clickable { vm.selectLlmModel(model.id) }.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = { vm.selectLlmModel(model.id) },
+                                colors = RadioButtonDefaults.colors(selectedColor = Brand.Cyan)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(title, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text(desc, color = Color.White.copy(alpha = 0.6f), fontSize = 11.5.sp, lineHeight = 15.sp)
+                            }
+                        }
+                    }
                 }
             }
+
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Wait for Wi-Fi", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(checked = wifiOnly, onCheckedChange = onWifiOnly, colors = SwitchDefaults.colors(checkedTrackColor = Brand.Indigo))

@@ -13,14 +13,25 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.rounded.AutoStories
+import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Send
+import com.craftflowtechnologies.meetingmind.core.devotional.ClassicDevotionals
+import com.craftflowtechnologies.meetingmind.core.devotional.ClassicReading
+import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
+import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
+import com.craftflowtechnologies.meetingmind.core.biblestudy.StudyJournal
+import java.time.LocalDate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -65,6 +76,140 @@ fun PostTypeSheet(circle: Circle, isAdmin: Boolean, onPick: (PostType) -> Unit, 
     }
 }
 
+/** Picker sheet to browse and select a devotional reading to share. */
+@Composable
+fun DevotionalPickerSheet(onPick: (ClassicReading) -> Unit, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val classics = remember { ClassicDevotionals.get(context) }
+    val today = remember { classics.forDate(LocalDate.now()) ?: classics.allReadings.firstOrNull() }
+    var search by remember { mutableStateOf("") }
+    val filtered = remember(search, classics) {
+        if (search.isBlank()) classics.allReadings.take(25)
+        else classics.allReadings.filter {
+            it.heading.contains(search, ignoreCase = true) ||
+            it.referenceText.contains(search, ignoreCase = true) ||
+            it.date.contains(search)
+        }.take(25)
+    }
+
+    CircleSheet(onDismiss) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text("Share Devotional", style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                Text(classics.title, style = MM.type.caption, color = MM.colors.inkSecondary)
+            }
+            IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close", tint = MM.colors.inkSecondary) }
+        }
+
+        // Today's reading highlighted card
+        today?.let { t ->
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = CirclesPalette.AccentSoft,
+                border = BorderStroke(1.dp, CirclesPalette.Accent.copy(alpha = 0.3f)),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onPick(t); onDismiss() }
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Rounded.AutoStories, contentDescription = null, tint = CirclesPalette.Accent, modifier = Modifier.size(16.dp))
+                            Text("Today's Reading", style = MM.type.bodyStrong.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold), color = CirclesPalette.Accent)
+                        }
+                        Text(t.date, style = MM.type.caption.copy(fontSize = 11.sp), color = MM.colors.inkSecondary)
+                    }
+                    Text(t.heading.ifBlank { t.referenceText }, style = MM.type.title.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold), color = MM.colors.ink)
+                    Text("“${t.keyText.take(160)}…”", style = MM.type.scripture.copy(fontSize = 12.5.sp), color = MM.colors.inkSecondary, maxLines = 2)
+                    PrimaryButton("Share Today's Devotional", { onPick(t); onDismiss() }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+
+        // Search field
+        CircleField(search, { search = it }, label = "Search devotionals", placeholder = "Search by scripture, title, or date (e.g. John, 10-22)…", maxLines = 1)
+
+        Text("All readings (${filtered.size})", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.inkSecondary)
+        Column(Modifier.fillMaxWidth().heightIn(max = 280.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            filtered.forEach { r ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MM.colors.surfaceSunk,
+                    border = BorderStroke(1.dp, MM.colors.line),
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onPick(r); onDismiss() }
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(r.heading.ifBlank { r.referenceText }, style = MM.type.bodyStrong.copy(fontSize = 13.5.sp), color = MM.colors.ink, maxLines = 1)
+                            Text("${r.date} · ${r.referenceText}", style = MM.type.caption, color = MM.colors.inkSecondary)
+                        }
+                        Icon(Icons.Rounded.AutoStories, contentDescription = null, tint = CirclesPalette.Accent, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Picker sheet to browse and select a note from the user's Bible study journal. */
+@Composable
+fun StudyPickerSheet(onPick: (title: String, reference: String?, excerpt: String) -> Unit, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val journal = remember { StudyJournal(NoteRepository(context, MeetMindDatabase.getInstance(context))) }
+    val entries by journal.observe().collectAsState(initial = emptyList())
+
+    CircleSheet(onDismiss) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text("Share from Your Study", style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                Text("Select an entry from your study journal", style = MM.type.caption, color = MM.colors.inkSecondary)
+            }
+            IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close", tint = MM.colors.inkSecondary) }
+        }
+
+        if (entries.isEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MM.colors.surfaceSunk,
+                border = BorderStroke(1.dp, MM.colors.line),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+            ) {
+                Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Rounded.Bookmark, contentDescription = null, tint = MM.colors.inkSecondary, modifier = Modifier.size(32.dp))
+                    Text("No study notes yet", style = MM.type.bodyStrong, color = MM.colors.ink)
+                    Text(
+                        "Your Bible study notes and reflections will appear here once created. You can also write your study thoughts directly in the post.",
+                        style = MM.type.caption,
+                        color = MM.colors.inkSecondary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+            SecondaryButton("Write study reflection instead", onDismiss, modifier = Modifier.fillMaxWidth())
+        } else {
+            Column(Modifier.fillMaxWidth().heightIn(max = 340.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                entries.forEach { note ->
+                    val excerpt = note.plainText.take(300)
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MM.colors.surfaceSunk,
+                        border = BorderStroke(1.dp, MM.colors.line),
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable {
+                            onPick(note.title, null, excerpt)
+                            onDismiss()
+                        }
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(note.title.ifBlank { "Untitled Study Note" }, style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                            if (excerpt.isNotBlank()) {
+                                Text(excerpt, style = MM.type.caption.copy(lineHeight = 16.sp), color = MM.colors.inkSecondary, maxLines = 3)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun ComposerSheet(
     circle: Circle,
@@ -80,9 +225,33 @@ fun ComposerSheet(
     onPhotoRefused: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    var videoNotice by remember { mutableStateOf<String?>(null) }
+    var showDevotionalPicker by remember { mutableStateOf(false) }
+    var showStudyPicker by remember { mutableStateOf(false) }
+    var selectedDevotional by remember { mutableStateOf<ClassicReading?>(null) }
+    var selectedStudyNote by remember { mutableStateOf<Triple<String, String?, String>?>(null) }
+
+    // Multi-modal media pickers
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) readPicked(context, uri)?.let { onPhoto(it) } ?: onPhotoRefused()
     }
+    val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
+        if (uri != null) {
+            val file = readPicked(context, uri)
+            if (file != null) {
+                if (file.name.orEmpty().endsWith(".mov", ignoreCase = true) || file.name.orEmpty().endsWith(".3gp", ignoreCase = true) || file.mime.contains("quicktime") || file.mime.contains("3gpp")) {
+                    videoNotice = "MOV and 3GPP formats are not supported yet. Please select an MP4 or WebM video."
+                } else {
+                    videoNotice = null
+                    onPhoto(file)
+                }
+            } else onPhotoRefused()
+        }
+    }
+    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) readPicked(context, uri)?.let { onPhoto(it) } ?: onPhotoRefused()
+    }
+
     val type = state.type ?: return
     val availableTypes = remember(circle) {
         (listOf(PostType.Note) + circle.settings.allowedTypes).distinct()
@@ -92,14 +261,51 @@ fun ComposerSheet(
     }
     val passageResult = parsedRef?.let { rememberPassage(it) }
 
+    if (showDevotionalPicker) {
+        DevotionalPickerSheet(
+            onPick = { reading ->
+                selectedDevotional = reading
+                onVerse(reading.referenceText)
+                val excerpt = reading.paragraphs.joinToString("\n\n").take(600)
+                val textToShare = "“${reading.keyText}”\n\n${excerpt}…"
+                if (state.body.isBlank()) onBody(textToShare)
+            },
+            onDismiss = { showDevotionalPicker = false }
+        )
+    }
+
+    if (showStudyPicker) {
+        StudyPickerSheet(
+            onPick = { title, ref, excerpt ->
+                selectedStudyNote = Triple(title, ref, excerpt)
+                ref?.let(onVerse)
+                val quote = "Study: $title\n\n“$excerpt”"
+                if (state.body.isBlank()) onBody(quote)
+            },
+            onDismiss = { showStudyPicker = false }
+        )
+    }
+
     CircleSheet(onDismiss) {
+        // Redesigned modern header with space badge
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(type.verb, style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (circle.isWork) "WORK POST" else "FAITH POST",
+                        style = MM.type.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                        color = CirclesPalette.Accent
+                    )
+                }
+                Text(
+                    type.verb,
+                    style = MM.type.title.copy(fontSize = 22.sp, fontWeight = FontWeight.Bold),
+                    color = MM.colors.ink
+                )
                 Text(
                     "Posting to ${circle.name}",
                     style = MM.type.caption,
@@ -125,50 +331,144 @@ fun ComposerSheet(
             StatusLine(StatusKind.Info, "Thank God with the group! Edit this testimony however you like.")
         }
 
-        Column(Modifier.fillMaxWidth()) {
-            CircleField(
-                state.body,
-                { onBody(it.take(4000)) },
-                label = when (type) {
-                    PostType.Prayer -> "What would you like prayer for?"
-                    PostType.Testimony -> "What did God do?"
-                    PostType.Encouragement -> "Encouraging word or reflection"
-                    PostType.Task -> "Action item & assignee"
-                    PostType.Decision -> "Decision & context"
-                    PostType.Brief -> "Meeting brief or summary"
-                    PostType.Standup -> "Status update"
-                    PostType.Blocker -> "What is blocking you?"
-                    else -> "Write something to share"
-                },
-                placeholder = when (type) {
-                    PostType.Prayer -> "Share your prayer request with details or specific prayer points…"
-                    PostType.Testimony -> "Tell the story of how God moved or answered prayer…"
-                    PostType.Encouragement -> "Share a thought, verse reflection, or word of encouragement…"
-                    PostType.Task -> "e.g. Update API client for work circles (@Jane, by Friday)…"
-                    PostType.Decision -> "e.g. Decided to adopt Jetpack Compose for all new flows…"
-                    PostType.Brief -> "Summary of meeting key points, next steps and milestones…"
-                    PostType.Standup -> "What did you complete? What are you working on next?"
-                    PostType.Blocker -> "What's in the way, who can help, and what's needed to unblock?"
-                    else -> if (circle.isWork) "Share an update, question, or note with the team…" else "Share an update, question, or note with the circle…"
-                },
-                minLines = 4,
-                maxLines = 10
-            )
-            Row(
-                Modifier.fillMaxWidth().padding(top = 4.dp, end = 4.dp),
-                horizontalArrangement = Arrangement.End
+        // Devotional selector & preview card
+        if (type == PostType.Devotional) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = CirclesPalette.WarmBg,
+                border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
             ) {
-                Text(
-                    "${state.body.length} / 4000",
-                    style = MM.type.caption.copy(fontSize = 11.sp),
-                    color = if (state.body.length > 3800) CirclesPalette.RoseInk else MM.colors.inkMuted
-                )
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Rounded.AutoStories, contentDescription = null, tint = CirclesPalette.WarmInk, modifier = Modifier.size(16.dp))
+                            Text(
+                                selectedDevotional?.heading?.ifBlank { "Devotional Reading" } ?: "Devotional Reading",
+                                style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp),
+                                color = CirclesPalette.WarmInk
+                            )
+                        }
+                        Text(
+                            selectedDevotional?.date ?: "Today",
+                            style = MM.type.caption.copy(fontSize = 11.sp),
+                            color = CirclesPalette.WarmInk.copy(alpha = 0.8f)
+                        )
+                    }
+                    selectedDevotional?.let { d ->
+                        Text(
+                            "“${d.keyText}”",
+                            style = MM.type.scripture.copy(fontSize = 13.sp, lineHeight = 19.sp),
+                            color = MM.colors.ink
+                        )
+                        Text(d.referenceText, style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.WarmInk)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        SecondaryButton(
+                            if (selectedDevotional == null) "Select Devotional" else "Change Devotional",
+                            { showDevotionalPicker = true }
+                        )
+                    }
+                }
             }
         }
 
-        // Photos gallery
+        // Study selector & preview card
+        if (type == PostType.Study) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = CirclesPalette.WarmBg,
+                border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Rounded.Bookmark, contentDescription = null, tint = CirclesPalette.WarmInk, modifier = Modifier.size(16.dp))
+                            Text(
+                                selectedStudyNote?.first ?: "Bible Study Entry",
+                                style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp),
+                                color = CirclesPalette.WarmInk
+                            )
+                        }
+                    }
+                    selectedStudyNote?.let { n ->
+                        Text("“${n.third}”", style = MM.type.scripture.copy(fontSize = 13.sp, lineHeight = 19.sp), color = MM.colors.ink, maxLines = 4)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        SecondaryButton(
+                            if (selectedStudyNote == null) "Pick from Study Journal" else "Change Study Note",
+                            { showStudyPicker = true }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Redesigned modern text field container
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = MM.colors.surface,
+            border = BorderStroke(1.dp, MM.colors.line),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                CircleField(
+                    state.body,
+                    { onBody(it.take(4000)) },
+                    label = when (type) {
+                        PostType.Devotional -> "Your thoughts or reflection on this reading"
+                        PostType.Study -> "Your study takeaways or reflection"
+                        PostType.Prayer -> "What would you like prayer for?"
+                        PostType.Testimony -> "What did God do?"
+                        PostType.Encouragement -> "Encouraging word or reflection"
+                        PostType.Task -> "Action item & assignee"
+                        PostType.Decision -> "Decision & context"
+                        PostType.Brief -> "Meeting brief or summary"
+                        PostType.Standup -> "Status update"
+                        PostType.Blocker -> "What is blocking you?"
+                        else -> "Write your post"
+                    },
+                    placeholder = when (type) {
+                        PostType.Devotional -> "Add what God spoke to you through this devotional…"
+                        PostType.Study -> "Write your study insights or share with the group…"
+                        PostType.Prayer -> "Share your prayer request with details or specific prayer points…"
+                        PostType.Testimony -> "Tell the story of how God moved or answered prayer…"
+                        PostType.Encouragement -> "Share a thought, verse reflection, or word of encouragement…"
+                        PostType.Task -> "e.g. Update API client for work circles (@Jane, by Friday)…"
+                        PostType.Decision -> "e.g. Decided to adopt Jetpack Compose for all new flows…"
+                        PostType.Brief -> "Summary of meeting key points, next steps and milestones…"
+                        PostType.Standup -> "What did you complete? What are you working on next?"
+                        PostType.Blocker -> "What's in the way, who can help, and what's needed to unblock?"
+                        else -> if (circle.isWork) "Share an update, question, or note with the team…" else "Share an update, question, or note with the circle…"
+                    },
+                    minLines = 4,
+                    maxLines = 10
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 4.dp, end = 4.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Text(
+                        "${state.body.length} / 4000",
+                        style = MM.type.caption.copy(fontSize = 11.sp),
+                        color = if (state.body.length > 3800) CirclesPalette.RoseInk else MM.colors.inkMuted
+                    )
+                }
+            }
+        }
+
+        // Staged attachments preview tray
         if (state.attachments.isNotEmpty()) {
-            Text("Attached (${state.attachments.size})", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.inkSecondary)
+            Text("Attached media (${state.attachments.size})", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.inkSecondary)
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -186,12 +486,20 @@ fun ComposerSheet(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(
-                                if (a.isVideo) Icons.Rounded.Videocam else Icons.Rounded.Image,
-                                contentDescription = null, tint = CirclesPalette.Accent, modifier = Modifier.size(16.dp)
+                                when {
+                                    a.isVideo -> Icons.Rounded.Videocam
+                                    a.isPdf -> Icons.Rounded.PictureAsPdf
+                                    else -> Icons.Rounded.Image
+                                },
+                                contentDescription = null,
+                                tint = CirclesPalette.Accent,
+                                modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                listOfNotNull(a.durationMs?.takeIf { it > 0 }?.let(::formatDuration), formatBytes(a.bytes)).joinToString(" · "),
-                                style = MM.type.caption.copy(fontWeight = FontWeight.Medium), color = MM.colors.ink
+                                a.name ?: listOfNotNull(a.durationMs?.takeIf { it > 0 }?.let(::formatDuration), formatBytes(a.bytes)).joinToString(" · "),
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                color = MM.colors.ink,
+                                maxLines = 1
                             )
                             IconButton(onClick = { onRemovePhoto(a) }, modifier = Modifier.size(24.dp)) {
                                 Icon(Icons.Rounded.Close, "Remove attachment", tint = MM.colors.inkSecondary, modifier = Modifier.size(14.dp))
@@ -203,7 +511,7 @@ fun ComposerSheet(
         }
 
         // Scripture verse section with live preview (for faith circles)
-        if (!circle.isWork && type != PostType.Announcement) {
+        if (!circle.isWork && type != PostType.Announcement && type != PostType.Devotional) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 CircleField(
                     state.verse,
@@ -271,19 +579,33 @@ fun ComposerSheet(
             }
         }
 
-        // Add photo launcher button
+        // Modern multi-modal media attachment tray buttons (Photo, Video, PDF)
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             SecondaryButton(
-                "Add photo",
-                { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
+                "Photo",
+                { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 leadingIcon = Icons.Rounded.Image,
                 modifier = Modifier.weight(1f)
             )
+            SecondaryButton(
+                "Video",
+                { pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
+                leadingIcon = Icons.Rounded.Videocam,
+                modifier = Modifier.weight(1f)
+            )
+            SecondaryButton(
+                "PDF",
+                { pickPdf.launch("application/pdf") },
+                leadingIcon = Icons.Rounded.PictureAsPdf,
+                modifier = Modifier.weight(1f)
+            )
         }
+
+        videoNotice?.let { StatusLine(StatusKind.Warning, it) }
 
         // Anonymous toggle for prayer requests
         if (type == PostType.Prayer) {
@@ -301,7 +623,7 @@ fun ComposerSheet(
             else if (circle.isWork) "Share with team"
             else "Share with circle",
             onSend,
-            enabled = !state.sending && (state.body.isNotBlank() || state.attachments.isNotEmpty()),
+            enabled = !state.sending && (state.body.isNotBlank() || state.attachments.isNotEmpty() || selectedDevotional != null || selectedStudyNote != null),
             modifier = Modifier.fillMaxWidth()
         )
     }

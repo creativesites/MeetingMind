@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaKind
@@ -166,11 +167,79 @@ fun MemberAvatar(
 /** Whether a stored attachment is a video. */
 val MediaAttachment.isVideo: Boolean get() = mime.startsWith("video/")
 
-/** A photo or video on a post. Photos open fullscreen; videos play in a player when tapped. */
+/** Whether a stored attachment is a PDF document. */
+val MediaAttachment.isPdf: Boolean get() = mime == "application/pdf" || (name?.endsWith(".pdf", ignoreCase = true) == true)
+
+/** A photo, video or PDF on a post. Photos open fullscreen; videos play in a player; PDFs open in document viewer. */
 @Composable
 fun AttachmentTile(circleId: String, a: MediaAttachment, modifier: Modifier, contentDescription: String) {
     if (a.isVideo) VideoTile(circleId, a, modifier, contentDescription)
+    else if (a.isPdf) PdfTile(circleId, a, modifier, contentDescription)
     else MediaImage(circleId = circleId, path = a.path, modifier = modifier, contentDescription = contentDescription, allowFullscreen = true)
+}
+
+/** A PDF document on a post, as a tile: filename, badge, and size. */
+@Composable
+private fun PdfTile(circleId: String, a: MediaAttachment, modifier: Modifier, contentDescription: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var loading by remember { mutableStateOf(false) }
+    Box(
+        modifier
+            .background(MM.colors.surfaceSunk)
+            .clickable(enabled = !loading) {
+                loading = true
+                scope.launch {
+                    val file = CircleMediaCache.fetchToFile(context, circleId, a.path, "pdf")
+                    loading = false
+                    if (file != null) {
+                        runCatching {
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                file
+                            )
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, "application/pdf")
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(android.content.Intent.createChooser(intent, "Open PDF"))
+                        }
+                    }
+                }
+            }
+            .semantics { this.contentDescription = contentDescription },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(MM.space.m)
+        ) {
+            Box(
+                Modifier.size(48.dp).clip(CircleShape).background(CirclesPalette.Accent.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(Modifier.size(20.dp), color = CirclesPalette.Accent, strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Rounded.InsertDriveFile, null, tint = CirclesPalette.Accent, modifier = Modifier.size(26.dp))
+                }
+            }
+            Text(
+                a.name ?: "Document.pdf",
+                style = MM.type.bodyStrong.copy(fontSize = 12.5.sp),
+                color = MM.colors.ink,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Text(
+                formatBytes(a.bytes),
+                style = MM.type.caption.copy(fontSize = 11.sp),
+                color = MM.colors.inkSecondary
+            )
+        }
+    }
 }
 
 /** A video on a post, as a tile: the length and size, and a play button. */

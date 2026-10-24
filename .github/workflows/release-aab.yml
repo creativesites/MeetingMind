@@ -87,30 +87,21 @@ jobs:
           REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
         run: |
           set -euo pipefail
-          # A managed bundle never carries a Gemini key, whatever the secret holds.
-          if [ -n "${GEMINI_PROXY_URL:-}" ]; then unset SYSTEM_GEMINI_API_KEY; fi
+          # Decision B1 (founder, 2026-10-22): every build carries the raw Gemini key.
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           export KEYSTORE_PATH="$RUNNER_TEMP/upload.jks"
           ./gradlew bundleRelease
           rm -f "$RUNNER_TEMP/upload.jks"
 
-      - name: Check the bundle has (tester) or lacks (managed) the built-in key
-        # A tester bundle must carry the key or Internet mode would be broken for testers. A managed bundle
-        # must NOT: it is the one the public gets, and its Gemini access goes through the proxy. The key is never printed.
-        env:
-          GEMINI_PROXY_URL: ${{ secrets.GEMINI_PROXY_URL }}
+      - name: Check the bundle has the built-in key
+        # Every release carries the built-in Gemini key so first-time recordings work out of the box.
         run: |
           set -euo pipefail
           aab="$(ls app/build/outputs/bundle/release/*.aab)"
           found=no
           if unzip -p "$aab" 'base/dex/*' | strings | grep -qE 'AIzaSy[0-9A-Za-z_-]{33}|AQ\.[0-9A-Za-z_-]{20,}'; then found=yes; fi
-          if [ -n "${GEMINI_PROXY_URL:-}" ]; then
-            if [ "$found" = yes ]; then echo "::error::a Gemini key is in a managed bundle"; exit 1; fi
-            echo "Managed bundle: no built-in Gemini key."
-          else
-            if [ "$found" = no ]; then echo "::error::the built-in Gemini key is not in the tester bundle"; exit 1; fi
-            echo "Tester bundle: the built-in Gemini key is in the bundle."
-          fi
+          if [ "$found" = no ]; then echo "::error::the built-in Gemini key is missing from the bundle"; exit 1; fi
+          echo "Release bundle: built-in Gemini key verified."
 
       - name: Name the bundle
         run: |

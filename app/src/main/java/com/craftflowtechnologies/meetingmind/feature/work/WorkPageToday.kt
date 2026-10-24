@@ -60,6 +60,7 @@ internal sealed interface TodayHero {
 
 internal class ScheduleRow(val key: String, val title: String, val subtitle: String?, val time: String, val onClick: () -> Unit)
 internal class RecentNote(val id: String, val model: NoteRowModel, val onClick: () -> Unit)
+internal class WorkCircleItem(val id: String, val name: String, val groupWord: String, val memberCount: Int, val onClick: () -> Unit)
 
 /** Counts that are also ways in: each one opens the list it counts. */
 internal class TodayGlance(val openTasks: Int, val decisionsThisWeek: Int, val openQuestions: Int)
@@ -73,9 +74,12 @@ internal class TodayModel(
     val upcoming: List<ScheduleRow> = emptyList(),
     val earlier: List<ScheduleRow> = emptyList(),
     val recent: List<RecentNote> = emptyList(),
-    val glance: TodayGlance? = null
+    val glance: TodayGlance? = null,
+    val circles: List<WorkCircleItem> = emptyList(),
+    val onStartCircle: (() -> Unit)? = null,
+    val onAllCircles: (() -> Unit)? = null
 ) {
-    val isEmpty get() = hero == null && needs.isEmpty() && upcoming.isEmpty() && earlier.isEmpty() && recent.isEmpty()
+    val isEmpty get() = hero == null && needs.isEmpty() && upcoming.isEmpty() && earlier.isEmpty() && recent.isEmpty() && circles.isEmpty()
 }
 
 private const val NEEDS_SHOWN = 4
@@ -146,6 +150,40 @@ internal fun TodayContent(
                         if (showEarlier) model.earlier.forEach { ScheduleLine(it) }
                     }
                     model.upcoming.forEach { ScheduleLine(it) }
+                }
+            }
+        }
+        if (model.circles.isNotEmpty() || model.onStartCircle != null) item(key = "circles") {
+            Column {
+                SectionHeader(
+                    "Team Circles",
+                    count = if (model.circles.isNotEmpty()) model.circles.size else null,
+                    actionLabel = if (model.circles.isNotEmpty() && model.onAllCircles != null) "All circles" else if (model.onStartCircle != null) "New circle" else null,
+                    onAction = if (model.circles.isNotEmpty() && model.onAllCircles != null) model.onAllCircles else model.onStartCircle
+                )
+                if (model.circles.isEmpty()) {
+                    MMCard(contentPadding = MM.space.m) {
+                        Text("Collaborate with your team", style = MM.type.bodyStrong, color = MM.colors.ink)
+                        Text(
+                            "Create team circles to share meeting updates, decisions, and keep everyone aligned.",
+                            style = MM.type.secondary,
+                            color = MM.colors.inkSecondary,
+                            modifier = Modifier.padding(top = MM.space.xs, bottom = MM.space.m)
+                        )
+                        model.onStartCircle?.let { onStart ->
+                            SecondaryButton("Start a team circle", onStart)
+                        }
+                    }
+                } else {
+                    MMCard(contentPadding = MM.space.m) {
+                        model.circles.forEach { c ->
+                            ListRow(
+                                title = c.name,
+                                subtitle = "${c.memberCount} ${if (c.memberCount == 1) "member" else "members"} · ${c.groupWord}",
+                                onClick = c.onClick
+                            )
+                        }
+                    }
                 }
             }
         }

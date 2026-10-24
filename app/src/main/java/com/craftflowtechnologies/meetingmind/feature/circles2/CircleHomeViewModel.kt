@@ -183,11 +183,15 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     }
     fun closeComposer() { composer.value = ComposerState() }
 
-    /** A photo or video for the post being written. Opens a free-form composer when none is open. */
+    /** A photo, video or document for the post being written. Opens a free-form composer when none is open. */
     fun addPhoto(file: PickedFile) {
         if (!composer.value.open) openComposer(PostType.Note)
         viewModelScope.launch {
-            val kind = if (file.mime.startsWith("video/")) MediaKind.Video else MediaKind.Image
+            val kind = when {
+                file.mime.startsWith("video/") -> MediaKind.Video
+                file.mime == "application/pdf" || file.name.orEmpty().endsWith(".pdf", ignoreCase = true) || file.mime.startsWith("application/") -> MediaKind.File
+                else -> MediaKind.Image
+            }
             repo.uploadAttachment(circleId, kind, file.bytes, file.mime, file.name, file.durationMs).fold(
                 onOk = { a -> composer.update { it.copy(attachments = it.attachments + a, error = null) } },
                 onErr = { f -> composer.update { it.copy(error = f.message) } }
