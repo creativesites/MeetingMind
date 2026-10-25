@@ -1,45 +1,59 @@
 package com.craftflowtechnologies.meetingmind.core.billing
 
 import android.content.Context
+import com.craftflowtechnologies.meetingmind.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Controls whether subscription tiering is enforced or bypassed for Play Store Closed Testing.
- * In [CLOSED_TESTING], testers get full Pro features and managed/built-in AI without paywall gates.
- * In [PRODUCTION], Free/BYOK/Pro/Church tiers and paywall rules apply.
+ * Whether paywalls and plan checks run, or are switched off for a debug build.
+ *
+ * This is a developer tool, never a product setting: [PRODUCTION] is the default everywhere and a
+ * release build always enforces tiers, whatever value an earlier debug install may have saved.
+ * [CLOSED_TESTING] only exists in debug builds, where it hides unasked paywalls and lets a tester
+ * use their own Gemini key without a plan.
  */
 enum class TieringMode(val label: String, val description: String) {
     CLOSED_TESTING(
-        "Closed Testing (No Tiering)",
-        "Tester's benefit: all Pro features unlocked with no paywall interruptions."
+        "Closed testing (no paywalls)",
+        "Debug builds only: paywalls are not shown and a personal Gemini key works without a plan."
     ),
     PRODUCTION(
-        "Production Tiering",
+        "Production tiering",
         "Enforces Free, BYOK, Pro and Church tiers, cloud allowances and paywalls."
     )
 }
 
+/** True only where the tier switch may be drawn: debug builds. Extracted so it is tested without a Context. */
+fun showTierSwitch(isDebug: Boolean): Boolean = isDebug
+
 object TieringModeStore {
     private const val PREFS = "meetmind_tiering_mode"
     private const val KEY = "mode"
-    private val _mode = MutableStateFlow(TieringMode.CLOSED_TESTING)
+    private val _mode = MutableStateFlow(TieringMode.PRODUCTION)
     val mode: StateFlow<TieringMode> = _mode.asStateFlow()
     @Volatile private var loaded = false
 
     fun current(context: Context): TieringMode {
+        // A release build can never be put in closed-testing mode, even by a value saved earlier.
+        if (!showTierSwitch(BuildConfig.DEBUG)) {
+            _mode.value = TieringMode.PRODUCTION
+            loaded = true
+            return TieringMode.PRODUCTION
+        }
         if (!loaded) {
             val saved = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
-            _mode.value = TieringMode.entries.firstOrNull { it.name == saved } ?: TieringMode.CLOSED_TESTING
+            _mode.value = TieringMode.entries.firstOrNull { it.name == saved } ?: TieringMode.PRODUCTION
             loaded = true
         }
         return _mode.value
     }
 
     fun set(context: Context, mode: TieringMode) {
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, mode.name).apply()
-        _mode.value = mode
+        val next = if (showTierSwitch(BuildConfig.DEBUG)) mode else TieringMode.PRODUCTION
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, next.name).apply()
+        _mode.value = next
         loaded = true
     }
 
@@ -47,9 +61,4 @@ object TieringModeStore {
         _mode.value = mode
         loaded = true
     }
-
-    fun effectiveEntitlements(raw: Entitlements, mode: TieringMode = _mode.value): Entitlements =
-        if (mode == TieringMode.CLOSED_TESTING && !raw.isPaid) {
-            Entitlements(plan = Plan.PRO, state = EntitlementState.ACTIVE, willRenew = true, verifiedAtMs = System.currentTimeMillis())
-        } else raw
 }
