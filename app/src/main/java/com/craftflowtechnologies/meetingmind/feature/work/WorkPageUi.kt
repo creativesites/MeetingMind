@@ -56,6 +56,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
+import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
@@ -65,8 +66,10 @@ import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 internal data class WorkMenuAction(val label: String, val badge: Int = 0, val onClick: () -> Unit)
 
 /**
- * The Work header (WORK_UX §2): "Work", one context line, and Search, ＋, ⋯, on the sunset image under a scrim.
- * The ⋯ icon carries the Inbox count only when it is above 0.
+ * The Work header (WORK_UX §2): "Work", one context line, and Search, ＋, ⋯ — a light header on the
+ * page background like every other screen. §3 forbids dark full-bleed surfaces anywhere on this
+ * page, so the old sunset image and black scrim are gone. The ⋯ icon carries the Inbox count only
+ * when it is above 0.
  */
 /** The Work header companion: small and crisp (T0). */
 private val WorkCompanionSize = 40.dp
@@ -84,23 +87,30 @@ internal fun WorkPageHeader(
     onBack: (() -> Unit)? = null
 ) {
     val inbox = moreActions.sumOf { it.badge }
-    // The header sits on the sunset image under a scrim, so its icons and type are fixed white in both themes.
-    Box(modifier.fillMaxWidth().clip(MM.radius.card)) {
-        Image(painterResource(R.drawable.work_header_sunset), contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.2f), Color.Black.copy(alpha = 0.75f)))))
-        Column(Modifier.padding(MM.space.l)) {
-            // A small companion leads the title (40 dp, §5.3); nothing is reserved while it is filtered out.
-            val companionShown = rememberCompanionVisible(CompanionPage.HOME)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = FixedWhite) }
-                if (companionShown) ZuriSlot(CompanionPage.HOME, WorkCompanionSize)
-                Text("Work", style = MM.type.title, color = FixedWhite, modifier = Modifier.weight(1f).padding(start = MM.space.s))
-                IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search Work", tint = FixedWhite) }
-                MenuButton(Icons.Rounded.Add, "New", addActions, badge = 0, tint = FixedWhite)
-                MenuButton(Icons.Rounded.MoreHoriz, if (inbox > 0) "More, $inbox in Inbox" else "More", moreActions, badge = inbox, tint = FixedWhite)
-            }
-            Text(contextLine, style = MM.type.secondary, color = FixedWhite.copy(alpha = 0.85f), modifier = Modifier.padding(top = MM.space.xs))
+    val companionShown = rememberCompanionVisible(CompanionPage.HOME)
+    // The header is a light header on the page background (WORK_UX §2/§3), so its icons use ink.
+    val leading: (@Composable () -> Unit)? = when {
+        onBack != null -> {
+            { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.ink) } }
         }
+        companionShown -> {
+            { ZuriSlot(CompanionPage.HOME, WorkCompanionSize) }
+        }
+        else -> null
+    }
+    Column(modifier.fillMaxWidth()) {
+        ScreenHeader(title = "Work", leading = leading) {
+            // Search in Work opens the app-wide search, so its label says exactly that.
+            IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search everything", tint = MM.colors.ink) }
+            MenuButton(Icons.Rounded.Add, "New", addActions, badge = 0, tint = MM.colors.ink)
+            MenuButton(Icons.Rounded.MoreHoriz, if (inbox > 0) "More, $inbox in Inbox" else "More", moreActions, badge = inbox, tint = MM.colors.ink)
+        }
+        Text(
+            contextLine,
+            style = MM.type.secondary,
+            color = MM.colors.inkSecondary,
+            modifier = Modifier.padding(top = MM.space.xs)
+        )
     }
 }
 
