@@ -193,6 +193,10 @@ class MainActivity : FragmentActivity() {
     override fun onStart() {
         super.onStart()
         appLock.controller.onAppForegrounded()
+        // Back in the foreground: the store may know about a new, renewed or lapsed plan. Never on the main thread.
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway.refresh() }
+        }
     }
 
     override fun onStop() {

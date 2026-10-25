@@ -95,6 +95,12 @@ fun PaywallScreen(trigger: PaywallTrigger, onClose: () -> Unit, vm: PaywallViewM
     var exitShown by rememberSaveable { mutableStateOf(false) }
     var showExit by remember { mutableStateOf(false) }
 
+    // Nothing to sell in this build: say so plainly instead of a three-page flow that cannot complete.
+    if (!vm.configured) {
+        PaywallUnavailable(onClose = { vm.dismissed(); onClose() })
+        return
+    }
+
     LaunchedEffect(Unit) { vm.shown(trigger) }
     // A plan that arrives (a purchase, or a restore) ends the flow.
     LaunchedEffect(state.purchased) { if (state.purchased) { delay(1200); onClose() } }
@@ -140,7 +146,7 @@ fun PaywallScreen(trigger: PaywallTrigger, onClose: () -> Unit, vm: PaywallViewM
                     when (p) {
                         0 -> OutcomePage(state.outcome)
                         1 -> IncludedPage()
-                        else -> PlansPage(state, showAll, { showAll = !showAll }, vm::select)
+                        else -> PlansPage(state, showAll, vm.configured, { showAll = !showAll }, vm::select)
                     }
                 }
             }
@@ -149,18 +155,27 @@ fun PaywallScreen(trigger: PaywallTrigger, onClose: () -> Unit, vm: PaywallViewM
                 if (page < 2) {
                     PrimaryButton("Continue", "paywall_next", enabled = true) { page++ }
                 } else {
-                    val offer = state.selected
-                    val ctaLabel = when {
-                        state.busy -> "One moment…"
-                        offer == null -> "Plans unavailable"
-                        offer.trialDays != null && offer.trialDays > 0 -> "Start ${offer.trialDays}-day free trial"
-                        else -> "Start ${offer.plan.label}"
+                    if (owned.isPaid) {
+                        Text("You're on ${owned.plan.label}", color = FixedWhite, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp).testTag("paywall_current_plan"))
                     }
+                    val cta = PaywallCopy.cta(owned, state.selected, state.busy, state.pending)
                     PrimaryButton(
-                        ctaLabel,
-                        "paywall_buy", enabled = offer != null && !state.busy && !state.pending && activity != null
-                    ) { activity?.let(vm::buy) }
-                    Text("No commitment — cancel any time in Google Play", color = FixedWhite.copy(alpha = 0.6f), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                        cta.label,
+                        "paywall_buy",
+                        enabled = cta.enabled && (cta.kind != PaywallCtaKind.BUY || activity != null)
+                    ) {
+                        when (cta.kind) {
+                            PaywallCtaKind.MANAGE -> manageSubscription(activity)
+                            PaywallCtaKind.RETRY -> vm.retryPending()
+                            PaywallCtaKind.BUY -> activity?.let(vm::buy)
+                            PaywallCtaKind.UNAVAILABLE -> Unit
+                        }
+                    }
+                    Text(
+                        if (cta.kind == PaywallCtaKind.BUY) "No commitment — cancel any time in Google Play"
+                        else "Change or cancel any time in Google Play",
+                        color = FixedWhite.copy(alpha = 0.6f), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)
+                    )
                 }
                 Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     SmallLink("Continue free", "paywall_continue_free") { close() }
@@ -176,6 +191,35 @@ private fun manageSubscription(activity: Activity?) {
     runCatching { activity?.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/account/subscriptions"))) }
 }
 
+/** The honest end of the road when billing is off in this build: no prices, no false network blame. */
+@Composable
+private fun PaywallUnavailable(onClose: () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Brand.Navy, Brand.NavyLift, Brand.Navy))).testTag("paywall"),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            Modifier.fillMaxWidth().statusBarsPadding().navigationBarsPadding().padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            AppIconTile(size = 84.dp)
+            Text(
+                "Plans aren't available in this build",
+                color = FixedWhite, fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
+                lineHeight = 32.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 24.dp).testTag("paywall_unavailable")
+            )
+            Text(
+                "You can keep using MeetingMind free. Nothing you have is locked.",
+                color = FixedWhite.copy(alpha = 0.75f), fontSize = 16.sp, lineHeight = 23.sp,
+                textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp)
+            )
+            TextButton(onClick = onClose, modifier = Modifier.padding(top = 20.dp).testTag("paywall_close")) {
+                Text("Continue", color = Brand.Cyan, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
 @Composable
 private fun OutcomePage(outcome: OutcomeCopy) {
     Column(Modifier.fillMaxWidth().padding(top = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -186,19 +230,19 @@ private fun OutcomePage(outcome: OutcomeCopy) {
     }
 }
 
-/** What stays free and what BYOK, Pro and Church add. */
+/**
+ * What stays free and what a plan adds. Every paid row is a capability the code enforces; the
+ * features everyone gets are stated separately instead of being sold back to people.
+ */
 @Composable
 private fun IncludedPage() {
     Text("What's included", color = FixedWhite, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
     Row(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
         Spacer(Modifier.weight(1f)); HeaderCell("Free"); HeaderCell("Plan")
     }
-    TableRow("Record, browse, search and export your notes", free = true, paid = true)
-    TableRow("On-device transcription and notes + 30-min Cloud AI starter taste", free = true, paid = true)
-    TableRow("Full Pro features: Ask across all meetings, Speaker ID, Read-to-Me & Circles", free = false, paid = true)
-    TableRow("BYOK Tier: use your own Gemini API key with all Pro features unlocked", free = false, paid = true)
-    TableRow("Pro & Church Tiers: managed Cloud transcription & AI notes (30–100 hrs/mo)", free = false, paid = true)
-    Text("Your notes and recordings are yours on every plan, and stay yours if a plan ends.", color = FixedWhite.copy(alpha = 0.6f), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 16.dp))
+    PaywallCopy.includedRows.forEach { row -> TableRow(row.label, free = row.free, paid = row.paid) }
+    Text(PaywallCopy.ALWAYS_FREE_LINE, color = Brand.Cyan, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(top = 16.dp).testTag("paywall_on_every_plan"))
+    Text("Your notes and recordings are yours on every plan, and stay yours if a plan ends.", color = FixedWhite.copy(alpha = 0.6f), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 12.dp))
 }
 
 @Composable
@@ -223,11 +267,11 @@ private fun Mark(on: Boolean) {
 }
 
 @Composable
-private fun PlansPage(state: PaywallUiState, showAll: Boolean, onToggleAll: () -> Unit, onSelect: (String) -> Unit) {
+private fun PlansPage(state: PaywallUiState, showAll: Boolean, configured: Boolean, onToggleAll: () -> Unit, onSelect: (String) -> Unit) {
     Text("Choose your plan", color = FixedWhite, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
     when {
         state.loading -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Brand.Cyan) }
-        state.offers.isEmpty() -> Text("Plans aren't available right now. Check your connection and try again later. Your free app keeps working.", color = FixedWhite.copy(alpha = 0.75f), fontSize = 15.sp, lineHeight = 21.sp)
+        state.offers.isEmpty() -> Text(PaywallCopy.plansUnavailableLine(configured), color = FixedWhite.copy(alpha = 0.75f), fontSize = 15.sp, lineHeight = 21.sp)
         else -> {
             val shown = if (showAll) state.offers else state.headlineOffers
             shown.forEach { PlanCard(it, selected = it.id == state.selectedId) { onSelect(it.id) } }
@@ -331,7 +375,7 @@ fun PostResultOfferHost(onResultScreen: Boolean, onOpenPlans: (PaywallTrigger) -
         val state = PaywallState(saved.paywallLastShownAt, saved.paywallDismissals, saved.firstResultOfferShown)
         if (PaywallPolicy.shouldShow(PaywallTrigger.FIRST_RESULT, billing, owned.effective(now), state, now, tierMode)) {
             prefsManager.markPaywallShown(now, firstResult = true)
-            com.craftflowtechnologies.meetingmind.core.analytics.Analytics.track(com.craftflowtechnologies.meetingmind.core.analytics.Events.PAYWALL_VIEWED, "placement" to "first_result_sheet")
+            // PAYWALL_VIEWED is tracked once, by PaywallViewModel when the paywall itself opens.
             show = true
         }
     }

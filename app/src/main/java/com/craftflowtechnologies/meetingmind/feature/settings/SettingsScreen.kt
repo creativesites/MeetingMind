@@ -811,12 +811,14 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
         SettingId.GEMINI_KEY -> {
             val tierMode by com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.mode.collectAsState()
             val owned by com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway.entitlements.collectAsState()
-            if (tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.PRODUCTION &&
-                !owned.has(com.craftflowtechnologies.meetingmind.core.billing.Capability.BYOK_KEY)
-            ) {
+            val canUseOwnKey = tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING ||
+                com.craftflowtechnologies.meetingmind.core.billing.FeatureGate.can(
+                    owned, com.craftflowtechnologies.meetingmind.core.billing.Capability.BYOK_KEY
+                )
+            if (!canUseOwnKey) {
                 SettingsNavRow(
                     "Gemini API key (BYOK Tier)",
-                    "Upgrade to MeetingMind BYOK or Pro to use your own Gemini key with all Pro features.",
+                    "Use your own Gemini key instead of the managed service, with a BYOK or Pro plan.",
                     a.onOpenSubscription
                 )
             } else {
@@ -1442,7 +1444,7 @@ internal object GeminiKeyProbe {
     }
 }
 
-/** The plan, this month's Gemini use, and the Closed Testing vs Production tiering toggle. */
+/** The plan, this month's managed-cloud use, and (debug only) the closed-testing switch. */
 @Composable
 private fun PlanAndUsageRow(onOpen: () -> Unit) {
     val context = LocalContext.current
@@ -1450,33 +1452,39 @@ private fun PlanAndUsageRow(onOpen: () -> Unit) {
     val owned by billing.entitlements.collectAsState()
     val usage by com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.state.collectAsState()
     val tierMode by com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.mode.collectAsState()
+    val configured = billing.configured
+    val debugBuild = com.craftflowtechnologies.meetingmind.core.billing.showTierSwitch(BuildConfig.DEBUG)
     androidx.compose.runtime.LaunchedEffect(Unit) {
         com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.current(context)
-        if (billing.configured) com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.refresh(context)
+        if (configured) com.craftflowtechnologies.meetingmind.ai.cloud.UsageMeter.refresh(context)
     }
     Column(Modifier.fillMaxWidth()) {
         SettingsNavRow(
             title = "Plan and usage",
             subtitle = (when {
-                tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING ->
-                    "${owned.plan.label} (Closed Testing — all Pro features unlocked)"
+                !configured -> "Plans aren't available in this build"
+                debugBuild && tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING ->
+                    "${owned.plan.label} (Closed testing — paywalls off)"
                 owned.isPaid -> "${owned.plan.label} · manage or change your plan"
-                else -> "Free · see what BYOK, Pro or Church adds"
+                else -> "Free · see what BYOK or Pro adds"
             }) + usage.summary().takeIf { usage.known && it.isNotEmpty() }?.let { "\nThis month: $it" }.orEmpty(),
-            onClick = onOpen
+            // With nothing to sell, stay here rather than opening a paywall that cannot complete.
+            onClick = if (configured) onOpen else ({})
         )
-        SettingsSwitchRow(
-            "Closed testing mode (no tiering)",
-            "Tester's benefit: unlocks all Pro features and disables paywall interruptions while testing. Turn off to test Production tiering and paywalls.",
-            tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING,
-            { checked ->
-                com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.set(
-                    context,
-                    if (checked) com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING
-                    else com.craftflowtechnologies.meetingmind.core.billing.TieringMode.PRODUCTION
-                )
-            },
-            "settings_tiering_mode_switch"
-        )
+        if (debugBuild) {
+            SettingsSwitchRow(
+                "Closed testing mode (paywalls off)",
+                "Debug builds only: hides paywall interruptions and lets testers use their own Gemini key without a plan. Release builds always enforce tiers.",
+                tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING,
+                { checked ->
+                    com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.set(
+                        context,
+                        if (checked) com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING
+                        else com.craftflowtechnologies.meetingmind.core.billing.TieringMode.PRODUCTION
+                    )
+                },
+                "settings_tiering_mode_switch"
+            )
+        }
     }
 }
