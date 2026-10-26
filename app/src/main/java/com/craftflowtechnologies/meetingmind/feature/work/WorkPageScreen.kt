@@ -274,11 +274,15 @@ fun WorkPageScreen(
             onRecord = { recordPicker = true }, onWriteNote = { writePicker = true }
         )
     }
-    val tasksActions = remember(page, titles) {
+    val tasksActions = remember(page, titles, context) {
         TasksActions(
             onWaiting = page::setWaiting, onAdd = { page.addTask(it) }, onDone = { page.completeTask(it) }, onEdit = { editing = it.task },
             onOpenSource = { r -> r.task.meetingId?.let { onOpenMeeting(it, r.task.startMs) } }, onNudge = { nudging = it.task },
-            onLoadMore = page::loadMoreTasks, onRetry = page::retryTasks, onRefresh = page::refreshTasks
+            onLoadMore = page::loadMoreTasks, onRetry = page::retryTasks, onRefresh = page::refreshTasks,
+            onSyncExternal = { r ->
+                val sendIntent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, r.task.title)
+                context.startActivity(Intent.createChooser(sendIntent, "Send task to…"))
+            }
         )
     }
     val selectedNotes = notes.items.filter { it.id in selectedIds }

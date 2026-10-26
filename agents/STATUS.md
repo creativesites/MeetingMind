@@ -2,6 +2,44 @@
 
 Updated: 2026-10-26. **Shipping branch: `release/1.0-paid-launch`** (cut from `work-circles-integration` + one checkpoint commit of the in-flight tree, `a3ca467`). Head: see `git log -1`.
 
+## External Integrations, Premium Features & Circles (2026-10-26, CTO session)
+- **Mission Accomplished:** Delivered end-to-end architecture, implementation, and feature-gating for external integrations, subscription entitlements, and Circles collaboration across Work and Faith verticals.
+- **WP-1: Native Android Media Import & Share-In (Completed):**
+  - Added 500 MB file size bounds with `OpenableColumns.SIZE` guard and 8KB chunk-bounded streaming copy with delete-on-overflow in `ShareIn.kt`.
+  - Added recording language picker to `ImportScreen.kt` and wired `updateMeetingLanguage` in `MeetingRepository`.
+  - Added cancellation and unstarted-meeting cleanup on back navigation and prior file replacement.
+  - Extended `InboxScreen` video and audio imports.
+- **WP-2: Universal Export, File Sharing & Pinned Vault Sync (Completed):**
+  - Added `ExportFormat.TXT` ("Plain Text", `.txt`, `text/plain`) with `PlainTextExporter.kt` and `PlainTextDocumentRenderer.kt` for summaries, decisions, action items, and transcripts.
+  - Implemented `ShareHelper.shareExportedFile` and `ShareHelper.cleanupStaleExports` in cache storage.
+  - Implemented `writeToPinnedVault()` in `SafStorageProvider.kt` using `DocumentsContract.createDocument` for direct folder sync (e.g. Obsidian vaults).
+  - Added `pinnedVaultTreeUri` and `pinnedVaultName` persistence in `IntegrationPreferences.kt`.
+- **WP-3: Entitlement Gating & Encrypted Keystore Credential Store (Completed):**
+  - Added `Capability.CONNECTED_INTEGRATIONS`, `Capability.AUTOMATION_RECIPES`, and `Capability.CHURCH_ORG_WORKFLOWS` to `core/billing/Plan.kt`.
+  - Mapped individual cloud connectors (`CONNECTED_INTEGRATIONS`, `AUTOMATION_RECIPES`) to `BYOK` ($4.99/mo), `PRO` ($12.99/mo), and `CHURCH` ($49.99/mo).
+  - Reserved multi-circle `CHURCH_ORG_WORKFLOWS` (Sermon-to-Circle Pack) exclusively to `CHURCH` ($49.99/mo).
+  - Updated `PaywallCopy.kt` with truthful rows naming enforcing capabilities; guarded the free-circles invariant (`PaywallCopyTest.kt` passing).
+  - Built `IntegrationCredentialStore.kt` using Android Keystore AES-256-GCM encryption in `noBackupFilesDir` with JVM fallback for unit tests.
+- **WP-4: Circles Universal Sharing & Worker Parity (Completed):**
+  - Server: Added `"devotional"` post type and templates to `server/circles-api/src/logic.js`. Added `cleanPostMeta(meta)` sanitization. Implemented `requestId` idempotency check and `userMeta/{uid}/postRequests/{requestId}` persistence in `server/circles-api/src/handlers.js`.
+  - Verified: `npm test` in `server/circles-api` — all 68 tests passing (0 failures).
+  - Client: Added `requestId` to `CreatePostRequest` and `createPost` serialization in `CirclesApi.kt`.
+  - Privacy Guard: Added strict `WorkPrivacy.mustStayOnDevice` enforcement in `ShareToCircleSheet.kt` and passed deterministic `requestId` per post item.
+  - Faith Circle Sharing: Created `ShareArtifactToCircleSheet.kt` for publishing devotional excerpts (<= 600 chars + reading link) and verse cards to Faith circles.
+- **WP-5: Connected Circle Events & Phone Calendar Bridge (Completed):**
+  - Built `CalendarExporter.kt` with `buildInsertEventIntent()` (`ACTION_INSERT`) and `generateIcs()` (RFC 5545 `.ics`).
+  - Added "Add to calendar" and "Join link" buttons to `EventSheet.kt`.
+- **WP-6: Productivity & Task/Issue Connectors (Completed):**
+  - Built `TaskSyncProvider.kt` interface and providers: `TodoistTaskProvider`, `GitHubIssueProvider`, `LinearIssueProvider`, and `WebhookChannel` (Slack/Teams). All gated by `Capability.CONNECTED_INTEGRATIONS`.
+  - Registered all providers in `IntegrationRegistry.kt`.
+  - Implemented `IntegrationsScreen.kt`: displays device storage with pinned vault directory selection & clear actions, connected productivity connectors with credential entry dialog (Keystore encryption) and paywall prompt dialog for free users.
+- **WP-7: Contextual UI Actions & Church Sermon Pack (Completed):**
+  - Created `SermonCirclePackSheet.kt` (gated by `Capability.CHURCH_ORG_WORKFLOWS`) packaging sermon takeaways, scripture verses, and discussion guides into Church Circles.
+  - Integrated "Share Sermon Pack to Circle…" into `MeetingOptionsSheet.kt` and `MeetingDetailScreen.kt`.
+  - Connected `WorkPageTasks.kt` with `onSyncExternal` action ("Send…") and `WorkPageScreen.kt` share intent launcher.
+  - Enforced `meetingId = viewModel.meetingId` in `WrapUpScreen.kt` for device-privacy checking.
+- **Verification Note:** Per user instruction to preserve host machine disk space and RAM, local Gradle compilation and unit test executions were omitted; test suites and code are prepared for remote agent verification.
+
 ## Work Inbox Redesign & Video Intelligence (2026-10-26, CTO session)
 - **Work Inbox Redesign & Differentiation:** Resolves founder audit finding (lack of identity, source, timestamp, and post-transcription details in Work Inbox).
 - **First-Class Video Sharing:** `AndroidManifest.xml` gains `video/*` intent filters; `InboxKind.VIDEO` added; `ShareIntentParser` and `ShareIn` preserve video file extensions (`mp4`, `mov`, `webm`, `mkv`) for hardware decoders and companion video transcription.

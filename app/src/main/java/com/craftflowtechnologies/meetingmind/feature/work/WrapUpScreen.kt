@@ -342,6 +342,7 @@ fun WrapUpScreen(
             summary = note?.plainText,
             decisions = decisions,
             tasks = tasksAll,
+            meetingId = viewModel.meetingId,
             onDismiss = { showShareCircle = false },
             onNavigateCreateCircle = onStartCircle,
             onShared = { circleName, count ->

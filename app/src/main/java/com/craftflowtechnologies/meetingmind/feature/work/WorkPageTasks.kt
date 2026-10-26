@@ -61,7 +61,8 @@ internal class TasksActions(
     val onNudge: (WorkTaskRow) -> Unit = {},
     val onLoadMore: () -> Unit = {},
     val onRetry: () -> Unit = {},
-    val onRefresh: () -> Unit = {}
+    val onRefresh: () -> Unit = {},
+    val onSyncExternal: ((WorkTaskRow) -> Unit)? = null
 )
 
 /**
@@ -174,6 +175,10 @@ private fun TaskCard(row: WorkTaskRow, now: Long, waiting: Boolean, titles: Map<
                 }
             }
         }
-        if (waiting) TextAction("Nudge", { actions.onNudge(row) }, Modifier.padding(top = MM.space.s))
+        if (waiting) {
+            TextAction("Nudge", { actions.onNudge(row) }, Modifier.padding(top = MM.space.s))
+        } else if (actions.onSyncExternal != null) {
+            TextAction("Send…", { actions.onSyncExternal.invoke(row) }, Modifier.padding(top = MM.space.s))
+        }
     }
 }

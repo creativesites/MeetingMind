@@ -890,6 +890,7 @@ fun MeetingDetailScreen(
     var renameSpeakerText by remember { mutableStateOf("") }
     var showAddActionDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
+    var showSermonCirclePackSheet by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
 
     var pendingExportContentType by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.export.ExportContentType?>(null) }
@@ -1365,6 +1366,9 @@ fun MeetingDetailScreen(
                     }
                 }
             } else null,
+            onShareSermonPack = if (meeting?.recordingType == RecordingType.SERMON && meeting?.status == MeetingStatus.READY) {
+                { showSermonCirclePackSheet = true }
+            } else null,
             onCopyMarkdownSummary = {
                 val md = viewModel.generateMarkdownExport()
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -1427,6 +1431,29 @@ fun MeetingDetailScreen(
                         Toast.makeText(context, "Running \"${tool.label}\" — the result will appear here when it's done", Toast.LENGTH_LONG).show()
                     }
                 }
+            }
+        )
+    }
+
+    if (showSermonCirclePackSheet) {
+        val m = meeting
+        val scriptureRefs = topics.map { it.topic }
+        val points = decisions.map { it.text }
+        val questionsList = questions.map { it.text }
+        com.craftflowtechnologies.meetingmind.feature.faith.SermonCirclePackSheet(
+            sermonTitle = m?.title ?: "Sermon",
+            scriptureVerses = scriptureRefs,
+            keyPoints = points,
+            discussionQuestions = questionsList,
+            fullSummary = m?.summaryPreview,
+            onDismiss = { showSermonCirclePackSheet = false },
+            onNavigateCreateCircle = { showSermonCirclePackSheet = false },
+            onNavigatePaywall = {
+                showSermonCirclePackSheet = false
+                onOpenSettings()
+            },
+            onPublished = { circleName, count ->
+                Toast.makeText(context, "Published $count items to $circleName", Toast.LENGTH_SHORT).show()
             }
         )
     }

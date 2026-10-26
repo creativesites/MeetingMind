@@ -1323,7 +1323,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val vm: com.craftflowtechnologies.meetingmind.feature.settings.IntegrationsViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.settings.IntegrationsScreen(
                 viewModel = vm,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigatePaywall = { navController.navigate(Routes.paywallRoute("SETTINGS")) { launchSingleTop = true } }
             )
         }
 
