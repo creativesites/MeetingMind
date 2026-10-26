@@ -437,11 +437,32 @@ async function createPost(ctx) {
   const b = ctx.body;
   const circleId = str(b, "circleId");
   const { circle, member } = await load(ctx, circleId);
+
+  // Idempotency check: if client provides a requestId, repeat calls return the existing post
+  const requestId = b.requestId == null ? null
+    : typeof b.requestId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(b.requestId)
+      ? b.requestId.toLowerCase() : null;
+  if (requestId) {
+    const idempotencyPath = `userMeta/${ctx.uid}/postRequests/${requestId}`;
+    const prior = await ctx.db.get(idempotencyPath);
+    if (prior?.data?.postId) return { postId: prior.data.postId, status: prior.data.status ?? "published" };
+  }
+
   const hasPhotos = Array.isArray(b.attachments) && b.attachments.length > 0;
   const body = cleanText(b.body ?? "", "body", { min: hasPhotos ? 0 : 1, max: LIMITS.bodyMax });
   const verseRef = cleanVerseRef(b.verseRef);
   if (b.type === "announcement" && !isAdmin(member.role)) throw new ApiError(403, "forbidden", "Only admins can post announcements.");
-  const { pending, post, authorDoc } = shapePost({ type: b.type, body, verseRef, anonymous: b.anonymous === true ? true : b.anonymous === false ? false : undefined, uid: ctx.uid, authorName: member.displayName, settings: circle.settings, now: ctx.now });
+  const { pending, post, authorDoc } = shapePost({
+    type: b.type,
+    body,
+    verseRef,
+    anonymous: b.anonymous === true ? true : b.anonymous === false ? false : undefined,
+    uid: ctx.uid,
+    authorName: member.displayName,
+    settings: circle.settings,
+    now: ctx.now,
+    meta: b.meta
+  });
   await hit(ctx.kv, `rl:createPost:${ctx.uid}`, RATE.createPost);
   const attachments = await checkPostAttachments(ctx, circleId, b.attachments);
   const id = newId();
@@ -450,10 +471,20 @@ async function createPost(ctx) {
   // attachmentPaths lets the media sweep find which photos a post still uses.
   if (attachments.length) { doc.attachments = attachments; doc.attachmentPaths = attachments.map((a) => a.path); }
   if (post.anonymous) assertNoAuthorLeak(doc, ctx.uid);
-  await ctx.db.commit([
+
+  const writes = [
     w.create(`${C(circleId)}/postAuthors/${id}`, authorDoc),
     w.create(`${C(circleId)}/${pending ? "pending" : "posts"}/${id}`, doc),
-  ]);
+  ];
+  if (requestId) {
+    writes.push(w.set(`userMeta/${ctx.uid}/postRequests/${requestId}`, {
+      postId: id,
+      circleId,
+      status: pending ? "pending" : "published",
+      createdAt: ctx.now
+    }));
+  }
+  await ctx.db.commit(writes);
   ctx.defer(pending
     ? notifyAdmins(ctx, circleId, { title: circle.name, body: "A prayer request is waiting for approval", data: { kind: "pending", circleId } })
     : notifyMembers(ctx, circleId, ctx.uid, postMsg(circle.name, post, id, circleId)));

@@ -19,7 +19,8 @@ data class CreatePostRequest(
     val verseRef: String? = null,
     val anonymous: Boolean = false,
     /** Photos on the post. Each was uploaded through the Worker first. */
-    val attachments: List<MediaAttachment> = emptyList()
+    val attachments: List<MediaAttachment> = emptyList(),
+    val requestId: String? = null
 )
 
 data class CreatedPost(val postId: String, val pending: Boolean)
@@ -167,6 +168,7 @@ object CirclesJson {
         .put("circleId", r.circleId).put("type", r.type.wire).put("body", r.body)
         .put("anonymous", r.anonymous)
         .apply { if (!r.verseRef.isNullOrBlank()) put("verseRef", r.verseRef) }
+        .apply { if (!r.requestId.isNullOrBlank()) put("requestId", r.requestId) }
         .apply { if (r.attachments.isNotEmpty()) put("attachments", JSONArray(r.attachments.map { a -> JSONObject().put("path", a.path).put("mime", a.mime).put("bytes", a.bytes) })) }
 
     fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?): JSONObject = JSONObject()

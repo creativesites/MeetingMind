@@ -115,7 +115,8 @@ class CirclesRepository(
                 body = body,
                 verseRef = verseRef,
                 anonymous = anonymous,
-                attachments = attachments
+                attachments = attachments,
+                requestId = requestId
             )
         )
     }

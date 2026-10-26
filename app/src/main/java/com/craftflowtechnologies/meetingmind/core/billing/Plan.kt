@@ -41,13 +41,22 @@ enum class Capability {
     /** A paid managed-cloud allowance. Free users still route through the proxy, which meters the free allowance. */
     MANAGED_CLOUD_AI,
     /** Using a personal Gemini API key in Settings instead of the managed service. */
-    BYOK_KEY
+    BYOK_KEY,
+    /** Connected cloud productivity & task integrations (Todoist, GitHub, Linear, Notion, Slack, Teams, Pinned Vault). */
+    CONNECTED_INTEGRATIONS,
+    /** Automated trigger & workflow recipes (e.g. auto-publish, auto-sync tasks, export on completion). */
+    AUTOMATION_RECIPES,
+    /** Church ministry & organization workflows (Sermon-to-Circle pack, multi-circle study distribution). */
+    CHURCH_ORG_WORKFLOWS
 }
 
 object PlanCapabilities {
     fun has(plan: Plan, capability: Capability): Boolean = when (capability) {
         Capability.MANAGED_CLOUD_AI -> plan == Plan.PRO || plan == Plan.CHURCH
         Capability.BYOK_KEY -> plan == Plan.BYOK || plan == Plan.PRO || plan == Plan.CHURCH
+        Capability.CONNECTED_INTEGRATIONS -> plan == Plan.BYOK || plan == Plan.PRO || plan == Plan.CHURCH
+        Capability.AUTOMATION_RECIPES -> plan == Plan.BYOK || plan == Plan.PRO || plan == Plan.CHURCH
+        Capability.CHURCH_ORG_WORKFLOWS -> plan == Plan.CHURCH
     }
 }
 

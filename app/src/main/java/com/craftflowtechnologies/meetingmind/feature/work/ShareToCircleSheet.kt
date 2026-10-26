@@ -65,6 +65,7 @@ fun ShareToCircleSheet(
     summary: String?,
     decisions: List<Finding>,
     tasks: List<Finding>,
+    meetingId: String? = null,
     onDismiss: () -> Unit,
     onNavigateCreateCircle: () -> Unit,
     onShared: (circleName: String, count: Int) -> Unit
@@ -73,6 +74,9 @@ fun ShareToCircleSheet(
     val repo = remember { Circles2.repository(context) }
     val circlesState by repo.circles().collectAsState(CirclesListState.Loading)
     val scope = rememberCoroutineScope()
+    val mustStayOnDevice = remember(meetingId) {
+        meetingId?.let { WorkPrivacy.mustStayOnDevice(context, it) } ?: false
+    }
 
     var shareSummary by rememberSaveable { mutableStateOf(!summary.isNullOrBlank()) }
     val selectedDecisions = remember { mutableStateListOf<String>().also { list -> list.addAll(decisions.map { it.id }) } }
@@ -80,6 +84,7 @@ fun ShareToCircleSheet(
     var selectedCircleId by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var showClientConfirmDialog by remember { mutableStateOf(false) }
 
     CircleSheet(onDismiss) {
         Row(
@@ -104,6 +109,14 @@ fun ShareToCircleSheet(
             }
         }
 
+        if (mustStayOnDevice) {
+            StatusLine(
+                StatusKind.Warning,
+                "This meeting is marked confidential or policy-restricted and must stay on this device."
+            )
+            return@CircleSheet
+        }
+
         when (val state = circlesState) {
             CirclesListState.Loading -> {
                 StatusLine(StatusKind.Info, "Loading your team circles…")
@@ -116,14 +129,15 @@ fun ShareToCircleSheet(
                 )
             }
             is CirclesListState.Ready -> {
-                if (state.circles.isEmpty()) {
+                val workCircles = state.circles.filter { it.isWork }
+                if (workCircles.isEmpty()) {
                     Column(
                         Modifier.padding(vertical = MM.space.m),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(MM.space.s)
                     ) {
                         Text(
-                            "You don't have any circles yet. Start a Work Circle for your project team to collaborate seamlessly.",
+                            "You don't have any Work Circles yet. Start a Work Circle for your project team to collaborate seamlessly.",
                             style = MM.type.body,
                             color = MM.colors.inkSecondary
                         )
@@ -133,19 +147,18 @@ fun ShareToCircleSheet(
                         })
                     }
                 } else {
-                    val circles = state.circles
-                    val defaultPick = selectedCircleId ?: circles.firstOrNull { it.isWork }?.id ?: circles.first().id
+                    val defaultPick = selectedCircleId?.takeIf { id -> workCircles.any { it.id == id } } ?: workCircles.first().id
                     if (selectedCircleId == null) {
                         selectedCircleId = defaultPick
                     }
-                    val currentCircle = circles.firstOrNull { it.id == selectedCircleId } ?: circles.first()
+                    val currentCircle = workCircles.firstOrNull { it.id == selectedCircleId } ?: workCircles.first()
 
                     SectionHeader("Target Circle")
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        circles.forEach { c ->
+                        workCircles.forEach { c ->
                             val isSelected = c.id == currentCircle.id
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
@@ -153,6 +166,25 @@ fun ShareToCircleSheet(
                                 border = BorderStroke(1.dp, if (isSelected) CirclesPalette.Accent else MM.colors.line),
                                 modifier = Modifier
                                     .weight(1f)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { selectedCircleId = c.id }
+                            ) {
+                                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                    Text(
+                                        c.name,
+                                        style = MM.type.bodyStrong.copy(fontSize = 13.5.sp),
+                                        color = if (isSelected) CirclesPalette.AccentDeep else MM.colors.ink,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        c.groupWord,
+                                        style = MM.type.caption,
+                                        color = if (isSelected) CirclesPalette.AccentDeep.copy(alpha = 0.8f) else MM.colors.inkSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
                                     .clip(RoundedCornerShape(14.dp))
                                     .clickable { selectedCircleId = c.id }
                             ) {
@@ -273,18 +305,36 @@ fun ShareToCircleSheet(
                                 var count = 0
                                 if (shareSummary && !summary.isNullOrBlank()) {
                                     val briefContent = "📋 Meeting Brief: $meetingTitle\n\n$summary"
-                                    repo.createPost(currentCircle.id, briefContent, PostType.Brief, anonymous = false)
+                                    repo.createPost(
+                                        circleId = currentCircle.id,
+                                        body = briefContent,
+                                        type = PostType.Brief,
+                                        anonymous = false,
+                                        requestId = java.util.UUID.randomUUID().toString()
+                                    )
                                     count++
                                 }
                                 decisions.filter { it.id in selectedDecisions }.forEach { d ->
-                                    repo.createPost(currentCircle.id, d.text, PostType.Decision, anonymous = false)
+                                    repo.createPost(
+                                        circleId = currentCircle.id,
+                                        body = d.text,
+                                        type = PostType.Decision,
+                                        anonymous = false,
+                                        requestId = java.util.UUID.randomUUID().toString()
+                                    )
                                     count++
                                 }
                                 tasks.filter { it.id in selectedTasks }.forEach { t ->
                                     val ownerTag = if (!t.ownerName.isNullOrBlank()) " · Assigned to @${t.ownerName}" else ""
                                     val dueTag = if (!t.dueText.isNullOrBlank()) " (Due: ${t.dueText})" else ""
                                     val taskContent = "${t.text}$ownerTag$dueTag"
-                                    repo.createPost(currentCircle.id, taskContent, PostType.Task, anonymous = false)
+                                    repo.createPost(
+                                        circleId = currentCircle.id,
+                                        body = taskContent,
+                                        type = PostType.Task,
+                                        anonymous = false,
+                                        requestId = java.util.UUID.randomUUID().toString()
+                                    )
                                     count++
                                 }
                                 sending = false

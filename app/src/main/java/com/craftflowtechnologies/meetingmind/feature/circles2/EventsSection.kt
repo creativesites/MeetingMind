@@ -19,7 +19,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
+import com.craftflowtechnologies.meetingmind.core.calendar.CalendarExporter
 import com.craftflowtechnologies.meetingmind.core.circles2.EventDraft
 import com.craftflowtechnologies.meetingmind.core.circles2.Rsvp
 import com.craftflowtechnologies.meetingmind.core.circles2.RsvpAnswer
@@ -114,6 +117,7 @@ fun EventSheet(
     onDismiss: () -> Unit
 ) {
     val mine = rsvps.firstOrNull { it.uid == myUid }?.answer
+    val context = LocalContext.current
     var confirmCancel by remember { mutableStateOf(false) }
     CircleSheet(onDismiss) {
         Text(event.title, style = MM.type.title, color = MM.colors.ink)
@@ -129,6 +133,32 @@ fun EventSheet(
             Text("$going going · $maybe maybe", style = MM.type.secondary, color = MM.colors.inkSecondary)
             Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
                 RsvpAnswer.entries.forEach { a -> MMChip(a.label, selected = mine == a, onClick = { onRsvp(a) }) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s), modifier = Modifier.fillMaxWidth()) {
+                SecondaryButton(
+                    "Add to calendar",
+                    onClick = {
+                        val intent = CalendarExporter.buildInsertEventIntent(
+                            title = event.title,
+                            description = event.description.ifBlank { null },
+                            startMs = event.startsAt,
+                            endMs = event.endsAt,
+                            location = event.location.ifBlank { null }
+                        )
+                        runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                if (!event.onlineUrl.isNullOrBlank()) {
+                    SecondaryButton(
+                        "Join link",
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(event.onlineUrl))
+                            runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
             if (isAdmin) {
                 SecondaryButton("Edit event", onEdit, modifier = Modifier.fillMaxWidth())

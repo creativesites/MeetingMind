@@ -33,7 +33,10 @@ object PaywallCopy {
         IncludedRow("On-device transcription and notes", free = true, paid = true),
         IncludedRow("Managed cloud AI, with a monthly allowance on every plan", free = true, paid = true),
         IncludedRow("A larger managed cloud AI allowance", free = false, paid = true, capability = Capability.MANAGED_CLOUD_AI),
-        IncludedRow("Use your own Gemini API key (BYOK)", free = false, paid = true, capability = Capability.BYOK_KEY)
+        IncludedRow("Use your own Gemini API key (BYOK)", free = false, paid = true, capability = Capability.BYOK_KEY),
+        IncludedRow("Connected cloud integrations (Tasks, Notion, Slack/Teams, Pinned Vault)", free = false, paid = true, capability = Capability.CONNECTED_INTEGRATIONS),
+        IncludedRow("Automation recipes and trigger workflows", free = false, paid = true, capability = Capability.AUTOMATION_RECIPES),
+        IncludedRow("Church and organization ministry workflows", free = false, paid = true, capability = Capability.CHURCH_ORG_WORKFLOWS)
     )
 
     /**

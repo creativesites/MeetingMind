@@ -3,7 +3,7 @@ import { ApiError } from "./errors.js";
 
 export const LIMITS = { membersPerCircle: 50, circlesPerUser: 10, bodyMax: 4000, commentMax: 2000, nameMax: 60, descriptionMax: 300, maxTokensPerUser: 5, maxUpdates: 50 };
 // Post types for Faith and Work verticals. "note" is the universal free-form post.
-export const FAITH_POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement", "note"];
+export const FAITH_POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement", "note", "devotional"];
 export const WORK_POST_TYPES = ["task", "decision", "brief", "standup", "blocker", "announcement", "note"];
 export const POST_TYPES = [...new Set([...FAITH_POST_TYPES, ...WORK_POST_TYPES])];
 
@@ -14,13 +14,13 @@ export const REACTIONS = [...new Set([...FAITH_REACTIONS, ...WORK_REACTIONS])];
 const ALL = POST_TYPES;
 export const TEMPLATES = {
   // Faith templates
-  small_group: ["prayer", "testimony", "study", "encouragement"],
-  prayer_partners: ["prayer", "encouragement"],
-  bible_study: ["study", "reading", "prayer"],
-  family: ["prayer", "testimony", "encouragement", "achievement"],
+  small_group: ["prayer", "testimony", "study", "encouragement", "devotional"],
+  prayer_partners: ["prayer", "encouragement", "devotional"],
+  bible_study: ["study", "reading", "prayer", "devotional"],
+  family: ["prayer", "testimony", "encouragement", "achievement", "devotional"],
   youth: FAITH_POST_TYPES,
-  ministry_team: ["prayer", "announcement", "study"],
-  custom: ["prayer", "testimony", "encouragement"],
+  ministry_team: ["prayer", "announcement", "study", "devotional"],
+  custom: ["prayer", "testimony", "encouragement", "devotional"],
   // Work templates
   project_team: ["task", "decision", "brief", "standup", "announcement", "note"],
   client_engagement: ["decision", "brief", "task", "announcement", "note"],
@@ -175,11 +175,21 @@ export const rateExceeded = (count, limit) => count >= limit;
 // ---- post shaping ----
 export const hourFloor = (d) => new Date(Math.floor(d.getTime() / 3_600_000) * 3_600_000);
 
+export function cleanPostMeta(meta) {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+  const out = {};
+  if (typeof meta.sourceKind === "string") out.sourceKind = meta.sourceKind.slice(0, 32);
+  if (typeof meta.sourceId === "string") out.sourceId = meta.sourceId.slice(0, 64);
+  if (typeof meta.assigneeName === "string") out.assigneeName = meta.assigneeName.slice(0, 60);
+  if (typeof meta.dueText === "string") out.dueText = meta.dueText.slice(0, 40);
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /**
  * Decide where a new post goes and build every doc. The returned `post`/`pending` docs NEVER contain
  * the author's uid or name when anonymous; the uid lives only in `authorDoc` (postAuthors/{id}).
  */
-export function shapePost({ type, body, verseRef, anonymous, uid, authorName, settings, now }) {
+export function shapePost({ type, body, verseRef, anonymous, uid, authorName, settings, now, meta }) {
   if (!POST_TYPES.includes(type)) throw bad("bad_request", "Unknown post type");
   if (type !== "note" && !settings.allowedTypes.includes(type)) throw new ApiError(403, "type_not_allowed", "This circle doesn't use that kind of post.");
   if (typeof anonymous !== "boolean") throw bad("bad_request", "anonymous must be true or false");
@@ -193,6 +203,8 @@ export function shapePost({ type, body, verseRef, anonymous, uid, authorName, se
     createdAt: anonymous ? hourFloor(now) : now, editedAt: null,
   };
   const post = { ...base };
+  const cleanMeta = cleanPostMeta(meta);
+  if (cleanMeta) post.meta = cleanMeta;
   if (!anonymous) { post.authorUid = uid; post.authorName = authorName; }
   const authorDoc = { authorUid: uid, anonymous, authorName: anonymous ? null : authorName, createdAt: now };
   return { pending, post, authorDoc };

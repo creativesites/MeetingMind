@@ -528,3 +528,37 @@ test("rsvp: one answer per member, a junk answer is refused", async () => {
   assert.equal(W.db.dump(`${C(id)}/events/${eventId}/rsvps/owner`).status, "no");
   assert.equal((await W.err("owner", "rsvp", { circleId: id, eventId, status: "yes please" })).code, "bad_request");
 });
+
+test("createPost: devotional type, metadata sanitization, and requestId idempotency", async () => {
+  const W = world();
+  const id = await circle(W);
+  const requestId = "7b2e3f56-9a21-4f51-b842-123456789abc";
+  const postBody = {
+    circleId: id,
+    type: "devotional",
+    body: "Morning devotional reading and reflection on Psalm 23.",
+    verseRef: "Psalm 23:1",
+    anonymous: false,
+    requestId,
+    meta: {
+      sourceKind: "Devotional",
+      sourceId: "psalm-23",
+      assigneeName: "Prayer Team",
+      dueText: "Today"
+    }
+  };
+
+  const first = await W.call("owner", "createPost", postBody);
+  assert.ok(first.postId);
+  assert.equal(first.status, "published");
+
+  const stored = W.db.dump(`circles/${id}/posts/${first.postId}`);
+  assert.equal(stored.type, "devotional");
+  assert.equal(stored.verseRef, "Psalm 23:1");
+  assert.equal(stored.meta.sourceKind, "Devotional");
+  assert.equal(stored.meta.sourceId, "psalm-23");
+
+  // Retry with same requestId returns identical postId
+  const retry = await W.call("owner", "createPost", postBody);
+  assert.equal(retry.postId, first.postId);
+});

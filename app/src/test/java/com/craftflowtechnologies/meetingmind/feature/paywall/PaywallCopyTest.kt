@@ -40,14 +40,21 @@ class PaywallCopyTest {
     @Test fun `the included table only claims capabilities the code enforces`() {
         val paidRows = PaywallCopy.includedRows.filter { !it.free }
         assertTrue("the paid column must sell something", paidRows.isNotEmpty())
+        val expectedCapabilities = setOf(
+            Capability.MANAGED_CLOUD_AI,
+            Capability.BYOK_KEY,
+            Capability.CONNECTED_INTEGRATIONS,
+            Capability.AUTOMATION_RECIPES,
+            Capability.CHURCH_ORG_WORKFLOWS
+        )
         paidRows.forEach { row ->
             assertTrue("a paid row needs a capability: ${row.label}", row.paid)
             val capability = row.capability
             assertNotNull("every paid row maps to a gate: ${row.label}", capability)
-            assertTrue("${row.label} claims ${capability?.name}", capability == Capability.MANAGED_CLOUD_AI || capability == Capability.BYOK_KEY)
+            assertTrue("${row.label} claims ${capability?.name}", capability in expectedCapabilities)
         }
-        // The two gates are exactly what the paid column claims; nothing invented, nothing missing.
-        assertEquals(setOf(Capability.MANAGED_CLOUD_AI, Capability.BYOK_KEY), paidRows.mapNotNull { it.capability }.toSet())
+        // The gates are exactly what the paid column claims; nothing invented, nothing missing.
+        assertEquals(expectedCapabilities, paidRows.mapNotNull { it.capability }.toSet())
     }
 
     @Test fun `the table does not sell features that are free for everyone in 1_0`() {
