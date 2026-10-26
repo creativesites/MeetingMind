@@ -46,10 +46,26 @@ class ShareIntentParserTest {
     }
 
     @Test fun theManifestAcceptsWhatTheParserKnows() {
-        assertEquals(listOf("text/*", "application/pdf", "audio/*", "image/*"), ShareIntentParser.ACCEPTED)
+        assertEquals(listOf("text/*", "application/pdf", "audio/*", "image/*", "video/*"), ShareIntentParser.ACCEPTED)
         val xml = java.io.File("src/main/AndroidManifest.xml").readText()
         ShareIntentParser.ACCEPTED.forEach { assertTrue("manifest lacks $it", xml.contains("android:mimeType=\"$it\"")) }
         assertTrue(xml.contains("android.intent.action.SEND\"") && xml.contains("android.intent.action.SEND_MULTIPLE"))
+    }
+
+    @Test fun aSharedVideoBecomesAVideoPartWithSource() {
+        val parts = ShareIntentParser.parse(
+            ShareIntentParser.ACTION_SEND,
+            "video/mp4",
+            null,
+            "Keynote Video",
+            listOf("content://v1" to "video/mp4"),
+            sourceApp = "com.google.android.apps.photos"
+        )
+        assertEquals(1, parts.size)
+        val p = parts.single()
+        assertEquals(InboxKind.VIDEO, p.kind)
+        assertEquals("com.google.android.apps.photos", p.source)
+        assertEquals("Keynote Video", p.title)
     }
 }
 
@@ -200,5 +216,63 @@ class InboxProcessTest {
         val candidate = proposer().candidates().first { it.target == FilingTarget.PROJECT }
         assertTrue(InboxFiler(context, f.db).file(item.id, Filing(FilingAction.NOTE, candidate.target, candidate.id, candidate.name, title = item.title)))
         assertEquals("nb", notes().single().notebookId)
+    }
+
+    @Test fun aSharedVideoBecomesAVideoItemWithSource() = runBlocking {
+        val part = SharedPart(
+            kind = InboxKind.VIDEO,
+            uri = "content://media/video/1",
+            title = "Keynote",
+            mime = "video/mp4",
+            source = "com.google.android.apps.photos",
+            durationMs = 60000L
+        )
+        val tmp = java.io.File(context.filesDir, "inbox").apply { mkdirs() }.resolve("v1_Keynote.mp4").apply { writeText("fake-mp4") }
+        val item = repo.add(listOf(part)) { CopiedFile(tmp.absolutePath, "Keynote.mp4") }.single()
+        assertEquals("VIDEO", item.kind)
+        assertEquals("com.google.android.apps.photos", item.source)
+        assertEquals(60000L, item.mediaDurationMs)
+        assertEquals("PENDING", item.transcriptionStatus)
+        assertEquals("Keynote", item.title)
+        assertEquals(tmp.absolutePath, item.uri)
+    }
+
+    @Test fun audioAndVideoSharesGetPendingTranscriptionStatusWhileOthersGetNone() = runBlocking {
+        val audioPart = SharedPart(kind = InboxKind.AUDIO, uri = "content://audio", mime = "audio/m4a")
+        val videoPart = SharedPart(kind = InboxKind.VIDEO, uri = "content://video", mime = "video/mp4")
+        val textPart = SharedPart(kind = InboxKind.TEXT, text = "Hello world")
+        val pdfPart = SharedPart(kind = InboxKind.PDF, uri = "content://doc", mime = "application/pdf")
+        val imagePart = SharedPart(kind = InboxKind.IMAGE, uri = "content://img", mime = "image/png")
+
+        val items = repo.add(listOf(audioPart, videoPart, textPart, pdfPart, imagePart)) { uri ->
+            CopiedFile("/files/inbox/${uri.substringAfterLast('/')}", uri.substringAfterLast('/'))
+        }
+        assertEquals(5, items.size)
+        assertEquals("PENDING", items[0].transcriptionStatus)
+        assertEquals("PENDING", items[1].transcriptionStatus)
+        assertEquals("NONE", items[2].transcriptionStatus)
+        assertEquals("NONE", items[3].transcriptionStatus)
+        assertEquals("NONE", items[4].transcriptionStatus)
+
+        repo.updateTranscription(items[0].id, "COMPLETED", transcript = "Voice note text", meetingId = "m_audio_1", durationMs = 45000L)
+        val updatedAudio = f.db.inboxDao().get(items[0].id)!!
+        assertEquals("COMPLETED", updatedAudio.transcriptionStatus)
+        assertEquals("Voice note text", updatedAudio.text)
+        assertEquals("m_audio_1", updatedAudio.meetingId)
+        assertEquals(45000L, updatedAudio.mediaDurationMs)
+    }
+
+    @Test fun shareInCopyPreservesOrInfersExtension() {
+        assertEquals("mp4", ShareIn.extensionFor("video", "video/mp4"))
+        assertEquals("mov", ShareIn.extensionFor("clip", "video/quicktime"))
+        assertEquals("webm", ShareIn.extensionFor("clip", "video/webm"))
+        assertEquals("mkv", ShareIn.extensionFor("clip", "video/x-matroska"))
+        assertEquals("m4a", ShareIn.extensionFor("voice", "audio/mp4"))
+        assertEquals("mp3", ShareIn.extensionFor("recording", "audio/mpeg"))
+        assertEquals("ogg", ShareIn.extensionFor("audio", "audio/ogg"))
+        assertEquals("opus", ShareIn.extensionFor("voice", "audio/opus"))
+        assertEquals("wav", ShareIn.extensionFor("track", "audio/wav"))
+        assertEquals("pdf", ShareIn.extensionFor("doc", "application/pdf"))
+        assertEquals("mp4", ShareIn.extensionFor("existing.mp4", "video/mp4"))
     }
 }
