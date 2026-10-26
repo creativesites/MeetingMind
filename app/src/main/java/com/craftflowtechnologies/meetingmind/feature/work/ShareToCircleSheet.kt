@@ -31,6 +31,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -53,6 +54,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.work.Finding
+import com.craftflowtechnologies.meetingmind.core.work.WorkPrivacy
 import com.craftflowtechnologies.meetingmind.feature.circles2.CircleSheet
 import com.craftflowtechnologies.meetingmind.feature.circles2.CirclesPalette
 import com.craftflowtechnologies.meetingmind.feature.circles2.PostTypeBadge
@@ -74,8 +76,8 @@ fun ShareToCircleSheet(
     val repo = remember { Circles2.repository(context) }
     val circlesState by repo.circles().collectAsState(CirclesListState.Loading)
     val scope = rememberCoroutineScope()
-    val mustStayOnDevice = remember(meetingId) {
-        meetingId?.let { WorkPrivacy.mustStayOnDevice(context, it) } ?: false
+    val mustStayOnDevice by produceState(initialValue = false, meetingId) {
+        value = meetingId?.let { WorkPrivacy.mustStayOnDevice(context, it) } ?: false
     }
 
     var shareSummary by rememberSaveable { mutableStateOf(!summary.isNullOrBlank()) }
@@ -166,25 +168,6 @@ fun ShareToCircleSheet(
                                 border = BorderStroke(1.dp, if (isSelected) CirclesPalette.Accent else MM.colors.line),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .clickable { selectedCircleId = c.id }
-                            ) {
-                                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                                    Text(
-                                        c.name,
-                                        style = MM.type.bodyStrong.copy(fontSize = 13.5.sp),
-                                        color = if (isSelected) CirclesPalette.AccentDeep else MM.colors.ink,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        c.groupWord,
-                                        style = MM.type.caption,
-                                        color = if (isSelected) CirclesPalette.AccentDeep.copy(alpha = 0.8f) else MM.colors.inkSecondary
-                                    )
-                                }
-                            }
-                        }
-                    }
                                     .clip(RoundedCornerShape(14.dp))
                                     .clickable { selectedCircleId = c.id }
                             ) {
