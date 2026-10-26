@@ -251,6 +251,19 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     fun addToInbox(parts: List<com.craftflowtechnologies.meetingmind.core.work.SharedPart>) = viewModelScope.launch {
         inbox.add(parts) { com.craftflowtechnologies.meetingmind.core.work.ShareIn.copy(getApplication(), it) }
     }
+    /** Updates transcription status, text, meeting link and automatically re-proposes filing on completion. */
+    fun updateInboxTranscription(
+        id: String,
+        status: String,
+        transcript: String? = null,
+        meetingId: String? = null,
+        durationMs: Long? = null
+    ) = viewModelScope.launch {
+        inbox.updateTranscription(id, status, transcript, meetingId, durationMs)
+        if (status == "COMPLETED" && !transcript.isNullOrBlank()) {
+            inbox.get(id)?.let { updated -> proposeInbox(updated) }
+        }
+    }
 
     val context = ContextRepository(database)
     val prepare = Prepare(database)

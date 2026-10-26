@@ -72,8 +72,8 @@ class Migration26To27Test {
 
     @Test
     fun theDatabaseOpensAtSchemaTwentySeven() {
-        // Schema 28 followed this one; opening from 26 still runs every later step.
-        assertEquals(28, MeetMindDatabase.VERSION)
+        // Later schemas followed this one; opening from 26 still runs every later step.
+        assertTrue(MeetMindDatabase.VERSION >= 27)
         Room.databaseBuilder(context, MeetMindDatabase::class.java, dbName)
             .addMigrations(*MeetMindDatabase.ALL_MIGRATIONS).allowMainThreadQueries().build().also { migrated = it }
         assertEquals(MeetMindDatabase.VERSION, migrated!!.openHelper.readableDatabase.version)

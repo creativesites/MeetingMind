@@ -12,12 +12,12 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * Schema 21 (docs/PLAN_PROFESSIONAL.md D7): the Work Inbox, the front door for things shared into
- * the app. Nothing here is filed until the person confirms a proposal.
+ * the app. Schema 29 adds source tracking, media metadata, and transcription status.
  */
 @Entity(tableName = "inbox_items", indices = [Index(value = ["status"])])
 data class InboxItemEntity(
     @PrimaryKey val id: String,
-    /** TEXT, URL, PDF, AUDIO, IMAGE or FILE. */
+    /** TEXT, URL, PDF, AUDIO, IMAGE, VIDEO or FILE. */
     val kind: String,
     /** A copy kept in the app's own storage (a file path), for anything that arrived as a file. */
     val uri: String? = null,
@@ -31,7 +31,12 @@ data class InboxItemEntity(
     val createdAt: Long,
     val processedAt: Long? = null,
     /** Where it was filed, as JSON. */
-    val resultRefJson: String? = null
+    val resultRefJson: String? = null,
+    val source: String? = null,
+    val mediaDurationMs: Long? = null,
+    val mediaThumbnailUri: String? = null,
+    val transcriptionStatus: String = "NONE",
+    val meetingId: String? = null
 )
 
 @Dao
@@ -53,4 +58,26 @@ interface InboxDao {
 
     @Query("SELECT * FROM inbox_items ORDER BY createdAt DESC")
     suspend fun all(): List<InboxItemEntity>
+
+    @Query("""
+        UPDATE inbox_items
+        SET transcriptionStatus = :status,
+            text = CASE WHEN :transcript IS NOT NULL THEN :transcript ELSE text END,
+            meetingId = CASE WHEN :meetingId IS NOT NULL THEN :meetingId ELSE meetingId END,
+            mediaDurationMs = CASE WHEN :durationMs IS NOT NULL THEN :durationMs ELSE mediaDurationMs END
+        WHERE id = :id
+    """)
+    suspend fun updateTranscription(
+        id: String,
+        status: String,
+        transcript: String? = null,
+        meetingId: String? = null,
+        durationMs: Long? = null
+    )
+
+    @Query("SELECT * FROM inbox_items WHERE transcriptionStatus = :status ORDER BY createdAt DESC")
+    fun observeByTranscriptionStatus(status: String): Flow<List<InboxItemEntity>>
+
+    @Query("SELECT * FROM inbox_items WHERE transcriptionStatus = :status ORDER BY createdAt DESC")
+    suspend fun byTranscriptionStatus(status: String): List<InboxItemEntity>
 }

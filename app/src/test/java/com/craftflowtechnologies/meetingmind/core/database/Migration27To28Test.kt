@@ -76,9 +76,9 @@ class Migration27To28Test {
     }
 
     @Test
-    fun theDatabaseOpensAtSchemaTwentyEight() {
-        assertEquals(28, MeetMindDatabase.VERSION)
+    fun theDatabaseOpensAtSchemaTwentyEightOrLater() {
+        org.junit.Assert.assertTrue(MeetMindDatabase.VERSION >= 28)
         val db = openMigrated()
-        assertEquals(28, db.openHelper.readableDatabase.version)
+        assertEquals(MeetMindDatabase.VERSION, db.openHelper.readableDatabase.version)
     }
 }

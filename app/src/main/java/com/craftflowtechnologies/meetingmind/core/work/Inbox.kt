@@ -26,11 +26,19 @@ import java.util.UUID
  * it. With no model there is a manual "File to…" picker; nothing is ever filed silently.
  */
 
-enum class InboxKind { TEXT, URL, PDF, AUDIO, IMAGE, FILE }
+enum class InboxKind { TEXT, URL, PDF, AUDIO, IMAGE, VIDEO, FILE }
 enum class InboxStatus { NEW, PROPOSED, FILED, DISMISSED }
 
 /** One thing that arrived through the share sheet. */
-data class SharedPart(val kind: InboxKind, val text: String? = null, val uri: String? = null, val title: String? = null, val mime: String? = null)
+data class SharedPart(
+    val kind: InboxKind,
+    val text: String? = null,
+    val uri: String? = null,
+    val title: String? = null,
+    val mime: String? = null,
+    val source: String? = null,
+    val durationMs: Long? = null
+)
 
 /** The share intent, read without Android: the action, the mime types, the text and the streams. */
 object ShareIntentParser {
@@ -39,7 +47,7 @@ object ShareIntentParser {
     private val URL = Regex("""^(https?://\S+)$""", RegexOption.IGNORE_CASE)
 
     /** The mime types the manifest accepts. */
-    val ACCEPTED = listOf("text/*", "application/pdf", "audio/*", "image/*")
+    val ACCEPTED = listOf("text/*", "application/pdf", "audio/*", "image/*", "video/*")
 
     fun kindOf(mime: String?): InboxKind = when {
         mime == null -> InboxKind.FILE
@@ -47,16 +55,30 @@ object ShareIntentParser {
         mime == "application/pdf" -> InboxKind.PDF
         mime.startsWith("audio/") -> InboxKind.AUDIO
         mime.startsWith("image/") -> InboxKind.IMAGE
+        mime.startsWith("video/") -> InboxKind.VIDEO
         else -> InboxKind.FILE
     }
 
-    fun parse(action: String?, mime: String?, text: String?, subject: String?, streams: List<Pair<String, String?>>): List<SharedPart> {
+    fun parse(
+        action: String?,
+        mime: String?,
+        text: String?,
+        subject: String?,
+        streams: List<Pair<String, String?>>,
+        sourceApp: String? = null
+    ): List<SharedPart> {
         if (action != ACTION_SEND && action != ACTION_SEND_MULTIPLE) return emptyList()
         val parts = mutableListOf<SharedPart>()
-        streams.forEach { (uri, m) -> val type = m ?: mime; parts += SharedPart(kindOf(type), uri = uri, title = subject, mime = type) }
+        streams.forEach { (uri, m) ->
+            val type = m ?: mime
+            parts += SharedPart(kindOf(type), uri = uri, title = subject, mime = type, source = sourceApp)
+        }
         text?.trim()?.takeIf { it.isNotEmpty() }?.let { t ->
-            parts += if (URL.matches(t)) SharedPart(InboxKind.URL, text = t, title = subject?.takeIf { it.isNotBlank() } ?: hostOf(t), mime = mime)
-            else SharedPart(InboxKind.TEXT, text = t, title = subject?.takeIf { it.isNotBlank() } ?: t.lineSequence().first().take(60), mime = mime)
+            parts += if (URL.matches(t)) {
+                SharedPart(InboxKind.URL, text = t, title = subject?.takeIf { it.isNotBlank() } ?: hostOf(t), mime = mime, source = hostOf(t))
+            } else {
+                SharedPart(InboxKind.TEXT, text = t, title = subject?.takeIf { it.isNotBlank() } ?: t.lineSequence().first().take(60), mime = mime, source = sourceApp)
+            }
         }
         return parts
     }
@@ -76,11 +98,32 @@ class InboxRepository(private val database: MeetMindDatabase, private val clock:
             val copied = p.uri?.let { copy(it) }
             if (p.uri != null && copied == null) return@mapNotNull null
             InboxItemEntity(
-                id = "inbox_${UUID.randomUUID()}", kind = p.kind.name, uri = copied?.path, text = p.text,
-                title = p.title?.takeIf { it.isNotBlank() } ?: copied?.name?.substringBeforeLast('.'), status = InboxStatus.NEW.name, createdAt = clock()
+                id = "inbox_${UUID.randomUUID()}",
+                kind = p.kind.name,
+                uri = copied?.path,
+                text = p.text,
+                title = p.title?.takeIf { it.isNotBlank() } ?: copied?.name?.substringBeforeLast('.'),
+                status = InboxStatus.NEW.name,
+                createdAt = clock(),
+                source = p.source,
+                mediaDurationMs = p.durationMs,
+                transcriptionStatus = if (p.kind == InboxKind.AUDIO || p.kind == InboxKind.VIDEO) "PENDING" else "NONE"
             ).also { dao.upsert(it) }
         }
     }
+
+    suspend fun updateTranscription(
+        id: String,
+        status: String,
+        transcript: String? = null,
+        meetingId: String? = null,
+        durationMs: Long? = null
+    ) = withContext(Dispatchers.IO) {
+        dao.updateTranscription(id, status, transcript, meetingId, durationMs)
+    }
+
+    fun observePendingTranscriptions() = dao.observeByTranscriptionStatus("PENDING")
+    fun observeByTranscriptionStatus(status: String) = dao.observeByTranscriptionStatus(status)
 
     suspend fun dismiss(id: String) = withContext(Dispatchers.IO) { dao.get(id)?.let { dao.update(it.copy(status = InboxStatus.DISMISSED.name, processedAt = clock())) } }
     suspend fun get(id: String) = withContext(Dispatchers.IO) { dao.get(id) }
