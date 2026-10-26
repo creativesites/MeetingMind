@@ -112,7 +112,7 @@ fun IntegrationsScreen(
         it.id in listOf(DeviceCalendarProvider.ID, ShareSheetOutputChannel.ID, SafStorageProvider.ID)
     }
     val cloudProductivityProviders = state.providers.filter {
-        it.category == IntegrationCategory.TASK || it.category == IntegrationCategory.NOTE
+        it.category == IntegrationCategory.TASK_MANAGER
     }
     val emailProviders = state.providers.filter { it.category == IntegrationCategory.EMAIL }
     val comingLaterProviders = state.providers.filter { it.status == ProviderStatus.COMING_LATER }

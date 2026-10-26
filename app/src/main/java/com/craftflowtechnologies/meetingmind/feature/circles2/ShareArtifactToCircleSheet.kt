@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState
+import com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
@@ -201,7 +202,7 @@ fun ShareArtifactToCircleSheet(
                                     requestId = UUID.randomUUID().toString()
                                 )
                                 sending = false
-                                if (result.isSuccess) {
+                                if (result is CirclesResult.Ok) {
                                     onShared(currentCircle.name)
                                     onDismiss()
                                 } else {
