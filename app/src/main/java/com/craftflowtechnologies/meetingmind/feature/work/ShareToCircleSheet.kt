@@ -76,9 +76,12 @@ fun ShareToCircleSheet(
     val repo = remember { Circles2.repository(context) }
     val circlesState by repo.circles().collectAsState(CirclesListState.Loading)
     val scope = rememberCoroutineScope()
-    val mustStayOnDevice by produceState(initialValue = false, meetingId) {
+    // Null until the privacy check finishes. Publishing stays disabled until then, so a
+    // confidential meeting never shows an enabled Publish button before its warning.
+    val privacyCheck by produceState<Boolean?>(initialValue = null, meetingId) {
         value = meetingId?.let { WorkPrivacy.mustStayOnDevice(context, it) } ?: false
     }
+    val mustStayOnDevice = privacyCheck == true
 
     var shareSummary by rememberSaveable { mutableStateOf(!summary.isNullOrBlank()) }
     val selectedDecisions = remember { mutableStateListOf<String>().also { list -> list.addAll(decisions.map { it.id }) } }
@@ -325,7 +328,7 @@ fun ShareToCircleSheet(
                                 onDismiss()
                             }
                         },
-                        enabled = !sending && totalSelected > 0,
+                        enabled = !sending && totalSelected > 0 && privacyCheck != null,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
