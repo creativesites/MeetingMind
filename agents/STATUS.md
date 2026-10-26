@@ -2,6 +2,14 @@
 
 Updated: 2026-10-26. **Shipping branch: `release/1.0-paid-launch`** (cut from `work-circles-integration` + one checkpoint commit of the in-flight tree, `a3ca467`). Head: see `git log -1`.
 
+## YouTube link → notes (2026-10-26, branch `claude/youtube-transcription-research-ph8r98`, PR #11 draft)
+- **Decision (founder, 2026-10-26):** a shared YouTube link becomes a note (summary, key points, transcript) by sending the public watch address to Gemini. The app never downloads video, audio or captions, because YouTube's Terms bar downloading and automated access.
+- **Transcript never leaves the phone:** its blocks carry `noShare`. Markdown, plain, WhatsApp, HTML and export skip them. The rest of the note still shares.
+- **Metering:** the proxy counts Gemini video tokens (`audioSecondsFromUsage`), so a YouTube request no longer costs one second.
+- **Verified:** proxy tests 29/29; `YouTubeCondenserTest` 5/5 and `YouTubeNoteBlocksTest` 3/3 on Gradle (in-process Kotlin, no configuration cache).
+- **Not verified:** the Gemini request shape (`file_data` with no MIME type) against the live API; device behaviour; `:app:compileDebugKotlin` for the whole app beyond the test run.
+- **Open:** the new note headings are English only; the Circles path is covered only through note text and export.
+
 ## External Integrations, Premium Features & Circles (2026-10-26, CTO session)
 - **Mission Accomplished:** Delivered end-to-end architecture, implementation, and feature-gating for external integrations, subscription entitlements, and Circles collaboration across Work and Faith verticals.
 - **WP-1: Native Android Media Import & Share-In (Completed):**
