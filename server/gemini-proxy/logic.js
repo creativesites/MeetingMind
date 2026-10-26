@@ -21,6 +21,8 @@ export const DEFAULT_ALLOWANCES = {
 };
 /** Gemini counts audio at 32 tokens per second. */
 export const AUDIO_TOKENS_PER_SECOND = 32;
+/** Gemini counts video at about 100 tokens per second at its default resolution (video understanding docs). */
+export const VIDEO_TOKENS_PER_SECOND = 100;
 
 /** The usage period: the UTC calendar month. (Aligning it to each person's billing date is a later refinement.) */
 export function currentPeriod(nowMs) {
@@ -106,12 +108,17 @@ export function classifyRequest(body) {
   return 'action';
 }
 
-/** Whole seconds of audio Gemini billed for, from the response's per-modality token counts. */
+/**
+ * Whole seconds of media Gemini billed for, from the response's per-modality token counts. A video's
+ * picture and its sound are both counted, so a video with an audio track draws a little more than its length.
+ */
 export function audioSecondsFromUsage(usage) {
   const details = usage?.promptTokensDetails;
   if (!Array.isArray(details)) return 0;
-  const tokens = details.filter((d) => String(d?.modality).toUpperCase() === 'AUDIO').reduce((n, d) => n + (Number(d.tokenCount) || 0), 0);
-  return Math.ceil(tokens / AUDIO_TOKENS_PER_SECOND);
+  const tokensOf = (modality) => details
+    .filter((d) => String(d?.modality).toUpperCase() === modality)
+    .reduce((n, d) => n + (Number(d.tokenCount) || 0), 0);
+  return Math.ceil(tokensOf('AUDIO') / AUDIO_TOKENS_PER_SECOND) + Math.ceil(tokensOf('VIDEO') / VIDEO_TOKENS_PER_SECOND);
 }
 
 /** The best plan among RevenueCat's active entitlements ("free" when none). */

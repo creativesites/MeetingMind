@@ -9,7 +9,9 @@ import com.craftflowtechnologies.meetingmind.core.model.NoteBlockType
  */
 object NoteText {
 
-    fun markdown(blocks: List<NoteBlock>, title: String? = null): String = buildString {
+    fun markdown(source: List<NoteBlock>, title: String? = null): String = buildString {
+        // A YouTube transcript is never written out; see NoteBlock.isShareable.
+        val blocks = source.filter { it.isShareable }
         title?.takeIf { it.isNotBlank() }?.let { append("# ").append(it.trim()).append("\n\n") }
         var previous: NoteBlock? = null
         blocks.forEachIndexed { index, b ->
@@ -57,7 +59,7 @@ object NoteText {
 
     /** Plain text, as WhatsApp formats it: *bold*, _italic_, ~strike~, ```code```. */
     fun whatsApp(source: List<NoteBlock>, title: String? = null): String = buildString {
-        val blocks = MarkdownImport.expand(source)
+        val blocks = MarkdownImport.expand(source).filter { it.isShareable }
         title?.takeIf { it.isNotBlank() }?.let { append("*").append(it.trim()).append("*\n\n") }
         blocks.forEachIndexed { index, b ->
             val text = whatsAppInline(b.content)
@@ -100,7 +102,7 @@ object NoteText {
 
     /** HTML for the clipboard, so pasting into Docs, Gmail or Word keeps the formatting. */
     fun html(source: List<NoteBlock>, title: String? = null): String = buildString {
-        val blocks = MarkdownImport.expand(source)
+        val blocks = MarkdownImport.expand(source).filter { it.isShareable }
         title?.takeIf { it.isNotBlank() }?.let { append("<h1>").append(esc(it)).append("</h1>") }
         var openList: String? = null
         fun closeList() { openList?.let { append("</$it>") }; openList = null }
@@ -150,7 +152,7 @@ object NoteText {
     }
 
     /** Plain text: what a search index or a basic paste should see. */
-    fun plain(blocks: List<NoteBlock>, title: String? = null): String = VersionCodec.lines(MarkdownImport.expand(blocks)).let { lines ->
+    fun plain(blocks: List<NoteBlock>, title: String? = null): String = VersionCodec.lines(MarkdownImport.expand(blocks).filter { it.isShareable }).let { lines ->
         (listOfNotNull(title?.takeIf { it.isNotBlank() }) + lines).joinToString("\n")
     }
 

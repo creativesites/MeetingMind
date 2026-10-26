@@ -85,8 +85,12 @@ class GeminiHttpTransport(
             }
 
             coroutineContext.ensureActive()
-            if (request.transcription != null) transcribeContent(route, request, uploaded?.first, uploaded?.second ?: AUDIO_MIME)
-            else generateContent(route, request, uploaded?.first)
+            when {
+                request.transcription != null -> transcribeContent(route, request, uploaded?.first, uploaded?.second ?: AUDIO_MIME)
+                // A YouTube address is read by Google as it is: nothing to upload, and no MIME type to send.
+                request.videoUri != null -> generateContent(route, request, request.videoUri, mime = null)
+                else -> generateContent(route, request, uploaded?.first)
+            }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: java.io.InterruptedIOException) {
@@ -265,13 +269,18 @@ class GeminiHttpTransport(
 
     // ── generateContent ──────────────────────────────────────────────────────────────────────
 
-    private suspend fun generateContent(route: GeminiRoute, request: GeminiRequest, fileUri: String?): AiResult<String> {
+    private suspend fun generateContent(
+        route: GeminiRoute,
+        request: GeminiRequest,
+        fileUri: String?,
+        mime: String? = AUDIO_MIME
+    ): AiResult<String> {
         val parts = JSONArray().put(JSONObject().put("text", buildPrompt(request)))
         if (fileUri != null) {
             parts.put(
                 JSONObject().put(
                     "file_data",
-                    JSONObject().put("mime_type", AUDIO_MIME).put("file_uri", fileUri)
+                    JSONObject().put("file_uri", fileUri).apply { if (mime != null) put("mime_type", mime) }
                 )
             )
         }

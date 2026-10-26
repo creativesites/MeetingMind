@@ -72,6 +72,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.craftflowtechnologies.meetingmind.ai.common.AiResult
+import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
 import com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity
 import com.craftflowtechnologies.meetingmind.core.work.DueDates
 import com.craftflowtechnologies.meetingmind.core.work.Filing
@@ -129,6 +131,18 @@ fun InboxScreen(
     var picking by remember { mutableStateOf<InboxItemEntity?>(null) }
     var inspecting by remember { mutableStateOf<InboxItemEntity?>(null) }
     var activeFilter by remember { mutableStateOf(InboxFilter.ALL) }
+    var condensing by remember { mutableStateOf<String?>(null) }
+
+    fun condense(item: InboxItemEntity) {
+        condensing = item.id
+        scope.launch {
+            val result = viewModel.condenseInboxVideo(item)
+            condensing = null
+            val message = if (result is AiResult.Success) "Saved to Notes: ${result.value.title}"
+            else result.describeFailure() ?: "Couldn't make notes from that video"
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
 
     // The document scanner runs on the device and returns a PDF (and pictures); they land in the Inbox like a share.
     val scanner = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
@@ -236,6 +250,8 @@ fun InboxScreen(
                         { onImportAudio(path) }
                     },
                     onOpenNote = item.meetingId?.let { mid -> { onOpenNote(mid) } },
+                    onCondense = item.takeIf { it.isYouTubeLink() }?.let { video -> { condense(video) } },
+                    busy = condensing == item.id,
                     onInspect = { inspecting = item }
                 )
             }
@@ -272,6 +288,8 @@ fun InboxScreen(
                     onImportAudio(path)
                 }
             },
+            onCondense = item.takeIf { it.isYouTubeLink() }?.let { video -> { condense(video) } },
+            busy = condensing == item.id,
             onOpenNote = item.meetingId?.let { mid ->
                 {
                     inspecting = null
@@ -291,6 +309,8 @@ private fun InboxCard(
     onDismiss: () -> Unit,
     onTranscribe: (() -> Unit)?,
     onOpenNote: (() -> Unit)?,
+    onCondense: (() -> Unit)? = null,
+    busy: Boolean = false,
     onInspect: () -> Unit
 ) {
     val filing = remember(item.proposedJson) { Filing.fromJson(item.proposedJson) }
@@ -409,6 +429,9 @@ private fun InboxCard(
                         color = Accent
                     ) { onTranscribe() }
                 }
+                if (onCondense != null) {
+                    Chip(if (busy) "Making notes…" else "Make notes", selected = false, color = Accent) { if (!busy) onCondense() }
+                }
                 if (onOpenNote != null && item.transcriptionStatus == "COMPLETED") {
                     Chip("View note", selected = false, color = Ink) { onOpenNote() }
                 }
@@ -497,7 +520,9 @@ private fun InboxDetailSheet(
     onConfirm: (Filing) -> Unit,
     onFileTo: () -> Unit,
     onTranscribe: (() -> Unit)?,
-    onOpenNote: (() -> Unit)?
+    onOpenNote: (() -> Unit)?,
+    onCondense: (() -> Unit)? = null,
+    busy: Boolean = false
 ) {
     val context = LocalContext.current
     val filing = remember(item.proposedJson) { Filing.fromJson(item.proposedJson) }
@@ -611,6 +636,9 @@ private fun InboxDetailSheet(
                         color = Accent
                     ) { onTranscribe() }
                 }
+                if (onCondense != null) {
+                    Chip(if (busy) "Making notes…" else "Make notes", selected = false, color = Accent) { if (!busy) onCondense() }
+                }
                 if (onOpenNote != null && item.transcriptionStatus == "COMPLETED") {
                     Chip("View Note", selected = false, color = Ink) { onOpenNote() }
                 }
@@ -618,6 +646,11 @@ private fun InboxDetailSheet(
         }
     }
 }
+
+/** A shared YouTube link that has not been made into notes yet. */
+private fun InboxItemEntity.isYouTubeLink(): Boolean =
+    kind == InboxKind.URL.name && transcriptionStatus != "COMPLETED" &&
+        com.craftflowtechnologies.meetingmind.core.notes.YouTube.idOf(text.orEmpty()) != null
 
 private fun describe(f: Filing): String = when (f.action) {
     FilingAction.NOTE -> "Keep as a note" + (f.targetLabel?.let { " in $it" } ?: "")
