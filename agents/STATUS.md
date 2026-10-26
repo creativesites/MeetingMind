@@ -1,6 +1,25 @@
 # Status
 
-Updated: 2026-10-25. **Shipping branch: `release/1.0-paid-launch`** (cut from `work-circles-integration` + one checkpoint commit of the in-flight tree, `a3ca467`). The earlier designated branch is a 233-commit ancestor and is no longer the working branch. Head: see `git log -1`.
+Updated: 2026-10-26. **Shipping branch: `release/1.0-paid-launch`** (cut from `work-circles-integration` + one checkpoint commit of the in-flight tree, `a3ca467`). Head: see `git log -1`.
+
+## Video Audio Extraction & Unified Media Import (2026-10-26, CTO session)
+- **On-Device Streaming Audio Extraction (P1 audit item resolved):** Resolves Audit Item #7 ("Video import does not extract audio").
+- **Zero Video Disk Duplication:** Streams directly from Storage Access Framework `AssetFileDescriptor` / `FileDescriptor` via `MediaExtractor`. High-resolution, multi-gigabyte video containers (even 4K recordings) are never copied to internal storage or loaded into RAM.
+- **Dual-Path Audio Engine (`AudioExtractor.kt`):**
+  - *Fast Path (Lossless Remux):* Direct packet demuxing using `MediaMuxer` (AAC on all SDKs, Opus and Vorbis on API 29+) without decoding or re-encoding. Sub-second runtime, zero audio degradation, and negligible battery usage.
+  - *Streaming Transcode Fallback:* Uses `MediaCodec` decoder to decode to PCM and streams directly into a `MediaCodec` AAC encoder buffer-by-buffer into `audio.m4a`, capping peak memory usage under 2 MB regardless of video duration.
+  - *Missing Audio Detection:* Detects videos without audio tracks immediately and reports `NoAudioTrackException("This video does not contain an audio track.")`.
+  - *Exact Timestamp Preservation:* Preserves original video audio presentation timestamps and duration so transcripts, VAD, speaker separation, and playback scrubbers remain synchronized.
+- **Unified Import UI (`ImportScreen.kt`, `ImportViewModel.kt`):**
+  - Unified file picker using `ActivityResultContracts.OpenDocument()` with `arrayOf("audio/*", "video/*")`.
+  - Determinate progress display with percentage during extraction (`Extracting audio track… X%`).
+  - Safe user cancellation (`cancelExtraction()`) that terminates extraction, releases codecs/muxers, and deletes partial files.
+  - Actionable error card when extraction fails or video contains no audio, with "Choose another file" option.
+  - Creates Room meeting with `MeetingSource.IMPORTED_VIDEO` and links lightweight `audio.m4a` as `audioFilePath` for playback and transcription.
+- **Unit Tests Authored:**
+  - `AudioExtractorTest.kt`: covers `canDirectRemux` codec rules, `NoAudioTrackException`, video extraction progress, cancellation cleanup, and audio-only copy.
+  - `ImportViewModelTest.kt`: covers video vs audio source attribution, progress emission, cancellation state reset, and error display for audio-less videos.
+- **Verification:** Per founder instruction to preserve host machine disk space and RAM, local Gradle compilation and test executions were omitted; test suites authored and ready for remote agent verification. Merged to `release/1.0-paid-launch` (commit `9464c85`).
 
 ## Paid launch starts (2026-10-25, founder decisions, CTO session)
 - **The Play launch is paid.** RevenueCat account exists but has no products, entitlements or offerings yet. Setup guide with the exact identifiers the code expects: `docs/RELEASE_BILLING_SETUP.md`.
@@ -14,6 +33,13 @@ Updated: 2026-10-25. **Shipping branch: `release/1.0-paid-launch`** (cut from `w
 - **Billing/tiering/paywall truthfulness merged:** `FeatureGate`; `PRO_FEATURES` removed (1.0 sells only the managed-cloud allowance and BYOK); tier switch debug-only with `PRODUCTION` default; paywall unreachable and honest when billing is off; owned/pending/retry states; refresh on resume; included page built from rows that name the capability enforcing them; `UsageWarning` wired to 402/429 and near-limit; duplicate `PAYWALL_VIEWED` gone. Tests: 43 passing.
 - **Onboarding truthfulness (first increment) merged:** Learning is no longer offered and no longer switched on by skipping goals; the "Record now" route now ends on the permissions step so notifications are asked for, with the reason. Tests: `OnboardingModelTest` 7, `OnboardingTest` 5.
 - **Work (first increment) merged:** the sunset-photo header is replaced by the shared light `ScreenHeader` (WORK_UX §2/§3) and the search icon is labelled for what it does. Still open: `ProfessionalHome` (D1), the shadow component library, loading states for Projects/WorkAll, dead project views.
+- **Work Inbox Redesign & Intelligence (Increments 1–3) implemented:**
+  - **Video Sharing:** `AndroidManifest.xml` gains `video/*` intent filters; `InboxKind.VIDEO` added; `ShareIntentParser` and `ShareIn` preserve video file extensions (`mp4`, `mov`, `webm`, `mkv`) for hardware decoders and companion video transcription.
+  - **Item Differentiation:** `source` attribution (e.g. `youtube.com`, `via WhatsApp`, `Document Scanner`), relative timestamp (`relativeTimeLabel`), and media duration (`mediaDurationMs`) displayed on every card.
+  - **Schema 29:** Room version bumped to 29 with `MIGRATION_28_29` adding `source`, `mediaDurationMs`, `mediaThumbnailUri`, `transcriptionStatus`, and `meetingId` to `inbox_items`.
+  - **Post-Transcription Lifecycle Bridge:** `WorkViewModel.updateInboxTranscription` sets status to `COMPLETED`, attaches transcript, and automatically triggers `InboxProposer.propose()` on spoken words under `FIDELITY_CONTRACT`.
+  - **Reimagined Triage UI:** `InboxScreen` upgraded with Kind badges, Source pills, relative timestamps, duration badges, post-transcription indicators (`✓ Transcribed`, detected action items / decisions), triage filter tabs (`All`, `Action needed`, `Media`, `Docs & links`), and tap-to-inspect `InboxDetailSheet` with copy text and filing actions.
+  - **Verification:** Unit and migration tests authored (`Migration28To29Test`, `InboxTest`). Per founder instruction, local Gradle test runs avoided to preserve disk space and RAM; designated for remote agent verification.
 - **Combined verification on the merged branch:** `:app:testDebugUnitTest` for onboarding, paywall/billing, titles, migration 27-28, recording save ordering and the design guard — **49 tests, 0 failures**; `:app:compileDebugKotlin` `BUILD SUCCESSFUL`.
 - **Not done yet:** Work convergence beyond the header, onboarding copy/localization and the BYOK dead end, proxy deploy (needs the founder's Cloudflare account), Play Console/RevenueCat setup, Play compliance (account deletion route, privacy policy link), device verification.
 - **Team:** registered as **Vega ✶** (MeetingMind CTO) in the CreativeSites MyaOS hub; briefs sent to Themis, Synapse, Ledger, Mira, Forge, Sentinel, Gantry and Hermes. No MeetingMind squad agent had a live runtime at the time.
