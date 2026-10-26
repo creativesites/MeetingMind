@@ -1437,15 +1437,13 @@ fun MeetingDetailScreen(
 
     if (showSermonCirclePackSheet) {
         val m = meeting
-        val scriptureRefs = topics.map { it.topic }
-        val points = decisions.map { it.text }
         val questionsList = questions.map { it.text }
         com.craftflowtechnologies.meetingmind.feature.faith.SermonCirclePackSheet(
             sermonTitle = m?.title ?: "Sermon",
-            scriptureVerses = scriptureRefs,
-            keyPoints = points,
+            preacher = null,
+            summaryText = m?.summaryPreview,
+            scriptures = emptyList(),
             discussionQuestions = questionsList,
-            fullSummary = m?.summaryPreview,
             onDismiss = { showSermonCirclePackSheet = false },
             onNavigateCreateCircle = { showSermonCirclePackSheet = false },
             onNavigatePaywall = {
