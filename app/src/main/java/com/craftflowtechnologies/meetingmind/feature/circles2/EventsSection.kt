@@ -23,6 +23,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
 import com.craftflowtechnologies.meetingmind.core.calendar.CalendarExporter
+import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.EventDraft
 import com.craftflowtechnologies.meetingmind.core.circles2.Rsvp
 import com.craftflowtechnologies.meetingmind.core.circles2.RsvpAnswer
