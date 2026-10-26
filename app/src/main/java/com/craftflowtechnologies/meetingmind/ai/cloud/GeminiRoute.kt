@@ -40,11 +40,15 @@ object GeminiRoutes {
      */
     suspend fun resolve(credentials: GeminiCredentialStore, ownBaseUrl: String, managedUrl: String): GeminiRoute? {
         val tierMode = com.craftflowtechnologies.meetingmind.core.billing.TieringModeStore.current(credentials.appContext)
+        // A personal key is a paid BYOK/Pro/Church capability; debug closed testing may use it without a plan.
         val canUseOwnKey = tierMode == com.craftflowtechnologies.meetingmind.core.billing.TieringMode.CLOSED_TESTING ||
-            Billing.gateway.entitlements.value.has(com.craftflowtechnologies.meetingmind.core.billing.Capability.BYOK_KEY)
+            com.craftflowtechnologies.meetingmind.core.billing.FeatureGate.can(
+                com.craftflowtechnologies.meetingmind.core.billing.Capability.BYOK_KEY
+            )
         if (canUseOwnKey) {
             credentials.getUserKey()?.let { return GeminiRoute(ownBaseUrl, it, emptyMap()) }
         }
+        // Managed AI is never gated to paid: free users route here too and the proxy meters their allowance.
         managedBase(managedUrl)?.let { base ->
             val headers = mutableMapOf("X-Install-Id" to InstallId.get(credentials.appContext))
             Billing.gateway.appUserId()?.let { headers["X-RC-User"] = it }

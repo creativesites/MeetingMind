@@ -59,6 +59,8 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -101,11 +103,16 @@ import com.craftflowtechnologies.meetingmind.core.model.DeviceCapabilities
 import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
 import com.craftflowtechnologies.meetingmind.core.setup.SetupGuide
 import com.craftflowtechnologies.meetingmind.core.setup.SetupPart
+import com.craftflowtechnologies.meetingmind.core.i18n.AppLanguage
+import com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager
 import com.craftflowtechnologies.meetingmind.ui.theme.Brand
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** How the person wants the app's AI to run, chosen on the setup step. */
@@ -120,6 +127,18 @@ class OnboardingViewModel(
     constructor(application: Application) : this(application, CompanionSettingsStore(application))
 
     private val prefs = UserPreferencesManager(application)
+
+    val appLanguage: StateFlow<String?> = prefs.preferencesFlow
+        .map { it.appLanguage }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun setAppLanguage(tag: String?) {
+        viewModelScope.launch {
+            // Save first: applying can recreate the activity, which must then read the new value.
+            prefs.setAppLanguage(tag)
+            AppLocaleManager.applyLocale(getApplication(), tag)
+        }
+    }
 
     /** Who keeps the person company (Z-15). Zuri is pre-selected; null is "No companion". Saved on Continue. */
     private val _companion = MutableStateFlow<CompanionForm?>(CompanionForm.ZURI)
@@ -136,12 +155,16 @@ class OnboardingViewModel(
     private val _selectedModel = MutableStateFlow(deviceCapabilities.recommendedAsrModelId)
     val selectedModel: StateFlow<String> = _selectedModel.asStateFlow()
 
+    private val _selectedLlmModel = MutableStateFlow(DeviceCapabilityDetector.recommendedLlmModelId(deviceCapabilities.totalRamGb))
+    val selectedLlmModel: StateFlow<String> = _selectedLlmModel.asStateFlow()
+
     /** What the user typed on the identity step — never pre-filled from the device name, Google
      * account, or any contact data (Phase 15 §5). Staying blank is a valid choice. */
     private val _userName = MutableStateFlow("")
     val userName: StateFlow<String> = _userName.asStateFlow()
 
     fun selectModel(modelId: String) { _selectedModel.value = modelId }
+    fun selectLlmModel(modelId: String) { _selectedLlmModel.value = modelId }
     fun setUserName(name: String) { _userName.value = name }
 
     // Where the person is in the flow. Saved on every move, so a killed app resumes here.
@@ -340,6 +363,7 @@ class OnboardingViewModel(
         viewModelScope.launch {
             companionSettings.setForm(_companion.value)
             prefs.setSelectedAsrModel(_selectedModel.value)
+            prefs.setSelectedLlmModel(_selectedLlmModel.value)
             prefs.setUserName(_userName.value)
             prefs.setSpaces(_spaces.value)
             prefs.setLook(_look.value)
@@ -359,7 +383,11 @@ class OnboardingViewModel(
             when (_setup.value) {
                 SetupChoice.OFFLINE_PACK -> runCatching {
                     val app = getApplication<Application>()
-                    SetupGuide.downloadMissing(app, SetupGuide.observe(app).first(), _wifiOnly.value)
+                    val wifi = _wifiOnly.value
+                    com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker.enqueue(app, com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.sileroVad.id, wifi)
+                    com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker.enqueue(app, _selectedModel.value, wifi)
+                    com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker.enqueue(app, _selectedLlmModel.value, wifi)
+                    com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelDownloadWorker.enqueue(app, com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.speakerDiarization.id, wifi)
                 }
                 SetupChoice.INTERNET -> {
                     prefs.setProcessingProfile(ProcessingProfile.INTERNET)
@@ -422,7 +450,47 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
             .background(Brush.radialGradient(listOf(Brand.Cyan.copy(alpha = 0.14f), Color.Transparent)), CircleShape))
 
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-            if (step != OnboardingStep.WELCOME) {
+            if (step == OnboardingStep.WELCOME) {
+                var showLanguagePicker by rememberSaveable { mutableStateOf(false) }
+                val currentLanguageTag by viewModel.appLanguage.collectAsState()
+                val activeLang = AppLanguage.fromTag(currentLanguageTag)
+                val displayLabel = activeLang?.nativeName ?: stringResource(R.string.settings_language_follow_system)
+
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.White.copy(alpha = 0.12f))
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(50))
+                            .clickable { showLanguagePicker = true }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "🌐 $displayLabel ▾",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                if (showLanguagePicker) {
+                    OnboardingLanguageDialog(
+                        currentTag = currentLanguageTag,
+                        onSelect = { tag ->
+                            viewModel.setAppLanguage(tag)
+                            showLanguagePicker = false
+                        },
+                        onDismiss = { showLanguagePicker = false }
+                    )
+                }
+            } else {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     repeat((steps.size - 1).coerceAtLeast(1)) { i ->
                         Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp))
@@ -469,25 +537,25 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onFinishOnboarding: () -> U
             }
             if (step == OnboardingStep.WELCOME) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    GradientButton("Explore a sample", "onboarding_next_btn", Modifier.fillMaxWidth()) { forward = true; viewModel.startSample() }
+                    GradientButton(stringResource(R.string.onboarding_button_explore_sample), "onboarding_next_btn", Modifier.fillMaxWidth()) { forward = true; viewModel.startSample() }
                     Text(
-                        "Record something now", color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        stringResource(R.string.onboarding_button_record_now), color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).clickable { forward = true; viewModel.startRecordNow() }.padding(horizontal = 16.dp, vertical = 12.dp).testTag("onboarding_record_now_btn")
                     )
                 }
             } else {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Back", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { back() }.padding(vertical = 12.dp, horizontal = 4.dp).testTag("onboarding_back_btn"))
+                    Text(stringResource(R.string.action_back), color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { back() }.padding(vertical = 12.dp, horizontal = 4.dp).testTag("onboarding_back_btn"))
                     Spacer(Modifier.weight(1f))
                     val last = index >= steps.lastIndex
                     GradientButton(
                         when {
-                            step == OnboardingStep.SAMPLE -> "Make it mine"
-                            step == OnboardingStep.BIBLE -> if (bible == null) "Skip for now" else "Download and continue"
-                            step == OnboardingStep.PLAN -> if (readingTouched) "Continue" else "Skip for now"
-                            last && route == EntryRoute.RECORD -> "Start recording"
-                            last -> "Start using MeetingMind"
-                            else -> "Continue"
+                            step == OnboardingStep.SAMPLE -> stringResource(R.string.onboarding_button_make_it_mine)
+                            step == OnboardingStep.BIBLE -> if (bible == null) stringResource(R.string.onboarding_button_skip_for_now) else "Download and continue"
+                            step == OnboardingStep.PLAN -> if (readingTouched) stringResource(R.string.onboarding_button_continue) else stringResource(R.string.onboarding_button_skip_for_now)
+                            last && route == EntryRoute.RECORD -> stringResource(R.string.onboarding_button_start_recording)
+                            last -> stringResource(R.string.onboarding_button_start_using)
+                            else -> stringResource(R.string.onboarding_button_continue)
                         },
                         "onboarding_next_btn"
                     ) { next() }
@@ -575,9 +643,9 @@ private fun Welcome() {
             com.craftflowtechnologies.meetingmind.core.ui.AppIconTile(size = 104.dp)
         }
         Text("MeetingMind", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 4.dp))
-        Text("Your thoughts deserve to be remembered.", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 32.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
+        Text(stringResource(R.string.onboarding_headline), color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 32.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
         Text(
-            "Turn conversations, ideas and lessons into knowledge you can return to.",
+            stringResource(R.string.onboarding_body),
             color = Color.White.copy(alpha = 0.72f), fontSize = 15.sp, lineHeight = 21.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp)
         )
         // Wraps to a second line on narrow screens instead of squeezing a pill into a column of letters.
@@ -586,9 +654,131 @@ private fun Welcome() {
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Pill(Icons.Filled.Lock, "Private by choice", "welcome_pill_private")
-            Pill(Icons.Filled.PhoneAndroid, "Offline option", "welcome_pill_offline")
-            Pill(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, "AI notes", "welcome_pill_ai")
+            Pill(Icons.Filled.Lock, stringResource(R.string.onboarding_pill_private), "welcome_pill_private")
+            Pill(Icons.Filled.PhoneAndroid, stringResource(R.string.onboarding_pill_offline), "welcome_pill_offline")
+            Pill(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, stringResource(R.string.onboarding_pill_ai), "welcome_pill_ai")
+        }
+    }
+}
+
+@Composable
+private fun OnboardingLanguageDialog(
+    currentTag: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(SurfaceBase)
+                .padding(20.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.settings_language_title),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = com.craftflowtechnologies.meetingmind.ui.theme.Ink
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.settings_language_asr_notice),
+                fontSize = 12.5.sp,
+                color = com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary,
+                lineHeight = 17.sp
+            )
+            Spacer(Modifier.height(14.dp))
+
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // System default option
+                val isDefault = currentTag.isNullOrBlank()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isDefault) com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised else Color.Transparent)
+                        .clickable { onSelect(null) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_language_follow_system),
+                            fontSize = 15.sp,
+                            fontWeight = if (isDefault) FontWeight.SemiBold else FontWeight.Normal,
+                            color = com.craftflowtechnologies.meetingmind.ui.theme.Ink
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_language_follow_system_summary),
+                            fontSize = 12.sp,
+                            color = com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
+                        )
+                    }
+                    if (isDefault) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                AppLanguage.SUPPORTED.forEach { lang ->
+                    val isSelected = !isDefault && currentTag.equals(lang.tag, ignoreCase = true)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) com.craftflowtechnologies.meetingmind.ui.theme.SurfaceRaised else Color.Transparent)
+                            .clickable { onSelect(lang.tag) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = lang.nativeName,
+                                fontSize = 15.sp,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = com.craftflowtechnologies.meetingmind.ui.theme.Ink
+                            )
+                            Text(
+                                text = lang.englishName,
+                                fontSize = 12.sp,
+                                color = com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
+                            )
+                        }
+                        if (isSelected) {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                androidx.compose.material3.TextButton(onClick = onDismiss) {
+                    Text(
+                        stringResource(R.string.action_done),
+                        color = com.craftflowtechnologies.meetingmind.ui.theme.Accent,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
         }
     }
 }
@@ -634,24 +824,155 @@ private fun SetupStep(vm: OnboardingViewModel, choice: SetupChoice, onChoice: (S
             }
         }
     }
+    val selectedAsr by vm.selectedModel.collectAsState()
+    val selectedLlm by vm.selectedLlmModel.collectAsState()
+    var showCustomModels by remember { mutableStateOf(false) }
+    val asrModel = remember(selectedAsr) { com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.entries.find { it.id == selectedAsr } ?: com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8 }
+    val llmModel = remember(selectedLlm) { com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.entries.find { it.id == selectedLlm } ?: com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.qwen25_1_5bInstruct }
+    val totalOfflineBytes = remember(asrModel, llmModel) {
+        asrModel.sizeBytes + llmModel.sizeBytes + com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.sileroVad.sizeBytes + com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.speakerDiarization.sizeBytes
+    }
+
     ChoiceCard(
         selected = choice == SetupChoice.OFFLINE_PACK, onClick = { onChoice(SetupChoice.OFFLINE_PACK) },
         icon = Icons.Filled.PhoneAndroid, title = "Offline pack", badge = "Most private",
-        line = "Everything stays on the phone. Three pieces, one download (${SetupGuide.formatBytes(vm.packBytes)}) that keeps going in the background.",
+        line = "Everything stays on the phone. One download (${SetupGuide.formatBytes(totalOfflineBytes)}) that keeps going in the background.",
         tag = "setup_choice_offline"
     ) {
-        Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            vm.pack.forEach { (part, models) ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+        Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("Speech recognition: ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(asrModel.name, color = Color.White.copy(alpha = 0.7f), fontSize = 12.5.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                Text(SetupGuide.formatBytes(asrModel.sizeBytes), color = Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("AI Summaries: ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(llmModel.name, color = Color.White.copy(alpha = 0.7f), fontSize = 12.5.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                Text(SetupGuide.formatBytes(llmModel.sizeBytes), color = Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("Voice & Speakers: ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("VAD & Diarization", color = Color.White.copy(alpha = 0.7f), fontSize = 12.5.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                Text(SetupGuide.formatBytes(com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.sileroVad.sizeBytes + com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.speakerDiarization.sizeBytes), color = Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp)
+            }
+
+            // Custom models accordion toggle
+            Text(
+                if (showCustomModels) "▲ Hide model options" else "▼ Choose specific models (languages, sizes & RAM)",
+                color = Brand.Cyan,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(vertical = 4.dp).clickable { showCustomModels = !showCustomModels }
+            )
+
+            if (showCustomModels) {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .background(SurfaceBase.copy(alpha = 0.08f)).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("Choose Speech-to-Text Model", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+
+                    val asrChoices = listOf(
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.omnilingualAsr300mInt8,
+                            "Meta Omnilingual 300M (African Languages)",
+                            "Best for Shona, Ndebele, Bemba, Nyanja, Tonga, Lozi, Zulu, Swahili, etc. · 365 MB · Runs smoothly on all phones"
+                        ),
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.omnilingualAsr1bInt8,
+                            "Meta Omnilingual 1B (High Accuracy)",
+                            "1B parameter model with lowest error rate for African languages · 1.03 GB · Needs 6 GB RAM"
+                        ),
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.parakeetTdtV3Int8,
+                            "Parakeet TDT 0.6B (English & European)",
+                            "Fastest on-device model for English and 24 European languages · 652 MB · Needs 4 GB RAM"
+                        ),
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.whisperTurboInt8,
+                            "Whisper Turbo (Fast Multilingual)",
+                            "809M parameter multilingual model with word-level timestamps · 1.04 GB · Needs 4 GB RAM"
+                        ),
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.whisperLargeV3Int8,
+                            "Whisper Large v3 (Full Precision)",
+                            "State-of-the-art 1.5B multilingual Whisper model · 1.78 GB · Needs 6 GB RAM"
+                        )
+                    )
+
+                    asrChoices.forEach { (model, title, desc) ->
+                        val isSelected = selectedAsr == model.id
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) SurfaceBase.copy(alpha = 0.12f) else Color.Transparent)
+                                .clickable { vm.selectModel(model.id) }.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = { vm.selectModel(model.id) },
+                                colors = RadioButtonDefaults.colors(selectedColor = Brand.Cyan)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(title, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text(desc, color = Color.White.copy(alpha = 0.6f), fontSize = 11.5.sp, lineHeight = 15.sp)
+                            }
+                        }
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Text("${part.title}: ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text(part.job.removeSuffix("."), color = Color.White.copy(alpha = 0.65f), fontSize = 12.5.sp, maxLines = 1, modifier = Modifier.weight(1f))
-                    Text(SetupGuide.formatBytes(models.sumOf { it.sizeBytes }), color = Color.White.copy(alpha = 0.45f), fontSize = 11.5.sp)
+
+                    Spacer(Modifier.height(4.dp))
+                    Text("Choose AI Meeting Intelligence Model", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+
+                    val llmChoices = listOf(
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.qwen25_1_5bInstruct,
+                            "Qwen2.5 1.5B Instruct (Recommended)",
+                            "4096-token context for comprehensive summaries, decisions & action items · 1.6 GB · Needs 4.5 GB RAM"
+                        ),
+                        Triple(
+                            com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog.qwen25_0_5bInstruct,
+                            "Qwen2.5 0.5B Instruct (Lightweight)",
+                            "Fast, efficient on phones with lower memory (<4 GB RAM) · 546 MB · Needs 3 GB RAM"
+                        )
+                    )
+
+                    llmChoices.forEach { (model, title, desc) ->
+                        val isSelected = selectedLlm == model.id
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) SurfaceBase.copy(alpha = 0.12f) else Color.Transparent)
+                                .clickable { vm.selectLlmModel(model.id) }.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = { vm.selectLlmModel(model.id) },
+                                colors = RadioButtonDefaults.colors(selectedColor = Brand.Cyan)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(title, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text(desc, color = Color.White.copy(alpha = 0.6f), fontSize = 11.5.sp, lineHeight = 15.sp)
+                            }
+                        }
+                    }
                 }
             }
+
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Wait for Wi-Fi", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(checked = wifiOnly, onCheckedChange = onWifiOnly, colors = SwitchDefaults.colors(checkedTrackColor = Brand.Indigo))

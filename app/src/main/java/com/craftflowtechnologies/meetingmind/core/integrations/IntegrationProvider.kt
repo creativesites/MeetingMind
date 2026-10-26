@@ -52,6 +52,10 @@ interface IntegrationProvider {
     /** Description of the data scope accessed by this provider (e.g., "Known people and domains only"). */
     val accountScope: String?
 
+    /** Optional subscription capability required to connect or use this provider. Null means free. */
+    val requiredPlanCapability: com.craftflowtechnologies.meetingmind.core.billing.Capability?
+        get() = null
+
     /** Optional privacy/safety caution message. */
     val privacyNotice: String?
         get() = null

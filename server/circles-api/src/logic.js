@@ -2,18 +2,31 @@
 import { ApiError } from "./errors.js";
 
 export const LIMITS = { membersPerCircle: 50, circlesPerUser: 10, bodyMax: 4000, commentMax: 2000, nameMax: 60, descriptionMax: 300, maxTokensPerUser: 5, maxUpdates: 50 };
-// "note" is the free-form post. Every circle allows it, so it is not in any template or allowedTypes list.
-export const POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement", "note"];
-export const REACTIONS = ["praying", "amen", "heart", "celebrate"];
+// Post types for Faith and Work verticals. "note" is the universal free-form post.
+export const FAITH_POST_TYPES = ["prayer", "testimony", "achievement", "study", "encouragement", "reading", "announcement", "note", "devotional"];
+export const WORK_POST_TYPES = ["task", "decision", "brief", "standup", "blocker", "announcement", "note"];
+export const POST_TYPES = [...new Set([...FAITH_POST_TYPES, ...WORK_POST_TYPES])];
+
+export const FAITH_REACTIONS = ["praying", "amen", "heart", "celebrate"];
+export const WORK_REACTIONS = ["ack", "approved", "priority", "reviewing", "win"];
+export const REACTIONS = [...new Set([...FAITH_REACTIONS, ...WORK_REACTIONS])];
+
 const ALL = POST_TYPES;
 export const TEMPLATES = {
-  small_group: ["prayer", "testimony", "study", "encouragement"],
-  prayer_partners: ["prayer", "encouragement"],
-  bible_study: ["study", "reading", "prayer"],
-  family: ["prayer", "testimony", "encouragement", "achievement"],
-  youth: ALL,
-  ministry_team: ["prayer", "announcement", "study"],
-  custom: ["prayer", "testimony", "encouragement"],
+  // Faith templates
+  small_group: ["prayer", "testimony", "study", "encouragement", "devotional"],
+  prayer_partners: ["prayer", "encouragement", "devotional"],
+  bible_study: ["study", "reading", "prayer", "devotional"],
+  family: ["prayer", "testimony", "encouragement", "achievement", "devotional"],
+  youth: FAITH_POST_TYPES,
+  ministry_team: ["prayer", "announcement", "study", "devotional"],
+  custom: ["prayer", "testimony", "encouragement", "devotional"],
+  // Work templates
+  project_team: ["task", "decision", "brief", "standup", "announcement", "note"],
+  client_engagement: ["decision", "brief", "task", "announcement", "note"],
+  exec_board: ["decision", "brief", "announcement", "note"],
+  department: ["announcement", "standup", "task", "decision", "note"],
+  custom_work: ["task", "decision", "brief", "standup", "announcement", "note"],
 };
 
 const bad = (code, msg) => new ApiError(400, code, msg);
@@ -39,12 +52,22 @@ export function cleanVerseRef(v) {
 }
 
 // ---- settings ----
-export function normalizeSettings(input, template) {
+export function normalizeSettings(input, template, space = "faith") {
   const s = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const tpl = TEMPLATES[template];
   if (!tpl) throw bad("bad_request", "Unknown template");
+  const isWork = space === "work" || s.space === "work";
+  const defaultReactions = isWork ? [...WORK_REACTIONS] : [...FAITH_REACTIONS];
   // joinApproval defaults off so circles that exist today keep joining as they do.
-  const out = { allowedTypes: [...tpl], whoCanInvite: "admins", prayerApproval: true, joinApproval: false, reactions: [...REACTIONS], guidelines: "" };
+  const out = {
+    allowedTypes: [...tpl],
+    whoCanInvite: "admins",
+    prayerApproval: isWork ? false : true,
+    joinApproval: false,
+    reactions: defaultReactions,
+    guidelines: "",
+    space: isWork ? "work" : "faith"
+  };
   if (s.allowedTypes !== undefined) {
     if (!Array.isArray(s.allowedTypes) || s.allowedTypes.length === 0 || s.allowedTypes.some((t) => !POST_TYPES.includes(t))) throw bad("bad_request", "Invalid post types");
     out.allowedTypes = [...new Set(s.allowedTypes)];
@@ -70,18 +93,22 @@ export function normalizeSettings(input, template) {
 }
 
 // ---- invite codes ----
-export const CODE_WORDS = ["GRACE", "FAITH", "HOPE", "LIGHT", "PEACE", "JOY", "AMEN", "MERCY", "TRUST", "PRAISE", "SHEPHERD", "COVENANT", "ANCHOR", "BEACON", "CEDAR", "DOVE", "EMBER", "FIELD", "GARDEN", "HARVEST", "OLIVE", "RIVER", "ROCK", "SPRING", "STAR", "VINE", "WILLOW", "WINGS", "LAMP", "PATH", "SALT", "SEED"];
+export const FAITH_CODE_WORDS = ["GRACE", "FAITH", "HOPE", "LIGHT", "PEACE", "JOY", "AMEN", "MERCY", "TRUST", "PRAISE", "SHEPHERD", "COVENANT", "ANCHOR", "BEACON", "CEDAR", "DOVE", "EMBER", "FIELD", "GARDEN", "HARVEST", "OLIVE", "RIVER", "ROCK", "SPRING", "STAR", "VINE", "WILLOW", "WINGS", "LAMP", "PATH", "SALT", "SEED"];
+export const WORK_CODE_WORDS = ["SPRINT", "FOCUS", "LAUNCH", "ALIGN", "IMPACT", "STRIDE", "TALENT", "VISION", "TARGET", "MATRIX", "NEXUS", "VECTOR", "DELTA", "APEX", "SUMMIT", "PULSE", "BRIDGE", "PIVOT", "THRIVE", "FORGE", "CLIMB", "SCALE", "DRIVE", "RESOLVE", "QUEST", "SYNC", "PRISM", "SIGNAL", "CHORD", "SYNERGY"];
+export const CODE_WORDS = FAITH_CODE_WORDS;
+export const ALL_CODE_WORDS = [...new Set([...FAITH_CODE_WORDS, ...WORK_CODE_WORDS])];
 // No vowels (no accidental words), no 0/1/I/L/O lookalikes.
 export const CODE_ALPHABET = "23456789BCDFGHJKMNPQRSTVWXZ";
 
-export function generateCode(randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n))) {
+export function generateCode(randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n)), space = "faith") {
   const pick = (max) => { // rejection sampling: no modulo bias
     const lim = 256 - (256 % max);
     for (;;) { const b = randomBytes(1)[0]; if (b < lim) return b % max; }
   };
+  const words = space === "work" ? WORK_CODE_WORDS : FAITH_CODE_WORDS;
   let suffix = "";
   for (let i = 0; i < 4; i++) suffix += CODE_ALPHABET[pick(CODE_ALPHABET.length)];
-  return `${CODE_WORDS[pick(CODE_WORDS.length)]}-${suffix}`;
+  return `${words[pick(words.length)]}-${suffix}`;
 }
 
 /** Pull candidate codes out of whatever was pasted (whole share message, URL, lowercase...). */
@@ -91,7 +118,7 @@ export function extractCodes(text, max = 3) {
   const found = [];
   for (const m of text.slice(0, 2000).matchAll(re)) {
     const code = `${m[1]}-${m[2]}`.toUpperCase();
-    if (!CODE_WORDS.includes(m[1].toUpperCase())) continue;
+    if (!ALL_CODE_WORDS.includes(m[1].toUpperCase())) continue;
     if (!found.includes(code)) found.push(code);
     if (found.length >= max) break;
   }
@@ -148,11 +175,21 @@ export const rateExceeded = (count, limit) => count >= limit;
 // ---- post shaping ----
 export const hourFloor = (d) => new Date(Math.floor(d.getTime() / 3_600_000) * 3_600_000);
 
+export function cleanPostMeta(meta) {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+  const out = {};
+  if (typeof meta.sourceKind === "string") out.sourceKind = meta.sourceKind.slice(0, 32);
+  if (typeof meta.sourceId === "string") out.sourceId = meta.sourceId.slice(0, 64);
+  if (typeof meta.assigneeName === "string") out.assigneeName = meta.assigneeName.slice(0, 60);
+  if (typeof meta.dueText === "string") out.dueText = meta.dueText.slice(0, 40);
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /**
  * Decide where a new post goes and build every doc. The returned `post`/`pending` docs NEVER contain
  * the author's uid or name when anonymous; the uid lives only in `authorDoc` (postAuthors/{id}).
  */
-export function shapePost({ type, body, verseRef, anonymous, uid, authorName, settings, now }) {
+export function shapePost({ type, body, verseRef, anonymous, uid, authorName, settings, now, meta }) {
   if (!POST_TYPES.includes(type)) throw bad("bad_request", "Unknown post type");
   if (type !== "note" && !settings.allowedTypes.includes(type)) throw new ApiError(403, "type_not_allowed", "This circle doesn't use that kind of post.");
   if (typeof anonymous !== "boolean") throw bad("bad_request", "anonymous must be true or false");
@@ -166,6 +203,8 @@ export function shapePost({ type, body, verseRef, anonymous, uid, authorName, se
     createdAt: anonymous ? hourFloor(now) : now, editedAt: null,
   };
   const post = { ...base };
+  const cleanMeta = cleanPostMeta(meta);
+  if (cleanMeta) post.meta = cleanMeta;
   if (!anonymous) { post.authorUid = uid; post.authorName = authorName; }
   const authorDoc = { authorUid: uid, anonymous, authorName: anonymous ? null : authorName, createdAt: now };
   return { pending, post, authorDoc };

@@ -54,12 +54,41 @@ class SupportedLanguagesTest {
     }
 
     @Test
-    fun `English resolves to Parakeet TDT V3`() {
+    fun `English and European languages resolve to Parakeet TDT V3`() {
         assertFalse(SupportedLanguages.isAfricanLanguage(SupportedLanguages.ENGLISH))
         assertEquals(
             ModelCatalog.parakeetTdtV3Int8.id,
             SupportedLanguages.defaultModelIdForLanguage(SupportedLanguages.ENGLISH)
         )
+        assertEquals(
+            ModelCatalog.parakeetTdtV3Int8.id,
+            SupportedLanguages.defaultModelIdForLanguage(SupportedLanguages.SPANISH)
+        )
+        assertEquals(
+            ModelCatalog.parakeetTdtV3Int8.id,
+            SupportedLanguages.defaultModelIdForLanguage(SupportedLanguages.FRENCH)
+        )
+    }
+
+    @Test
+    fun `Asian and Arabic languages resolve to Whisper Turbo`() {
+        val whisperLangs = listOf(
+            SupportedLanguages.JAPANESE,
+            SupportedLanguages.KOREAN,
+            SupportedLanguages.MANDARIN,
+            SupportedLanguages.HINDI,
+            SupportedLanguages.ARABIC,
+            SupportedLanguages.INDONESIAN,
+            SupportedLanguages.VIETNAMESE
+        )
+        for (lang in whisperLangs) {
+            assertTrue("Expected $lang to be Whisper preferred", SupportedLanguages.isWhisperPreferredLanguage(lang))
+            assertEquals(
+                "Expected $lang to resolve to Whisper Turbo",
+                ModelCatalog.whisperTurboInt8.id,
+                SupportedLanguages.defaultModelIdForLanguage(lang)
+            )
+        }
     }
 
     @Test
@@ -69,5 +98,9 @@ class SupportedLanguagesTest {
         assertEquals("Bemba (iciBemba)", SupportedLanguages.displayName("bem"))
         assertEquals("Nyanja / Chichewa", SupportedLanguages.displayName("nya"))
         assertEquals("English", SupportedLanguages.displayName("en"))
+        assertEquals("Spanish (Español)", SupportedLanguages.displayName("es"))
+        assertEquals("French (Français)", SupportedLanguages.displayName("fr"))
+        assertEquals("Japanese (日本語)", SupportedLanguages.displayName("ja"))
+        assertEquals("Arabic (العربية)", SupportedLanguages.displayName("ar"))
     }
 }

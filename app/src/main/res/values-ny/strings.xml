@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Navigation -->
+    <string name="nav_today">Lero</string>
+    <string name="nav_notes">Notes</string>
+    <string name="nav_circles">Circles</string>
+    <string name="nav_faith">Chikhulupiriro</string>
+    <string name="nav_work">Nchito</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Common Actions & Feedback -->
+    <string name="action_save">Sungani</string>
+    <string name="action_cancel">Letsani</string>
+    <string name="action_done">Zatheka</string>
+    <string name="action_delete">Fufutani</string>
+    <string name="action_edit">Sinthani</string>
+    <string name="action_back">Bwererani</string>
+    <string name="action_close">Tsekani</string>
+    <string name="action_share">Gawiriranani</string>
+    <string name="action_copy">Koperani</string>
+    <string name="action_retry">Yesaninso</string>
+    <string name="action_search">Fufuzani</string>
+    <string name="action_confirm">Tsimikizani</string>
+    <string name="action_apply">Gwiritsani nchito</string>
+    <string name="action_remove">Chotsani</string>
+    <string name="action_dismiss">Lekani</string>
+    <string name="state_loading">Kutsegula…</string>
+    <string name="state_empty">Palibe kanthu pano</string>
+    <string name="state_error">Zalakwika pang\'ono</string>
+
+    <!-- Language Selection (Settings) -->
+    <string name="settings_language_title">Chilankhulo</string>
+    <string name="settings_language_description">Sankhani chilankhulo cha mu MeetingMind. Zokamba ndi Baibulo zikhoza kukhala pa zilankhulo zina payokha.</string>
+    <string name="settings_language_follow_system">Tsatirani chilankhulo cha phone</string>
+    <string name="settings_language_follow_system_summary">Default (kutsatira settings za phone)</string>
+    <string name="settings_language_all_header">ZILANKHULO ZONSE</string>
+    <string name="settings_language_asr_notice">Chilankhulo cha ma menu ndi chosiyana ndi chilankhulo chojambulira mawu.</string>
+
+    <!-- Recording & Transcription -->
+    <string name="recording_button_record">Record</string>
+    <string name="recording_button_pause">Pause</string>
+    <string name="recording_button_resume">Pitirizani</string>
+    <string name="recording_button_finish">Zatheka</string>
+    <string name="recording_button_discard">Tayani</string>
+    <string name="recording_status_recording">Kujambula…</string>
+    <string name="recording_status_paused">Pa pause</string>
+    <string name="recording_status_processing">Kukonza mawu…</string>
+    <string name="recording_ready_title">Note yanu yakonzeka</string>
+    <string name="recording_empty_prompt">Dinani pa Record kuti muyambe kusunga zokambirana, maganizo, kapena maulaliki.</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_headline">Maganizo anu ndi ofunika kuwasunga.</string>
+    <string name="onboarding_body">Sinthani zokambirana, mfundo ndi maphunziro kukhala nzeru zomwe mungabwererepo nthawi iliyonse.</string>
+    <string name="onboarding_pill_private">Private pa inu nokha</string>
+    <string name="onboarding_pill_offline">Option yopanda internet</string>
+    <string name="onboarding_pill_ai">Ma notes a AI</string>
+    <string name="onboarding_button_get_started">Yambani</string>
+    <string name="onboarding_button_continue">Pitirizani</string>
+    <string name="onboarding_button_skip">Dumphani</string>
+    <string name="onboarding_button_explore_sample">Onani chitsanzo</string>
+    <string name="onboarding_button_record_now">Jambulani tsopano</string>
+    <string name="onboarding_button_make_it_mine">Ikhale yanga</string>
+    <string name="onboarding_button_skip_for_now">Dumphani pakadali pano</string>
+    <string name="onboarding_button_start_using">Yambani kugwiritsa nchito MeetingMind</string>
+    <string name="onboarding_button_start_recording">Yambani kujambula</string>
+    <string name="onboarding_language_selector_hint">Chilankhulo cha app</string>
+
+    <!-- Notes & Search -->
+    <string name="notes_screen_title">Notes</string>
+    <string name="notes_search_hint">Fufuzani ma notes, ma transcript, ndi ma tag…</string>
+    <string name="notes_empty_state_title">Palibe ma notes pano</string>
+    <string name="notes_filter_all">Zonse</string>
+    <string name="notes_filter_meetings">Meetings</string>
+    <string name="notes_filter_sermons">Maulaliki</string>
+    <string name="notes_filter_ideas">Maganizo</string>
+    <string name="notes_tab_summary">Summary</string>
+    <string name="notes_tab_transcript">Transcript</string>
+    <string name="notes_tab_actions">Zochita</string>
+    <string name="notes_menu_export">Export</string>
+    <string name="notes_menu_archive">Archive</string>
+
+    <!-- Faith & Devotional -->
+    <string name="faith_screen_title">Chikhulupiriro</string>
+    <string name="faith_tab_today">Lero</string>
+    <string name="faith_tab_plans">Mapulani</string>
+    <string name="faith_tab_prayer">Pemphero</string>
+    <string name="faith_tab_bible">Baibulo</string>
+    <string name="faith_daily_devotional_title">Madyerero a tsiku ndi tsiku</string>
+    <string name="faith_verse_of_day_title">Vesi la lero</string>
+    <string name="faith_prayer_list_title">Mndandanda wa mapemphero</string>
+    <string name="faith_add_prayer_prompt">Onjezani pempho la pemphero</string>
+    <string name="faith_evening_reflection_title">Kulingalira kwa madzulo</string>
+
+    <!-- Circles -->
+    <string name="circles_screen_title">Circles</string>
+    <string name="circles_tab_feed">Feed</string>
+    <string name="circles_tab_chat">Chat</string>
+    <string name="circles_tab_members">Mamembala</string>
+    <string name="circles_action_new_circle">Circle Yatsopano</string>
+    <string name="circles_action_share_story">Gawirani mu Circle</string>
+    <string name="circles_action_comment">Comment</string>
+    <string name="circles_action_like">Like</string>
+
+    <!-- Work & Tasks -->
+    <string name="work_screen_title">Nchito</string>
+    <string name="work_tab_tasks">Ma Tasks</string>
+    <string name="work_tab_projects">Ma Projects</string>
+    <string name="work_tab_review">Review ya sabata</string>
+    <string name="work_action_new_task">Task yatsopano</string>
+    <string name="work_filter_due_today">Zofunika lero</string>
+
+    <!-- Offline Models & Storage -->
+    <string name="models_screen_title">AI ndi ma model a offline</string>
+    <string name="models_asr_whisper_title">Kuzindikira mawu (Whisper)</string>
+    <string name="models_action_download">Download</string>
+    <string name="models_status_downloading">Kutsitsa…</string>
+    <string name="models_status_ready">Yatsitsidwa ndipo yakonzeka</string>
+    <string name="models_setting_wifi_only">Download pa Wi-Fi yokha</string>
+    <string name="models_storage_used_label">Malo ogwiritsidwa nchito</string>
+
+    <!-- Subscription & Billing / Paywall -->
+    <string name="paywall_screen_title">Tsegulani MeetingMind Yonse</string>
+    <string name="paywall_tagline">Sankhani plan yomwe ikukomerani pa nchito ndi mapemphero anu.</string>
+    <string name="paywall_action_restore">Bwezeretsani zolowera kale</string>
+    <string name="paywall_action_upgrade">Kwezani plan</string>
+    <string name="paywall_tier_annual">Pachaka</string>
+    <string name="paywall_tier_monthly">Pamwezi</string>
+</resources>

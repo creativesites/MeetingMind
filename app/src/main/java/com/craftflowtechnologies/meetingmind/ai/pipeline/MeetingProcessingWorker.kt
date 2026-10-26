@@ -42,6 +42,7 @@ class MeetingProcessingWorker(
         )
         val durationMs = inputData.getLong(KEY_DURATION_MS, 0L)
         val modelId = inputData.getString(KEY_MODEL_ID) ?: ModelCatalog.parakeetTdtV3Int8.id
+        val language = inputData.getString(KEY_LANGUAGE)
         val llmModelId = inputData.getString(KEY_LLM_MODEL_ID)
         val expectedSpeakerCount = inputData.getInt(KEY_EXPECTED_SPEAKER_COUNT, -1).takeIf { it > 0 }
         val recordingTitle = inputData.getString(KEY_RECORDING_TITLE) ?: "recording"
@@ -85,6 +86,7 @@ class MeetingProcessingWorker(
                 audioFile = File(audioPath),
                 totalDurationMs = durationMs,
                 modelId = modelId,
+                language = language,
                 expectedSpeakerCount = expectedSpeakerCount,
                 llmModelId = llmModelId,
                 cleanupMode = cleanupMode,
@@ -290,6 +292,7 @@ class MeetingProcessingWorker(
         const val KEY_RECORDING_TITLE = "recordingTitle"
         const val KEY_CLEANUP_MODE = "cleanupMode"
         const val KEY_DIARIZATION_STRATEGY = "diarizationStrategy"
+        const val KEY_LANGUAGE = "language"
 
         const val KEY_PROGRESS_STEP = "step"
         const val KEY_PROGRESS_PERCENT = "percent"

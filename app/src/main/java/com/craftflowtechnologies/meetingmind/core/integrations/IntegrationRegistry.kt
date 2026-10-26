@@ -79,6 +79,34 @@ class IntegrationRegistry(
         enabledChecker = { MicrosoftEmailProvider.ID in snapshot.value.enabledProviderIds }
     )
 
+    private val credentialStore = IntegrationCredentialStore(context)
+
+    private val todoist = TodoistTaskProvider(credentialStore).apply {
+        isEnabled = TodoistTaskProvider.ID in snapshot.value.enabledProviderIds
+    }
+    private val github = GitHubIssueProvider(credentialStore).apply {
+        isEnabled = GitHubIssueProvider.ID in snapshot.value.enabledProviderIds
+    }
+    private val linear = LinearIssueProvider(credentialStore).apply {
+        isEnabled = LinearIssueProvider.ID in snapshot.value.enabledProviderIds
+    }
+    private val slack = WebhookChannel(
+        id = WebhookChannel.SLACK_ID,
+        name = "Slack Webhook",
+        credentialStore = credentialStore,
+        channelKind = WebhookChannel.WebhookKind.SLACK
+    ).apply {
+        isEnabled = WebhookChannel.SLACK_ID in snapshot.value.enabledProviderIds
+    }
+    private val teams = WebhookChannel(
+        id = WebhookChannel.TEAMS_ID,
+        name = "Microsoft Teams",
+        credentialStore = credentialStore,
+        channelKind = WebhookChannel.WebhookKind.TEAMS
+    ).apply {
+        isEnabled = WebhookChannel.TEAMS_ID in snapshot.value.enabledProviderIds
+    }
+
     // Hidden for MVP unless FEATURE_STUB_INTEGRATIONS is on (S-5).
     private val comingLater: List<StubIntegrationProvider> =
         if (BuildConfig.FEATURE_STUB_INTEGRATIONS) StubIntegrationProvider.comingLaterProviders() else emptyList()
@@ -95,12 +123,20 @@ class IntegrationRegistry(
     /** Email providers. */
     val emailProviders: List<EmailProvider> get() = listOf(googleEmail, microsoftEmail)
 
+    /** Connected task and issue sync providers. */
+    val taskProviders: List<TaskSyncProvider> get() = listOf(todoist, github, linear, slack, teams)
+
     /** Returns all available and stub providers. */
     fun allProviders(): List<IntegrationProvider> {
         val list = mutableListOf<IntegrationProvider>(
             deviceCalendar,
             shareSheet,
-            safStorage
+            safStorage,
+            todoist,
+            github,
+            linear,
+            slack,
+            teams
         )
         if (BuildConfig.FEATURE_INTEGRATIONS_EMAIL) {
             list.add(googleEmail)

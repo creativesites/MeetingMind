@@ -4,6 +4,7 @@ import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
+import com.craftflowtechnologies.meetingmind.ai.common.isRetryable
 import com.craftflowtechnologies.meetingmind.ai.faith.Prompts
 import com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter
 import org.json.JSONArray
@@ -28,7 +29,10 @@ enum class AssistantTool(val id: String, val kind: Kind, val signature: String, 
     REPLACE_BLOCKS("replace_blocks", Kind.CONFIRM, "{\"block_ids\": [string], \"markdown\": string}", "Replace blocks with new Markdown. The person confirms first."),
     DELETE_BLOCKS("delete_blocks", Kind.CONFIRM, "{\"block_ids\": [string]}", "Remove blocks. The person confirms first."),
     CREATE_TASK("create_task", Kind.WRITE, "{\"title\": string, \"due\": \"YYYY-MM-DD\"|null, \"remind_at\": \"YYYY-MM-DDTHH:MM\"|null, \"person\": string|null, \"kind\": \"task\"|\"apply\"|\"prayer\"|\"follow_up\"|null}", "Add a task (with an optional reminder)."),
-    CREATE_NOTE("create_note", Kind.WRITE, "{\"title\": string, \"markdown\": string}", "Create a new note.");
+    CREATE_NOTE("create_note", Kind.WRITE, "{\"title\": string, \"markdown\": string}", "Create a new note."),
+    LIST_PRAYER_REQUESTS("list_prayer_requests", Kind.READ, "{}", "The person's open prayer requests from their prayer list, with ids."),
+    CREATE_PRAYER_REQUEST("create_prayer_request", Kind.WRITE, "{\"title\": string, \"markdown\": string|null}", "Add a new prayer request to the person's prayer list."),
+    MARK_PRAYER_ANSWERED("mark_prayer_answered", Kind.WRITE, "{\"request_id\": string}", "Mark an open prayer request (an id from list_prayer_requests) as answered.");
 
     enum class Kind { READ, WRITE, CONFIRM }
 
@@ -111,7 +115,10 @@ data class AssistantMessage(
     val text: String,
     val activity: List<String> = emptyList(),
     val actions: List<AssistantAction> = emptyList(),
-    val error: Boolean = false
+    val error: Boolean = false,
+    /** Only meaningful when [error]: whether asking again could plausibly help. False means the
+     * person needs to change something (a key, a quota, a setting) before trying again. */
+    val retryable: Boolean = true
 )
 
 class AssistantEngine(
@@ -130,6 +137,7 @@ class AssistantEngine(
             when (t) {
                 AssistantTool.READ_NOTE, AssistantTool.INSERT_BLOCKS, AssistantTool.INSERT_SCRIPTURE, AssistantTool.REPLACE_BLOCKS, AssistantTool.DELETE_BLOCKS -> scope.noteId != null
                 AssistantTool.READ_TRANSCRIPT -> scope.meetingId != null
+                AssistantTool.LIST_PRAYER_REQUESTS, AssistantTool.CREATE_PRAYER_REQUEST, AssistantTool.MARK_PRAYER_ANSWERED -> scope.faith
                 else -> true
             }
         }
@@ -163,7 +171,7 @@ class AssistantEngine(
             val prompt = context + if (results.isNotEmpty()) "\nTool results so far:\n$results\nContinue." else ""
             val res = transport.execute(GeminiRequest(model, systemPrompt(), prompt, timeoutMs = 60_000, temperature = 0.3f))
             if (res !is AiResult.Success) {
-                return AssistantMessage(false, res.describeFailure() ?: "The assistant couldn't answer just now.", activity, actions, error = true)
+                return AssistantMessage(false, res.describeFailure() ?: "The assistant couldn't answer just now.", activity, actions, error = true, retryable = res.isRetryable())
             }
             val turn = AssistantProtocol.parse(res.value)
             if (turn.say.isNotBlank()) say = turn.say
@@ -195,27 +203,11 @@ class AssistantEngine(
     }
 }
 
-/** Removes sentences in the assistant's own voice that claim to speak for God. */
+/** Removes sentences in the assistant's own voice that claim to speak for God. The actual check
+ * lives in [com.craftflowtechnologies.meetingmind.ai.faith.FaithAuthorityGuard], shared with
+ * [com.craftflowtechnologies.meetingmind.ai.faith.AskSermon]'s sermon-recording grounding, so the
+ * two never drift apart on which phrasing counts as a violation. */
 object FaithGuard {
-    private val AUTHORITY = listOf(
-        Regex("\\bthus says the lord\\b", RegexOption.IGNORE_CASE),
-        Regex("\\bGod is (telling|saying to|calling) you\\b", RegexOption.IGNORE_CASE),
-        Regex("\\bthe Lord (is )?(says|saying) to you\\b", RegexOption.IGNORE_CASE),
-        Regex("\\bI (prophesy|declare) (over|that|to) you\\b", RegexOption.IGNORE_CASE),
-        Regex("\\bGod (has revealed|wants me to tell you)\\b", RegexOption.IGNORE_CASE),
-        Regex("\\bGod told me\\b", RegexOption.IGNORE_CASE)
-    )
-
-    private fun reported(s: String) =
-        !Regex("\\bthus says\\b", RegexOption.IGNORE_CASE).containsMatchIn(s) &&
-            Regex("\\b(he|she|they|the (preacher|speaker|pastor)|your note|[A-Z][a-z]+) (said|says|told|shared|described|explained|wrote)\\b").containsMatchIn(s)
-
-    fun violations(text: String): List<String> =
-        Regex("[^.!?\\n]*(?:[.!?]+|\\n|$)").findAll(text).map { it.value }.filter { s -> AUTHORITY.any { it.containsMatchIn(s) } && !reported(s) }.map { it.trim() }.toList()
-
-    fun clean(text: String): String {
-        val bad = violations(text).toSet()
-        if (bad.isEmpty()) return text
-        return Regex("[^.!?\\n]*(?:[.!?]+|\\n|$)").findAll(text).map { it.value }.filterNot { it.trim() in bad }.joinToString("").replace(Regex("[ \\t]{2,}"), " ").trim()
-    }
+    fun violations(text: String): List<String> = com.craftflowtechnologies.meetingmind.ai.faith.FaithAuthorityGuard.violations(text)
+    fun clean(text: String): String = com.craftflowtechnologies.meetingmind.ai.faith.FaithAuthorityGuard.clean(text)
 }

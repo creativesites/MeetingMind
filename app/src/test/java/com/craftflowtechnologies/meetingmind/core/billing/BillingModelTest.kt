@@ -33,21 +33,27 @@ class BillingModelTest {
         assertNull(Plan.fromEntitlementId(""))
     }
 
-    @Test fun `Pro and Church get managed cloud AI while BYOK gets personal key and Pro features`() {
+    @Test fun `Pro and Church get managed cloud AI while BYOK gets the personal key`() {
         assertTrue(paid(Plan.PRO).has(Capability.MANAGED_CLOUD_AI))
         assertTrue(paid(Plan.CHURCH).has(Capability.MANAGED_CLOUD_AI))
         assertFalse(paid(Plan.BYOK).has(Capability.MANAGED_CLOUD_AI))
         assertTrue(paid(Plan.BYOK).has(Capability.BYOK_KEY))
-        assertTrue(paid(Plan.BYOK).has(Capability.PRO_FEATURES))
         assertFalse(Entitlements().has(Capability.MANAGED_CLOUD_AI))
         assertFalse(Entitlements().has(Capability.BYOK_KEY))
-        assertFalse(Entitlements().has(Capability.PRO_FEATURES))
     }
 
-    @Test fun `closed testing mode grants effective Pro entitlements to free installs`() {
-        val raw = Entitlements()
-        assertTrue(TieringModeStore.effectiveEntitlements(raw, TieringMode.CLOSED_TESTING).isPaid)
-        assertFalse(TieringModeStore.effectiveEntitlements(raw, TieringMode.PRODUCTION).isPaid)
+    @Test fun `the tier switch is a debug tool only`() {
+        assertTrue(showTierSwitch(isDebug = true))
+        assertFalse(showTierSwitch(isDebug = false))
+    }
+
+    @Test fun `FeatureGate reads the effective entitlement, so a lapsed plan cannot use BYOK`() {
+        val lapsed = paid(expires = now - 1)
+        assertFalse(FeatureGate.can(lapsed, Capability.BYOK_KEY, now))
+        assertFalse(FeatureGate.can(lapsed, Capability.MANAGED_CLOUD_AI, now))
+        assertTrue(FeatureGate.can(paid(), Capability.BYOK_KEY, now))
+        assertTrue(FeatureGate.can(paid(), Capability.MANAGED_CLOUD_AI, now))
+        assertTrue(FeatureGate.can(paid(Plan.BYOK), Capability.BYOK_KEY, now))
     }
 
     @Test fun `trial and grace count as paid, expired does not`() {

@@ -85,6 +85,15 @@ test('audio seconds come from the audio token count, rounded up', () => {
   assert.equal(L.audioSecondsFromUsage(undefined), 0);
 });
 
+test('a YouTube video is metered by its video tokens, not as one second of audio', () => {
+  // 20 minutes of video at about 100 tokens a second, with no separate audio tokens counted.
+  const twentyMinutes = { promptTokensDetails: [{ modality: 'VIDEO', tokenCount: 120000 }, { modality: 'TEXT', tokenCount: 300 }] };
+  assert.equal(L.audioSecondsFromUsage(twentyMinutes), 1200);
+  // Picture and sound of a video with an audio track are both counted.
+  const withSound = { promptTokensDetails: [{ modality: 'VIDEO', tokenCount: 1000 }, { modality: 'AUDIO', tokenCount: 320 }] };
+  assert.equal(L.audioSecondsFromUsage(withSound), 10 + 10);
+});
+
 test('the best active entitlement wins, expired ones are ignored', () => {
   const now = Date.parse('2026-10-14T00:00:00Z');
   const future = '2026-11-14T00:00:00Z', past = '2026-09-01T00:00:00Z';

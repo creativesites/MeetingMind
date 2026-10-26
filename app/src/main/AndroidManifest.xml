@@ -48,6 +48,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:localeConfig="@xml/locales_config"
         android:theme="@style/Theme.MyApplication">
         <activity
             android:name=".MainActivity"
@@ -60,7 +61,7 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- The Work Inbox: text, links, PDFs, audio and images shared into the app. -->
+            <!-- The Work Inbox: text, links, PDFs, audio, images and video shared into the app. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -68,6 +69,7 @@
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="audio/*" />
                 <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
@@ -76,6 +78,7 @@
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="audio/*" />
                 <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

@@ -112,15 +112,24 @@ class AudioRecorder(private val context: Context) {
         _state.value = RecorderState.STOPPED
         amplitudeJob?.cancel()
 
+        var stopFailed = false
         try {
             mediaRecorder?.stop()
         } catch (e: Exception) {
             Log.e("AudioRecorder", "Stop error (recording might have been too short)", e)
+            stopFailed = true
         } finally {
             releaseRecorder()
         }
 
-        return currentOutputFile
+        val file = currentOutputFile
+        if (stopFailed || file == null || !file.exists() || file.length() < 1024L) {
+            runCatching { file?.delete() }
+            currentOutputFile = null
+            return null
+        }
+
+        return file
     }
 
     fun discardRecording() {

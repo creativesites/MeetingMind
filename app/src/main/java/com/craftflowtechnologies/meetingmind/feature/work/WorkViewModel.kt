@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
 import android.app.Application
+import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.core.database.FindingRow
@@ -94,6 +95,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         t.filter { !it.waitingOn } + c.filter { it.id !in taskIds }
     }.state(emptyList())
     val toReview: StateFlow<List<MeetingRow>> = work.observeToReview().state(emptyList())
+    val failed: StateFlow<List<MeetingRow>> = work.observeFailed().state(emptyList())
     val followUps: StateFlow<List<MeetingRow>> = work.observeFollowUps().state(emptyList())
     val decisions: StateFlow<List<FindingRow>> = work.observeDecisions().state(emptyList())
     /** Promises nobody could place, waiting to be settled or dismissed. */
@@ -249,6 +251,45 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     /** Adds what a document scan or a picker returned, the same way a share does. */
     fun addToInbox(parts: List<com.craftflowtechnologies.meetingmind.core.work.SharedPart>) = viewModelScope.launch {
         inbox.add(parts) { com.craftflowtechnologies.meetingmind.core.work.ShareIn.copy(getApplication(), it) }
+    }
+    /**
+     * Makes a note from a shared YouTube link: summary, key points and transcript. Only the transcript
+     * is kept off shares and exports (see [com.craftflowtechnologies.meetingmind.core.notes.YouTubeNoteBlocks]).
+     */
+    suspend fun condenseInboxVideo(
+        item: com.craftflowtechnologies.meetingmind.core.database.InboxItemEntity
+    ): com.craftflowtechnologies.meetingmind.ai.common.AiResult<com.craftflowtechnologies.meetingmind.core.model.Note> {
+        val url = item.text.orEmpty()
+        val transport = com.craftflowtechnologies.meetingmind.ai.cloud.GeminiHttpTransport(
+            com.craftflowtechnologies.meetingmind.ai.cloud.GeminiCredentialStore(getApplication())
+        )
+        return when (val result = com.craftflowtechnologies.meetingmind.ai.youtube.YouTubeCondenser.condense(transport, url)) {
+            is com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success -> {
+                val video = result.value
+                val note = notes.createNote(
+                    title = video.title.ifBlank { "YouTube video" },
+                    initialBlocks = com.craftflowtechnologies.meetingmind.core.notes.YouTubeNoteBlocks.blocks(url, video)
+                )
+                inbox.updateTranscription(item.id, "COMPLETED")
+                com.craftflowtechnologies.meetingmind.ai.common.AiResult.Success(note)
+            }
+            else -> com.craftflowtechnologies.meetingmind.ai.common.AiResult.Failed(
+                result.describeFailure() ?: "Couldn't make notes from that video."
+            )
+        }
+    }
+    /** Updates transcription status, text, meeting link and automatically re-proposes filing on completion. */
+    fun updateInboxTranscription(
+        id: String,
+        status: String,
+        transcript: String? = null,
+        meetingId: String? = null,
+        durationMs: Long? = null
+    ) = viewModelScope.launch {
+        inbox.updateTranscription(id, status, transcript, meetingId, durationMs)
+        if (status == "COMPLETED" && !transcript.isNullOrBlank()) {
+            inbox.get(id)?.let { updated -> proposeInbox(updated) }
+        }
     }
 
     val context = ContextRepository(database)

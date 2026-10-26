@@ -19,11 +19,14 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Forward
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Reply
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -110,23 +113,30 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
     val context = LocalContext.current
     val recorder = remember { VoiceRecorder(context) }
     var recording by remember { mutableStateOf(false) }
+    var stagedAttachment by remember { mutableStateOf<Pair<MediaKind, PickedFile>?>(null) }
     DisposableEffect(Unit) { onDispose { recorder.cancel() } }
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             val file = readPicked(context, uri)
-            if (file == null) actions.onNotice("That photo couldn't be read.") else actions.onSendAttachment(MediaKind.Image, file)
+            if (file == null) actions.onNotice("That photo couldn't be read.") else stagedAttachment = Pair(MediaKind.Image, file)
         }
     }
     val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             val file = readPicked(context, uri)
-            if (file == null) actions.onNotice("That video couldn't be read or exceeds 50 MB.") else actions.onSendAttachment(MediaKind.Video, file)
+            if (file == null) {
+                actions.onNotice("That video couldn't be read or exceeds 50 MB.")
+            } else if (file.name.orEmpty().endsWith(".mov", ignoreCase = true) || file.name.orEmpty().endsWith(".3gp", ignoreCase = true) || file.mime.contains("quicktime") || file.mime.contains("3gpp")) {
+                actions.onNotice("MOV and 3GPP formats are not supported yet. Please select an MP4 or WebM video.")
+            } else {
+                stagedAttachment = Pair(MediaKind.Video, file)
+            }
         }
     }
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             val file = readPicked(context, uri)
-            if (file == null) actions.onNotice("That file couldn't be read.") else actions.onSendAttachment(MediaKind.File, file)
+            if (file == null) actions.onNotice("That file couldn't be read.") else stagedAttachment = Pair(MediaKind.File, file)
         }
     }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -202,6 +212,8 @@ fun ChatTab(state: ChatUiState, draft: String, now: Long, actions: ChatActions, 
         ChatInput(
             state, draft, actions,
             recording = recording,
+            stagedAttachment = stagedAttachment,
+            onClearAttachment = { stagedAttachment = null },
             onAttachPhoto = { pickPhoto.launch("image/*") },
             onAttachVideo = { pickVideo.launch("video/*") },
             onAttachFile = { pickFile.launch("application/pdf") },
@@ -400,6 +412,8 @@ private fun ChatInput(
     draft: String,
     actions: ChatActions,
     recording: Boolean,
+    stagedAttachment: Pair<MediaKind, PickedFile>?,
+    onClearAttachment: () -> Unit,
     onAttachPhoto: () -> Unit,
     onAttachVideo: () -> Unit,
     onAttachFile: () -> Unit,
@@ -431,6 +445,46 @@ private fun ChatInput(
                 }
             }
         }
+
+        // Staged attachment preview card
+        if (stagedAttachment != null) {
+            val (kind, file) = stagedAttachment
+            Surface(
+                Modifier.fillMaxWidth().padding(horizontal = MM.space.s, vertical = 4.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = c.surfaceRaised,
+                border = BorderStroke(1.dp, CirclesPalette.Accent.copy(alpha = 0.4f))
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        when (kind) {
+                            MediaKind.Image -> Icons.Rounded.Image
+                            MediaKind.Video -> Icons.Rounded.Videocam
+                            else -> Icons.Rounded.InsertDriveFile
+                        },
+                        contentDescription = null,
+                        tint = CirclesPalette.Accent,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(file.name.orEmpty().ifBlank { "Attachment" }, style = MM.type.bodyStrong.copy(fontSize = 13.sp), color = c.ink, maxLines = 1)
+                        Text(
+                            listOfNotNull(file.durationMs?.takeIf { it > 0 }?.let(::formatDuration), formatBytes(file.bytes.size.toLong())).joinToString(" · "),
+                            style = MM.type.caption.copy(fontSize = 11.sp),
+                            color = c.inkSecondary
+                        )
+                    }
+                    IconButton(onClick = onClearAttachment, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Rounded.Close, "Remove attachment", tint = c.inkSecondary, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+
         Row(Modifier.fillMaxWidth().padding(horizontal = MM.space.s, vertical = MM.space.xs), verticalAlignment = Alignment.Bottom) {
             Box {
                 IconButton(onClick = { plus = true }) { Icon(Icons.Rounded.Add, "More: poll, card, prayer chain, celebrate", tint = CirclesPalette.Accent) }
@@ -444,13 +498,25 @@ private fun ChatInput(
                     PlusItem("Celebrate something") { plus = false; actions.onCelebrate() }
                 }
             }
-            CircleField(draft, actions.onDraft, "Message", modifier = Modifier.weight(1f), maxLines = 4)
-            if (draft.isBlank()) {
+            CircleField(draft, actions.onDraft, if (stagedAttachment != null) "Add a caption…" else "Message", modifier = Modifier.weight(1f), maxLines = 4)
+            if (draft.isBlank() && stagedAttachment == null) {
                 if (recording) IconButton(onClick = onMicStop) { Icon(Icons.Rounded.Stop, "Stop and send voice note", tint = CirclesPalette.Accent) }
                 else IconButton(onClick = onMicStart) { Icon(Icons.Rounded.Mic, "Record a voice note", tint = CirclesPalette.Accent) }
             }
-            IconButton(onClick = actions.onSend, enabled = draft.isNotBlank()) {
-                Icon(Icons.Rounded.Send, "Send", tint = if (draft.isNotBlank()) CirclesPalette.Accent else c.inkMuted)
+            val canSend = draft.isNotBlank() || stagedAttachment != null
+            IconButton(
+                onClick = {
+                    if (stagedAttachment != null) {
+                        val (kind, file) = stagedAttachment
+                        onClearAttachment()
+                        actions.onSendAttachment(kind, file)
+                    } else {
+                        actions.onSend()
+                    }
+                },
+                enabled = canSend
+            ) {
+                Icon(Icons.Rounded.Send, "Send", tint = if (canSend) CirclesPalette.Accent else c.inkMuted)
             }
         }
     }

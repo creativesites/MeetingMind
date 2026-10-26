@@ -35,6 +35,11 @@ data class GeminiRequest(
      * covers the whole recording, in a format Gemini reads directly — no decoding, much faster.
      */
     val uploadWholeFile: Boolean = false,
+    /**
+     * A public YouTube watch address for Gemini to read directly. Google fetches the video itself, so
+     * the app never downloads it. Used instead of [audioFile]; a request sets one or the other.
+     */
+    val videoUri: String? = null,
     /** A hard limit for the whole request, overriding the transport's own; null to use those. */
     val timeoutMs: Long? = null
 )

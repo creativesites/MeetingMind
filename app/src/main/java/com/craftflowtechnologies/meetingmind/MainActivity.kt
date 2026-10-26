@@ -81,6 +81,11 @@ import androidx.lifecycle.lifecycleScope
 class MainActivity : FragmentActivity() {
     private val appLock: AppLockViewModel by viewModels()
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        val tag = com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.getActiveLocaleTag(newBase)
+        super.attachBaseContext(com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.wrapContext(newBase, tag))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -121,6 +126,15 @@ class MainActivity : FragmentActivity() {
                     statusBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(transparent) else androidx.activity.SystemBarStyle.light(transparent, transparent),
                     navigationBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(transparent) else androidx.activity.SystemBarStyle.light(transparent, transparent)
                 )
+            }
+            // themePrefs is null until DataStore emits; that is not the same as "follow system" (see shouldApplySavedLanguage).
+            val prefsLoaded = themePrefs != null
+            val savedLanguageTag = themePrefs?.appLanguage
+            androidx.compose.runtime.LaunchedEffect(prefsLoaded, savedLanguageTag) {
+                val activeTag = com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.getActiveLocaleTag(applicationContext)
+                if (com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.shouldApplySavedLanguage(prefsLoaded, savedLanguageTag, activeTag)) {
+                    com.craftflowtechnologies.meetingmind.core.i18n.AppLocaleManager.applyLocale(applicationContext, savedLanguageTag)
+                }
             }
             MeetMindTheme(darkTheme = dark, appearance = themePrefs?.appearance ?: com.craftflowtechnologies.meetingmind.ui.theme.Appearance(homeStyle = com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.TODAY)) {
                 // Who the app is for — spaces, look, name, avatar — available to every screen.
@@ -179,6 +193,10 @@ class MainActivity : FragmentActivity() {
     override fun onStart() {
         super.onStart()
         appLock.controller.onAppForegrounded()
+        // Back in the foreground: the store may know about a new, renewed or lapsed plan. Never on the main thread.
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { com.craftflowtechnologies.meetingmind.core.billing.Billing.gateway.refresh() }
+        }
     }
 
     override fun onStop() {
@@ -254,7 +272,15 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         if (RecordingRecovery.checked) return@LaunchedEffect
         RecordingRecovery.checked = true
         val entry = journalStore.read()
-        if (entry != null && (entry.state == RecordingState.RECORDING.name || entry.state == RecordingState.PAUSED.name)) {
+        // A process death mid-capture (RECORDING/PAUSED) and a finished recording whose database
+        // row could not be written (SAVE_FAILED) both leave a real audio file that the app has not
+        // indexed yet. Both are offered on the next launch; neither is silently discarded.
+        if (entry != null && (
+                entry.state == RecordingState.RECORDING.name ||
+                    entry.state == RecordingState.PAUSED.name ||
+                    entry.state == RecordingState.SAVE_FAILED.name
+                )
+        ) {
             RecordingRecovery.entry.value = entry
         }
     }
@@ -262,6 +288,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     LaunchedEffect(Unit) { PlaybackController.ensureConnected(context) }
     // People is built from history, once, after the work schema arrives (PLAN_PROFESSIONAL.md §5.1).
     LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.core.work.WorkStartup.run(context) }
+    // A model downloaded after a recording was processed can now give it a real title. Bounded,
+    // off the main thread, and a no-op until some engine is actually available — see the object.
+    LaunchedEffect(Unit) { com.craftflowtechnologies.meetingmind.ai.pipeline.RecordingTitleBackfill.run(context) }
     val pendingCircleInvite by com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.pendingCode.collectAsState()
     LaunchedEffect(pendingCircleInvite) {
         if (pendingCircleInvite != null) {
@@ -427,8 +456,10 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                         com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(context)
                     )
                 ) else null
-            val homeCircles = if (homeCirclesVm != null) homeCirclesVm.state.collectAsState().value
-                else com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles.Loading
+            val homeCirclesFlow = remember(homeCirclesVm) {
+                homeCirclesVm?.state ?: kotlinx.coroutines.flow.flowOf(com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles.Empty)
+            }
+            val homeCircles by homeCirclesFlow.collectAsState(initial = com.craftflowtechnologies.meetingmind.feature.today.home.HomeCircles.Empty)
             if (homeStyle == com.craftflowtechnologies.meetingmind.ui.theme.HomeStyle.EVERYDAY) com.craftflowtechnologies.meetingmind.feature.today.EverydayHome(
                 viewModel = vm,
                 onOpenNote = { navController.navigate(Routes.noteRoute(it)) },
@@ -642,12 +673,17 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onInitialCodeHandled = { com.craftflowtechnologies.meetingmind.core.circles2.CircleDeepLinks.consume() }
             )
         }
-        composable(Routes.CIRCLE_CREATE) {
+        composable(
+            Routes.CIRCLE_CREATE,
+            arguments = listOf(navArgument("space") { type = NavType.StringType; nullable = true; defaultValue = null })
+        ) { entry ->
+            val initialSpace = entry.arguments?.getString("space")
             com.craftflowtechnologies.meetingmind.feature.circles2.CreateCircleScreen(
                 onBack = { navController.popBackStack() },
                 onCreated = { circleId ->
                     navController.navigate(Routes.circleDetailRoute(circleId)) { popUpTo(Routes.CIRCLE_CREATE) { inclusive = true } }
-                }
+                },
+                initialSpace = initialSpace
             )
         }
         composable(
@@ -720,6 +756,10 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
         composable(Routes.APPEARANCE) {
             val vm: com.craftflowtechnologies.meetingmind.feature.settings.AppearanceViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.settings.AppearanceScreen(vm, onNavigateBack = { navController.popBackStack() })
+        }
+        composable(Routes.LANGUAGE) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.settings.LanguageSelectionViewModel = viewModel()
+            com.craftflowtechnologies.meetingmind.feature.settings.LanguageSelectionScreen(vm, onNavigateBack = { navController.popBackStack() })
         }
         composable(Routes.TASKS) {
             val vm: com.craftflowtechnologies.meetingmind.feature.tasks.TasksViewModel = viewModel()
@@ -927,10 +967,14 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenAll = { navController.navigate(Routes.workAllRoute(it.name)) },
                 onOpenSettings = { navController.navigate(Routes.WORK_SETTINGS) },
                 onSearch = openSearch,
+                onOpenProcessing = openProcessing,
                 onImport = { navController.navigate(Routes.IMPORT) },
                 onOpenInbox = { navController.navigate(Routes.WORK_INBOX) },
                 onOpenBrief = { navController.navigate(Routes.brief(it.kind, it.scope.cacheKey.second)) },
                 onOpenWeeklyReview = { navController.navigate(Routes.WEEKLY_REVIEW) },
+                onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
+                onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
+                onStartCircle = { navController.navigate(Routes.circleCreateRoute("work")) },
                 onNavigateBottomNav = navigateToPrimary
             )
         }
@@ -1035,7 +1079,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 },
                 onPlay = { at -> navController.navigate(Routes.meetingDetailRoute(meetingId, at)) },
                 onOpenPerson = { navController.navigate(Routes.workPersonRoute(it)) },
-                startComposing = entry.arguments?.getBoolean("compose") == true
+                startComposing = entry.arguments?.getBoolean("compose") == true,
+                onStartCircle = { navController.navigate(Routes.circleCreateRoute("work")) }
             )
         }
         composable(Routes.WORK_SETTINGS) {
@@ -1245,6 +1290,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenSetup = { navController.navigate(Routes.SETUP) },
                 onOpenDataBackup = { navController.navigate(Routes.DATA_BACKUP) },
                 onOpenAppearance = { navController.navigate(Routes.APPEARANCE) },
+                onOpenLanguage = { navController.navigate(Routes.LANGUAGE) },
                 onOpenWork = { navController.navigate(Routes.WORK_SETTINGS) },
                 onOpenIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
                 onOpenRecipes = { navController.navigate(Routes.RECIPES) },
@@ -1277,7 +1323,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val vm: com.craftflowtechnologies.meetingmind.feature.settings.IntegrationsViewModel = viewModel()
             com.craftflowtechnologies.meetingmind.feature.settings.IntegrationsScreen(
                 viewModel = vm,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigatePaywall = { navController.navigate(Routes.paywallRoute("SETTINGS")) { launchSingleTop = true } }
             )
         }
 
@@ -1362,17 +1409,26 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     )
 
     recoveryEntry?.let { entry ->
+        val notYetSaved = entry.state == RecordingState.SAVE_FAILED.name
         AlertDialog(
             onDismissRequest = { /* Never auto-dismiss into a silent discard — spec §3.7. Back
                 gesture just closes this composition's state; the same journal is read again and
                 re-prompted on the next app launch since nothing here has cleared it. */ RecordingRecovery.entry.value = null },
-            title = { Text("We found an unfinished recording.") },
+            title = {
+                Text(if (notYetSaved) "We couldn't add your recording to your notes." else "We found an unfinished recording.")
+            },
             text = {
                 Text(
-                    "MeetingMind closed unexpectedly while recording \"${entry.title}\" " +
-                        "(about ${Formatters.formatDurationHms(entry.lastKnownDurationMs)} captured). " +
-                        "Continuing this recording isn't supported yet, but you can save what was " +
-                        "already captured or delete it."
+                    if (notYetSaved) {
+                        "\"${entry.title}\" was recorded (about ${Formatters.formatDurationHms(entry.lastKnownDurationMs)}), " +
+                            "but adding it to your notes didn't complete. The audio is still on this phone. " +
+                            "Add it now, or delete it."
+                    } else {
+                        "MeetingMind closed unexpectedly while recording \"${entry.title}\" " +
+                            "(about ${Formatters.formatDurationHms(entry.lastKnownDurationMs)} captured). " +
+                            "Continuing this recording isn't supported yet, but you can save what was " +
+                            "already captured or delete it."
+                    }
                 )
             },
             confirmButton = {
@@ -1383,20 +1439,32 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                         } catch (e: Exception) {
                             RecordingType.GENERAL
                         }
-                        recoveryMeetingRepository.createInitialMeeting(
-                            id = entry.meetingId,
-                            title = entry.title,
-                            source = MeetingSource.LOCAL_RECORDING,
-                            audioFilePath = entry.audioFilePath,
-                            recordingType = recordingType
-                        )
+                        // The journal is cleared only if the row is actually written. A failure
+                        // here leaves the recording offered again rather than losing it.
+                        val saved = runCatching {
+                            recoveryMeetingRepository.createInitialMeeting(
+                                id = entry.meetingId,
+                                title = entry.title,
+                                source = MeetingSource.LOCAL_RECORDING,
+                                audioFilePath = entry.audioFilePath,
+                                recordingType = recordingType
+                            )
+                        }.isSuccess
+                        if (!saved) {
+                            android.widget.Toast.makeText(
+                                context,
+                                "Still couldn't add it. The recording is safe on this phone; we'll offer it again next time.",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                            return@launch
+                        }
                         journalStore.clear()
                         RecordingRecovery.entry.value = null
                         navController.navigate(
                             Routes.processingRoute(entry.meetingId, entry.audioFilePath, entry.lastKnownDurationMs)
                         )
                     }
-                }) { Text("Save recording") }
+                }) { Text(if (notYetSaved) "Add it now" else "Save recording") }
             },
             dismissButton = {
                 TextButton(onClick = {

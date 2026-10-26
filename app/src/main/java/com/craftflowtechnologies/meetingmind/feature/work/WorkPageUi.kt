@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,8 +38,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -48,9 +54,11 @@ import com.craftflowtechnologies.meetingmind.core.companion.CompanionPage
 import com.craftflowtechnologies.meetingmind.core.notes.PagedState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.ZuriSlot
 import com.craftflowtechnologies.meetingmind.core.ui.mm.companion.rememberCompanionVisible
-import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
+import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
+import com.craftflowtechnologies.meetingmind.R
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
@@ -58,8 +66,10 @@ import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 internal data class WorkMenuAction(val label: String, val badge: Int = 0, val onClick: () -> Unit)
 
 /**
- * The Work header (WORK_UX §2): "Work", one context line, and Search, ＋, ⋯. Plain surface, no gradient.
- * The ⋯ icon carries the Inbox count only when it is above 0.
+ * The Work header (WORK_UX §2): "Work", one context line, and Search, ＋, ⋯ — a light header on the
+ * page background like every other screen. §3 forbids dark full-bleed surfaces anywhere on this
+ * page, so the old sunset image and black scrim are gone. The ⋯ icon carries the Inbox count only
+ * when it is above 0.
  */
 /** The Work header companion: small and crisp (T0). */
 private val WorkCompanionSize = 40.dp
@@ -77,37 +87,43 @@ internal fun WorkPageHeader(
     onBack: (() -> Unit)? = null
 ) {
     val inbox = moreActions.sumOf { it.badge }
-    Column(modifier) {
-        // A small companion leads the title (40 dp, §5.3); nothing is reserved while it is filtered out.
-        val companionShown = rememberCompanionVisible(CompanionPage.HOME)
-        ScreenHeader(
-            "Work",
-            leading = if (onBack == null && !companionShown) null else { {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.ink) }
-                    ZuriSlot(CompanionPage.HOME, WorkCompanionSize)
-                }
-            } },
-            actions = {
-                IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search Work", tint = MM.colors.inkSecondary) }
-                MenuButton(Icons.Rounded.Add, "New", addActions, badge = 0)
-                MenuButton(Icons.Rounded.MoreHoriz, if (inbox > 0) "More, $inbox in Inbox" else "More", moreActions, badge = inbox)
-            }
+    val companionShown = rememberCompanionVisible(CompanionPage.HOME)
+    // The header is a light header on the page background (WORK_UX §2/§3), so its icons use ink.
+    val leading: (@Composable () -> Unit)? = when {
+        onBack != null -> {
+            { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = MM.colors.ink) } }
+        }
+        companionShown -> {
+            { ZuriSlot(CompanionPage.HOME, WorkCompanionSize) }
+        }
+        else -> null
+    }
+    Column(modifier.fillMaxWidth()) {
+        ScreenHeader(title = "Work", leading = leading) {
+            // Search in Work opens the app-wide search, so its label says exactly that.
+            IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Search everything", tint = MM.colors.ink) }
+            MenuButton(Icons.Rounded.Add, "New", addActions, badge = 0, tint = MM.colors.ink)
+            MenuButton(Icons.Rounded.MoreHoriz, if (inbox > 0) "More, $inbox in Inbox" else "More", moreActions, badge = inbox, tint = MM.colors.ink)
+        }
+        Text(
+            contextLine,
+            style = MM.type.secondary,
+            color = MM.colors.inkSecondary,
+            modifier = Modifier.padding(top = MM.space.xs)
         )
-        Text(contextLine, style = MM.type.secondary, color = MM.colors.inkSecondary, modifier = Modifier.padding(bottom = MM.space.s))
     }
 }
 
 @Composable
-private fun MenuButton(icon: ImageVector, description: String, actions: List<WorkMenuAction>, badge: Int) {
+private fun MenuButton(icon: ImageVector, description: String, actions: List<WorkMenuAction>, badge: Int, tint: Color) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) {
             if (badge > 0) {
                 BadgedBox(badge = { Badge(containerColor = MM.colors.accent, contentColor = MM.colors.onAccent) { Text(badge.toString(), style = MM.type.caption) } }) {
-                    Icon(icon, description, tint = MM.colors.inkSecondary)
+                    Icon(icon, description, tint = tint)
                 }
-            } else Icon(icon, description, tint = MM.colors.inkSecondary)
+            } else Icon(icon, description, tint = tint)
         }
         DropdownMenu(open, { open = false }, containerColor = MM.colors.surfaceRaised, shape = MM.radius.card) {
             actions.forEach { a ->

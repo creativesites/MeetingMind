@@ -64,12 +64,15 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.core.audio.AudioExtractor
+import com.craftflowtechnologies.meetingmind.core.audio.NoAudioTrackException
 import com.craftflowtechnologies.meetingmind.core.common.Formatters
 import com.craftflowtechnologies.meetingmind.core.database.MeetMindDatabase
 import com.craftflowtechnologies.meetingmind.core.model.Meeting
 import com.craftflowtechnologies.meetingmind.core.model.MeetingSource
 import com.craftflowtechnologies.meetingmind.core.repository.MeetingRepository
 import com.craftflowtechnologies.meetingmind.core.ui.SectionCard
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -99,6 +102,7 @@ data class ImportMediaState(
     val sizeBytes: Long = 0L,
     val isVideo: Boolean = false,
     val isExtracting: Boolean = false,
+    val extractionProgress: Float = 0f,
     val meetingId: String? = null,
     val extractedAudioFile: File? = null,
     val error: String? = null,
@@ -110,26 +114,48 @@ data class ImportMediaState(
     val speakerCountPreference: Int? = null
 )
 
-class ImportViewModel(application: Application) : AndroidViewModel(application) {
-    private val audioExtractor = AudioExtractor(application)
-    private val database = MeetMindDatabase.getInstance(application)
-    private val meetingRepository = MeetingRepository(application, database)
+class ImportViewModel(
+    application: Application,
+    private val audioExtractor: AudioExtractor = AudioExtractor(application),
+    private val meetingRepository: MeetingRepository = MeetingRepository(application, MeetMindDatabase.getInstance(application))
+) : AndroidViewModel(application) {
 
     private val _importState = MutableStateFlow(ImportMediaState())
     val importState: StateFlow<ImportMediaState> = _importState.asStateFlow()
 
+    private var extractionJob: Job? = null
+
     fun handleSelectedUri(uri: Uri) {
-        viewModelScope.launch {
-            _importState.value = _importState.value.copy(isExtracting = true, error = null)
+        cancelExtraction()
+        extractionJob = viewModelScope.launch {
+            _importState.value = _importState.value.copy(
+                isExtracting = true,
+                extractionProgress = 0f,
+                error = null
+            )
             try {
                 val meetingId = UUID.randomUUID().toString()
-                val info = audioExtractor.importAndExtract(uri, meetingId)
+                val info = audioExtractor.importAndExtract(uri, meetingId) { progress ->
+                    _importState.value = _importState.value.copy(extractionProgress = progress)
+                }
 
+                val importedName = info.fileName.substringBeforeLast(".")
                 val meeting = meetingRepository.createInitialMeeting(
                     id = meetingId,
-                    title = info.fileName.substringBeforeLast("."),
+                    title = importedName,
                     source = if (info.isVideo) MeetingSource.IMPORTED_VIDEO else MeetingSource.IMPORTED_AUDIO,
-                    audioFilePath = info.outputFile.absolutePath
+                    audioFilePath = info.outputFile.absolutePath,
+                    // A recorder's "AUD_0042" is not a title. Only a name that actually says
+                    // something about the content is frozen as IMPORT; everything else keeps the
+                    // AI source so processing can give it a real title from what was said.
+                    titleSource = if (
+                        com.craftflowtechnologies.meetingmind.core.common.MeetingTitleGenerator
+                            .isUsableImportedTitle(importedName)
+                    ) {
+                        com.craftflowtechnologies.meetingmind.core.model.TitleSource.IMPORT
+                    } else {
+                        com.craftflowtechnologies.meetingmind.core.model.TitleSource.AI
+                    }
                 )
 
                 _importState.value = ImportMediaState(
@@ -139,15 +165,39 @@ class ImportViewModel(application: Application) : AndroidViewModel(application) 
                     sizeBytes = info.sizeBytes,
                     isVideo = info.isVideo,
                     isExtracting = false,
+                    extractionProgress = 1f,
                     meetingId = meeting.id,
                     extractedAudioFile = info.outputFile
+                )
+            } catch (e: CancellationException) {
+                _importState.value = _importState.value.copy(
+                    isExtracting = false,
+                    extractionProgress = 0f
+                )
+            } catch (e: NoAudioTrackException) {
+                _importState.value = _importState.value.copy(
+                    isExtracting = false,
+                    extractionProgress = 0f,
+                    error = e.localizedMessage ?: "This video does not contain an audio track."
                 )
             } catch (e: Exception) {
                 _importState.value = _importState.value.copy(
                     isExtracting = false,
+                    extractionProgress = 0f,
                     error = "Failed to import file: ${e.localizedMessage}"
                 )
             }
+        }
+    }
+
+    fun cancelExtraction() {
+        extractionJob?.cancel()
+        extractionJob = null
+        if (_importState.value.isExtracting) {
+            _importState.value = _importState.value.copy(
+                isExtracting = false,
+                extractionProgress = 0f
+            )
         }
     }
 
@@ -193,7 +243,7 @@ fun ImportScreen(
     var showSpeakerPicker by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let { viewModel.handleSelectedUri(it) }
     }
@@ -240,7 +290,7 @@ fun ImportScreen(
                         .padding(top = 22.dp)
                         .clip(RoundedCornerShape(20.dp))
                         .border(1.dp, LineSoft, RoundedCornerShape(20.dp))
-                        .clickable { filePickerLauncher.launch("*/*") }
+                        .clickable { filePickerLauncher.launch(arrayOf("audio/*", "video/*")) }
                         .testTag("import_picker_card")
                         .padding(horizontal = 18.dp, vertical = 17.dp)
                 ) {
@@ -297,7 +347,7 @@ fun ImportScreen(
                             fontWeight = FontWeight.Medium,
                             color = InkSecondary,
                             modifier = Modifier
-                                .clickable { filePickerLauncher.launch("*/*") }
+                                .clickable { filePickerLauncher.launch(arrayOf("audio/*", "video/*")) }
                                 .testTag("import_change_btn")
                         )
                     }
@@ -306,12 +356,81 @@ fun ImportScreen(
 
             if (state.isExtracting) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 18.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp)
+                        .padding(top = 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Accent)
-                    Text("Extracting the audio track…", fontSize = 13.sp, color = InkSecondary)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = Accent
+                        )
+                        val progressText = if (state.extractionProgress > 0f) {
+                            "Extracting audio track… ${(state.extractionProgress * 100).toInt()}%"
+                        } else {
+                            "Extracting audio track…"
+                        }
+                        Text(
+                            text = progressText,
+                            fontSize = 13.sp,
+                            color = InkSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Text(
+                        text = "Cancel",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = InkSecondary,
+                        modifier = Modifier
+                            .clickable { viewModel.cancelExtraction() }
+                            .padding(start = 12.dp)
+                            .testTag("import_cancel_extraction_btn")
+                    )
+                }
+            }
+
+            val error = state.error
+            if (error != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp)
+                        .padding(top = 18.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .border(1.dp, LineSoft, RoundedCornerShape(20.dp))
+                        .padding(horizontal = 18.dp, vertical = 17.dp)
+                        .testTag("import_error_card")
+                ) {
+                    Text(
+                        text = "Could not import file",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Ink
+                    )
+                    Text(
+                        text = error,
+                        fontSize = 13.sp,
+                        color = InkMuted,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                    )
+                    Button(
+                        onClick = { filePickerLauncher.launch(arrayOf("audio/*", "video/*")) },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk),
+                        modifier = Modifier.testTag("import_choose_another_btn")
+                    ) {
+                        Text("Choose another file", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
                 }
             }
 

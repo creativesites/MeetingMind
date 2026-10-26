@@ -18,7 +18,6 @@ enum class EntryRoute { SAMPLE, RECORD }
 /** What the person captures. Several can be picked; each turns on the space it belongs to. */
 enum class CaptureGoal(val label: String, val space: NotebookSpace) {
     WORK_MEETINGS("Work meetings", NotebookSpace.WORK),
-    LEARNING("Learning and research", NotebookSpace.LEARNING),
     SERMONS("Sermons and Bible study", NotebookSpace.FAITH),
     REFLECTIONS("Personal reflections", NotebookSpace.PERSONAL),
     INTERVIEWS("Interviews and field research", NotebookSpace.WORK),
@@ -43,7 +42,10 @@ enum class DesiredOutcome(val label: String) {
  * point; the microphone is asked for by the recorder itself.
  */
 fun stepsFor(route: EntryRoute, spaces: Set<NotebookSpace>): List<OnboardingStep> = when (route) {
-    EntryRoute.RECORD -> listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SETUP)
+    // The record route still ends on permissions: the microphone is asked for by the recorder
+    // itself, but notifications (the only way a person learns their notes are ready) are asked for
+    // here, with the reason, rather than never.
+    EntryRoute.RECORD -> listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SETUP, OnboardingStep.PERMISSIONS)
     EntryRoute.SAMPLE -> buildList {
         add(OnboardingStep.WELCOME)
         add(OnboardingStep.COMPANION)
@@ -58,9 +60,15 @@ fun stepsFor(route: EntryRoute, spaces: Set<NotebookSpace>): List<OnboardingStep
     }
 }
 
-/** Goals pick the spaces; no goals picked leaves every space on, as before. */
+/**
+ * The spaces onboarding may offer. Learning is cut from the MVP and its space is never turned on by
+ * this flow — stored legacy data for it is left alone, not migrated or deleted.
+ */
+val OfferedNotebookSpaces: Set<NotebookSpace> = NotebookSpace.entries.toSet() - NotebookSpace.LEARNING
+
+/** Goals pick the spaces; no goals picked leaves every offered space on, as before. */
 fun spacesFor(goals: Set<CaptureGoal>): Set<NotebookSpace> =
-    if (goals.isEmpty()) NotebookSpace.entries.toSet() else goals.map { it.space }.toSet()
+    if (goals.isEmpty()) OfferedNotebookSpaces else goals.map { it.space }.toSet()
 
 /** The saved step, or the welcome when it is missing, unreadable, or from another onboarding version. */
 fun restoredStep(saved: String?, savedVersion: Int): OnboardingStep =

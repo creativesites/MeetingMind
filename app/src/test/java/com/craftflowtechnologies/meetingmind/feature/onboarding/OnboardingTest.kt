@@ -118,6 +118,12 @@ class OnboardingTest {
         compose.mainClock.advanceTimeBy(600)
         assertEquals(OnboardingStep.SETUP, vm.step.value)
         compose.onNodeWithTag("onboarding_next_btn").performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(600)
+        // The record route still ends on the permissions ask: notifications are the only way a
+        // person learns their notes are ready. Answering "not now" still starts the recording.
+        assertEquals(OnboardingStep.PERMISSIONS, vm.step.value)
+        compose.onNodeWithTag("onboarding_next_btn").performClick()
         runBlocking { repeat(50) { if (!recorded) { Thread.sleep(50); compose.waitForIdle() } } }
         assertTrue(recorded && !finished)
     }

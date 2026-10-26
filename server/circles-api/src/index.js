@@ -5,7 +5,7 @@ import { Firestore } from "./firestore.js";
 import { Fcm } from "./fcm.js";
 import { HANDLERS } from "./handlers.js";
 import { runDigest } from "./digest.js";
-import { uploadMedia, downloadMedia, sweepOrphans } from "./media.js";
+import { uploadMedia, downloadMedia, uploadAvatar, downloadAvatar, sweepOrphans } from "./media.js";
 import { parseServiceAccount } from "./google.js";
 
 const MAX_BODY = 32 * 1024;
@@ -39,7 +39,9 @@ export async function handle(request, env, ctxExec, deps = {}) {
   // Media moves raw bytes, so these routes skip the JSON body limit and the POST-only rule below.
   const up = request.method === "PUT" ? /^\/v1\/media\/upload\/([^/]+)$/.exec(url.pathname) : null;
   const dl = request.method === "GET" ? /^\/v1\/media\/([^/]+)\/([^/]+)$/.exec(url.pathname) : null;
-  if (up || dl) return mediaRoute(request, env, deps, requestId, up, dl);
+  const avatarUp = request.method === "PUT" && url.pathname === "/v1/avatar";
+  const avatarDl = request.method === "GET" ? /^\/v1\/avatar\/([^/]+)\/([^/]+)$/.exec(url.pathname) : null;
+  if (up || dl || avatarUp || avatarDl) return mediaRoute(request, env, deps, requestId, { up, dl, avatarUp, avatarDl });
   const m = /^\/v1\/([A-Za-z]+)$/.exec(url.pathname);
   const handler = m && Object.hasOwn(HANDLERS, m[1]) ? HANDLERS[m[1]] : null;
   if (request.method !== "POST" || !handler) return err(404, "not_found", "Not found", requestId);
@@ -71,27 +73,33 @@ export async function handle(request, env, ctxExec, deps = {}) {
   }
 }
 
-async function mediaRoute(request, env, deps, requestId, up, dl) {
+async function mediaRoute(request, env, deps, requestId, { up, dl, avatarUp, avatarDl }) {
   try {
     const { uid } = await (deps.authenticate || authenticate)(request, env);
     const { db } = deps.services || services(env);
     const ctx = { env, db, kv: env.RATE, uid, now: new Date(), requestId, request };
     if (up) return json({ ok: true, ...(await uploadMedia(ctx, up[1])) }, 200, requestId);
-    const obj = await downloadMedia(ctx, dl[1], dl[2]);
-    return new Response(obj.body, {
-      status: 200,
-      headers: {
-        "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream",
-        "Content-Length": String(obj.size),
-        "Cache-Control": "private, max-age=3600",
-        "X-Request-Id": requestId,
-      },
-    });
+    if (avatarUp) return json({ ok: true, ...(await uploadAvatar(ctx)) }, 200, requestId);
+    if (avatarDl) return objectResponse(await downloadAvatar(ctx, avatarDl[1], avatarDl[2]), requestId);
+    return objectResponse(await downloadMedia(ctx, dl[1], dl[2]), requestId);
   } catch (e) {
     if (e instanceof ApiError) return err(e.status, e.code, e.message, requestId);
     console.error(JSON.stringify({ event: "circles_media_failed", requestId, reason: e?.name || "Error", detail: safeErrorDetail(e?.message) }));
     return err(500, "internal", "Something went wrong. Please try again.", requestId);
   }
+}
+
+/** A stored object as a download. Members only reach it through the Worker, which has already checked them. */
+function objectResponse(obj, requestId) {
+  return new Response(obj.body, {
+    status: 200,
+    headers: {
+      "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream",
+      "Content-Length": String(obj.size),
+      "Cache-Control": "private, max-age=3600",
+      "X-Request-Id": requestId,
+    },
+  });
 }
 
 export default {

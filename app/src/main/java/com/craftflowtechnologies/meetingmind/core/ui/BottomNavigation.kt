@@ -41,11 +41,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.craftflowtechnologies.meetingmind.R
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
 import com.craftflowtechnologies.meetingmind.ui.theme.OnAccent
@@ -89,13 +91,14 @@ private data class NavItem(
     val isAction: Boolean = false
 )
 
+@Composable
 private fun navItems(slot: TabSlot) = listOf(
-    NavItem(BottomNavDestination.HOME, "Home", Icons.Filled.Home, Icons.Outlined.Home),
-    NavItem(BottomNavDestination.NOTES, "Notes", Icons.AutoMirrored.Filled.Notes, Icons.AutoMirrored.Outlined.Notes),
+    NavItem(BottomNavDestination.HOME, stringResource(R.string.nav_today), Icons.Filled.Home, Icons.Outlined.Home),
+    NavItem(BottomNavDestination.NOTES, stringResource(R.string.nav_notes), Icons.AutoMirrored.Filled.Notes, Icons.AutoMirrored.Outlined.Notes),
     NavItem(BottomNavDestination.NEW, "New", Icons.Filled.Add, Icons.Filled.Add, isAction = true),
-    if (slot == TabSlot.WORK) NavItem(BottomNavDestination.SEARCH, TabSlots.label(slot), Icons.Filled.Work, Icons.Outlined.Work)
-    else NavItem(BottomNavDestination.SEARCH, TabSlots.label(slot), Icons.Filled.Search, Icons.Outlined.Search),
-    NavItem(BottomNavDestination.SETTINGS, "Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
+    if (slot == TabSlot.WORK) NavItem(BottomNavDestination.SEARCH, stringResource(R.string.nav_work), Icons.Filled.Work, Icons.Outlined.Work)
+    else NavItem(BottomNavDestination.SEARCH, stringResource(R.string.action_search), Icons.Filled.Search, Icons.Outlined.Search),
+    NavItem(BottomNavDestination.SETTINGS, stringResource(R.string.nav_settings), Icons.Filled.Settings, Icons.Outlined.Settings)
 )
 
 /**

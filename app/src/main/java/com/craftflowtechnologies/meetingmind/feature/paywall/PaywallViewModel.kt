@@ -13,6 +13,7 @@ import com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger
 import com.craftflowtechnologies.meetingmind.core.billing.PlanOffer
 import com.craftflowtechnologies.meetingmind.core.billing.PurchaseResult
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -65,6 +66,12 @@ class PaywallViewModel @JvmOverloads constructor(application: Application, priva
     }
 
     fun buy(activity: Activity) {
+        // Someone who already pays is shown Manage instead of a purchase button; this is the second guard.
+        val owned = gateway.entitlements.value.effective(System.currentTimeMillis())
+        if (owned.isPaid) {
+            _state.update { it.copy(message = "You're already on ${owned.plan.label}. Manage your plan in Google Play.") }
+            return
+        }
         val offer = _state.value.selected ?: return
         if (_state.value.busy || _state.value.pending) return
         _state.update { it.copy(busy = true, message = null) }
@@ -89,11 +96,40 @@ class PaywallViewModel @JvmOverloads constructor(application: Application, priva
             PurchaseResult.Cancelled -> _state.update { it.copy(busy = false) }
             PurchaseResult.Pending -> {
                 Analytics.track(Events.PURCHASE_PENDING)
-                _state.update { it.copy(busy = false, pending = true, message = "Your purchase is still being processed. Your plan will start as soon as Google Play confirms it.") }
+                _state.update { it.copy(busy = false, pending = true, message = "Your purchase is still being processed. Your plan will start as soon as Google Play confirms it. Checking again in a moment…") }
+                // A slow payment is not a dead end: ask the store again shortly, and leave a visible retry.
+                viewModelScope.launch {
+                    delay(PENDING_POLL_DELAY_MS)
+                    if (_state.value.pending) pollPending()
+                }
             }
             is PurchaseResult.Failed -> {
                 Analytics.track(Events.PURCHASE_FAILED)
                 _state.update { it.copy(busy = false, message = result.message) }
+            }
+        }
+    }
+
+    /** The visible retry for a pending purchase. */
+    fun retryPending() {
+        if (_state.value.busy) return
+        _state.update { it.copy(busy = true, pending = false, message = "Checking with Google Play…") }
+        viewModelScope.launch { pollPending() }
+    }
+
+    private suspend fun pollPending() {
+        runCatching { gateway.refresh() }
+        val owned = gateway.entitlements.value.effective(System.currentTimeMillis())
+        if (owned.isPaid) {
+            Analytics.track(Events.PURCHASE_SUCCEEDED, "plan" to owned.plan.name)
+            _state.update { it.copy(busy = false, pending = false, purchased = true, message = null) }
+        } else {
+            _state.update {
+                it.copy(
+                    busy = false,
+                    pending = true,
+                    message = "Google Play hasn't confirmed the purchase yet. You can check again, and your plan starts as soon as it does."
+                )
             }
         }
     }
@@ -110,4 +146,9 @@ class PaywallViewModel @JvmOverloads constructor(application: Application, priva
     }
 
     fun exitSheetShown() = Analytics.track(Events.EXIT_SHEET_SHOWN)
+
+    companion object {
+        /** How long to wait before asking the store about a purchase it said was still pending. */
+        const val PENDING_POLL_DELAY_MS = 4_000L
+    }
 }

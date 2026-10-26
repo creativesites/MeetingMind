@@ -49,6 +49,7 @@ import com.craftflowtechnologies.meetingmind.feature.today.UpNextTile
 import com.craftflowtechnologies.meetingmind.feature.today.timeFormat
 import com.craftflowtechnologies.meetingmind.feature.today.timeLabel
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -78,6 +79,10 @@ fun WorkPageScreen(
     onOpenInbox: () -> Unit = {},
     onOpenWeeklyReview: () -> Unit = {},
     onOpenPerson: (String) -> Unit = {},
+    onOpenProcessing: (String) -> Unit = {},
+    onOpenCircle: (String) -> Unit = {},
+    onOpenCircles: () -> Unit = {},
+    onStartCircle: () -> Unit = {},
     /** Set when Work is the bar's fourth slot: the page then carries the bar, with Work current. */
     onNavigateBottomNav: ((com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit)? = null
 ) {
@@ -89,6 +94,7 @@ fun WorkPageScreen(
     val settings by viewModel.settings.collectAsState()
     val myTasks by viewModel.myTasks.collectAsState()
     val toReview by viewModel.toReview.collectAsState()
+    val failed by viewModel.failed.collectAsState()
     val followUps by viewModel.followUps.collectAsState()
     val projects by viewModel.projects.collectAsState()
     val recentNotes by viewModel.workNotes.collectAsState()
@@ -98,9 +104,36 @@ fun WorkPageScreen(
     val upNext by today.upNext.collectAsState()
     val now by today.now.collectAsState()
     val todayItems by today.today.collectAsState()
+    val decisionLog by viewModel.decisionLog.collectAsState()
+    val openQuestions by viewModel.openQuestions.collectAsState()
     val terms = settings.terms
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    val circlesRepo = remember {
+        try {
+            com.craftflowtechnologies.meetingmind.core.circles2.Circles2.repository(context)
+        } catch (_: Exception) {
+            null
+        }
+    }
+    val circlesState by (circlesRepo?.circles() ?: kotlinx.coroutines.flow.flowOf(com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState.NotConnected)).collectAsState(com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState.Loading)
+    val workCircles = remember(circlesState) {
+        when (val s = circlesState) {
+            is com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState.Ready -> {
+                s.circles.filter { it.isWork }.map { c ->
+                    WorkCircleItem(
+                        id = c.id,
+                        name = c.name,
+                        groupWord = c.groupWord,
+                        memberCount = c.memberCount,
+                        onClick = { onOpenCircle(c.id) }
+                    )
+                }
+            }
+            else -> emptyList()
+        }
+    }
 
     var recordPicker by remember { mutableStateOf(false) }
     var writePicker by remember { mutableStateOf(false) }
@@ -111,6 +144,7 @@ fun WorkPageScreen(
     var editing by remember { mutableStateOf<WorkTask?>(null) }
     var nudging by remember { mutableStateOf<WorkTask?>(null) }
     var savedViews by remember { mutableStateOf(false) }
+    var asking by remember { mutableStateOf(false) }
     var savedFilter by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.SavedFilter?>(null) }
     var selectedIds by rememberSaveable(stateSaver = listSaver<Set<String>, String>({ it.toList() }, { it.toSet() })) { mutableStateOf(emptySet<String>()) }
     val snackbar = remember { SnackbarHostState() }
@@ -124,6 +158,10 @@ fun WorkPageScreen(
     // A Prep notification opens the sheet here, for the event it named.
     val pendingPrep by com.craftflowtechnologies.meetingmind.core.work.PendingPrepare.event.collectAsState()
     pendingPrep?.let { e -> PrepareSheet(PrepTarget.Event(e), viewModel, onOpenMeeting, onDismiss = { com.craftflowtechnologies.meetingmind.core.work.PendingPrepare.event.value = null }) }
+
+    // Another screen (the Work home's Task button) can ask for a segment; it is taken once and then cleared.
+    val requestedSegment by PendingWorkSegment.request.collectAsState()
+    LaunchedEffect(requestedSegment) { requestedSegment?.let { page.select(it); PendingWorkSegment.request.value = null } }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { page.onResume(); today.tick() }
     // Pulse reads today's calendar to say what is still open from last time.
@@ -146,7 +184,7 @@ fun WorkPageScreen(
     // ---------------------------------------------------------------- today's figures
     val endOfToday = DueDates.startOfDay(now) + 86_400_000L
     val meetings = remember(todayItems) { todayItems.filter { it.kind == ItemKind.EVENT && !it.allDay && it.target is DeepTarget.Event } }
-    val needs = remember(myTasks, toReview, followUps, titles, now / 60_000) {
+    val needs = remember(myTasks, toReview, followUps, failed, titles, now / 60_000) {
         buildList {
             val due = myTasks.filter { it.dueAt != null && it.dueAt < endOfToday }.sortedBy { it.dueAt }
             val (late, soon) = due.partition { it.isOverdue(now) }
@@ -154,6 +192,7 @@ fun WorkPageScreen(
             late.forEach { add(task(it)) }
             toReview.forEach { r -> add(NeedsItem("r-${r.meetingId}", r.title, "${r.type.displayName} · ${dayLabel(r.at, now)} · ready to wrap up", "Review") { onOpenWrapUp(r.meetingId, false) }) }
             followUps.forEach { r -> add(NeedsItem("f-${r.meetingId}", r.title, "${r.type.displayName} · ${dayLabel(r.at, now)} · follow-up not sent", "Send") { onOpenWrapUp(r.meetingId, true) }) }
+            failed.forEach { r -> add(NeedsItem("x-${r.meetingId}", r.title, "${r.type.displayName} · ${dayLabel(r.at, now)} · didn't process", "Open") { onOpenProcessing(r.meetingId) }) }
             soon.forEach { add(task(it)) }
         }
     }
@@ -207,7 +246,15 @@ fun WorkPageScreen(
                     title = n.title.ifBlank { n.workflow.displayName }, preview = previewOf(n.plainText), spaceColor = projectColors[n.notebookId] ?: fallbackColor,
                     timeLabel = noteTimeLabel(n.eventDate ?: n.updatedAt, now), pinned = n.pinned, isPrivate = n.isPrivate
                 )) { onOpenNote(n.id) }
-            }
+            },
+            glance = TodayGlance(
+                openTasks = myTasks.size,
+                decisionsThisWeek = decisionLog.count { it.createdAt > now - 7 * 86_400_000L },
+                openQuestions = openQuestions.size
+            ),
+            circles = workCircles,
+            onStartCircle = onStartCircle,
+            onAllCircles = onOpenCircles
         )
     }
 
@@ -227,11 +274,15 @@ fun WorkPageScreen(
             onRecord = { recordPicker = true }, onWriteNote = { writePicker = true }
         )
     }
-    val tasksActions = remember(page, titles) {
+    val tasksActions = remember(page, titles, context) {
         TasksActions(
             onWaiting = page::setWaiting, onAdd = { page.addTask(it) }, onDone = { page.completeTask(it) }, onEdit = { editing = it.task },
             onOpenSource = { r -> r.task.meetingId?.let { onOpenMeeting(it, r.task.startMs) } }, onNudge = { nudging = it.task },
-            onLoadMore = page::loadMoreTasks, onRetry = page::retryTasks, onRefresh = page::refreshTasks
+            onLoadMore = page::loadMoreTasks, onRetry = page::retryTasks, onRefresh = page::refreshTasks,
+            onSyncExternal = { r ->
+                val sendIntent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, r.task.title)
+                context.startActivity(Intent.createChooser(sendIntent, "Send task to…"))
+            }
         )
     }
     val selectedNotes = notes.items.filter { it.id in selectedIds }
@@ -240,10 +291,12 @@ fun WorkPageScreen(
         WorkMenuAction("Record meeting") { recordPicker = true },
         WorkMenuAction("Write note") { writePicker = true },
         WorkMenuAction("Add task") { page.select(WorkSegment.TASKS); page.setWaiting(false) },
+        WorkMenuAction("Start team circle", onClick = onStartCircle),
         WorkMenuAction("Import", onClick = onImport)
     )
     val moreActions = listOfNotNull(
         WorkMenuAction("Inbox", inboxCount, onOpenInbox),
+        WorkMenuAction("Team circles", onClick = onOpenCircles),
         WorkMenuAction("Weekly review", onClick = onOpenWeeklyReview),
         WorkMenuAction("Brief") { onOpenBrief(BriefTarget.weekly) },
         WorkMenuAction("People & ${terms.organisations.lowercase()}") { onOpenAll(WorkTab.PEOPLE) },
@@ -272,7 +325,7 @@ fun WorkPageScreen(
                 } else {
                     WorkPageHeader(
                         contextLine = contextLine(now, meetings.size, needs.size), addActions = addActions, moreActions = moreActions,
-                        onSearch = onSearch, onBack = if (onNavigateBottomNav == null) onNavigateBack else null
+                        onSearch = onSearch, onBack = if (onNavigateBottomNav != null && settings.tabSlot == TabSlot.WORK) null else onNavigateBack
                     )
                 }
                 SegmentedControl(WorkSegment.entries.map { it.label }, segment?.ordinal ?: -1, { page.select(WorkSegment.entries[it]) })
@@ -282,7 +335,11 @@ fun WorkPageScreen(
                     null -> Unit
                     WorkSegment.TODAY -> TodayContent(
                         todayModel, todayList, onAllNotes = { page.select(WorkSegment.NOTES) },
-                        onRecord = { recordPicker = true }, onWriteNote = { writePicker = true }
+                        onRecord = { recordPicker = true }, onWriteNote = { writePicker = true },
+                        onAddTask = { page.select(WorkSegment.TASKS); page.setWaiting(false) },
+                        onShowTasks = { page.select(WorkSegment.TASKS) },
+                        onAsk = { asking = true },
+                        onOpenList = onOpenAll
                     )
                     WorkSegment.NOTES -> NotesContent(query, notes, now, projects, selectedIds, notesList, notesActions)
                     WorkSegment.TASKS -> TasksContent(waiting, tasks, now, titles, tasksList, tasksActions)
@@ -315,6 +372,7 @@ fun WorkPageScreen(
         "Move to ${terms.project.lowercase()}", projects, moving.singleOrNull()?.notebookId, noneLabel = "No ${terms.project.lowercase()}",
         onPick = { id -> moving.forEach { page.move(it, id) }; moving = emptyList(); selectedIds = emptySet() }, onDismiss = { moving = emptyList() }
     )
+    if (asking) ScopedAskSheet(com.craftflowtechnologies.meetingmind.ai.assistant.AskScope(), viewModel, onOpenMeeting, onOpenNote, onDismiss = { asking = false })
     preparing?.let { PrepareSheet(it, viewModel, onOpenMeeting, onDismiss = { preparing = null }) }
     nudging?.let { NudgeSheet(it, viewModel) { nudging = null } }
     editing?.let { t ->
@@ -332,6 +390,11 @@ fun WorkPageScreen(
 
 private const val DEFAULT_WAIT_MS = 400L
 private const val RECENT_NOTES = 5
+
+/** A segment another screen asks the Work page to open. Set it, then open Work; the page takes it and clears it. */
+object PendingWorkSegment {
+    val request = MutableStateFlow<WorkSegment?>(null)
+}
 
 private fun pulseEventOf(e: CalendarEvent) =
     PulseEvent(e.key, e.title, e.begin, e.end, e.otherPeople, e.attendees.filter { a -> !a.isSelf }.mapNotNull { a -> a.email })

@@ -53,14 +53,14 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 
 @Composable
-fun CreateCircleScreen(onBack: () -> Unit, onCreated: (String) -> Unit) {
+fun CreateCircleScreen(onBack: () -> Unit, onCreated: (String) -> Unit, initialSpace: String? = null) {
     val context = LocalContext.current
     val repo = remember { Circles2.repository(context) }
-    val vm: CreateCircleViewModel = viewModel(factory = CreateCircleViewModel.Factory(repo))
+    val vm: CreateCircleViewModel = viewModel(factory = CreateCircleViewModel.Factory(repo, initialSpace))
     val state by vm.state.collectAsState()
     val askNotifications = rememberNotificationAsk()
     CreateCircleContent(
-        state, onBack, vm::pickTemplate, vm::setName, vm::setVocab, vm::setDisplayName, vm::toggleType, vm::setApproval, vm::setWhoCanInvite,
+        state, onBack, vm::pickTemplate, vm::setSpaceTab, vm::setName, vm::setVocab, vm::setDisplayName, vm::toggleType, vm::setApproval, vm::setWhoCanInvite,
         onCreate = { vm.create { id -> if (repo.isFirstCircle()) askNotifications { onCreated(id) } else onCreated(id) } }
     )
 }
@@ -71,6 +71,7 @@ fun CreateCircleContent(
     state: CreateUiState,
     onBack: () -> Unit,
     onTemplate: (CircleTemplate) -> Unit,
+    onSpaceTab: (String) -> Unit,
     onName: (String) -> Unit,
     onVocab: (String) -> Unit,
     onDisplayName: (String) -> Unit,
@@ -89,9 +90,14 @@ fun CreateCircleContent(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = MM.space.l),
             verticalArrangement = Arrangement.spacedBy(MM.space.m)
         ) {
+            val spaceLabels = listOf("Work & Teams", "Faith & Community")
+            val currentSpaceIdx = if (state.spaceTab == "work") 0 else 1
+            SegmentedControl(spaceLabels, currentSpaceIdx, { idx -> onSpaceTab(if (idx == 0) "work" else "faith") })
+
             SectionHeader("What kind of group?")
             Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                CircleTemplate.all.forEach { t ->
+                val visibleTemplates = CircleTemplate.forSpace(state.spaceTab)
+                visibleTemplates.forEach { t ->
                     val selected = t.id == state.template.id
                     MMCard(onClick = { onTemplate(t) }, modifier = Modifier.semantics { }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -105,7 +111,7 @@ fun CreateCircleContent(
                 }
             }
             SectionHeader("Name it")
-            CircleField(state.name, onName, "Name", placeholder = "Tuesday night ${state.vocab.lowercase()}")
+            CircleField(state.name, onName, "Name", placeholder = if (state.template.isWork) "Product & Eng ${state.vocab.lowercase()}" else "Tuesday night ${state.vocab.lowercase()}")
             FieldLabel("What does your group call itself?")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
                 state.template.vocab.forEach { v -> MMChip(v, selected = state.vocab == v, onClick = { onVocab(v) }) }
@@ -116,15 +122,25 @@ fun CreateCircleContent(
             TextAction(if (advanced) "Hide options" else "More options", { advanced = !advanced })
             if (advanced) {
                 SectionHeader("What can people post?")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-                    PostType.entries.forEach { t -> MMChip(t.label, selected = t in state.types, onClick = { onToggleType(t) }) }
+                val availableTypes = if (state.template.isWork) {
+                    listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Blocker, PostType.Announcement, PostType.Note)
+                } else {
+                    listOf(PostType.Prayer, PostType.Testimony, PostType.Study, PostType.Encouragement, PostType.Reading, PostType.Announcement, PostType.Note)
                 }
-                ToggleRow("Admins approve prayer requests first", "Keeps the space gentle. Turn off to share requests right away.", state.prayerApproval, onApproval)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    availableTypes.forEach { t -> MMChip(t.label, selected = t in state.types, onClick = { onToggleType(t) }) }
+                }
+                if (PostType.Prayer in state.types) {
+                    ToggleRow("Admins approve prayer requests first", "Keeps the space gentle. Turn off to share requests right away.", state.prayerApproval, onApproval)
+                }
                 FieldLabel("Who can invite people?")
                 SegmentedControl(WhoCanInvite.entries.map { it.label }, WhoCanInvite.entries.indexOf(state.whoCanInvite), { onWhoCanInvite(WhoCanInvite.entries[it]) })
             }
             Text(
-                "Only members of this circle can see what's shared here. Anonymous prayer requests hide the name from everyone, admins included.",
+                if (state.template.isWork)
+                    "Only members of this team circle can see what's shared here."
+                else
+                    "Only members of this circle can see what's shared here. Anonymous prayer requests hide the name from everyone, admins included.",
                 style = MM.type.caption, color = MM.colors.inkSecondary
             )
             state.error?.let { StatusLine(StatusKind.Error, it) }

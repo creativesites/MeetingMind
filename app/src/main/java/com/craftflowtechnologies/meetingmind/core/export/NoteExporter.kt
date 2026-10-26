@@ -197,7 +197,9 @@ class NoteExportService(
         return true
     }
 
-    suspend fun build(doc: NoteDocument, options: NoteExportOptions): ExportDocument {
+    suspend fun build(source: NoteDocument, options: NoteExportOptions): ExportDocument {
+        // A YouTube transcript stays in the app: it is left out of every export, whatever the rest of the note is.
+        val doc = source.copy(blocks = source.blocks.filter { it.isShareable })
         val meetingIds = doc.blocks.filter { it.type == NoteBlockType.RECORDING }
             .mapNotNull { it.payload[NoteBlock.PAYLOAD_MEETING_ID] }
         val recordings = meetingIds.mapNotNull { id ->

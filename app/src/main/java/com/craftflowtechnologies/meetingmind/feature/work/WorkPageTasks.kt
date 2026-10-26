@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,11 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -58,10 +61,14 @@ internal class TasksActions(
     val onNudge: (WorkTaskRow) -> Unit = {},
     val onLoadMore: () -> Unit = {},
     val onRetry: () -> Unit = {},
-    val onRefresh: () -> Unit = {}
+    val onRefresh: () -> Unit = {},
+    val onSyncExternal: ((WorkTaskRow) -> Unit)? = null
 )
 
-/** The Tasks segment: Mine | Waiting on, grouped by when they are due, loaded a page at a time. */
+/**
+ * The Tasks segment: Mine | Waiting on, grouped by when they are due, loaded a page at a time. Each task is a
+ * card with its due date as a pill, and its source meeting as a link that jumps to the moment it was said.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun TasksContent(
@@ -80,7 +87,7 @@ internal fun TasksContent(
     }
     Column(modifier.fillMaxSize()) {
         SegmentedControl(listOf("Mine", "Waiting on"), if (waiting) 1 else 0, { actions.onWaiting(it == 1) }, Modifier.padding(horizontal = MM.space.l))
-        if (!waiting) QuickAdd(actions.onAdd, Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s))
+        if (!waiting) QuickAdd(actions.onAdd, Modifier.padding(horizontal = MM.space.l, vertical = MM.space.m))
         PullToRefreshBox(isRefreshing = state.isRefreshing, onRefresh = actions.onRefresh, modifier = Modifier.weight(1f)) {
             LazyColumn(
                 Modifier.fillMaxSize().testTag("work_tasks_list"), state = listState,
@@ -103,10 +110,10 @@ internal fun TasksContent(
                         items(entries, key = { it.key }) { entry ->
                             when (entry) {
                                 is TaskEntry.Header -> SectionHeader(
-                                    entry.bucket.label, Modifier.padding(top = MM.space.m),
+                                    entry.bucket.label, Modifier.padding(top = MM.space.l, bottom = MM.space.s),
                                     count = if (state.endReached) entry.count else null
                                 )
-                                is TaskEntry.Row -> TaskListRow(entry.row, now, waiting, meetingTitles, actions)
+                                is TaskEntry.Row -> TaskCard(entry.row, now, waiting, meetingTitles, actions)
                             }
                         }
                         pagedFooter(state, "That's everything", actions.onRetry)
@@ -123,7 +130,7 @@ private fun QuickAdd(onAdd: (String) -> Unit, modifier: Modifier = Modifier) {
     val submit = { if (text.isNotBlank()) { onAdd(text); text = "" } }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         WorkTextField(
-            text, { text = it }, "Add a task — “Send the proposal Friday”", Icons.Rounded.Add,
+            text, { text = it }, "Add a task, e.g. “Send the proposal Friday”", Icons.Rounded.Add,
             modifier = Modifier.weight(1f).testTag("work_add_task"), imeAction = ImeAction.Done, onAction = submit
         )
         if (text.isNotBlank()) TextAction("Add", submit)
@@ -131,28 +138,47 @@ private fun QuickAdd(onAdd: (String) -> Unit, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TaskListRow(row: WorkTaskRow, now: Long, waiting: Boolean, titles: Map<String, String>, actions: TasksActions) {
+private fun TaskCard(row: WorkTaskRow, now: Long, waiting: Boolean, titles: Map<String, String>, actions: TasksActions) {
     val t = row.task
     val due = dueLabel(t.dueAt, open = true, now = now)
+    val overdue = due?.second == true
     val source = t.meetingId?.let { titles[it] }
-    Row(Modifier.fillMaxWidth().heightIn(min = MMSize.minTouch).clickable(role = Role.Button) { actions.onEdit(row) }, verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.fillMaxWidth().padding(bottom = MM.space.s).background(MM.colors.surface, MM.radius.card)
+            .clickable(role = Role.Button) { actions.onEdit(row) }.padding(start = MM.space.xs, end = MM.space.m, top = MM.space.xs, bottom = MM.space.xs),
+        verticalAlignment = Alignment.Top
+    ) {
         IconButton(onClick = { actions.onDone(row) }) {
-            Icon(Icons.Rounded.RadioButtonUnchecked, "Mark done: ${t.title}", tint = if (due?.second == true) MM.colors.danger else MM.colors.inkSecondary)
+            Icon(Icons.Rounded.RadioButtonUnchecked, "Mark done: ${t.title}", tint = if (overdue) MM.colors.danger else MM.colors.inkSecondary)
         }
-        Column(Modifier.weight(1f).padding(vertical = MM.space.s)) {
+        Column(Modifier.weight(1f).padding(top = MM.space.s), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
             Text(t.title, style = MM.type.bodyStrong, color = MM.colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val line = listOfNotNull(
-                due?.first, t.ownerName?.takeIf { waiting }?.let { "from $it" }
-            ).joinToString(" · ")
-            if (line.isNotEmpty()) Text(line, style = MM.type.secondary, color = if (due?.second == true) MM.colors.danger else MM.colors.inkSecondary)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                due?.let { (label, isOverdue) ->
+                    Box(
+                        Modifier.background(if (isOverdue) MM.colors.dangerWash else MM.colors.accentWash, MM.radius.pill)
+                            .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                    ) {
+                        Text(label, style = MM.type.caption, color = if (isOverdue) MM.colors.danger else MM.colors.accent)
+                    }
+                }
+                if (waiting) t.ownerName?.let { Text("from $it", style = MM.type.secondary, color = MM.colors.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            }
             if (source != null && t.meetingId != null) {
-                Box(
+                Row(
                     Modifier.heightIn(min = MMSize.minTouch).clickable(role = Role.Button) { actions.onOpenSource(row) }
                         .semantics { contentDescription = "Jump to the moment in $source" },
-                    contentAlignment = Alignment.CenterStart
-                ) { Text("From $source", style = MM.type.caption, color = MM.colors.accent, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Link, null, Modifier.padding(end = MM.space.xs).size(MMSize.iconSmall), tint = MM.colors.accent)
+                    Text(source, style = MM.type.caption, color = MM.colors.accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
-        if (waiting) TextAction("Nudge", { actions.onNudge(row) })
+        if (waiting) {
+            TextAction("Nudge", { actions.onNudge(row) }, Modifier.padding(top = MM.space.s))
+        } else if (actions.onSyncExternal != null) {
+            TextAction("Send…", { actions.onSyncExternal.invoke(row) }, Modifier.padding(top = MM.space.s))
+        }
     }
 }

@@ -85,8 +85,12 @@ class GeminiHttpTransport(
             }
 
             coroutineContext.ensureActive()
-            if (request.transcription != null) transcribeContent(route, request, uploaded?.first, uploaded?.second ?: AUDIO_MIME)
-            else generateContent(route, request, uploaded?.first)
+            when {
+                request.transcription != null -> transcribeContent(route, request, uploaded?.first, uploaded?.second ?: AUDIO_MIME)
+                // A YouTube address is read by Google as it is: nothing to upload, and no MIME type to send.
+                request.videoUri != null -> generateContent(route, request, request.videoUri, mime = null)
+                else -> generateContent(route, request, uploaded?.first)
+            }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: java.io.InterruptedIOException) {
@@ -265,13 +269,18 @@ class GeminiHttpTransport(
 
     // ── generateContent ──────────────────────────────────────────────────────────────────────
 
-    private suspend fun generateContent(route: GeminiRoute, request: GeminiRequest, fileUri: String?): AiResult<String> {
+    private suspend fun generateContent(
+        route: GeminiRoute,
+        request: GeminiRequest,
+        fileUri: String?,
+        mime: String? = AUDIO_MIME
+    ): AiResult<String> {
         val parts = JSONArray().put(JSONObject().put("text", buildPrompt(request)))
         if (fileUri != null) {
             parts.put(
                 JSONObject().put(
                     "file_data",
-                    JSONObject().put("mime_type", AUDIO_MIME).put("file_uri", fileUri)
+                    JSONObject().put("file_uri", fileUri).apply { if (mime != null) put("mime_type", mime) }
                 )
             )
         }
@@ -393,11 +402,12 @@ class GeminiHttpTransport(
         // Never log the body: a failed transcription request's error can echo prompt content.
         Log.w(TAG, "$stage failed with HTTP $code")
         return when (code) {
-            400 -> AiResult.Failed("$stage failed: Gemini rejected the request. ${serverMessage.orEmpty()}".trim())
+            400 -> AiResult.Failed("$stage failed: Gemini rejected the request. ${serverMessage.orEmpty()}".trim(), retryable = false)
             401, 403 -> AiResult.Failed(
-                "$stage failed: your Gemini API key was rejected. Check it in Settings. ${serverMessage.orEmpty()}".trim()
+                "$stage failed: your Gemini API key was rejected. Check it in Settings. ${serverMessage.orEmpty()}".trim(), retryable = false
             )
-            402 -> AiResult.Failed("$stage needs a MeetingMind plan. See Plans in Settings, or process this recording offline.")
+            402 -> AiResult.Failed("$stage needs a MeetingMind plan. See Plans in Settings, or process this recording offline.", retryable = false)
+            // A quota reached now may well have room again shortly, so this one stays retryable.
             429 -> AiResult.Failed("$stage failed: the cloud allowance or quota is used up. Try again later, or process this recording offline.")
             in 500..599 -> AiResult.Failed("$stage failed: Gemini is unavailable right now. Try again shortly.")
             else -> AiResult.Failed("$stage failed (HTTP $code). ${serverMessage.orEmpty()}".trim())

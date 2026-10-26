@@ -12,6 +12,7 @@ import com.craftflowtechnologies.meetingmind.core.circles2.Rsvp
 import com.craftflowtechnologies.meetingmind.core.circles2.RsvpAnswer
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesFailure
+import com.craftflowtechnologies.meetingmind.core.circles2.FailureKind
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesRepository
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult
 import com.craftflowtechnologies.meetingmind.core.circles2.Comment
@@ -29,6 +30,7 @@ import com.craftflowtechnologies.meetingmind.core.circles2.PostUpdate
 import com.craftflowtechnologies.meetingmind.core.circles2.ReactionKind
 import com.craftflowtechnologies.meetingmind.core.circles2.Role
 import com.craftflowtechnologies.meetingmind.core.circles2.valueOr
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -43,6 +45,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.craftflowtechnologies.meetingmind.core.circles2.fold
 
 /** A post as the feed shows it: [mine] is true even for my anonymous posts (known only on this phone). */
@@ -180,17 +183,35 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     }
     fun closeComposer() { composer.value = ComposerState() }
 
-    /** A photo for the post being written. Opens a free-form composer when none is open. */
+    /** A photo, video or document for the post being written. Opens a free-form composer when none is open. */
     fun addPhoto(file: PickedFile) {
         if (!composer.value.open) openComposer(PostType.Note)
         viewModelScope.launch {
-            repo.uploadAttachment(circleId, MediaKind.Image, file.bytes, file.mime, file.name, null).fold(
+            val kind = when {
+                file.mime.startsWith("video/") -> MediaKind.Video
+                file.mime == "application/pdf" || file.name.orEmpty().endsWith(".pdf", ignoreCase = true) || file.mime.startsWith("application/") -> MediaKind.File
+                else -> MediaKind.Image
+            }
+            repo.uploadAttachment(circleId, kind, file.bytes, file.mime, file.name, file.durationMs).fold(
                 onOk = { a -> composer.update { it.copy(attachments = it.attachments + a, error = null) } },
                 onErr = { f -> composer.update { it.copy(error = f.message) } }
             )
         }
     }
     fun removePhoto(a: MediaAttachment) { composer.update { it.copy(attachments = it.attachments.filter { x -> x.path != a.path }) } }
+
+    /** Sets my profile photo. The Worker writes the new version onto my member doc in every circle I'm in. */
+    fun setProfilePhoto(file: PickedFile) {
+        viewModelScope.launch {
+            val jpeg = withContext(Dispatchers.Default) { avatarJpeg(file.bytes) }
+            if (jpeg == null) { fail(CirclesFailure(FailureKind.Rejected, "That photo couldn't be read. Try another.", "bad_image")); return@launch }
+            repo.setProfilePhoto(jpeg).fold(onOk = { say("Profile photo updated.") }, onErr = ::fail)
+        }
+    }
+
+    fun removeProfilePhoto() {
+        viewModelScope.launch { repo.removeProfilePhoto().fold(onOk = { say("Profile photo removed.") }, onErr = ::fail) }
+    }
 
     /** The cover photo for the circle's hero. Admins only; the Worker checks it. */
     fun setCover(file: PickedFile) {

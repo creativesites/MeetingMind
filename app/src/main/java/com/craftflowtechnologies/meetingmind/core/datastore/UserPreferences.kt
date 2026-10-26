@@ -43,6 +43,11 @@ data class AppPreferencesState(
     val cloudSyncEnabled: Boolean = false,
     val themeMode: String = "DARK",
     val selectedLanguage: String = com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+    val aiResponseLanguage: String = com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+    val summaryLanguage: String = com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+    val translationTargetLanguage: String = com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+    val autoDetectLanguage: Boolean = false,
+    val appLanguage: String? = null,
     val appearance: com.craftflowtechnologies.meetingmind.ui.theme.Appearance = com.craftflowtechnologies.meetingmind.ui.theme.Appearance(),
     /** Display-only: hides "uh"/"um"-style hesitation noise in the transcript. The verbatim ASR
      * text is always what's stored, so toggling this back off restores it exactly, with no
@@ -137,6 +142,11 @@ class UserPreferencesManager(private val context: Context) {
 
     private val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
     private val SELECTED_LANGUAGE = stringPreferencesKey("selected_language")
+    private val AI_RESPONSE_LANGUAGE = stringPreferencesKey("ai_response_language")
+    private val SUMMARY_LANGUAGE = stringPreferencesKey("summary_language")
+    private val TRANSLATION_TARGET_LANGUAGE = stringPreferencesKey("translation_target_language")
+    private val AUTO_DETECT_LANGUAGE = booleanPreferencesKey("auto_detect_language")
+    private val APP_LANGUAGE = stringPreferencesKey("app_language")
     private val SELECTED_ASR_MODEL = stringPreferencesKey("selected_asr_model")
     private val SELECTED_LLM_MODEL = stringPreferencesKey("selected_llm_model")
     private val BATTERY_SAVER = booleanPreferencesKey("battery_saver")
@@ -257,6 +267,11 @@ class UserPreferencesManager(private val context: Context) {
             cloudSyncEnabled = prefs[CLOUD_SYNC_ENABLED] ?: false,
             themeMode = prefs[THEME_MODE] ?: "DARK",
             selectedLanguage = prefs[SELECTED_LANGUAGE] ?: com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+            aiResponseLanguage = prefs[AI_RESPONSE_LANGUAGE] ?: com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+            summaryLanguage = prefs[SUMMARY_LANGUAGE] ?: com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+            translationTargetLanguage = prefs[TRANSLATION_TARGET_LANGUAGE] ?: com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.ENGLISH,
+            autoDetectLanguage = prefs[AUTO_DETECT_LANGUAGE] ?: false,
+            appLanguage = prefs[APP_LANGUAGE],
             appearance = com.craftflowtechnologies.meetingmind.ui.theme.Appearance.decode(prefs[APPEARANCE], existingInstall = prefs[ONBOARDING_COMPLETED] == true),
             cleanFillerWords = prefs[CLEAN_FILLER_WORDS] ?: true,
             // A stored value from a future/renamed enum constant falls back to the current default
@@ -415,8 +430,29 @@ class UserPreferencesManager(private val context: Context) {
                 if (current != ModelCatalog.omnilingualAsr1bInt8.id) {
                     it[SELECTED_ASR_MODEL] = ModelCatalog.omnilingualAsr300mInt8.id
                 }
+            } else if (com.craftflowtechnologies.meetingmind.ai.asr.SupportedLanguages.isWhisperPreferredLanguage(languageCode)) {
+                val current = it[SELECTED_ASR_MODEL]
+                if (current != ModelCatalog.whisperLargeV3Int8.id) {
+                    it[SELECTED_ASR_MODEL] = ModelCatalog.whisperTurboInt8.id
+                }
             }
         }
+    }
+
+    suspend fun setAiResponseLanguage(languageCode: String) {
+        context.dataStore.edit { it[AI_RESPONSE_LANGUAGE] = languageCode }
+    }
+
+    suspend fun setSummaryLanguage(languageCode: String) {
+        context.dataStore.edit { it[SUMMARY_LANGUAGE] = languageCode }
+    }
+
+    suspend fun setTranslationTargetLanguage(languageCode: String) {
+        context.dataStore.edit { it[TRANSLATION_TARGET_LANGUAGE] = languageCode }
+    }
+
+    suspend fun setAutoDetectLanguage(enabled: Boolean) {
+        context.dataStore.edit { it[AUTO_DETECT_LANGUAGE] = enabled }
     }
 
     suspend fun setSelectedAsrModel(modelId: String) {
@@ -478,5 +514,12 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setHomeHeroDisplayMode(mode: HomeHeroDisplayMode) {
         context.dataStore.edit { it[HOME_HERO_DISPLAY_MODE] = mode.name }
+    }
+
+    suspend fun setAppLanguage(tag: String?) {
+        context.dataStore.edit {
+            val trimmed = tag?.trim()
+            if (trimmed.isNullOrEmpty()) it.remove(APP_LANGUAGE) else it[APP_LANGUAGE] = trimmed
+        }
     }
 }

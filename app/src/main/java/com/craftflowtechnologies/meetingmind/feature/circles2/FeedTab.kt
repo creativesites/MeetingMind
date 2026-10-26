@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
@@ -49,6 +50,7 @@ import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser
 import com.craftflowtechnologies.meetingmind.core.share.ShareHelper
 import com.craftflowtechnologies.meetingmind.feature.scripture.rememberPassage
+import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
 import com.craftflowtechnologies.meetingmind.core.circles2.PendingPost
@@ -105,22 +107,22 @@ class FeedActions(
 @Composable
 fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) readPicked(context, uri)?.let { actions.onPhoto(it) }
     }
     val circle = state.circle ?: return
     val canPost = circle.settings.allowedTypes.any { !it.adminOnly || state.isAdmin }
-    val sharedPhotos = remember(state.posts) { state.posts.flatMap { it.post.attachments }.take(6) }
+    val sharedMedia = remember(state.posts) { state.posts.flatMap { it.post.attachments }.take(6) }
     LazyColumn(
         modifier, contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, top = MM.space.s, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
         state.failure?.let { f -> item { StatusLine(StatusKind.Warning, f.message) } }
         item { CircleHero(circle, state, actions) }
-        item { ComposerCard(circle, state, actions, onPhotoClick = { pickPhoto.launch("image/*") }) }
+        item { ComposerCard(circle, state, actions, onPhotoClick = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }) }
         item { EventsSection(state.events, now, actions.onOpenEvent, if (state.canModerate) actions.onNewEvent else null) }
-        if (sharedPhotos.isNotEmpty()) {
-            item { SharedMediaSection(circle.id, sharedPhotos.map { it.path }) }
+        if (sharedMedia.isNotEmpty()) {
+            item { SharedMediaSection(circle.id, sharedMedia) }
         }
         if (state.isAdmin && state.pending.isNotEmpty()) {
             item { SectionHeader("Waiting for approval", count = state.pending.size) }
@@ -133,7 +135,8 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
             item {
                 EmptyState(
                     title = "Nothing shared yet",
-                    body = "Share a prayer request, a testimony or a word of encouragement. Only members of this ${circle.groupWord.lowercase()} can see it.",
+                    body = if (circle.isWork) "Share tasks, decisions, briefs and updates. Only members of this team can see it."
+                    else "Share a prayer request, a testimony or a word of encouragement. Only members of this ${circle.groupWord.lowercase()} can see it.",
                     action = if (canPost) { { PrimaryButton("New post", actions.onNewPost, leadingIcon = Icons.Rounded.Add) } } else null
                 )
             }
@@ -252,20 +255,28 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
             InitialsAvatar(myName, size = 38.dp)
             Text(
-                "Share anything with ${circle.name}…",
+                if (circle.isWork) "Share an update, task or decision with ${circle.name}…"
+                else "Share anything with ${circle.name}…",
                 style = MM.type.body,
                 color = c.inkMuted,
                 modifier = Modifier.weight(1f).clickable { actions.onStartPost(PostType.Note) }
             )
+        }
+        val quickTypes = if (circle.isWork) {
+            listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Blocker)
+                .filter { it in circle.settings.allowedTypes }
+        } else {
+            listOf(PostType.Devotional, PostType.Study, PostType.Prayer, PostType.Testimony, PostType.Encouragement)
+                .filter { it in circle.settings.allowedTypes }
         }
         Row(
             Modifier.padding(top = MM.space.m).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(MM.space.s)
         ) {
             MMChip("Free-form", selected = true, onClick = { actions.onStartPost(PostType.Note) })
-            if (PostType.Prayer in circle.settings.allowedTypes) MMChip("Prayer request", selected = false, onClick = { actions.onStartPost(PostType.Prayer) })
-            if (PostType.Testimony in circle.settings.allowedTypes) MMChip("Testimony", selected = false, onClick = { actions.onStartPost(PostType.Testimony) })
-            if (PostType.Encouragement in circle.settings.allowedTypes) MMChip("Encouragement", selected = false, onClick = { actions.onStartPost(PostType.Encouragement) })
+            quickTypes.forEach { t ->
+                MMChip(t.label, selected = false, onClick = { actions.onStartPost(t) })
+            }
         }
         HorizontalDivider(Modifier.padding(top = MM.space.m, bottom = MM.space.s), color = c.line)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -308,17 +319,16 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
 }
 
 @Composable
-private fun SharedMediaSection(circleId: String, paths: List<String>) {
+private fun SharedMediaSection(circleId: String, media: List<MediaAttachment>) {
     Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-        SectionHeader("Shared media", count = paths.size)
+        SectionHeader("Shared media", count = media.size)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            paths.take(3).forEach { path ->
-                MediaImage(
+            media.take(3).forEach { a ->
+                AttachmentTile(
                     circleId = circleId,
-                    path = path,
+                    a = a,
                     modifier = Modifier.weight(1f).height(96.dp).clip(RoundedCornerShape(14.dp)),
-                    contentDescription = "Shared photo",
-                    allowFullscreen = true
+                    contentDescription = if (a.isVideo) "Shared video" else "Shared photo"
                 )
             }
         }
@@ -392,6 +402,9 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
                         MenuItem("Post an update") { menu = false; actions.onUpdate(post) }
                         MenuItem("Mark answered") { menu = false; actions.onMarkAnswered(post) }
                     }
+                    if (post.type == PostType.Task && !post.answered && (item.mine || canModerate)) {
+                        MenuItem("Mark completed") { menu = false; actions.onMarkAnswered(post) }
+                    }
                     if (isAdmin) MenuItem(if (pinned) "Unpin" else "Pin to top") { menu = false; actions.onPinPost(if (pinned) null else post) }
                     if (post.type == PostType.Prayer) MenuItem("Start a prayer chain") { menu = false; actions.onStartChain(post) }
                     if (item.mine) MenuItem("Edit") { menu = false; actions.onEdit(post) }
@@ -400,7 +413,30 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
                 }
             }
         }
-        if (post.answered) {
+        if (post.type == PostType.Task) {
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = if (post.answered) CirclesPalette.GreenBg else CirclesPalette.AccentSoft,
+                modifier = Modifier.padding(top = MM.space.s)
+            ) {
+                Row(
+                    Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (post.answered) Icon(Icons.Rounded.Check, null, tint = CirclesPalette.GreenInk, modifier = Modifier.size(13.dp))
+                    Text(
+                        if (post.answered) "Completed ✅" else "Action item",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (post.answered) CirclesPalette.GreenInk else CirclesPalette.AccentDeep
+                    )
+                }
+            }
+        } else if (post.type == PostType.Decision) {
+            Surface(shape = RoundedCornerShape(999.dp), color = CirclesPalette.RoseBg, modifier = Modifier.padding(top = MM.space.s)) {
+                Text("Decision record 📋", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.RoseInk, modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs))
+            }
+        } else if (post.answered) {
             Surface(shape = RoundedCornerShape(999.dp), color = CirclesPalette.GreenBg, modifier = Modifier.padding(top = MM.space.s)) {
                 Text("Answered 🎉", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.GreenInk, modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs))
             }
@@ -416,24 +452,22 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
         if (post.attachments.isNotEmpty()) {
             if (post.attachments.size == 1) {
                 val a = post.attachments.first()
-                MediaImage(
+                AttachmentTile(
                     circleId = circle.id,
-                    path = a.path,
+                    a = a,
                     modifier = Modifier.padding(top = MM.space.s).fillMaxWidth().heightIn(min = 140.dp, max = 260.dp).clip(RoundedCornerShape(16.dp)),
-                    contentDescription = "Photo from $who",
-                    allowFullscreen = true
+                    contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
                 )
             } else {
                 Column(Modifier.padding(top = MM.space.s), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     post.attachments.chunked(2).forEach { rowItems ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             rowItems.forEach { a ->
-                                MediaImage(
+                                AttachmentTile(
                                     circleId = circle.id,
-                                    path = a.path,
+                                    a = a,
                                     modifier = Modifier.weight(1f).height(140.dp).clip(RoundedCornerShape(14.dp)),
-                                    contentDescription = "Photo from $who",
-                                    allowFullscreen = true
+                                    contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
                                 )
                             }
                             if (rowItems.size == 1) Spacer(Modifier.weight(1f))
@@ -477,7 +511,7 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
                 )
             }
         }
-        if (post.answered && item.mine) {
+        if (post.type == PostType.Prayer && post.answered && item.mine) {
             Row(horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                 TextAction(if (post.anonymous) "Share a testimony" else "Turn into testimony", { actions.onTestimony(post) })
                 // Never offered for anonymous requests: a named celebration would unmask the requester.

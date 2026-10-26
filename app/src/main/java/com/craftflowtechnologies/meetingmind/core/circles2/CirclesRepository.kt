@@ -82,13 +82,43 @@ class CirclesRepository(
         }
     }
 
-    suspend fun createCircle(name: String, template: String, vocab: String, displayName: String, settings: CircleSettings, requestId: String): CirclesResult<String> {
+    suspend fun createCircle(name: String, template: String, vocab: String, displayName: String, settings: CircleSettings, requestId: String, description: String = "", space: String = "faith"): CirclesResult<String> {
         if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
         val signedIn = uid()
         if (signedIn is CirclesResult.Err) return signedIn
-        val r = api.createCircle(CreateCircleRequest(name.trim(), template, vocab.trim(), displayName.trim(), settings, requestId))
+        val r = api.createCircle(CreateCircleRequest(name.trim(), template, vocab.trim(), displayName.trim(), settings, requestId, description.trim(), space))
         if (r is CirclesResult.Ok) { store.displayName = displayName.trim(); remember(r.value) }
         return r
+    }
+
+    suspend fun createEmailInvite(circleId: String, email: String, expiresInDays: Int = 7, maxUses: Int = 50): CirclesResult<Invite> {
+        if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
+        return api.createEmailInvite(circleId, email, expiresInDays, maxUses)
+    }
+
+    suspend fun createPost(
+        circleId: String,
+        body: String,
+        type: PostType = PostType.Note,
+        anonymous: Boolean = false,
+        attachments: List<MediaAttachment> = emptyList(),
+        verseRef: String? = null,
+        requestId: String = java.util.UUID.randomUUID().toString()
+    ): CirclesResult<CreatedPost> {
+        if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
+        val signedIn = uid()
+        if (signedIn is CirclesResult.Err) return CirclesResult.Err(signedIn.failure)
+        return api.createPost(
+            CreatePostRequest(
+                circleId = circleId,
+                type = type,
+                body = body,
+                verseRef = verseRef,
+                anonymous = anonymous,
+                attachments = attachments,
+                requestId = requestId
+            )
+        )
     }
 
     /** [pasted] is anything: a code, a whole shared message, a link. Garbage gives an inline "doesn't look like a code" message, never a crash. */
@@ -109,6 +139,17 @@ class CirclesRepository(
             is CirclesResult.Err -> return p
         }
         return CirclesResult.Ok(MediaAttachment(path, mime, bytes.size.toLong(), durationMs, name?.take(120)))
+    }
+
+    /** My profile photo, as a JPEG the caller has already made square and small (see avatarJpeg). */
+    suspend fun setProfilePhoto(jpeg: ByteArray): CirclesResult<Long> {
+        if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
+        return api.uploadAvatar(jpeg, "image/jpeg")
+    }
+
+    suspend fun removeProfilePhoto(): CirclesResult<Unit> {
+        if (!api.isConfigured) return CirclesFailure.notConnected.asResult()
+        return api.removeAvatar()
     }
 
     suspend fun join(pasted: String, displayName: String): CirclesResult<JoinOutcome> {

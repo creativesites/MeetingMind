@@ -405,6 +405,30 @@ data class RecordingContext(
     val noteId: String? = null
 )
 
+/**
+ * Where a recording's current title actually came from. Persisted alongside the title so a later
+ * pass can tell "the person named this" from "the app generated this" without guessing from the
+ * text — the difference decides whether a reprocess or a backfill may replace it.
+ */
+enum class TitleSource {
+    /** Generated from real transcript content by a language model. */
+    AI,
+    /** Derived deterministically from real transcript content without a model. */
+    CONTENT,
+    /** The localized "type — date" fallback, used only when there is no usable transcript. */
+    DATE,
+    /** Typed by the person. Never overwritten automatically. */
+    USER,
+    /** The imported file's own usable name. Never overwritten automatically. */
+    IMPORT;
+
+    companion object {
+        /** Unknown or missing values are historically AI-generated titles, per schema 28's default. */
+        fun fromStored(raw: String?): TitleSource =
+            entries.firstOrNull { it.name == raw } ?: AI
+    }
+}
+
 data class Meeting(
     val id: String,
     val title: String,
@@ -425,7 +449,9 @@ data class Meeting(
      * unspecified; the diarization engine (if one runs) decides for itself. */
     val speakerCountPreference: Int? = null,
     /** The note this recording belongs to. See [Note]. */
-    val noteId: String? = null
+    val noteId: String? = null,
+    /** How [title] was produced, so a reprocess never silently replaces a person's own name. */
+    val titleSource: TitleSource = TitleSource.AI
 )
 
 data class TranscriptSegment(

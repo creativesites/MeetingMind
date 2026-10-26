@@ -33,21 +33,30 @@ enum class OfferKind(val packageId: String, val period: String, val defaultPlan:
     }
 }
 
-/** What the user can do because of a plan. Local recording, notes, search and export are never gated. */
+/**
+ * The only things a plan actually buys in 1.0. Everything else — Ask across meetings, Speaker ID,
+ * Read-to-Me, Circles, local recording, notes, search and export — is free for everyone.
+ */
 enum class Capability {
-    /** Cloud transcription and AI notes that MeetingMind pays for, within the plan's allowance. */
+    /** A paid managed-cloud allowance. Free users still route through the proxy, which meters the free allowance. */
     MANAGED_CLOUD_AI,
-    /** Using a personal Gemini API key in Settings with all Pro features unlocked. */
+    /** Using a personal Gemini API key in Settings instead of the managed service. */
     BYOK_KEY,
-    /** Full Pro feature set (Ask across meetings, Speaker ID, Read-to-Me TTS, unlimited Circles). */
-    PRO_FEATURES
+    /** Connected cloud productivity & task integrations (Todoist, GitHub, Linear, Notion, Slack, Teams, Pinned Vault). */
+    CONNECTED_INTEGRATIONS,
+    /** Automated trigger & workflow recipes (e.g. auto-publish, auto-sync tasks, export on completion). */
+    AUTOMATION_RECIPES,
+    /** Church ministry & organization workflows (Sermon-to-Circle pack, multi-circle study distribution). */
+    CHURCH_ORG_WORKFLOWS
 }
 
 object PlanCapabilities {
     fun has(plan: Plan, capability: Capability): Boolean = when (capability) {
         Capability.MANAGED_CLOUD_AI -> plan == Plan.PRO || plan == Plan.CHURCH
         Capability.BYOK_KEY -> plan == Plan.BYOK || plan == Plan.PRO || plan == Plan.CHURCH
-        Capability.PRO_FEATURES -> plan != Plan.FREE
+        Capability.CONNECTED_INTEGRATIONS -> plan == Plan.BYOK || plan == Plan.PRO || plan == Plan.CHURCH
+        Capability.AUTOMATION_RECIPES -> plan == Plan.BYOK || plan == Plan.PRO || plan == Plan.CHURCH
+        Capability.CHURCH_ORG_WORKFLOWS -> plan == Plan.CHURCH
     }
 }
 

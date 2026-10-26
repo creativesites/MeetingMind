@@ -107,10 +107,10 @@ fun PulseCard(ui: PulseUi, timeFormat: DateFormat, actions: PulseActions, modifi
         if (ui.coldStart && ui.attention.isEmpty() && ui.changeLines.isEmpty() && ui.today.isEmpty()) {
             Divider()
             Text("Start with one conversation", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Briefing.OnBrief)
-            Text("Record a meeting, or begin from a template. What's decided and promised will show up here.", fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 4.dp))
+            Text("Record a meeting, or open Work to write one. What's decided and promised will show up here.", fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 4.dp))
             Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PulseButton("● Record a conversation", primary = true, onClick = actions.onRecord)
-                PulseButton("Use a template", onClick = actions.onTemplates)
+                PulseButton("Open Work", onClick = actions.onTemplates)
             }
         }
 

@@ -121,7 +121,15 @@ data class NoteBlock(
     val indent: Int = 0,
     val checked: Boolean = false
 ) {
+    /**
+     * False for a block that must never leave the phone: a YouTube transcript. Sharing, exporting and
+     * copying a note skip such blocks; the rest of the note goes as usual.
+     */
+    val isShareable: Boolean get() = payload[PAYLOAD_NO_SHARE] != "1"
+
     companion object {
+        /** "1" on a block that stays in the note and is never shared, exported or copied out. */
+        const val PAYLOAD_NO_SHARE = "noShare"
         const val PAYLOAD_MEETING_ID = "meetingId"
         const val PAYLOAD_ATTACHMENT_ID = "attachmentId"
         const val PAYLOAD_NOTE_ID = "noteId"

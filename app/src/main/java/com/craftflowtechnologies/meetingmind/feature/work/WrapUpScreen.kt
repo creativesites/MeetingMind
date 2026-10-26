@@ -9,11 +9,14 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -85,7 +89,8 @@ fun WrapUpScreen(
     onDone: (noteId: String?) -> Unit,
     onPlay: (Long?) -> Unit,
     onOpenPerson: (String) -> Unit,
-    startComposing: Boolean = false
+    startComposing: Boolean = false,
+    onStartCircle: () -> Unit = {}
 ) {
     val meeting by viewModel.meeting.collectAsState()
     val items by viewModel.findings.collectAsState()
@@ -106,6 +111,7 @@ fun WrapUpScreen(
     var naming by remember { mutableStateOf(false) }
     var projectPicker by remember { mutableStateOf(false) }
     var composing by remember { mutableStateOf(startComposing) }
+    var showShareCircle by remember { mutableStateOf(false) }
     var contactFor by remember { mutableStateOf<com.craftflowtechnologies.meetingmind.core.work.WorkPerson?>(null) }
     var showAll by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf("") }
@@ -146,12 +152,23 @@ fun WrapUpScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             Surface(color = SurfaceBase, shadowElevation = 8.dp) {
-                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { composing = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
-                        Text("Draft follow-up", modifier = Modifier.padding(vertical = 4.dp))
+                Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(
+                            onClick = { showShareCircle = true },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(Icons.Rounded.Groups, null, modifier = Modifier.size(18.dp), tint = Ink)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Share to Circle", modifier = Modifier.padding(vertical = 4.dp))
+                        }
+                        OutlinedButton(onClick = { composing = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
+                            Text("Draft follow-up", modifier = Modifier.padding(vertical = 4.dp))
+                        }
                     }
                     Button(
-                        onClick = { viewModel.done(); onDone(meeting?.noteId) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp),
+                        onClick = { viewModel.done(); onDone(meeting?.noteId) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = OnInk)
                     ) { Text("Done", modifier = Modifier.padding(vertical = 4.dp)) }
                 }
@@ -319,6 +336,22 @@ fun WrapUpScreen(
         onAddContact = { contactFor = it }
     )
     contactFor?.let { p -> ContactDialog(p, onDismiss = { contactFor = null }) { e, ph -> viewModel.addContact(p, e, ph); contactFor = null } }
+    if (showShareCircle) {
+        ShareToCircleSheet(
+            meetingTitle = meeting?.title ?: "Meeting",
+            summary = note?.plainText,
+            decisions = decisions,
+            tasks = tasksAll,
+            meetingId = viewModel.meetingId,
+            onDismiss = { showShareCircle = false },
+            onNavigateCreateCircle = onStartCircle,
+            onShared = { circleName, count ->
+                scope.launch {
+                    snackbar.showSnackbar("Shared $count items to $circleName")
+                }
+            }
+        )
+    }
 }
 
 @Composable

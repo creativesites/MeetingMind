@@ -1,24 +1,37 @@
 package com.craftflowtechnologies.meetingmind.feature.work
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.NoteAdd
+import androidx.compose.material.icons.filled.AddTask
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import com.craftflowtechnologies.meetingmind.core.ui.mm.EmptyState
 import com.craftflowtechnologies.meetingmind.core.ui.mm.HeroCard
@@ -29,8 +42,8 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.NoteRowModel
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
-import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
 /** One thing that needs the person, with its one verb. */
 internal class NeedsItem(val key: String, val title: String, val line: String, val verb: String, val onClick: () -> Unit)
@@ -47,6 +60,10 @@ internal sealed interface TodayHero {
 
 internal class ScheduleRow(val key: String, val title: String, val subtitle: String?, val time: String, val onClick: () -> Unit)
 internal class RecentNote(val id: String, val model: NoteRowModel, val onClick: () -> Unit)
+internal class WorkCircleItem(val id: String, val name: String, val groupWord: String, val memberCount: Int, val onClick: () -> Unit)
+
+/** Counts that are also ways in: each one opens the list it counts. */
+internal class TodayGlance(val openTasks: Int, val decisionsThisWeek: Int, val openQuestions: Int)
 
 /** Everything the Today segment shows. An empty part renders nothing. */
 internal class TodayModel(
@@ -56,14 +73,21 @@ internal class TodayModel(
     val needsTotal: Int = needs.size,
     val upcoming: List<ScheduleRow> = emptyList(),
     val earlier: List<ScheduleRow> = emptyList(),
-    val recent: List<RecentNote> = emptyList()
+    val recent: List<RecentNote> = emptyList(),
+    val glance: TodayGlance? = null,
+    val circles: List<WorkCircleItem> = emptyList(),
+    val onStartCircle: (() -> Unit)? = null,
+    val onAllCircles: (() -> Unit)? = null
 ) {
-    val isEmpty get() = hero == null && needs.isEmpty() && upcoming.isEmpty() && earlier.isEmpty() && recent.isEmpty()
+    val isEmpty get() = hero == null && needs.isEmpty() && upcoming.isEmpty() && earlier.isEmpty() && recent.isEmpty() && circles.isEmpty()
 }
 
 private const val NEEDS_SHOWN = 4
 
-/** The Today segment (WORK_UX §2.1): Next up, Needs you, the schedule, Recent notes. */
+/**
+ * The Today segment: the next meeting, the four things everyone reaches for (record, note, task, ask), what needs
+ * the person, the figures that open their lists, the schedule, and what was worked on last.
+ */
 @Composable
 internal fun TodayContent(
     model: TodayModel,
@@ -71,6 +95,10 @@ internal fun TodayContent(
     onAllNotes: () -> Unit,
     onRecord: () -> Unit,
     onWriteNote: () -> Unit,
+    onAddTask: () -> Unit = {},
+    onShowTasks: () -> Unit = {},
+    onAsk: () -> Unit = {},
+    onOpenList: (WorkTab) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var allNeeds by rememberSaveable { mutableStateOf(false) }
@@ -95,6 +123,7 @@ internal fun TodayContent(
             }
             return@LazyColumn
         }
+        item(key = "actions") { QuickActions(onRecord, onWriteNote, onAddTask, onAsk) }
         model.hero?.let { hero -> item(key = "hero") { NextUp(hero) } }
         if (model.needs.isNotEmpty()) item(key = "needs") {
             val shown = if (allNeeds) model.needs else model.needs.take(NEEDS_SHOWN)
@@ -106,11 +135,12 @@ internal fun TodayContent(
                 )
                 MMCard(contentPadding = MM.space.m) {
                     shown.forEach { n ->
-                        ListRow(n.title, subtitle = n.line, onClick = n.onClick, trailing = { TextAction(n.verb, n.onClick) })
+                        ListRow(n.title, subtitle = n.line, onClick = n.onClick, trailing = { VerbPill(n.verb, n.onClick) })
                     }
                 }
             }
         }
+        model.glance?.let { g -> item(key = "glance") { GlanceRow(g, onShowTasks, onOpenList) } }
         if (model.upcoming.isNotEmpty() || model.earlier.isNotEmpty()) item(key = "schedule") {
             Column {
                 SectionHeader("Today's schedule", count = model.upcoming.size + model.earlier.size)
@@ -123,12 +153,105 @@ internal fun TodayContent(
                 }
             }
         }
+        if (model.circles.isNotEmpty() || model.onStartCircle != null) item(key = "circles") {
+            Column {
+                SectionHeader(
+                    "Team Circles",
+                    count = if (model.circles.isNotEmpty()) model.circles.size else null,
+                    actionLabel = if (model.circles.isNotEmpty() && model.onAllCircles != null) "All circles" else if (model.onStartCircle != null) "New circle" else null,
+                    onAction = if (model.circles.isNotEmpty() && model.onAllCircles != null) model.onAllCircles else model.onStartCircle
+                )
+                if (model.circles.isEmpty()) {
+                    MMCard(contentPadding = MM.space.m) {
+                        Text("Collaborate with your team", style = MM.type.bodyStrong, color = MM.colors.ink)
+                        Text(
+                            "Create team circles to share meeting updates, decisions, and keep everyone aligned.",
+                            style = MM.type.secondary,
+                            color = MM.colors.inkSecondary,
+                            modifier = Modifier.padding(top = MM.space.xs, bottom = MM.space.m)
+                        )
+                        model.onStartCircle?.let { onStart ->
+                            SecondaryButton("Start a team circle", onStart)
+                        }
+                    }
+                } else {
+                    MMCard(contentPadding = MM.space.m) {
+                        model.circles.forEach { c ->
+                            ListRow(
+                                title = c.name,
+                                subtitle = "${c.memberCount} ${if (c.memberCount == 1) "member" else "members"} · ${c.groupWord}",
+                                onClick = c.onClick
+                            )
+                        }
+                    }
+                }
+            }
+        }
         if (model.recent.isNotEmpty()) item(key = "recent") {
             Column {
-                SectionHeader("Recent notes", actionLabel = "All notes", onAction = onAllNotes)
+                SectionHeader("Continue where you left off", actionLabel = "All notes", onAction = onAllNotes)
                 model.recent.forEach { n -> NoteRow(n.model, onClick = n.onClick) }
             }
         }
+    }
+}
+
+/** Record is the one filled action; the others are quiet, so the eye lands on Record first. */
+@Composable
+private fun QuickActions(onRecord: () -> Unit, onWriteNote: () -> Unit, onAddTask: () -> Unit, onAsk: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+        QuickAction("Record", Icons.Rounded.Mic, primary = true, onClick = onRecord, modifier = Modifier.weight(1f))
+        QuickAction("Note", Icons.AutoMirrored.Filled.NoteAdd, primary = false, onClick = onWriteNote, modifier = Modifier.weight(1f))
+        QuickAction("Task", Icons.Filled.AddTask, primary = false, onClick = onAddTask, modifier = Modifier.weight(1f))
+        QuickAction("Ask", Icons.Rounded.Search, primary = false, onClick = onAsk, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun QuickAction(label: String, icon: ImageVector, primary: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        modifier.clip(MM.radius.card).background(MM.colors.surface).clickable(role = Role.Button, onClick = onClick).padding(vertical = MM.space.m),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+    ) {
+        Box(
+            Modifier.size(MMSize.minTouch).background(if (primary) MM.colors.accent else MM.colors.accentWash, MM.radius.pill),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, tint = if (primary) MM.colors.onAccent else MM.colors.accent)
+        }
+        Text(label, style = MM.type.caption, color = MM.colors.ink, maxLines = 1)
+    }
+}
+
+@Composable
+private fun GlanceRow(g: TodayGlance, onShowTasks: () -> Unit, onOpenList: (WorkTab) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+        GlancePill("${g.openTasks} open ${if (g.openTasks == 1) "task" else "tasks"}", onShowTasks, Modifier.weight(1f))
+        GlancePill("${g.decisionsThisWeek} ${if (g.decisionsThisWeek == 1) "decision" else "decisions"} this week", { onOpenList(WorkTab.DECISIONS) }, Modifier.weight(1f))
+        GlancePill("${g.openQuestions} open ${if (g.openQuestions == 1) "question" else "questions"}", { onOpenList(WorkTab.QUESTIONS) }, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun GlancePill(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier.heightIn(min = MMSize.minTouch).clip(MM.radius.pill).background(MM.colors.surfaceSunk)
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = MM.space.s),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, style = MM.type.caption, color = MM.colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun VerbPill(label: String, onClick: () -> Unit) {
+    Box(
+        Modifier.heightIn(min = MMSize.minTouch).clip(MM.radius.pill).background(MM.colors.accentWash)
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = MM.space.m),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, style = MM.type.bodyStrong, color = MM.colors.accent)
     }
 }
 

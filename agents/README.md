@@ -10,3 +10,7 @@
 | `TESTING.md` | Test commands, known gotchas, device checks | Anyone who finds a new gotcha |
 
 Keep each file short. Replace out-of-date facts rather than adding a second version of them.
+
+## Planning council
+
+- **Mira** — independent third planner in the Codex session. Provides a separate product and engineering review of substantial proposals, checks them against MeetingMind's product rules and codebase, and reports recommendations, trade-offs, risks, and open decisions to the founder and CTO. Advisory role only; the CTO retains planning ownership, review, merge, and release coordination. Availability depends on the founder's access to this session.

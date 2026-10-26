@@ -69,6 +69,10 @@ interface WorkDao {
     @Query("SELECT * FROM meetings WHERE status = 'READY' AND reviewedAt IS NULL ORDER BY createdAt DESC")
     fun observeUnreviewed(): Flow<List<MeetingEntity>>
 
+    /** Recordings whose processing ended in an error. They need the person, so Work lists them under Needs you. */
+    @Query("SELECT * FROM meetings WHERE status = 'ERROR' ORDER BY createdAt DESC LIMIT 10")
+    fun observeFailed(): Flow<List<MeetingEntity>>
+
     @Query("UPDATE meetings SET reviewedAt = :at WHERE id = :meetingId")
     suspend fun setReviewed(meetingId: String, at: Long?)
 

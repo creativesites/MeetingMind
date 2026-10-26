@@ -78,7 +78,15 @@ class MeetingRepository(
         speakerCountPreference: Int? = null,
         language: String = "en",
         /** File the recording into this note instead of giving it a new one ("record here"). */
-        noteId: String? = null
+        noteId: String? = null,
+        /**
+         * Where the initial [title] came from. Recording flows and bad import file names leave this
+         * at [com.craftflowtechnologies.meetingmind.core.model.TitleSource.AI] so processing may
+         * replace a placeholder; a usable imported file name passes
+         * [com.craftflowtechnologies.meetingmind.core.model.TitleSource.IMPORT] so it is kept.
+         */
+        titleSource: com.craftflowtechnologies.meetingmind.core.model.TitleSource =
+            com.craftflowtechnologies.meetingmind.core.model.TitleSource.AI
     ): Meeting = withContext(Dispatchers.IO) {
         val entity = MeetingEntity(
             id = id,
@@ -93,7 +101,8 @@ class MeetingRepository(
             summaryText = null,
             recordingType = recordingType.name,
             customContext = customContext,
-            speakerCountPreference = speakerCountPreference
+            speakerCountPreference = speakerCountPreference,
+            titleSource = titleSource.name
         )
         meetingDao.insertMeeting(entity)
         // Every recording lives in a note (docs/PLAN_V1.md §2).
@@ -107,9 +116,20 @@ class MeetingRepository(
         entity.toDomain()
     }
 
+    /**
+     * A manual rename. The title is the person's, so it is marked
+     * [com.craftflowtechnologies.meetingmind.core.model.TitleSource.USER] — no reprocess or
+     * backfill may replace it afterwards.
+     */
     suspend fun updateMeetingTitle(id: String, newTitle: String) = withContext(Dispatchers.IO) {
         val existing = meetingDao.getMeetingById(id) ?: return@withContext
-        meetingDao.updateMeeting(existing.copy(title = newTitle, updatedAt = System.currentTimeMillis()))
+        meetingDao.updateMeeting(
+            existing.copy(
+                title = newTitle,
+                titleSource = com.craftflowtechnologies.meetingmind.core.model.TitleSource.USER.name,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
         NoteRepository(context, database).syncFromRecording(id)
     }
 
@@ -173,7 +193,8 @@ class MeetingRepository(
             recordingType = try { com.craftflowtechnologies.meetingmind.core.model.RecordingType.valueOf(recordingType) } catch (e: Exception) { com.craftflowtechnologies.meetingmind.core.model.RecordingType.GENERAL },
             customContext = customContext,
             speakerCountPreference = speakerCountPreference,
-            noteId = noteId
+            noteId = noteId,
+            titleSource = com.craftflowtechnologies.meetingmind.core.model.TitleSource.fromStored(titleSource)
         )
     }
 }
@@ -890,7 +911,8 @@ class ModelRepository(
     // (Silero VAD, Parakeet TDT). Pass UnconfiguredModelDownloader() explicitly for any future
     // catalog entry that has no production source yet.
     private val modelDownloader: ModelDownloader = OkHttpModelDownloader(),
-    private val modelVerifier: ModelVerifier = Sha256ModelVerifier()
+    private val modelVerifier: ModelVerifier = Sha256ModelVerifier(),
+    private val userPreferencesManager: com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager? = null
 ) {
     private val aiModelDao = database.aiModelDao()
 
@@ -1021,12 +1043,26 @@ class ModelRepository(
         AiResult.Success(Unit)
     }
 
-    suspend fun deleteModel(modelId: String) = withContext(Dispatchers.IO) {
+    suspend fun deleteModel(modelId: String): AiResult<Unit> = withContext(Dispatchers.IO) {
+        val unfinished = database.processingJobDao().getUnfinishedJobs()
+        if (unfinished.isNotEmpty()) {
+            return@withContext AiResult.Failed("Cannot delete model while background processing is active.")
+        }
+        userPreferencesManager?.let { prefsMgr ->
+            val prefs = prefsMgr.preferencesFlow.first()
+            if (prefs.selectedAsrModelId == modelId) {
+                prefsMgr.setSelectedAsrModel(ModelCatalog.parakeetTdtV3Int8.id)
+            }
+            if (prefs.selectedLlmModelId == modelId) {
+                prefsMgr.setSelectedLlmModel(ModelCatalog.qwen25_1_5bInstruct.id)
+            }
+        }
         modelStorage.delete(modelId)
         val existing = aiModelDao.getModelById(modelId)
         if (existing != null) {
             aiModelDao.updateModel(existing.copy(isInstalled = false, isDownloading = false, downloadProgress = 0f))
         }
+        AiResult.Success(Unit)
     }
 
     private fun AiModelEntity.toDomain(): AiModelInfo = AiModelInfo(

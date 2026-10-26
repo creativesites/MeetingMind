@@ -7,11 +7,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OnboardingModelTest {
-    @Test fun `the record route is the welcome, the companion and the AI choice`() {
+    @Test fun `the record route is the welcome, the companion, the AI choice and the permissions ask`() {
         assertEquals(
-            listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SETUP),
+            listOf(OnboardingStep.WELCOME, OnboardingStep.COMPANION, OnboardingStep.SETUP, OnboardingStep.PERMISSIONS),
             stepsFor(EntryRoute.RECORD, NotebookSpace.entries.toSet())
         )
+    }
+
+    @Test fun `learning is not offered in onboarding`() {
+        // Cut from the MVP: the goal list must not offer it, and skipping goals must not switch its
+        // space on. Stored legacy data for the space is untouched.
+        assertEquals(
+            listOf("WORK_MEETINGS", "SERMONS", "REFLECTIONS", "INTERVIEWS", "IDEAS"),
+            CaptureGoal.entries.map { it.name }
+        )
+        assertFalse(NotebookSpace.LEARNING in OfferedNotebookSpaces)
+        assertFalse(NotebookSpace.LEARNING in spacesFor(emptySet()))
     }
 
     @Test fun `the companion pick is step 1 on both routes`() {
@@ -30,8 +41,8 @@ class OnboardingModelTest {
         )
     }
 
-    @Test fun `goals pick spaces, and no goals leaves every space on`() {
-        assertEquals(NotebookSpace.entries.toSet(), spacesFor(emptySet()))
+    @Test fun `goals pick spaces, and no goals leaves every offered space on`() {
+        assertEquals(NotebookSpace.entries.toSet() - NotebookSpace.LEARNING, spacesFor(emptySet()))
         assertEquals(setOf(NotebookSpace.WORK, NotebookSpace.FAITH), spacesFor(setOf(CaptureGoal.WORK_MEETINGS, CaptureGoal.INTERVIEWS, CaptureGoal.SERMONS)))
     }
 

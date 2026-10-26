@@ -42,7 +42,7 @@ enum class SettingId {
     BIBLE_TRANSLATION, BIBLE_OFFLINE, DEVOTIONAL, PRAYER_REMINDERS, ORIGINAL_PACKS, PERSONAL_TOUCH, FAITH_LOCK,
 
     // Appearance & home
-    LOOK_AND_HOME, COMPANION, HERO_MODE, LOOK_FEEL, CALENDAR_ON_HOME,
+    LOOK_AND_HOME, COMPANION, LANGUAGE, HERO_MODE, LOOK_FEEL, CALENDAR_ON_HOME,
 
     // Privacy & security
     APP_LOCK, ON_DEVICE_ONLY,
@@ -134,6 +134,7 @@ object SettingsRegistry {
         // Appearance & home
         e(SettingId.LOOK_AND_HOME, SettingsGroup.APPEARANCE, "Look and home", "theme dark light mode system colour accent text size font home today focus everyday style sections"),
         e(SettingId.COMPANION, SettingsGroup.APPEARANCE, "Companion", "mimi zuri character presence name"),
+        e(SettingId.LANGUAGE, SettingsGroup.APPEARANCE, "Language", "interface language locale english french spanish portuguese swahili shona zulu nyanja bemba translate"),
         e(SettingId.HERO_MODE, SettingsGroup.APPEARANCE, "Home hero card", "daily scripture quote stats streak sky card banner", advanced = true),
         e(SettingId.LOOK_FEEL, SettingsGroup.APPEARANCE, "Look & feel", "professional sanctuary minimal cards classic vivid", advanced = true),
         e(SettingId.CALENDAR_ON_HOME, SettingsGroup.APPEARANCE, "Upcoming events on Home", "calendar events meetings services phone calendar permission", advanced = true),
