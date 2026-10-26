@@ -2,6 +2,16 @@
 
 Updated: 2026-10-26. **Shipping branch: `release/1.0-paid-launch`** (cut from `work-circles-integration` + one checkpoint commit of the in-flight tree, `a3ca467`). Head: see `git log -1`.
 
+## Work Inbox Redesign & Video Intelligence (2026-10-26, CTO session)
+- **Work Inbox Redesign & Differentiation:** Resolves founder audit finding (lack of identity, source, timestamp, and post-transcription details in Work Inbox).
+- **First-Class Video Sharing:** `AndroidManifest.xml` gains `video/*` intent filters; `InboxKind.VIDEO` added; `ShareIntentParser` and `ShareIn` preserve video file extensions (`mp4`, `mov`, `webm`, `mkv`) for hardware decoders and companion video transcription.
+- **Item Differentiation:** `source` attribution (e.g. `youtube.com`, `via WhatsApp`, `Document Scanner`), relative timestamp (`relativeTimeLabel`), and media duration (`mediaDurationMs`) displayed on every card.
+- **Schema 29:** Room version bumped to 29 with `MIGRATION_28_29` adding `source`, `mediaDurationMs`, `mediaThumbnailUri`, `transcriptionStatus`, and `meetingId` to `inbox_items`.
+- **Post-Transcription Lifecycle Bridge:** `WorkViewModel.updateInboxTranscription` sets status to `COMPLETED`, attaches transcript, and automatically triggers `InboxProposer.propose()` on spoken words under `FIDELITY_CONTRACT`.
+- **Reimagined Triage UI:** `InboxScreen` upgraded with Kind badges, Source pills, relative timestamps, duration badges, post-transcription indicators (`✓ Transcribed`, detected action items / decisions), triage filter tabs (`All`, `Action needed`, `Media`, `Docs & links`), and tap-to-inspect `InboxDetailSheet` with copy text and filing actions.
+- **Unit Tests Authored:** `Migration28To29Test.kt` (Room schema migration verification, column defaults, PRAGMA check, DAO writes), `InboxTest.kt` (video intent parsing, video items, source attribution, and extension resolution tests).
+- **Verification:** Per founder instruction to preserve host machine disk space and RAM, local Gradle compilation and test executions were omitted; test suites authored and ready for remote agent verification. Merged to `release/1.0-paid-launch` (commit `6403a48`).
+
 ## Video Audio Extraction & Unified Media Import (2026-10-26, CTO session)
 - **On-Device Streaming Audio Extraction (P1 audit item resolved):** Resolves Audit Item #7 ("Video import does not extract audio").
 - **Zero Video Disk Duplication:** Streams directly from Storage Access Framework `AssetFileDescriptor` / `FileDescriptor` via `MediaExtractor`. High-resolution, multi-gigabyte video containers (even 4K recordings) are never copied to internal storage or loaded into RAM.
