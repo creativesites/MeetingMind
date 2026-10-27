@@ -1,18 +1,22 @@
-# MeetingMind dev build 46c9bd3
+# MeetingMind dev build 6dd7afd
 
-- File: `MeetingMind-Dev-46c9bd3.apk`
-- Source: `release/1.0-paid-launch` at `46c9bd3`
-- SHA-256: `7ef894b8703706adae278a0208969ad5035cbc87d13425a211366c0bbce68ee5`
-- Size: 77,652,888 bytes
+- File: `MeetingMind-Dev-6dd7afd.apk`
+- Source: `release/1.0-paid-launch` at `6dd7afd`
+- SHA-256: `67e46336bd0ebc3022151e73a47e6b2fadfcc6a284f4917144490ebf699026fe`
+- Size: 79,632,236 bytes
 - Credential scan passed (only the Firebase key).
 
-## Fixed in this build
-- Import screen no longer crashes on open (ImportViewModel constructor).
-- YouTube notes open the video in the YouTube app instead of a blank box.
+## Changed in this build
+- Speaker separation runs in its own process; a crash there no longer closes the app.
+- Settings → Diagnostics: device details, last crash, earlier process exits and recent steps; Copy and Share.
+- A finished transcript with no language model notifies the person and links to model downloads.
+- Import screen crash fixed (ImportViewModel constructor).
+- YouTube notes open the video in the YouTube app.
 
 ## Not verified
 - Unit tests were not run; GeminiHttpTransportTest hangs on this branch.
-- Work circle creation needs the Circles Worker redeployed (Unknown template).
+- Not run on a device yet.
+- Work circle creation needs the Circles Worker redeployed ("Unknown template").
 
 ## Install
 Allow installs from this source on your Android device, then open the APK.
