@@ -114,7 +114,7 @@ data class ImportMediaState(
     val speakerCountPreference: Int? = null
 )
 
-class ImportViewModel(
+class ImportViewModel @JvmOverloads constructor(
     application: Application,
     private val audioExtractor: AudioExtractor = AudioExtractor(application),
     private val meetingRepository: MeetingRepository = MeetingRepository(application, MeetMindDatabase.getInstance(application))
