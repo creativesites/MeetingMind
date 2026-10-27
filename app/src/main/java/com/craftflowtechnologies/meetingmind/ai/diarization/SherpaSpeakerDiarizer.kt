@@ -5,6 +5,7 @@ import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelStorage
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.SherpaEngineManager
+import com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs
 import com.craftflowtechnologies.meetingmind.ai.transcript.DiarizationTurn
 import com.craftflowtechnologies.meetingmind.core.audio.AudioFormatConverter
 import com.craftflowtechnologies.meetingmind.core.model.Speaker
@@ -91,6 +92,7 @@ class SherpaSpeakerDiarizer(
                 var checkedOut: com.k2fsa.sherpa.onnx.OfflineSpeakerDiarization? = null
                 try {
                     val decoded = AudioFormatConverter.decodeToMono16k(audioFile)
+                    Breadcrumbs.log("speakers", "decoded ${decoded.samples.size} samples")
                     if (decoded.samples.isEmpty() || abandoned.get()) {
                         work.complete(if (decoded.samples.isEmpty()) emptyList() else null)
                         return@execute
@@ -99,11 +101,13 @@ class SherpaSpeakerDiarizer(
                     checkedOut = d
                     holder.set(d)
                     if (abandoned.get()) { SherpaEngineManager.detachDiarizer(d); work.complete(null); return@execute }
+                    Breadcrumbs.log("speakers", "native diarization start")
                     val segments = d.processWithCallback(decoded.samples, { processed, total, _ ->
                         if (total > 0) onProgress((processed.toFloat() / total).coerceIn(0f, 1f))
                         // Best effort: a non-zero return asks sherpa-onnx to stop early.
                         if (abandoned.get()) 1 else 0
                     }, 0L)
+                    Breadcrumbs.log("speakers", "native diarization done: ${segments.size} segments")
                     work.complete(
                         segments.map {
                             RawSpeakerSegment(

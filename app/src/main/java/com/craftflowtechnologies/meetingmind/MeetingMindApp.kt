@@ -1,7 +1,10 @@
 package com.craftflowtechnologies.meetingmind
 
 import android.app.Application
+import android.os.Build
+import com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs
 import com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog
+import com.craftflowtechnologies.meetingmind.core.diagnostics.ExitHistory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +22,11 @@ class MeetingMindApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashLog.install(this, BuildConfig.VERSION_NAME)
+        Breadcrumbs.init(this)
+        Breadcrumbs.log("app", "start ${BuildConfig.VERSION_NAME}")
+        // The app runs in more than one process (speaker separation has its own). Only the main
+        // process records exits, so the same exit is not written twice.
+        if (isMainProcess()) CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { ExitHistory.record(this@MeetingMindApp) }
         runCatching {
             if (com.google.firebase.FirebaseApp.getApps(this).isEmpty()) {
                 com.google.firebase.FirebaseApp.initializeApp(this)
@@ -63,4 +71,8 @@ class MeetingMindApp : Application() {
             }
         }
     }
+
+    /** True in the app's own process; false in the speaker-separation process. */
+    private fun isMainProcess(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.P || getProcessName() == packageName
 }

@@ -423,7 +423,10 @@ fun SettingsScreen(
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showSpaces by remember { mutableStateOf(false) }
     var showCrashReport by remember { mutableStateOf(false) }
-    var crashReport by remember { mutableStateOf(com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.pending(context)) }
+    // Diagnostics are always available, so the row is always listed. The report is rebuilt on open.
+    var crashReport by remember {
+        mutableStateOf<String?>(com.craftflowtechnologies.meetingmind.core.diagnostics.DiagnosticsReport.build(context, com.craftflowtechnologies.meetingmind.BuildConfig.VERSION_NAME))
+    }
     var showLook by remember { mutableStateOf(false) }
     var showBibleVersions by remember { mutableStateOf(false) }
     val avatarPicker = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -559,8 +562,9 @@ fun SettingsScreen(
             CrashReportDialog(
                 report = report,
                 onClear = {
-                    com.craftflowtechnologies.meetingmind.core.diagnostics.CrashLog.clear(context)
-                    crashReport = null; showCrashReport = false
+                    com.craftflowtechnologies.meetingmind.core.diagnostics.DiagnosticsReport.clear(context)
+                    crashReport = com.craftflowtechnologies.meetingmind.core.diagnostics.DiagnosticsReport.build(context, com.craftflowtechnologies.meetingmind.BuildConfig.VERSION_NAME)
+                    showCrashReport = false
                 },
                 onClose = { showCrashReport = false }
             )
@@ -955,7 +959,7 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
             }
             context.startActivity(android.content.Intent.createChooser(send, "Share MeetingMind"))
         })
-        SettingId.CRASH_REPORT -> SettingsNavRow("Last crash report", "The app closed unexpectedly. You can copy the report to share it.", a.showCrash)
+        SettingId.CRASH_REPORT -> SettingsNavRow("Diagnostics", "Device, crashes, system exits and recent steps. Copy or share them when something goes wrong.", a.showCrash)
         SettingId.DIAGNOSTIC_LOG -> GeminiLogRow()
         SettingId.AUDIO_BENCHMARK -> if (BuildConfig.DEBUG) AudioBenchmarkRow()
 

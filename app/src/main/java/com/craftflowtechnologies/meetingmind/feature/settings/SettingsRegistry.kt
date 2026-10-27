@@ -152,7 +152,7 @@ object SettingsRegistry {
         e(SettingId.TEST_ONBOARDING, SettingsGroup.ABOUT, "Onboarding experience", "onboarding welcome walkthrough start intro"),
         e(SettingId.TEST_PAYWALL, SettingsGroup.ABOUT, "Paywall and subscription", "paywall subscription plans pricing trial upgrade"),
         e(SettingId.SHARE_APP, SettingsGroup.ABOUT, "Share MeetingMind", "invite friends tell"),
-        e(SettingId.CRASH_REPORT, SettingsGroup.ABOUT, "Last crash report", "crash error closed unexpectedly", advanced = true, needs = Needs.CRASH_REPORT),
+        e(SettingId.CRASH_REPORT, SettingsGroup.ABOUT, "Diagnostics", "diagnostics crash error closed unexpectedly report share logs", advanced = true, needs = Needs.CRASH_REPORT),
         e(SettingId.DIAGNOSTIC_LOG, SettingsGroup.ABOUT, "Gemini log", "diagnostics log requests errors support copy share", advanced = true),
         e(SettingId.AUDIO_BENCHMARK, SettingsGroup.ABOUT, "Audio benchmark (developer)", "benchmark sound detector", advanced = true, needs = Needs.DEBUG_BUILD)
     )
