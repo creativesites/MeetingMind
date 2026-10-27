@@ -341,6 +341,11 @@ object AppNotifications {
         val (heading, text, link) = when (outcome) {
             Outcome.READY -> Triple("$title is ready.", null, DeepLink.Recording(meetingId))
             Outcome.NEEDS_MODEL -> Triple("Recording saved", "Install the speech model to transcribe “$title”.", DeepLink.Models)
+            Outcome.NEEDS_LANGUAGE_MODEL -> Triple(
+                "Transcript ready",
+                "“$title” has its words, but no summary or action items. Download a language model to get them.",
+                DeepLink.Models
+            )
             Outcome.FAILED -> Triple("Couldn’t finish “$title”", detail ?: "Tap to try again.", DeepLink.Processing(meetingId))
         }
         post(
@@ -350,7 +355,7 @@ object AppNotifications {
                     when (outcome) {
                         Outcome.FAILED -> android.R.drawable.stat_notify_error
                         Outcome.READY -> com.craftflowtechnologies.meetingmind.R.drawable.ic_zuri_glyph
-                        Outcome.NEEDS_MODEL -> android.R.drawable.stat_sys_download_done
+                        Outcome.NEEDS_MODEL, Outcome.NEEDS_LANGUAGE_MODEL -> android.R.drawable.stat_sys_download_done
                     }
                 )
                 .setContentTitle(heading)
@@ -362,7 +367,8 @@ object AppNotifications {
         )
     }
 
-    enum class Outcome { READY, NEEDS_MODEL, FAILED }
+    /** NEEDS_LANGUAGE_MODEL: the transcript is saved and complete, only the summary step was skipped. */
+    enum class Outcome { READY, NEEDS_MODEL, NEEDS_LANGUAGE_MODEL, FAILED }
 
     /**
      * What a note-ready notification says (signature moments §9, ZURI_EXPERIENCE §5.8). [voiced] is the one

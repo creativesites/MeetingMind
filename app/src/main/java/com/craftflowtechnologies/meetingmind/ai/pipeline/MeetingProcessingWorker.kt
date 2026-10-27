@@ -117,7 +117,14 @@ class MeetingProcessingWorker(
                 }
             )
             val outcome = when (resultMeeting.status) {
-                MeetingStatus.READY.name -> AppNotifications.Outcome.READY
+                // Ready without a summary and with no language model on the phone: the transcript is
+                // complete, so say that and point at the model download instead of a plain "ready".
+                MeetingStatus.READY.name ->
+                    if (resultMeeting.summaryText.isNullOrBlank() && !languageModelInstalled(applicationContext)) {
+                        AppNotifications.Outcome.NEEDS_LANGUAGE_MODEL
+                    } else {
+                        AppNotifications.Outcome.READY
+                    }
                 MeetingStatus.MODEL_REQUIRED.name -> AppNotifications.Outcome.NEEDS_MODEL
                 else -> AppNotifications.Outcome.FAILED
             }
@@ -303,3 +310,10 @@ class MeetingProcessingWorker(
         const val KEY_ERROR = "error"
     }
 }
+
+/** True when at least one local model can write summaries. Summaries are optional: without one the transcript still stands. */
+private fun languageModelInstalled(context: android.content.Context): Boolean =
+    com.craftflowtechnologies.meetingmind.ai.modelmanagement.LlmModelResolver.resolveSmallestInstalled(
+        com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorage(context),
+        com.craftflowtechnologies.meetingmind.core.model.ModelCapability.SUMMARIZATION
+    ) != null

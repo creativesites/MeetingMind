@@ -901,6 +901,7 @@ class MeetingProcessingPipeline(
             withContext(kotlinx.coroutines.NonCancellable) {
                 SherpaEngineManager.releaseAll()
                 LlmEngineManager.release()
+                Breadcrumbs.log("pipeline", "failed: ${e::class.java.simpleName}: ${e.message}")
                 updateJob("Failed", 0, ProcessingStage.FAILED, failed = true, error = e.localizedMessage ?: "Unknown processing error")
                 // A failure between transcription and saving must not leave a generic placeholder
                 // either. Whatever transcript was already persisted is real content, so derive a
