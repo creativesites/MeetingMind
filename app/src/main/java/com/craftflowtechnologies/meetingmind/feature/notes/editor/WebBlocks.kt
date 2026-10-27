@@ -1,10 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.notes.editor
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
-import android.webkit.WebChromeClient
-import android.webkit.WebView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -58,7 +55,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlock
 import com.craftflowtechnologies.meetingmind.core.notes.InlineStyle
@@ -153,7 +149,7 @@ internal fun styled(content: RichText, colors: com.craftflowtechnologies.meeting
     }
 }
 
-/** Something from the web: a picture by its address, a YouTube video that plays right here, or a link. */
+/** Something from the web: a picture by its address, a YouTube video that opens in YouTube, or a link. */
 @Composable
 internal fun EmbedBlock(block: NoteBlock) {
     val url = block.payload[NoteBlock.PAYLOAD_URL] ?: return
@@ -175,16 +171,19 @@ internal fun EmbedBlock(block: NoteBlock) {
 private fun YouTubeBlock(url: String, title: String) {
     val id = YouTube.idOf(url) ?: return LinkCard(url, title)
     val context = LocalContext.current
-    var playing by remember(id) { mutableStateOf(false) }
+    // Tapping plays the video in the YouTube app or browser. An in-app WebView embed rendered
+    // as a blank grey box on device, so the note only shows the thumbnail.
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp)).background(SurfaceSunk)) {
-            if (playing) YouTubePlayer(id, YouTube.startSeconds(url) ?: 0)
-            else {
-                AsyncImage(model = YouTube.thumbnail(id), contentDescription = title.ifBlank { "YouTube video" }, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().clickable { playing = true })
-                Box(Modifier.align(Alignment.Center).size(58.dp).clip(CircleShape).background(Accent).clickable { playing = true }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = "Play", tint = LocalMMColors.current.onAccent, modifier = Modifier.size(32.dp))
-                }
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp)).background(SurfaceSunk)
+                .clickable { context.openUrl(url) }
+        ) {
+            AsyncImage(
+                model = YouTube.thumbnail(id), contentDescription = title.ifBlank { "YouTube video" },
+                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+            )
+            Box(Modifier.align(Alignment.Center).size(58.dp).clip(CircleShape).background(Accent), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = "Play", tint = LocalMMColors.current.onAccent, modifier = Modifier.size(32.dp))
             }
         }
         Row(Modifier.fillMaxWidth().padding(top = 6.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -196,31 +195,6 @@ private fun YouTubeBlock(url: String, title: String) {
             }
         }
     }
-}
-
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-private fun YouTubePlayer(id: String, start: Int) {
-    val html = """
-        <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-        <style>html,body{margin:0;height:100%;background:#000}iframe{border:0;width:100%;height:100%}</style></head>
-        <body><iframe src="https://www.youtube-nocookie.com/embed/$id?autoplay=1&playsinline=1&rel=0&start=$start"
-        allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></body></html>
-    """.trimIndent()
-    AndroidView(
-        modifier = Modifier.fillMaxSize(),
-        factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.mediaPlaybackRequiresUserGesture = false
-                webChromeClient = WebChromeClient()
-                // A real https origin, so YouTube accepts the embed.
-                loadDataWithBaseURL("https://${ctx.packageName}", html, "text/html", "utf-8", null)
-            }
-        },
-        onRelease = { it.destroy() }
-    )
 }
 
 @Composable
