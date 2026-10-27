@@ -11,7 +11,7 @@ import com.craftflowtechnologies.meetingmind.ai.asr.SpeechRecognizer
 import com.craftflowtechnologies.meetingmind.ai.asr.TranscriptionOptions
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.common.describeFailure
-import com.craftflowtechnologies.meetingmind.ai.diarization.SherpaSpeakerDiarizer
+import com.craftflowtechnologies.meetingmind.ai.diarization.IsolatedSpeakerDiarizer
 import com.craftflowtechnologies.meetingmind.ai.diarization.SpeakerDiarizer
 import com.craftflowtechnologies.meetingmind.ai.diarization.DiarizationOutcome
 import com.craftflowtechnologies.meetingmind.ai.diarization.SPEAKERS_NOT_SEPARATED_MESSAGE
@@ -33,6 +33,7 @@ import com.craftflowtechnologies.meetingmind.ai.modelmanagement.LocalModelStorag
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelStorage
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.SherpaEngineManager
+import com.craftflowtechnologies.meetingmind.core.diagnostics.Breadcrumbs
 import com.craftflowtechnologies.meetingmind.core.model.ModelCapability
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiIntelligenceEngine
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTranscriptionEngine
@@ -117,7 +118,9 @@ class MeetingProcessingPipeline(
         modelStorage,
         checkpoints = AsrCheckpointStore(asrCheckpointDir(context))
     ),
-    private val diarizer: SpeakerDiarizer = SherpaSpeakerDiarizer(modelStorage),
+    // Runs in its own process: if the native speaker model crashes, the meeting still finishes
+    // without speaker labels instead of the whole app closing.
+    private val diarizer: SpeakerDiarizer = IsolatedSpeakerDiarizer(context),
     private val intelligenceEngine: MeetingIntelligenceEngine = RealMeetingIntelligenceEngine(
         languageModel = MediaPipeLanguageModel(context, modelStorage),
         contextLengthTokens = ModelCatalog.qwen25_1_5bInstruct.contextLengthTokens ?: DEFAULT_LLM_CONTEXT_TOKENS
@@ -169,6 +172,7 @@ class MeetingProcessingPipeline(
         processingProfile: ProcessingProfile = ProcessingProfile.OFFLINE,
         onProgress: (step: String, percent: Int, stage: ProcessingStage) -> Unit
     ): MeetingEntity = withContext(Dispatchers.Default) {
+        Breadcrumbs.log("pipeline", "start: ${totalDurationMs / 1000}s of audio, model $modelId")
         val localIntelligenceEngine = if (llmModelId != null) {
             RealMeetingIntelligenceEngine(
                 languageModel = MediaPipeLanguageModel(context, modelStorage, modelId = llmModelId),
@@ -498,6 +502,7 @@ class MeetingProcessingPipeline(
                 listOf(DiarizationTurn(speakerId = SOLO_SPEAKER_ID, startMs = 0L, endMs = maxOf(totalDurationMs, rawWords.lastOrNull()?.endMs ?: 0L)))
             } else {
                 updateJob("Identifying speakers...", ProcessingProgress.SPEAKERS_START, ProcessingStage.DIARIZING)
+                Breadcrumbs.log("speakers", "start, budget ${diarizationBudgetMs(totalDurationMs) / 1000}s")
                 // Native diarization reports progress from its own thread; a ticker turns that
                 // into a status line every few seconds so the bar visibly moves.
                 val speakerFraction = java.util.concurrent.atomic.AtomicInteger(0)
@@ -509,6 +514,7 @@ class MeetingProcessingPipeline(
                             val pct = speakerFraction.get()
                             if (pct != shown) {
                                 shown = pct
+                                Breadcrumbs.log("speakers", "progress $pct%")
                                 updateJob("Identifying speakers · $pct%", ProcessingProgress.speakers(pct / 100f), ProcessingStage.DIARIZING)
                             }
                         }
@@ -525,6 +531,7 @@ class MeetingProcessingPipeline(
                         ticker.cancel()
                     }
                 }
+                Breadcrumbs.log("speakers", "outcome ${outcome::class.simpleName}")
                 when (outcome) {
                     is DiarizationOutcome.Separated -> outcome.turns
                     // No diarization model installed: every word stays honestly unattributed
