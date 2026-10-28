@@ -16,7 +16,11 @@ import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.ai.transcript.DiarizationTurn
 import com.craftflowtechnologies.meetingmind.core.model.Speaker
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+
+/** How long the separate process may take to connect before the step gives up. */
+private const val CONNECT_TIMEOUT_MS = 20_000L
 
 /**
  * Runs speaker separation in its own process ([DiarizationService], `:diarizer`).
@@ -75,9 +79,11 @@ class IsolatedSpeakerDiarizer(
         }
         val ourMessenger = Messenger(handler)
         var server: Messenger? = null
+        val connected = CompletableDeferred<Unit>()
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName, binder: IBinder) {
                 server = Messenger(binder)
+                connected.complete(Unit)
                 val request = Bundle().apply {
                     putString(DiarizationProtocol.KEY_AUDIO_PATH, audioFile.absolutePath)
                     putString(DiarizationProtocol.KEY_MEETING_ID, meetingId)
@@ -107,6 +113,11 @@ class IsolatedSpeakerDiarizer(
         val bound = context.bindService(Intent(context, DiarizationService::class.java), connection, Context.BIND_AUTO_CREATE)
         if (!bound) return AiResult.Failed("Speaker separation could not start.")
         try {
+            // Without this, a process that never connects would hold the whole speaker budget
+            // (up to 20 minutes) with the progress bar stuck. Fail fast into the no-labels path.
+            if (withTimeoutOrNull(CONNECT_TIMEOUT_MS) { connected.await() } == null) {
+                outcome.complete(AiResult.Failed("Speaker separation did not start on this phone."))
+            }
             return outcome.await()
         } finally {
             // Unbinding while work is still running tells the service to stop, so a cancelled

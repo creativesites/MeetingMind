@@ -284,7 +284,15 @@ class MeetingProcessingPipeline(
             var cloudDegradedReason: String? = null
             var effectiveProfile = processingProfile
             var vadCache: List<com.craftflowtechnologies.meetingmind.ai.transcript.SpeechRegion>? = null
-            if (processingProfile == ProcessingProfile.INTERNET) {
+            // Internet mode only means cloud when a key (or the managed route) is actually configured.
+            // Without one the cloud is not tried, and the status must not claim that it is.
+            val cloudReady = processingProfile == ProcessingProfile.INTERNET && geminiTransport.refreshConfigured()
+            if (processingProfile == ProcessingProfile.INTERNET && !cloudReady) {
+                Breadcrumbs.log("asr", "Internet mode without a Gemini key: transcribing on this phone")
+                updateJob("No Google AI key set — transcribing on this phone...", 30, ProcessingStage.TRANSCRIBING)
+                effectiveProfile = ProcessingProfile.OFFLINE
+            }
+            if (cloudReady) {
                 updateJob("Transcribing with Google's AI...", 30, ProcessingStage.TRANSCRIBING)
                 val cloudStart = System.currentTimeMillis()
                 // The length the importer guessed can be wrong (it falls back to a minute); the
@@ -360,6 +368,8 @@ class MeetingProcessingPipeline(
                 } else if (outcome.complete) {
                     localRunWords = outcome.words()
                     effectiveProfile = ProcessingProfile.OFFLINE
+                    Breadcrumbs.log("asr", "Google's AI did not finish: ${cloudDegradedReason ?: "no reason given"}")
+                    updateJob("Google's AI didn't finish — the rest is on this phone", 45, ProcessingStage.TRANSCRIBING)
                 } else {
                     cloudDegradedReason = outcome.failure ?: outcome.geminiFailure
                     Log.d(PERF_TAG, "Transcription incomplete: $cloudDegradedReason")
@@ -388,7 +398,7 @@ class MeetingProcessingPipeline(
                 AiResult.Success(cloudWords)
             } else if (localRunWords != null) {
                 AiResult.Success(localRunWords)
-            } else if (processingProfile == ProcessingProfile.INTERNET) {
+            } else if (cloudReady) {
                 // Both engines were tried and the recording is not fully transcribed.
                 AiResult.Failed(cloudDegradedReason ?: "Transcription didn't finish.")
             } else {
@@ -418,7 +428,7 @@ class MeetingProcessingPipeline(
                     // The audio recording itself is untouched and remains fully accessible.
                     // In Internet mode the cloud is what failed; the missing offline model is only
                     // why there was nothing to fall back on. Say what actually went wrong.
-                    val cloudFailed = processingProfile == ProcessingProfile.INTERNET && cloudWords == null
+                    val cloudFailed = cloudReady && cloudWords == null
                     val message = if (cloudFailed) {
                         "Google's AI couldn't transcribe this recording. ${cloudDegradedReason ?: "No reason was given."}"
                     } else asrResult.describeFailure() ?: "Local speech recognition is unavailable."
