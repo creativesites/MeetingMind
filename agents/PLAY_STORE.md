@@ -28,3 +28,25 @@ Tags cannot always be pushed from every environment. If the tag push fails, use 
 ## Store listing and data safety
 - Data safety declarations: `docs/DATA_SAFETY.md`.
 - Learning is out of the MVP. Do not describe it in the store listing.
+
+## Paywall go-live (what the code expects)
+The code is complete. These steps need the store accounts, so they are done outside the repo.
+
+**CI secrets** (the release bundle refuses to build without them, see `app/build.gradle.kts`):
+- `REVENUECAT_API_KEY`: the RevenueCat public Android SDK key for the release app.
+- `GEMINI_PROXY_URL`: the managed AI proxy (`server/gemini-proxy`).
+- `PRIVACY_POLICY_URL` and `TERMS_OF_USE_URL`: public pages. The paywall shows these links only when set, and Play needs them for subscriptions.
+
+**Google Play Console**: one product per offer, with these ids (they must match `OfferKind` in `core/billing/Plan.kt`):
+- `monthly`, `yearly`, `lifetime`: the Pro plan.
+- `byok_monthly`, `byok_yearly`: the BYOK plan.
+- `church_monthly`, `church_yearly`: the Church plan.
+- `lifetime` is a one-time (non-consumable) product. The rest are subscriptions.
+
+**RevenueCat**: one app for `com.craftflowtechnologies.meetingmind`, with these entitlements:
+- `meetingmind_byok`, `meetingmind_pro`, `meetingmind_church`. Each product grants the entitlement of its plan.
+- One offering that is the current offering, with packages whose identifiers are exactly the seven product ids above.
+
+**Prices and trials** are set in Play Console, not in the app. The prices in `SimulatedBillingGateway` are test placeholders and are never used by a release build.
+
+**Testing before launch**: a debug build with no RevenueCat key uses the simulated store, so the paywall can be run on a device. A debug build with a RevenueCat Test Store key (`revenuecat.testApiKey` in `local.properties`) uses real RevenueCat flows.

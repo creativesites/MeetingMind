@@ -66,6 +66,7 @@ import com.craftflowtechnologies.meetingmind.core.billing.PaywallPolicy
 import com.craftflowtechnologies.meetingmind.core.billing.PaywallState
 import com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger
 import com.craftflowtechnologies.meetingmind.core.billing.PlanOffer
+import com.craftflowtechnologies.meetingmind.BuildConfig
 import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
 import com.craftflowtechnologies.meetingmind.core.ui.AppIconTile
 import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
@@ -181,10 +182,18 @@ fun PaywallScreen(trigger: PaywallTrigger, onClose: () -> Unit, vm: PaywallViewM
                     SmallLink("Continue free", "paywall_continue_free") { close() }
                     SmallLink("Restore purchases", "paywall_restore") { vm.restore() }
                     if (owned.isPaid) SmallLink("Manage", "paywall_manage") { manageSubscription(activity) }
+                    if (vm.isTestStore) SmallLink("Reset test store", "paywall_reset_test") { vm.resetTestStore() }
+                    // Google Play requires these for subscriptions; they appear once the URLs are configured.
+                    if (BuildConfig.TERMS_OF_USE_URL.isNotBlank()) SmallLink("Terms", "paywall_terms") { openLink(activity, BuildConfig.TERMS_OF_USE_URL) }
+                    if (BuildConfig.PRIVACY_POLICY_URL.isNotBlank()) SmallLink("Privacy", "paywall_privacy") { openLink(activity, BuildConfig.PRIVACY_POLICY_URL) }
                 }
             }
         }
     }
+}
+
+private fun openLink(activity: Activity?, url: String) {
+    runCatching { activity?.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
 }
 
 private fun manageSubscription(activity: Activity?) {

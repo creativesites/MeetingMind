@@ -13,6 +13,7 @@ import java.io.File
 import com.craftflowtechnologies.meetingmind.core.billing.Billing
 import com.craftflowtechnologies.meetingmind.core.billing.DisabledBillingGateway
 import com.craftflowtechnologies.meetingmind.core.billing.RevenueCatBillingGateway
+import com.craftflowtechnologies.meetingmind.core.billing.SimulatedBillingGateway
 
 /**
  * Installs the crash log before anything else runs, so a crash in a reminder, a widget, a worker
@@ -34,10 +35,16 @@ class MeetingMindApp : Application() {
         }
         removeTeachBackFiles()
         setUpReadToMe()
-        // Billing is set up once per process. With no RevenueCat key the app is simply free: nothing is offered and nothing breaks.
+        // Billing is set up once per process. With a RevenueCat key the Play store is used. A debug build
+        // without one gets the simulated store, so the paywall can be tried on a device. A release build
+        // without a key is simply free: nothing is offered and nothing breaks.
         val key = BuildConfig.REVENUECAT_API_KEY
-        Billing.gateway = if (key.isBlank()) DisabledBillingGateway
-        else runCatching { RevenueCatBillingGateway(this, key) as com.craftflowtechnologies.meetingmind.core.billing.BillingGateway }.getOrDefault(DisabledBillingGateway)
+        Billing.gateway = when {
+            key.isNotBlank() -> runCatching { RevenueCatBillingGateway(this, key) as com.craftflowtechnologies.meetingmind.core.billing.BillingGateway }
+                .getOrDefault(DisabledBillingGateway)
+            BuildConfig.DEBUG -> SimulatedBillingGateway(this)
+            else -> DisabledBillingGateway
+        }
     }
 
     /**

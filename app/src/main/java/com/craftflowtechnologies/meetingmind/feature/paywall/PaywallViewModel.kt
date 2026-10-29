@@ -9,6 +9,7 @@ import com.craftflowtechnologies.meetingmind.core.analytics.Events
 import com.craftflowtechnologies.meetingmind.core.billing.Billing
 import com.craftflowtechnologies.meetingmind.core.billing.BillingGateway
 import com.craftflowtechnologies.meetingmind.core.billing.Entitlements
+import com.craftflowtechnologies.meetingmind.core.billing.SimulatedBillingGateway
 import com.craftflowtechnologies.meetingmind.core.billing.PaywallTrigger
 import com.craftflowtechnologies.meetingmind.core.billing.PlanOffer
 import com.craftflowtechnologies.meetingmind.core.billing.PurchaseResult
@@ -51,6 +52,9 @@ class PaywallViewModel @JvmOverloads constructor(application: Application, priva
     val entitlements: StateFlow<Entitlements> = gateway.entitlements
     val configured: Boolean get() = gateway.configured
 
+    /** True only in a debug build with no store key, where purchases are simulated. */
+    val isTestStore: Boolean get() = gateway is SimulatedBillingGateway
+
     init {
         viewModelScope.launch {
             val saved = prefs.preferencesFlow.first()
@@ -77,6 +81,12 @@ class PaywallViewModel @JvmOverloads constructor(application: Application, priva
         _state.update { it.copy(busy = true, message = null) }
         Analytics.track(Events.PURCHASE_STARTED, "plan" to offer.plan.name, "period" to offer.period)
         viewModelScope.launch { handle(gateway.purchase(activity, offer.id)) }
+    }
+
+    /** Debug builds without a store key only: returns the simulated account to Free so the paywall can be tried again. */
+    fun resetTestStore() {
+        val simulated = gateway as? SimulatedBillingGateway ?: return
+        viewModelScope.launch { simulated.reset() }
     }
 
     fun restore() {

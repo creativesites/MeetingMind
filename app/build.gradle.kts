@@ -32,6 +32,9 @@ val releaseRevenueCatKey = buildValue("REVENUECAT_API_KEY", "revenuecat.apiKey")
 val geminiProxyUrl = buildValue("GEMINI_PROXY_URL", "gemini.proxyUrl")
 // The raw key is for debug builds only: a first recording works without setup while developing.
 val debugSystemGeminiKey = buildValue("SYSTEM_GEMINI_API_KEY", "system.geminiApiKey", "gemini.apiKey")
+// Store-required links on the paywall (Google Play needs them for subscriptions). Shown only when set.
+val privacyPolicyUrl = buildValue("PRIVACY_POLICY_URL", "legal.privacyPolicyUrl")
+val termsOfUseUrl = buildValue("TERMS_OF_USE_URL", "legal.termsOfUseUrl")
 
 android {
   namespace = "com.craftflowtechnologies.meetingmind"
@@ -93,6 +96,8 @@ android {
     buildConfigField("String", "REVENUECAT_API_KEY", "\"\"")
     // Base URL of server/gemini-proxy (MeetingMind-managed cloud AI). Empty = no managed AI.
     buildConfigField("String", "GEMINI_PROXY_URL", "\"${geminiProxyUrl.replace("\"", "")}\"")
+    buildConfigField("String", "PRIVACY_POLICY_URL", "\"${privacyPolicyUrl.replace("\"", "")}\"")
+    buildConfigField("String", "TERMS_OF_USE_URL", "\"${termsOfUseUrl.replace("\"", "")}\"")
   }
 
   signingConfigs {
@@ -209,6 +214,8 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 val missingForPlayBundle = buildList {
   if (releaseRevenueCatKey.isBlank()) add("REVENUECAT_API_KEY")
   if (geminiProxyUrl.isBlank()) add("GEMINI_PROXY_URL")
+  if (privacyPolicyUrl.isBlank()) add("PRIVACY_POLICY_URL")
+  if (termsOfUseUrl.isBlank()) add("TERMS_OF_USE_URL")
 }
 if (missingForPlayBundle.isNotEmpty()) {
   tasks.matching { it.name == "bundleRelease" || it.name == "assembleRelease" }.configureEach {
