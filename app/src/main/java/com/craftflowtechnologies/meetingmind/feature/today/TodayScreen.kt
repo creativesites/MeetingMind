@@ -136,6 +136,7 @@ fun TodayScreen(
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit = {},
     onOpenFaith: () -> Unit = {},
     onOpenWork: () -> Unit = {},
+    onOpenLearn: () -> Unit = {},
     onOpenCircles: () -> Unit = {},
     /** What the Circles tile shows; the caller loads it (see HomeCirclesViewModel). */
     homeCircles: HomeCircles = HomeCircles.Loading,

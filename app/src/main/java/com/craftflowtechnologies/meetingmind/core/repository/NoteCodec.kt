@@ -240,7 +240,31 @@ internal object NoteCodec {
         addedAt = addedAt
     )
 
-    /** The searchable text of a note: every text block, one per line. */
+    private val SEARCHABLE_EXTRA_TYPES = setOf(
+        NoteBlockType.CODE,
+        NoteBlockType.TABLE,
+        NoteBlockType.MATH,
+        NoteBlockType.CALLOUT,
+        NoteBlockType.DIAGRAM
+    )
+
+    /** The searchable text of a note: every text and academic block, one per line. */
     fun plainTextOf(blocks: List<NoteBlock>): String =
-        com.craftflowtechnologies.meetingmind.core.notes.MarkdownImport.expand(blocks).filter { (it.type.isText || it.type == NoteBlockType.CODE || it.type == NoteBlockType.TABLE) && it.content.text.isNotBlank() }.joinToString("\n") { it.content.text }
+        com.craftflowtechnologies.meetingmind.core.notes.MarkdownImport.expand(blocks)
+            .filter { it.type.isText || it.type in SEARCHABLE_EXTRA_TYPES }
+            .mapNotNull { block ->
+                when (block.type) {
+                    NoteBlockType.CALLOUT -> {
+                        val title = block.payload[NoteBlock.PAYLOAD_CALLOUT_TITLE]?.trim()?.takeIf { it.isNotEmpty() }
+                        val body = block.content.text.trim().takeIf { it.isNotEmpty() }
+                        listOfNotNull(title, body).joinToString(": ").takeIf { it.isNotBlank() }
+                    }
+                    NoteBlockType.DIAGRAM -> {
+                        block.content.text.takeIf { it.isNotBlank() }
+                            ?: block.payload[NoteBlock.PAYLOAD_DIAGRAM_SYNTAX]?.takeIf { it.isNotBlank() }
+                    }
+                    else -> block.content.text.takeIf { it.isNotBlank() }
+                }
+            }
+            .joinToString("\n")
 }

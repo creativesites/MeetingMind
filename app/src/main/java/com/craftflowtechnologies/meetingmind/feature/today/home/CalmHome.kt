@@ -81,6 +81,7 @@ fun CalmHome(
     onOpenTestimonies: () -> Unit,
     onOpenCircles: () -> Unit,
     onOpenStories: (StoryKind?) -> Unit,
+    onOpenLearn: () -> Unit = {},
     onCustomize: () -> Unit,
     onNavigateBottomNav: (com.craftflowtechnologies.meetingmind.core.ui.BottomNavDestination) -> Unit
 ) {
@@ -143,6 +144,8 @@ fun CalmHome(
                     onOpenWord = onOpenWord,
                     onOpenTestimonies = onOpenTestimonies,
                     onOpenCreate = { create.open() },
+                    onOpenLearn = onOpenLearn,
+                    showLearn = true,
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }

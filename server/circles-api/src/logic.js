@@ -27,6 +27,11 @@ export const TEMPLATES = {
   exec_board: ["decision", "brief", "announcement", "note"],
   department: ["announcement", "standup", "task", "decision", "note"],
   custom_work: ["task", "decision", "brief", "standup", "announcement", "note"],
+  // Learning templates
+  study_group: ["study", "announcement", "encouragement", "achievement", "note"],
+  course_cohort: ["study", "announcement", "note"],
+  exam_prep_room: ["study", "announcement", "achievement", "note"],
+  custom_learning: ["study", "announcement", "encouragement", "achievement", "note"],
 };
 
 const bad = (code, msg) => new ApiError(400, code, msg);
@@ -57,16 +62,17 @@ export function normalizeSettings(input, template, space = "faith") {
   const tpl = TEMPLATES[template];
   if (!tpl) throw bad("bad_request", "Unknown template");
   const isWork = space === "work" || s.space === "work";
+  const isLearning = space === "learning" || s.space === "learning";
   const defaultReactions = isWork ? [...WORK_REACTIONS] : [...FAITH_REACTIONS];
   // joinApproval defaults off so circles that exist today keep joining as they do.
   const out = {
     allowedTypes: [...tpl],
     whoCanInvite: "admins",
-    prayerApproval: isWork ? false : true,
+    prayerApproval: (isWork || isLearning) ? false : true,
     joinApproval: false,
     reactions: defaultReactions,
     guidelines: "",
-    space: isWork ? "work" : "faith"
+    space: isLearning ? "learning" : isWork ? "work" : "faith"
   };
   if (s.allowedTypes !== undefined) {
     if (!Array.isArray(s.allowedTypes) || s.allowedTypes.length === 0 || s.allowedTypes.some((t) => !POST_TYPES.includes(t))) throw bad("bad_request", "Invalid post types");
@@ -95,8 +101,9 @@ export function normalizeSettings(input, template, space = "faith") {
 // ---- invite codes ----
 export const FAITH_CODE_WORDS = ["GRACE", "FAITH", "HOPE", "LIGHT", "PEACE", "JOY", "AMEN", "MERCY", "TRUST", "PRAISE", "SHEPHERD", "COVENANT", "ANCHOR", "BEACON", "CEDAR", "DOVE", "EMBER", "FIELD", "GARDEN", "HARVEST", "OLIVE", "RIVER", "ROCK", "SPRING", "STAR", "VINE", "WILLOW", "WINGS", "LAMP", "PATH", "SALT", "SEED"];
 export const WORK_CODE_WORDS = ["SPRINT", "FOCUS", "LAUNCH", "ALIGN", "IMPACT", "STRIDE", "TALENT", "VISION", "TARGET", "MATRIX", "NEXUS", "VECTOR", "DELTA", "APEX", "SUMMIT", "PULSE", "BRIDGE", "PIVOT", "THRIVE", "FORGE", "CLIMB", "SCALE", "DRIVE", "RESOLVE", "QUEST", "SYNC", "PRISM", "SIGNAL", "CHORD", "SYNERGY"];
+export const LEARNING_CODE_WORDS = ["STUDY", "EXAM", "CLASS", "NOTES", "LEARN", "LOGIC", "ACADEMY", "THEORY", "CAMPUS", "SCHOLAR", "DEGREE", "HONOR", "TUTOR", "COURSE", "LECTURE", "THESIS", "REVISION", "RECALL", "FORMULA", "SYNTAX"];
 export const CODE_WORDS = FAITH_CODE_WORDS;
-export const ALL_CODE_WORDS = [...new Set([...FAITH_CODE_WORDS, ...WORK_CODE_WORDS])];
+export const ALL_CODE_WORDS = [...new Set([...FAITH_CODE_WORDS, ...WORK_CODE_WORDS, ...LEARNING_CODE_WORDS])];
 // No vowels (no accidental words), no 0/1/I/L/O lookalikes.
 export const CODE_ALPHABET = "23456789BCDFGHJKMNPQRSTVWXZ";
 
@@ -105,7 +112,7 @@ export function generateCode(randomBytes = (n) => crypto.getRandomValues(new Uin
     const lim = 256 - (256 % max);
     for (;;) { const b = randomBytes(1)[0]; if (b < lim) return b % max; }
   };
-  const words = space === "work" ? WORK_CODE_WORDS : FAITH_CODE_WORDS;
+  const words = space === "learning" ? LEARNING_CODE_WORDS : space === "work" ? WORK_CODE_WORDS : FAITH_CODE_WORDS;
   let suffix = "";
   for (let i = 0; i < 4; i++) suffix += CODE_ALPHABET[pick(CODE_ALPHABET.length)];
   return `${words[pick(words.length)]}-${suffix}`;

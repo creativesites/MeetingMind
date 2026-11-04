@@ -47,3 +47,11 @@
 - One Bible place: Continue, Today's reading, How I feel, Study a passage, plans, study journal.
 - Guided sessions: SOAP and verse by verse first. Zuri asks, never writes the answer.
 - The study journal saves what the person types as they type; no blank note first.
+
+## Learning Vertical (Production)
+- **Student Companion**: Uses user's global selected companion (`rememberCompanionSettings()`). Socratic, adaptive tutoring across 10 academic domains (Math/Stats, Engineering, Accounting/Finance, Programming/CS, Economics, Chemistry, Biology/Medicine, Law/Humanities, High School, General).
+- **Expand & Enrich**: BlockSource.ENRICHED blocks appear folded behind a 1-tap unpack pill.
+- **Academic Notation**: Normalized spoken math & equations rendered via native LaTeX blocks with MathJax/KaTeX styling.
+- **Active Recall & Teach-Back**: Spaced repetition grading with Leitner/SM-2, "Explain My Mistake" root misconception diagnostics, and verbal Teach-It-Back rubric evaluation.
+- **Exam Readiness Matrix & 1-Page Cram Sheet**: High-yield exam prioritization, countdown timers, and shareable cram sheets to Study Circles.
+- **Pricing & Billing Contract**: Strictly 1.0 pricing (Free taste + BYOK $4.99/mo + Pro $12.99/mo). Zero artificial feature locks.

@@ -113,6 +113,7 @@ import com.craftflowtechnologies.meetingmind.core.audio.PlaybackController
 import com.craftflowtechnologies.meetingmind.core.common.Formatters
 import com.craftflowtechnologies.meetingmind.core.export.ExportFormat
 import com.craftflowtechnologies.meetingmind.core.model.Attachment
+import com.craftflowtechnologies.meetingmind.core.model.BlockSource
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlock
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlockType
 import com.craftflowtechnologies.meetingmind.core.notes.InlineStyle
@@ -291,6 +292,9 @@ fun NoteEditorScreen(
             }
             InsertAction.NOTE_LINK -> showNoteLinks = true
             InsertAction.SCRIPTURE -> showScriptureEntry = true
+            InsertAction.MATH -> viewModel.insertMath()
+            InsertAction.CALLOUT -> viewModel.insertCallout()
+            InsertAction.DIAGRAM -> viewModel.insertDiagram()
         }
     }
 
@@ -441,7 +445,14 @@ fun NoteEditorScreen(
         }
         val currentNote = note ?: return@Scaffold
         // Folded headings hide their sections; positions still refer to the whole note.
-        val visible = remember(blocks) { BlockEditing.visibleBlocks(blocks) }
+        val visibleRaw = remember(blocks) { BlockEditing.visibleBlocks(blocks) }
+        var lessonFilter by rememberSaveable { mutableStateOf(LessonViewFilter.ALL) }
+        val showLessonFilter = remember(currentNote.workflow, blocks) {
+            shouldShowLessonFilterBar(currentNote.workflow, null, blocks)
+        }
+        val visible = remember(visibleRaw, lessonFilter, showLessonFilter) {
+            if (showLessonFilter) lessonFilter.apply(visibleRaw) else visibleRaw
+        }
         val indexOf = remember(blocks) { blocks.withIndex().associate { (i, b) -> b.id to i } }
         LazyColumn(
             state = listState,
@@ -450,6 +461,15 @@ fun NoteEditorScreen(
                 .padding(padding),
             contentPadding = PaddingValues(start = 14.dp, end = 20.dp, bottom = 120.dp)
         ) {
+            if (showLessonFilter) {
+                item(key = "lesson_filter") {
+                    LessonNoteFilterBar(
+                        selected = lessonFilter,
+                        onSelect = { lessonFilter = it },
+                        enrichedCount = blocks.count { it.source == BlockSource.ENRICHED }
+                    )
+                }
+            }
             val coverPath = currentNote.metadata[com.craftflowtechnologies.meetingmind.core.repository.NoteRepository.COVER_KEY]?.let { attachments[it]?.path }
             if (coverPath != null && java.io.File(coverPath).exists()) item(key = "cover") {
                 Box(Modifier.padding(start = 8.dp, bottom = 12.dp).fillMaxWidth().height(200.dp).clip(RoundedCornerShape(20.dp))) {
@@ -612,23 +632,28 @@ fun NoteEditorScreen(
                             }
                     )
                     Box(Modifier.weight(1f)) {
-                        BlockContent(
+                        EnrichedFoldableContainer(
                             block = block,
-                            index = index,
-                            blocks = blocks,
-                            serif = serif,
-                            focusRequest = focus,
-                            attachments = attachments,
-                            recordings = recordings,
-                            linkedTitle = block.payload[NoteBlock.PAYLOAD_NOTE_ID]?.let { linkedTitles[it] ?: block.payload["title"] },
-                            viewModel = viewModel,
-                            isOnlyBlock = blocks.size == 1,
-                            onOpenAttachment = ::openAttachment,
-                            onOpenRecording = onOpenRecording,
-                            onOpenNote = onOpenNote,
-                            onPlay = { card -> card.audioPath?.let { PlaybackController.play(context, card.meetingId, card.title, File(it)) } },
-                            onOpenScripture = { verseSheetFor = it }
-                        )
+                            onToggleUnpacked = { viewModel.toggleFold(it, NoteBlock.PAYLOAD_UNPACKED) }
+                        ) {
+                            BlockContent(
+                                block = block,
+                                index = index,
+                                blocks = blocks,
+                                serif = serif,
+                                focusRequest = focus,
+                                attachments = attachments,
+                                recordings = recordings,
+                                linkedTitle = block.payload[NoteBlock.PAYLOAD_NOTE_ID]?.let { linkedTitles[it] ?: block.payload["title"] },
+                                viewModel = viewModel,
+                                isOnlyBlock = blocks.size == 1,
+                                onOpenAttachment = ::openAttachment,
+                                onOpenRecording = onOpenRecording,
+                                onOpenNote = onOpenNote,
+                                onPlay = { card -> card.audioPath?.let { PlaybackController.play(context, card.meetingId, card.title, File(it)) } },
+                                onOpenScripture = { verseSheetFor = it }
+                            )
+                        }
                     }
                 }
             }
@@ -1094,6 +1119,29 @@ private fun BlockContent(
                 )
             }
         }
+        block.type == NoteBlockType.MATH -> MathBlock(
+            block = block,
+            onEdit = { text -> viewModel.updateMathBlock(block.id, text) },
+            onCite = { meetingId, ms -> onOpenRecording(meetingId, ms) }
+        )
+        block.type == NoteBlockType.CALLOUT -> CalloutBlock(
+            block = block,
+            onText = { text ->
+                val kind = block.payload[NoteBlock.PAYLOAD_CALLOUT_KIND] ?: "DEFINITION"
+                val title = block.payload[NoteBlock.PAYLOAD_CALLOUT_TITLE]
+                viewModel.updateCalloutBlock(block.id, kind, title, text)
+            },
+            onUpdatePayload = { payload ->
+                val kind = payload[NoteBlock.PAYLOAD_CALLOUT_KIND] ?: "DEFINITION"
+                val title = payload[NoteBlock.PAYLOAD_CALLOUT_TITLE]
+                viewModel.updateCalloutBlock(block.id, kind, title, block.content.text)
+            },
+            onCite = { meetingId, ms -> onOpenRecording(meetingId, ms) }
+        )
+        block.type == NoteBlockType.DIAGRAM -> DiagramBlock(
+            block = block,
+            onEdit = { syntax -> viewModel.updateDiagramBlock(block.id, syntax) }
+        )
     }
 }
 

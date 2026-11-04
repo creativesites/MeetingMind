@@ -704,6 +704,71 @@ class NoteEditorViewModel(application: Application, val noteId: String) : Androi
         _editingMarkdown.value = block.id
     }
 
+    /** Inserts a native math formula block with default derivation template. */
+    fun insertMath(latex: String = "\\frac{d}{dx}[f(x)] = \\lim_{h \\to 0} \\frac{f(x+h) - f(x)}{h}") {
+        val block = NoteBlock(
+            id = NoteRepository.newId("block"),
+            noteId = noteId,
+            position = 0,
+            type = NoteBlockType.MATH,
+            content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(latex)
+        )
+        insert(listOf(block))
+    }
+
+    /** Inserts a semantic academic callout (definition, theorem, exam tip). */
+    fun insertCallout(kind: String = "DEFINITION", title: String = "Definition", body: String = "") {
+        val payload = mapOf(
+            NoteBlock.PAYLOAD_CALLOUT_KIND to kind,
+            NoteBlock.PAYLOAD_CALLOUT_TITLE to title
+        )
+        val block = NoteBlock(
+            id = NoteRepository.newId("block"),
+            noteId = noteId,
+            position = 0,
+            type = NoteBlockType.CALLOUT,
+            content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(body),
+            payload = payload
+        )
+        insert(listOf(block))
+    }
+
+    /** Inserts a Mermaid architecture or state diagram block. */
+    fun insertDiagram(syntax: String = "graph TD\n    A[Input] --> B[Process]\n    B --> C[Output]") {
+        val payload = mapOf(NoteBlock.PAYLOAD_DIAGRAM_SYNTAX to syntax)
+        val block = NoteBlock(
+            id = NoteRepository.newId("block"),
+            noteId = noteId,
+            position = 0,
+            type = NoteBlockType.DIAGRAM,
+            content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(syntax),
+            payload = payload
+        )
+        insert(listOf(block))
+    }
+
+    fun updateMathBlock(blockId: String, text: String, steps: String? = null) {
+        val i = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
+        val block = _blocks.value[i]
+        val payload = if (steps != null) block.payload + (NoteBlock.PAYLOAD_MATH_STEPS to steps) else block.payload - NoteBlock.PAYLOAD_MATH_STEPS
+        update(_blocks.value.replace(i, block.copy(content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(text), payload = payload)))
+    }
+
+    fun updateCalloutBlock(blockId: String, kind: String, title: String?, text: String) {
+        val i = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
+        val block = _blocks.value[i]
+        var payload = block.payload + (NoteBlock.PAYLOAD_CALLOUT_KIND to kind)
+        payload = if (!title.isNullOrBlank()) payload + (NoteBlock.PAYLOAD_CALLOUT_TITLE to title) else payload - NoteBlock.PAYLOAD_CALLOUT_TITLE
+        update(_blocks.value.replace(i, block.copy(content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(text), payload = payload)))
+    }
+
+    fun updateDiagramBlock(blockId: String, syntax: String) {
+        val i = _blocks.value.indexOfFirst { it.id == blockId }.takeIf { it >= 0 } ?: return
+        val block = _blocks.value[i]
+        val payload = block.payload + (NoteBlock.PAYLOAD_DIAGRAM_SYNTAX to syntax)
+        update(_blocks.value.replace(i, block.copy(content = com.craftflowtechnologies.meetingmind.core.notes.RichText.plain(syntax), payload = payload)))
+    }
+
     /** The Markdown block open as source, if any. */
     private val _editingMarkdown = MutableStateFlow<String?>(null)
     val editingMarkdown: StateFlow<String?> = _editingMarkdown.asStateFlow()

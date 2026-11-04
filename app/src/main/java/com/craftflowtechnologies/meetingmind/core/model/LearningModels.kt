@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.core.model
 
 import com.craftflowtechnologies.meetingmind.ai.notes.SourcePassage
+import com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -16,11 +17,115 @@ enum class LearningMasteryState(val label: String, val description: String) {
     NEEDS_REVIEW("Needs review", "Overdue review or recent difficulty requires attention")
 }
 
-/** Types of practice activities supported in Learning Release 1. */
+/** Types of practice activities supported in Learning. */
 enum class LearningActivityType(val label: String) {
     RECALL("Recall"),
     MULTIPLE_CHOICE("Multiple Choice"),
-    APPLICATION("Application")
+    APPLICATION("Application"),
+    WORKED_PROBLEM("Worked Problem"),
+    CODE_TRACE("Code & Complexity"),
+    JOURNAL_ENTRY("Accounting Entry"),
+    TEACH_BACK("Teach It Back")
+}
+
+/** Instructor emphasis and exam relevance tier for a concept. */
+enum class ExamImportance(val label: String) {
+    NORMAL("Standard"),
+    HIGH_YIELD("High-yield"),
+    LECTURER_FLAGGED("Exam hint")
+}
+
+/** Coverage state for Teach-It-Back rubric evaluation. */
+enum class TeachBackState(val label: String) {
+    COVERED("Covered"),
+    PARTLY_COVERED("Partly covered"),
+    NOT_YET_DEMONSTRATED("Not yet demonstrated")
+}
+
+/** Source-grounded criterion in a Teach-It-Back activity rubric. */
+data class TeachBackCriterion(
+    val claim: String,
+    val required: Boolean = true,
+    val evidence: LearningEvidence? = null
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("claim", claim)
+        put("required", required)
+        evidence?.let { put("evidence", it.toJson()) }
+    }
+
+    companion object {
+        fun fromJson(obj: JSONObject): TeachBackCriterion = TeachBackCriterion(
+            claim = obj.optString("claim", ""),
+            required = obj.optBoolean("required", true),
+            evidence = obj.optJSONObject("evidence")?.let { LearningEvidence.fromJson(it) }
+        )
+
+        fun parseList(jsonStr: String?): List<TeachBackCriterion> {
+            if (jsonStr.isNullOrBlank()) return emptyList()
+            return runCatching {
+                val arr = JSONArray(jsonStr)
+                List(arr.length()) { i -> fromJson(arr.getJSONObject(i)) }
+                    .filter { it.claim.isNotBlank() }
+            }.getOrDefault(emptyList())
+        }
+
+        fun listToJson(list: List<TeachBackCriterion>): String {
+            val arr = JSONArray()
+            list.forEach { arr.put(it.toJson()) }
+            return arr.toString()
+        }
+    }
+}
+
+/**
+ * Structured metadata stored inside a LEARNING [Notebook.propertiesJson].
+ * Safely merges with any pre-existing notebook JSON properties (`confidential`, `status`, etc.).
+ */
+data class CourseProperties(
+    val courseCode: String = "",
+    val domain: SubjectDomain = SubjectDomain.GENERAL,
+    val lecturer: String = "",
+    val syllabusTerms: List<String> = emptyList(),
+    val targetGrade: String = ""
+) {
+    @JvmOverloads
+    fun toJson(existingRaw: String? = null): String {
+        val base = if (!existingRaw.isNullOrBlank()) {
+            runCatching { JSONObject(existingRaw) }.getOrElse { JSONObject() }
+        } else {
+            JSONObject()
+        }
+        base.put("courseCode", courseCode.trim())
+        base.put("domain", domain.name)
+        base.put("lecturer", lecturer.trim())
+        base.put("syllabusTerms", JSONArray(syllabusTerms.map { it.trim() }.filter { it.isNotEmpty() }))
+        base.put("targetGrade", targetGrade.trim())
+        return base.toString()
+    }
+
+    companion object {
+        fun fromJson(raw: String?): CourseProperties {
+            if (raw.isNullOrBlank()) return CourseProperties()
+            return runCatching {
+                val obj = JSONObject(raw)
+                val terms = mutableListOf<String>()
+                obj.optJSONArray("syllabusTerms")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val t = arr.optString(i).trim()
+                        if (t.isNotEmpty()) terms.add(t)
+                    }
+                }
+                CourseProperties(
+                    courseCode = obj.optString("courseCode", ""),
+                    domain = SubjectDomain.fromName(obj.optString("domain", "GENERAL")),
+                    lecturer = obj.optString("lecturer", ""),
+                    syllabusTerms = terms,
+                    targetGrade = obj.optString("targetGrade", "")
+                )
+            }.getOrDefault(CourseProperties())
+        }
+    }
 }
 
 /** Rating given during a recall activity self-evaluation. */
@@ -181,9 +286,13 @@ data class LearningSession(
     val status: String = "ACTIVE",
     val lastStudiedAt: Long? = null,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val subjectDomain: String = "GENERAL",
+    val examSignalCount: Int = 0,
+    val unresolvedConfusionCount: Int = 0
 ) {
     val isPaused: Boolean get() = status == "PAUSED"
+    val domain: SubjectDomain get() = SubjectDomain.fromName(subjectDomain)
 }
 
 /** A key concept extracted or created within a Learning Session. */
@@ -200,7 +309,9 @@ data class LearningConcept(
     val isDismissed: Boolean = false,
     val isStale: Boolean = false,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val examImportance: ExamImportance = ExamImportance.NORMAL,
+    val formulaLatex: String? = null
 )
 
 /** An activity: question prompt, rubric, options, and evidence links. */
@@ -218,7 +329,8 @@ data class LearningActivity(
     val isDismissed: Boolean = false,
     val isStale: Boolean = false,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val rubric: List<TeachBackCriterion> = emptyList()
 )
 
 /** An immutable attempt record capturing learner recall/answer. */
@@ -231,7 +343,9 @@ data class ActivityAttempt(
     val isCorrect: Boolean,
     val selfRating: RecallRating? = null,
     val feedback: String = "",
-    val createdAt: Long
+    val createdAt: Long,
+    val audioPath: String? = null,
+    val attachmentId: String? = null
 ) {
     val attemptedAt: Long get() = createdAt
 }
@@ -256,6 +370,122 @@ data class ReviewSchedule(
         if (isPaused) return false
         snoozedUntil?.let { if (it > now) return false }
         return dueAt <= now
+    }
+}
+
+/** Exam or study milestone goal scoped optionally to a course notebook and/or sessions. */
+data class LearningGoal(
+    val id: String,
+    val notebookId: String? = null,
+    val title: String,
+    val examDateMs: Long,
+    val examFormat: String = "MIXED",
+    val sessionIds: List<String> = emptyList(),
+    val topicWeights: Map<String, Float> = emptyMap(),
+    val pastPaperNoteId: String? = null,
+    val dailyMinutesTarget: Int = 25,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+/** Ranked study priority entry for exam readiness matrices. */
+data class ExamPriorityItem(
+    val concept: LearningConcept,
+    val sessionTitle: String,
+    val mastery: MasteryCalculator.MasteryEvaluation,
+    val priorityScore: Double,
+    val reason: String
+)
+
+/**
+ * Transparently ranks concepts for exam preparation by combining:
+ * 1. [ExamImportance] (`LECTURER_FLAGGED` > `HIGH_YIELD` > `NORMAL`)
+ * 2. [LearningMasteryState] (`NEEDS_REVIEW` > `NEW` > `LEARNING` > `DEVELOPING` > `STRONG`)
+ * 3. Days remaining until the exam (closer exams amplify urgency)
+ */
+object ExamPriorityRanker {
+
+    fun importanceScore(importance: ExamImportance): Double = when (importance) {
+        ExamImportance.LECTURER_FLAGGED -> 50.0
+        ExamImportance.HIGH_YIELD -> 30.0
+        ExamImportance.NORMAL -> 10.0
+    }
+
+    fun masteryGapScore(state: LearningMasteryState): Double = when (state) {
+        LearningMasteryState.NEEDS_REVIEW -> 40.0
+        LearningMasteryState.NEW -> 32.0
+        LearningMasteryState.LEARNING -> 22.0
+        LearningMasteryState.DEVELOPING -> 10.0
+        LearningMasteryState.STRONG -> 2.0
+    }
+
+    fun examUrgencyBoost(daysUntilExam: Int?): Double {
+        if (daysUntilExam == null) return 0.0
+        return when {
+            daysUntilExam <= 1 -> 18.0
+            daysUntilExam <= 3 -> 14.0
+            daysUntilExam <= 7 -> 10.0
+            daysUntilExam <= 14 -> 6.0
+            daysUntilExam <= 30 -> 3.0
+            else -> 0.0
+        }
+    }
+
+    fun rank(
+        concepts: List<LearningConcept>,
+        sessionTitles: Map<String, String> = emptyMap(),
+        masteryByConceptId: Map<String, MasteryCalculator.MasteryEvaluation> = emptyMap(),
+        examDateMs: Long? = null,
+        topicWeights: Map<String, Float> = emptyMap(),
+        now: Long = System.currentTimeMillis()
+    ): List<ExamPriorityItem> {
+        val daysUntilExam = examDateMs?.let {
+            ((it - now).coerceAtLeast(0L) / DeterministicSpacedScheduler.DAY_MS).toInt()
+        }
+        val urgency = examUrgencyBoost(daysUntilExam)
+
+        return concepts
+            .filter { !it.isDismissed }
+            .map { concept ->
+                val sessionTitle = sessionTitles[concept.sessionId] ?: "Study Session"
+                val mastery = masteryByConceptId[concept.id]
+                    ?: MasteryCalculator.MasteryEvaluation(concept.state, concept.state.description)
+                val weight = resolveTopicWeight(concept, sessionTitle, topicWeights)
+                val rawScore = (importanceScore(concept.examImportance) + masteryGapScore(mastery.state)) * weight + urgency
+                val reasonParts = mutableListOf<String>()
+                if (concept.examImportance != ExamImportance.NORMAL) {
+                    reasonParts.add(concept.examImportance.label)
+                }
+                reasonParts.add(mastery.state.label)
+                if (daysUntilExam != null && daysUntilExam <= 30) {
+                    reasonParts.add(if (daysUntilExam == 0) "Exam today" else "${daysUntilExam}d to exam")
+                }
+                ExamPriorityItem(
+                    concept = concept,
+                    sessionTitle = sessionTitle,
+                    mastery = mastery,
+                    priorityScore = rawScore,
+                    reason = reasonParts.joinToString(" · ")
+                )
+            }
+            .sortedWith(
+                compareByDescending<ExamPriorityItem> { it.priorityScore }
+                    .thenBy { it.concept.createdAt }
+            )
+    }
+
+    private fun resolveTopicWeight(
+        concept: LearningConcept,
+        sessionTitle: String,
+        topicWeights: Map<String, Float>
+    ): Double {
+        if (topicWeights.isEmpty()) return 1.0
+        topicWeights[concept.sessionId]?.let { return it.coerceIn(0.5f, 3.0f).toDouble() }
+        topicWeights.entries.firstOrNull { (k, _) ->
+            k.equals(sessionTitle, ignoreCase = true) ||
+                k.equals(concept.name, ignoreCase = true)
+        }?.value?.let { return it.coerceIn(0.5f, 3.0f).toDouble() }
+        return 1.0
     }
 }
 

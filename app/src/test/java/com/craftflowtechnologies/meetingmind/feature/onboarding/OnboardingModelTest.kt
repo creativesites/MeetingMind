@@ -14,15 +14,13 @@ class OnboardingModelTest {
         )
     }
 
-    @Test fun `learning is not offered in onboarding`() {
-        // Cut from the MVP: the goal list must not offer it, and skipping goals must not switch its
-        // space on. Stored legacy data for the space is untouched.
+    @Test fun `learning is offered in onboarding in production`() {
         assertEquals(
-            listOf("WORK_MEETINGS", "SERMONS", "REFLECTIONS", "INTERVIEWS", "IDEAS"),
+            listOf("WORK_MEETINGS", "SERMONS", "LECTURES", "REFLECTIONS", "INTERVIEWS", "IDEAS"),
             CaptureGoal.entries.map { it.name }
         )
-        assertFalse(NotebookSpace.LEARNING in OfferedNotebookSpaces)
-        assertFalse(NotebookSpace.LEARNING in spacesFor(emptySet()))
+        assertTrue(NotebookSpace.LEARNING in OfferedNotebookSpaces)
+        assertTrue(NotebookSpace.LEARNING in spacesFor(emptySet()))
     }
 
     @Test fun `the companion pick is step 1 on both routes`() {
@@ -42,7 +40,7 @@ class OnboardingModelTest {
     }
 
     @Test fun `goals pick spaces, and no goals leaves every offered space on`() {
-        assertEquals(NotebookSpace.entries.toSet() - NotebookSpace.LEARNING, spacesFor(emptySet()))
+        assertEquals(NotebookSpace.entries.toSet(), spacesFor(emptySet()))
         assertEquals(setOf(NotebookSpace.WORK, NotebookSpace.FAITH), spacesFor(setOf(CaptureGoal.WORK_MEETINGS, CaptureGoal.INTERVIEWS, CaptureGoal.SERMONS)))
     }
 

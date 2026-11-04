@@ -35,6 +35,8 @@ sealed interface DeepLink {
     data class RecordEvent(val eventKey: String, val title: String, val workflow: String) : DeepLink
     /** The weekly review. */
     data object WeeklyReview : DeepLink
+    /** The Learning vertical. */
+    data object Learn : DeepLink
 }
 
 /**
@@ -68,6 +70,7 @@ object DeepLinks {
             "tasks" -> DeepLink.Tasks
             "inbox" -> DeepLink.Inbox
             "work" -> DeepLink.WorkSpace
+            "learn" -> DeepLink.Learn
             "review" -> DeepLink.WeeklyReview
             "prepare" -> DeepLink.Prepare(intent.getStringExtra("k").orEmpty(), intent.getStringExtra("t").orEmpty(), intent.getLongExtra("b", 0), intent.getLongExtra("e", 0), intent.getStringExtra("p").orEmpty(), intent.getStringExtra("m").orEmpty())
             "record_event" -> DeepLink.RecordEvent(intent.getStringExtra("k").orEmpty(), intent.getStringExtra("t").orEmpty(), intent.getStringExtra("w").orEmpty())
@@ -89,6 +92,7 @@ object DeepLinks {
             DeepLink.Tasks -> "tasks" to null
             DeepLink.Inbox -> "inbox" to null
             DeepLink.WorkSpace -> "work" to null
+            DeepLink.Learn -> "learn" to null
             DeepLink.WeeklyReview -> "review" to null
             is DeepLink.Prepare -> "prepare" to link.eventKey
             is DeepLink.RecordEvent -> "record_event" to link.eventKey

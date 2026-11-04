@@ -19,7 +19,11 @@ object InviteCodes {
         "NEXUS", "VECTOR", "DELTA", "APEX", "SUMMIT", "PULSE", "BRIDGE", "PIVOT", "THRIVE", "FORGE",
         "CLIMB", "SCALE", "DRIVE", "RESOLVE", "QUEST", "SYNC", "PRISM", "SIGNAL", "CHORD", "SYNERGY"
     )
-    val WORDS = (FAITH_WORDS + WORK_WORDS).distinct()
+    val LEARNING_WORDS = listOf(
+        "STUDY", "EXAM", "CLASS", "NOTES", "LEARN", "LOGIC", "ACADEMY", "THEORY", "CAMPUS", "SCHOLAR",
+        "DEGREE", "HONOR", "TUTOR", "COURSE", "LECTURE", "THESIS", "REVISION", "RECALL", "FORMULA", "SYNTAX"
+    )
+    val WORDS = (FAITH_WORDS + WORK_WORDS + LEARNING_WORDS).distinct()
     const val ALPHABET = "23456789BCDFGHJKMNPQRSTVWXZ"
 
     private const val MAX_SCAN = 2000

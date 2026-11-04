@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material.icons.filled.Church
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -48,7 +49,9 @@ fun HomeQuickAccessRow(
     onOpenWord: () -> Unit,
     onOpenTestimonies: (() -> Unit)? = null,
     onOpenCreate: (() -> Unit)? = null,
+    onOpenLearn: (() -> Unit)? = null,
     showWork: Boolean = true,
+    showLearn: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     // Work remains represented by its richer Work & Projects card; devotional and notes already
@@ -57,6 +60,7 @@ fun HomeQuickAccessRow(
         add(QuickAccessItem(EntryPoints.quickFaith.id, EntryPoints.quickFaith.label, Icons.Filled.Church, onOpenFaith))
         onOpenCreate?.let { add(QuickAccessItem(EntryPoints.quickCreate.id, EntryPoints.quickCreate.label, Icons.Filled.Palette, it)) }
         if (showWork) add(QuickAccessItem(EntryPoints.quickWork.id, EntryPoints.quickWork.label, Icons.Filled.Work, onOpenWork))
+        if (showLearn && onOpenLearn != null) add(QuickAccessItem(EntryPoints.quickLearn.id, EntryPoints.quickLearn.label, Icons.Filled.School, onOpenLearn))
         add(QuickAccessItem(EntryPoints.quickPrayer.id, EntryPoints.quickPrayer.label, Icons.Filled.Favorite, onOpenPrayer))
         add(QuickAccessItem(EntryPoints.quickDevotional.id, EntryPoints.quickDevotional.label, Icons.AutoMirrored.Filled.MenuBook, onOpenWord))
         onOpenTestimonies?.let { add(QuickAccessItem(EntryPoints.quickTestimonies.id, EntryPoints.quickTestimonies.label, Icons.Filled.Celebration, it)) }

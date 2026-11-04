@@ -315,6 +315,7 @@ internal fun TextBlock(
 private fun SourceTag(block: NoteBlock, onCite: ((String, Long) -> Unit)? = null) {
     val label = when (block.source) {
         BlockSource.AI -> if (block.isUserEdited) "AI · edited by you" else "Written by AI from the recording"
+        BlockSource.ENRICHED -> if (block.isUserEdited) "Expanded study context · edited by you" else "Expanded study context"
         BlockSource.TRANSCRIPT -> "From the transcript"
         BlockSource.IMPORTED -> "Imported"
         BlockSource.SCRIPTURE -> "Scripture"

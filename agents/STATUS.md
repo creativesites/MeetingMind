@@ -1,6 +1,30 @@
 # Status
 
-Updated: 2026-10-26. **Shipping branch: `release/1.0-paid-launch`** (cut from `work-circles-integration` + one checkpoint commit of the in-flight tree, `a3ca467`). Head: see `git log -1`.
+Updated: 2026-11-02. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+
+## Remote-Only Gradle Mandate (2026-11-02, Founder Directive)
+- **Zero Local Gradle Execution**: All Gradle tests, compilation runs (`compileDebugKotlin`), and builds must be executed by remote agents only — never executed on the local host machine.
+- Documented in `AGENTS.md` and `agents/TESTING.md`.
+
+## Learning Vertical End-to-End Delivery (2026-11-02, Production Release)
+- **Flagship Learning Studio (`feature/learning/`)**:
+  - `LearnHomeScreen.kt`: Integrated `HomeScaffold`, `CompanionBriefHero` reacting to daily brief & exam countdowns, primary action tiles (`learnDailyRecall`, `learnRecordLecture`, `learnAudioCram`, `learnWriteStudyNote`), and 4 tabs (Today, Courses, Practice, Exam Prep) + `CreateCourseDialog`.
+  - `PracticeArenaScreen.kt`: Active recall card flipper with 4-tier grading (`AGAIN`, `HARD`, `GOOD`, `EASY`), "Explain My Mistake" root misconception diagnostics, and verbal Teach-It-Back studio with live mic reaction, criteria checklist, and celebration view.
+  - `ExamPrepScreen.kt`: Exam readiness dashboard with countdown badges, High-Yield Priority Matrix, 1-Page Cram Sheet generation and preview, and `CreateGoalDialog`.
+  - `LearningSessionScreen.kt`: 4-tab session studio (Understand, Concepts with LaTeX formula cards, Practice activities, and Session Diagnostics with pause review toggle).
+  - `ShareStudyPackToCircleSheet.kt`: Modal sheet to publish cram sheets to Study Circles (`space = "learning"`).
+  - `LearnViewModel.kt`: Central state management across `LearningRepository`, `NoteRepository`, `LearningAiEngine`, and `ReadingCoordinator`.
+- **Wave 1 Substrate & Database (Schema 30)**:
+  - Added Room Schema 30 (`LearningGoalEntity`, `LearningGoalDao`, `MIGRATION_29_30`).
+  - Implemented `SubjectDomain.kt` covering 10 academic subject domains with domain-specific templates, spoken normalization rules, and vocabulary hints.
+  - Built `AcademicBlocks.kt` and `SpokenNotationNormalizer.kt` for spoken formula normalization and LaTeX block rendering.
+  - Extended Circles v2 with `space = "learning"` support and `PostType.Study`.
+- **Navigation & Entry Points**:
+  - Added `Routes.LEARN`, `Routes.LEARNING_SESSION`, `Routes.LEARN_PRACTICE`, `Routes.LEARN_EXAM` and route builders to `AppNavigation.kt`.
+  - Added `DeepLink.Learn` to `AppNotifications.kt` and wired into `MainActivity.kt`.
+  - Enabled `showLearn = true` by default in `HomeQuickAccessRow.kt` and connected across `EverydayHome`, `CalmHome`, `TodayScreen`, and `ProfessionalHome`.
+  - Registered `EntryScreen.LEARN_HOME` in `EntryPointContractTest.kt`.
+- **Billing & Packaging**: Strictly preserved 1.0 pricing contract (Free taste + BYOK $4.99/mo + Pro $12.99/mo) with zero artificial feature locks.
 
 ## External Integrations, Premium Features & Circles (2026-10-26, CTO session)
 - **Mission Accomplished:** Delivered end-to-end architecture, implementation, and feature-gating for external integrations, subscription entitlements, and Circles collaboration across Work and Faith verticals.

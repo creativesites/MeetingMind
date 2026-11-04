@@ -15,7 +15,7 @@ enum class EntryKind {
 /** How loudly an entry is drawn. HERO and PROMINENT are "prominent"; QUIET is a small tile, row, chip or text action. */
 enum class EntryStyle { HERO, PROMINENT, QUIET }
 
-enum class EntryScreen { FAITH_HOME, TODAY_QUICK_ROW, EVERYDAY_HOME, BIBLE_HOME }
+enum class EntryScreen { FAITH_HOME, TODAY_QUICK_ROW, EVERYDAY_HOME, BIBLE_HOME, LEARN_HOME }
 
 data class EntryPoint(val id: String, val screen: EntryScreen, val label: String, val kind: EntryKind, val style: EntryStyle) {
     val prominent: Boolean get() = style != EntryStyle.QUIET
@@ -62,6 +62,7 @@ object EntryPoints {
     val quickPrayer = e("quick.prayer", EntryScreen.TODAY_QUICK_ROW, "Prayer", EntryKind.EXPERIENCE, EntryStyle.QUIET)
     val quickDevotional = e("quick.devotional", EntryScreen.TODAY_QUICK_ROW, "Devotional", EntryKind.EXPERIENCE, EntryStyle.QUIET)
     val quickTestimonies = e("quick.testimonies", EntryScreen.TODAY_QUICK_ROW, "Testimonies", EntryKind.EXPERIENCE, EntryStyle.QUIET)
+    val quickLearn = e("quick.learn", EntryScreen.TODAY_QUICK_ROW, "Learn", EntryKind.EXPERIENCE, EntryStyle.QUIET)
 
     // ---- Everyday home.
     val everydayRecord = e("everyday.record", EntryScreen.EVERYDAY_HOME, "Record", EntryKind.EXPERIENCE, EntryStyle.PROMINENT)
@@ -76,12 +77,25 @@ object EntryPoints {
     val bibleStudyPassage = e("bible.study_passage", EntryScreen.BIBLE_HOME, "Study a passage", EntryKind.SHEET, EntryStyle.QUIET)
     val bibleWalkMe = e("bible.walk_me", EntryScreen.BIBLE_HOME, "Walk me through it", EntryKind.EXPERIENCE, EntryStyle.PROMINENT)
 
+    // ---- Learn home.
+    val learnDailyRecall = e("learn.daily_recall", EntryScreen.LEARN_HOME, "Start daily recall", EntryKind.EXPERIENCE, EntryStyle.HERO)
+    val learnContinue = e("learn.continue", EntryScreen.LEARN_HOME, "Continue session", EntryKind.EXPERIENCE, EntryStyle.PROMINENT)
+    val learnRecordLecture = e("learn.record_lecture", EntryScreen.LEARN_HOME, "Record a lecture", EntryKind.EXPERIENCE, EntryStyle.PROMINENT)
+    val learnAudioCram = e("learn.audio_cram", EntryScreen.LEARN_HOME, "Listen to audio cram", EntryKind.EXPERIENCE, EntryStyle.PROMINENT)
+    val learnMockExam = e("learn.mock_exam", EntryScreen.LEARN_HOME, "Start mock exam", EntryKind.EXPERIENCE, EntryStyle.PROMINENT)
+    val learnTeachBack = e("learn.teach_back", EntryScreen.LEARN_HOME, "Explain aloud", EntryKind.EXPERIENCE, EntryStyle.PROMINENT)
+    val learnCircles = e("learn.circles", EntryScreen.LEARN_HOME, "Circles", EntryKind.EXPERIENCE, EntryStyle.QUIET)
+    val learnWriteStudyNote = e("learn.write.study_note", EntryScreen.LEARN_HOME, "Write a study note", EntryKind.WRITE, EntryStyle.QUIET)
+    val learnWriteResearchNote = e("learn.write.research_note", EntryScreen.LEARN_HOME, "Write a research note", EntryKind.WRITE, EntryStyle.QUIET)
+
     val all: List<EntryPoint> = listOf(
         faithBible, faithContinue, faithStartReading, faithGuideMe, faithJustRead, faithDevotional, faithPray, faithCircles,
         faithVerseWrite, faithVerseShare, faithTestimonies, faithRecordSermon,
         faithWritePrayer, faithWritePrayerRequest, faithWriteBlessing, faithWriteTestimony, faithWriteReflection, faithWriteDevotional,
-        quickFaith, quickCreate, quickWork, quickPrayer, quickDevotional, quickTestimonies,
+        quickFaith, quickCreate, quickWork, quickPrayer, quickDevotional, quickTestimonies, quickLearn,
         everydayRecord, everydayOpen, everydayPrepare,
-        bibleContinue, bibleStartReading, bibleGuideMe, bibleJustRead, bibleStudyPassage, bibleWalkMe
+        bibleContinue, bibleStartReading, bibleGuideMe, bibleJustRead, bibleStudyPassage, bibleWalkMe,
+        learnDailyRecall, learnContinue, learnRecordLecture, learnAudioCram, learnMockExam, learnTeachBack, learnCircles,
+        learnWriteStudyNote, learnWriteResearchNote
     )
 }

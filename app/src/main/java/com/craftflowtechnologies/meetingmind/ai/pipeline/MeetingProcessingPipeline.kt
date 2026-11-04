@@ -1258,15 +1258,49 @@ class MeetingProcessingPipeline(
             else -> outcome.describeFailure() ?: "the AI model failed"
         }
         if (unavailableReason != null) Log.w(PERF_TAG, "Sermon notes unavailable: $unavailableReason")
-        val generated = com.craftflowtechnologies.meetingmind.ai.faith.SermonNoteBuilder.build(
-            noteId, meetingId, segments, extraction, detections, unavailableReason = unavailableReason,
-            spoken = if (isSermon) spoken else emptyList(),
-            speakers = if (isSermon) database.speakerDao().getSpeakersForMeetingDirect(meetingId).map {
-                com.craftflowtechnologies.meetingmind.core.model.Speaker(it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence)
-            } else emptyList()
-        )
-        com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database)
-            .applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys, generated.endKeys)
+        val isLecture = recordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.LECTURE ||
+            recordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.RESEARCH
+        if (isLecture) {
+            val marks = com.craftflowtechnologies.meetingmind.core.work.Marks.forMeeting(database, meetingId)
+            val domain = com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain.GENERAL
+            val learningRepo = com.craftflowtechnologies.meetingmind.core.repository.LearningRepository(database)
+            val session = learningRepo.ensureSessionForNote(
+                noteId = noteId,
+                title = meeting.title.ifBlank { "Lecture Notes" },
+                meetingId = meetingId,
+                domain = domain,
+                courseName = meeting.title.ifBlank { "Course" }
+            )
+            val aiEngine = com.craftflowtechnologies.meetingmind.ai.learning.LearningAiEngine(
+                transport = if (processingProfile == ProcessingProfile.INTERNET) geminiTransport else null
+            )
+            val synthesis = runCatching {
+                aiEngine.synthesizeLecture(noteId, session.id, segments, domain, marks)
+            }.getOrNull()
+            if (synthesis != null) {
+                learningRepo.saveConceptsAndActivities(session.id, synthesis.concepts, synthesis.activities)
+            }
+            val generatedLecture = com.craftflowtechnologies.meetingmind.ai.learning.LectureNoteBuilder.build(
+                noteId = noteId,
+                meetingId = meetingId,
+                segments = segments,
+                domain = domain,
+                synthesis = synthesis,
+                marks = marks
+            )
+            com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database)
+                .applyGeneratedSections(noteId, generatedLecture.blocks, emptyList(), generatedLecture.keys, generatedLecture.endKeys)
+        } else {
+            val generated = com.craftflowtechnologies.meetingmind.ai.faith.SermonNoteBuilder.build(
+                noteId, meetingId, segments, extraction, detections, unavailableReason = unavailableReason,
+                spoken = if (isSermon) spoken else emptyList(),
+                speakers = if (isSermon) database.speakerDao().getSpeakersForMeetingDirect(meetingId).map {
+                    com.craftflowtechnologies.meetingmind.core.model.Speaker(it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence)
+                } else emptyList()
+            )
+            com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database)
+                .applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys, generated.endKeys)
+        }
     }
 
     private suspend fun resolveSpeakerMerges(

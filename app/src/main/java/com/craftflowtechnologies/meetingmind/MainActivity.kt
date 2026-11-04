@@ -386,6 +386,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Tasks -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Inbox -> navController.navigate(Routes.WORK_INBOX) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.WorkSpace -> navController.navigate(Routes.WORK) { launchSingleTop = true }
+            com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Learn -> navController.navigate(Routes.LEARN) { launchSingleTop = true }
             com.craftflowtechnologies.meetingmind.core.notify.DeepLink.WeeklyReview -> navController.navigate(Routes.WEEKLY_REVIEW) { launchSingleTop = true }
             // Prepare opens the sheet on Work, over the space that owns it; the sheet reads the event from the link.
             is com.craftflowtechnologies.meetingmind.core.notify.DeepLink.Prepare -> {
@@ -490,6 +491,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenLearn = { navController.navigate(Routes.LEARN) },
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
@@ -522,6 +524,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenProcessing = openProcessing,
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenLearn = { navController.navigate(Routes.LEARN) },
                 onOpenDevotional = { navController.navigate(Routes.devotionalRoute()) },
                 onOpenPrayer = { navController.navigate(Routes.prayRoute()) },
                 onOpenWord = { navController.navigate(Routes.devotionalRoute()) },
@@ -556,6 +559,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenStories = { navController.navigate(Routes.storiesRoute(it?.name)) },
                 onOpenFaith = { navController.navigate(Routes.FAITH) },
                 onOpenWork = { navController.navigate(Routes.WORK) },
+                onOpenLearn = { navController.navigate(Routes.LEARN) },
                 onOpenCircles = { navController.navigate(Routes.FELLOWSHIP) },
                 homeCircles = homeCircles,
                 onOpenCircle = { navController.navigate(Routes.circleDetailRoute(it)) },
@@ -620,6 +624,128 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     }
                 }
             )
+        }
+
+        // LEARN — Learning vertical flagship studio
+        composable(Routes.LEARN) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val lib: com.craftflowtechnologies.meetingmind.feature.assistant.LibraryAssistantViewModel = viewModel()
+            var assistantOpen by remember { mutableStateOf(false) }
+
+            com.craftflowtechnologies.meetingmind.feature.learning.LearnHomeScreen(
+                viewModel = vm,
+                actions = com.craftflowtechnologies.meetingmind.feature.learning.LearnHomeActions(
+                    onBack = { navController.popBackStack() },
+                    onAssistant = { assistantOpen = true },
+                    onStartDailyRecall = {
+                        val brief = vm.dailyBrief.value
+                        val activities = brief?.dueReviews?.map { it.activity }.orEmpty()
+                        if (activities.isNotEmpty()) {
+                            vm.startPracticeSession(activities)
+                            navController.navigate(Routes.LEARN_PRACTICE)
+                        } else {
+                            navController.navigate(Routes.LEARN_PRACTICE)
+                        }
+                    },
+                    onRecordLecture = { navController.navigate(Routes.recordTypeRoute(RecordingType.LECTURE)) },
+                    onAudioCram = {
+                        val firstSession = vm.sessions.value.firstOrNull()
+                        if (firstSession != null) {
+                            vm.readSessionAloud(firstSession.noteId)
+                        }
+                    },
+                    onWriteStudyNote = {
+                        vm.createStudyNote(
+                            title = "Study Note",
+                            domain = com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain.GENERAL,
+                            courseNotebookId = null
+                        ) { noteId ->
+                            navController.navigate(Routes.noteRoute(noteId))
+                        }
+                    },
+                    onOpenCircles = { navController.navigate(Routes.circleCreateRoute("learning")) },
+                    onOpenSession = { noteId -> navController.navigate(Routes.learningSessionRoute(noteId)) },
+                    onOpenCourse = { courseId -> navController.navigate(Routes.notebookRoute(courseId)) },
+                    onOpenPractice = { navController.navigate(Routes.LEARN_PRACTICE) },
+                    onOpenExamPrep = { navController.navigate(Routes.LEARN_EXAM) }
+                )
+            )
+
+            if (assistantOpen) {
+                com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(
+                    session = lib.learning,
+                    onOpenNote = { assistantOpen = false; navController.navigate(Routes.noteRoute(it)) },
+                    onOpenTasks = { assistantOpen = false; navController.navigate(Routes.TASKS) },
+                    onDismiss = { assistantOpen = false }
+                )
+            }
+        }
+
+        composable(Routes.LEARN_PRACTICE) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            com.craftflowtechnologies.meetingmind.feature.learning.PracticeArenaScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.LEARN_EXAM) {
+            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            var shareMarkdown by remember { mutableStateOf<String?>(null) }
+
+            com.craftflowtechnologies.meetingmind.feature.learning.ExamPrepScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onOpenNote = { noteId -> navController.navigate(Routes.noteRoute(noteId)) },
+                onShareToCircle = { markdown -> shareMarkdown = markdown }
+            )
+
+            if (shareMarkdown != null) {
+                com.craftflowtechnologies.meetingmind.feature.learning.ShareStudyPackToCircleSheet(
+                    title = "Exam Study Pack",
+                    cramSheetMarkdown = shareMarkdown!!,
+                    onDismiss = { shareMarkdown = null },
+                    onPublished = { circleName ->
+                        shareMarkdown = null
+                        android.widget.Toast.makeText(context, "Shared study pack to $circleName", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    onNavigateCreateCircle = {
+                        shareMarkdown = null
+                        navController.navigate(Routes.circleCreateRoute("learning"))
+                    }
+                )
+            }
+        }
+
+        composable(
+            Routes.LEARNING_SESSION,
+            arguments = listOf(navArgument("noteId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val noteId = backStackEntry.arguments?.getString("noteId").orEmpty()
+            val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
+            val lib: com.craftflowtechnologies.meetingmind.feature.assistant.LibraryAssistantViewModel = viewModel()
+            var assistantOpen by remember { mutableStateOf(false) }
+
+            com.craftflowtechnologies.meetingmind.feature.learning.LearningSessionScreen(
+                noteId = noteId,
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onOpenEditor = { id -> navController.navigate(Routes.noteRoute(id)) },
+                onStartPractice = { activities ->
+                    vm.startPracticeSession(activities)
+                    navController.navigate(Routes.LEARN_PRACTICE)
+                },
+                onOpenAssistant = { assistantOpen = true }
+            )
+
+            if (assistantOpen) {
+                com.craftflowtechnologies.meetingmind.feature.assistant.AssistantSheet(
+                    session = lib.learning,
+                    onOpenNote = { assistantOpen = false; navController.navigate(Routes.noteRoute(it)) },
+                    onOpenTasks = { assistantOpen = false; navController.navigate(Routes.TASKS) },
+                    onDismiss = { assistantOpen = false }
+                )
+            }
         }
 
         // FAITH — one view model shared by the space and its two sub-pages, all behind the optional lock.

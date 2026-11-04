@@ -54,6 +54,7 @@ import androidx.room.migration.Migration
         LearningActivityEntity::class,
         ActivityAttemptEntity::class,
         ReviewScheduleEntity::class,
+        LearningGoalEntity::class,
         CreateCardEntity::class,
         RecordingMarkerEntity::class,
         LegacyNoteMarkEntity::class,
@@ -101,6 +102,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
     abstract fun learningActivityDao(): LearningActivityDao
     abstract fun activityAttemptDao(): ActivityAttemptDao
     abstract fun reviewScheduleDao(): ReviewScheduleDao
+    abstract fun learningGoalDao(): LearningGoalDao
 
     companion object {
         @Volatile
@@ -664,8 +666,34 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "ALTER TABLE `inbox_items` ADD COLUMN `meetingId` TEXT"
         )
 
+        /**
+         * Schema 30: Learning vertical v2 substrate. Adds subject domain & signal counters to
+         * `learning_sessions`, exam importance & formula LaTeX to `learning_concepts`, Teach-Back
+         * rubrics to `learning_activities`, audio/attachment provenance to `activity_attempts`,
+         * and the `learning_goals` table for exam readiness.
+         */
+        val MIGRATION_29_30 = object : Migration(29, 30) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_29_30_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
+        internal val MIGRATION_29_30_SQL: List<String> = listOf(
+            "ALTER TABLE `learning_sessions` ADD COLUMN `subjectDomain` TEXT NOT NULL DEFAULT 'GENERAL'",
+            "ALTER TABLE `learning_sessions` ADD COLUMN `examSignalCount` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `learning_sessions` ADD COLUMN `unresolvedConfusionCount` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `learning_concepts` ADD COLUMN `examImportance` TEXT NOT NULL DEFAULT 'NORMAL'",
+            "ALTER TABLE `learning_concepts` ADD COLUMN `formulaLatex` TEXT",
+            "ALTER TABLE `learning_activities` ADD COLUMN `rubricJson` TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE `activity_attempts` ADD COLUMN `audioPath` TEXT",
+            "ALTER TABLE `activity_attempts` ADD COLUMN `attachmentId` TEXT",
+            "CREATE TABLE IF NOT EXISTS `learning_goals` (`id` TEXT NOT NULL, `notebookId` TEXT, `title` TEXT NOT NULL, `examDateMs` INTEGER NOT NULL, `examFormat` TEXT NOT NULL DEFAULT 'MIXED', `sessionIdsJson` TEXT NOT NULL DEFAULT '[]', `topicWeightsJson` TEXT NOT NULL DEFAULT '{}', `pastPaperNoteId` TEXT, `dailyMinutesTarget` INTEGER NOT NULL DEFAULT 25, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`notebookId`) REFERENCES `notebooks`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE INDEX IF NOT EXISTS `index_learning_goals_notebookId` ON `learning_goals` (`notebookId`)",
+            "CREATE INDEX IF NOT EXISTS `index_learning_goals_examDateMs` ON `learning_goals` (`examDateMs`)"
+        )
+
         /** Every step from schema 1 to [VERSION]; the app and the migration tests open the database with the same list. */
-        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29)
+        val ALL_MIGRATIONS: Array<Migration> get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30)
 
         internal val MIGRATION_21_22_SQL: List<String> = listOf(
             "CREATE TABLE IF NOT EXISTS `learning_sessions` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `meetingId` TEXT, `title` TEXT NOT NULL, `courseName` TEXT, `status` TEXT NOT NULL DEFAULT 'ACTIVE', `lastStudiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`meetingId`) REFERENCES `meetings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
@@ -829,7 +857,7 @@ abstract class MeetMindDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS `index_scripture_collection_items_collectionId` ON `scripture_collection_items` (`collectionId`)"
         )
 
-        const val VERSION = 29
+        const val VERSION = 30
 
         /** Drops the cached instance after a failed open, so a retry really reopens. */
         internal fun forget() = synchronized(this) {

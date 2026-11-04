@@ -1,6 +1,9 @@
 # Testing
 
-## Commands
+> [!IMPORTANT]
+> **No local Gradle runs.** All Gradle tests, builds, compilation checks, and artifact generations are strictly executed by remote agents only — never locally. Do not run `./gradlew` on the local host machine.
+
+## Commands (Remote Runner Execution Only)
 - One area: `./gradlew --no-daemon -q -Dorg.gradle.jvmargs=-Xmx2g --max-workers=2 testDebugUnitTest --tests '*<Pattern>*'`
 - Full: `./gradlew --no-daemon -q -Dorg.gradle.jvmargs=-Xmx6g --max-workers=4 compileDebugKotlin testDebugUnitTest`
 - Screenshots (Roborazzi): add `-Proborazzi.test.record=true` to record, then look at the PNG yourself.

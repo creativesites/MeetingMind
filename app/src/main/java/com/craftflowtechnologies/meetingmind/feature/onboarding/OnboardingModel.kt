@@ -19,6 +19,7 @@ enum class EntryRoute { SAMPLE, RECORD }
 enum class CaptureGoal(val label: String, val space: NotebookSpace) {
     WORK_MEETINGS("Work meetings", NotebookSpace.WORK),
     SERMONS("Sermons and Bible study", NotebookSpace.FAITH),
+    LECTURES("Lectures, classes and exam prep", NotebookSpace.LEARNING),
     REFLECTIONS("Personal reflections", NotebookSpace.PERSONAL),
     INTERVIEWS("Interviews and field research", NotebookSpace.WORK),
     IDEAS("Ideas and everyday conversations", NotebookSpace.PERSONAL)
@@ -61,10 +62,9 @@ fun stepsFor(route: EntryRoute, spaces: Set<NotebookSpace>): List<OnboardingStep
 }
 
 /**
- * The spaces onboarding may offer. Learning is cut from the MVP and its space is never turned on by
- * this flow — stored legacy data for it is left alone, not migrated or deleted.
+ * The spaces onboarding may offer, including [NotebookSpace.LEARNING] in production.
  */
-val OfferedNotebookSpaces: Set<NotebookSpace> = NotebookSpace.entries.toSet() - NotebookSpace.LEARNING
+val OfferedNotebookSpaces: Set<NotebookSpace> = NotebookSpace.entries.toSet()
 
 /** Goals pick the spaces; no goals picked leaves every offered space on, as before. */
 fun spacesFor(goals: Set<CaptureGoal>): Set<NotebookSpace> =

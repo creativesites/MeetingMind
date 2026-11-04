@@ -115,6 +115,7 @@ fun ProfessionalHome(
     onRetryCircles: () -> Unit = {},
     onOpenStories: (com.craftflowtechnologies.meetingmind.feature.stories.StoryKind?) -> Unit,
     onOpenWork: () -> Unit,
+    onOpenLearn: () -> Unit = {},
     onOpenFaith: () -> Unit = {},
     onOpenPrayer: () -> Unit = {},
     onOpenWord: () -> Unit = {},
@@ -237,6 +238,8 @@ fun ProfessionalHome(
                     onOpenWord = onOpenWord,
                     onOpenTestimonies = onOpenTestimonies,
                     onOpenCreate = { create.open() },
+                    onOpenLearn = onOpenLearn,
+                    showLearn = true,
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }

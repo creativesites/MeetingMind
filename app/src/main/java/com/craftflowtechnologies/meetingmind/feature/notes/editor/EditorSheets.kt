@@ -48,6 +48,9 @@ import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Functions
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material3.AlertDialog
@@ -110,7 +113,10 @@ internal enum class InsertAction(val label: String, val icon: ImageVector) {
     EXCERPT("Quote the recording", Icons.Filled.RecordVoiceOver),
     SUMMARY("Insert summary", Icons.Filled.Summarize),
     TRANSCRIPT("Insert transcript", Icons.Filled.Subtitles),
-    NOTE_LINK("Link a note", Icons.Filled.Link)
+    NOTE_LINK("Link a note", Icons.Filled.Link),
+    MATH("Formula", Icons.Filled.Functions),
+    CALLOUT("Callout", Icons.Filled.Lightbulb),
+    DIAGRAM("Diagram", Icons.Filled.AccountTree)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -121,7 +127,7 @@ internal fun InsertSheet(hasRecordings: Boolean, onPick: (InsertAction) -> Unit,
             SheetTitle("Insert")
             SectionLabel("Write")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(InsertAction.TEXT, InsertAction.MARKDOWN, InsertAction.HEADING, InsertAction.BULLETS, InsertAction.NUMBERS, InsertAction.CHECKLIST, InsertAction.QUOTE, InsertAction.DIVIDER)
+                listOf(InsertAction.TEXT, InsertAction.MARKDOWN, InsertAction.HEADING, InsertAction.BULLETS, InsertAction.NUMBERS, InsertAction.CHECKLIST, InsertAction.QUOTE, InsertAction.DIVIDER, InsertAction.MATH, InsertAction.CALLOUT, InsertAction.DIAGRAM)
                     .forEach { InsertTile(it) { onPick(it) } }
             }
             SectionLabel("Add")

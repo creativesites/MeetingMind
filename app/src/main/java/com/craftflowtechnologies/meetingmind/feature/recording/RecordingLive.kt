@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PsychologyAlt
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -94,6 +95,8 @@ private fun iconOf(kind: MarkKind): ImageVector = when (kind) {
     MarkKind.NOTE -> Icons.Rounded.EditNote
     MarkKind.PRAYER -> Icons.Rounded.VolunteerActivism
     MarkKind.IDEA -> Icons.Rounded.Lightbulb
+    MarkKind.EXAM_HINT -> Icons.Rounded.Flag
+    MarkKind.CONFUSED -> Icons.Rounded.PsychologyAlt
 }
 
 /**

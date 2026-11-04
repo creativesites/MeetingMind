@@ -113,14 +113,32 @@ data class CircleTemplate(
                 listOf("Team", "Group", "Circle"), space = "work")
         )
 
-        val all: List<CircleTemplate> get() = faithTemplates
-        val allTemplates: List<CircleTemplate> get() = faithTemplates + workTemplates
+        val learningTemplates: List<CircleTemplate> = listOf(
+            CircleTemplate("study_group", "Study group", "Classmates sharing study guides, practice quizzes and session notes.",
+                listOf(PostType.Study, PostType.Announcement, PostType.Encouragement, PostType.Achievement, PostType.Note),
+                listOf("Study group", "Cohort", "Study circle", "Class"), space = "learning"),
+            CircleTemplate("course_cohort", "Course cohort", "A class or section working through a syllabus and lectures together.",
+                listOf(PostType.Study, PostType.Announcement, PostType.Note),
+                listOf("Course", "Cohort", "Class", "Section"), space = "learning"),
+            CircleTemplate("exam_prep_room", "Exam prep room", "Intensive revision, past paper discussions, and flashcard drills.",
+                listOf(PostType.Study, PostType.Announcement, PostType.Achievement, PostType.Note),
+                listOf("Prep room", "Revision squad", "Study group"), space = "learning"),
+            CircleTemplate("custom_learning", "Custom study group", "Configure your own collaborative academic space.",
+                listOf(PostType.Study, PostType.Announcement, PostType.Encouragement, PostType.Achievement, PostType.Note),
+                listOf("Group", "Circle", "Cohort"), space = "learning")
+        )
 
-        fun forSpace(space: String?): List<CircleTemplate> =
-            if (space.equals("work", ignoreCase = true)) workTemplates else faithTemplates
+        val all: List<CircleTemplate> get() = faithTemplates
+        val allTemplates: List<CircleTemplate> get() = faithTemplates + workTemplates + learningTemplates
+
+        fun forSpace(space: String?): List<CircleTemplate> = when {
+            space.equals("work", ignoreCase = true) -> workTemplates
+            space.equals("learning", ignoreCase = true) -> learningTemplates
+            else -> faithTemplates
+        }
 
         fun byId(id: String?): CircleTemplate =
-            (faithTemplates + workTemplates).firstOrNull { it.id == id } ?: faithTemplates.last()
+            allTemplates.firstOrNull { it.id == id } ?: faithTemplates.last()
     }
 }
 
@@ -141,8 +159,9 @@ data class Circle(
     val space: String = "faith"
 ) {
     val isWork: Boolean get() = space.equals("work", ignoreCase = true) || template in setOf("project_team", "client_engagement", "exec_board", "department", "custom_work")
+    val isLearning: Boolean get() = space.equals("learning", ignoreCase = true) || template in setOf("study_group", "course_cohort", "exam_prep_room", "custom_learning")
     /** "Cell group" or "Team" for the header: the group's own word, never a generic one. */
-    val groupWord: String get() = vocab.ifBlank { if (isWork) "Team" else "Circle" }
+    val groupWord: String get() = vocab.ifBlank { if (isLearning) "Study group" else if (isWork) "Team" else "Circle" }
 }
 
 /** [title] is a display label such as "Pastor". It never changes what the person may do; [role] does. */

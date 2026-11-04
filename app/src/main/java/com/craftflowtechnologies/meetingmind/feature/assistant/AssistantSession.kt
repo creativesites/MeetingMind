@@ -190,4 +190,5 @@ class AssistantSession(
 /** The assistant across the whole library, for Faith home and elsewhere without a note open. */
 class LibraryAssistantViewModel(app: Application) : AndroidViewModel(app) {
     val faith = AssistantSession(app, viewModelScope, null, null, libraryLabel = "Faith", faithLibrary = true)
+    val learning = AssistantSession(app, viewModelScope, null, null, libraryLabel = "Learning", faithLibrary = false)
 }

@@ -23,6 +23,15 @@ object Routes {
     /** Plans. [trigger] is a PaywallTrigger name; it only labels where the person came from. */
     const val PAYWALL = "paywall?trigger={trigger}"
     fun paywallRoute(trigger: String = "SETTINGS") = "paywall?trigger=$trigger"
+    const val LEARN = "learn"
+    const val LEARNING_SESSION = "learning_session/{noteId}"
+    fun learningSessionRoute(noteId: String) = "learning_session/$noteId"
+    const val LEARN_PRACTICE = "learn_practice?sessionId={sessionId}&activityId={activityId}"
+    fun learnPracticeRoute(sessionId: String? = null, activityId: String? = null) =
+        "learn_practice" + listOfNotNull(sessionId?.let { "sessionId=$it" }, activityId?.let { "activityId=$it" }).joinToString("&", prefix = "?").takeIf { sessionId != null || activityId != null }.orEmpty()
+    const val LEARN_EXAM = "learn_exam?goalId={goalId}&courseId={courseId}"
+    fun learnExamRoute(goalId: String? = null, courseId: String? = null) =
+        "learn_exam" + listOfNotNull(goalId?.let { "goalId=$it" }, courseId?.let { "courseId=$it" }).joinToString("&", prefix = "?").takeIf { goalId != null || courseId != null }.orEmpty()
     const val FAITH = "faith"
     const val TESTIMONIES = "faith_testimonies"
     const val FELLOWSHIP = "fellowship"

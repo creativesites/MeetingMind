@@ -90,9 +90,21 @@ fun CreateCircleContent(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = MM.space.l),
             verticalArrangement = Arrangement.spacedBy(MM.space.m)
         ) {
-            val spaceLabels = listOf("Work & Teams", "Faith & Community")
-            val currentSpaceIdx = if (state.spaceTab == "work") 0 else 1
-            SegmentedControl(spaceLabels, currentSpaceIdx, { idx -> onSpaceTab(if (idx == 0) "work" else "faith") })
+            val spaceLabels = listOf("Work & Teams", "Study & Courses", "Faith & Community")
+            val currentSpaceIdx = when (state.spaceTab) {
+                "work" -> 0
+                "learning" -> 1
+                else -> 2
+            }
+            SegmentedControl(spaceLabels, currentSpaceIdx, { idx ->
+                onSpaceTab(
+                    when (idx) {
+                        0 -> "work"
+                        1 -> "learning"
+                        else -> "faith"
+                    }
+                )
+            })
 
             SectionHeader("What kind of group?")
             Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
@@ -111,7 +123,14 @@ fun CreateCircleContent(
                 }
             }
             SectionHeader("Name it")
-            CircleField(state.name, onName, "Name", placeholder = if (state.template.isWork) "Product & Eng ${state.vocab.lowercase()}" else "Tuesday night ${state.vocab.lowercase()}")
+            CircleField(
+                state.name, onName, "Name",
+                placeholder = when {
+                    state.template.isWork -> "Product & Eng ${state.vocab.lowercase()}"
+                    state.template.space == "learning" -> "CS 201 ${state.vocab.lowercase()}"
+                    else -> "Tuesday night ${state.vocab.lowercase()}"
+                }
+            )
             FieldLabel("What does your group call itself?")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
                 state.template.vocab.forEach { v -> MMChip(v, selected = state.vocab == v, onClick = { onVocab(v) }) }
@@ -122,10 +141,10 @@ fun CreateCircleContent(
             TextAction(if (advanced) "Hide options" else "More options", { advanced = !advanced })
             if (advanced) {
                 SectionHeader("What can people post?")
-                val availableTypes = if (state.template.isWork) {
-                    listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Blocker, PostType.Announcement, PostType.Note)
-                } else {
-                    listOf(PostType.Prayer, PostType.Testimony, PostType.Study, PostType.Encouragement, PostType.Reading, PostType.Announcement, PostType.Note)
+                val availableTypes = when (state.template.space) {
+                    "work" -> listOf(PostType.Task, PostType.Decision, PostType.Brief, PostType.Standup, PostType.Blocker, PostType.Announcement, PostType.Note)
+                    "learning" -> listOf(PostType.Study, PostType.Announcement, PostType.Encouragement, PostType.Achievement, PostType.Note)
+                    else -> listOf(PostType.Prayer, PostType.Testimony, PostType.Study, PostType.Encouragement, PostType.Reading, PostType.Announcement, PostType.Note)
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
                     availableTypes.forEach { t -> MMChip(t.label, selected = t in state.types, onClick = { onToggleType(t) }) }

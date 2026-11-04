@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -69,23 +70,42 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Line
 import com.craftflowtechnologies.meetingmind.ui.theme.LocalMMColors
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 
-/** Code, shown as written: monospace, scrolls sideways, one tap to copy, tap the code to edit. */
+import com.craftflowtechnologies.meetingmind.ui.theme.LearningFixedColors
+
+/** Code, shown with syntax highlighting: monospace, complexity badge, scrolls sideways, one tap to copy. */
 @Composable
 internal fun CodeBlock(block: NoteBlock, onTap: (() -> Unit)? = null, onEdit: (String) -> Unit) {
     val clipboard = LocalClipboardManager.current
     var editing by remember { mutableStateOf(false) }
     val language = block.payload[NoteBlock.PAYLOAD_LANGUAGE].orEmpty()
+    val complexity = block.payload[NoteBlock.PAYLOAD_COMPLEXITY]
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp).clip(RoundedCornerShape(14.dp)).background(SurfaceSunk)) {
         Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(language.ifBlank { "Code" }, fontSize = 12.sp, color = InkMuted, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text(language.ifBlank { "Code" }, fontSize = 12.sp, color = InkMuted, fontWeight = FontWeight.Medium)
+            if (!complexity.isNullOrBlank()) {
+                Spacer(Modifier.width(8.dp))
+                Surface(shape = RoundedCornerShape(50), color = LearningFixedColors.SapphireSoft) {
+                    Text(
+                        complexity,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = LearningFixedColors.SapphireMid,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.weight(1f))
             TextButton(onClick = { clipboard.setText(AnnotatedString(block.content.text)) }) {
                 Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = InkSecondary)
                 Spacer(Modifier.width(6.dp))
                 Text("Copy", fontSize = 12.sp, color = InkSecondary)
             }
         }
+        val highlightedCode = remember(block.content.text, language) {
+            highlightCodeSyntax(block.content.text)
+        }
         Text(
-            block.content.text.ifEmpty { " " },
+            highlightedCode,
             fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 20.sp, color = Ink, softWrap = false,
             modifier = Modifier.fillMaxWidth().clickable { if (onTap != null) onTap() else editing = true }.horizontalScroll(rememberScrollState()).padding(start = 14.dp, end = 14.dp, bottom = 14.dp)
         )
@@ -94,7 +114,7 @@ internal fun CodeBlock(block: NoteBlock, onTap: (() -> Unit)? = null, onEdit: (S
         var text by remember { mutableStateOf(block.content.text) }
         AlertDialog(
             onDismissRequest = { editing = false },
-            title = { Text("Edit code") },
+            title = { Text(if (language.isNotBlank()) "Edit $language" else "Edit code") },
             text = {
                 OutlinedTextField(text, { text = it }, modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp),
                     textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp))
@@ -105,29 +125,141 @@ internal fun CodeBlock(block: NoteBlock, onTap: (() -> Unit)? = null, onEdit: (S
     }
 }
 
-/** A table: a header row and cells with their bold, links and code, scrolling sideways when wide. */
+private fun highlightCodeSyntax(code: String): AnnotatedString {
+    if (code.isBlank()) return AnnotatedString(" ")
+    val keywords = setOf(
+        "def", "class", "fun", "val", "var", "return", "if", "else", "for", "while", "in",
+        "import", "from", "as", "try", "catch", "finally", "throw", "public", "private",
+        "protected", "internal", "override", "const", "let", "function", "async", "await",
+        "interface", "type", "struct", "enum", "package", "switch", "case", "break", "continue"
+    )
+    val builder = AnnotatedString.Builder(code)
+    // 1. Strings
+    Regex("\".*?\"|'.*?'").findAll(code).forEach { m ->
+        builder.addStyle(SpanStyle(color = LearningFixedColors.SyntaxString), m.range.first, m.range.last + 1)
+    }
+    // 2. Comments
+    Regex("//.*$|#.*$", RegexOption.MULTILINE).findAll(code).forEach { m ->
+        builder.addStyle(SpanStyle(color = LearningFixedColors.SyntaxComment, fontStyle = FontStyle.Italic), m.range.first, m.range.last + 1)
+    }
+    // 3. Numbers
+    Regex("\\b\\d+(?:\\.\\d+)?\\b").findAll(code).forEach { m ->
+        builder.addStyle(SpanStyle(color = LearningFixedColors.SyntaxNumber), m.range.first, m.range.last + 1)
+    }
+    // 4. Keywords
+    Regex("\\b[A-Za-z_][A-Za-z0-9_]*\\b").findAll(code).forEach { m ->
+        if (m.value in keywords) {
+            builder.addStyle(SpanStyle(color = LearningFixedColors.SyntaxKeyword, fontWeight = FontWeight.Bold), m.range.first, m.range.last + 1)
+        } else if (m.value.first().isUpperCase()) {
+            builder.addStyle(SpanStyle(color = LearningFixedColors.SyntaxType), m.range.first, m.range.last + 1)
+        }
+    }
+    return builder.toAnnotatedString()
+}
+
+/** A table: a header row and cells with support for accounting, trace and differential styles. */
 @Composable
 internal fun TableBlock(block: NoteBlock) {
     val table = remember(block.payload[NoteBlock.PAYLOAD_TABLE]) { MarkdownImport.Table.fromJson(block.payload[NoteBlock.PAYLOAD_TABLE]) }
     if (table == null) { Text(block.content.text, color = InkSecondary, modifier = Modifier.padding(vertical = 8.dp)); return }
+    val style = block.payload[NoteBlock.PAYLOAD_TABLE_STYLE].orEmpty()
     val width = maxOf(table.header.size, table.rows.maxOfOrNull { it.size } ?: 0)
     val colors = LocalMMColors.current
-    Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, Line, RoundedCornerShape(12.dp)).horizontalScroll(rememberScrollState())) {
-        Column(Modifier.width(IntrinsicSize.Max)) {
-            (listOf(table.header) + table.rows).forEachIndexed { r, row ->
-                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).background(if (r == 0) SurfaceSunk else colors.surface)) {
-                    for (c in 0 until width) {
-                        val cell = remember(row, c) { MarkdownImport.inline(row.getOrElse(c) { "" }) }
-                        Text(
-                            styled(cell, colors),
-                            fontSize = 14.sp, lineHeight = 20.sp, color = Ink,
-                            fontWeight = if (r == 0) FontWeight.SemiBold else FontWeight.Normal,
-                            modifier = Modifier.widthIn(min = 72.dp, max = 240.dp).weight(1f, fill = true).padding(horizontal = 12.dp, vertical = 9.dp)
-                        )
-                        if (c < width - 1) Box(Modifier.width(1.dp).fillMaxSize().background(Line))
+
+    val isAccounting = style == "accounting_journal" || style == "t_account"
+    val isTrace = style == "trace_table"
+    val isDifferential = style == "differential"
+
+    // Check balance if accounting journal
+    val balanceStatus = remember(table, style) {
+        if (style == "accounting_journal" && table.header.size >= 4) {
+            val drIdx = table.header.indexOfFirst { it.contains("Debit", ignoreCase = true) || it.contains("Dr", ignoreCase = true) }
+            val crIdx = table.header.indexOfFirst { it.contains("Credit", ignoreCase = true) || it.contains("Cr", ignoreCase = true) }
+            if (drIdx >= 0 && crIdx >= 0) {
+                var drSum = 0.0
+                var crSum = 0.0
+                table.rows.forEach { r ->
+                    val drVal = r.getOrNull(drIdx)?.replace(Regex("[^0-9.]"), "")?.toDoubleOrNull() ?: 0.0
+                    val crVal = r.getOrNull(crIdx)?.replace(Regex("[^0-9.]"), "")?.toDoubleOrNull() ?: 0.0
+                    drSum += drVal
+                    crSum += crVal
+                }
+                if (drSum > 0 || crSum > 0) {
+                    val balanced = kotlin.math.abs(drSum - crSum) < 0.01
+                    balanced to (drSum to crSum)
+                } else null
+            } else null
+        } else null
+    }
+
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        if (balanceStatus != null) {
+            val (balanced, sums) = balanceStatus
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Journal Entry",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = InkMuted
+                )
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (balanced) LearningFixedColors.BalancedBg else LearningFixedColors.UnbalancedBg
+                ) {
+                    Text(
+                        if (balanced) "Balanced: Dr \$${sums.first} = Cr \$${sums.second}" else "Unbalanced: Dr \$${sums.first} ≠ Cr \$${sums.second}",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (balanced) LearningFixedColors.BalancedInk else LearningFixedColors.UnbalancedInk,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                    )
+                }
+            }
+        }
+
+        Box(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, if (isTrace) LearningFixedColors.SapphireMid.copy(alpha = 0.4f) else Line, RoundedCornerShape(12.dp))
+                .horizontalScroll(rememberScrollState())
+        ) {
+            Column(Modifier.width(IntrinsicSize.Max)) {
+                (listOf(table.header) + table.rows).forEachIndexed { r, row ->
+                    val isHeader = r == 0
+                    val rowBg = when {
+                        isHeader -> if (isAccounting) LearningFixedColors.SapphireSoft.copy(alpha = 0.5f) else SurfaceSunk
+                        isDifferential && r % 2 == 1 -> colors.surface
+                        isDifferential && r % 2 == 0 -> SurfaceSunk.copy(alpha = 0.5f)
+                        else -> colors.surface
+                    }
+                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).background(rowBg)) {
+                        for (c in 0 until width) {
+                            val cell = remember(row, c) { MarkdownImport.inline(row.getOrElse(c) { "" }) }
+                            val cellFont = if (isTrace) FontFamily.Monospace else FontFamily.Default
+                            Text(
+                                styled(cell, colors),
+                                fontFamily = cellFont,
+                                fontSize = if (isTrace) 13.sp else 14.sp,
+                                lineHeight = 20.sp,
+                                color = Ink,
+                                fontWeight = if (isHeader) FontWeight.SemiBold else FontWeight.Normal,
+                                modifier = Modifier.widthIn(min = if (isTrace) 60.dp else 72.dp, max = 260.dp).weight(1f, fill = true).padding(horizontal = 12.dp, vertical = 9.dp)
+                            )
+                            if (c < width - 1) {
+                                val dividerColor = if (style == "t_account" && c == 0) LearningFixedColors.SapphireMid else Line
+                                Box(Modifier.width(1.dp).fillMaxSize().background(dividerColor))
+                            }
+                        }
+                    }
+                    if (r < table.rows.size) {
+                        val rowDivider = if (isHeader && isAccounting) LearningFixedColors.SapphireMid else Line
+                        Box(Modifier.fillMaxWidth().height(if (isHeader && isAccounting) 1.5.dp else 1.dp).background(rowDivider))
                     }
                 }
-                if (r < table.rows.size) Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
             }
         }
     }
