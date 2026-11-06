@@ -1,21 +1,16 @@
-# MeetingMind dev build f4faf4d
+# MeetingMind dev build 24479e7
 
-- File: `MeetingMind-Dev-f4faf4d.apk`
-- Source: `release/1.0-paid-launch` at `f4faf4d`
-- SHA-256: `7986ea5761ce4a7f25eda510217f93dba89ae3263cc7be261029b25a4d28c77f`
-- Size: 79,633,254 bytes
+- File: `MeetingMind-Dev-24479e7.apk`
+- Source: `release/1.0-paid-launch` at `24479e7`
+- SHA-256: `5be4ef65032e159f240f3a4144368f5b2dc126791df5630e0ebea981b13bbb96`
+- Size: 78,944,621 bytes
 - Credential scan passed (only the Firebase key).
 
-## Paywall (test it)
-- Settings → About → "Paywall and subscription" opens the paywall.
-- This build has no RevenueCat key, so it uses a simulated store with placeholder prices marked "(test)". Nothing is charged.
-- Buy a plan, restore purchases, and check that gated features unlock. "Reset test store" returns to Free.
-- Gated features: BYOK Gemini key, connected integrations, the sermon pack (Church), and Gemini voice.
-- Plan choices: Pro monthly/yearly/lifetime, BYOK monthly/yearly, Church monthly/yearly.
+## What is new
+- Learning vertical on by default: Learn studio, practice, exam prep, lecture markers, study-circle sharing, Schema 30 (commit by winstoncvm, 2026-11-04). Learning is cut from the MVP in agents/PRODUCT.md; this dev build includes it for testing.
 
 ## Not verified
-- Real Google Play purchases. These need the RevenueCat key and Play products (agents/PLAY_STORE.md).
-- Unit tests were not run. GeminiHttpTransportTest hangs on this branch.
+- Unit tests were not run in this build.
 - Not run on a device yet.
 
 ## Install
