@@ -40,8 +40,8 @@ class Migration29To30Test {
         SQLiteDatabase.openDatabase(path(), null, SQLiteDatabase.OPEN_READWRITE).use { db ->
             // Insert a prerequisite note so learning_sessions FK passes
             db.execSQL(
-                "INSERT INTO notes (id, title, preview, createdAt, updatedAt, isArchived, isDeleted, isPinned, isPrivate, space) " +
-                    "VALUES ('note_1', 'Calculus Lecture', 'Derivatives', 1000, 1000, 0, 0, 0, 0, 'LEARNING')"
+                "INSERT INTO notes (id, title, workflow, notebookId, createdAt, updatedAt, pinned, isPrivate, status, metadataJson, plainText) " +
+                    "VALUES ('note_1', 'Calculus Lecture', 'LECTURE', NULL, 1000, 1000, 0, 0, 'OPEN', '{}', 'Derivatives')"
             )
             // Insert existing session at v29
             db.execSQL(
@@ -50,18 +50,18 @@ class Migration29To30Test {
             )
             // Insert existing concept at v29
             db.execSQL(
-                "INSERT INTO learning_concepts (id, sessionId, name, description, masterLevel, isDismissed, isUserEdited, createdAt, updatedAt) " +
+                "INSERT INTO learning_concepts (id, sessionId, name, definition, state, isDismissed, isUserEdited, createdAt, updatedAt) " +
                     "VALUES ('conc_1', 'sess_1', 'Chain Rule', 'Derivative of composite function', 'DEVELOPING', 0, 0, 1000, 1050)"
             )
             // Insert existing activity at v29
             db.execSQL(
-                "INSERT INTO learning_activities (id, sessionId, conceptId, type, prompt, answer, optionsJson, difficulty, isDiagnostic, isDismissed, isStale, createdAt, updatedAt) " +
+                "INSERT INTO learning_activities (id, sessionId, conceptId, type, prompt, expectedAnswer, optionsJson, difficulty, isDiagnostic, isDismissed, isStale, createdAt, updatedAt) " +
                     "VALUES ('act_1', 'sess_1', 'conc_1', 'RECALL', 'What is chain rule?', 'f prime of g times g prime', '[]', 'MEDIUM', 0, 0, 0, 1000, 1050)"
             )
             // Insert existing attempt at v29
             db.execSQL(
-                "INSERT INTO activity_attempts (id, activityId, sessionId, isCorrect, selfRating, feedback, createdAt) " +
-                    "VALUES ('att_1', 'act_1', 'sess_1', 1, 'GOOD', 'Solid understanding', 1100)"
+                "INSERT INTO activity_attempts (id, activityId, sessionId, userResponse, isCorrect, selfRating, feedback, createdAt) " +
+                    "VALUES ('att_1', 'act_1', 'sess_1', 'Chain rule answer', 1, 'GOOD', 'Solid understanding', 1100)"
             )
         }
     }
@@ -180,16 +180,16 @@ class Migration29To30Test {
         val sessionDao = db.learningSessionDao()
         val session = sessionDao.getById("sess_1")
         assertNotNull(session)
-        assertEquals(SubjectDomain.GENERAL, session!!.subjectDomain)
+        assertEquals(SubjectDomain.GENERAL.name, session!!.subjectDomain)
 
         val updatedSession = session.copy(
-            subjectDomain = SubjectDomain.MATH_QUANT,
+            subjectDomain = SubjectDomain.MATH_QUANT.name,
             examSignalCount = 3,
             unresolvedConfusionCount = 1
         )
         sessionDao.update(updatedSession)
         val reloadedSession = sessionDao.getById("sess_1")
-        assertEquals(SubjectDomain.MATH_QUANT, reloadedSession?.subjectDomain)
+        assertEquals(SubjectDomain.MATH_QUANT.name, reloadedSession?.subjectDomain)
         assertEquals(3, reloadedSession?.examSignalCount)
         assertEquals(1, reloadedSession?.unresolvedConfusionCount)
     }

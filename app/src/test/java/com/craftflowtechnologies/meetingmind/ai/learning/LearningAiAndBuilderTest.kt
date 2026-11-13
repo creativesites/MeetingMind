@@ -29,23 +29,23 @@ class LearningAiAndBuilderTest {
         val segments = listOf(
             TranscriptSegment(
                 id = "s1",
+                meetingId = "meet_calc_1",
                 startMs = 0,
                 endMs = 4000,
-                speakerIndex = 0,
                 text = "Welcome to calculus. Today we cover limits and continuity."
             ),
             TranscriptSegment(
                 id = "s2",
+                meetingId = "meet_calc_1",
                 startMs = 4000,
                 endMs = 9000,
-                speakerIndex = 0,
                 text = "Remember this limit definition because it is always on the midterm exam."
             ),
             TranscriptSegment(
                 id = "s3",
+                meetingId = "meet_calc_1",
                 startMs = 9000,
                 endMs = 15000,
-                speakerIndex = 0,
                 text = "Now applying the epsilon delta proof here might feel abstract."
             )
         )
@@ -58,7 +58,7 @@ class LearningAiAndBuilderTest {
             noteId = "note_calc_1",
             meetingId = "meet_calc_1",
             segments = segments,
-            domain = SubjectDomain.MATH_STATS,
+            domain = SubjectDomain.MATH_QUANT,
             synthesis = null,
             marks = marks
         )
@@ -98,7 +98,7 @@ class LearningAiAndBuilderTest {
             updatedAt = 1000L
         )
 
-        val studentExplanation = "An eigenvalue is a scalar where matrix multiplication just scales the vector. We calculate it using the characteristic equation det(A - lambda I) = 0."
+        val studentExplanation = "The definition of an eigenvalue is a scalar where matrix multiplication just scales the vector. We calculate it using the characteristic equation det(A - lambda I) = 0."
         val eval = engine.evaluateTeachBack(rubric, studentExplanation, concept)
 
         assertTrue(eval.scorePercent >= 60)
@@ -128,7 +128,7 @@ class LearningAiAndBuilderTest {
             noteId = "note_1",
             selectionText = "d/dx [sin(x)] = cos(x)",
             kind = EnrichmentKind.UNPACK_STEPS,
-            domain = SubjectDomain.MATH_STATS
+            domain = SubjectDomain.MATH_QUANT
         )
         assertEquals(EnrichmentKind.UNPACK_STEPS, enriched.kind)
         assertEquals(1, enriched.blocks.size)
@@ -197,9 +197,9 @@ class LearningAiAndBuilderTest {
         val segments = listOf(
             TranscriptSegment(
                 id = "seg_1",
+                meetingId = "meet_bio_1",
                 startMs = 0,
                 endMs = 5000,
-                speakerIndex = 0,
                 text = "Today we discuss cellular respiration starting with glycolysis."
             )
         )
@@ -208,7 +208,7 @@ class LearningAiAndBuilderTest {
             noteId = "note_bio_1",
             sessionId = "sess_bio_1",
             segments = segments,
-            domain = SubjectDomain.MEDICINE_BIOLOGY,
+            domain = SubjectDomain.SCIENCES_MED,
             marks = emptyList()
         )
 

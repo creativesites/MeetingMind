@@ -12,7 +12,7 @@ import com.craftflowtechnologies.meetingmind.core.model.LearningActivityType
 import com.craftflowtechnologies.meetingmind.core.model.LearningConcept
 import com.craftflowtechnologies.meetingmind.core.model.LearningGoal
 import com.craftflowtechnologies.meetingmind.core.model.LearningMasteryState
-import com.craftflowtechnologies.meetingmind.core.model.NotebookSpace
+import com.craftflowtechnologies.meetingmind.core.model.RecordingType
 import com.craftflowtechnologies.meetingmind.core.model.RecallRating
 import com.craftflowtechnologies.meetingmind.core.repository.LearningRepository
 import kotlinx.coroutines.flow.first
@@ -68,7 +68,7 @@ class SubjectDomainAndLearningRepoTest {
         assertEquals(csExpected, SpokenNotationNormalizer.normalize(csInput, SubjectDomain.PROGRAMMING_CS))
 
         val mathInput = "If x is greater than or equal to y plus or minus capital delta."
-        val mathNormalized = SpokenNotationNormalizer.normalize(mathInput, SubjectDomain.MATH_STATS)
+        val mathNormalized = SpokenNotationNormalizer.normalize(mathInput, SubjectDomain.MATH_QUANT)
         assertTrue(mathNormalized.contains("≥"))
         assertTrue(mathNormalized.contains("±"))
         assertTrue(mathNormalized.contains("Δ"))
@@ -98,17 +98,20 @@ class SubjectDomainAndLearningRepoTest {
         val note = NoteEntity(
             id = "note_bst",
             title = "Binary Search Trees",
-            preview = "BST properties and rotations",
+            workflow = RecordingType.LECTURE.name,
+            notebookId = course.notebook.id,
             createdAt = testClockMs,
             updatedAt = testClockMs,
-            isArchived = false,
-            isDeleted = false,
-            isPinned = false,
+            eventDate = null,
+            pinned = false,
             isPrivate = false,
-            notebookId = course.notebook.id,
-            space = NotebookSpace.LEARNING.name
+            status = "OPEN",
+            answeredAt = null,
+            metadataJson = "{}",
+            archivedAt = null,
+            plainText = "BST properties and rotations"
         )
-        db.noteDao().insert(note)
+        db.noteDao().upsert(note)
 
         // 3. Create or attach session
         val session = repo.ensureSessionForNote(

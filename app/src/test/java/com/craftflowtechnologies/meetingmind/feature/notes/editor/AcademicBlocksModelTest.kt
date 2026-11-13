@@ -75,14 +75,14 @@ class AcademicBlocksModelTest {
     fun latexMathParserParsesFractionsAndAlignedSteps() {
         val frac = LatexMathParser.parse("\\frac{a}{b}")
         assertNotNull(frac)
-        val text = frac.toPlainText()
+        val text = LatexMathParser.toPlainDisplay(frac)
         assertTrue(text.contains("a") && text.contains("b"))
 
         val aligned = LatexMathParser.parse("\\begin{aligned}\nf'(x) &= 2x && \\text{Power rule}\n\\end{aligned}")
         assertTrue(aligned is LatexNode.Aligned)
         val alignedNode = aligned as LatexNode.Aligned
-        assertEquals(1, alignedNode.rows.size)
-        assertEquals("Power rule", alignedNode.rows[0].reason)
+        assertEquals(1, alignedNode.steps.size)
+        assertEquals("Power rule", alignedNode.steps[0].reason)
     }
 
     @Test
@@ -93,7 +93,7 @@ class AcademicBlocksModelTest {
                 B -->|Yes| C[End]
         """.trimIndent()
         val diagram = MermaidDiagramParser.parse(source)
-        assertEquals(FlowDirection.TOP_DOWN, diagram.direction)
+        assertEquals(DiagramDirection.TD, diagram.direction)
         assertEquals(3, diagram.nodes.size)
         assertTrue(diagram.nodes.any { it.label == "Start" })
         assertTrue(diagram.nodes.any { it.label == "Check" })

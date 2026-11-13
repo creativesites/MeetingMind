@@ -44,12 +44,14 @@ class LearnHomeUiTest {
                     id = "nb1",
                     name = "Calculus II",
                     space = NotebookSpace.LEARNING,
+                    colorHex = null,
+                    icon = null,
                     createdAt = System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis()
                 ),
                 properties = CourseProperties(
                     courseCode = "MATH 201",
-                    domain = SubjectDomain.MATH_STATS
+                    domain = SubjectDomain.MATH_QUANT
                 ),
                 noteCount = 5,
                 sessionCount = 3
@@ -62,7 +64,9 @@ class LearnHomeUiTest {
                 noteId = "n1",
                 title = "Taylor Series",
                 courseName = "Calculus II",
-                subjectDomain = SubjectDomain.MATH_STATS.name
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                subjectDomain = SubjectDomain.MATH_QUANT.name
             )
         )
 

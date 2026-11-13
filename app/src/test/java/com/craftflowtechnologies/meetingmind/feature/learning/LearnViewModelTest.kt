@@ -27,6 +27,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLooper
+import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -70,12 +72,26 @@ class LearnViewModelTest {
         db.close()
     }
 
+    private fun awaitCondition(
+        timeoutMs: Long = 5000,
+        pollIntervalMs: Long = 25,
+        condition: () -> Boolean
+    ) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            ShadowLooper.idleMainLooper(pollIntervalMs, TimeUnit.MILLISECONDS)
+            if (condition()) return
+            Thread.sleep(pollIntervalMs)
+        }
+        ShadowLooper.idleMainLooper(pollIntervalMs, TimeUnit.MILLISECONDS)
+    }
+
     @Test
     fun `createCourse creates course with domain properties`() = runTest {
         viewModel.createCourse(
             name = "Calculus II",
             courseCode = "MATH 201",
-            domain = SubjectDomain.MATH_STATS,
+            domain = SubjectDomain.MATH_QUANT,
             instructor = "Prof. Euler",
             term = "Fall 2026"
         )
@@ -85,7 +101,7 @@ class LearnViewModelTest {
         val course = courses.first()
         assertEquals("Calculus II", course.notebook.name)
         assertEquals("MATH 201", course.properties.courseCode)
-        assertEquals(SubjectDomain.MATH_STATS, course.properties.domain)
+        assertEquals(SubjectDomain.MATH_QUANT, course.properties.domain)
     }
 
     @Test
@@ -112,7 +128,7 @@ class LearnViewModelTest {
         val session = learningRepo.ensureSessionForNote(
             noteId = note.id,
             title = "Eigenvalues",
-            domain = SubjectDomain.MATH_STATS
+            domain = SubjectDomain.MATH_QUANT
         )
 
         val concept = LearningConcept(
@@ -150,6 +166,7 @@ class LearnViewModelTest {
         )
 
         testScheduler.advanceUntilIdle()
+        awaitCondition { viewModel.lastOutcome.value != null }
         assertNotNull(viewModel.lastOutcome.value)
         assertTrue(viewModel.lastOutcome.value?.attempt?.isCorrect == true)
     }
@@ -199,6 +216,7 @@ class LearnViewModelTest {
             resultMarkdown = md
         }
         testScheduler.advanceUntilIdle()
+        awaitCondition { resultMarkdown != null }
 
         assertNotNull(resultMarkdown)
         assertTrue(resultMarkdown!!.contains("Midterm Cram Sheet"))
@@ -221,11 +239,12 @@ class LearnViewModelTest {
         val session = learningRepo.ensureSessionForNote(
             noteId = note.id,
             title = "Action Potentials",
-            domain = SubjectDomain.MEDICINE_BIOLOGY
+            domain = SubjectDomain.SCIENCES_MED
         )
 
         viewModel.loadSessionDetail(session.id)
         testScheduler.advanceUntilIdle()
+        awaitCondition { viewModel.activeSessionDetail.value != null }
 
         val initialDetail = viewModel.activeSessionDetail.value
         assertNotNull(initialDetail)
@@ -235,6 +254,7 @@ class LearnViewModelTest {
         // Toggle pause -> should become PAUSED (isPaused = true)
         viewModel.toggleSessionPause(session.id)
         testScheduler.advanceUntilIdle()
+        awaitCondition { viewModel.activeSessionDetail.value?.session?.isPaused == true }
 
         val pausedDetail = viewModel.activeSessionDetail.value
         assertNotNull(pausedDetail)
@@ -244,6 +264,7 @@ class LearnViewModelTest {
         // Toggle again -> should resume to ACTIVE (isPaused = false)
         viewModel.toggleSessionPause(session.id)
         testScheduler.advanceUntilIdle()
+        awaitCondition { viewModel.activeSessionDetail.value?.session?.isPaused == false }
 
         val resumedDetail = viewModel.activeSessionDetail.value
         assertNotNull(resumedDetail)
