@@ -7,10 +7,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Groups
@@ -33,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
@@ -42,6 +46,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.feature.circles2.CircleSheet
+import com.craftflowtechnologies.meetingmind.ui.theme.LearningFixedColors
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import kotlinx.coroutines.launch
 
@@ -60,6 +65,7 @@ fun ShareStudyPackToCircleSheet(
 
     var selectedCircleId by remember { mutableStateOf<String?>(null) }
     var isPublishing by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     CircleSheet(onDismiss) {
         Row(
@@ -67,11 +73,13 @@ fun ShareStudyPackToCircleSheet(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
                 Text(
-                    "Share Study Pack to Circle",
-                    style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
-                    color = MM.colors.ink
+                    text = if (title.isNotBlank()) "Share: $title" else "Share Study Pack to Circle",
+                    style = MM.type.title.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                    color = MM.colors.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     "Publish cram sheet & high-yield concepts to your Study Circle",
@@ -112,7 +120,13 @@ fun ShareStudyPackToCircleSheet(
                     }
                 } else {
                     Text("Select Target Circle", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = MM.colors.inkSecondary)
-                    Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                    ) {
                         learningCircles.forEach { circle ->
                             val isSelected = circle.id == selectedCircleId
                             Row(
@@ -140,6 +154,15 @@ fun ShareStudyPackToCircleSheet(
 
                     Spacer(Modifier.height(MM.space.m))
 
+                    if (errorMessage != null) {
+                        Text(
+                            text = errorMessage!!,
+                            style = MM.type.caption,
+                            color = LearningFixedColors.MasteryNeedsReview
+                        )
+                        Spacer(Modifier.height(MM.space.xs))
+                    }
+
                     PrimaryButton(
                         text = if (isPublishing) "Publishing..." else "Publish to Circle",
                         enabled = selectedCircleId != null && !isPublishing,
@@ -147,15 +170,21 @@ fun ShareStudyPackToCircleSheet(
                             val circleId = selectedCircleId ?: return@PrimaryButton
                             val targetCircle = learningCircles.firstOrNull { it.id == circleId } ?: return@PrimaryButton
                             isPublishing = true
+                            errorMessage = null
                             scope.launch {
-                                repo.createPost(
-                                    circleId = circleId,
-                                    body = cramSheetMarkdown,
-                                    type = PostType.Study
-                                )
-                                isPublishing = false
-                                onPublished(targetCircle.name)
-                                onDismiss()
+                                try {
+                                    repo.createPost(
+                                        circleId = circleId,
+                                        body = cramSheetMarkdown,
+                                        type = PostType.Study
+                                    )
+                                    isPublishing = false
+                                    onPublished(targetCircle.name)
+                                    onDismiss()
+                                } catch (e: Exception) {
+                                    isPublishing = false
+                                    errorMessage = e.message ?: "Failed to publish study pack. Please try again."
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth().testTag("publish_to_circle_button")

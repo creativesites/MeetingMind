@@ -27,6 +27,18 @@ class LearningAiEngine(
     private val clock: () -> Long = System::currentTimeMillis
 ) {
 
+    private fun stripMarkdownCodeFences(raw: String): String {
+        val trimmed = raw.trim()
+        val fencedMatch = Regex("""```(?:json)?\s*\n?([\s\S]*?)\n?```""", RegexOption.IGNORE_CASE).find(trimmed)
+        if (fencedMatch != null) {
+            return fencedMatch.groupValues[1].trim()
+        }
+        if (trimmed.startsWith("```")) {
+            return trimmed.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+        }
+        return trimmed
+    }
+
     private suspend fun generateText(prompt: String): String? {
         val t = transport ?: return null
         if (!t.isConfigured()) return null
@@ -75,7 +87,7 @@ class LearningAiEngine(
 
         val response = generateText(prompt)
         if (response != null) {
-            val parsed = runCatching { parseSynthesisJson(sessionId, response, domain) }.getOrNull()
+            val parsed = runCatching { parseSynthesisJson(sessionId, stripMarkdownCodeFences(response), domain) }.getOrNull()
             if (parsed != null) return parsed
         }
 
@@ -100,7 +112,7 @@ class LearningAiEngine(
 
         val res = generateText(prompt)
         if (res != null) {
-            val eval = runCatching { parseTeachBackJson(res, rubric) }.getOrNull()
+            val eval = runCatching { parseTeachBackJson(stripMarkdownCodeFences(res), rubric) }.getOrNull()
             if (eval != null) return eval
         }
 
@@ -162,7 +174,7 @@ class LearningAiEngine(
 
         val res = generateText(prompt)
         if (res != null) {
-            val obj = runCatching { JSONObject(res) }.getOrNull()
+            val obj = runCatching { JSONObject(stripMarkdownCodeFences(res)) }.getOrNull()
             if (obj != null) {
                 return MistakeExplanation(
                     studentMistake = studentAnswer,
@@ -196,7 +208,7 @@ class LearningAiEngine(
 
         val res = generateText(prompt)
         val enrichedText = if (res != null) {
-            val obj = runCatching { JSONObject(res) }.getOrNull()
+            val obj = runCatching { JSONObject(stripMarkdownCodeFences(res)) }.getOrNull()
             obj?.optString("explanation")?.takeIf { it.isNotBlank() } ?: "$selectionText (expanded with $kind)"
         } else {
             when (kind) {
@@ -228,14 +240,15 @@ class LearningAiEngine(
     }
 
     private fun parseSynthesisJson(sessionId: String, json: String, domain: SubjectDomain): LectureSynthesis {
-        val obj = JSONObject(json)
+        val cleanedJson = stripMarkdownCodeFences(json)
+        val obj = JSONObject(cleanedJson)
         val summary = obj.optString("summary", "Lecture synthesis")
         val conceptsList = mutableListOf<LearningConcept>()
         val conceptsArr = obj.optJSONArray("concepts") ?: JSONArray()
         for (i in 0 until conceptsArr.length()) {
             val c = conceptsArr.getJSONObject(i)
-            val name = c.getString("name")
-            val desc = c.getString("description")
+            val name = c.optString("name", "Concept").ifBlank { "Concept" }
+            val desc = c.optString("description", "")
             val importance = if (c.optString("importance") == "HIGH_YIELD") ExamImportance.HIGH_YIELD else ExamImportance.NORMAL
             val formula = c.optString("formula").takeIf { it.isNotBlank() }
             conceptsList.add(
@@ -257,18 +270,32 @@ class LearningAiEngine(
         val questionsArr = obj.optJSONArray("questions") ?: JSONArray()
         for (i in 0 until questionsArr.length()) {
             val q = questionsArr.getJSONObject(i)
-            val prompt = q.getString("prompt")
-            val answer = q.getString("answer")
+            val prompt = q.optString("prompt", "")
+            val answer = q.optString("answer", "")
             val type = when (q.optString("type")) {
                 "WORKED_PROBLEM" -> LearningActivityType.WORKED_PROBLEM
                 "APPLICATION" -> LearningActivityType.APPLICATION
                 else -> LearningActivityType.RECALL
             }
+            val conceptKey = q.optString("conceptId").ifBlank {
+                q.optString("concept").ifBlank {
+                    q.optString("conceptName").ifBlank {
+                        q.optString("topic")
+                    }
+                }
+            }
+            val matchedConceptId = if (conceptKey.isNotBlank()) {
+                conceptsList.firstOrNull { it.id.equals(conceptKey, ignoreCase = true) || it.name.equals(conceptKey, ignoreCase = true) }?.id
+                    ?: conceptsList.firstOrNull { it.name.contains(conceptKey, ignoreCase = true) || conceptKey.contains(it.name, ignoreCase = true) }?.id
+            } else {
+                conceptsList.firstOrNull { c -> c.name.isNotBlank() && (prompt.contains(c.name, ignoreCase = true) || answer.contains(c.name, ignoreCase = true)) }?.id
+            } ?: conceptsList.firstOrNull()?.id
+
             activitiesList.add(
                 LearningActivity(
                     id = NoteRepository.newId("activity"),
                     sessionId = sessionId,
-                    conceptId = conceptsList.firstOrNull()?.id,
+                    conceptId = matchedConceptId,
                     type = type,
                     prompt = prompt,
                     expectedAnswer = answer,
@@ -282,11 +309,17 @@ class LearningAiEngine(
 
         val examHints = mutableListOf<String>()
         val hintsArr = obj.optJSONArray("examHints") ?: JSONArray()
-        for (i in 0 until hintsArr.length()) examHints.add(hintsArr.getString(i))
+        for (i in 0 until hintsArr.length()) {
+            val hint = hintsArr.optString(i)
+            if (hint.isNotBlank()) examHints.add(hint)
+        }
 
         val confusionUnpacks = mutableListOf<String>()
         val unpacksArr = obj.optJSONArray("confusionUnpacks") ?: JSONArray()
-        for (i in 0 until unpacksArr.length()) confusionUnpacks.add(unpacksArr.getString(i))
+        for (i in 0 until unpacksArr.length()) {
+            val unpack = unpacksArr.optString(i)
+            if (unpack.isNotBlank()) confusionUnpacks.add(unpack)
+        }
 
         return LectureSynthesis(
             summary = summary,
@@ -298,7 +331,8 @@ class LearningAiEngine(
     }
 
     private fun parseTeachBackJson(json: String, rubric: List<TeachBackCriterion>): TeachBackEvaluation {
-        val obj = JSONObject(json)
+        val cleanedJson = stripMarkdownCodeFences(json)
+        val obj = JSONObject(cleanedJson)
         val overall = when (obj.optString("overall")) {
             "COVERED" -> TeachBackCoverage.COVERED
             "PARTLY_COVERED" -> TeachBackCoverage.PARTLY_COVERED
@@ -308,7 +342,10 @@ class LearningAiEngine(
         val summary = obj.optString("summary", "Teach-back evaluation completed.")
         val missing = mutableListOf<String>()
         val missingArr = obj.optJSONArray("missing") ?: JSONArray()
-        for (i in 0 until missingArr.length()) missing.add(missingArr.getString(i))
+        for (i in 0 until missingArr.length()) {
+            val miss = missingArr.optString(i)
+            if (miss.isNotBlank()) missing.add(miss)
+        }
         val socratic = obj.optString("socraticFollowUp", "Can you explain the main mechanism again?")
 
         val criteriaMap = mutableMapOf<String, TeachBackCriterionEvaluation>()

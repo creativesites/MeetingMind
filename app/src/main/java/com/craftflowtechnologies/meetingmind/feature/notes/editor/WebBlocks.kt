@@ -277,7 +277,11 @@ internal fun styled(content: RichText, colors: com.craftflowtechnologies.meeting
             InlineStyle.CODE -> SpanStyle(fontFamily = FontFamily.Monospace, background = colors.surfaceSunk)
             InlineStyle.LINK -> SpanStyle(color = colors.accent, textDecoration = TextDecoration.Underline)
         }
-        addStyle(style, span.start.coerceIn(0, content.text.length), span.end.coerceIn(0, content.text.length))
+        val s = span.start.coerceIn(0, content.text.length)
+        val e = span.end.coerceIn(0, content.text.length)
+        val safeStart = minOf(s, e)
+        val safeEnd = maxOf(s, e)
+        addStyle(style, safeStart, safeEnd)
     }
 }
 

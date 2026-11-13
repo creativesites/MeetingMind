@@ -11,13 +11,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
@@ -64,6 +67,8 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
+import com.craftflowtechnologies.meetingmind.feature.notes.editor.LatexMathParser
+import com.craftflowtechnologies.meetingmind.feature.notes.editor.MathExpressionView
 import com.craftflowtechnologies.meetingmind.ui.theme.LearningFixedColors
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 
@@ -81,7 +86,6 @@ fun ExamPrepScreen(
     val cramSheetMarkdown by viewModel.cramSheetMarkdown.collectAsState()
     val isGeneratingCramSheet by viewModel.isGeneratingCramSheet.collectAsState()
 
-    var showCreateGoalDialog by remember { mutableStateOf(false) }
     var showCramSheetPreview by remember { mutableStateOf(false) }
 
     ExamPrepContent(
@@ -118,23 +122,6 @@ fun ExamPrepScreen(
         modifier = modifier
     )
 
-    if (showCreateGoalDialog) {
-        CreateGoalDialog(
-            courses = courses,
-            onDismiss = { showCreateGoalDialog = false },
-            onConfirm = { title, examDateMs, courseId, targetGrade, dailyMinutes ->
-                viewModel.createOrUpdateGoal(
-                    title = title,
-                    examDateMs = examDateMs,
-                    notebookId = courseId,
-                    targetGrade = targetGrade,
-                    dailyMinutesTarget = dailyMinutes
-                )
-                showCreateGoalDialog = false
-            }
-        )
-    }
-
     if (showCramSheetPreview && cramSheetMarkdown != null) {
         CramSheetPreviewDialog(
             markdown = cramSheetMarkdown!!,
@@ -170,6 +157,7 @@ fun ExamPrepContent(
 ) {
     val c = MM.colors
     var showDialog by remember { mutableStateOf(false) }
+    var goalToDelete by remember { mutableStateOf<LearningGoal?>(null) }
 
     Column(
         modifier = modifier
@@ -197,14 +185,32 @@ fun ExamPrepContent(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(MM.space.l),
             verticalArrangement = Arrangement.spacedBy(MM.space.m)
         ) {
-            // Exam Countdown Banner
-            item(key = "countdown_banner") {
+            // Exam Goals section (renders all goals)
+            item(key = "goals_section") {
                 if (goals.isEmpty()) {
                     EmptyGoalsCard(onAddGoal = { showDialog = true })
                 } else {
-                    val primaryGoal = goals.first()
-                    val daysRemaining = ((primaryGoal.examDateMs - System.currentTimeMillis()).coerceAtLeast(0L) / (24 * 3600 * 1000L)).toInt()
-                    ExamCountdownHero(goal = primaryGoal, daysRemaining = daysRemaining, onDelete = { onDeleteGoal(primaryGoal.id) })
+                    Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Exam Goals (${goals.size})",
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                color = c.inkSecondary
+                            )
+                        }
+                        goals.forEach { goal ->
+                            val daysRemaining = ((goal.examDateMs - System.currentTimeMillis()).coerceAtLeast(0L) / (24 * 3600 * 1000L)).toInt()
+                            ExamGoalCard(
+                                goal = goal,
+                                daysRemaining = daysRemaining,
+                                onDelete = { goalToDelete = goal }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -252,45 +258,91 @@ fun ExamPrepContent(
             }
         )
     }
+
+    if (goalToDelete != null) {
+        val target = goalToDelete!!
+        AlertDialog(
+            onDismissRequest = { goalToDelete = null },
+            title = { Text("Delete Exam Goal", style = MM.type.title.copy(fontSize = 18.sp), color = c.ink) },
+            text = {
+                Text(
+                    "Are you sure you want to remove '${target.title}' from your exam goals?",
+                    style = MM.type.body,
+                    color = c.ink
+                )
+            },
+            confirmButton = {
+                PrimaryButton(
+                    text = "Delete",
+                    onClick = {
+                        onDeleteGoal(target.id)
+                        goalToDelete = null
+                    },
+                    modifier = Modifier.testTag("confirm_delete_goal")
+                )
+            },
+            dismissButton = {
+                SecondaryButton(
+                    text = "Cancel",
+                    onClick = { goalToDelete = null },
+                    modifier = Modifier.testTag("cancel_delete_goal")
+                )
+            }
+        )
+    }
 }
 
 @Composable
-private fun ExamCountdownHero(
+private fun ExamGoalCard(
     goal: LearningGoal,
     daysRemaining: Int,
     onDelete: () -> Unit
 ) {
     val c = MM.colors
 
-    MMCard(contentPadding = MM.space.l) {
-        Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+    MMCard(contentPadding = MM.space.m) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = goal.title,
+                    style = MM.type.bodyStrong.copy(fontSize = 17.sp),
+                    color = c.ink
+                )
+                Text(
+                    text = "Target: ${goal.targetGrade} · ${goal.examFormat} · ${goal.dailyMinutesTarget} min daily study",
+                    style = MM.type.caption,
+                    color = c.inkSecondary
+                )
+            }
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = goal.title,
-                        style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
-                        color = c.ink
-                    )
-                    Text(
-                        text = "Format: ${goal.examFormat} · ${goal.dailyMinutesTarget} min daily study",
-                        style = MM.type.caption,
-                        color = c.inkSecondary
-                    )
-                }
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(c.accent.copy(alpha = 0.15f))
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = "$daysRemaining days",
-                        style = MM.type.heading.copy(fontWeight = FontWeight.Bold),
+                        style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
                         color = c.accent
+                    )
+                }
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(32.dp).testTag("delete_goal_${goal.id}")
+                ) {
+                    Icon(
+                        Icons.Rounded.Delete,
+                        contentDescription = "Delete Goal",
+                        tint = c.inkSecondary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -427,19 +479,30 @@ private fun ExamPriorityRow(item: ExamPriorityItem) {
                 overflow = TextOverflow.Ellipsis
             )
 
-            item.concept.formulaLatex?.let { formula ->
+            item.concept.formulaLatex?.takeIf { it.isNotBlank() }?.let { formula ->
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(6.dp))
                         .background(c.surfaceSunk)
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
-                    Text(
-                        text = formula,
-                        style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
-                        color = c.ink
-                    )
+                    val parsedNode = remember(formula) {
+                        runCatching { LatexMathParser.parse(formula) }.getOrNull()
+                    }
+                    if (parsedNode != null) {
+                        MathExpressionView(
+                            node = parsedNode,
+                            fontSize = 15.sp,
+                            inkColor = c.ink
+                        )
+                    } else {
+                        Text(
+                            text = formula,
+                            style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                            color = c.ink
+                        )
+                    }
                 }
             }
         }
@@ -453,13 +516,34 @@ private fun CreateGoalDialog(
     onDismiss: () -> Unit,
     onConfirm: (title: String, examDateMs: Long, courseId: String?, targetGrade: String, dailyMinutes: Int) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var title by remember { mutableStateOf("") }
     var targetGrade by remember { mutableStateOf("A") }
     var dailyMinutes by remember { mutableStateOf("30") }
     var selectedCourseId by remember { mutableStateOf<String?>(null) }
     var expandedDropdown by remember { mutableStateOf(false) }
 
-    val defaultExamDate = remember { System.currentTimeMillis() + (14 * 24 * 3600 * 1000L) } // 14 days from now
+    var selectedExamDateMs by remember {
+        mutableStateOf(System.currentTimeMillis() + (14 * 24 * 3600 * 1000L))
+    }
+    val dateFormat = remember { java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()) }
+
+    val datePickerDialog = remember {
+        val cal = java.util.Calendar.getInstance()
+        cal.timeInMillis = selectedExamDateMs
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val chosen = java.util.Calendar.getInstance().apply {
+                    set(year, month, dayOfMonth, 23, 59, 59)
+                }
+                selectedExamDateMs = chosen.timeInMillis
+            },
+            cal.get(java.util.Calendar.YEAR),
+            cal.get(java.util.Calendar.MONTH),
+            cal.get(java.util.Calendar.DAY_OF_MONTH)
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -473,6 +557,46 @@ private fun CreateGoalDialog(
                     modifier = Modifier.fillMaxWidth().testTag("goal_title_input"),
                     singleLine = true
                 )
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Exam Date: ${dateFormat.format(java.util.Date(selectedExamDateMs))}",
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = MM.colors.ink
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(7 to "7d", 14 to "14d", 30 to "30d", 60 to "60d").forEach { (days, label) ->
+                            val isChosen = ((selectedExamDateMs - System.currentTimeMillis()) / (24 * 3600 * 1000L)).toInt() == days
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isChosen) MM.colors.accent.copy(alpha = 0.2f) else MM.colors.surfaceSunk)
+                                    .clickable {
+                                        selectedExamDateMs = System.currentTimeMillis() + (days * 24 * 3600 * 1000L)
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    label,
+                                    style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isChosen) MM.colors.accent else MM.colors.ink
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MM.colors.surfaceSunk)
+                                .clickable { datePickerDialog.show() }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text("Pick...", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                        }
+                    }
+                }
 
                 OutlinedTextField(
                     value = targetGrade,
@@ -534,7 +658,7 @@ private fun CreateGoalDialog(
                 onClick = {
                     if (title.isNotBlank()) {
                         val minutes = dailyMinutes.toIntOrNull() ?: 30
-                        onConfirm(title.trim(), defaultExamDate, selectedCourseId, targetGrade.trim(), minutes)
+                        onConfirm(title.trim(), selectedExamDateMs, selectedCourseId, targetGrade.trim(), minutes)
                     }
                 },
                 modifier = Modifier.testTag("save_goal_confirm")
@@ -562,9 +686,10 @@ private fun CramSheetPreviewDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(300.dp)
+                    .heightIn(min = 200.dp, max = 450.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(c.surfaceSunk)
+                    .verticalScroll(rememberScrollState())
                     .padding(MM.space.m),
                 verticalArrangement = Arrangement.spacedBy(MM.space.s)
             ) {
@@ -576,10 +701,25 @@ private fun CramSheetPreviewDialog(
             }
         },
         confirmButton = {
-            PrimaryButton(text = "Save as Note", onClick = onSaveAsNote, modifier = Modifier.testTag("cram_save_note"))
+            Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                SecondaryButton(
+                    text = "Share to Circle",
+                    onClick = onShareToCircle,
+                    modifier = Modifier.testTag("cram_share_circle")
+                )
+                PrimaryButton(
+                    text = "Save as Note",
+                    onClick = onSaveAsNote,
+                    modifier = Modifier.testTag("cram_save_note")
+                )
+            }
         },
         dismissButton = {
-            SecondaryButton(text = "Share to Circle", onClick = onShareToCircle, modifier = Modifier.testTag("cram_share_circle"))
+            SecondaryButton(
+                text = "Close",
+                onClick = onDismiss,
+                modifier = Modifier.testTag("cram_close_button")
+            )
         }
     )
 }

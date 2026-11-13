@@ -1,6 +1,22 @@
 # Status
 
-Updated: 2026-11-02. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+Updated: 2026-11-13. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+
+## Learning Vertical Crash Fixes, Polish & Feature Upgrades (2026-11-13, CTO session)
+- **Fatal Crash Fixes:**
+  - `LearnViewModel`: added `@JvmOverloads constructor` so Compose `viewModel()` / `AndroidViewModelFactory` can instantiate `LearnViewModel(Application)` without `NoSuchMethodException`.
+  - `MainActivity`: registered `navArgument` defaults (`nullable = true`, `defaultValue = null`) for `Routes.LEARN_PRACTICE` and `Routes.LEARN_EXAM`, replaced raw `{sessionId}` placeholder navigation with `Routes.learnPracticeRoute()` / `Routes.learnExamRoute()`, and added toast feedback on `onAudioCram` when no sessions exist.
+  - `WebBlocks`: guarded `styled()` span bounds (`minOf`/`maxOf` after `coerceIn`) so inverted spans cannot throw `IllegalArgumentException`.
+- **AI & State Reliability:**
+  - `LearningAiEngine`: strips markdown code fences before `JSONObject` parsing, uses `optString` instead of throwing `getString`, and matches generated questions to concepts by title/id.
+  - `LearnViewModel`: `toggleSessionPause` refreshes `_activeSessionDetail` immediately; `loadSessionDetail` tracks `isLoadingSession`/`sessionLoadError` and auto-creates a missing session for a note to prevent infinite spinners.
+- **UI Polish & New Features:**
+  - `PracticeArenaScreen`: added `EmptyPracticeScreen` for 0 cards, "Finish Practice" CTA on the last card to reach `AllDoneScreen`, `remember(activity.id)` key on `TeachBackStudioCard` input, wired "Explain My Mistake" on `AGAIN`/`HARD`, and integrated Android `SpeechRecognizer` + `RECORD_AUDIO` permission for Voice Teach-Back.
+  - `ExamPrepScreen`: renders all goals with delete confirmation, adds exam date presets (7d/14d/30d/60d) + `DatePickerDialog` in `CreateGoalDialog`, makes `CramSheetPreviewDialog` scrollable with a Close button, deduplicates dialog state, and renders formulas via `MathExpressionView`.
+  - `LearningSessionScreen`: replaces infinite spinner with an empty/unavailable state ("Go Back" / "Create Session") and renders formulas via `MathExpressionView`.
+  - `LearnHomeScreen` & `ShareStudyPackToCircleSheet`: wired weak-concept card clicks (`onOpenSession`), added empty-state CTAs across tabs, added `try/catch` error handling and scrollable circle list (`heightIn(max = 260.dp)`) in `ShareStudyPackToCircleSheet`.
+- **Tests Added:** `LearnViewModelTest` (`AndroidViewModelFactory` instantiation regression test + `toggleSessionPause` refresh) and `LearningAiAndBuilderTest` (fenced JSON stripping + concept matching).
+- **Verification Note:** Per the remote-only Gradle rule, no `./gradlew` build or test commands were executed locally; compile-safety and signature parity were verified statically across all modified files, and the test suite is ready for remote runner verification.
 
 ## Remote-Only Gradle Mandate (2026-11-02, Founder Directive)
 - **Zero Local Gradle Execution**: All Gradle tests, compilation runs (`compileDebugKotlin`), and builds must be executed by remote agents only — never executed on the local host machine.

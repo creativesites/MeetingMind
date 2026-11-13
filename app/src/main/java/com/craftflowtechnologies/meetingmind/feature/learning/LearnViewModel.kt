@@ -35,14 +35,20 @@ enum class LearnTab { TODAY, COURSES, PRACTICE, EXAM }
 
 enum class PracticeMode { FLASHCARD, WORKED_PROBLEM, TEACH_BACK }
 
-class LearnViewModel(
+class LearnViewModel @JvmOverloads constructor(
     application: Application,
-    database: MeetMindDatabase = MeetMindDatabase.getInstance(application),
+    private val database: MeetMindDatabase = MeetMindDatabase.getInstance(application),
     val learningRepo: LearningRepository = LearningRepository(database),
     val noteRepo: NoteRepository = NoteRepository(application, database),
     val aiEngine: LearningAiEngine = LearningAiEngine(),
     private val readingCoordinator: ReadingCoordinator = ReadToMe.coordinator(application)
 ) : AndroidViewModel(application) {
+
+    private val _isLoadingSession = MutableStateFlow(false)
+    val isLoadingSession: StateFlow<Boolean> = _isLoadingSession.asStateFlow()
+
+    private val _sessionLoadError = MutableStateFlow<String?>(null)
+    val sessionLoadError: StateFlow<String?> = _sessionLoadError.asStateFlow()
 
     private val _activeTab = MutableStateFlow(LearnTab.TODAY)
     val activeTab: StateFlow<LearnTab> = _activeTab.asStateFlow()
@@ -115,10 +121,35 @@ class LearnViewModel(
         }
     }
 
-    fun loadSessionDetail(sessionId: String) {
+    fun loadSessionDetail(sessionIdOrNoteId: String) {
         viewModelScope.launch {
-            val detail = learningRepo.getSessionDetail(sessionId)
-            _activeSessionDetail.value = detail
+            _isLoadingSession.value = true
+            _sessionLoadError.value = null
+            try {
+                var detail = learningRepo.getSessionDetail(sessionIdOrNoteId)
+                if (detail == null) {
+                    val sessionEntity = database.learningSessionDao().getByNoteId(sessionIdOrNoteId)
+                    if (sessionEntity != null) {
+                        detail = learningRepo.getSessionDetail(sessionEntity.id)
+                    } else {
+                        val note = noteRepo.getNote(sessionIdOrNoteId)
+                        val title = note?.title?.ifBlank { "Study Session" } ?: "Study Session"
+                        val session = learningRepo.ensureSessionForNote(
+                            noteId = sessionIdOrNoteId,
+                            title = title
+                        )
+                        detail = learningRepo.getSessionDetail(session.id)
+                    }
+                }
+                _activeSessionDetail.value = detail
+                if (detail == null) {
+                    _sessionLoadError.value = "Study session not found"
+                }
+            } catch (e: Exception) {
+                _sessionLoadError.value = e.message ?: "Failed to load study session"
+            } finally {
+                _isLoadingSession.value = false
+            }
         }
     }
 
@@ -212,6 +243,10 @@ class LearnViewModel(
     fun toggleSessionPause(sessionId: String) {
         viewModelScope.launch {
             learningRepo.toggleSessionPause(sessionId)
+            val updated = learningRepo.getSessionDetail(sessionId)
+            if (updated != null) {
+                _activeSessionDetail.value = updated
+            }
         }
     }
 
@@ -266,10 +301,15 @@ class LearnViewModel(
         }
     }
 
-    fun explainMistake(activity: LearningActivity, studentAnswer: String) {
+    fun requestMistakeExplanation(activity: LearningActivity, studentAnswer: String = "") {
+        explainMistake(activity, studentAnswer)
+    }
+
+    fun explainMistake(activity: LearningActivity, studentAnswer: String = "") {
         viewModelScope.launch {
             _isEvaluating.value = true
-            val explanation = aiEngine.explainMistake(activity, studentAnswer)
+            val answer = studentAnswer.ifBlank { activity.expectedAnswer.ifBlank { "Incorrect attempt" } }
+            val explanation = aiEngine.explainMistake(activity, answer)
             _mistakeExplanation.value = explanation
             _isEvaluating.value = false
         }

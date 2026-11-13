@@ -642,9 +642,9 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                         val activities = brief?.dueReviews?.map { it.activity }.orEmpty()
                         if (activities.isNotEmpty()) {
                             vm.startPracticeSession(activities)
-                            navController.navigate(Routes.LEARN_PRACTICE)
+                            navController.navigate(Routes.learnPracticeRoute())
                         } else {
-                            navController.navigate(Routes.LEARN_PRACTICE)
+                            navController.navigate(Routes.learnPracticeRoute())
                         }
                     },
                     onRecordLecture = { navController.navigate(Routes.recordTypeRoute(RecordingType.LECTURE)) },
@@ -652,6 +652,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                         val firstSession = vm.sessions.value.firstOrNull()
                         if (firstSession != null) {
                             vm.readSessionAloud(firstSession.noteId)
+                        } else {
+                            android.widget.Toast.makeText(context, "No study sessions yet to read aloud", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     },
                     onWriteStudyNote = {
@@ -666,8 +668,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                     onOpenCircles = { navController.navigate(Routes.circleCreateRoute("learning")) },
                     onOpenSession = { noteId -> navController.navigate(Routes.learningSessionRoute(noteId)) },
                     onOpenCourse = { courseId -> navController.navigate(Routes.notebookRoute(courseId)) },
-                    onOpenPractice = { navController.navigate(Routes.LEARN_PRACTICE) },
-                    onOpenExamPrep = { navController.navigate(Routes.LEARN_EXAM) }
+                    onOpenPractice = { navController.navigate(Routes.learnPracticeRoute()) },
+                    onOpenExamPrep = { navController.navigate(Routes.learnExamRoute()) }
                 )
             )
 
@@ -681,7 +683,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             }
         }
 
-        composable(Routes.LEARN_PRACTICE) {
+        composable(
+            route = Routes.LEARN_PRACTICE,
+            arguments = listOf(
+                navArgument("sessionId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("activityId") { type = NavType.StringType; nullable = true; defaultValue = null }
+            )
+        ) {
             val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
             com.craftflowtechnologies.meetingmind.feature.learning.PracticeArenaScreen(
                 viewModel = vm,
@@ -689,7 +697,13 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             )
         }
 
-        composable(Routes.LEARN_EXAM) {
+        composable(
+            route = Routes.LEARN_EXAM,
+            arguments = listOf(
+                navArgument("goalId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("courseId") { type = NavType.StringType; nullable = true; defaultValue = null }
+            )
+        ) {
             val vm: com.craftflowtechnologies.meetingmind.feature.learning.LearnViewModel = viewModel(viewModelStoreOwner = context as ComponentActivity)
             var shareMarkdown by remember { mutableStateOf<String?>(null) }
 
@@ -726,6 +740,12 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
             val lib: com.craftflowtechnologies.meetingmind.feature.assistant.LibraryAssistantViewModel = viewModel()
             var assistantOpen by remember { mutableStateOf(false) }
 
+            LaunchedEffect(noteId) {
+                if (noteId.isNotBlank()) {
+                    vm.loadSessionDetail(noteId)
+                }
+            }
+
             com.craftflowtechnologies.meetingmind.feature.learning.LearningSessionScreen(
                 noteId = noteId,
                 viewModel = vm,
@@ -733,7 +753,7 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onOpenEditor = { id -> navController.navigate(Routes.noteRoute(id)) },
                 onStartPractice = { activities ->
                     vm.startPracticeSession(activities)
-                    navController.navigate(Routes.LEARN_PRACTICE)
+                    navController.navigate(Routes.learnPracticeRoute())
                 },
                 onOpenAssistant = { assistantOpen = true }
             )

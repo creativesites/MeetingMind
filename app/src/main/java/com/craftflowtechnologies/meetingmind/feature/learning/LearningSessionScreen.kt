@@ -63,6 +63,12 @@ import com.craftflowtechnologies.meetingmind.ui.icons.AiMark
 import com.craftflowtechnologies.meetingmind.ui.theme.LearningFixedColors
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.style.TextAlign
+import kotlinx.coroutines.launch
+import com.craftflowtechnologies.meetingmind.feature.notes.editor.LatexMathParser
+import com.craftflowtechnologies.meetingmind.feature.notes.editor.MathExpressionView
+
 enum class SessionTab { UNDERSTAND, CONCEPTS, PRACTICE, DIAGNOSTICS }
 
 @Composable
@@ -76,23 +82,56 @@ fun LearningSessionScreen(
     modifier: Modifier = Modifier
 ) {
     val sessionDetail by viewModel.activeSessionDetail.collectAsState()
+    var isLoadingSession by remember(noteId) { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(noteId) {
+        isLoadingSession = true
         viewModel.learningRepo.observeSessionByNoteId(noteId).collect { session ->
             if (session != null) {
                 viewModel.loadSessionDetail(session.id)
+                isLoadingSession = false
+            } else {
+                // If not found by noteId, check if noteId is actually a sessionId
+                val directDetail = viewModel.learningRepo.getSessionDetail(noteId)
+                if (directDetail != null) {
+                    viewModel.loadSessionDetail(noteId)
+                }
+                isLoadingSession = false
             }
         }
     }
 
     LearningSessionContent(
         sessionDetail = sessionDetail,
+        isLoadingSession = isLoadingSession,
         onBack = onBack,
         onOpenEditor = { onOpenEditor(noteId) },
         onReadAloud = { viewModel.readSessionAloud(noteId) },
         onStartPractice = onStartPractice,
         onTogglePause = { sessionDetail?.session?.id?.let { viewModel.toggleSessionPause(it) } },
         onOpenAssistant = onOpenAssistant,
+        onRetry = {
+            scope.launch {
+                isLoadingSession = true
+                val direct = viewModel.learningRepo.getSessionDetail(noteId)
+                if (direct != null) {
+                    viewModel.loadSessionDetail(noteId)
+                }
+                isLoadingSession = false
+            }
+        },
+        onCreateSession = {
+            scope.launch {
+                isLoadingSession = true
+                val newSession = viewModel.learningRepo.ensureSessionForNote(
+                    noteId = noteId,
+                    title = "Study Session"
+                )
+                viewModel.loadSessionDetail(newSession.id)
+                isLoadingSession = false
+            }
+        },
         modifier = modifier
     )
 }
@@ -100,12 +139,15 @@ fun LearningSessionScreen(
 @Composable
 fun LearningSessionContent(
     sessionDetail: LearningRepository.LearningSessionDetail?,
+    isLoadingSession: Boolean = false,
     onBack: () -> Unit,
     onOpenEditor: () -> Unit,
     onReadAloud: () -> Unit,
     onStartPractice: (List<LearningActivity>) -> Unit,
     onTogglePause: () -> Unit,
     onOpenAssistant: () -> Unit,
+    onRetry: () -> Unit = {},
+    onCreateSession: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val c = MM.colors
@@ -133,8 +175,58 @@ fun LearningSessionContent(
         )
 
         if (sessionDetail == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = c.accent)
+            if (isLoadingSession) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = c.accent)
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(MM.space.xl),
+                    contentAlignment = Alignment.Center
+                ) {
+                    MMCard(contentPadding = MM.space.l) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(MM.space.m)
+                        ) {
+                            Icon(
+                                Icons.Rounded.WarningAmber,
+                                contentDescription = null,
+                                tint = LearningFixedColors.MasteryNeedsReview,
+                                modifier = Modifier.size(40.dp)
+                            )
+                            Text(
+                                text = "Study Session Unavailable",
+                                style = MM.type.title.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                                color = c.ink
+                            )
+                            Text(
+                                text = "No active study session was found for this note. You can create a new session or return to Learn.",
+                                style = MM.type.secondary,
+                                color = c.inkSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                            ) {
+                                SecondaryButton(
+                                    text = "Go Back",
+                                    onClick = onBack,
+                                    modifier = Modifier.weight(1f).testTag("session_unavailable_back")
+                                )
+                                PrimaryButton(
+                                    text = "Create Session",
+                                    onClick = onCreateSession,
+                                    modifier = Modifier.weight(1f).testTag("session_unavailable_create")
+                                )
+                            }
+                        }
+                    }
+                }
             }
         } else {
             // Tab Selector
@@ -330,19 +422,30 @@ private fun ConceptCard(concept: LearningConcept) {
                 color = c.ink
             )
 
-            concept.formulaLatex?.let { formula ->
+            concept.formulaLatex?.takeIf { it.isNotBlank() }?.let { formula ->
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(6.dp))
                         .background(c.surfaceSunk)
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
-                    Text(
-                        text = formula,
-                        style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
-                        color = c.ink
-                    )
+                    val parsedNode = remember(formula) {
+                        runCatching { LatexMathParser.parse(formula) }.getOrNull()
+                    }
+                    if (parsedNode != null) {
+                        MathExpressionView(
+                            node = parsedNode,
+                            fontSize = 15.sp,
+                            inkColor = c.ink
+                        )
+                    } else {
+                        Text(
+                            text = formula,
+                            style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                            color = c.ink
+                        )
+                    }
                 }
             }
         }

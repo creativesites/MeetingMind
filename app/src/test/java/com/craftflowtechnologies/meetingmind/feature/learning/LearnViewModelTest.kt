@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.learning
 
 import android.app.Application
+import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.craftflowtechnologies.meetingmind.ai.learning.LearningAiEngine
@@ -65,6 +66,7 @@ class LearnViewModelTest {
 
     @After
     fun tearDown() {
+        MeetMindDatabase.setInstanceForTest(null)
         db.close()
     }
 
@@ -202,5 +204,50 @@ class LearnViewModelTest {
         assertTrue(resultMarkdown!!.contains("Midterm Cram Sheet"))
         assertTrue(resultMarkdown!!.contains("Debit Rule"))
         assertTrue(resultMarkdown!!.contains("Assets = Liabilities + Equity"))
+    }
+
+    @Test
+    fun `AndroidViewModelFactory creates LearnViewModel via JvmOverloads constructor without reflection failure`() {
+        val vm = ViewModelProvider.AndroidViewModelFactory.getInstance(app).create(LearnViewModel::class.java)
+        assertNotNull(vm)
+        assertNotNull(vm.learningRepo)
+        assertNotNull(vm.noteRepo)
+        assertNotNull(vm.aiEngine)
+    }
+
+    @Test
+    fun `toggleSessionPause refreshes activeSessionDetail with updated isPaused state`() = runTest {
+        val note = noteRepo.createNote(title = "Neuroscience 101")
+        val session = learningRepo.ensureSessionForNote(
+            noteId = note.id,
+            title = "Action Potentials",
+            domain = SubjectDomain.MEDICINE_BIOLOGY
+        )
+
+        viewModel.loadSessionDetail(session.id)
+        testScheduler.advanceUntilIdle()
+
+        val initialDetail = viewModel.activeSessionDetail.value
+        assertNotNull(initialDetail)
+        assertEquals(false, initialDetail?.session?.isPaused)
+        assertEquals("ACTIVE", initialDetail?.session?.status)
+
+        // Toggle pause -> should become PAUSED (isPaused = true)
+        viewModel.toggleSessionPause(session.id)
+        testScheduler.advanceUntilIdle()
+
+        val pausedDetail = viewModel.activeSessionDetail.value
+        assertNotNull(pausedDetail)
+        assertTrue(pausedDetail!!.session.isPaused)
+        assertEquals("PAUSED", pausedDetail.session.status)
+
+        // Toggle again -> should resume to ACTIVE (isPaused = false)
+        viewModel.toggleSessionPause(session.id)
+        testScheduler.advanceUntilIdle()
+
+        val resumedDetail = viewModel.activeSessionDetail.value
+        assertNotNull(resumedDetail)
+        assertEquals(false, resumedDetail?.session?.isPaused)
+        assertEquals("ACTIVE", resumedDetail?.session?.status)
     }
 }

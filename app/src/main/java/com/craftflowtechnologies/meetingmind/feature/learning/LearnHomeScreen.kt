@@ -188,12 +188,14 @@ fun LearnHomeContent(
                     item(key = "high_yield") {
                         HighYieldWeakSection(
                             weakConcepts = dailyBrief?.weakHighYieldConcepts.orEmpty(),
+                            sessions = sessions,
                             onOpenSession = actions.onOpenSession
                         )
                     }
                     item(key = "recent_sessions") {
                         RecentSessionsSection(
                             sessions = sessions.take(5),
+                            actions = actions,
                             onOpenSession = actions.onOpenSession
                         )
                     }
@@ -471,15 +473,22 @@ private fun DueReviewsSection(
 
     if (due.isEmpty()) {
         MMCard(contentPadding = MM.space.m) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
-            ) {
-                Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = LearningFixedColors.MasteryStrong)
-                Text(
-                    text = "No reviews due right now. You're completely up to date!",
-                    style = MM.type.secondary,
-                    color = MM.colors.inkSecondary
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                ) {
+                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = LearningFixedColors.MasteryStrong)
+                    Text(
+                        text = "No reviews due right now. You're completely up to date!",
+                        style = MM.type.secondary,
+                        color = MM.colors.inkSecondary
+                    )
+                }
+                SecondaryButton(
+                    text = "Review Ahead",
+                    onClick = onStartRecall,
+                    modifier = Modifier.testTag("due_reviews_practice_ahead")
                 )
             }
         }
@@ -507,14 +516,37 @@ private fun DueReviewsSection(
 @Composable
 private fun HighYieldWeakSection(
     weakConcepts: List<LearningConcept>,
+    sessions: List<LearningSession> = emptyList(),
     onOpenSession: (noteId: String) -> Unit
 ) {
-    if (weakConcepts.isEmpty()) return
-
     SectionHeader(title = "High-Yield Concepts to Strengthen")
+    if (weakConcepts.isEmpty()) {
+        MMCard(contentPadding = MM.space.m) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+            ) {
+                Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = LearningFixedColors.MasteryStrong)
+                Text(
+                    text = "All high-yield concepts are in good shape! Keep up the momentum.",
+                    style = MM.type.secondary,
+                    color = MM.colors.inkSecondary
+                )
+            }
+        }
+        return
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
         weakConcepts.take(3).forEach { concept ->
-            MMCard(contentPadding = MM.space.s) {
+            val targetSession = sessions.firstOrNull { it.id == concept.sessionId }
+            val targetId = targetSession?.noteId ?: concept.sessionId
+            MMCard(
+                modifier = Modifier
+                    .clickable { onOpenSession(targetId) }
+                    .testTag("weak_concept_${concept.id}"),
+                contentPadding = MM.space.s
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -563,16 +595,34 @@ private fun HighYieldWeakSection(
 @Composable
 private fun RecentSessionsSection(
     sessions: List<LearningSession>,
+    actions: LearnHomeActions,
     onOpenSession: (noteId: String) -> Unit
 ) {
     SectionHeader(title = "Recent Study Sessions")
     if (sessions.isEmpty()) {
         MMCard(contentPadding = MM.space.m) {
-            Text(
-                text = "No study sessions yet. Tap 'Record a lecture' or 'Write a study note' above.",
-                style = MM.type.secondary,
-                color = MM.colors.inkSecondary
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                Text(
+                    text = "No study sessions yet. Start by recording a lecture or writing a study note.",
+                    style = MM.type.secondary,
+                    color = MM.colors.inkSecondary
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                ) {
+                    PrimaryButton(
+                        text = "Record Lecture",
+                        onClick = actions.onRecordLecture,
+                        modifier = Modifier.weight(1f).testTag("empty_recent_record")
+                    )
+                    SecondaryButton(
+                        text = "Write Note",
+                        onClick = actions.onWriteStudyNote,
+                        modifier = Modifier.weight(1f).testTag("empty_recent_write")
+                    )
+                }
+            }
         }
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
@@ -696,34 +746,48 @@ private fun PracticeModesSection(actions: LearnHomeActions) {
             modifier = Modifier.clickable(onClick = actions.onOpenPractice),
             contentPadding = MM.space.m
         ) {
-            ListRow(
-                title = "Flashcard & Problem Recall",
-                subtitle = "Active retrieval with instant 'Explain My Mistake' feedback",
-                leading = {
-                    Icon(Icons.Rounded.FitnessCenter, contentDescription = null, tint = MM.colors.accent)
-                },
-                trailing = {
-                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = MM.colors.inkSecondary)
-                },
-                onClick = actions.onOpenPractice
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                ListRow(
+                    title = "Flashcard & Problem Recall",
+                    subtitle = "Active retrieval with instant 'Explain My Mistake' feedback",
+                    leading = {
+                        Icon(Icons.Rounded.FitnessCenter, contentDescription = null, tint = MM.colors.accent)
+                    },
+                    trailing = {
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = MM.colors.inkSecondary)
+                    },
+                    onClick = actions.onOpenPractice
+                )
+                PrimaryButton(
+                    text = "Start Flashcards",
+                    onClick = actions.onOpenPractice,
+                    modifier = Modifier.fillMaxWidth().testTag("practice_start_flashcards")
+                )
+            }
         }
 
         MMCard(
             modifier = Modifier.clickable(onClick = actions.onOpenPractice),
             contentPadding = MM.space.m
         ) {
-            ListRow(
-                title = EntryPoints.learnTeachBack.label,
-                subtitle = "Explain a concept out loud to your companion and receive a qualitative rubric score",
-                leading = {
-                    Icon(Icons.Rounded.Mic, contentDescription = null, tint = MM.colors.accent)
-                },
-                trailing = {
-                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = MM.colors.inkSecondary)
-                },
-                onClick = actions.onOpenPractice
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                ListRow(
+                    title = EntryPoints.learnTeachBack.label,
+                    subtitle = "Explain a concept out loud to your companion and receive a qualitative rubric score",
+                    leading = {
+                        Icon(Icons.Rounded.Mic, contentDescription = null, tint = MM.colors.accent)
+                    },
+                    trailing = {
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = MM.colors.inkSecondary)
+                    },
+                    onClick = actions.onOpenPractice
+                )
+                SecondaryButton(
+                    text = "Start Voice Teach-Back",
+                    onClick = actions.onOpenPractice,
+                    modifier = Modifier.fillMaxWidth().testTag("practice_start_teachback")
+                )
+            }
         }
     }
 }
@@ -805,6 +869,18 @@ private fun ExamPrepOverviewSection(
                             },
                             onClick = actions.onOpenExamPrep
                         )
+                    }
+                }
+            } else {
+                MMCard(contentPadding = MM.space.m) {
+                    Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                        Text("No Exam Priorities Ranked Yet", style = MM.type.bodyStrong, color = MM.colors.ink)
+                        Text(
+                            "Record lectures or generate study notes to populate your high-yield priority matrix.",
+                            style = MM.type.caption,
+                            color = MM.colors.inkSecondary
+                        )
+                        SecondaryButton(text = "Record Lecture", onClick = actions.onRecordLecture)
                     }
                 }
             }

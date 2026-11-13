@@ -1,5 +1,14 @@
 package com.craftflowtechnologies.meetingmind.feature.learning
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,6 +44,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,11 +54,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.craftflowtechnologies.meetingmind.ai.learning.MistakeExplanation
 import com.craftflowtechnologies.meetingmind.ai.learning.TeachBackCoverage
 import com.craftflowtechnologies.meetingmind.ai.learning.TeachBackEvaluation
@@ -83,11 +96,13 @@ fun PracticeArenaScreen(
     val isEvaluating by viewModel.isEvaluating.collectAsState()
     val isRecordingVoice by viewModel.isRecordingVoice.collectAsState()
     val micLevel by viewModel.micLevel.collectAsState()
+    var isCompleted by remember { mutableStateOf(false) }
 
     PracticeArenaContent(
         activities = activities,
         currentIndex = currentIndex,
         isFlipped = isFlipped,
+        isCompleted = isCompleted,
         mistakeExplanation = mistakeExplanation,
         teachBackEvaluation = teachBackEvaluation,
         isEvaluating = isEvaluating,
@@ -103,6 +118,7 @@ fun PracticeArenaScreen(
             )
         },
         onNext = { viewModel.nextCard() },
+        onFinish = { isCompleted = true },
         onToggleVoice = {
             viewModel.setVoiceRecording(!isRecordingVoice)
         },
@@ -122,6 +138,7 @@ fun PracticeArenaContent(
     activities: List<LearningActivity>,
     currentIndex: Int,
     isFlipped: Boolean,
+    isCompleted: Boolean = false,
     mistakeExplanation: MistakeExplanation?,
     teachBackEvaluation: TeachBackEvaluation?,
     isEvaluating: Boolean,
@@ -130,6 +147,7 @@ fun PracticeArenaContent(
     onFlip: () -> Unit,
     onRate: (RecallRating) -> Unit,
     onNext: () -> Unit,
+    onFinish: () -> Unit = {},
     onToggleVoice: () -> Unit,
     onSubmitTeachBackText: (LearningActivity, String) -> Unit,
     onRequestMistakeExplanation: (LearningActivity, String) -> Unit,
@@ -156,7 +174,7 @@ fun PracticeArenaContent(
             actions = {
                 if (activities.isNotEmpty()) {
                     Text(
-                        "${currentIndex + 1} / ${activities.size}",
+                        "${(currentIndex + 1).coerceAtMost(activities.size)} / ${activities.size}",
                         style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
                         color = c.inkSecondary,
                         modifier = Modifier.padding(end = MM.space.m)
@@ -165,7 +183,9 @@ fun PracticeArenaContent(
             }
         )
 
-        if (activities.isEmpty() || currentIndex >= activities.size) {
+        if (activities.isEmpty()) {
+            EmptyPracticeScreen(companionForm = companionForm, onBack = onBack)
+        } else if (isCompleted || currentIndex >= activities.size) {
             AllDoneScreen(companionForm = companionForm, onBack = onBack)
         } else {
             val currentActivity = activities[currentIndex]
@@ -194,7 +214,8 @@ fun PracticeArenaContent(
                         activity = currentActivity,
                         isFlipped = isFlipped,
                         onFlip = onFlip,
-                        onRate = onRate
+                        onRate = onRate,
+                        onRequestMistakeExplanation = onRequestMistakeExplanation
                     )
 
                     AnimatedVisibility(visible = mistakeExplanation != null) {
@@ -224,6 +245,12 @@ fun PracticeArenaContent(
                         onClick = onNext,
                         modifier = Modifier.testTag("practice_next_button")
                     )
+                } else {
+                    PrimaryButton(
+                        text = "Finish Practice",
+                        onClick = onFinish,
+                        modifier = Modifier.testTag("practice_finish_button")
+                    )
                 }
             }
         }
@@ -235,9 +262,12 @@ private fun RecallFlashcard(
     activity: LearningActivity,
     isFlipped: Boolean,
     onFlip: () -> Unit,
-    onRate: (RecallRating) -> Unit
+    onRate: (RecallRating) -> Unit,
+    onRequestMistakeExplanation: (LearningActivity, String) -> Unit
 ) {
     val c = MM.colors
+    var studentAnswer by remember(activity.id) { mutableStateOf("") }
+    var lastRating by remember(activity.id) { mutableStateOf<RecallRating?>(null) }
 
     MMCard(
         modifier = Modifier
@@ -271,6 +301,15 @@ private fun RecallFlashcard(
                 color = c.ink,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(vertical = MM.space.m)
+            )
+
+            // Optional answer input field before/after flipping
+            OutlinedTextField(
+                value = studentAnswer,
+                onValueChange = { studentAnswer = it },
+                label = { Text("Your answer / thought (optional)") },
+                modifier = Modifier.fillMaxWidth().testTag("student_recall_attempt"),
+                singleLine = true
             )
 
             if (!isFlipped) {
@@ -310,26 +349,54 @@ private fun RecallFlashcard(
                     RecallButton(
                         label = "Again",
                         color = LearningFixedColors.MasteryNeedsReview,
-                        onClick = { onRate(RecallRating.AGAIN) },
+                        onClick = {
+                            lastRating = RecallRating.AGAIN
+                            onRate(RecallRating.AGAIN)
+                            val answer = studentAnswer.ifBlank { "Incorrect attempt on: ${activity.prompt}" }
+                            onRequestMistakeExplanation(activity, answer)
+                        },
                         modifier = Modifier.weight(1f).testTag("rate_again")
                     )
                     RecallButton(
                         label = "Hard",
                         color = LearningFixedColors.MasteryDeveloping,
-                        onClick = { onRate(RecallRating.HARD) },
+                        onClick = {
+                            lastRating = RecallRating.HARD
+                            onRate(RecallRating.HARD)
+                            val answer = studentAnswer.ifBlank { "Unsure/hard attempt on: ${activity.prompt}" }
+                            onRequestMistakeExplanation(activity, answer)
+                        },
                         modifier = Modifier.weight(1f).testTag("rate_hard")
                     )
                     RecallButton(
                         label = "Good",
                         color = c.accent,
-                        onClick = { onRate(RecallRating.GOOD) },
+                        onClick = {
+                            lastRating = RecallRating.GOOD
+                            onRate(RecallRating.GOOD)
+                        },
                         modifier = Modifier.weight(1f).testTag("rate_good")
                     )
                     RecallButton(
                         label = "Easy",
                         color = LearningFixedColors.MasteryStrong,
-                        onClick = { onRate(RecallRating.EASY) },
+                        onClick = {
+                            lastRating = RecallRating.EASY
+                            onRate(RecallRating.EASY)
+                        },
                         modifier = Modifier.weight(1f).testTag("rate_easy")
+                    )
+                }
+
+                if (lastRating == RecallRating.AGAIN || lastRating == RecallRating.HARD) {
+                    Spacer(Modifier.height(MM.space.xs))
+                    SecondaryButton(
+                        text = "Explain My Mistake",
+                        onClick = {
+                            val answer = studentAnswer.ifBlank { "Needs explanation for: ${activity.prompt}" }
+                            onRequestMistakeExplanation(activity, answer)
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("explain_mistake_button")
                     )
                 }
             }
@@ -372,7 +439,105 @@ private fun TeachBackStudioCard(
     onSubmitText: (String) -> Unit
 ) {
     val c = MM.colors
-    var textInput by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    var textInput by remember(activity.id) { mutableStateOf("") }
+    var speechNotice by remember(activity.id) { mutableStateOf<String?>(null) }
+
+    val isSpeechAvailable = remember {
+        SpeechRecognizer.isRecognitionAvailable(context)
+    }
+
+    val speechRecognizer = remember {
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        } else {
+            null
+        }
+    }
+
+    DisposableEffect(speechRecognizer) {
+        onDispose {
+            speechRecognizer?.destroy()
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            speechNotice = null
+            onToggleVoice()
+        } else {
+            speechNotice = "Microphone permission is required for voice teach-back."
+        }
+    }
+
+    LaunchedEffect(isRecording) {
+        if (isRecording) {
+            if (!isSpeechAvailable || speechRecognizer == null) {
+                speechNotice = "Speech recognition is not available on this device. Please type your explanation."
+                onToggleVoice()
+                return@LaunchedEffect
+            }
+            speechNotice = null
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            }
+            speechRecognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {}
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {}
+                override fun onError(error: Int) {
+                    if (isRecording) {
+                        onToggleVoice()
+                    }
+                }
+                override fun onResults(results: Bundle?) {
+                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    val spoken = matches?.firstOrNull()
+                    if (!spoken.isNullOrBlank()) {
+                        textInput = if (textInput.isBlank()) spoken else "$textInput $spoken"
+                    }
+                    if (isRecording) {
+                        onToggleVoice()
+                    }
+                }
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    val partial = matches?.firstOrNull()
+                    if (!partial.isNullOrBlank() && textInput.isBlank()) {
+                        textInput = partial
+                    }
+                }
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+            speechRecognizer.startListening(intent)
+        } else {
+            speechRecognizer?.stopListening()
+        }
+    }
+
+    val onMicButtonClick = {
+        if (!isSpeechAvailable || speechRecognizer == null) {
+            speechNotice = "Speech recognition is not available on this device. Please type your explanation."
+        } else if (isRecording) {
+            onToggleVoice()
+        } else {
+            val hasPermission = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+            if (hasPermission) {
+                speechNotice = null
+                onToggleVoice()
+            } else {
+                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
 
     MMCard(contentPadding = MM.space.l) {
         Column(
@@ -419,7 +584,7 @@ private fun TeachBackStudioCard(
                         .size(48.dp)
                         .clip(CircleShape)
                         .background(if (isRecording) LearningFixedColors.MasteryNeedsReview else c.accent)
-                        .clickable(onClick = onToggleVoice)
+                        .clickable(onClick = onMicButtonClick)
                         .testTag("teach_back_voice_toggle"),
                     contentAlignment = Alignment.Center
                 ) {
@@ -434,6 +599,15 @@ private fun TeachBackStudioCard(
                     text = if (isRecording) "Listening... Tap to stop" else "Tap to explain out loud",
                     style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
                     color = c.ink
+                )
+            }
+
+            speechNotice?.let { notice ->
+                Text(
+                    text = notice,
+                    style = MM.type.caption,
+                    color = LearningFixedColors.MasteryNeedsReview,
+                    textAlign = TextAlign.Center
                 )
             }
 
@@ -594,6 +768,49 @@ private fun MistakeExplanationCard(explanation: MistakeExplanation) {
                 color = c.inkSecondary
             )
         }
+    }
+}
+
+@Composable
+private fun EmptyPracticeScreen(
+    companionForm: CompanionForm,
+    onBack: () -> Unit
+) {
+    val c = MM.colors
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(MM.space.xl)
+            .testTag("empty_practice_screen"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Companion(
+            form = companionForm,
+            state = CompanionState.IDLE,
+            size = 96.dp,
+            modifier = Modifier.testTag("practice_empty_companion")
+        )
+        Spacer(Modifier.height(MM.space.m))
+        Text(
+            text = "No Practice Cards Yet",
+            style = MM.type.title.copy(fontSize = 22.sp, fontWeight = FontWeight.Bold),
+            color = c.ink
+        )
+        Spacer(Modifier.height(MM.space.xs))
+        Text(
+            text = "Record lectures or create study notes to generate flashcards and teach-back prompts.",
+            style = MM.type.secondary,
+            color = c.inkSecondary,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(MM.space.l))
+        PrimaryButton(
+            text = "Return to Learn",
+            onClick = onBack,
+            modifier = Modifier.testTag("practice_empty_return")
+        )
     }
 }
 
