@@ -1,30 +1,29 @@
 package com.craftflowtechnologies.meetingmind.feature.learning
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Assignment
-import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FitnessCenter
@@ -42,10 +41,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.Tab
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -55,24 +52,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionForm
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionState
 import com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain
-import com.craftflowtechnologies.meetingmind.core.model.LearningActivity
 import com.craftflowtechnologies.meetingmind.core.model.LearningConcept
 import com.craftflowtechnologies.meetingmind.core.model.LearningSession
 import com.craftflowtechnologies.meetingmind.core.repository.LearningRepository
 import com.craftflowtechnologies.meetingmind.core.ui.EntryPoints
 import com.craftflowtechnologies.meetingmind.core.ui.mm.HeroCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.HomeScaffold
-import com.craftflowtechnologies.meetingmind.core.ui.mm.InsetPanel
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ListRow
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
@@ -145,6 +141,19 @@ fun LearnHomeContent(
     val c = MM.colors
     var showCreateCourseDialog by remember { mutableStateOf(false) }
 
+    val contextLine = remember(courses.size, dailyBrief) {
+        val coursePart = when (val count = courses.size) {
+            0 -> "No courses"
+            1 -> "1 active course"
+            else -> "$count active courses"
+        }
+        val dueCount = dailyBrief?.dueReviews?.size ?: 0
+        val duePart = if (dueCount > 0) "$dueCount due today" else "all caught up"
+        val exams = dailyBrief?.upcomingExams?.firstOrNull()
+        val examPart = exams?.let { "${it.daysRemaining}d to ${it.goal.title}" }
+        listOfNotNull(coursePart, duePart, examPart).joinToString(" · ")
+    }
+
     HomeScaffold(
         modifier = modifier
             .fillMaxSize()
@@ -152,33 +161,65 @@ fun LearnHomeContent(
             .statusBarsPadding()
             .testTag("learn_home"),
         header = {
-            ScreenHeader(
-                title = "Learn",
-                leading = {
-                    IconButton(onClick = actions.onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.ink)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(MM.space.s)
+            ) {
+                ScreenHeader(
+                    title = "Learn",
+                    leading = {
+                        IconButton(onClick = actions.onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = "Back",
+                                tint = c.ink
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = actions.onAssistant,
+                            modifier = Modifier.testTag("learn_assistant")
+                        ) {
+                            Icon(
+                                AiMark,
+                                contentDescription = "Ask the companion tutor",
+                                tint = c.ink
+                            )
+                        }
                     }
-                },
-                actions = {
-                    IconButton(
-                        onClick = actions.onAssistant,
-                        modifier = Modifier.testTag("learn_assistant")
-                    ) {
-                        Icon(AiMark, contentDescription = "Ask the companion tutor", tint = c.ink)
-                    }
-                }
-            )
-        },
-        hero = {
-            Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
-                CompanionBriefHero(dailyBrief = dailyBrief, onStartRecall = actions.onStartDailyRecall)
-                PrimaryActionRow(actions = actions)
-                TabNavigationBar(activeTab = activeTab, onSelectTab = onSelectTab)
+                )
+                Text(
+                    text = contextLine,
+                    style = MM.type.secondary,
+                    color = c.inkSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(MM.space.xs))
+                LearnTabSegmentedControl(
+                    activeTab = activeTab,
+                    onSelectTab = onSelectTab
+                )
             }
         },
+        hero = if (activeTab == LearnTab.TODAY) {
+            {
+                CompanionBriefHero(
+                    dailyBrief = dailyBrief,
+                    hasSessions = sessions.isNotEmpty(),
+                    hasCourses = courses.isNotEmpty(),
+                    onStartRecall = actions.onStartDailyRecall,
+                    onRecordLecture = actions.onRecordLecture
+                )
+            }
+        } else null,
         sections = {
             when (activeTab) {
                 LearnTab.TODAY -> {
+                    item(key = "quick_actions") {
+                        LearnQuickActions(actions = actions)
+                    }
                     item(key = "due_reviews") {
                         DueReviewsSection(
                             dailyBrief = dailyBrief,
@@ -204,6 +245,7 @@ fun LearnHomeContent(
                     item(key = "courses_list") {
                         CoursesSection(
                             courses = courses,
+                            dailyBrief = dailyBrief,
                             onOpenCourse = actions.onOpenCourse,
                             onNewCourse = { showCreateCourseDialog = true }
                         )
@@ -239,9 +281,75 @@ fun LearnHomeContent(
 }
 
 @Composable
+private fun LearnTabSegmentedControl(
+    activeTab: LearnTab,
+    onSelectTab: (LearnTab) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val c = MM.colors
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MM.radius.pill,
+        color = c.track
+    ) {
+        Row(Modifier.selectableGroup().padding(MM.space.xs)) {
+            LearnTab.entries.forEach { tab ->
+                val isSel = tab == activeTab
+                val fill = animateColorAsState(
+                    if (isSel) c.surfaceRaised else c.track,
+                    MM.motion.quick(),
+                    label = "learn_tab_fill_${tab.name}"
+                )
+                val label = when (tab) {
+                    LearnTab.TODAY -> "Today"
+                    LearnTab.COURSES -> "Courses"
+                    LearnTab.PRACTICE -> "Practice"
+                    LearnTab.EXAM -> "Exam"
+                }
+                Surface(
+                    shape = MM.radius.pill,
+                    color = fill.value,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = MMSize.minTouch)
+                        .selectable(
+                            selected = isSel,
+                            role = Role.RadioButton,
+                            onClick = { onSelectTab(tab) }
+                        )
+                        .testTag("learn_tab_${tab.name.lowercase()}")
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = label,
+                            style = if (isSel) MM.type.bodyStrong else MM.type.body,
+                            color = if (isSel) c.ink else c.inkSecondary,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class BriefHeroData(
+    val eyebrow: String,
+    val title: String,
+    val subtitle: String,
+    val ctaLabel: String,
+    val ctaAction: () -> Unit
+)
+
+private val CompanionHeroSize = 56.dp
+
+@Composable
 private fun CompanionBriefHero(
     dailyBrief: LearningRepository.DailyCompanionBrief?,
-    onStartRecall: () -> Unit
+    hasSessions: Boolean,
+    hasCourses: Boolean,
+    onStartRecall: () -> Unit,
+    onRecordLecture: () -> Unit
 ) {
     val companionForm = rememberCompanionSettings().value.form ?: CompanionForm.ZURI
     val dueCount = dailyBrief?.dueReviews?.size ?: 0
@@ -254,9 +362,50 @@ private fun CompanionBriefHero(
         else -> CompanionState.IDLE
     }
 
+    val isEmpty = !hasSessions && !hasCourses && dueCount == 0 && examCountdown == null
+
+    val heroData = when {
+        examCountdown != null -> {
+            BriefHeroData(
+                eyebrow = "UPCOMING EXAM · ${examCountdown.daysRemaining}D",
+                title = "${examCountdown.daysRemaining} days to ${examCountdown.goal.title}",
+                subtitle = "${dailyBrief?.recommendedMinutes ?: 15} min target · focus on high-yield exam topics",
+                ctaLabel = EntryPoints.learnDailyRecall.label,
+                ctaAction = onStartRecall
+            )
+        }
+        dueCount > 0 -> {
+            BriefHeroData(
+                eyebrow = "TODAY'S STUDY BRIEF",
+                title = "$dueCount active recall ${if (dueCount == 1) "review" else "reviews"} due",
+                subtitle = "${dailyBrief?.recommendedMinutes ?: 10} min recommended review time",
+                ctaLabel = EntryPoints.learnDailyRecall.label,
+                ctaAction = onStartRecall
+            )
+        }
+        isEmpty -> {
+            BriefHeroData(
+                eyebrow = "WELCOME TO LEARN",
+                title = "Start your study workspace",
+                subtitle = "Record a lecture or write study notes to build concepts and active recall.",
+                ctaLabel = "Record First Lecture",
+                ctaAction = onRecordLecture
+            )
+        }
+        else -> {
+            BriefHeroData(
+                eyebrow = "TODAY'S STUDY BRIEF",
+                title = "All caught up for today",
+                subtitle = "Review ahead or explore practice modes in the arena.",
+                ctaLabel = "Start Review",
+                ctaAction = onStartRecall
+            )
+        }
+    }
+
     HeroCard(
         modifier = Modifier.testTag("learn_hero_card"),
-        onClick = onStartRecall
+        onClick = heroData.ctaAction
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -264,14 +413,10 @@ private fun CompanionBriefHero(
             verticalAlignment = Alignment.Top
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Today's Study Brief", style = MM.type.caption, color = MM.colors.accent)
+                Text(heroData.eyebrow, style = MM.type.caption, color = MM.colors.accent)
                 Spacer(Modifier.height(MM.space.xs))
                 Text(
-                    text = when {
-                        examCountdown != null -> "${examCountdown.daysRemaining} days to ${examCountdown.goal.title}"
-                        dueCount > 0 -> "$dueCount active recall reviews due"
-                        else -> "All caught up for today"
-                    },
+                    text = heroData.title,
                     style = MM.type.title,
                     color = MM.colors.ink,
                     maxLines = 2,
@@ -279,11 +424,7 @@ private fun CompanionBriefHero(
                 )
                 Spacer(Modifier.height(MM.space.xs))
                 Text(
-                    text = when {
-                        examCountdown != null -> "${dailyBrief?.recommendedMinutes ?: 15} min target · focus on high-yield exam topics"
-                        dueCount > 0 -> "${dailyBrief?.recommendedMinutes ?: 10} min recommended review time"
-                        else -> "Start a new lecture or test your knowledge."
-                    },
+                    text = heroData.subtitle,
                     style = MM.type.secondary,
                     color = MM.colors.inkSecondary,
                     maxLines = 2,
@@ -294,167 +435,95 @@ private fun CompanionBriefHero(
             Companion(
                 form = companionForm,
                 state = companionState,
-                size = 56.dp,
+                size = CompanionHeroSize,
                 modifier = Modifier.testTag("learn_companion_hero")
             )
         }
         Row(
-            Modifier.fillMaxWidth().padding(top = MM.space.l),
+            modifier = Modifier.fillMaxWidth().padding(top = MM.space.l),
             horizontalArrangement = Arrangement.spacedBy(MM.space.s)
         ) {
             PrimaryButton(
-                text = EntryPoints.learnDailyRecall.label,
-                onClick = onStartRecall
+                text = heroData.ctaLabel,
+                onClick = heroData.ctaAction
             )
         }
     }
 }
 
 @Composable
-private fun PrimaryActionRow(actions: LearnHomeActions) {
-    val c = MM.colors
+private fun LearnQuickActions(actions: LearnHomeActions) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(MM.space.s)
     ) {
-        MMCard(
-            modifier = Modifier
-                .weight(1f)
-                .clickable(onClick = actions.onRecordLecture)
-                .testTag("learn_record_lecture"),
-            contentPadding = MM.space.m
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Icon(Icons.Rounded.Mic, contentDescription = null, tint = c.accent, modifier = Modifier.size(24.dp))
-                Text(
-                    text = EntryPoints.learnRecordLecture.label,
-                    style = MM.type.bodyStrong,
-                    color = c.ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "Live markers & hints",
-                    style = MM.type.caption,
-                    color = c.inkSecondary
-                )
-            }
-        }
-
-        MMCard(
-            modifier = Modifier
-                .weight(1f)
-                .clickable(onClick = actions.onAudioCram)
-                .testTag("learn_audio_cram"),
-            contentPadding = MM.space.m
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Icon(Icons.Rounded.Headphones, contentDescription = null, tint = c.accent, modifier = Modifier.size(24.dp))
-                Text(
-                    text = EntryPoints.learnAudioCram.label,
-                    style = MM.type.bodyStrong,
-                    color = c.ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "Spoken math & tables",
-                    style = MM.type.caption,
-                    color = c.inkSecondary
-                )
-            }
-        }
-    }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(MM.space.s)
-    ) {
-        MMCard(
-            modifier = Modifier
-                .weight(1f)
-                .clickable(onClick = actions.onWriteStudyNote)
-                .testTag("learn_write_study_note"),
-            contentPadding = MM.space.s
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-            ) {
-                Icon(Icons.Rounded.Edit, contentDescription = null, tint = c.inkSecondary, modifier = Modifier.size(18.dp))
-                Text(
-                    text = EntryPoints.learnWriteStudyNote.label,
-                    style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
-                    color = c.ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        MMCard(
-            modifier = Modifier
-                .weight(1f)
-                .clickable(onClick = actions.onOpenCircles)
-                .testTag("learn_circles"),
-            contentPadding = MM.space.s
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
-            ) {
-                Icon(Icons.Rounded.Groups, contentDescription = null, tint = c.inkSecondary, modifier = Modifier.size(18.dp))
-                Text(
-                    text = EntryPoints.learnCircles.label,
-                    style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
-                    color = c.ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
+        LearnQuickAction(
+            label = "Lecture",
+            icon = Icons.Rounded.Mic,
+            primary = true,
+            onClick = actions.onRecordLecture,
+            modifier = Modifier.weight(1f).testTag("learn_record_lecture")
+        )
+        LearnQuickAction(
+            label = "Audio Cram",
+            icon = Icons.Rounded.Headphones,
+            primary = true,
+            onClick = actions.onAudioCram,
+            modifier = Modifier.weight(1f).testTag("learn_audio_cram")
+        )
+        LearnQuickAction(
+            label = "Write Note",
+            icon = Icons.Rounded.Edit,
+            primary = false,
+            onClick = actions.onWriteStudyNote,
+            modifier = Modifier.weight(1f).testTag("learn_write_study_note")
+        )
+        LearnQuickAction(
+            label = "Circles",
+            icon = Icons.Rounded.Groups,
+            primary = false,
+            onClick = actions.onOpenCircles,
+            modifier = Modifier.weight(1f).testTag("learn_circles")
+        )
     }
 }
 
 @Composable
-private fun TabNavigationBar(
-    activeTab: LearnTab,
-    onSelectTab: (LearnTab) -> Unit
+private fun LearnQuickAction(
+    label: String,
+    icon: ImageVector,
+    primary: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val c = MM.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(c.surfaceSunk)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+    Column(
+        modifier = modifier
+            .clip(MM.radius.card)
+            .background(MM.colors.surface)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = MM.space.m),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(MM.space.xs)
     ) {
-        LearnTab.entries.forEach { tab ->
-            val isSelected = tab == activeTab
-            val label = when (tab) {
-                LearnTab.TODAY -> "Today"
-                LearnTab.COURSES -> "Courses"
-                LearnTab.PRACTICE -> "Practice"
-                LearnTab.EXAM -> "Exam Prep"
-            }
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isSelected) c.surface else c.surfaceSunk)
-                    .clickable { onSelectTab(tab) }
-                    .padding(vertical = 8.dp)
-                    .testTag("learn_tab_${tab.name.lowercase()}"),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = label,
-                    style = MM.type.caption.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal),
-                    color = if (isSelected) c.ink else c.inkSecondary
-                )
-            }
+        Box(
+            modifier = Modifier
+                .size(MMSize.minTouch)
+                .background(if (primary) MM.colors.accent else MM.colors.accentWash, MM.radius.pill),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (primary) MM.colors.onAccent else MM.colors.accent
+            )
         }
+        Text(
+            text = label,
+            style = MM.type.caption,
+            color = MM.colors.ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -478,7 +547,11 @@ private fun DueReviewsSection(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(MM.space.s)
                 ) {
-                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = LearningFixedColors.MasteryStrong)
+                    Icon(
+                        Icons.Rounded.CheckCircle,
+                        contentDescription = null,
+                        tint = LearningFixedColors.MasteryStrong
+                    )
                     Text(
                         text = "No reviews due right now. You're completely up to date!",
                         style = MM.type.secondary,
@@ -493,21 +566,42 @@ private fun DueReviewsSection(
             }
         }
     } else {
-        Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-            due.take(3).forEach { item ->
-                MMCard(contentPadding = MM.space.s) {
-                    ListRow(
-                        title = item.activity.prompt,
-                        subtitle = "${item.session.title} · ${item.concept?.name ?: item.activity.type.name}",
-                        leading = {
-                            Icon(Icons.Rounded.FitnessCenter, contentDescription = null, tint = MM.colors.accent)
-                        },
-                        trailing = {
-                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = MM.colors.inkSecondary)
-                        },
-                        onClick = onStartRecall
+        MMCard(contentPadding = MM.space.m) {
+            due.take(3).forEachIndexed { index, item ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        color = MM.colors.lineSoft,
+                        modifier = Modifier.padding(vertical = MM.space.xs)
                     )
                 }
+                ListRow(
+                    title = item.activity.prompt,
+                    subtitle = "${item.session.title} · ${item.concept?.name ?: item.activity.type.label}",
+                    leading = {
+                        Box(
+                            modifier = Modifier
+                                .size(MMSize.iconSmall + MM.space.s)
+                                .clip(MM.radius.pill)
+                                .background(MM.colors.accentWash),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.FitnessCenter,
+                                contentDescription = null,
+                                tint = MM.colors.accent,
+                                modifier = Modifier.size(MMSize.iconSmall)
+                            )
+                        }
+                    },
+                    trailing = {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MM.colors.inkSecondary
+                        )
+                    },
+                    onClick = onStartRecall
+                )
             }
         }
     }
@@ -519,14 +613,21 @@ private fun HighYieldWeakSection(
     sessions: List<LearningSession> = emptyList(),
     onOpenSession: (noteId: String) -> Unit
 ) {
-    SectionHeader(title = "High-Yield Concepts to Strengthen")
+    SectionHeader(
+        title = "High-Yield Concepts to Strengthen",
+        count = if (weakConcepts.isNotEmpty()) weakConcepts.size else null
+    )
     if (weakConcepts.isEmpty()) {
         MMCard(contentPadding = MM.space.m) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(MM.space.s)
             ) {
-                Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = LearningFixedColors.MasteryStrong)
+                Icon(
+                    Icons.Rounded.CheckCircle,
+                    contentDescription = null,
+                    tint = LearningFixedColors.MasteryStrong
+                )
                 Text(
                     text = "All high-yield concepts are in good shape! Keep up the momentum.",
                     style = MM.type.secondary,
@@ -537,55 +638,66 @@ private fun HighYieldWeakSection(
         return
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-        weakConcepts.take(3).forEach { concept ->
+    MMCard(contentPadding = MM.space.m) {
+        weakConcepts.take(3).forEachIndexed { index, concept ->
             val targetSession = sessions.firstOrNull { it.id == concept.sessionId }
             val targetId = targetSession?.noteId ?: concept.sessionId
-            MMCard(
+            if (index > 0) {
+                HorizontalDivider(
+                    color = MM.colors.lineSoft,
+                    modifier = Modifier.padding(vertical = MM.space.xs)
+                )
+            }
+            Row(
                 modifier = Modifier
-                    .clickable { onOpenSession(targetId) }
-                    .testTag("weak_concept_${concept.id}"),
-                contentPadding = MM.space.s
+                    .fillMaxWidth()
+                    .heightIn(min = MMSize.minTouch)
+                    .clickable(role = Role.Button) { onOpenSession(targetId) }
+                    .testTag("weak_concept_${concept.id}")
+                    .padding(vertical = MM.space.xs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = MM.space.s, vertical = MM.space.xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.xs)
                 ) {
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = LearningFixedColors.MasteryNeedsReview, modifier = Modifier.size(16.dp))
-                            Text(
-                                text = concept.name,
-                                style = MM.type.bodyStrong,
-                                color = MM.colors.ink
-                            )
-                        }
-                        Text(
-                            text = concept.definition,
-                            style = MM.type.caption,
-                            color = MM.colors.inkSecondary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(LearningFixedColors.MasteryNeedsReview.copy(alpha = 0.15f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
                     ) {
+                        Icon(
+                            Icons.Rounded.WarningAmber,
+                            contentDescription = null,
+                            tint = LearningFixedColors.MasteryNeedsReview,
+                            modifier = Modifier.size(MMSize.iconSmall)
+                        )
                         Text(
-                            text = concept.examImportance.label,
-                            style = MM.type.caption.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
-                            color = LearningFixedColors.MasteryNeedsReview
+                            text = concept.name,
+                            style = MM.type.bodyStrong,
+                            color = MM.colors.ink
                         )
                     }
+                    Text(
+                        text = concept.definition,
+                        style = MM.type.caption,
+                        color = MM.colors.inkSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.width(MM.space.s))
+                Box(
+                    modifier = Modifier
+                        .clip(MM.radius.small)
+                        .background(LearningFixedColors.MasteryNeedsReviewBg)
+                        .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                ) {
+                    Text(
+                        text = concept.examImportance.label,
+                        style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                        color = LearningFixedColors.MasteryNeedsReview
+                    )
                 }
             }
         }
@@ -598,7 +710,10 @@ private fun RecentSessionsSection(
     actions: LearnHomeActions,
     onOpenSession: (noteId: String) -> Unit
 ) {
-    SectionHeader(title = "Recent Study Sessions")
+    SectionHeader(
+        title = "Recent Study Sessions",
+        count = if (sessions.isNotEmpty()) sessions.size else null
+    )
     if (sessions.isEmpty()) {
         MMCard(contentPadding = MM.space.m) {
             Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
@@ -625,19 +740,101 @@ private fun RecentSessionsSection(
             }
         }
     } else {
-        Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-            sessions.forEach { session ->
-                MMCard(contentPadding = MM.space.s) {
-                    ListRow(
-                        title = session.title,
-                        subtitle = "${session.courseName ?: "General"} · ${session.subjectDomain}",
-                        leading = {
-                            Icon(Icons.Rounded.School, contentDescription = null, tint = MM.colors.inkSecondary)
-                        },
-                        trailing = {
-                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = MM.colors.inkSecondary)
-                        },
-                        onClick = { onOpenSession(session.noteId) }
+        MMCard(contentPadding = MM.space.m) {
+            sessions.forEachIndexed { index, session ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        color = MM.colors.lineSoft,
+                        modifier = Modifier.padding(vertical = MM.space.xs)
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = MMSize.minTouch)
+                        .clickable(role = Role.Button) { onOpenSession(session.noteId) }
+                        .padding(vertical = MM.space.xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(MMSize.iconSmall + MM.space.s)
+                            .clip(MM.radius.pill)
+                            .background(MM.colors.surfaceSunk),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.School,
+                            contentDescription = null,
+                            tint = MM.colors.inkSecondary,
+                            modifier = Modifier.size(MMSize.iconSmall)
+                        )
+                    }
+                    Spacer(Modifier.width(MM.space.m))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = session.title,
+                            style = MM.type.bodyStrong,
+                            color = MM.colors.ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = session.courseName ?: "General",
+                                style = MM.type.secondary,
+                                color = MM.colors.inkSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "·",
+                                style = MM.type.secondary,
+                                color = MM.colors.inkMuted
+                            )
+                            Text(
+                                text = session.domain.shortLabel,
+                                style = MM.type.caption,
+                                color = MM.colors.accent
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(MM.space.s))
+                    if (session.unresolvedConfusionCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .clip(MM.radius.pill)
+                                .background(LearningFixedColors.MasteryNeedsReviewBg)
+                                .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                        ) {
+                            Text(
+                                text = "${session.unresolvedConfusionCount} questions",
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                color = LearningFixedColors.MasteryNeedsReview
+                            )
+                        }
+                    } else if (session.status == "ACTIVE") {
+                        Box(
+                            modifier = Modifier
+                                .clip(MM.radius.pill)
+                                .background(LearningFixedColors.MasteryStrongBg)
+                                .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                        ) {
+                            Text(
+                                text = "Active",
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                color = LearningFixedColors.MasteryStrong
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(MM.space.xs))
+                    Icon(
+                        Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MM.colors.inkSecondary
                     )
                 }
             }
@@ -648,19 +845,32 @@ private fun RecentSessionsSection(
 @Composable
 private fun CoursesSection(
     courses: List<LearningRepository.LearningCourse>,
+    dailyBrief: LearningRepository.DailyCompanionBrief?,
     onOpenCourse: (courseId: String) -> Unit,
     onNewCourse: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().heightIn(min = MMSize.minTouch),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("Your Courses", style = MM.type.title.copy(fontSize = 18.sp), color = MM.colors.ink)
-        TextButton(onClick = onNewCourse, modifier = Modifier.testTag("learn_new_course_button")) {
-            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("New Course", style = MM.type.caption.copy(fontWeight = FontWeight.Bold))
+        Text(
+            text = if (courses.isNotEmpty()) "Your Courses · ${courses.size}" else "Your Courses",
+            style = MM.type.heading,
+            color = MM.colors.ink,
+            modifier = Modifier.weight(1f).semantics { heading() }
+        )
+        Row(
+            modifier = Modifier
+                .heightIn(min = MMSize.minTouch)
+                .clickable(role = Role.Button, onClick = onNewCourse)
+                .testTag("learn_new_course_button")
+                .padding(horizontal = MM.space.s),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(MMSize.iconSmall), tint = MM.colors.accent)
+            Spacer(Modifier.width(MM.space.xs))
+            Text("New Course", style = MM.type.bodyStrong, color = MM.colors.accent)
         }
     }
 
@@ -671,25 +881,45 @@ private fun CoursesSection(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(MM.space.s)
             ) {
-                Icon(Icons.Rounded.School, contentDescription = null, tint = MM.colors.accent, modifier = Modifier.size(36.dp))
+                Box(
+                    modifier = Modifier
+                        .size(MMSize.minTouch)
+                        .clip(MM.radius.pill)
+                        .background(MM.colors.accentWash),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Rounded.School,
+                        contentDescription = null,
+                        tint = MM.colors.accent,
+                        modifier = Modifier.size(MMSize.icon)
+                    )
+                }
                 Text("Organize by Course", style = MM.type.bodyStrong, color = MM.colors.ink)
                 Text(
                     "Create courses for your subjects (Math, Engineering, Accounting, CS, etc.) to organize lecture notes and exam prep.",
-                    style = MM.type.caption,
+                    style = MM.type.secondary,
                     color = MM.colors.inkSecondary,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
+                Spacer(Modifier.height(MM.space.xs))
                 SecondaryButton(text = "Create First Course", onClick = onNewCourse)
             }
         }
     } else {
-        Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
             courses.forEach { course ->
+                val dueForCourse = dailyBrief?.dueReviews?.count { it.session.courseName == course.notebook.name } ?: 0
+                val progressFraction = remember(course.sessionCount, course.noteCount) {
+                    if (course.noteCount == 0) 0.15f
+                    else (course.sessionCount.toFloat() / (course.noteCount * 2).coerceAtLeast(1)).coerceIn(0.15f, 1f)
+                }
+
                 MMCard(
                     modifier = Modifier.clickable { onOpenCourse(course.notebook.id) },
                     contentPadding = MM.space.m
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -697,19 +927,23 @@ private fun CoursesSection(
                         ) {
                             Text(
                                 text = course.notebook.name,
-                                style = MM.type.bodyStrong,
-                                color = MM.colors.ink
+                                style = MM.type.title,
+                                color = MM.colors.ink,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             if (course.properties.courseCode.isNotBlank()) {
+                                Spacer(Modifier.width(MM.space.s))
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
+                                        .clip(MM.radius.small)
                                         .background(MM.colors.surfaceSunk)
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .padding(horizontal = MM.space.s, vertical = MM.space.xs)
                                 ) {
                                     Text(
                                         text = course.properties.courseCode,
-                                        style = MM.type.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
                                         color = MM.colors.ink
                                     )
                                 }
@@ -717,19 +951,65 @@ private fun CoursesSection(
                         }
 
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(MM.space.m),
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "${course.noteCount} notes · ${course.sessionCount} sessions",
-                                style = MM.type.caption,
-                                color = MM.colors.inkSecondary
-                            )
-                            Text(
-                                text = course.properties.domain.displayName,
-                                style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
-                                color = MM.colors.accent
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(MM.radius.pill)
+                                    .background(MM.colors.accentWash)
+                                    .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+                            ) {
+                                Text(
+                                    text = course.properties.domain.displayName,
+                                    style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                    color = MM.colors.accent
+                                )
+                            }
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${course.noteCount} notes · ${course.sessionCount} sessions",
+                                    style = MM.type.caption,
+                                    color = MM.colors.inkSecondary
+                                )
+                                if (dueForCourse > 0) {
+                                    Text(
+                                        text = "·",
+                                        style = MM.type.caption,
+                                        color = MM.colors.inkMuted
+                                    )
+                                    Text(
+                                        text = "$dueForCourse due",
+                                        style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                        color = LearningFixedColors.MasteryNeedsReview
+                                    )
+                                }
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(top = MM.space.xs),
+                            verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(MMSize.marker)
+                                    .clip(MM.radius.pill)
+                                    .background(MM.colors.track)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(progressFraction)
+                                        .fillMaxHeight()
+                                        .clip(MM.radius.pill)
+                                        .background(MM.colors.accent)
+                                )
+                            }
                         }
                     }
                 }
@@ -741,20 +1021,37 @@ private fun CoursesSection(
 @Composable
 private fun PracticeModesSection(actions: LearnHomeActions) {
     SectionHeader(title = "Practice Arena")
-    Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+    Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
         MMCard(
             modifier = Modifier.clickable(onClick = actions.onOpenPractice),
             contentPadding = MM.space.m
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
                 ListRow(
                     title = "Flashcard & Problem Recall",
                     subtitle = "Active retrieval with instant 'Explain My Mistake' feedback",
                     leading = {
-                        Icon(Icons.Rounded.FitnessCenter, contentDescription = null, tint = MM.colors.accent)
+                        Box(
+                            modifier = Modifier
+                                .size(MMSize.minTouch)
+                                .clip(MM.radius.pill)
+                                .background(MM.colors.accentWash),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.FitnessCenter,
+                                contentDescription = null,
+                                tint = MM.colors.accent,
+                                modifier = Modifier.size(MMSize.iconSmall)
+                            )
+                        }
                     },
                     trailing = {
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = MM.colors.inkSecondary)
+                        Icon(
+                            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MM.colors.inkSecondary
+                        )
                     },
                     onClick = actions.onOpenPractice
                 )
@@ -770,15 +1067,32 @@ private fun PracticeModesSection(actions: LearnHomeActions) {
             modifier = Modifier.clickable(onClick = actions.onOpenPractice),
             contentPadding = MM.space.m
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
                 ListRow(
                     title = EntryPoints.learnTeachBack.label,
                     subtitle = "Explain a concept out loud to your companion and receive a qualitative rubric score",
                     leading = {
-                        Icon(Icons.Rounded.Mic, contentDescription = null, tint = MM.colors.accent)
+                        Box(
+                            modifier = Modifier
+                                .size(MMSize.minTouch)
+                                .clip(MM.radius.pill)
+                                .background(MM.colors.accentWash),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.Mic,
+                                contentDescription = null,
+                                tint = MM.colors.accent,
+                                modifier = Modifier.size(MMSize.iconSmall)
+                            )
+                        }
                     },
                     trailing = {
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = MM.colors.inkSecondary)
+                        Icon(
+                            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MM.colors.inkSecondary
+                        )
                     },
                     onClick = actions.onOpenPractice
                 )
@@ -798,31 +1112,27 @@ private fun ExamPrepOverviewSection(
     priorities: List<com.craftflowtechnologies.meetingmind.core.model.ExamPriorityItem>,
     actions: LearnHomeActions
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text("Exam Readiness Studio", style = MM.type.title.copy(fontSize = 18.sp), color = MM.colors.ink)
-        TextButton(onClick = actions.onOpenExamPrep) {
-            Text("Open Studio", style = MM.type.caption.copy(fontWeight = FontWeight.Bold))
-        }
-    }
+    SectionHeader(
+        title = "Exam Readiness Studio",
+        actionLabel = "Open Studio",
+        onAction = actions.onOpenExamPrep
+    )
 
     if (goals.isEmpty()) {
         MMCard(contentPadding = MM.space.m) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
                 Text("Set an Exam Goal", style = MM.type.bodyStrong, color = MM.colors.ink)
                 Text(
                     "Add an upcoming exam to unlock countdowns, the High-Yield Priority Matrix, and 1-Page Cram Sheets.",
-                    style = MM.type.caption,
+                    style = MM.type.secondary,
                     color = MM.colors.inkSecondary
                 )
+                Spacer(Modifier.height(MM.space.xs))
                 PrimaryButton(text = "Set Exam Goal", onClick = actions.onOpenExamPrep)
             }
         }
     } else {
-        Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
             goals.take(2).forEach { goal ->
                 val daysRemaining = ((goal.examDateMs - System.currentTimeMillis()).coerceAtLeast(0L) / (24 * 3600 * 1000L)).toInt()
                 MMCard(
@@ -834,31 +1144,59 @@ private fun ExamPrepOverviewSection(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                             Text(goal.title, style = MM.type.bodyStrong, color = MM.colors.ink)
-                            Text("Format: ${goal.examFormat} · ${goal.dailyMinutesTarget} min/day", style = MM.type.caption, color = MM.colors.inkSecondary)
+                            Text(
+                                "Format: ${goal.examFormat} · ${goal.dailyMinutesTarget} min/day",
+                                style = MM.type.caption,
+                                color = MM.colors.inkSecondary
+                            )
                         }
+                        Spacer(Modifier.width(MM.space.s))
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MM.colors.surfaceSunk)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .clip(MM.radius.pill)
+                                .background(MM.colors.accentWash)
+                                .padding(horizontal = MM.space.m, vertical = MM.space.xs)
                         ) {
-                            Text("$daysRemaining days", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = MM.colors.accent)
+                            Text(
+                                "$daysRemaining days",
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
+                                color = MM.colors.accent
+                            )
                         }
                     }
                 }
             }
 
             if (priorities.isNotEmpty()) {
-                SectionHeader(title = "Top Exam Priorities")
-                priorities.take(3).forEach { item ->
-                    MMCard(contentPadding = MM.space.s) {
+                SectionHeader(title = "Top Exam Priorities", count = priorities.size)
+                MMCard(contentPadding = MM.space.m) {
+                    priorities.take(3).forEachIndexed { index, item ->
+                        if (index > 0) {
+                            HorizontalDivider(
+                                color = MM.colors.lineSoft,
+                                modifier = Modifier.padding(vertical = MM.space.xs)
+                            )
+                        }
                         ListRow(
                             title = item.concept.name,
                             subtitle = "${item.sessionTitle} · ${item.concept.examImportance.label} (${item.mastery.state.label})",
                             leading = {
-                                Icon(Icons.Rounded.Assignment, contentDescription = null, tint = MM.colors.accent)
+                                Box(
+                                    modifier = Modifier
+                                        .size(MMSize.iconSmall + MM.space.s)
+                                        .clip(MM.radius.pill)
+                                        .background(MM.colors.accentWash),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Assignment,
+                                        contentDescription = null,
+                                        tint = MM.colors.accent,
+                                        modifier = Modifier.size(MMSize.iconSmall)
+                                    )
+                                }
                             },
                             trailing = {
                                 Text(
@@ -873,13 +1211,14 @@ private fun ExamPrepOverviewSection(
                 }
             } else {
                 MMCard(contentPadding = MM.space.m) {
-                    Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
                         Text("No Exam Priorities Ranked Yet", style = MM.type.bodyStrong, color = MM.colors.ink)
                         Text(
                             "Record lectures or generate study notes to populate your high-yield priority matrix.",
-                            style = MM.type.caption,
+                            style = MM.type.secondary,
                             color = MM.colors.inkSecondary
                         )
+                        Spacer(Modifier.height(MM.space.xs))
                         SecondaryButton(text = "Record Lecture", onClick = actions.onRecordLecture)
                     }
                 }
@@ -901,7 +1240,7 @@ private fun CreateCourseDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Course", style = MM.type.title.copy(fontSize = 18.sp), color = MM.colors.ink) },
+        title = { Text("New Course", style = MM.type.title, color = MM.colors.ink) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
                 OutlinedTextField(
