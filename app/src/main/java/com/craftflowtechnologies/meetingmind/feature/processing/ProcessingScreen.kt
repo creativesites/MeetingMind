@@ -61,8 +61,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
@@ -535,13 +540,13 @@ internal fun ProcessingRunning(
             Text(
                 text = when {
                     state.modelRequired -> "Needs the offline model"
-                    state.error != null -> "Didn't finish"
+                    state.error != null -> "Processing paused"
                     state.isComplete -> "Done"
-                    state.isQueued -> "Waiting for another recording to finish"
+                    state.isQueued -> "Queued behind another recording"
                     else -> friendlyStep(state.stepTitle)
                 },
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center, maxLines = 2
+                textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis
             )
             if (!failed && !state.isComplete) {
                 Text(
@@ -617,7 +622,7 @@ internal fun ProcessingRunning(
                 )
                 state.error != null -> OutcomeCard(
                     title = "The recording is saved",
-                    message = state.error ?: "Something went wrong.",
+                    message = friendlyError(state.error),
                     primary = ("Try again" to onRetry).takeUnless { companionFix },
                     secondary = "View recording" to onViewRecording
                 )
@@ -666,6 +671,19 @@ internal fun friendlyStep(step: String): String {
     }
 }
 
+internal fun friendlyError(raw: String?): String {
+    val msg = raw?.trim().orEmpty()
+    if (msg.isEmpty()) return "Processing didn't finish. Your audio is safe — tap Try again."
+    val lower = msg.lowercase()
+    return when {
+        "timeout" in lower || "timed out" in lower -> "Processing took longer than expected. Tap Try again to resume."
+        "unable to resolve host" in lower || "connect" in lower || "network" in lower || "socket" in lower ->
+            "Couldn't reach the cloud service. Check your connection or switch to Offline mode in Settings."
+        "out of memory" in lower || "oom" in lower -> "The phone ran low on memory. Close other apps and tap Try again."
+        else -> msg
+    }
+}
+
 internal fun formatElapsed(ms: Long): String {
     val total = ms / 1000
     return if (total < 60) "${total}s" else "%d:%02d".format(total / 60, total % 60)
@@ -676,7 +694,13 @@ private fun ProgressRing(percent: Int, failed: Boolean, modifier: Modifier = Mod
     val animated by androidx.compose.animation.core.animateFloatAsState(percent.coerceIn(0, 100) / 100f, label = "progress")
     val track = MaterialTheme.colorScheme.surfaceVariant
     val tint = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    Box(modifier, contentAlignment = Alignment.Center) {
+    Box(
+        modifier.semantics {
+            progressBarRangeInfo = ProgressBarRangeInfo(percent.coerceIn(0, 100) / 100f, 0f..1f)
+            contentDescription = if (failed) "Processing paused" else "$percent percent complete"
+        },
+        contentAlignment = Alignment.Center
+    ) {
         androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
             val stroke = 10.dp.toPx()
             val inset = stroke / 2

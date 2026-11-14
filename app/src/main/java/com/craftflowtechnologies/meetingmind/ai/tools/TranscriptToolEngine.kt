@@ -87,7 +87,8 @@ class TranscriptToolEngine(
             val item = array!!.optJSONObject(i) ?: continue
             // A revision for a segment that is not in scope is discarded outright: applying it
             // somewhere plausible would edit text the user did not ask to have edited.
-            val segment = byId[item.optString("segmentId")] ?: continue
+            val rawSegId = item.optString("segmentId").trim().removePrefix("[").removeSuffix("]").trim()
+            val segment = byId[rawSegId] ?: continue
             val proposed = item.optString("text").trim()
             if (proposed.isEmpty()) continue
 
@@ -121,7 +122,7 @@ class TranscriptToolEngine(
             val citedIds = item.optJSONArray("sourceSegmentIds")
             val resolved = buildList {
                 for (j in 0 until (citedIds?.length() ?: 0)) {
-                    val id = citedIds!!.optString(j)
+                    val id = citedIds!!.optString(j).trim().removePrefix("[").removeSuffix("]").trim()
                     if (id.isNotBlank() && validIds.containsKey(id)) add(id)
                 }
             }
@@ -160,11 +161,16 @@ class TranscriptToolEngine(
      * failure, never partially salvaged into a half-result that looks complete.
      */
     internal fun extractJsonObject(raw: String): JSONObject? {
-        val start = raw.indexOf('{')
-        val end = raw.lastIndexOf('}')
+        val cleaned = raw.trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+        val start = cleaned.indexOf('{')
+        val end = cleaned.lastIndexOf('}')
         if (start < 0 || end <= start) return null
         return try {
-            JSONObject(raw.substring(start, end + 1))
+            JSONObject(cleaned.substring(start, end + 1))
         } catch (e: JSONException) {
             null
         }

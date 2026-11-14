@@ -4,6 +4,11 @@ import com.craftflowtechnologies.meetingmind.ui.theme.Danger
 import com.craftflowtechnologies.meetingmind.ui.theme.forTheme
 import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.GraphicEq
@@ -67,6 +72,7 @@ import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -93,6 +99,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -174,6 +191,7 @@ fun NoteEditorScreen(
     val linkedTitles by viewModel.linkedTitles.collectAsState()
     val message by viewModel.message.collectAsState()
     val aiEdit by viewModel.aiEdit.collectAsState()
+    val polishingNote by viewModel.polishingNote.collectAsState()
 
     // The Unveil (docs/mvp/ZURI_SIGNATURE_MOMENTS.md §3.2): a fresh open of this note plays the planner's moment,
     // the same as the meeting detail. Its facts come from the note's first recording, or from the note itself
@@ -337,6 +355,17 @@ fun NoteEditorScreen(
     ) {
     Scaffold(
         containerColor = Color.Transparent,
+        modifier = Modifier.onPreviewKeyEvent { ev ->
+            if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            val mod = ev.isCtrlPressed || ev.isMetaPressed
+            when {
+                mod && ev.key == Key.Z && ev.isShiftPressed && canRedo -> { viewModel.redo(); true }
+                mod && ev.key == Key.Z && !ev.isShiftPressed && canUndo -> { viewModel.undo(); true }
+                mod && ev.key == Key.Y && canRedo -> { viewModel.redo(); true }
+                ev.key == Key.Escape -> { focusManager.clearFocus(); keyboard?.hide(); true }
+                else -> false
+            }
+        },
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             Row(
@@ -346,7 +375,8 @@ fun NoteEditorScreen(
                 IconButton(onClick = { back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink) }
                 Text(
                     if (saved) "Saved" else "Saving…",
-                    fontSize = 12.sp, color = InkMuted, modifier = Modifier.weight(1f)
+                    fontSize = 12.sp, color = InkMuted,
+                    modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }
                 )
                 if (textFocused || titleFocused) {
                     IconButton(onClick = viewModel::undo, enabled = canUndo) { Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo", tint = if (canUndo) Ink else InkFaint) }
@@ -358,7 +388,7 @@ fun NoteEditorScreen(
                     IconButton(onClick = { showExport = true }) { Icon(Icons.Filled.IosShare, contentDescription = "Export and share", tint = Ink) }
                 }
                 Box {
-                    IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = Ink) }
+                    IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Note options", tint = Ink) }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, containerColor = SurfaceBase) {
                         DropdownMenuItem(text = { Text("Cover image") }, leadingIcon = { Icon(Icons.Filled.Image, null) }, onClick = {
                             showMenu = false
@@ -440,7 +470,7 @@ fun NoteEditorScreen(
         }
     ) { padding ->
         if (!loaded) {
-            Box(Modifier.fillMaxSize().padding(padding))
+            NoteEditorSkeleton(Modifier.fillMaxSize().padding(padding))
             return@Scaffold
         }
         val currentNote = note ?: return@Scaffold
@@ -548,24 +578,48 @@ fun NoteEditorScreen(
             ) item(key = "prepare") {
                 com.craftflowtechnologies.meetingmind.feature.work.NotePrepareRow(currentNote.title, currentNote.metadata, onOpenRecording)
             }
-            aiJobs.firstOrNull()?.let { job ->
-                if (!aiSheetOpen) item(key = "ai-banner") {
-                    val working = job.status == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiStatus.QUEUED || job.status == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiStatus.RUNNING
+            item(key = "polish-banner") {
+                AnimatedVisibility(
+                    visible = polishingNote,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
                     Surface(
-                        onClick = { aiSheetOpen = true }, shape = RoundedCornerShape(14.dp), color = Accent.copy(alpha = 0.08f),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 10.dp).testTag("note_ai_banner")
+                        shape = RoundedCornerShape(14.dp),
+                        color = Accent.copy(alpha = 0.08f),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 10.dp).testTag("note_polish_banner")
                     ) {
                         Row(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(17.dp))
-                            Text(
-                                when {
-                                    working -> "${job.tool.label}: working…"
-                                    job.status == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiStatus.SUCCEEDED -> "${job.tool.label}: ready to view"
-                                    else -> "${job.tool.label} didn't finish"
-                                },
-                                fontSize = 14.sp, color = Ink, modifier = Modifier.weight(1f).padding(start = 10.dp)
-                            )
-                            Text("View", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                            CircularProgressIndicator(Modifier.size(16.dp), color = Accent, strokeWidth = 2.dp)
+                            Text("Polishing note with AI…", fontSize = 14.sp, color = Ink, modifier = Modifier.padding(start = 10.dp))
+                        }
+                    }
+                }
+            }
+            aiJobs.firstOrNull()?.let { job ->
+                item(key = "ai-banner") {
+                    AnimatedVisibility(
+                        visible = !aiSheetOpen,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        val working = job.status == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiStatus.QUEUED || job.status == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiStatus.RUNNING
+                        Surface(
+                            onClick = { aiSheetOpen = true }, shape = RoundedCornerShape(14.dp), color = Accent.copy(alpha = 0.08f),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 10.dp).testTag("note_ai_banner")
+                        ) {
+                            Row(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(17.dp))
+                                Text(
+                                    when {
+                                        working -> "${job.tool.label}: working…"
+                                        job.status == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiStatus.SUCCEEDED -> "${job.tool.label}: ready to view"
+                                        else -> "${job.tool.label} didn't finish"
+                                    },
+                                    fontSize = 14.sp, color = Ink, modifier = Modifier.weight(1f).padding(start = 10.dp)
+                                )
+                                Text("View", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                            }
                         }
                     }
                 }
@@ -731,6 +785,7 @@ fun NoteEditorScreen(
             onAccept = viewModel::acceptPasteTool,
             onStepBack = { viewModel.stepBack(state.blockId) },
             onOriginal = { viewModel.restoreOriginal(state.blockId) },
+            onCancel = viewModel::cancelPasteTool,
             onDismiss = viewModel::closePasteTools
         )
     }
@@ -740,6 +795,7 @@ fun NoteEditorScreen(
             onRun = viewModel::runAiEdit,
             onReplace = { viewModel.applyAiEdit(replace = true) },
             onInsertBelow = { viewModel.applyAiEdit(replace = false) },
+            onCancel = viewModel::cancelAiEdit,
             onDismiss = viewModel::dismissAiEdit
         )
     }
@@ -805,6 +861,7 @@ fun NoteEditorScreen(
     if (showAiMenu) com.craftflowtechnologies.meetingmind.feature.notes.ai.NoteAiMenu(
         forNotebook = false,
         isFaithOrSermon = note?.let { it.workflow in com.craftflowtechnologies.meetingmind.core.model.Workflows.faith } == true,
+        isPolishing = polishingNote,
         onPick = { tool ->
             showAiMenu = false
             if (tool == com.craftflowtechnologies.meetingmind.ai.notes.NoteAiTool.ASK) showAsk = true else { viewModel.runAi(tool); aiSheetOpen = true }
@@ -813,6 +870,7 @@ fun NoteEditorScreen(
             showAiMenu = false; showRelated = true; related = null
             scope.launch { related = viewModel.relatedNotes() }
         },
+        onPolishNote = { showAiMenu = false; viewModel.polishWholeNote() },
         onDismiss = { showAiMenu = false }
     )
     if (showAsk) com.craftflowtechnologies.meetingmind.feature.notes.ai.AskDialog(
@@ -847,6 +905,7 @@ fun NoteEditorScreen(
                 }
             },
             onCancel = { viewModel.cancelAi(job.id) },
+            onRetry = { viewModel.runAi(job.tool, job.question) },
             onClose = { aiSheetOpen = false },
             onDiscard = { aiSheetOpen = false; viewModel.dismissAi(job.id) }
         )
@@ -1243,6 +1302,21 @@ private fun PrayerUpdateDialog(onSave: (String) -> Unit, onDismiss: () -> Unit) 
         confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { onSave(text) }) { Text("Add") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+@Composable
+private fun NoteEditorSkeleton(modifier: Modifier = Modifier) {
+    Column(modifier.padding(horizontal = 22.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(Modifier.fillMaxWidth(0.68f).height(28.dp).clip(RoundedCornerShape(8.dp)).background(SurfaceSunk))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.width(84.dp).height(24.dp).clip(RoundedCornerShape(50)).background(SurfaceSunk))
+            Box(Modifier.width(64.dp).height(24.dp).clip(RoundedCornerShape(50)).background(SurfaceSunk))
+        }
+        Spacer(Modifier.height(6.dp))
+        Box(Modifier.fillMaxWidth().height(16.dp).clip(RoundedCornerShape(6.dp)).background(SurfaceSunk))
+        Box(Modifier.fillMaxWidth(0.88f).height(16.dp).clip(RoundedCornerShape(6.dp)).background(SurfaceSunk))
+        Box(Modifier.fillMaxWidth(0.72f).height(16.dp).clip(RoundedCornerShape(6.dp)).background(SurfaceSunk))
+    }
 }
 
 /** How many separate lines of your own text before the editor offers to make them one block. */

@@ -45,6 +45,10 @@ class AssistantSession(
     private val _scope = MutableStateFlow<AssistantScope?>(null)
     val assistantScope: StateFlow<AssistantScope?> = _scope.asStateFlow()
 
+    /** Action ids currently executing confirm/undo, to lock against rapid double-taps. */
+    private val _busyActionIds = MutableStateFlow<Set<String>>(emptySet())
+    val busyActionIds: StateFlow<Set<String>> = _busyActionIds.asStateFlow()
+
     private var host: AppAssistantHost? = null
     private var job: Job? = null
     private var lastPrompt: String? = null
@@ -173,13 +177,29 @@ class AssistantSession(
     fun clear() { job?.cancel(); _working.value = null; _messages.value = emptyList() }
 
     fun confirm(action: AssistantAction) = scope.launch {
-        if (host?.confirm(action.id) == true) setState(action.id, AssistantAction.State.APPLIED)
+        if (action.id in _busyActionIds.value) return@launch
+        _busyActionIds.value = _busyActionIds.value + action.id
+        try {
+            if (host?.confirm(action.id) == true) setState(action.id, AssistantAction.State.APPLIED)
+        } finally {
+            _busyActionIds.value = _busyActionIds.value - action.id
+        }
     }
 
-    fun discard(action: AssistantAction) { host?.discard(action.id); setState(action.id, AssistantAction.State.DISCARDED) }
+    fun discard(action: AssistantAction) {
+        if (action.id in _busyActionIds.value) return
+        host?.discard(action.id)
+        setState(action.id, AssistantAction.State.DISCARDED)
+    }
 
     fun undo(action: AssistantAction) = scope.launch {
-        if (host?.undo(action.id) == true) setState(action.id, AssistantAction.State.UNDONE)
+        if (action.id in _busyActionIds.value) return@launch
+        _busyActionIds.value = _busyActionIds.value + action.id
+        try {
+            if (host?.undo(action.id) == true) setState(action.id, AssistantAction.State.UNDONE)
+        } finally {
+            _busyActionIds.value = _busyActionIds.value - action.id
+        }
     }
 
     private fun setState(id: String, state: AssistantAction.State) {

@@ -1,17 +1,13 @@
 package com.craftflowtechnologies.meetingmind.core.create
 
 import android.content.Context
-import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiCredentialStore
-import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiHttpTransport
+import com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
 import com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter
-import com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager
-import com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile
 import com.craftflowtechnologies.meetingmind.core.scripture.PassageResult
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReferenceParser
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureService
-import kotlinx.coroutines.flow.first
 
 /** The text model Create writes with. A seam so tests can script it. */
 interface CreateTextModel {
@@ -20,19 +16,21 @@ interface CreateTextModel {
     suspend fun complete(system: String, prompt: String, timeoutMs: Long = 40_000L): AiResult<String>
 }
 
-/** Gemini behind the app's own transport. */
+/** Gemini (with DeepSeek fallback) behind the app's own transport. */
 class GeminiCreateModel(private val context: Context) : CreateTextModel {
+    private val transport by lazy { CloudAi.transport(context.applicationContext) }
+
     override suspend fun available(): Boolean = runCatching {
-        UserPreferencesManager(context).preferencesFlow.first().processingProfile == ProcessingProfile.INTERNET &&
-            GeminiCredentialStore(context).getApiKey() != null
+        transport.refreshConfigured()
     }.getOrDefault(false)
 
     override suspend fun complete(system: String, prompt: String, timeoutMs: Long): AiResult<String> =
-        GeminiHttpTransport(GeminiCredentialStore(context)).execute(
+        transport.execute(
             GeminiRequest(
                 modelId = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
                 systemInstruction = system,
                 prompt = prompt,
+                jsonOutput = true,
                 temperature = 0.9f,
                 timeoutMs = timeoutMs
             )

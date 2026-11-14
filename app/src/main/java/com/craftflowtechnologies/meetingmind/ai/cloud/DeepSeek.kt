@@ -67,7 +67,7 @@ class DeepSeek(private val context: Context, private val baseUrl: String = BASE_
     /** One chat completion. [json] asks for a JSON object back. */
     suspend fun complete(system: String, prompt: String, json: Boolean, timeoutMs: Long = 120_000L, maxTokens: Int = 4096): AiResult<String> = withContext(Dispatchers.IO) {
         GeminiLog.attach(context)
-        if (usedThisMonth() >= MONTHLY_TOKENS) {
+        if (!com.craftflowtechnologies.meetingmind.BuildConfig.DEBUG && usedThisMonth() >= MONTHLY_TOKENS) {
             return@withContext AiResult.Failed("This month's built-in AI allowance is used up. It resets on the 1st, or add your own Gemini key in Settings.", retryable = false)
         }
         val proxy = proxyUrl
@@ -182,7 +182,7 @@ class FallbackTransport(
                 request.responseSchema?.let { append("\n\nReply with a JSON object matching this JSON Schema, and nothing else:\n").append(it) }
                 if (request.vocabularyHints.isNotEmpty()) append("\n\nTerms likely to appear: ").append(request.vocabularyHints.joinToString(", "))
             },
-            json = request.responseSchema != null,
+            json = request.responseSchema != null || request.jsonOutput,
             timeoutMs = request.timeoutMs ?: 120_000L
         )
         if (second is AiResult.Success) DeepSeek.lastProvider = "DeepSeek"

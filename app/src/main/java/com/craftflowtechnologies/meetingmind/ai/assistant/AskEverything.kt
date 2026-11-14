@@ -51,13 +51,17 @@ object AskEverything {
         "[${s.key}] $head:\n${s.text.trim()}"
     }
 
+    private val MULTI_MARKER = Regex("\\[(\\d{1,2}(?:\\s*,\\s*\\d{1,2})+)]")
     private val MARKER = Regex("\\[(\\d{1,2})]")
 
     fun parse(answer: String, sources: List<AskSource>): AskAnswer {
         val byKey = sources.associateBy { it.key }
         val cited = LinkedHashMap<Int, AskSource>()
         val dropped = mutableListOf<Int>()
-        val text = MARKER.replace(answer) { m ->
+        val normalized = MULTI_MARKER.replace(answer) { m ->
+            m.groupValues[1].split(',').joinToString("") { "[${it.trim()}]" }
+        }
+        val text = MARKER.replace(normalized) { m ->
             val k = m.groupValues[1].toInt()
             val s = byKey[k]
             if (s != null) { cited[k] = s; m.value } else { dropped += k; "" }
@@ -88,7 +92,7 @@ class AskEverythingEngine(
             GeminiRequest(
                 model,
                 "You turn a question about someone's personal notes and recordings into 2 to 5 short keyword searches (1-3 words each): the key nouns, names, synonyms and any Bible references. Reply with JSON only: {\"queries\":[...]}",
-                question, responseSchema = QUERIES_SCHEMA, timeoutMs = 20_000
+                question, responseSchema = QUERIES_SCHEMA, timeoutMs = 30_000
             )
         ) as? AiResult.Success)?.value?.let(AskEverything::parseQueries).orEmpty()
         val queries = (listOf(question) + expanded + AskEverything.terms(question)).distinct()
@@ -105,7 +109,7 @@ class AskEverythingEngine(
         }
         // 3. Answer from those sources only.
         val system = (if (sources.any { it.faith }) Prompts.faithContract + "\n\n" else "") + Prompts.get("ask_everything").system()
-        val res = transport.execute(GeminiRequest(model, system, "Sources:\n\n${AskEverything.render(sources, dateLabel)}\n\nQuestion: $question", timeoutMs = 45_000))
+        val res = transport.execute(GeminiRequest(model, system, "Sources:\n\n${AskEverything.render(sources, dateLabel)}\n\nQuestion: $question", timeoutMs = 60_000))
         if (res !is AiResult.Success) return AiResult.Failed(res.describeFailure() ?: "Ask failed.")
         return AiResult.Success(AskEverything.parse(res.value, sources))
     }

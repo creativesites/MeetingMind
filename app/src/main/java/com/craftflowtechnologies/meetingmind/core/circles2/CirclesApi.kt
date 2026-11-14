@@ -23,6 +23,9 @@ data class CreatePostRequest(
     val requestId: String? = null
 )
 
+val MediaAttachment.w: Int? get() = null
+val MediaAttachment.h: Int? get() = null
+
 data class CreatedPost(val postId: String, val pending: Boolean)
 data class CreateCircleRequest(val name: String, val template: String, val vocab: String, val displayName: String, val settings: CircleSettings, val requestId: String = java.util.UUID.randomUUID().toString(), val description: String = "", val space: String = "faith")
 
@@ -169,7 +172,18 @@ object CirclesJson {
         .put("anonymous", r.anonymous)
         .apply { if (!r.verseRef.isNullOrBlank()) put("verseRef", r.verseRef) }
         .apply { if (!r.requestId.isNullOrBlank()) put("requestId", r.requestId) }
-        .apply { if (r.attachments.isNotEmpty()) put("attachments", JSONArray(r.attachments.map { a -> JSONObject().put("path", a.path).put("mime", a.mime).put("bytes", a.bytes) })) }
+        .apply {
+            if (r.attachments.isNotEmpty()) {
+                put("attachments", JSONArray(r.attachments.map { a ->
+                    JSONObject().put("path", a.path).put("mime", a.mime).put("bytes", a.bytes).apply {
+                        if (a.durationMs != null) put("durationMs", a.durationMs)
+                        if (a.w != null) put("w", a.w)
+                        if (a.h != null) put("h", a.h)
+                        if (a.name != null) put("name", a.name)
+                    }
+                }))
+            }
+        }
 
     fun commentAsAuthor(circleId: String, postId: String, body: String, parentId: String?): JSONObject = JSONObject()
         .put("circleId", circleId).put("postId", postId).put("body", body.take(2000))

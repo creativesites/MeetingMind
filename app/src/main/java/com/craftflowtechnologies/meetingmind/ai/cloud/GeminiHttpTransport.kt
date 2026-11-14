@@ -282,6 +282,8 @@ class GeminiHttpTransport(
             // GeminiTranscriptParser and GeminiIntelligenceEngine's schemas.
             generationConfig.put("response_mime_type", "application/json")
             generationConfig.put("response_schema", JSONObject(request.responseSchema))
+        } else if (request.jsonOutput) {
+            generationConfig.put("response_mime_type", "application/json")
         }
 
         val body = JSONObject()
@@ -300,7 +302,8 @@ class GeminiHttpTransport(
 
         val reply = sendWithRetry(httpRequest, request.timeoutMs ?: if (fileUri != null) LONG_TIMEOUT_MS else TEXT_TIMEOUT_MS, "${if (fileUri != null) "Analyse audio" else "Write"} with ${request.modelId}")
         if (!reply.ok) return describeHttpFailure(if (fileUri != null) "Analysing the recording" else "Writing", reply.code, reply.body)
-        return extractText(reply.body)?.let { AiResult.Success(it) } ?: AiResult.Failed("Gemini returned no usable content.")
+        return extractText(reply.body)?.let { AiResult.Success(it) }
+            ?: AiResult.Failed(describeEmptyResponse(reply.body))
     }
 
     /**
@@ -340,10 +343,10 @@ class GeminiHttpTransport(
             }
     }
 
-    /** A 500 or 503 is Gemini being busy: one more try after a pause, then the error stands. */
+    /** A transient 408/500/502/503/504 gets one more try after a pause, then the error stands. */
     private suspend fun sendWithRetry(request: Request, timeoutMs: Long, label: String): Reply {
         val first = send(request, timeoutMs, label)
-        if (first.code != 500 && first.code != 503) return first
+        if (first.code !in RETRYABLE_HTTP_CODES) return first
         kotlinx.coroutines.delay(RETRY_DELAY_MS)
         return send(request, timeoutMs, "$label (retry)")
     }
@@ -362,6 +365,20 @@ class GeminiHttpTransport(
             append(request.vocabularyHints.joinToString(", "))
         }
     }
+
+    private fun describeEmptyResponse(responseBody: String): String = runCatching {
+        val root = JSONObject(responseBody)
+        val blockReason = root.optJSONObject("promptFeedback")?.optString("blockReason")?.takeIf { it.isNotBlank() }
+        val finishReason = root.optJSONArray("candidates")?.optJSONObject(0)?.optString("finishReason")?.takeIf { it.isNotBlank() }
+        when {
+            blockReason != null -> "Gemini blocked this request ($blockReason)."
+            finishReason == "SAFETY" || finishReason == "RECITATION" || finishReason == "PROHIBITED_CONTENT" ->
+                "Gemini stopped early ($finishReason)."
+            finishReason == "MAX_TOKENS" -> "Gemini's answer was cut off (token limit reached). Try a shorter selection."
+            finishReason != null && finishReason != "STOP" -> "Gemini returned no usable content ($finishReason)."
+            else -> "Gemini returned no usable content."
+        }
+    }.getOrDefault("Gemini returned no usable content.")
 
     private fun extractText(responseBody: String): String? = try {
         val candidates = JSONObject(responseBody).optJSONArray("candidates")
@@ -385,22 +402,24 @@ class GeminiHttpTransport(
      * when there is one, because it is usually more specific than anything guessed from a code.
      */
     private fun describeHttpFailure(stage: String, code: Int, body: String?): AiResult<Nothing> {
+        val rawBody = body.orEmpty()
+        val parsed = GeminiErrors.fromHttp(code, rawBody)
         val serverMessage = try {
-            JSONObject(body.orEmpty()).optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
+            JSONObject(rawBody).optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
         } catch (e: org.json.JSONException) {
             null
         }
         // Never log the body: a failed transcription request's error can echo prompt content.
         Log.w(TAG, "$stage failed with HTTP $code")
-        return when (code) {
-            400 -> AiResult.Failed("$stage failed: Gemini rejected the request. ${serverMessage.orEmpty()}".trim(), retryable = false)
-            401, 403 -> AiResult.Failed(
+        return when {
+            parsed.kind == GeminiErrorKind.AUTH -> AiResult.Failed(
                 "$stage failed: your Gemini API key was rejected. Check it in Settings. ${serverMessage.orEmpty()}".trim(), retryable = false
             )
-            402 -> AiResult.Failed("$stage needs a MeetingMind plan. See Plans in Settings, or process this recording offline.", retryable = false)
+            code == 400 -> AiResult.Failed("$stage failed: Gemini rejected the request. ${serverMessage.orEmpty()}".trim(), retryable = false)
+            code == 402 -> AiResult.Failed("$stage needs a MeetingMind plan. See Plans in Settings, or process this recording offline.", retryable = false)
             // A quota reached now may well have room again shortly, so this one stays retryable.
-            429 -> AiResult.Failed("$stage failed: the cloud allowance or quota is used up. Try again later, or process this recording offline.")
-            in 500..599 -> AiResult.Failed("$stage failed: Gemini is unavailable right now. Try again shortly.")
+            code == 429 -> AiResult.Failed("$stage failed: the cloud allowance or quota is used up. Try again later, or process this recording offline.")
+            code in 500..599 -> AiResult.Failed("$stage failed: Gemini is unavailable right now. Try again shortly.")
             else -> AiResult.Failed("$stage failed (HTTP $code). ${serverMessage.orEmpty()}".trim())
         }
     }
@@ -479,6 +498,7 @@ class GeminiHttpTransport(
         private const val SHORT_TIMEOUT_MS = 30_000L
         private const val TEXT_TIMEOUT_MS = 3 * 60_000L
         private const val LONG_TIMEOUT_MS = 10 * 60_000L
+        private val RETRYABLE_HTTP_CODES = setOf(408, 500, 502, 503, 504)
         internal var RETRY_DELAY_MS = 2_000L
 
         /** Generous timeouts: a meeting chunk is a large upload and transcription is not fast. */

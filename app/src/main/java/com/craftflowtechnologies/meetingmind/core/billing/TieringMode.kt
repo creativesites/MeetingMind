@@ -31,7 +31,10 @@ fun showTierSwitch(isDebug: Boolean): Boolean = isDebug
 object TieringModeStore {
     private const val PREFS = "meetmind_tiering_mode"
     private const val KEY = "mode"
-    private val _mode = MutableStateFlow(TieringMode.PRODUCTION)
+    private fun defaultMode(): TieringMode =
+        if (showTierSwitch(BuildConfig.DEBUG)) TieringMode.CLOSED_TESTING else TieringMode.PRODUCTION
+
+    private val _mode = MutableStateFlow(defaultMode())
     val mode: StateFlow<TieringMode> = _mode.asStateFlow()
     @Volatile private var loaded = false
 
@@ -44,7 +47,7 @@ object TieringModeStore {
         }
         if (!loaded) {
             val saved = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
-            _mode.value = TieringMode.entries.firstOrNull { it.name == saved } ?: TieringMode.PRODUCTION
+            _mode.value = TieringMode.entries.firstOrNull { it.name == saved } ?: defaultMode()
             loaded = true
         }
         return _mode.value

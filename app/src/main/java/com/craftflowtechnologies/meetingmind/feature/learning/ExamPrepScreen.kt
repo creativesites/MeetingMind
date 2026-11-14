@@ -6,6 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,7 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -32,6 +35,8 @@ import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,9 +59,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.model.ExamImportance
 import com.craftflowtechnologies.meetingmind.core.model.ExamPriorityItem
 import com.craftflowtechnologies.meetingmind.core.model.LearningGoal
@@ -69,8 +75,10 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.feature.notes.editor.LatexMathParser
 import com.craftflowtechnologies.meetingmind.feature.notes.editor.MathExpressionView
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.LearningFixedColors
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
 @Composable
 fun ExamPrepScreen(
@@ -263,7 +271,7 @@ fun ExamPrepContent(
         val target = goalToDelete!!
         AlertDialog(
             onDismissRequest = { goalToDelete = null },
-            title = { Text("Delete Exam Goal", style = MM.type.title.copy(fontSize = 18.sp), color = c.ink) },
+            title = { Text("Delete Exam Goal", style = MM.type.heading, color = c.ink) },
             text = {
                 Text(
                     "Are you sure you want to remove '${target.title}' from your exam goals?",
@@ -272,14 +280,21 @@ fun ExamPrepContent(
                 )
             },
             confirmButton = {
-                PrimaryButton(
-                    text = "Delete",
+                Button(
                     onClick = {
                         onDeleteGoal(target.id)
                         goalToDelete = null
                     },
-                    modifier = Modifier.testTag("confirm_delete_goal")
-                )
+                    shape = MM.radius.pill,
+                    modifier = Modifier.heightIn(min = MMSize.minTouch).testTag("confirm_delete_goal"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MM.colors.danger,
+                        contentColor = FixedWhite
+                    ),
+                    contentPadding = PaddingValues(horizontal = MM.space.xl, vertical = MM.space.s)
+                ) {
+                    Text("Delete", style = MM.type.bodyStrong)
+                }
             },
             dismissButton = {
                 SecondaryButton(
@@ -309,11 +324,13 @@ private fun ExamGoalCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = goal.title,
-                    style = MM.type.bodyStrong.copy(fontSize = 17.sp),
-                    color = c.ink
+                    style = MM.type.heading,
+                    color = c.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "Target: ${goal.targetGrade} · ${goal.examFormat} · ${goal.dailyMinutesTarget} min daily study",
+                    text = "Format: ${goal.examFormat} · ${goal.dailyMinutesTarget} min daily study",
                     style = MM.type.caption,
                     color = c.inkSecondary
                 )
@@ -324,9 +341,9 @@ private fun ExamGoalCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(MM.radius.small)
                         .background(c.accent.copy(alpha = 0.15f))
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                        .padding(horizontal = MM.space.s, vertical = MM.space.xs)
                 ) {
                     Text(
                         text = "$daysRemaining days",
@@ -336,13 +353,13 @@ private fun ExamGoalCard(
                 }
                 IconButton(
                     onClick = onDelete,
-                    modifier = Modifier.size(32.dp).testTag("delete_goal_${goal.id}")
+                    modifier = Modifier.size(MMSize.minTouch).testTag("delete_goal_${goal.id}")
                 ) {
                     Icon(
                         Icons.Rounded.Delete,
                         contentDescription = "Delete Goal",
                         tint = c.inkSecondary,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(MMSize.iconSmall)
                     )
                 }
             }
@@ -397,12 +414,21 @@ private fun CramSheetActionCard(
                 )
             }
             Spacer(Modifier.width(MM.space.s))
-            if (isGenerating) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = c.accent)
-            } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+            ) {
+                if (isGenerating) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(MMSize.iconSmall),
+                        color = c.accent,
+                        strokeWidth = 2.dp
+                    )
+                }
                 PrimaryButton(
                     text = "Generate",
                     onClick = onGenerate,
+                    enabled = !isGenerating,
                     modifier = Modifier.testTag("generate_cram_sheet_button")
                 )
             }
@@ -429,7 +455,7 @@ private fun ExamPriorityRow(item: ExamPriorityItem) {
     }
 
     MMCard(contentPadding = MM.space.m) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -442,29 +468,29 @@ private fun ExamPriorityRow(item: ExamPriorityItem) {
                     modifier = Modifier.weight(1f)
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(MM.radius.small)
                             .background(importanceColor.copy(alpha = 0.15f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .padding(horizontal = MM.space.s, vertical = MM.space.xs)
                     ) {
                         Text(
                             text = item.concept.examImportance.label,
-                            style = MM.type.caption.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                            style = MM.type.overline.copy(fontWeight = FontWeight.Bold),
                             color = importanceColor
                         )
                     }
 
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(MM.radius.small)
                             .background(masteryColor.copy(alpha = 0.15f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .padding(horizontal = MM.space.s, vertical = MM.space.xs)
                     ) {
                         Text(
                             text = item.mastery.state.label,
-                            style = MM.type.caption.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                            style = MM.type.overline.copy(fontWeight = FontWeight.Bold),
                             color = masteryColor
                         )
                     }
@@ -483,9 +509,9 @@ private fun ExamPriorityRow(item: ExamPriorityItem) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(MM.radius.small)
                         .background(c.surfaceSunk)
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .padding(horizontal = MM.space.s, vertical = MM.space.xs)
                 ) {
                     val parsedNode = remember(formula) {
                         runCatching { LatexMathParser.parse(formula) }.getOrNull()
@@ -493,7 +519,7 @@ private fun ExamPriorityRow(item: ExamPriorityItem) {
                     if (parsedNode != null) {
                         MathExpressionView(
                             node = parsedNode,
-                            fontSize = 15.sp,
+                            fontSize = MM.type.body.fontSize,
                             inkColor = c.ink
                         )
                     } else {
@@ -509,7 +535,7 @@ private fun ExamPriorityRow(item: ExamPriorityItem) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun CreateGoalDialog(
     courses: List<com.craftflowtechnologies.meetingmind.core.repository.LearningRepository.LearningCourse>,
@@ -547,7 +573,7 @@ private fun CreateGoalDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Exam Goal", style = MM.type.title.copy(fontSize = 18.sp), color = MM.colors.ink) },
+        title = { Text("New Exam Goal", style = MM.type.heading, color = MM.colors.ink) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
                 OutlinedTextField(
@@ -555,29 +581,31 @@ private fun CreateGoalDialog(
                     onValueChange = { title = it },
                     label = { Text("Exam Title (e.g. Midterm 1)") },
                     modifier = Modifier.fillMaxWidth().testTag("goal_title_input"),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
                 )
 
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                     Text(
                         text = "Exam Date: ${dateFormat.format(java.util.Date(selectedExamDateMs))}",
                         style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
                         color = MM.colors.ink
                     )
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+                        verticalArrangement = Arrangement.spacedBy(MM.space.s)
                     ) {
                         listOf(7 to "7d", 14 to "14d", 30 to "30d", 60 to "60d").forEach { (days, label) ->
                             val isChosen = ((selectedExamDateMs - System.currentTimeMillis()) / (24 * 3600 * 1000L)).toInt() == days
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(MM.radius.small)
                                     .background(if (isChosen) MM.colors.accent.copy(alpha = 0.2f) else MM.colors.surfaceSunk)
                                     .clickable {
                                         selectedExamDateMs = System.currentTimeMillis() + (days * 24 * 3600 * 1000L)
                                     }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .padding(horizontal = MM.space.m, vertical = MM.space.s)
                             ) {
                                 Text(
                                     label,
@@ -588,10 +616,10 @@ private fun CreateGoalDialog(
                         }
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(MM.radius.small)
                                 .background(MM.colors.surfaceSunk)
                                 .clickable { datePickerDialog.show() }
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .padding(horizontal = MM.space.m, vertical = MM.space.s)
                         ) {
                             Text("Pick...", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
                         }
@@ -603,7 +631,8 @@ private fun CreateGoalDialog(
                     onValueChange = { targetGrade = it },
                     label = { Text("Target Grade (e.g. A, 90%)") },
                     modifier = Modifier.fillMaxWidth().testTag("goal_grade_input"),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
                 )
 
                 OutlinedTextField(
@@ -611,7 +640,8 @@ private fun CreateGoalDialog(
                     onValueChange = { dailyMinutes = it },
                     label = { Text("Daily Study Target (minutes)") },
                     modifier = Modifier.fillMaxWidth().testTag("goal_minutes_input"),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done)
                 )
 
                 if (courses.isNotEmpty()) {
@@ -681,23 +711,19 @@ private fun CramSheetPreviewDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("1-Page Cram Sheet", style = MM.type.title.copy(fontSize = 18.sp), color = c.ink) },
+        title = { Text("1-Page Cram Sheet", style = MM.type.heading, color = c.ink) },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 200.dp, max = 450.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(MM.radius.small)
                     .background(c.surfaceSunk)
                     .verticalScroll(rememberScrollState())
                     .padding(MM.space.m),
                 verticalArrangement = Arrangement.spacedBy(MM.space.s)
             ) {
-                Text(
-                    text = markdown,
-                    style = MM.type.caption,
-                    color = c.ink
-                )
+                CramSheetMarkdownViewer(markdown = markdown)
             }
         },
         confirmButton = {
@@ -722,4 +748,143 @@ private fun CramSheetPreviewDialog(
             )
         }
     )
+}
+
+@Composable
+private fun CramSheetMarkdownViewer(
+    markdown: String,
+    modifier: Modifier = Modifier
+) {
+    val c = MM.colors
+    val lines = remember(markdown) { markdown.lines() }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(MM.space.xs)
+    ) {
+        lines.forEach { line ->
+            val trimmed = line.trim()
+            when {
+                trimmed.isEmpty() -> {
+                    Spacer(Modifier.height(MM.space.xs))
+                }
+                trimmed.startsWith("### ") -> {
+                    Text(
+                        text = trimmed.removePrefix("### "),
+                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
+                        color = c.ink,
+                        modifier = Modifier.padding(top = MM.space.xs)
+                    )
+                }
+                trimmed.startsWith("## ") -> {
+                    Text(
+                        text = trimmed.removePrefix("## "),
+                        style = MM.type.heading.copy(fontWeight = FontWeight.Bold),
+                        color = c.ink,
+                        modifier = Modifier.padding(top = MM.space.s)
+                    )
+                }
+                trimmed.startsWith("# ") -> {
+                    Text(
+                        text = trimmed.removePrefix("# "),
+                        style = MM.type.title.copy(fontWeight = FontWeight.Bold),
+                        color = c.accent,
+                        modifier = Modifier.padding(top = MM.space.m)
+                    )
+                }
+                trimmed == "---" || trimmed == "***" -> {
+                    HorizontalDivider(
+                        color = c.line,
+                        modifier = Modifier.padding(vertical = MM.space.xs)
+                    )
+                }
+                (trimmed.startsWith("$$") && trimmed.endsWith("$$") && trimmed.length > 4) ||
+                (trimmed.startsWith("$") && trimmed.endsWith("$") && trimmed.length > 2) -> {
+                    val latex = if (trimmed.startsWith("$$")) {
+                        trimmed.removeSurrounding("$$").trim()
+                    } else {
+                        trimmed.removeSurrounding("$").trim()
+                    }
+                    val parsedNode = remember(latex) {
+                        runCatching { LatexMathParser.parse(latex) }.getOrNull()
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MM.radius.small)
+                            .background(c.surface)
+                            .padding(horizontal = MM.space.m, vertical = MM.space.s),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (parsedNode != null) {
+                            MathExpressionView(
+                                node = parsedNode,
+                                fontSize = MM.type.body.fontSize,
+                                inkColor = c.ink
+                            )
+                        } else {
+                            Text(
+                                text = latex,
+                                style = MM.type.caption.copy(fontWeight = FontWeight.Medium),
+                                color = c.ink
+                            )
+                        }
+                    }
+                }
+                trimmed.startsWith("- ") || trimmed.startsWith("* ") -> {
+                    val bulletText = trimmed.substring(2).trim()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = "•",
+                            style = MM.type.bodyStrong,
+                            color = c.accent
+                        )
+                        if ((bulletText.startsWith("$$") && bulletText.endsWith("$$")) ||
+                            (bulletText.startsWith("$") && bulletText.endsWith("$"))) {
+                            val latex = if (bulletText.startsWith("$$")) {
+                                bulletText.removeSurrounding("$$").trim()
+                            } else {
+                                bulletText.removeSurrounding("$").trim()
+                            }
+                            val parsedNode = remember(latex) {
+                                runCatching { LatexMathParser.parse(latex) }.getOrNull()
+                            }
+                            if (parsedNode != null) {
+                                MathExpressionView(
+                                    node = parsedNode,
+                                    fontSize = MM.type.body.fontSize,
+                                    inkColor = c.ink
+                                )
+                            } else {
+                                Text(
+                                    text = bulletText,
+                                    style = MM.type.caption,
+                                    color = c.ink,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = bulletText,
+                                style = MM.type.caption,
+                                color = c.ink,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+                else -> {
+                    Text(
+                        text = trimmed,
+                        style = MM.type.caption,
+                        color = c.ink
+                    )
+                }
+            }
+        }
+    }
 }

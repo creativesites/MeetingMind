@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Groups
@@ -28,7 +27,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesListState
 import com.craftflowtechnologies.meetingmind.core.circles2.CirclesResult
@@ -39,6 +37,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -83,10 +82,10 @@ fun ShareArtifactToCircleSheet(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                 Text(
                     "Share with Faith Circle",
-                    style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                    style = MM.type.title.copy(fontWeight = FontWeight.Bold),
                     color = MM.colors.ink
                 )
                 Text(
@@ -139,23 +138,23 @@ fun ShareArtifactToCircleSheet(
                     SectionHeader("Target Circle")
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(MM.space.s)
                     ) {
                         faithCircles.take(3).forEach { c ->
                             val isSelected = c.id == currentCircle.id
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
+                                shape = MM.radius.card,
                                 color = if (isSelected) CirclesPalette.AccentSoft else MM.colors.surfaceSunk,
-                                border = BorderStroke(1.dp, if (isSelected) CirclesPalette.Accent else MM.colors.line),
+                                border = BorderStroke(MMSize.hairline, if (isSelected) CirclesPalette.Accent else MM.colors.line),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .clip(MM.radius.card)
                                     .clickable { selectedCircleId = c.id }
                             ) {
-                                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                Column(Modifier.padding(horizontal = MM.space.m, vertical = MM.space.s)) {
                                     Text(
                                         c.name,
-                                        style = MM.type.bodyStrong.copy(fontSize = 13.5.sp),
+                                        style = MM.type.bodyStrong,
                                         color = if (isSelected) CirclesPalette.AccentDeep else MM.colors.ink,
                                         maxLines = 1
                                     )
@@ -171,12 +170,12 @@ fun ShareArtifactToCircleSheet(
 
                     SectionHeader("Preview")
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = MM.radius.card,
                         color = MM.colors.surfaceSunk,
-                        border = BorderStroke(1.dp, MM.colors.line),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        border = BorderStroke(MMSize.hairline, MM.colors.line),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = MM.space.xs)
                     ) {
-                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column(Modifier.padding(MM.space.m), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
                             Text(title, style = MM.type.bodyStrong, color = MM.colors.ink)
                             Text(excerpt, style = MM.type.body, color = MM.colors.inkSecondary)
                             if (!verseRef.isNullOrBlank()) {

@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.craftflowtechnologies.meetingmind.ai.modelmanagement.ModelCatalog
 import com.craftflowtechnologies.meetingmind.core.model.DiarizationStrategy
+import com.craftflowtechnologies.meetingmind.core.model.NotePolishMode
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -26,6 +27,9 @@ import kotlinx.coroutines.flow.map
  * the default; no other code needs to move.
  */
 val DEFAULT_TRANSCRIPT_CLEANUP_MODE = TranscriptCleanupMode.MODERATE
+
+/** Default post-transcription note formatting & AI polish mode. */
+val DEFAULT_NOTE_POLISH_MODE = NotePolishMode.DEEP
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "meetmind_preferences")
 
@@ -55,6 +59,8 @@ data class AppPreferencesState(
     val cleanFillerWords: Boolean = true,
     /** How interventionist AI transcript cleanup is allowed to be. See [TranscriptCleanupMode]. */
     val transcriptCleanupMode: TranscriptCleanupMode = DEFAULT_TRANSCRIPT_CLEANUP_MODE,
+    /** How recordings are turned into structured, formatted notes after transcription. See [NotePolishMode]. */
+    val notePolishMode: NotePolishMode = DEFAULT_NOTE_POLISH_MODE,
     /** Which engine decides speaker assignments. See [DiarizationStrategy]. */
     val diarizationStrategy: DiarizationStrategy = DiarizationStrategy.AUTO,
     /** How recordings are processed. Defaults to the private, on-device profile — MeetingMind
@@ -158,6 +164,7 @@ class UserPreferencesManager(private val context: Context) {
     private val APPEARANCE = stringPreferencesKey("appearance")
     private val CLEAN_FILLER_WORDS = booleanPreferencesKey("clean_filler_words")
     private val TRANSCRIPT_CLEANUP_MODE = stringPreferencesKey("transcript_cleanup_mode")
+    private val NOTE_POLISH_MODE = stringPreferencesKey("note_polish_mode")
     private val DIARIZATION_STRATEGY = stringPreferencesKey("diarization_strategy")
     private val PROCESSING_PROFILE = stringPreferencesKey("processing_profile")
     private val USER_NAME = stringPreferencesKey("user_name")
@@ -280,6 +287,9 @@ class UserPreferencesManager(private val context: Context) {
             transcriptCleanupMode = prefs[TRANSCRIPT_CLEANUP_MODE]?.let {
                 runCatching { TranscriptCleanupMode.valueOf(it) }.getOrNull()
             } ?: DEFAULT_TRANSCRIPT_CLEANUP_MODE,
+            notePolishMode = prefs[NOTE_POLISH_MODE]?.let {
+                runCatching { NotePolishMode.valueOf(it) }.getOrNull()
+            } ?: DEFAULT_NOTE_POLISH_MODE,
             diarizationStrategy = prefs[DIARIZATION_STRATEGY]?.let {
                 runCatching { DiarizationStrategy.valueOf(it) }.getOrNull()
             } ?: DiarizationStrategy.AUTO,
@@ -489,6 +499,10 @@ class UserPreferencesManager(private val context: Context) {
 
     suspend fun setTranscriptCleanupMode(mode: TranscriptCleanupMode) {
         context.dataStore.edit { it[TRANSCRIPT_CLEANUP_MODE] = mode.name }
+    }
+
+    suspend fun setNotePolishMode(mode: NotePolishMode) {
+        context.dataStore.edit { it[NOTE_POLISH_MODE] = mode.name }
     }
 
     suspend fun setLastRecordingType(type: com.craftflowtechnologies.meetingmind.core.model.RecordingType) {

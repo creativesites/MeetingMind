@@ -2,7 +2,6 @@ package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -18,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
@@ -87,19 +85,19 @@ private fun DayTile(e: CircleEvent) {
     Column(
         modifier = Modifier
             .size(width = 54.dp, height = 58.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(MM.radius.card)
             .background(CirclesPalette.AccentSoft),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(
             dayPart(e.startsAt, e.timeZone, "MMM").uppercase(),
-            style = MM.type.overline.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+            style = MM.type.overline.copy(fontWeight = FontWeight.Bold),
             color = CirclesPalette.Accent
         )
         Text(
             dayPart(e.startsAt, e.timeZone, "d"),
-            style = MM.type.heading.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+            style = MM.type.title.copy(fontWeight = FontWeight.Bold),
             color = CirclesPalette.AccentDeep
         )
     }

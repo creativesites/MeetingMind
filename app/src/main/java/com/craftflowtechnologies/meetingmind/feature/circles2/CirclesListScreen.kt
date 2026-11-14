@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
@@ -50,7 +49,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
@@ -67,6 +65,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
@@ -167,25 +166,25 @@ fun CirclesListContent(
             actions = {
                 if (canAct) {
                     Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = CirclesPalette.AccentSoft,
+                        shape = MM.radius.pill,
+                        color = MM.colors.accentWash,
                         modifier = Modifier.clickable(onClick = onShowJoin)
                     ) {
                         Text(
                             "Join",
-                            style = MM.type.bodyStrong.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
-                            color = CirclesPalette.AccentDeep,
+                            style = MM.type.secondary.copy(fontWeight = FontWeight.SemiBold),
+                            color = MM.colors.accent,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                         )
                     }
                     Spacer(Modifier.width(6.dp))
                     Surface(
-                        shape = CircleShape,
-                        color = CirclesPalette.Accent,
+                        shape = MM.radius.pill,
+                        color = MM.colors.accent,
                         modifier = Modifier.size(34.dp).clickable(onClick = onCreate)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.Add, "Start a circle", tint = CirclesPalette.White, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Rounded.Add, "Start a circle", tint = MM.colors.onAccent, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -194,7 +193,7 @@ fun CirclesListContent(
         when (state) {
             CirclesListState.NotConnected -> EmptyState(
                 title = "Circles isn't connected yet",
-                body = "Circles lets small groups pray, share and chat together. This build isn't linked to the Circles service yet, so there's nothing to join or create. Everything else in MeetingMind works as normal.",
+                body = "Circles lets small groups share updates, resources, and chat together. This build isn't linked to the Circles service yet, so there's nothing to join or create. Everything else in MeetingMind works as normal.",
                 modifier = Modifier.padding(horizontal = MM.space.l),
                 illustration = { Icon(Icons.Rounded.Groups, null, tint = MM.colors.inkMuted, modifier = Modifier.padding(top = MM.space.xl)) }
             )
@@ -204,7 +203,7 @@ fun CirclesListContent(
                     state.note?.let { Note(it, onRefresh) }
                     EmptyState(
                         title = "No circles yet",
-                        body = "A circle is a small private space where people pray for each other, celebrate together and chat. Start one for your group, or join with a code someone shared.",
+                        body = "A circle is a small private space for your team, study group, or faith community to share updates, resources, and chat.",
                         modifier = Modifier.padding(horizontal = MM.space.l),
                         action = {
                             Column(verticalArrangement = Arrangement.spacedBy(MM.space.s), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -223,7 +222,7 @@ fun CirclesListContent(
                     state.note?.let { n -> item { Note(n, onRefresh) } }
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Your circles", style = MM.type.title.copy(fontSize = 26.sp, fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                            Text("Your circles", style = MM.type.title.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
                             Text(
                                 "Small groups, teams, and family spaces where you share and stay close.",
                                 style = MM.type.secondary, color = MM.colors.inkSecondary
@@ -256,9 +255,9 @@ private fun Note(f: CirclesFailure, onRefresh: () -> Unit) {
 private fun FeaturedCircleCard(c: Circle, onClick: () -> Unit) {
     val memberLabel = "${c.groupWord} · ${if (c.memberCount == 1) "1 member" else "${c.memberCount} members"}"
     Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = CirclesPalette.Accent,
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).clickable(onClick = onClick)
+        shape = MM.radius.card,
+        color = MM.colors.accent,
+        modifier = Modifier.fillMaxWidth().clip(MM.radius.card).clickable(onClick = onClick)
     ) {
         Column {
             Box(
@@ -267,7 +266,7 @@ private fun FeaturedCircleCard(c: Circle, onClick: () -> Unit) {
                     .height(156.dp)
                     .background(
                         Brush.linearGradient(
-                            listOf(CirclesPalette.CoverStart, CirclesPalette.Accent, CirclesPalette.CoverEnd)
+                            listOf(CirclesPalette.CoverStart, MM.colors.accent, CirclesPalette.CoverEnd)
                         )
                     )
             ) {
@@ -279,22 +278,22 @@ private fun FeaturedCircleCard(c: Circle, onClick: () -> Unit) {
                     }
                 }
                 Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = Color.Black.copy(alpha = 0.48f),
+                    shape = MM.radius.pill,
+                    color = MM.colors.scrim,
                     modifier = Modifier.align(Alignment.TopStart).padding(14.dp)
                 ) {
                     Text(
                         memberLabel,
-                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
-                        color = CirclesPalette.White,
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = FixedWhite,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                     )
                 }
             }
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(c.name, style = MM.type.title.copy(fontSize = 21.sp, fontWeight = FontWeight.Bold), color = CirclesPalette.White)
+                Text(c.name, style = MM.type.title.copy(fontWeight = FontWeight.Bold), color = MM.colors.onAccent)
                 if (c.description.isNotBlank()) {
-                    Text(c.description, style = MM.type.secondary, color = CirclesPalette.White.copy(alpha = 0.86f), maxLines = 2)
+                    Text(c.description, style = MM.type.secondary, color = MM.colors.onAccent.copy(alpha = 0.86f), maxLines = 2)
                 }
                 Row(
                     Modifier.fillMaxWidth().padding(top = 4.dp),
@@ -304,14 +303,14 @@ private fun FeaturedCircleCard(c: Circle, onClick: () -> Unit) {
                     Row(horizontalArrangement = Arrangement.spacedBy((-8).dp), verticalAlignment = Alignment.CenterVertically) {
                         InitialsAvatar(c.name, size = 28.dp)
                     }
-                    Surface(shape = RoundedCornerShape(999.dp), color = CirclesPalette.White) {
+                    Surface(shape = MM.radius.pill, color = MM.colors.onAccent) {
                         Row(
                             Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text("Open", style = MM.type.bodyStrong.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold), color = CirclesPalette.Accent)
-                            Icon(Icons.Rounded.ChevronRight, null, tint = CirclesPalette.Accent, modifier = Modifier.size(16.dp))
+                            Text("Open", style = MM.type.secondary.copy(fontWeight = FontWeight.Bold), color = MM.colors.accent)
+                            Icon(Icons.Rounded.ChevronRight, null, tint = MM.colors.accent, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -330,7 +329,7 @@ private fun CircleRow(c: Circle, onClick: () -> Unit) {
                 if (c.coverPath != null) {
                     MediaImage(
                         c.id, c.coverPath,
-                        Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)),
+                        Modifier.size(48.dp).clip(MM.radius.card),
                         "Cover photo for ${c.name}"
                     )
                 } else {

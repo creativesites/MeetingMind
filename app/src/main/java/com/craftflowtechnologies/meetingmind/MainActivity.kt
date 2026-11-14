@@ -413,7 +413,8 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
     val onProcessingScreen = currentRoute == Routes.PROCESSING
 
     androidx.compose.runtime.CompositionLocalProvider(
-        com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionOpenSettings provides { navController.navigate(com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsRoute) }
+        com.craftflowtechnologies.meetingmind.core.ui.mm.companion.LocalCompanionOpenSettings provides { navController.navigate(com.craftflowtechnologies.meetingmind.feature.settings.companion.CompanionSettingsRoute) },
+        com.craftflowtechnologies.meetingmind.core.ui.mm.LocalAiOpenSettings provides { navController.navigate(Routes.SETTINGS) }
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     NavHost(
@@ -1344,10 +1345,26 @@ private fun MeetMindAppBody(navController: NavHostController, tabSlot: com.craft
                 onNavigateBack = { navController.popBackStack() },
                 onProcessingComplete = { finishedMeetingId ->
                     // A work recording with findings opens its Wrap-up (PLAN_PROFESSIONAL.md §4.3);
-                    // anything else opens as before.
+                    // a Sermon or Lecture/Lesson with a polished note opens straight into the note;
+                    // anything else opens MeetingDetail as before.
                     recoveryScope.launch {
-                        val wrapUp = com.craftflowtechnologies.meetingmind.core.work.WorkRepository(MeetMindDatabase.getInstance(context)).wantsWrapUp(finishedMeetingId)
-                        navController.navigate(if (wrapUp) Routes.wrapUpRoute(finishedMeetingId) else Routes.meetingDetailRoute(finishedMeetingId)) {
+                        val db = MeetMindDatabase.getInstance(context)
+                        val wrapUp = com.craftflowtechnologies.meetingmind.core.work.WorkRepository(db).wantsWrapUp(finishedMeetingId)
+                        val targetRoute = if (wrapUp) {
+                            Routes.wrapUpRoute(finishedMeetingId)
+                        } else {
+                            val meeting = db.meetingDao().getMeetingById(finishedMeetingId)
+                            val type = meeting?.recordingType?.let { runCatching { RecordingType.valueOf(it) }.getOrNull() }
+                            val noteId = meeting?.noteId
+                            val polishMode = runCatching {
+                                UserPreferencesManager(context).preferencesFlow.first().notePolishMode
+                            }.getOrDefault(com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.DEEP)
+                            val openPolishedNote = noteId != null &&
+                                polishMode != com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.OFF &&
+                                (type == RecordingType.SERMON || type == RecordingType.LECTURE || type == RecordingType.RESEARCH)
+                            if (openPolishedNote) Routes.noteRoute(noteId!!) else Routes.meetingDetailRoute(finishedMeetingId)
+                        }
+                        navController.navigate(targetRoute) {
                             popUpTo(Routes.PROCESSING) { inclusive = true }
                         }
                     }

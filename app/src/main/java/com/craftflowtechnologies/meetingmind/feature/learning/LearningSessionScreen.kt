@@ -1,22 +1,35 @@
 package com.craftflowtechnologies.meetingmind.feature.learning
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -27,6 +40,8 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -38,15 +53,22 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.model.ExamImportance
 import com.craftflowtechnologies.meetingmind.core.model.LearningActivity
 import com.craftflowtechnologies.meetingmind.core.model.LearningConcept
@@ -59,15 +81,17 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.ScreenHeader
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SecondaryButton
 import com.craftflowtechnologies.meetingmind.core.ui.mm.SectionHeader
+import com.craftflowtechnologies.meetingmind.feature.notes.editor.LatexMathParser
+import com.craftflowtechnologies.meetingmind.feature.notes.editor.MathExpressionView
 import com.craftflowtechnologies.meetingmind.ui.icons.AiMark
 import com.craftflowtechnologies.meetingmind.ui.theme.LearningFixedColors
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
-
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.text.style.TextAlign
+import com.craftflowtechnologies.meetingmind.ui.theme.MMColors
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import kotlinx.coroutines.launch
-import com.craftflowtechnologies.meetingmind.feature.notes.editor.LatexMathParser
-import com.craftflowtechnologies.meetingmind.feature.notes.editor.MathExpressionView
+
+private val MMColors.surfaceMuted: Color get() = surfaceSunk
+private val MMColors.card: Color get() = surface
 
 enum class SessionTab { UNDERSTAND, CONCEPTS, PRACTICE, DIAGNOSTICS }
 
@@ -83,6 +107,7 @@ fun LearningSessionScreen(
 ) {
     val sessionDetail by viewModel.activeSessionDetail.collectAsState()
     var isLoadingSession by remember(noteId) { mutableStateOf(true) }
+    var isCreatingSession by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(noteId) {
@@ -105,6 +130,7 @@ fun LearningSessionScreen(
     LearningSessionContent(
         sessionDetail = sessionDetail,
         isLoadingSession = isLoadingSession,
+        isCreatingSession = isCreatingSession,
         onBack = onBack,
         onOpenEditor = { onOpenEditor(noteId) },
         onReadAloud = { viewModel.readSessionAloud(noteId) },
@@ -122,14 +148,19 @@ fun LearningSessionScreen(
             }
         },
         onCreateSession = {
-            scope.launch {
-                isLoadingSession = true
-                val newSession = viewModel.learningRepo.ensureSessionForNote(
-                    noteId = noteId,
-                    title = "Study Session"
-                )
-                viewModel.loadSessionDetail(newSession.id)
-                isLoadingSession = false
+            if (!isCreatingSession) {
+                isCreatingSession = true
+                scope.launch {
+                    try {
+                        val newSession = viewModel.learningRepo.ensureSessionForNote(
+                            noteId = noteId,
+                            title = "Study Session"
+                        )
+                        viewModel.loadSessionDetail(newSession.id)
+                    } finally {
+                        isCreatingSession = false
+                    }
+                }
             }
         },
         modifier = modifier
@@ -140,6 +171,7 @@ fun LearningSessionScreen(
 fun LearningSessionContent(
     sessionDetail: LearningRepository.LearningSessionDetail?,
     isLoadingSession: Boolean = false,
+    isCreatingSession: Boolean = false,
     onBack: () -> Unit,
     onOpenEditor: () -> Unit,
     onReadAloud: () -> Unit,
@@ -151,6 +183,7 @@ fun LearningSessionContent(
     modifier: Modifier = Modifier
 ) {
     val c = MM.colors
+    val haptic = LocalHapticFeedback.current
     var activeTab by remember { mutableStateOf(SessionTab.UNDERSTAND) }
 
     Column(
@@ -176,9 +209,7 @@ fun LearningSessionContent(
 
         if (sessionDetail == null) {
             if (isLoadingSession) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = c.accent)
-                }
+                LearningSessionSkeleton()
             } else {
                 Box(
                     modifier = Modifier
@@ -196,11 +227,11 @@ fun LearningSessionContent(
                                 Icons.Rounded.WarningAmber,
                                 contentDescription = null,
                                 tint = LearningFixedColors.MasteryNeedsReview,
-                                modifier = Modifier.size(40.dp)
+                                modifier = Modifier.size(MM.space.xxl + MM.space.s)
                             )
                             Text(
-                                text = "Study Session Unavailable",
-                                style = MM.type.title.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                                text = "No Study Session Yet",
+                                style = MM.type.heading.copy(fontWeight = FontWeight.Bold),
                                 color = c.ink
                             )
                             Text(
@@ -218,11 +249,34 @@ fun LearningSessionContent(
                                     onClick = onBack,
                                     modifier = Modifier.weight(1f).testTag("session_unavailable_back")
                                 )
-                                PrimaryButton(
-                                    text = "Create Session",
+                                Button(
                                     onClick = onCreateSession,
-                                    modifier = Modifier.weight(1f).testTag("session_unavailable_create")
-                                )
+                                    enabled = !isCreatingSession,
+                                    shape = MM.radius.pill,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = MMSize.minTouch)
+                                        .testTag("session_unavailable_create"),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = c.accent,
+                                        contentColor = c.onAccent,
+                                        disabledContainerColor = c.track,
+                                        disabledContentColor = c.inkMuted
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = MM.space.l, vertical = MM.space.s)
+                                ) {
+                                    if (isCreatingSession) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(MM.space.l),
+                                            strokeWidth = MMSize.hairline * 2,
+                                            color = c.onAccent
+                                        )
+                                        Spacer(Modifier.width(MM.space.s))
+                                        Text("Creating…", style = MM.type.bodyStrong, color = c.onAccent)
+                                    } else {
+                                        Text("Create Session", style = MM.type.bodyStrong)
+                                    }
+                                }
                             }
                         }
                     }
@@ -234,9 +288,9 @@ fun LearningSessionContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = MM.space.l, vertical = MM.space.xs)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(MM.radius.card)
                     .background(c.surfaceSunk)
-                    .padding(4.dp),
+                    .padding(MM.space.xs),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 SessionTab.entries.forEach { tab ->
@@ -250,10 +304,20 @@ fun LearningSessionContent(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .heightIn(min = MMSize.minTouch)
+                            .clip(MM.radius.small)
                             .background(if (isSelected) c.surface else c.surfaceSunk)
-                            .clickable { activeTab = tab }
-                            .padding(vertical = 8.dp)
+                            .semantics {
+                                role = Role.Tab
+                                selected = isSelected
+                            }
+                            .clickable(role = Role.Tab) {
+                                if (activeTab != tab) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    activeTab = tab
+                                }
+                            }
+                            .padding(vertical = MM.space.s)
                             .testTag("session_tab_${tab.name.lowercase()}"),
                         contentAlignment = Alignment.Center
                     ) {
@@ -266,64 +330,208 @@ fun LearningSessionContent(
                 }
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(MM.space.l),
-                verticalArrangement = Arrangement.spacedBy(MM.space.m)
-            ) {
-                when (activeTab) {
-                    SessionTab.UNDERSTAND -> {
-                        item(key = "understand_header") {
-                            UnderstandTabHeader(
-                                session = sessionDetail.session,
-                                onOpenEditor = onOpenEditor,
-                                onReadAloud = onReadAloud
-                            )
+            AnimatedContent(
+                targetState = activeTab,
+                transitionSpec = {
+                    val forward = targetState.ordinal > initialState.ordinal
+                    val dir = if (forward) 1 else -1
+                    (slideInHorizontally(tween(250)) { it / 6 * dir } + fadeIn(tween(250))) togetherWith
+                        (slideOutHorizontally(tween(200)) { -it / 6 * dir } + fadeOut(tween(180)))
+                },
+                label = "session_tab",
+                modifier = Modifier.fillMaxSize()
+            ) { tab ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(MM.space.l),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.m)
+                ) {
+                    when (tab) {
+                        SessionTab.UNDERSTAND -> {
+                            item(key = "understand_header") {
+                                UnderstandTabHeader(
+                                    session = sessionDetail.session,
+                                    onOpenEditor = onOpenEditor,
+                                    onReadAloud = onReadAloud
+                                )
+                            }
                         }
-                    }
-                    SessionTab.CONCEPTS -> {
-                        if (sessionDetail.concepts.isEmpty()) {
-                            item(key = "empty_concepts") {
-                                MMCard(contentPadding = MM.space.m) {
-                                    Text("No concepts extracted yet for this session.", style = MM.type.secondary, color = c.inkSecondary)
+                        SessionTab.CONCEPTS -> {
+                            if (sessionDetail.concepts.isEmpty()) {
+                                item(key = "empty_concepts") {
+                                    MMCard(contentPadding = MM.space.m) {
+                                        Text("No concepts extracted yet for this session.", style = MM.type.secondary, color = c.inkSecondary)
+                                    }
                                 }
-                            }
-                        } else {
-                            items(sessionDetail.concepts, key = { it.id }) { concept ->
-                                ConceptCard(concept = concept)
-                            }
-                        }
-                    }
-                    SessionTab.PRACTICE -> {
-                        item(key = "practice_header") {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("${sessionDetail.activities.size} Activities Available", style = MM.type.bodyStrong, color = c.ink)
-                                if (sessionDetail.activities.isNotEmpty()) {
-                                    PrimaryButton(
-                                        text = "Start Practice",
-                                        onClick = { onStartPractice(sessionDetail.activities) },
-                                        modifier = Modifier.testTag("start_session_practice")
-                                    )
+                            } else {
+                                items(sessionDetail.concepts, key = { it.id }) { concept ->
+                                    ConceptCard(concept = concept)
                                 }
                             }
                         }
+                        SessionTab.PRACTICE -> {
+                            item(key = "practice_header") {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("${sessionDetail.activities.size} Activities Available", style = MM.type.bodyStrong, color = c.ink)
+                                    if (sessionDetail.activities.isNotEmpty()) {
+                                        PrimaryButton(
+                                            text = "Start Practice",
+                                            onClick = { onStartPractice(sessionDetail.activities) },
+                                            modifier = Modifier.testTag("start_session_practice")
+                                        )
+                                    }
+                                }
+                            }
 
-                        items(sessionDetail.activities, key = { it.id }) { activity ->
-                            ActivitySummaryCard(activity = activity)
+                            items(sessionDetail.activities, key = { it.id }) { activity ->
+                                ActivitySummaryCard(activity = activity)
+                            }
+                        }
+                        SessionTab.DIAGNOSTICS -> {
+                            item(key = "diagnostics") {
+                                DiagnosticsCard(
+                                    session = sessionDetail.session,
+                                    onTogglePause = onTogglePause
+                                )
+                            }
                         }
                     }
-                    SessionTab.DIAGNOSTICS -> {
-                        item(key = "diagnostics") {
-                            DiagnosticsCard(
-                                session = sessionDetail.session,
-                                onTogglePause = onTogglePause
-                            )
-                        }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LearningSessionSkeleton(modifier: Modifier = Modifier) {
+    val c = MM.colors
+    val transition = rememberInfiniteTransition(label = "learning_session_skeleton_pulse")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "skeleton_alpha"
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(MM.space.l)
+            .testTag("learning_session_skeleton"),
+        verticalArrangement = Arrangement.spacedBy(MM.space.m)
+    ) {
+        // Session header skeleton (card block)
+        MMCard(contentPadding = MM.space.l) {
+            Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
+                Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(0.65f)
+                            .height(MM.space.l)
+                            .clip(MM.radius.small)
+                            .background(c.surfaceMuted.copy(alpha = alpha))
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth(0.35f)
+                            .height(MM.space.m)
+                            .clip(MM.radius.small)
+                            .background(c.surfaceMuted.copy(alpha = alpha))
+                    )
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(MMSize.hairline)
+                        .background(c.line)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+                ) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(MMSize.minTouch)
+                            .clip(MM.radius.pill)
+                            .background(c.surfaceMuted.copy(alpha = alpha))
+                    )
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(MMSize.minTouch)
+                            .clip(MM.radius.pill)
+                            .background(c.surfaceMuted.copy(alpha = alpha))
+                    )
+                }
+            }
+        }
+
+        // Tab strip skeleton
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(MM.radius.card)
+                .background(c.surfaceSunk)
+                .padding(MM.space.xs),
+            horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
+        ) {
+            repeat(4) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(MM.space.xl + MM.space.xs)
+                        .clip(MM.radius.small)
+                        .background(c.card.copy(alpha = alpha))
+                )
+            }
+        }
+
+        // 2 concept card blocks
+        repeat(2) {
+            MMCard(contentPadding = MM.space.m) {
+                Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(0.5f)
+                                .height(MM.space.m)
+                                .clip(MM.radius.small)
+                                .background(c.surfaceMuted.copy(alpha = alpha))
+                        )
+                        Box(
+                            Modifier
+                                .width(MM.space.xxl + MM.space.m)
+                                .height(MM.space.m)
+                                .clip(MM.radius.small)
+                                .background(c.surfaceMuted.copy(alpha = alpha))
+                        )
                     }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(MM.space.m)
+                            .clip(MM.radius.small)
+                            .background(c.surfaceMuted.copy(alpha = alpha))
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth(0.75f)
+                            .height(MM.space.m)
+                            .clip(MM.radius.small)
+                            .background(c.surfaceMuted.copy(alpha = alpha))
+                    )
                 }
             }
         }
@@ -345,11 +553,16 @@ private fun UnderstandTabHeader(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(MM.space.xs / 2)
+                ) {
                     Text(
                         text = session.title,
-                        style = MM.type.title.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
-                        color = c.ink
+                        style = MM.type.heading.copy(fontWeight = FontWeight.Bold),
+                        color = c.ink,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "${session.courseName ?: "Course"} · ${session.subjectDomain}",
@@ -371,7 +584,7 @@ private fun UnderstandTabHeader(
                     modifier = Modifier.weight(1f).testTag("session_open_editor")
                 )
                 PrimaryButton(
-                    text = "Read to Student",
+                    text = "Read Aloud",
                     onClick = onReadAloud,
                     modifier = Modifier.weight(1f).testTag("session_read_aloud")
                 )
@@ -391,7 +604,7 @@ private fun ConceptCard(concept: LearningConcept) {
     }
 
     MMCard(contentPadding = MM.space.m) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -400,17 +613,21 @@ private fun ConceptCard(concept: LearningConcept) {
                 Text(
                     text = concept.name,
                     style = MM.type.bodyStrong,
-                    color = c.ink
+                    color = c.ink,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
+                Spacer(Modifier.width(MM.space.s))
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(MM.radius.small)
                         .background(importanceColor.copy(alpha = 0.15f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .padding(horizontal = MM.space.s, vertical = MM.space.xs)
                 ) {
                     Text(
                         text = concept.examImportance.label,
-                        style = MM.type.caption.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                        style = MM.type.overline,
                         color = importanceColor
                     )
                 }
@@ -426,9 +643,9 @@ private fun ConceptCard(concept: LearningConcept) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(MM.radius.small)
                         .background(c.surfaceSunk)
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .padding(horizontal = MM.space.s, vertical = MM.space.xs)
                 ) {
                     val parsedNode = remember(formula) {
                         runCatching { LatexMathParser.parse(formula) }.getOrNull()
@@ -436,7 +653,7 @@ private fun ConceptCard(concept: LearningConcept) {
                     if (parsedNode != null) {
                         MathExpressionView(
                             node = parsedNode,
-                            fontSize = 15.sp,
+                            fontSize = MM.type.body.fontSize,
                             inkColor = c.ink
                         )
                     } else {
@@ -457,7 +674,7 @@ private fun ActivitySummaryCard(activity: LearningActivity) {
     val c = MM.colors
 
     MMCard(contentPadding = MM.space.m) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -492,7 +709,7 @@ private fun DiagnosticsCard(
 
     MMCard(contentPadding = MM.space.l) {
         Column(verticalArrangement = Arrangement.spacedBy(MM.space.m)) {
-            Text("Session Diagnostics", style = MM.type.title.copy(fontSize = 18.sp), color = c.ink)
+            Text("Session Diagnostics", style = MM.type.heading.copy(fontWeight = FontWeight.Bold), color = c.ink)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

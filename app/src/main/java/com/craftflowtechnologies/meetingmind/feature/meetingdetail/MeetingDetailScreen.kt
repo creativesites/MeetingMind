@@ -711,10 +711,12 @@ class MeetingDetailViewModel(
 
     private val _pendingQuestion = MutableStateFlow("")
     val pendingQuestion: StateFlow<String> = _pendingQuestion.asStateFlow()
+    private var askJob: kotlinx.coroutines.Job? = null
 
     fun askQuestion(questionText: String) {
         if (questionText.isBlank()) return
-        viewModelScope.launch {
+        askJob?.cancel()
+        askJob = viewModelScope.launch {
             _pendingQuestion.value = questionText
             _isAnswering.value = true
             try {
@@ -724,6 +726,11 @@ class MeetingDetailViewModel(
                 _isAnswering.value = false
             }
         }
+    }
+
+    fun cancelAsk() {
+        askJob?.cancel()
+        _isAnswering.value = false
     }
 
     fun generateMarkdownExport(): String {
@@ -1330,6 +1337,7 @@ fun MeetingDetailScreen(
                     isAnswering = isAnswering,
                     pendingQuestion = pendingQuestion,
                     onSendQuestion = { viewModel.askQuestion(it) },
+                    onStopQuestion = { viewModel.cancelAsk() },
                     onPlayFrom = { viewModel.jumpToTimestamp(it) },
                     onOpenInTranscript = { ts ->
                         highlightedSegmentId = transcript.segments

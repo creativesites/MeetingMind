@@ -1,61 +1,74 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.LruCache
+import android.widget.MediaController
+import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.FileProvider
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.ui.theme.FixedWhite
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
-
-import android.media.MediaMetadataRetriever
-import android.util.LruCache
-import android.widget.VideoView
-import androidx.compose.foundation.clickable
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Videocam
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import java.io.InputStream
 
 /** A photo, video, voice note or file read from the device, ready to upload. */
 class PickedFile(val bytes: ByteArray, val mime: String, val name: String?, val durationMs: Long? = null)
@@ -73,6 +86,11 @@ object CircleMediaCache {
         val dir = File(context.cacheDir, "circles_media").apply { mkdirs() }
         val safe = path.replace(Regex("[^A-Za-z0-9_.-]"), "_")
         return File(dir, "$safe.$ext")
+    }
+
+    fun getCachedFile(context: Context, path: String, ext: String = "bin"): File? {
+        val file = diskFile(context, path, ext)
+        return if (file.exists() && file.length() > 0L) file else null
     }
 
     suspend fun fetch(context: Context, circleId: String, path: String): ByteArray? = withContext(Dispatchers.IO) {
@@ -121,9 +139,33 @@ object CircleMediaCache {
     }
 }
 
+/** Decodes a byte array into a Bitmap using inSampleSize so max dimension <= [maxDimension]. */
+private fun decodeSampledBitmap(bytes: ByteArray, maxDimension: Int = 2048): Bitmap? {
+    if (bytes.isEmpty()) return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sampleSize = 1
+    val longest = maxOf(bounds.outWidth, bounds.outHeight)
+    while (longest / sampleSize.toFloat() > maxDimension) {
+        sampleSize *= 2
+    }
+    val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+}
+
 /** A profile photo: a centre-cropped square, at most 512 px, as JPEG. Re-encoding drops any EXIF. Null if it can't be read. */
 fun avatarJpeg(bytes: ByteArray): ByteArray? {
-    val source = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sampleSize = 1
+    val shortest = minOf(bounds.outWidth, bounds.outHeight)
+    while (shortest / sampleSize.toFloat() > 1024f) {
+        sampleSize *= 2
+    }
+    val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+    val source = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
     val side = minOf(source.width, source.height)
     val square = Bitmap.createBitmap(source, (source.width - side) / 2, (source.height - side) / 2, side, side)
     val sized = if (side > 512) Bitmap.createScaledBitmap(square, 512, 512, true) else square
@@ -151,11 +193,13 @@ fun MemberAvatar(
         value = null
         if (uid == null || avatarVersion == null) return@produceState
         val bytes = CircleMediaCache.fetchAvatar(context, circleId, uid, avatarVersion) ?: return@produceState
-        value = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+        value = withContext(Dispatchers.Default) {
+            decodeSampledBitmap(bytes, 512)?.asImageBitmap()
+        }
     }
     Crossfade(targetState = photo, label = "member avatar") { loaded ->
         if (loaded != null) {
-            Box(modifier.size(size).clip(CircleShape).clearAndSetSemantics { }) {
+            Box(modifier.size(size).clip(MM.radius.pill).clearAndSetSemantics { }) {
                 Image(loaded, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             }
         } else {
@@ -194,16 +238,16 @@ private fun PdfTile(circleId: String, a: MediaAttachment, modifier: Modifier, co
                     loading = false
                     if (file != null) {
                         runCatching {
-                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                            val uri = FileProvider.getUriForFile(
                                 context,
                                 "${context.packageName}.fileprovider",
                                 file
                             )
-                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
                                 setDataAndType(uri, "application/pdf")
-                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
-                            context.startActivity(android.content.Intent.createChooser(intent, "Open PDF"))
+                            context.startActivity(Intent.createChooser(intent, "Open PDF"))
                         }
                     }
                 }
@@ -213,11 +257,14 @@ private fun PdfTile(circleId: String, a: MediaAttachment, modifier: Modifier, co
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(MM.space.xs),
             modifier = Modifier.padding(MM.space.m)
         ) {
             Box(
-                Modifier.size(48.dp).clip(CircleShape).background(CirclesPalette.Accent.copy(alpha = 0.15f)),
+                Modifier
+                    .size(48.dp)
+                    .clip(MM.radius.pill)
+                    .background(CirclesPalette.Accent.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
                 if (loading) {
@@ -228,79 +275,216 @@ private fun PdfTile(circleId: String, a: MediaAttachment, modifier: Modifier, co
             }
             Text(
                 a.name ?: "Document.pdf",
-                style = MM.type.bodyStrong.copy(fontSize = 12.5.sp),
+                style = MM.type.bodyStrong,
                 color = MM.colors.ink,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
             Text(
                 formatBytes(a.bytes),
-                style = MM.type.caption.copy(fontSize = 11.sp),
+                style = MM.type.caption,
                 color = MM.colors.inkSecondary
             )
         }
     }
 }
 
-/** A video on a post, as a tile: the length and size, and a play button. */
+/** Extracts the initial frame from a local video file. */
+private fun extractVideoThumbnail(file: File): Bitmap? {
+    return runCatching {
+        MediaMetadataRetriever().use { retriever ->
+            retriever.setDataSource(file.absolutePath)
+            retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.getFrameAtTime(0)
+        }
+    }.getOrNull()
+}
+
+/** A video on a post, as a tile: thumbnail frame, length and size pill, and a play button. */
 @Composable
 private fun VideoTile(circleId: String, a: MediaAttachment, modifier: Modifier, contentDescription: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(false) }
-    var videoFile by remember { mutableStateOf<File?>(null) }
+    var videoFile by remember {
+        mutableStateOf(
+            CircleMediaCache.getCachedFile(
+                context,
+                a.path,
+                if (a.mime == "video/webm") "webm" else "mp4"
+            )
+        )
+    }
+    val thumbnail by produceState<ImageBitmap?>(initialValue = null, videoFile) {
+        val file = videoFile ?: return@produceState
+        val bmp = withContext(Dispatchers.IO) {
+            extractVideoThumbnail(file)
+        }
+        value = bmp?.asImageBitmap()
+    }
+    var showPlayer by remember { mutableStateOf<File?>(null) }
+
     Box(
         modifier
             .background(MM.colors.surfaceSunk)
             .clickable(enabled = !loading) {
-                loading = true
-                scope.launch {
-                    videoFile = CircleMediaCache.fetchToFile(context, circleId, a.path, if (a.mime == "video/webm") "webm" else "mp4")
-                    loading = false
+                val current = videoFile
+                if (current != null) {
+                    showPlayer = current
+                } else {
+                    loading = true
+                    scope.launch {
+                        val ext = if (a.mime == "video/webm") "webm" else "mp4"
+                        val file = CircleMediaCache.fetchToFile(context, circleId, a.path, ext)
+                        videoFile = file
+                        loading = false
+                        if (file != null) {
+                            showPlayer = file
+                        }
+                    }
                 }
             }
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center
     ) {
+        if (thumbnail != null) {
+            Image(
+                bitmap = thumbnail!!,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MM.colors.scrim.copy(alpha = 0.45f))
+            )
+        }
         Box(
-            Modifier.size(52.dp).clip(CircleShape).background(CirclesPalette.Accent),
+            Modifier
+                .size(52.dp)
+                .clip(MM.radius.pill)
+                .background(CirclesPalette.Accent),
             contentAlignment = Alignment.Center
         ) {
             if (loading) {
-                CircularProgressIndicator(Modifier.size(22.dp), color = CirclesPalette.White, strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.size(22.dp), color = FixedWhite, strokeWidth = 2.dp)
             } else {
-                Icon(Icons.Rounded.PlayArrow, null, tint = CirclesPalette.White, modifier = Modifier.size(28.dp))
+                Icon(Icons.Rounded.PlayArrow, null, tint = FixedWhite, modifier = Modifier.size(28.dp))
             }
         }
-        Text(
-            listOfNotNull(a.durationMs?.takeIf { it > 0 }?.let(::formatDuration), formatBytes(a.bytes)).joinToString(" · "),
-            style = MM.type.caption,
-            color = MM.colors.inkSecondary,
-            modifier = Modifier.align(Alignment.BottomStart).padding(MM.space.s)
-        )
+        val pillInfo = listOfNotNull(
+            a.durationMs?.takeIf { it > 0 }?.let(::formatDuration),
+            formatBytes(a.bytes)
+        ).joinToString(" · ")
+        if (pillInfo.isNotBlank()) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(MM.space.s)
+                    .clip(MM.radius.pill)
+                    .background(MM.colors.scrim.copy(alpha = 0.7f))
+                    .padding(horizontal = MM.space.s, vertical = MM.space.xs)
+            ) {
+                Text(
+                    pillInfo,
+                    style = MM.type.caption,
+                    color = FixedWhite
+                )
+            }
+        }
     }
-    videoFile?.let { file -> VideoPlayerDialog(file) { videoFile = null } }
+    showPlayer?.let { file -> VideoPlayerDialog(file) { showPlayer = null } }
 }
 
-/** A fullscreen video player for a file already on disk. */
+/** A fullscreen video player with media controls for a file already on disk. */
 @Composable
 fun VideoPlayerDialog(file: File, onDismiss: () -> Unit) {
+    var isPreparing by remember { mutableStateOf(true) }
+    var playbackError by remember { mutableStateOf(false) }
+
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(MM.colors.background)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(MM.colors.scrim.copy(alpha = 0.96f))
+        ) {
             AndroidView(
                 factory = { ctx ->
                     VideoView(ctx).apply {
                         setVideoPath(file.absolutePath)
-                        setOnPreparedListener { mp -> mp.isLooping = false; start() }
+                        val controller = MediaController(ctx)
+                        controller.setAnchorView(this)
+                        setMediaController(controller)
+                        setOnPreparedListener { mp ->
+                            isPreparing = false
+                            playbackError = false
+                            mp.isLooping = false
+                            start()
+                        }
+                        setOnErrorListener { _, _, _ ->
+                            isPreparing = false
+                            playbackError = true
+                            true
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxSize().align(Alignment.Center)
             )
-            IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).padding(MM.space.m)) {
-                Icon(Icons.Rounded.Close, "Close video", tint = MM.colors.ink)
+
+            if (isPreparing) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(36.dp),
+                        color = FixedWhite,
+                        strokeWidth = 3.dp
+                    )
+                }
+            }
+
+            if (playbackError) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(MM.space.s),
+                        modifier = Modifier.padding(MM.space.l)
+                    ) {
+                        Text(
+                            "Unable to play video",
+                            style = MM.type.bodyStrong,
+                            color = FixedWhite
+                        )
+                        Text(
+                            "The video format may not be supported.",
+                            style = MM.type.caption,
+                            color = FixedWhite.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+            }
+
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(MM.space.m)
+            ) {
+                Icon(Icons.Rounded.Close, "Close video", tint = FixedWhite)
             }
         }
     }
+}
+
+private sealed interface ImageLoadState {
+    data object Loading : ImageLoadState
+    data object Error : ImageLoadState
+    data class Success(val bitmap: ImageBitmap, val bytes: ByteArray) : ImageLoadState
 }
 
 /**
@@ -317,100 +501,420 @@ fun MediaImage(
 ) {
     val context = LocalContext.current
     var showFull by remember { mutableStateOf(false) }
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, circleId, path) {
-        value = null
-        if (path == null) return@produceState
-        val bytes = CircleMediaCache.fetch(context, circleId, path) ?: return@produceState
-        value = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    var retryKey by remember { mutableStateOf(0) }
+
+    val loadState by produceState<ImageLoadState>(initialValue = ImageLoadState.Loading, circleId, path, retryKey) {
+        value = ImageLoadState.Loading
+        if (path.isNullOrBlank()) {
+            value = ImageLoadState.Error
+            return@produceState
+        }
+        val bytes = CircleMediaCache.fetch(context, circleId, path)
+        if (bytes == null) {
+            value = ImageLoadState.Error
+            return@produceState
+        }
+        val bmp = withContext(Dispatchers.Default) {
+            decodeSampledBitmap(bytes, 2048)?.asImageBitmap()
+        }
+        value = if (bmp != null) ImageLoadState.Success(bmp, bytes) else ImageLoadState.Error
     }
-    val loaded = bitmap
-    if (loaded != null) {
-        val imgMod = if (allowFullscreen) modifier.clickable { showFull = true } else modifier
-        Image(loaded, contentDescription, imgMod, contentScale = ContentScale.Crop)
-        if (showFull) {
-            Dialog(onDismissRequest = { showFull = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-                Box(Modifier.fillMaxSize().background(MM.colors.background.copy(alpha = 0.96f)).clickable { showFull = false }) {
-                    Image(loaded, contentDescription, Modifier.fillMaxSize().padding(MM.space.m), contentScale = ContentScale.Fit)
-                    IconButton(onClick = { showFull = false }, modifier = Modifier.align(Alignment.TopEnd).padding(MM.space.m)) {
-                        Icon(Icons.Rounded.Close, "Close preview", tint = MM.colors.ink)
-                    }
+
+    when (val state = loadState) {
+        is ImageLoadState.Loading -> {
+            Box(
+                modifier = modifier.background(MM.colors.surfaceSunk),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = MM.colors.inkSecondary,
+                    strokeWidth = 2.dp
+                )
+            }
+        }
+        is ImageLoadState.Error -> {
+            Box(
+                modifier = modifier
+                    .background(MM.colors.surfaceSunk)
+                    .clickable { retryKey++ },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(MM.space.xs),
+                    modifier = Modifier.padding(MM.space.s)
+                ) {
+                    Icon(
+                        Icons.Rounded.Sync,
+                        contentDescription = "Retry loading image",
+                        tint = MM.colors.inkSecondary,
+                        modifier = Modifier.size(MMSize.iconSmall)
+                    )
+                    Text(
+                        "Tap to retry",
+                        style = MM.type.caption,
+                        color = MM.colors.inkSecondary
+                    )
                 }
             }
         }
-    } else {
-        Box(modifier.background(MM.colors.surfaceSunk))
+        is ImageLoadState.Success -> {
+            val imgMod = if (allowFullscreen) modifier.clickable { showFull = true } else modifier
+            Image(
+                state.bitmap,
+                contentDescription = contentDescription,
+                modifier = imgMod,
+                contentScale = ContentScale.Crop
+            )
+            if (showFull) {
+                FullscreenImageDialog(
+                    bitmap = state.bitmap,
+                    rawBytes = state.bytes,
+                    contentDescription = contentDescription,
+                    onDismiss = { showFull = false }
+                )
+            }
+        }
     }
 }
 
-/** A voice note: play or pause with a 12-bar audio waveform (`circle_chat.html`). */
 @Composable
-fun VoiceBubble(circleId: String, a: MediaAttachment, tint: androidx.compose.ui.graphics.Color = CirclesPalette.Accent) {
+private fun FullscreenImageDialog(
+    bitmap: ImageBitmap,
+    rawBytes: ByteArray,
+    contentDescription: String?,
+    onDismiss: () -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var player by remember { mutableStateOf<MediaPlayer?>(null) }
-    var playing by remember { mutableStateOf(false) }
-    var loading by remember { mutableStateOf(false) }
-    DisposableEffect(a.path) { onDispose { player?.release(); player = null } }
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/jpeg")) { uri: Uri? ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(rawBytes) }
+            }
+        }
+    }
+
+    val onShare: () -> Unit = {
+        scope.launch(Dispatchers.IO) {
+            val cacheDir = File(context.cacheDir, "circles_media").apply { mkdirs() }
+            val shareFile = File(cacheDir, "share_${System.currentTimeMillis()}.jpg")
+            runCatching {
+                shareFile.writeBytes(rawBytes)
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    shareFile
+                )
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/jpeg"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(intent, "Share photo"))
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(MM.colors.scrim.copy(alpha = 0.94f))
+                .clickable(enabled = scale <= 1.05f) { onDismiss() }
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(1f, 5f)
+                            if (scale > 1f) {
+                                offset += pan
+                            } else {
+                                offset = Offset.Zero
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    bitmap,
+                    contentDescription = contentDescription,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(MM.space.m)
+                        .graphicsLayer(
+                            scaleX = scale,
+                            scaleY = scale,
+                            translationX = offset.x,
+                            translationY = offset.y
+                        ),
+                    contentScale = ContentScale.Fit
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(MM.space.m),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onShare) {
+                    Icon(Icons.Rounded.Share, "Share photo", tint = FixedWhite)
+                }
+                IconButton(onClick = { saver.launch("photo_${System.currentTimeMillis()}.jpg") }) {
+                    Icon(Icons.Rounded.Download, "Save photo", tint = FixedWhite)
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, "Close preview", tint = FixedWhite)
+                }
+            }
+        }
+    }
+}
+
+/** Coordinated audio player tracking active voice note playback so only one plays at a time. */
+internal object CircleAudioPlayer {
+    private var activePlayer: MediaPlayer? = null
+    private var activePath: String? = null
+    private var onStopCallback: (() -> Unit)? = null
+
+    fun play(
+        path: String,
+        file: File,
+        onPrepared: (MediaPlayer) -> Unit,
+        onError: () -> Unit,
+        onCompletion: () -> Unit,
+        onStop: () -> Unit
+    ) {
+        stop()
+        activePath = path
+        onStopCallback = onStop
+        try {
+            val player = MediaPlayer().apply {
+                setDataSource(file.absolutePath)
+                setOnPreparedListener { mp ->
+                    if (activePath == path) {
+                        mp.start()
+                        onPrepared(mp)
+                    }
+                }
+                setOnErrorListener { _, _, _ ->
+                    if (activePath == path) {
+                        stop()
+                        onError()
+                    }
+                    true
+                }
+                setOnCompletionListener {
+                    if (activePath == path) {
+                        stop()
+                        onCompletion()
+                    }
+                }
+                prepareAsync()
+            }
+            activePlayer = player
+        } catch (e: Exception) {
+            stop()
+            onError()
+        }
+    }
+
+    fun pause() {
+        runCatching { activePlayer?.pause() }
+    }
+
+    fun resume() {
+        runCatching { activePlayer?.start() }
+    }
+
+    fun getPlayer(path: String): MediaPlayer? {
+        return if (activePath == path) activePlayer else null
+    }
+
+    fun stop() {
+        val cb = onStopCallback
+        onStopCallback = null
+        activePath = null
+        val player = activePlayer
+        activePlayer = null
+        runCatching {
+            if (player != null) {
+                if (player.isPlaying) {
+                    player.stop()
+                }
+                player.reset()
+                player.release()
+            }
+        }
+        cb?.invoke()
+    }
+
+    fun releaseIfCurrent(path: String) {
+        if (activePath == path) {
+            stop()
+        }
+    }
+}
+
+/** A voice note: play or pause with a 12-bar audio waveform and coordinated playback. */
+@Composable
+fun VoiceBubble(
+    circleId: String,
+    a: MediaAttachment,
+    tint: androidx.compose.ui.graphics.Color = CirclesPalette.Accent,
+    onAccent: Boolean = false
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isPlaying by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+    var currentPositionMs by remember { mutableStateOf(0L) }
+    var durationMs by remember { mutableStateOf(a.durationMs ?: 0L) }
+
+    DisposableEffect(a.path) {
+        onDispose {
+            CircleAudioPlayer.releaseIfCurrent(a.path)
+        }
+    }
+
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (isActive) {
+                val mp = CircleAudioPlayer.getPlayer(a.path)
+                if (mp != null && mp.isPlaying) {
+                    currentPositionMs = mp.currentPosition.toLong()
+                    val dur = mp.duration.toLong()
+                    if (dur > 0) durationMs = dur
+                }
+                delay(150)
+            }
+        }
+    }
+
     val bars = remember { listOf(6, 12, 18, 10, 22, 14, 16, 8, 20, 12, 8, 14) }
+    val progress = if (durationMs > 0) (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+
+    val buttonBg = if (onAccent) MM.colors.onAccent else tint
+    val buttonFg = if (onAccent) tint else FixedWhite
+    val inactiveBarColor = if (onAccent) MM.colors.onAccent.copy(alpha = 0.35f) else MM.colors.lineSoft
+    val activeBarColor = if (onAccent) MM.colors.onAccent else tint
+    val textColor = if (onAccent) MM.colors.onAccent.copy(alpha = 0.85f) else MM.colors.inkSecondary
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.padding(vertical = 2.dp)
+        horizontalArrangement = Arrangement.spacedBy(MM.space.s),
+        modifier = Modifier.padding(vertical = MM.space.xs)
     ) {
         IconButton(
             onClick = {
-                val current = player
-                if (current != null) {
-                    if (playing) current.pause() else current.start()
-                    playing = !playing
+                if (isLoading) return@IconButton
+                val mp = CircleAudioPlayer.getPlayer(a.path)
+                if (mp != null) {
+                    if (isPlaying) {
+                        CircleAudioPlayer.pause()
+                        isPlaying = false
+                    } else {
+                        CircleAudioPlayer.resume()
+                        isPlaying = true
+                    }
                     return@IconButton
                 }
-                if (loading) return@IconButton
-                loading = true
+                isLoading = true
                 scope.launch {
                     val file = CircleMediaCache.fetchToFile(context, circleId, a.path, "m4a")
                     if (file != null) {
-                        player = MediaPlayer().apply {
-                            setDataSource(file.absolutePath)
-                            setOnCompletionListener { playing = false }
-                            prepare()
-                            start()
-                        }
-                        playing = true
+                        CircleAudioPlayer.play(
+                            path = a.path,
+                            file = file,
+                            onPrepared = { player ->
+                                isLoading = false
+                                val dur = player.duration.toLong()
+                                if (dur > 0) durationMs = dur
+                                isPlaying = true
+                            },
+                            onError = {
+                                isLoading = false
+                                isPlaying = false
+                                currentPositionMs = 0L
+                            },
+                            onCompletion = {
+                                isLoading = false
+                                isPlaying = false
+                                currentPositionMs = 0L
+                            },
+                            onStop = {
+                                isLoading = false
+                                isPlaying = false
+                                currentPositionMs = 0L
+                            }
+                        )
+                    } else {
+                        isLoading = false
                     }
-                    loading = false
                 }
             },
-            modifier = Modifier.size(36.dp).clip(androidx.compose.foundation.shape.CircleShape).background(tint)
+            modifier = Modifier
+                .size(36.dp)
+                .clip(MM.radius.pill)
+                .background(buttonBg)
         ) {
-            Icon(
-                if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                if (playing) "Pause voice note" else "Play voice note",
-                tint = CirclesPalette.White,
-                modifier = Modifier.size(18.dp)
-            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    color = buttonFg,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause voice note" else "Play voice note",
+                    tint = buttonFg,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
+
+        // 12-bar waveform
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             modifier = Modifier.height(24.dp)
         ) {
             bars.forEachIndexed { idx, h ->
-                val active = playing || idx < 5
+                val active = (isPlaying || currentPositionMs > 0L) && (idx / 12f <= progress)
+                val barColor by animateColorAsState(
+                    targetValue = if (active) activeBarColor else inactiveBarColor,
+                    animationSpec = MM.motion.quick(),
+                    label = "waveform_bar_$idx"
+                )
                 Box(
                     Modifier
                         .width(3.dp)
                         .height(h.dp)
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
-                        .background(if (active) tint else MM.colors.line)
+                        .clip(MM.radius.pill)
+                        .background(barColor)
                 )
             }
         }
+
+        val timeText = if (isPlaying || currentPositionMs > 0L) {
+            "${formatDuration(currentPositionMs)} / ${formatDuration(if (durationMs > 0) durationMs else a.durationMs)}"
+        } else {
+            formatDuration(a.durationMs ?: durationMs)
+        }
+
         Text(
-            formatDuration(a.durationMs),
+            timeText,
             style = MM.type.caption,
-            color = MM.colors.inkSecondary
+            color = textColor
         )
     }
 }
@@ -421,83 +925,290 @@ fun VideoBubble(circleId: String, a: MediaAttachment) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(false) }
-    var videoFile by remember { mutableStateOf<File?>(null) }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-        IconButton(
-            onClick = {
-                if (loading) return@IconButton
-                loading = true
-                scope.launch {
-                    val ext = if (a.mime == "video/webm") "webm" else "mp4"
-                    videoFile = CircleMediaCache.fetchToFile(context, circleId, a.path, ext)
-                    loading = false
+    var videoFile by remember {
+        mutableStateOf(
+            CircleMediaCache.getCachedFile(
+                context,
+                a.path,
+                if (a.mime == "video/webm") "webm" else "mp4"
+            )
+        )
+    }
+    val thumbnail by produceState<ImageBitmap?>(initialValue = null, videoFile) {
+        val file = videoFile ?: return@produceState
+        val bmp = withContext(Dispatchers.IO) {
+            extractVideoThumbnail(file)
+        }
+        value = bmp?.asImageBitmap()
+    }
+    var showPlayer by remember { mutableStateOf<File?>(null) }
+
+    Box(
+        modifier = Modifier
+            .size(width = 200.dp, height = 124.dp)
+            .clip(MM.radius.card)
+            .background(MM.colors.surfaceSunk)
+            .clickable(enabled = !loading) {
+                val current = videoFile
+                if (current != null) {
+                    showPlayer = current
+                } else {
+                    loading = true
+                    scope.launch {
+                        val ext = if (a.mime == "video/webm") "webm" else "mp4"
+                        val file = CircleMediaCache.fetchToFile(context, circleId, a.path, ext)
+                        videoFile = file
+                        loading = false
+                        if (file != null) {
+                            showPlayer = file
+                        }
+                    }
                 }
             },
-            modifier = Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).background(MM.colors.accent)
-        ) {
-            Icon(Icons.Rounded.Videocam, "Play video", tint = MM.colors.surface)
-        }
-        Column {
-            Text(a.name ?: "Video", style = MM.type.bodyStrong, color = MM.colors.ink)
-            Text(
-                listOfNotNull(a.durationMs?.takeIf { it > 0 }?.let(::formatDuration), formatBytes(a.bytes), if (loading) "Loading…" else null).joinToString(" · "),
-                style = MM.type.caption, color = MM.colors.inkSecondary
+        contentAlignment = Alignment.Center
+    ) {
+        if (thumbnail != null) {
+            Image(
+                bitmap = thumbnail!!,
+                contentDescription = a.name ?: "Video preview",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
             )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MM.colors.scrim.copy(alpha = 0.35f))
+            )
+        } else {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MM.colors.surfaceSunk),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Videocam,
+                    contentDescription = null,
+                    tint = MM.colors.inkSecondary.copy(alpha = 0.4f),
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+        }
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(MM.radius.pill)
+                .background(CirclesPalette.Accent),
+            contentAlignment = Alignment.Center
+        ) {
+            if (loading) {
+                CircularProgressIndicator(Modifier.size(20.dp), color = FixedWhite, strokeWidth = 2.dp)
+            } else {
+                Icon(Icons.Rounded.PlayArrow, "Play video", tint = FixedWhite, modifier = Modifier.size(24.dp))
+            }
+        }
+        val pillInfo = listOfNotNull(
+            a.durationMs?.takeIf { it > 0 }?.let(::formatDuration),
+            formatBytes(a.bytes),
+            if (loading) "Loading…" else null
+        ).joinToString(" · ")
+        if (pillInfo.isNotBlank()) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(MM.space.xs)
+                    .clip(MM.radius.pill)
+                    .background(MM.colors.scrim.copy(alpha = 0.7f))
+                    .padding(horizontal = MM.space.s, vertical = 2.dp)
+            ) {
+                Text(
+                    pillInfo,
+                    style = MM.type.caption,
+                    color = FixedWhite
+                )
+            }
         }
     }
-    videoFile?.let { file -> VideoPlayerDialog(file) { videoFile = null } }
+    showPlayer?.let { file -> VideoPlayerDialog(file) { showPlayer = null } }
 }
 
-/** A file: its name and size, and a save action that writes the bytes where the person chooses. */
+/** A file: its name and size, clickable to open in PDF viewer (fallback to save), plus a save action. */
 @Composable
 fun FileBubble(circleId: String, a: MediaAttachment) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var pending by remember { mutableStateOf<ByteArray?>(null) }
-    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(a.mime)) { uri: Uri? ->
-        val bytes = pending
-        if (uri != null && bytes != null) context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-        pending = null
-    }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
-        Icon(Icons.Rounded.InsertDriveFile, null, tint = MM.colors.inkSecondary)
-        Column {
-            Text(a.name ?: "File", style = MM.type.bodyStrong, color = MM.colors.ink)
-            Text("${formatBytes(a.bytes)} · PDF", style = MM.type.caption, color = MM.colors.inkSecondary)
+    var loading by remember { mutableStateOf(false) }
+    var pendingSaveBytes by remember { mutableStateOf<ByteArray?>(null) }
+
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(a.mime.ifBlank { "application/pdf" })) { uri: Uri? ->
+        val bytes = pendingSaveBytes
+        if (uri != null && bytes != null) {
+            runCatching { context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } }
         }
-        TextAction("Save", {
+        pendingSaveBytes = null
+    }
+
+    val openFile: () -> Unit = {
+        if (!loading) {
+            loading = true
+            scope.launch {
+                val ext = if (a.isPdf || a.mime == "application/pdf") "pdf" else "bin"
+                val file = CircleMediaCache.fetchToFile(context, circleId, a.path, ext)
+                loading = false
+                if (file != null) {
+                    val opened = runCatching {
+                        val uri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            file
+                        )
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, if (a.isPdf) "application/pdf" else a.mime)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Open file"))
+                        true
+                    }.getOrDefault(false)
+
+                    if (!opened) {
+                        val bytes = runCatching { file.readBytes() }.getOrNull()
+                        if (bytes != null) {
+                            pendingSaveBytes = bytes
+                            saver.launch(a.name ?: "document.$ext")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val onSave: () -> Unit = {
+        if (!loading) {
             scope.launch {
                 val bytes = CircleMediaCache.fetch(context, circleId, a.path) ?: return@launch
-                pending = bytes
-                saver.launch(a.name ?: "file.pdf")
+                pendingSaveBytes = bytes
+                saver.launch(a.name ?: "document.pdf")
             }
-        })
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .clip(MM.radius.card)
+            .clickable(enabled = !loading, onClick = openFile)
+            .padding(MM.space.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MM.space.m)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(MM.radius.pill)
+                .background(MM.colors.surfaceSunk),
+            contentAlignment = Alignment.Center
+        ) {
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = MM.colors.accent,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    Icons.Rounded.InsertDriveFile,
+                    contentDescription = null,
+                    tint = MM.colors.accent,
+                    modifier = Modifier.size(MMSize.iconSmall)
+                )
+            }
+        }
+        Column(modifier = Modifier.weight(1f, fill = false)) {
+            Text(
+                a.name ?: "File",
+                style = MM.type.bodyStrong,
+                color = MM.colors.ink,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            val subtext = listOfNotNull(
+                formatBytes(a.bytes),
+                if (a.isPdf) "PDF" else null,
+                if (loading) "Opening…" else null
+            ).joinToString(" · ")
+            Text(
+                subtext,
+                style = MM.type.caption,
+                color = MM.colors.inkSecondary
+            )
+        }
+        TextAction("Save", onSave)
     }
 }
 
 /**
+ * Asynchronously reads a picked document into memory on Dispatchers.IO.
+ */
+suspend fun readPickedAsync(context: Context, uri: Uri): PickedFile? = withContext(Dispatchers.IO) {
+    readPicked(context, uri)
+}
+
+/**
  * Reads a picked document into memory. Every photo is re-encoded as a JPEG, which drops EXIF metadata such as
- * GPS location. Oversized photos are also shrunk. Other files are sent as they are; large ones are refused upstream.
+ * GPS location. Oversized photos are shrunk with inSampleSize so the longest side is <= 2048 px.
+ * Videos stream with a bounded check to avoid allocating huge arrays.
  */
 fun readPicked(context: Context, uri: Uri): PickedFile? {
     val resolver = context.contentResolver
     val mime = resolver.getType(uri) ?: return null
-    // A video is checked by size before it is read, so a long clip can't exhaust memory.
-    if (mime.startsWith("video/")) {
-        val size = resolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
-        if (size > MediaKind.Video.maxBytes) return null
-    }
-    val raw = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+
     val name = resolver.query(uri, null, null, null, null)?.use { c ->
         val index = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
         if (c.moveToFirst() && index >= 0) c.getString(index) else null
     }
+
     if (mime.startsWith("image/")) {
-        // Refuse a photo we can't decode rather than send it with its metadata intact.
-        return reencodeToJpeg(raw)?.let { PickedFile(it, "image/jpeg", name) }
+        val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { input ->
+            BitmapFactory.decodeStream(input, null, boundsOptions)
+        } ?: return null
+
+        if (boundsOptions.outWidth <= 0 || boundsOptions.outHeight <= 0) return null
+
+        var sampleSize = 1
+        val longest = maxOf(boundsOptions.outWidth, boundsOptions.outHeight)
+        while (longest / sampleSize.toFloat() > 2048f) {
+            sampleSize *= 2
+        }
+
+        val decodeOptions = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+        }
+        val decoded = resolver.openInputStream(uri)?.use { input ->
+            BitmapFactory.decodeStream(input, null, decodeOptions)
+        } ?: return null
+
+        val finalBitmap = if (maxOf(decoded.width, decoded.height) > 2048) {
+            val scale = 2048f / maxOf(decoded.width, decoded.height)
+            Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt(), (decoded.height * scale).toInt(), true)
+        } else {
+            decoded
+        }
+
+        val out = ByteArrayOutputStream()
+        finalBitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+        val jpegBytes = out.toByteArray()
+        if (jpegBytes.isEmpty() || jpegBytes.size > MediaKind.Image.maxBytes) return null
+        return PickedFile(jpegBytes, "image/jpeg", name)
     }
+
     if (mime.startsWith("video/")) {
-        if (raw.size > MediaKind.Video.maxBytes) return null
+        val size = runCatching { resolver.openFileDescriptor(uri, "r")?.use { it.statSize } }.getOrNull() ?: -1L
+        if (size > MediaKind.Video.maxBytes) return null
+
+        val raw = resolver.openInputStream(uri)?.use { stream ->
+            readStreamBounded(stream, MediaKind.Video.maxBytes)
+        } ?: return null
+
         val durationMs = runCatching {
             MediaMetadataRetriever().use { r ->
                 r.setDataSource(context, uri)
@@ -506,7 +1217,25 @@ fun readPicked(context: Context, uri: Uri): PickedFile? {
         }.getOrNull()
         return PickedFile(raw, mime, name, durationMs)
     }
+
+    val raw = resolver.openInputStream(uri)?.use { stream ->
+        readStreamBounded(stream, MediaKind.File.maxBytes)
+    } ?: return null
     return PickedFile(raw, mime, name)
+}
+
+private fun readStreamBounded(stream: InputStream, maxBytes: Long): ByteArray? {
+    val buffer = ByteArray(16384)
+    val out = ByteArrayOutputStream()
+    var total = 0L
+    while (true) {
+        val n = stream.read(buffer)
+        if (n == -1) break
+        total += n
+        if (total > maxBytes) return null
+        out.write(buffer, 0, n)
+    }
+    return out.toByteArray()
 }
 
 /**
@@ -514,7 +1243,16 @@ fun readPicked(context: Context, uri: Uri): PickedFile? {
  * Null when the picture can't be decoded or still won't fit.
  */
 private fun reencodeToJpeg(bytes: ByteArray): ByteArray? {
-    var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sampleSize = 1
+    val longest = maxOf(bounds.outWidth, bounds.outHeight)
+    while (longest / sampleSize.toFloat() > 2048f) {
+        sampleSize *= 2
+    }
+    val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+    var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
     val scale = minOf(1f, 2048f / maxOf(bitmap.width, bitmap.height))
     if (scale < 1f) bitmap = Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
     val out = ByteArrayOutputStream()

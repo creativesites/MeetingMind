@@ -14,8 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -34,6 +32,7 @@ import com.craftflowtechnologies.meetingmind.core.biblestudy.StudyJournal
 import java.time.LocalDate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -45,10 +44,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.Comment
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
+import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.scripture.PassageResult
@@ -95,7 +95,7 @@ fun DevotionalPickerSheet(onPick: (ClassicReading) -> Unit, onDismiss: () -> Uni
     CircleSheet(onDismiss) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text("Share Devotional", style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                Text("Share Devotional", style = MM.type.title.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
                 Text(classics.title, style = MM.type.caption, color = MM.colors.inkSecondary)
             }
             IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close", tint = MM.colors.inkSecondary) }
@@ -104,21 +104,21 @@ fun DevotionalPickerSheet(onPick: (ClassicReading) -> Unit, onDismiss: () -> Uni
         // Today's reading highlighted card
         today?.let { t ->
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = MM.radius.card,
                 color = CirclesPalette.AccentSoft,
                 border = BorderStroke(1.dp, CirclesPalette.Accent.copy(alpha = 0.3f)),
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onPick(t); onDismiss() }
+                modifier = Modifier.fillMaxWidth().clip(MM.radius.card).clickable { onPick(t); onDismiss() }
             ) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Rounded.AutoStories, contentDescription = null, tint = CirclesPalette.Accent, modifier = Modifier.size(16.dp))
-                            Text("Today's Reading", style = MM.type.bodyStrong.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold), color = CirclesPalette.Accent)
+                            Text("Today's Reading", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold), color = CirclesPalette.Accent)
                         }
-                        Text(t.date, style = MM.type.caption.copy(fontSize = 11.sp), color = MM.colors.inkSecondary)
+                        Text(t.date, style = MM.type.caption, color = MM.colors.inkSecondary)
                     }
-                    Text(t.heading.ifBlank { t.referenceText }, style = MM.type.title.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold), color = MM.colors.ink)
-                    Text("“${t.keyText.take(160)}…”", style = MM.type.scripture.copy(fontSize = 12.5.sp), color = MM.colors.inkSecondary, maxLines = 2)
+                    Text(t.heading.ifBlank { t.referenceText }, style = MM.type.title.copy(fontWeight = FontWeight.SemiBold), color = MM.colors.ink)
+                    Text("“${t.keyText.take(160)}…”", style = MM.type.scripture, color = MM.colors.inkSecondary, maxLines = 2)
                     PrimaryButton("Share Today's Devotional", { onPick(t); onDismiss() }, modifier = Modifier.fillMaxWidth())
                 }
             }
@@ -131,14 +131,14 @@ fun DevotionalPickerSheet(onPick: (ClassicReading) -> Unit, onDismiss: () -> Uni
         Column(Modifier.fillMaxWidth().heightIn(max = 280.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             filtered.forEach { r ->
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = MM.radius.card,
                     color = MM.colors.surfaceSunk,
                     border = BorderStroke(1.dp, MM.colors.line),
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onPick(r); onDismiss() }
+                    modifier = Modifier.fillMaxWidth().clip(MM.radius.card).clickable { onPick(r); onDismiss() }
                 ) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(r.heading.ifBlank { r.referenceText }, style = MM.type.bodyStrong.copy(fontSize = 13.5.sp), color = MM.colors.ink, maxLines = 1)
+                            Text(r.heading.ifBlank { r.referenceText }, style = MM.type.bodyStrong, color = MM.colors.ink, maxLines = 1)
                             Text("${r.date} · ${r.referenceText}", style = MM.type.caption, color = MM.colors.inkSecondary)
                         }
                         Icon(Icons.Rounded.AutoStories, contentDescription = null, tint = CirclesPalette.Accent, modifier = Modifier.size(18.dp))
@@ -159,7 +159,7 @@ fun StudyPickerSheet(onPick: (title: String, reference: String?, excerpt: String
     CircleSheet(onDismiss) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text("Share from Your Study", style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold), color = MM.colors.ink)
+                Text("Share from Your Study", style = MM.type.title.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
                 Text("Select an entry from your study journal", style = MM.type.caption, color = MM.colors.inkSecondary)
             }
             IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close", tint = MM.colors.inkSecondary) }
@@ -167,7 +167,7 @@ fun StudyPickerSheet(onPick: (title: String, reference: String?, excerpt: String
 
         if (entries.isEmpty()) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = MM.radius.card,
                 color = MM.colors.surfaceSunk,
                 border = BorderStroke(1.dp, MM.colors.line),
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
@@ -189,10 +189,10 @@ fun StudyPickerSheet(onPick: (title: String, reference: String?, excerpt: String
                 entries.forEach { note ->
                     val excerpt = note.plainText.take(300)
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = MM.radius.card,
                         color = MM.colors.surfaceSunk,
                         border = BorderStroke(1.dp, MM.colors.line),
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable {
+                        modifier = Modifier.fillMaxWidth().clip(MM.radius.card).clickable {
                             onPick(note.title, null, excerpt)
                             onDismiss()
                         }
@@ -200,7 +200,7 @@ fun StudyPickerSheet(onPick: (title: String, reference: String?, excerpt: String
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(note.title.ifBlank { "Untitled Study Note" }, style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold), color = MM.colors.ink)
                             if (excerpt.isNotBlank()) {
-                                Text(excerpt, style = MM.type.caption.copy(lineHeight = 16.sp), color = MM.colors.inkSecondary, maxLines = 3)
+                                Text(excerpt, style = MM.type.caption, color = MM.colors.inkSecondary, maxLines = 3)
                             }
                         }
                     }
@@ -222,34 +222,50 @@ fun ComposerSheet(
     onRemovePhoto: (MediaAttachment) -> Unit = {},
     onTypeChange: (PostType) -> Unit = {},
     onPhoto: (PickedFile) -> Unit = {},
-    onPhotoRefused: () -> Unit = {}
+    onPhotoRefused: () -> Unit = {},
+    uploading: Boolean = state.uploading
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var videoNotice by remember { mutableStateOf<String?>(null) }
     var showDevotionalPicker by remember { mutableStateOf(false) }
     var showStudyPicker by remember { mutableStateOf(false) }
     var selectedDevotional by remember { mutableStateOf<ClassicReading?>(null) }
     var selectedStudyNote by remember { mutableStateOf<Triple<String, String?, String>?>(null) }
+    val isUploading = uploading || state.uploading
+    val attachmentsFull = state.attachments.size >= 4
 
     // Multi-modal media pickers
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
-        if (uri != null) readPicked(context, uri)?.let { onPhoto(it) } ?: onPhotoRefused()
+        if (uri != null) {
+            scope.launch {
+                val f = readPickedAsync(context, uri)
+                if (f != null) onPhoto(f) else onPhotoRefused()
+            }
+        }
     }
     val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) {
-            val file = readPicked(context, uri)
-            if (file != null) {
-                if (file.name.orEmpty().endsWith(".mov", ignoreCase = true) || file.name.orEmpty().endsWith(".3gp", ignoreCase = true) || file.mime.contains("quicktime") || file.mime.contains("3gpp")) {
-                    videoNotice = "MOV and 3GPP formats are not supported yet. Please select an MP4 or WebM video."
-                } else {
-                    videoNotice = null
-                    onPhoto(file)
-                }
-            } else onPhotoRefused()
+            scope.launch {
+                val file = readPickedAsync(context, uri)
+                if (file != null) {
+                    if (file.name.orEmpty().endsWith(".mov", ignoreCase = true) || file.name.orEmpty().endsWith(".3gp", ignoreCase = true) || file.mime.contains("quicktime") || file.mime.contains("3gpp")) {
+                        videoNotice = "MOV and 3GPP formats are not supported yet. Please select an MP4 or WebM video."
+                    } else {
+                        videoNotice = null
+                        onPhoto(file)
+                    }
+                } else onPhotoRefused()
+            }
         }
     }
     val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        if (uri != null) readPicked(context, uri)?.let { onPhoto(it) } ?: onPhotoRefused()
+        if (uri != null) {
+            scope.launch {
+                val f = readPickedAsync(context, uri)
+                if (f != null) onPhoto(f) else onPhotoRefused()
+            }
+        }
     }
 
     val type = state.type ?: return
@@ -297,13 +313,13 @@ fun ComposerSheet(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         if (circle.isWork) "WORK POST" else "FAITH POST",
-                        style = MM.type.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                        style = MM.type.caption.copy(fontWeight = FontWeight.Bold),
                         color = CirclesPalette.Accent
                     )
                 }
                 Text(
                     type.verb,
-                    style = MM.type.title.copy(fontSize = 22.sp, fontWeight = FontWeight.Bold),
+                    style = MM.type.title.copy(fontWeight = FontWeight.Bold),
                     color = MM.colors.ink
                 )
                 Text(
@@ -334,10 +350,10 @@ fun ComposerSheet(
         // Devotional selector & preview card
         if (type == PostType.Devotional) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = MM.radius.card,
                 color = CirclesPalette.WarmBg,
                 border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                modifier = Modifier.fillMaxWidth().clip(MM.radius.card)
             ) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -349,20 +365,20 @@ fun ComposerSheet(
                             Icon(Icons.Rounded.AutoStories, contentDescription = null, tint = CirclesPalette.WarmInk, modifier = Modifier.size(16.dp))
                             Text(
                                 selectedDevotional?.heading?.ifBlank { "Devotional Reading" } ?: "Devotional Reading",
-                                style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp),
+                                style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
                                 color = CirclesPalette.WarmInk
                             )
                         }
                         Text(
                             selectedDevotional?.date ?: "Today",
-                            style = MM.type.caption.copy(fontSize = 11.sp),
+                            style = MM.type.caption,
                             color = CirclesPalette.WarmInk.copy(alpha = 0.8f)
                         )
                     }
                     selectedDevotional?.let { d ->
                         Text(
                             "“${d.keyText}”",
-                            style = MM.type.scripture.copy(fontSize = 13.sp, lineHeight = 19.sp),
+                            style = MM.type.scripture,
                             color = MM.colors.ink
                         )
                         Text(d.referenceText, style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.WarmInk)
@@ -380,10 +396,10 @@ fun ComposerSheet(
         // Study selector & preview card
         if (type == PostType.Study) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = MM.radius.card,
                 color = CirclesPalette.WarmBg,
                 border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                modifier = Modifier.fillMaxWidth().clip(MM.radius.card)
             ) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -395,13 +411,13 @@ fun ComposerSheet(
                             Icon(Icons.Rounded.Bookmark, contentDescription = null, tint = CirclesPalette.WarmInk, modifier = Modifier.size(16.dp))
                             Text(
                                 selectedStudyNote?.first ?: "Bible Study Entry",
-                                style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp),
+                                style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
                                 color = CirclesPalette.WarmInk
                             )
                         }
                     }
                     selectedStudyNote?.let { n ->
-                        Text("“${n.third}”", style = MM.type.scripture.copy(fontSize = 13.sp, lineHeight = 19.sp), color = MM.colors.ink, maxLines = 4)
+                        Text("“${n.third}”", style = MM.type.scripture, color = MM.colors.ink, maxLines = 4)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         SecondaryButton(
@@ -415,7 +431,7 @@ fun ComposerSheet(
 
         // Redesigned modern text field container
         Surface(
-            shape = RoundedCornerShape(18.dp),
+            shape = MM.radius.card,
             color = MM.colors.surface,
             border = BorderStroke(1.dp, MM.colors.line),
             modifier = Modifier.fillMaxWidth()
@@ -459,7 +475,7 @@ fun ComposerSheet(
                 ) {
                     Text(
                         "${state.body.length} / 4000",
-                        style = MM.type.caption.copy(fontSize = 11.sp),
+                        style = MM.type.caption,
                         color = if (state.body.length > 3800) CirclesPalette.RoseInk else MM.colors.inkMuted
                     )
                 }
@@ -475,7 +491,7 @@ fun ComposerSheet(
             ) {
                 state.attachments.forEach { a ->
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = MM.radius.card,
                         color = MM.colors.surfaceSunk,
                         border = BorderStroke(1.dp, MM.colors.line),
                         modifier = Modifier.padding(vertical = 2.dp)
@@ -521,10 +537,10 @@ fun ComposerSheet(
                 )
                 if (parsedRef != null) {
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = MM.radius.card,
                         color = CirclesPalette.WarmBg,
                         border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        modifier = Modifier.fillMaxWidth().clip(MM.radius.card)
                     ) {
                         Column(Modifier.padding(14.dp)) {
                             Row(
@@ -541,14 +557,14 @@ fun ComposerSheet(
                                     )
                                     Text(
                                         parsedRef.display(),
-                                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
                                         color = CirclesPalette.WarmInk
                                     )
                                 }
                                 (passageResult as? PassageResult.Found)?.let { found ->
                                     Text(
                                         found.passage.versionAbbreviation,
-                                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+                                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
                                         color = CirclesPalette.WarmInk.copy(alpha = 0.8f)
                                     )
                                 }
@@ -557,14 +573,14 @@ fun ComposerSheet(
                                 is PassageResult.Found -> {
                                     Text(
                                         "“${passageResult.passage.text.trim().trim('“', '”')}”",
-                                        style = MM.type.scripture.copy(fontSize = 13.5.sp, lineHeight = 20.sp),
+                                        style = MM.type.scripture,
                                         color = MM.colors.ink,
                                         modifier = Modifier.padding(top = 6.dp)
                                     )
                                     if (passageResult.passage.attribution.isNotBlank()) {
                                         Text(
                                             passageResult.passage.attribution,
-                                            style = MM.type.caption.copy(fontSize = 10.5.sp),
+                                            style = MM.type.caption,
                                             color = MM.colors.inkMuted,
                                             modifier = Modifier.padding(top = 4.dp)
                                         )
@@ -579,30 +595,57 @@ fun ComposerSheet(
             }
         }
 
+        if (isUploading) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().clip(MM.radius.pill),
+                    color = MM.colors.accent,
+                    trackColor = MM.colors.track
+                )
+                Text(
+                    "Uploading attachment…",
+                    style = MM.type.caption,
+                    color = MM.colors.inkSecondary
+                )
+            }
+        }
+
         // Modern multi-modal media attachment tray buttons (Photo, Video, PDF)
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SecondaryButton(
-                "Photo",
-                { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                leadingIcon = Icons.Rounded.Image,
-                modifier = Modifier.weight(1f)
-            )
-            SecondaryButton(
-                "Video",
-                { pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
-                leadingIcon = Icons.Rounded.Videocam,
-                modifier = Modifier.weight(1f)
-            )
-            SecondaryButton(
-                "PDF",
-                { pickPdf.launch("application/pdf") },
-                leadingIcon = Icons.Rounded.PictureAsPdf,
-                modifier = Modifier.weight(1f)
-            )
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SecondaryButton(
+                    "Photo",
+                    { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    leadingIcon = Icons.Rounded.Image,
+                    enabled = !attachmentsFull && !isUploading,
+                    modifier = Modifier.weight(1f)
+                )
+                SecondaryButton(
+                    "Video",
+                    { pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
+                    leadingIcon = Icons.Rounded.Videocam,
+                    enabled = !attachmentsFull && !isUploading,
+                    modifier = Modifier.weight(1f)
+                )
+                SecondaryButton(
+                    "PDF",
+                    { pickPdf.launch("application/pdf") },
+                    leadingIcon = Icons.Rounded.PictureAsPdf,
+                    enabled = !attachmentsFull && !isUploading,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            if (attachmentsFull) {
+                Text(
+                    "Up to 4 attachments",
+                    style = MM.type.caption,
+                    color = MM.colors.inkMuted
+                )
+            }
         }
 
         videoNotice?.let { StatusLine(StatusKind.Warning, it) }
@@ -619,11 +662,12 @@ fun ComposerSheet(
 
         PrimaryButton(
             if (state.sending) "Posting..."
+            else if (isUploading) "Uploading..."
             else if (type == PostType.Prayer && circle.settings.prayerApproval) "Send for approval"
             else if (circle.isWork) "Share with team"
             else "Share with circle",
             onSend,
-            enabled = !state.sending && (state.body.isNotBlank() || state.attachments.isNotEmpty() || selectedDevotional != null || selectedStudyNote != null),
+            enabled = !state.sending && !isUploading && (state.body.isNotBlank() || state.attachments.isNotEmpty() || selectedDevotional != null || selectedStudyNote != null),
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -662,7 +706,10 @@ fun ThreadSheet(
     onSend: (String) -> Unit,
     onDeleteComment: (Comment) -> Unit,
     onDismiss: () -> Unit,
-    onMemberClick: ((String) -> Unit)? = null
+    onMemberClick: ((String) -> Unit)? = null,
+    circleId: String? = null,
+    members: List<Member> = emptyList(),
+    isWorkOrLearning: Boolean = false
 ) {
     var text by remember { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
@@ -674,7 +721,7 @@ fun ThreadSheet(
         ) {
             Text(
                 if (thread != null && thread.comments.isNotEmpty()) "Comments (${thread.comments.size})" else "Comments",
-                style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                style = MM.type.title.copy(fontWeight = FontWeight.Bold),
                 color = MM.colors.ink
             )
             IconButton(onClick = onDismiss) {
@@ -684,7 +731,7 @@ fun ThreadSheet(
 
         if (post != null) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = MM.radius.card,
                 color = MM.colors.surfaceSunk,
                 border = BorderStroke(1.dp, MM.colors.line),
                 modifier = Modifier.fillMaxWidth()
@@ -694,14 +741,26 @@ fun ThreadSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        InitialsAvatar(
-                            post.authorName ?: "Member",
-                            size = 28.dp,
-                            modifier = Modifier.clickable { onMemberClick?.invoke(post.authorUid ?: post.authorName.orEmpty()) }
-                        )
+                        if (circleId != null) {
+                            val postAuthorVersion = members.firstOrNull { it.uid == post.authorUid }?.avatarVersion
+                            MemberAvatar(
+                                circleId = circleId,
+                                uid = post.authorUid,
+                                name = post.authorName ?: "Member",
+                                avatarVersion = postAuthorVersion,
+                                size = 28.dp,
+                                modifier = Modifier.clickable { onMemberClick?.invoke(post.authorUid ?: post.authorName.orEmpty()) }
+                            )
+                        } else {
+                            InitialsAvatar(
+                                post.authorName ?: "Member",
+                                size = 28.dp,
+                                modifier = Modifier.clickable { onMemberClick?.invoke(post.authorUid ?: post.authorName.orEmpty()) }
+                            )
+                        }
                         Text(
                             post.authorName ?: "Member",
-                            style = MM.type.bodyStrong.copy(fontSize = 13.sp),
+                            style = MM.type.bodyStrong,
                             color = MM.colors.ink,
                             modifier = Modifier.clickable { onMemberClick?.invoke(post.authorUid ?: post.authorName.orEmpty()) }
                         )
@@ -728,6 +787,37 @@ fun ThreadSheet(
                             color = CirclesPalette.WarmInk
                         )
                     }
+                    if (circleId != null && post.attachments.isNotEmpty()) {
+                        if (post.attachments.size == 1) {
+                            val a = post.attachments.first()
+                            AttachmentTile(
+                                circleId = circleId,
+                                a = a,
+                                modifier = Modifier
+                                    .padding(top = MM.space.xs)
+                                    .fillMaxWidth()
+                                    .heightIn(min = 120.dp, max = 200.dp)
+                                    .clip(MM.radius.card),
+                                contentDescription = if (a.isVideo) "Video attachment" else "Photo attachment"
+                            )
+                        } else {
+                            Column(Modifier.padding(top = MM.space.xs), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                                post.attachments.chunked(2).forEach { rowItems ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MM.space.xs)) {
+                                        rowItems.forEach { a ->
+                                            AttachmentTile(
+                                                circleId = circleId,
+                                                a = a,
+                                                modifier = Modifier.weight(1f).height(100.dp).clip(MM.radius.card),
+                                                contentDescription = if (a.isVideo) "Video attachment" else "Photo attachment"
+                                            )
+                                        }
+                                        if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -737,7 +827,7 @@ fun ThreadSheet(
         if (thread != null) {
             thread.updates.forEach { u ->
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = MM.radius.card,
                     color = CirclesPalette.AccentSoft,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -756,7 +846,8 @@ fun ThreadSheet(
 
             if (thread.comments.isEmpty() && !thread.loading) {
                 Text(
-                    "No comments yet. Be the first to share an encouraging word or prayer.",
+                    if (isWorkOrLearning) "No comments yet. Start the conversation."
+                    else "No comments yet. Be the first to share an encouraging word or prayer.",
                     style = MM.type.secondary,
                     color = MM.colors.inkSecondary,
                     modifier = Modifier.padding(vertical = MM.space.m)
@@ -773,13 +864,25 @@ fun ThreadSheet(
                             verticalAlignment = Alignment.Top,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            InitialsAvatar(
-                                cm.authorName,
-                                size = 36.dp,
-                                modifier = Modifier.clickable { onMemberClick?.invoke(cm.authorUid ?: cm.authorName) }
-                            )
+                            if (circleId != null) {
+                                val commentAuthorVersion = members.firstOrNull { it.uid == cm.authorUid }?.avatarVersion
+                                MemberAvatar(
+                                    circleId = circleId,
+                                    uid = cm.authorUid,
+                                    name = cm.authorName,
+                                    avatarVersion = commentAuthorVersion,
+                                    size = 36.dp,
+                                    modifier = Modifier.clickable { onMemberClick?.invoke(cm.authorUid ?: cm.authorName) }
+                                )
+                            } else {
+                                InitialsAvatar(
+                                    cm.authorName,
+                                    size = 36.dp,
+                                    modifier = Modifier.clickable { onMemberClick?.invoke(cm.authorUid ?: cm.authorName) }
+                                )
+                            }
                             Surface(
-                                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
+                                shape = MM.radius.card,
                                 color = MM.colors.surfaceSunk,
                                 modifier = Modifier.weight(1f)
                             ) {
@@ -791,20 +894,20 @@ fun ThreadSheet(
                                     ) {
                                         Text(
                                             cm.authorName,
-                                            style = MM.type.bodyStrong.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                                            style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
                                             color = MM.colors.ink,
                                             modifier = Modifier.clickable { onMemberClick?.invoke(cm.authorUid ?: cm.authorName) }
                                         )
                                         Text(
                                             relativeTime(now, cm.createdAt),
-                                            style = MM.type.caption.copy(fontSize = 11.sp),
+                                            style = MM.type.caption,
                                             color = MM.colors.inkSecondary
                                         )
                                     }
                                     SelectionContainer {
                                         Text(
                                             cm.body,
-                                            style = MM.type.body.copy(fontSize = 14.sp),
+                                            style = MM.type.body,
                                             color = MM.colors.ink,
                                             modifier = Modifier.padding(top = 4.dp)
                                         )
@@ -842,11 +945,11 @@ fun ThreadSheet(
                 maxLines = 4
             )
             Surface(
-                shape = CircleShape,
+                shape = MM.radius.pill,
                 color = if (text.isNotBlank()) CirclesPalette.Accent else MM.colors.surfaceSunk,
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(CircleShape)
+                    .clip(MM.radius.pill)
                     .clickable(enabled = text.isNotBlank()) {
                         val toSend = text.trim()
                         if (toSend.isNotBlank()) {

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
@@ -25,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,7 +33,6 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
 import com.craftflowtechnologies.meetingmind.core.circles2.Role
 import com.craftflowtechnologies.meetingmind.ui.theme.CirclesFixedColors
@@ -43,23 +42,35 @@ import kotlin.math.abs
 
 /**
  * Color tokens from the MeetingMind Circles Redesign specification (`MeetingMind Circles Redesign.html`).
- * Works harmoniously alongside [MM.colors].
+ * Theme-aware tokens backed by [MM.colors] for light, dark, and user accents.
  */
 object CirclesPalette {
-    val White = CirclesFixedColors.White
-    val Accent = CirclesFixedColors.Accent
-    val AccentSoft = CirclesFixedColors.AccentSoft
-    val AccentDeep = CirclesFixedColors.AccentDeep
-    val CoverStart = CirclesFixedColors.CoverStart
-    val CoverEnd = CirclesFixedColors.CoverEnd
-    val WarmBg = CirclesFixedColors.WarmBg
-    val WarmBorder = CirclesFixedColors.WarmBorder
-    val WarmInk = CirclesFixedColors.WarmInk
-    val GreenBg = CirclesFixedColors.GreenBg
-    val GreenInk = CirclesFixedColors.GreenInk
-    val OnlineDot = CirclesFixedColors.OnlineDot
-    val RoseBg = CirclesFixedColors.RoseBg
-    val RoseInk = CirclesFixedColors.RoseInk
+    val White: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.onAccent
+    val Accent: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.accent
+    val AccentSoft: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.accentWash
+    val AccentDeep: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.accent
+    val CoverStart: Color = CirclesFixedColors.CoverStart
+    val CoverEnd: Color = CirclesFixedColors.CoverEnd
+    val WarmBg: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.goldWash
+    val WarmBorder: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.gold.copy(alpha = 0.25f)
+    val WarmInk: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.goldInk
+    val GreenBg: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.success.copy(alpha = 0.14f)
+    val GreenInk: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.success
+    val OnlineDot: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.success
+    val RoseBg: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.dangerWash
+    val RoseInk: Color
+        @Composable @ReadOnlyComposable get() = MM.colors.danger
 
     val AvatarPairs: List<Pair<Color, Color>> = CirclesFixedColors.AvatarPairs
 
@@ -90,7 +101,7 @@ fun CircleField(
         label = { Text(label, style = MM.type.caption) },
         placeholder = placeholder?.let { { Text(it, style = MM.type.body, color = c.inkMuted) } },
         leadingIcon = leadingIcon,
-        textStyle = MM.type.body.copy(color = c.ink), shape = RoundedCornerShape(14.dp),
+        textStyle = MM.type.body.copy(color = c.ink), shape = MM.radius.small,
         minLines = minLines, maxLines = maxLines, singleLine = singleLine, keyboardOptions = keyboardOptions,
         colors = TextFieldDefaults.colors(
             focusedContainerColor = c.surfaceSunk, unfocusedContainerColor = c.surfaceSunk, disabledContainerColor = c.surfaceSunk,
@@ -134,7 +145,7 @@ fun InitialsAvatar(
         ) {
             Text(
                 initials,
-                style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = if (size <= 32.dp) 11.sp else 13.sp),
+                style = if (size <= 32.dp) MM.type.caption.copy(fontWeight = FontWeight.Bold) else MM.type.secondary.copy(fontWeight = FontWeight.Bold),
                 color = fg
             )
         }
@@ -158,10 +169,10 @@ fun RoleTag(role: Role, modifier: Modifier = Modifier) {
         Role.Admin, Role.Moderator -> CirclesPalette.AccentSoft to CirclesPalette.AccentDeep
         Role.Member -> MM.colors.surfaceSunk to MM.colors.inkSecondary
     }
-    Surface(shape = RoundedCornerShape(999.dp), color = bg, modifier = modifier) {
+    Surface(shape = MM.radius.pill, color = bg, modifier = modifier) {
         Text(
             role.label,
-            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
             color = fg,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
         )
@@ -171,10 +182,10 @@ fun RoleTag(role: Role, modifier: Modifier = Modifier) {
 /** Warm amber title pill badge (e.g., "Pastor", "Youth lead", "Treasurer"). */
 @Composable
 fun TitleTag(title: String, modifier: Modifier = Modifier) {
-    Surface(shape = RoundedCornerShape(999.dp), color = CirclesPalette.WarmBg, modifier = modifier) {
+    Surface(shape = MM.radius.pill, color = CirclesPalette.WarmBg, modifier = modifier) {
         Text(
             title,
-            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
             color = CirclesPalette.WarmInk,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
         )
@@ -194,10 +205,10 @@ fun PostTypeBadge(type: PostType, modifier: Modifier = Modifier) {
         PostType.Blocker -> CirclesPalette.RoseBg to CirclesPalette.RoseInk
         else -> CirclesPalette.AccentSoft to CirclesPalette.AccentDeep
     }
-    Surface(shape = RoundedCornerShape(999.dp), color = bg, modifier = modifier) {
+    Surface(shape = MM.radius.pill, color = bg, modifier = modifier) {
         Text(
             type.label,
-            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
             color = fg,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
         )
@@ -241,9 +252,9 @@ fun MemberInfoSheet(
     onMessage: (com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit,
     onSetTitle: ((com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit)? = null,
     onSetRole: ((com.craftflowtechnologies.meetingmind.core.circles2.Member, Role) -> Unit)? = null,
-    onRemove: ((com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit)? = null
+    onRemove: ((com.craftflowtechnologies.meetingmind.core.circles2.Member) -> Unit)? = null,
+    circleId: String? = null
 ) {
-    val isOnline = isMe || member.lastReadAt > 0L || member.role == Role.Owner
     val canChangeRole = me?.role == Role.Owner && !isMe
     val canRemove = !isMe && me?.role?.isAdmin == true && member.role != Role.Owner && (member.role != Role.Admin || me.role == Role.Owner)
     val canEditTitle = me?.role?.isAdmin == true
@@ -260,11 +271,15 @@ fun MemberInfoSheet(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(MM.space.m)
         ) {
-            InitialsAvatar(member.displayName, size = 64.dp, online = isOnline)
+            if (circleId != null) {
+                MemberAvatar(circleId, member.uid, member.displayName, member.avatarVersion, size = 64.dp)
+            } else {
+                InitialsAvatar(member.displayName, size = 64.dp)
+            }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
                 Text(
                     if (isMe) "${member.displayName} (You)" else member.displayName,
-                    style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                    style = MM.type.title.copy(fontWeight = FontWeight.Bold),
                     color = MM.colors.ink
                 )
                 Row(

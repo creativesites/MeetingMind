@@ -1,6 +1,8 @@
 package com.craftflowtechnologies.meetingmind.ai.faith
 
+import com.craftflowtechnologies.meetingmind.ai.notes.NotePolishEngine
 import com.craftflowtechnologies.meetingmind.core.model.BlockSource
+import com.craftflowtechnologies.meetingmind.core.model.MeetingSummary
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlock
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlockType
 import com.craftflowtechnologies.meetingmind.core.model.ScriptureOrigin
@@ -41,6 +43,9 @@ object SermonNoteBuilder {
     /** The transcript at the end of the note: heading and paragraphs, replaced on every run. */
     const val KEY_TRANSCRIPT = "sermon_transcript"
 
+    /** AI-polished Markdown blocks when [com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.DEEP] is active. */
+    const val KEY_POLISHED = NotePolishEngine.KEY_POLISHED
+
     /**
      * The one plain line shown at the top of a sermon note whose AI notes could not be written.
      * [reason] is a short, user-facing cause, e.g. "no AI model is available on this phone".
@@ -60,27 +65,42 @@ object SermonNoteBuilder {
         unavailableReason: String? = null,
         /** What was spoken (worship already left out), for the transcript section; empty writes none. */
         spoken: List<TranscriptSegment> = emptyList(),
-        speakers: List<Speaker> = emptyList()
+        speakers: List<Speaker> = emptyList(),
+        /** Fallback intelligence summary when [extraction] is unavailable or empty. */
+        summary: MeetingSummary? = null,
+        /** Optional AI-polished Markdown blocks (from [NotePolishEngine] in DEEP mode). */
+        polishedBlocks: List<NoteBlock> = emptyList()
     ): GeneratedSections {
         val bySegment = segments.associateBy { it.id }
         val blocks = mutableListOf<NoteBlock>()
         val refs = mutableListOf<ScriptureRef>()
         val titles = Workflows.template(com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON).sections.associate { it.key to it.title }
 
+        val hasExtraction = extraction != null && !extraction.isEmpty
         // Not AI output, so no AI attribution: the line is about the recording, not written by a model.
-        unavailableReason?.let { reason ->
-            blocks += NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.PARAGRAPH, RichText.plain(unavailableMessage(reason)),
-                source = BlockSource.TRANSCRIPT, sectionKey = KEY_STATUS)
+        // Suppressed when a deep AI polish pass succeeded so the user isn't shown a failure banner on a polished note.
+        if (polishedBlocks.isEmpty()) {
+            unavailableReason?.let { reason ->
+                blocks += NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.PARAGRAPH, RichText.plain(unavailableMessage(reason)),
+                    source = BlockSource.TRANSCRIPT, sectionKey = KEY_STATUS)
+            }
         }
 
         fun heading(key: String, title: String = titles[key] ?: key) {
             blocks += NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.HEADING_2, RichText.plain(title), source = BlockSource.AI, sectionKey = key)
         }
 
-        fun text(key: String, type: NoteBlockType, item: CitedText) {
+        fun text(key: String, type: NoteBlockType, item: CitedText, extraPayload: Map<String, String> = emptyMap()) {
+            val payload = buildMap {
+                putAll(extraPayload)
+                startOf(item.segmentIds, bySegment)?.let {
+                    put(NoteBlock.PAYLOAD_MEETING_ID, meetingId)
+                    put(NoteBlock.PAYLOAD_START_MS, it.toString())
+                }
+            }
             blocks += NoteBlock(
                 NoteRepository.newId("block"), noteId, 0, type, RichText.plain(item.text),
-                payload = startOf(item.segmentIds, bySegment)?.let { mapOf(NoteBlock.PAYLOAD_MEETING_ID to meetingId, NoteBlock.PAYLOAD_START_MS to it.toString()) }.orEmpty(),
+                payload = payload,
                 source = BlockSource.AI, sourceSegmentIds = item.segmentIds, sectionKey = key
             )
         }
@@ -120,9 +140,17 @@ object SermonNoteBuilder {
             }
         }
 
-        extraction?.keyMessage?.let { heading("key_message"); text("key_message", NoteBlockType.PARAGRAPH, it) }
-        extraction?.keyPoints?.takeIf { it.isNotEmpty() }?.let { points ->
-            heading("key_points"); points.forEach { text("key_points", NoteBlockType.NUMBERED, it) }
+        if (polishedBlocks.isEmpty()) {
+            extraction?.keyMessage?.let {
+                heading("key_message")
+                text(
+                    "key_message", NoteBlockType.CALLOUT, it,
+                    mapOf(NoteBlock.PAYLOAD_CALLOUT_KIND to "KEY_TAKEAWAY", NoteBlock.PAYLOAD_CALLOUT_TITLE to "Main message")
+                )
+            }
+            extraction?.keyPoints?.takeIf { it.isNotEmpty() }?.let { points ->
+                heading("key_points"); points.forEach { text("key_points", NoteBlockType.NUMBERED, it) }
+            }
         }
         extraction?.quotes?.takeIf { it.isNotEmpty() }?.let { quotes ->
             heading("quotes")
@@ -139,12 +167,68 @@ object SermonNoteBuilder {
                 )
             }
         }
-        extraction?.application?.let { heading("application"); text("application", NoteBlockType.PARAGRAPH, it) }
+        if (polishedBlocks.isEmpty()) {
+            extraction?.application?.let {
+                heading("application")
+                text(
+                    "application", NoteBlockType.CALLOUT, it,
+                    mapOf(NoteBlock.PAYLOAD_CALLOUT_KIND to "APPLICATION", NoteBlock.PAYLOAD_CALLOUT_TITLE to "Application")
+                )
+            }
+        }
         extraction?.prayerPoints?.takeIf { it.isNotEmpty() }?.let { list ->
             heading("prayer_points"); list.forEach { text("prayer_points", NoteBlockType.BULLET, it) }
         }
         extraction?.reflectionQuestions?.takeIf { it.isNotEmpty() }?.let { list ->
             heading("reflection_questions"); list.forEach { text("reflection_questions", NoteBlockType.BULLET, it) }
+        }
+
+        // If SermonExtraction wasn't available, fall back to summary or polished blocks so the
+        // user still opens a structured, useful sermon note instead of an empty shell.
+        if (!hasExtraction) {
+            if (polishedBlocks.isNotEmpty()) {
+                blocks += polishedBlocks.map { it.copy(noteId = noteId, sectionKey = KEY_POLISHED) }
+            } else if (summary != null) {
+                if (summary.summary.isNotBlank()) {
+                    heading("key_message")
+                    blocks += NoteBlock(
+                        NoteRepository.newId("block"), noteId, 0, NoteBlockType.CALLOUT,
+                        RichText.plain(summary.summary.trim()),
+                        payload = mapOf(
+                            NoteBlock.PAYLOAD_MEETING_ID to meetingId,
+                            NoteBlock.PAYLOAD_CALLOUT_KIND to "KEY_TAKEAWAY",
+                            NoteBlock.PAYLOAD_CALLOUT_TITLE to "Main message"
+                        ),
+                        source = BlockSource.AI, sectionKey = "key_message"
+                    )
+                }
+                if (summary.topics.isNotEmpty()) {
+                    heading("key_points")
+                    summary.topics.filter { it.isNotBlank() }.forEach { topic ->
+                        blocks += NoteBlock(
+                            NoteRepository.newId("block"), noteId, 0, NoteBlockType.NUMBERED,
+                            RichText.plain(topic.trim()),
+                            payload = mapOf(NoteBlock.PAYLOAD_MEETING_ID to meetingId),
+                            source = BlockSource.AI, sectionKey = "key_points"
+                        )
+                    }
+                }
+                if (summary.questions.isNotEmpty()) {
+                    heading("reflection_questions")
+                    summary.questions.filter { it.text.isNotBlank() }.forEach { q ->
+                        blocks += NoteBlock(
+                            NoteRepository.newId("block"), noteId, 0, NoteBlockType.BULLET,
+                            RichText.plain(q.text.trim()),
+                            payload = mapOf(NoteBlock.PAYLOAD_MEETING_ID to meetingId),
+                            source = BlockSource.AI, sectionKey = "reflection_questions"
+                        )
+                    }
+                }
+            }
+        } else if (polishedBlocks.isNotEmpty()) {
+            // In DEEP polish mode, polishedBlocks replaces the redundant key_message/key_points/application
+            // blocks with a richer formatted outline while preserving grounded scripture, quotes, and prayers.
+            blocks += polishedBlocks.map { it.copy(noteId = noteId, sectionKey = KEY_POLISHED) }
         }
 
         // Every passage mentioned, in the order it came up — the sermon's reading list.
@@ -159,12 +243,13 @@ object SermonNoteBuilder {
         // there is speech, so a note without AI notes still has its transcript.
         val transcript = TranscriptBlocks.build(noteId, meetingId, spoken, speakers, sectionKey = KEY_TRANSCRIPT)
         if (transcript.isNotEmpty()) {
+            blocks += NoteBlock(NoteRepository.newId("block"), noteId, 0, NoteBlockType.DIVIDER, source = BlockSource.TRANSCRIPT, sectionKey = KEY_TRANSCRIPT)
             heading(KEY_TRANSCRIPT, "Transcript")
             blocks += transcript
         }
 
         val keys = Workflows.template(com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON).sections
-            .filter { it.source == com.craftflowtechnologies.meetingmind.core.model.SectionSource.AI }.map { it.key }.toSet() + KEY_ALL_SCRIPTURE + KEY_STATUS + KEY_TRANSCRIPT
+            .filter { it.source == com.craftflowtechnologies.meetingmind.core.model.SectionSource.AI }.map { it.key }.toSet() + KEY_ALL_SCRIPTURE + KEY_STATUS + KEY_TRANSCRIPT + KEY_POLISHED
         return GeneratedSections(blocks, refs, keys, endKeys = setOf(KEY_TRANSCRIPT))
     }
 

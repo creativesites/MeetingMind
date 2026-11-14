@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.create
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -76,6 +77,7 @@ import com.craftflowtechnologies.meetingmind.core.create.CreateDesign
 import com.craftflowtechnologies.meetingmind.core.share.BackgroundPack
 import com.craftflowtechnologies.meetingmind.core.share.ShareTarget
 import com.craftflowtechnologies.meetingmind.core.ui.mm.InsetPanel
+import com.craftflowtechnologies.meetingmind.core.ui.mm.LocalAiOpenSettings
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMCard
 import com.craftflowtechnologies.meetingmind.core.ui.mm.MMChip
 import com.craftflowtechnologies.meetingmind.core.ui.mm.PrimaryButton
@@ -85,6 +87,7 @@ import com.craftflowtechnologies.meetingmind.core.ui.mm.SegmentedControl
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusKind
 import com.craftflowtechnologies.meetingmind.core.ui.mm.StatusLine
 import com.craftflowtechnologies.meetingmind.core.ui.mm.TextAction
+import com.craftflowtechnologies.meetingmind.core.ui.mm.looksUnconfiguredAiError
 import com.craftflowtechnologies.meetingmind.ui.theme.MM
 import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 
@@ -177,7 +180,7 @@ fun CreateStudioContent(
                 }
             }
         }
-        Column(Modifier.fillMaxWidth().clip(MM.radius.sheet).background(MM.colors.surfaceRaised)) {
+        Column(Modifier.fillMaxWidth().clip(MM.radius.sheet).background(MM.colors.surfaceRaised).animateContentSize()) {
             SegmentedControl(
                 options = CreateStep.entries.map { it.label },
                 selectedIndex = ui.step.ordinal,
@@ -185,7 +188,7 @@ fun CreateStudioContent(
                 modifier = Modifier.padding(horizontal = MM.space.l, vertical = MM.space.s)
             )
             Column(
-                Modifier.fillMaxWidth().heightIn(max = 340.dp).verticalScroll(rememberScrollState())
+                Modifier.fillMaxWidth().heightIn(max = 380.dp).verticalScroll(rememberScrollState()).animateContentSize()
                     .padding(horizontal = MM.space.l).padding(bottom = MM.space.l),
                 verticalArrangement = Arrangement.spacedBy(MM.space.m)
             ) {
@@ -233,9 +236,21 @@ private fun WordsStep(ui: CreateUi, a: CreateActions) {
         PrimaryButton(if (ui.working == "Writing") "Writing…" else "Write it for me", onClick = a.onWrite, enabled = ui.canWrite)
     }
     ui.status?.let { s ->
+        val openSettings = LocalAiOpenSettings.current
+        val fallbackSettings = s.action == null && s.tone == StatusTone.Error && openSettings != null && looksUnconfiguredAiError(s.text)
+        val actionLabel = s.action?.label ?: if (fallbackSettings) "AI settings" else null
+        val onAction: (() -> Unit)? = if (s.action != null) {
+            { a.onStatusAction(s.action) }
+        } else if (fallbackSettings) {
+            openSettings
+        } else {
+            null
+        }
         StatusLine(
-            kind = if (s.tone == StatusTone.Error) StatusKind.Error else StatusKind.Info, text = s.text,
-            actionLabel = s.action?.label, onAction = s.action?.let { act -> { a.onStatusAction(act) } }
+            kind = if (s.tone == StatusTone.Error) StatusKind.Error else StatusKind.Info,
+            text = s.text,
+            actionLabel = actionLabel,
+            onAction = onAction
         )
     }
     ui.starters?.let { starters ->
@@ -259,7 +274,12 @@ private fun WordsStep(ui: CreateUi, a: CreateActions) {
     SectionLabel("Remix")
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(MM.space.s), verticalAlignment = Alignment.CenterVertically) {
         RemixAction.entries.filter { it.allowedFor(card.source) }.forEach { r ->
-            MMChip(if (ui.working == r.label) "${r.label}…" else r.label, selected = false, onClick = { if (ui.canWrite) a.onRemix(r) })
+            MMChip(
+                label = if (ui.working == r.label) "${r.label}…" else r.label,
+                selected = false,
+                enabled = ui.canWrite,
+                onClick = { a.onRemix(r) }
+            )
         }
         if (card.canUndo) TextAction("Undo", a.onUndo)
     }

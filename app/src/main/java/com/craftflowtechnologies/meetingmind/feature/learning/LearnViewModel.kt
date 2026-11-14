@@ -1,6 +1,7 @@
 package com.craftflowtechnologies.meetingmind.feature.learning
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.craftflowtechnologies.meetingmind.ai.learning.LearningAiEngine
@@ -40,7 +41,9 @@ class LearnViewModel @JvmOverloads constructor(
     private val database: MeetMindDatabase = MeetMindDatabase.getInstance(application),
     val learningRepo: LearningRepository = LearningRepository(database),
     val noteRepo: NoteRepository = NoteRepository(application, database),
-    val aiEngine: LearningAiEngine = LearningAiEngine(),
+    val aiEngine: LearningAiEngine = LearningAiEngine(
+        com.craftflowtechnologies.meetingmind.ai.cloud.CloudAi.transport(application)
+    ),
     private val readingCoordinator: ReadingCoordinator = ReadToMe.coordinator(application)
 ) : AndroidViewModel(application) {
 
@@ -146,7 +149,8 @@ class LearnViewModel @JvmOverloads constructor(
                     _sessionLoadError.value = "Study session not found"
                 }
             } catch (e: Exception) {
-                _sessionLoadError.value = e.message ?: "Failed to load study session"
+                Log.e("LearnViewModel", "Failed to load study session", e)
+                _sessionLoadError.value = "Could not open this study session. Please try again."
             } finally {
                 _isLoadingSession.value = false
             }

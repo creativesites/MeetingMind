@@ -38,7 +38,7 @@ async function uploadVideo(W, uid, circleId, data = new Uint8Array([0, 0, 0, 0x1
   return path;
 }
 
-test("posts: a video can be attached alongside photos, and files still can't", async () => {
+test("posts: a video can be attached alongside photos, and voice notes still can't", async () => {
   const W = world();
   const id = await circle(W);
   const v = await uploadVideo(W, "owner", id);
@@ -49,10 +49,13 @@ test("posts: a video can be attached alongside photos, and files still can't", a
   assert.equal(post.attachments[0].durationMs, 4200);
   assert.deepEqual(post.attachmentPaths, [v]);
 
-  const pdfT = await W.call("owner", "createUploadTicket", { circleId: id, kind: "file", mime: "application/pdf", bytes: 64 });
-  const pdfPath = (await uploadMedia({ env: { MEDIA: W.r2 }, db: W.db, kv: W.kv, uid: "owner", now: NOW,
-    request: new Request(`https://x/v1/media/upload/${pdfT.ticketId}`, { method: "PUT", headers: { "Content-Type": "application/pdf" }, body: pdf() }) }, pdfT.ticketId)).path;
-  assert.equal((await W.err("owner", "createPost", { circleId: id, type: "testimony", body: "x", anonymous: false, attachments: [{ path: pdfPath, mime: "application/pdf", bytes: 64 }] })).code, "bad_request");
+  const voiceT = await W.call("owner", "createUploadTicket", { circleId: id, kind: "voice", mime: "audio/mp4", bytes: 64, durationMs: 3000 });
+  const voiceData = new Uint8Array([0, 0, 0, 0x20, ...new TextEncoder().encode("ftyp"), ...Array(56).fill(1)]);
+  const voicePath = (await uploadMedia({ env: { MEDIA: W.r2 }, db: W.db, kv: W.kv, uid: "owner", now: NOW,
+    request: new Request(`https://x/v1/media/upload/${voiceT.ticketId}`, { method: "PUT", headers: { "Content-Type": "audio/mp4" }, body: voiceData }) }, voiceT.ticketId)).path;
+  const voiceErr = await W.err("owner", "createPost", { circleId: id, type: "testimony", body: "x", anonymous: false, attachments: [{ path: voicePath, mime: "audio/mp4", bytes: 64 }] });
+  assert.equal(voiceErr.code, "bad_request");
+  assert.equal(voiceErr.message, "Posts can only include photos, videos, or PDFs.");
 });
 
 test("avatars: a JPEG is stored once for the user and versioned onto every circle they are in", async () => {

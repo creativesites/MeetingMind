@@ -20,7 +20,7 @@ class GeminiTranslationEngine(
         sourceLanguage: String,
         targetLanguage: String
     ): AiResult<TranslatedTranscript> {
-        if (!transport.isConfigured()) {
+        if (!transport.refreshConfigured()) {
             return AiResult.ModelUnavailable(
                 modelId = DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
                 message = "Translation requires Internet mode and a configured Gemini API key."

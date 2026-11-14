@@ -38,6 +38,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,11 +91,11 @@ internal fun FormattingToolbar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Surface(onClick = onInsert, shape = CircleShape, color = Ink, modifier = Modifier.size(34.dp)) {
-                        Icon(Icons.Filled.Add, contentDescription = "Insert", tint = OnInk, modifier = Modifier.padding(7.dp))
+                    Surface(onClick = onInsert, shape = CircleShape, color = Ink, modifier = Modifier.minimumInteractiveComponentSize().size(36.dp)) {
+                        Icon(Icons.Filled.Add, contentDescription = "Insert block", tint = OnInk, modifier = Modifier.padding(8.dp))
                     }
                     Spacer(Modifier.width(4.dp))
-                    Surface(onClick = onAiEdit, shape = RoundedCornerShape(10.dp), color = AccentWash, modifier = Modifier.size(38.dp)) {
+                    Surface(onClick = onAiEdit, shape = RoundedCornerShape(10.dp), color = AccentWash, modifier = Modifier.minimumInteractiveComponentSize().size(38.dp)) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = "Edit with AI", tint = Accent, modifier = Modifier.size(20.dp))
                         }
@@ -137,7 +138,7 @@ private fun ToolButton(icon: ImageVector, label: String, active: Boolean, enable
         enabled = enabled,
         shape = RoundedCornerShape(10.dp),
         color = if (active) AccentWash else Color.Transparent,
-        modifier = Modifier.size(38.dp)
+        modifier = Modifier.minimumInteractiveComponentSize().size(38.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = label, tint = when { !enabled -> InkFaint; active -> Accent; else -> InkSecondary }, modifier = Modifier.size(21.dp))

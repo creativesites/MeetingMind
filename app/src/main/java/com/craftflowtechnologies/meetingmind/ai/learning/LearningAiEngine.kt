@@ -3,6 +3,7 @@ package com.craftflowtechnologies.meetingmind.ai.learning
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiRequest
 import com.craftflowtechnologies.meetingmind.ai.cloud.GeminiTransport
 import com.craftflowtechnologies.meetingmind.ai.common.AiResult
+import com.craftflowtechnologies.meetingmind.ai.llm.LanguageModel
 import com.craftflowtechnologies.meetingmind.core.learning.SpokenNotationNormalizer
 import com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain
 import com.craftflowtechnologies.meetingmind.core.model.BlockSource
@@ -24,7 +25,8 @@ import org.json.JSONObject
 
 class LearningAiEngine(
     private val transport: GeminiTransport? = null,
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val fallbackModel: LanguageModel? = null
 ) {
 
     private fun stripMarkdownCodeFences(raw: String): String {
@@ -40,14 +42,21 @@ class LearningAiEngine(
     }
 
     private suspend fun generateText(prompt: String): String? {
-        val t = transport ?: return null
-        if (!t.isConfigured()) return null
-        val req = GeminiRequest(
-            modelId = "gemini-1.5-flash",
-            systemInstruction = "You are an expert academic tutor and university professor.",
-            prompt = prompt
-        )
-        return when (val res = t.execute(req)) {
+        val t = transport
+        if (t != null && t.refreshConfigured()) {
+            val req = GeminiRequest(
+                modelId = com.craftflowtechnologies.meetingmind.ai.routing.DefaultAiModelRouter.GEMINI_INTELLIGENCE_MODEL,
+                systemInstruction = "You are an expert academic tutor and university professor.",
+                prompt = prompt,
+                jsonOutput = true
+            )
+            when (val res = t.execute(req)) {
+                is AiResult.Success -> return res.value
+                else -> {}
+            }
+        }
+        val model = fallbackModel ?: return null
+        return when (val res = model.generate(prompt, maxOutputTokens = 1500)) {
             is AiResult.Success -> res.value
             else -> null
         }

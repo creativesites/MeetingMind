@@ -37,7 +37,8 @@ class GeminiLanguageModel(
             GeminiRequest(
                 modelId = modelId,
                 systemInstruction = systemInstruction,
-                prompt = prompt
+                prompt = prompt,
+                jsonOutput = true
                 // The schema is carried inside the prompt by TranscriptToolPrompts rather than set
                 // here: the tool engine owns the output contract, and passing it twice, in two
                 // different places, is how the two drift apart.

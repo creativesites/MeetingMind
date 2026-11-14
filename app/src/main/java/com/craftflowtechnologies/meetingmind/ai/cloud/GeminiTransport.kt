@@ -19,8 +19,10 @@ data class GeminiRequest(
     /** Milliseconds into [audioFile] this request covers — see [GeminiChunkPlanner]. */
     val audioStartMs: Long = 0L,
     val audioEndMs: Long = 0L,
-    /** A JSON Schema the response must conform to. Null means free text. */
+    /** A JSON Schema the response must conform to. Null means free text unless [jsonOutput] is true. */
     val responseSchema: String? = null,
+    /** Ask the model for `application/json` output even when no [responseSchema] is provided. */
+    val jsonOutput: Boolean = false,
     /** Terms the model should prefer when it is unsure — names, products, jargon. */
     val vocabularyHints: List<String> = emptyList(),
     val temperature: Float = 0.0f,

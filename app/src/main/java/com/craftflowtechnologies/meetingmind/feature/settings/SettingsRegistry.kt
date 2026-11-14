@@ -33,7 +33,7 @@ enum class SettingId {
     NOTIF_RECORDING, NOTIF_DOWNLOADS,
 
     // Recording
-    TIDY_FILLER, TRANSCRIPT_CLEANUP, SPEAKER_DETECTION, RECIPES,
+    TIDY_FILLER, TRANSCRIPT_CLEANUP, NOTE_POLISH, SPEAKER_DETECTION, RECIPES,
 
     // AI & offline models
     PLAN_USAGE, SETUP_GUIDE, AI_ENGINE, GEMINI_KEY, WIFI_ONLY, GEMINI_CHECK, DEEPSEEK,
@@ -110,6 +110,7 @@ object SettingsRegistry {
         // Recording
         e(SettingId.TIDY_FILLER, SettingsGroup.RECORDING, "Tidy up filler words", "uh um hesitation transcript clean verbatim"),
         e(SettingId.TRANSCRIPT_CLEANUP, SettingsGroup.RECORDING, "Transcript cleanup", "conservative moderate aggressive polish wording"),
+        e(SettingId.NOTE_POLISH, SettingsGroup.RECORDING, "Note formatting & AI polish", "notes blocks sermon lesson lecture polish format structure ai"),
         e(SettingId.SPEAKER_DETECTION, SettingsGroup.RECORDING, "Speaker detection", "diarization who spoke automatic deterministic ai assisted"),
         e(SettingId.RECIPES, SettingsGroup.RECORDING, "Recipes & automation", "post meeting actions tasks review triggers", advanced = true, needs = Needs.FEATURE_RECIPES),
 

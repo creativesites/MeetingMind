@@ -20,6 +20,7 @@ import com.craftflowtechnologies.meetingmind.ai.diarization.diarizationBudgetMs
 import com.craftflowtechnologies.meetingmind.ai.diarization.reconciliationBudgetMs
 import com.craftflowtechnologies.meetingmind.ai.diarization.runDiarizationWithBudget
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import com.craftflowtechnologies.meetingmind.ai.embeddings.EmbeddingEngine
@@ -836,15 +837,27 @@ class MeetingProcessingPipeline(
 
             embeddingDao.insertEmbeddings(embeddingEntities)
 
-            // Faith recordings: the scripture heard in them, and for a sermon its notes, go into the
-            // recording's note (docs/PLAN_V1.md §5). Best effort — a problem here must never fail a
-            // recording whose transcript is already safe.
-            if (recordingType in com.craftflowtechnologies.meetingmind.core.model.Workflows.faith) {
+            // Structured note blocks: every recording type gets its note populated with proper
+            // blocks (headings, callouts, lists, scripture, transcript) according to the workflow
+            // and the user's NotePolishMode setting. Best effort — a problem here must never fail
+            // a recording whose transcript is already safe.
+            val notePolishMode = runCatching {
+                com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context)
+                    .preferencesFlow.first().notePolishMode
+            }.getOrDefault(com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.DEEP)
+            if (!noSpeech && notePolishMode != com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.OFF) {
                 runCatching {
-                    writeFaithNotes(meetingId, recordingType, diarizedSegments, processingProfile) { step, percent ->
+                    writeStructuredNoteSections(
+                        meetingId = meetingId,
+                        recordingType = recordingType,
+                        segments = diarizedSegments,
+                        summary = summary,
+                        processingProfile = processingProfile,
+                        notePolishMode = notePolishMode
+                    ) { step, percent ->
                         updateJob(step, percent, ProcessingStage.SAVING_RESULTS)
                     }
-                }.onFailure { Log.w(PERF_TAG, "Faith notes skipped: ${it.message}") }
+                }.onFailure { Log.w(PERF_TAG, "Structured notes skipped: ${it.message}") }
             }
             // Highlights, typed notes, scripture and prayer points marked while recording (R-1).
             runCatching {
@@ -1190,9 +1203,9 @@ class MeetingProcessingPipeline(
     }
 
     /**
-     * Re-runs the sermon notes for an already-processed recording from its stored transcript,
-     * without transcribing again. Backs the "Retry sermon notes" action; replaces only the AI
-     * sections that the user has not edited.
+     * Re-runs the sermon / structured notes for an already-processed recording from its stored
+     * transcript, without transcribing again. Backs the "Retry sermon notes" action; replaces only
+     * the AI sections that the user has not edited.
      */
     suspend fun regenerateFaithNotes(
         meetingId: String,
@@ -1200,106 +1213,186 @@ class MeetingProcessingPipeline(
         segments: List<TranscriptSegment>,
         processingProfile: ProcessingProfile
     ) = withContext(Dispatchers.Default) {
-        writeFaithNotes(meetingId, recordingType, segments, processingProfile) { _, _ -> }
+        val notePolishMode = runCatching {
+            com.craftflowtechnologies.meetingmind.core.datastore.UserPreferencesManager(context)
+                .preferencesFlow.first().notePolishMode
+        }.getOrDefault(com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.DEEP)
+        writeStructuredNoteSections(
+            meetingId = meetingId,
+            recordingType = recordingType,
+            segments = segments,
+            summary = null,
+            processingProfile = processingProfile,
+            notePolishMode = notePolishMode.takeIf { it != com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.OFF }
+                ?: com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.STANDARD
+        ) { _, _ -> }
     }
 
     /**
-     * Detects scripture in the transcript and, for a sermon, writes its notes — with Gemini in
-     * Internet mode, the on-device model otherwise, and detection alone when there is no model.
-     * When the sermon notes cannot be written, the note says why at the top.
+     * Populates a recording's note with structured, properly formatted [NoteBlock]s tailored to
+     * [recordingType] and [notePolishMode].
      */
-    private suspend fun writeFaithNotes(
+    private suspend fun writeStructuredNoteSections(
         meetingId: String,
         recordingType: com.craftflowtechnologies.meetingmind.core.model.RecordingType,
         segments: List<TranscriptSegment>,
+        summary: MeetingSummary?,
         processingProfile: ProcessingProfile,
+        notePolishMode: com.craftflowtechnologies.meetingmind.core.model.NotePolishMode,
         progress: suspend (String, Int) -> Unit
     ) {
         val meeting = database.meetingDao().getMeetingById(meetingId) ?: return
         val noteId = meeting.noteId ?: return
-        // Scenes first: where the preaching, prayer, readings and worship are. Worship is kept
-        // out of the notes and the Scripture search, so sung lyrics never become "points".
-        val audio = meeting.audioFilePath?.let { java.io.File(it) }?.takeIf { it.exists() }
-        val scenes = audio?.let { file ->
-            progress("Mapping the service…", 93)
-            runCatching {
-                val transport = if (processingProfile == ProcessingProfile.INTERNET) geminiTransport else null
-                com.craftflowtechnologies.meetingmind.ai.scene.SceneEngine(transport).build(file, segments, meeting.durationMs, recordingType.displayName)
-                    .also { com.craftflowtechnologies.meetingmind.ai.scene.SceneMap.save(file, it) }
-            }.onFailure { Log.w(PERF_TAG, "Scenes failed: ${it.message}") }.getOrNull()
+        val noteRepo = com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database)
+        val speakers = database.speakerDao().getSpeakersForMeetingDirect(meetingId).map {
+            com.craftflowtechnologies.meetingmind.core.model.Speaker(
+                it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence
+            )
         }
-        val spoken = scenes?.let { map ->
-            segments.filter { s -> map.at((s.startMs + s.endMs) / 2)?.activity != com.craftflowtechnologies.meetingmind.ai.scene.SemanticActivity.SONG }
-        }?.ifEmpty { null } ?: segments
-        progress("Finding scripture references...", 94)
-        val detections = com.craftflowtechnologies.meetingmind.core.scripture.ScriptureDetector.detect(spoken)
+
         val isSermon = recordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.SERMON
-        val outcome: AiResult<com.craftflowtechnologies.meetingmind.ai.faith.SermonExtraction>? = if (isSermon) {
-            val resolved = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS)
-            resolved?.let { model ->
-                progress(if (model.isCloud) "Writing sermon notes with Google's AI..." else "Writing sermon notes...", 96)
-                try {
-                    com.craftflowtechnologies.meetingmind.ai.faith.SermonExtractionEngine(model.languageModel, model.contextLengthTokens)
-                        .extract(spoken) { part, parts -> if (parts > 1) Log.d(PERF_TAG, "Sermon notes part $part of $parts") }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (t: Throwable) {
-                    AiResult.Failed(t.message ?: "the AI model failed", t)
-                } finally {
-                    if (!model.isCloud) LlmEngineManager.release()
-                }
-            }
-        } else null
-        val extraction = (outcome as? AiResult.Success)?.value
-        // Why the AI notes are missing, if they are: never a silent, scripture-only note.
-        val unavailableReason = if (!isSermon) null else when (outcome) {
-            null -> "no AI model is available on this phone"
-            is AiResult.Success -> if (outcome.value.isEmpty) "the AI model found no sermon content to write up" else null
-            else -> outcome.describeFailure() ?: "the AI model failed"
-        }
-        if (unavailableReason != null) Log.w(PERF_TAG, "Sermon notes unavailable: $unavailableReason")
         val isLecture = recordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.LECTURE ||
             recordingType == com.craftflowtechnologies.meetingmind.core.model.RecordingType.RESEARCH
-        if (isLecture) {
-            val marks = com.craftflowtechnologies.meetingmind.core.work.Marks.forMeeting(database, meetingId)
-            val domain = com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain.GENERAL
-            val learningRepo = com.craftflowtechnologies.meetingmind.core.repository.LearningRepository(database)
-            val session = learningRepo.ensureSessionForNote(
-                noteId = noteId,
-                title = meeting.title.ifBlank { "Lecture Notes" },
-                meetingId = meetingId,
-                domain = domain,
-                courseName = meeting.title.ifBlank { "Course" }
-            )
-            val aiEngine = com.craftflowtechnologies.meetingmind.ai.learning.LearningAiEngine(
-                transport = if (processingProfile == ProcessingProfile.INTERNET) geminiTransport else null
-            )
-            val synthesis = runCatching {
-                aiEngine.synthesizeLecture(noteId, session.id, segments, domain, marks)
-            }.getOrNull()
-            if (synthesis != null) {
-                learningRepo.saveConceptsAndActivities(session.id, synthesis.concepts, synthesis.activities)
+
+        suspend fun runPolishPass(targetSegments: List<TranscriptSegment>): List<com.craftflowtechnologies.meetingmind.core.model.NoteBlock> {
+            if (notePolishMode != com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.DEEP) return emptyList()
+            val model = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS) ?: return emptyList()
+            progress(if (model.isCloud) "Polishing note formatting with Google's AI..." else "Polishing note formatting...", 97)
+            return try {
+                val res = com.craftflowtechnologies.meetingmind.ai.notes.NotePolishEngine(model.languageModel, model.contextLengthTokens)
+                    .polish(noteId, meetingId, recordingType, targetSegments, summary)
+                (res as? AiResult.Success)?.value.orEmpty()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                Log.w(PERF_TAG, "Note polish skipped: ${t.message}")
+                emptyList()
+            } finally {
+                if (!model.isCloud) LlmEngineManager.release()
             }
-            val generatedLecture = com.craftflowtechnologies.meetingmind.ai.learning.LectureNoteBuilder.build(
-                noteId = noteId,
-                meetingId = meetingId,
-                segments = segments,
-                domain = domain,
-                synthesis = synthesis,
-                marks = marks
-            )
-            com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database)
-                .applyGeneratedSections(noteId, generatedLecture.blocks, emptyList(), generatedLecture.keys, generatedLecture.endKeys)
-        } else {
-            val generated = com.craftflowtechnologies.meetingmind.ai.faith.SermonNoteBuilder.build(
-                noteId, meetingId, segments, extraction, detections, unavailableReason = unavailableReason,
-                spoken = if (isSermon) spoken else emptyList(),
-                speakers = if (isSermon) database.speakerDao().getSpeakersForMeetingDirect(meetingId).map {
-                    com.craftflowtechnologies.meetingmind.core.model.Speaker(it.id, it.meetingId, it.speakerIndex, it.originalLabel, it.customName, it.colorHex, it.confidence)
+        }
+
+        when {
+            isSermon -> {
+                // Scenes first: where the preaching, prayer, readings and worship are. Worship is kept
+                // out of the notes and the Scripture search, so sung lyrics never become "points".
+                val audio = meeting.audioFilePath?.let { java.io.File(it) }?.takeIf { it.exists() }
+                val scenes = audio?.let { file ->
+                    progress("Mapping the service…", 93)
+                    runCatching {
+                        val transport = if (processingProfile == ProcessingProfile.INTERNET) geminiTransport else null
+                        com.craftflowtechnologies.meetingmind.ai.scene.SceneEngine(transport).build(file, segments, meeting.durationMs, recordingType.displayName)
+                            .also { com.craftflowtechnologies.meetingmind.ai.scene.SceneMap.save(file, it) }
+                    }.onFailure { Log.w(PERF_TAG, "Scenes failed: ${it.message}") }.getOrNull()
+                }
+                val spoken = scenes?.let { map ->
+                    segments.filter { s -> map.at((s.startMs + s.endMs) / 2)?.activity != com.craftflowtechnologies.meetingmind.ai.scene.SemanticActivity.SONG }
+                }?.ifEmpty { null } ?: segments
+                progress("Finding scripture references...", 94)
+                val detections = com.craftflowtechnologies.meetingmind.core.scripture.ScriptureDetector.detect(spoken)
+                val resolved = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS)
+                val outcome: AiResult<com.craftflowtechnologies.meetingmind.ai.faith.SermonExtraction>? = resolved?.let { model ->
+                    progress(if (model.isCloud) "Writing sermon notes with Google's AI..." else "Writing sermon notes...", 96)
+                    try {
+                        com.craftflowtechnologies.meetingmind.ai.faith.SermonExtractionEngine(model.languageModel, model.contextLengthTokens)
+                            .extract(spoken) { part, parts -> if (parts > 1) Log.d(PERF_TAG, "Sermon notes part $part of $parts") }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (t: Throwable) {
+                        AiResult.Failed(t.message ?: "the AI model failed", t)
+                    } finally {
+                        if (!model.isCloud) LlmEngineManager.release()
+                    }
+                }
+                val extraction = (outcome as? AiResult.Success)?.value
+                val unavailableReason = when (outcome) {
+                    null -> if (summary == null) "no AI model is available on this phone" else null
+                    is AiResult.Success -> if (outcome.value.isEmpty && summary == null) "the AI model found no sermon content to write up" else null
+                    else -> if (summary == null) (outcome.describeFailure() ?: "the AI model failed") else null
+                }
+                if (unavailableReason != null) Log.w(PERF_TAG, "Sermon notes unavailable: $unavailableReason")
+                val polished = runPolishPass(spoken)
+                val generated = com.craftflowtechnologies.meetingmind.ai.faith.SermonNoteBuilder.build(
+                    noteId = noteId,
+                    meetingId = meetingId,
+                    segments = segments,
+                    extraction = extraction,
+                    detections = detections,
+                    unavailableReason = unavailableReason,
+                    spoken = spoken,
+                    speakers = speakers,
+                    summary = summary,
+                    polishedBlocks = polished
+                )
+                noteRepo.applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys, generated.endKeys)
+            }
+
+            isLecture -> {
+                progress("Structuring lecture notes...", 94)
+                val marks = com.craftflowtechnologies.meetingmind.core.work.Marks.forMeeting(database, meetingId)
+                val sampleText = segments.take(12).joinToString(" ") { it.cleanedText ?: it.text }
+                val domain = com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain.detect(
+                    title = listOfNotNull(meeting.title.takeIf { it.isNotBlank() }, meeting.customContext?.takeIf { it.isNotBlank() }).joinToString(" "),
+                    sampleText = sampleText
+                )
+                val learningRepo = com.craftflowtechnologies.meetingmind.core.repository.LearningRepository(database)
+                val session = learningRepo.ensureSessionForNote(
+                    noteId = noteId,
+                    title = meeting.title.ifBlank { "Lecture Notes" },
+                    meetingId = meetingId,
+                    domain = domain,
+                    courseName = meeting.title.ifBlank { "Course" }
+                )
+                val resolvedFallback = languageModelFactory.resolve(processingProfile, ModelCapability.SYNTHESIS)
+                val aiEngine = com.craftflowtechnologies.meetingmind.ai.learning.LearningAiEngine(
+                    transport = if (processingProfile == ProcessingProfile.INTERNET) geminiTransport else null,
+                    fallbackModel = resolvedFallback?.languageModel
+                )
+                val synthesis = try {
+                    runCatching {
+                        aiEngine.synthesizeLecture(noteId, session.id, segments, domain, marks)
+                    }.getOrNull()
+                } finally {
+                    if (resolvedFallback != null && !resolvedFallback.isCloud) LlmEngineManager.release()
+                }
+                if (synthesis != null) {
+                    learningRepo.saveConceptsAndActivities(session.id, synthesis.concepts, synthesis.activities)
+                }
+                val polished = runPolishPass(segments)
+                val generatedLecture = com.craftflowtechnologies.meetingmind.ai.learning.LectureNoteBuilder.build(
+                    noteId = noteId,
+                    meetingId = meetingId,
+                    segments = segments,
+                    domain = domain,
+                    synthesis = synthesis,
+                    marks = marks,
+                    summary = summary,
+                    speakers = speakers,
+                    polishedBlocks = polished
+                )
+                noteRepo.applyGeneratedSections(noteId, generatedLecture.blocks, emptyList(), generatedLecture.keys, generatedLecture.endKeys)
+            }
+
+            else -> {
+                progress("Formatting note sections...", 95)
+                val marks = com.craftflowtechnologies.meetingmind.core.work.Marks.forMeeting(database, meetingId)
+                val detections = if (recordingType in com.craftflowtechnologies.meetingmind.core.model.Workflows.faith) {
+                    com.craftflowtechnologies.meetingmind.core.scripture.ScriptureDetector.detect(segments)
                 } else emptyList()
-            )
-            com.craftflowtechnologies.meetingmind.core.repository.NoteRepository(context, database)
-                .applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys, generated.endKeys)
+                val polished = runPolishPass(segments)
+                val generated = com.craftflowtechnologies.meetingmind.ai.notes.RecordingNoteBuilder.build(
+                    noteId = noteId,
+                    meetingId = meetingId,
+                    recordingType = recordingType,
+                    segments = segments,
+                    summary = summary,
+                    speakers = speakers,
+                    marks = marks,
+                    detections = detections,
+                    polishedBlocks = polished
+                )
+                noteRepo.applyGeneratedSections(noteId, generated.blocks, generated.refs, generated.keys, generated.endKeys)
+            }
         }
     }
 

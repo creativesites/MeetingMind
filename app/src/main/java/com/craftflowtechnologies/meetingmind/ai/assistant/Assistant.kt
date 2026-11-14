@@ -118,7 +118,9 @@ data class AssistantMessage(
     val error: Boolean = false,
     /** Only meaningful when [error]: whether asking again could plausibly help. False means the
      * person needs to change something (a key, a quota, a setting) before trying again. */
-    val retryable: Boolean = true
+    val retryable: Boolean = true,
+    /** Which service answered ("Gemini" or "DeepSeek"), for subtle provenance. */
+    val provider: String? = null
 )
 
 class AssistantEngine(
@@ -142,7 +144,11 @@ class AssistantEngine(
             }
         }
         parts += "Tools:\n" + AssistantTool.describe(tools) +
-            "\n\nReply with one JSON object only: {\"say\": string, \"calls\": [{\"tool\": string, \"args\": object}]}. " +
+            "\n\nExecution rules:\n" +
+            "- Chain independent read calls together in one turn to answer quickly.\n" +
+            "- When a note outline isn't enough to answer accurately, read the note or transcript first.\n" +
+            "- Never mention internal block ids or raw JSON in \"say\"; format \"say\" in clean Markdown.\n\n" +
+            "Reply with one JSON object only: {\"say\": string, \"calls\": [{\"tool\": string, \"args\": object}]}. " +
             "Use \"calls\": [] when you are done. Results of read tools come back to you; write tools are applied by the app."
         return parts.joinToString("\n\n")
     }
@@ -168,8 +174,15 @@ class AssistantEngine(
         val results = StringBuilder()
         var say = ""
         for (round in 1..maxRounds) {
-            val prompt = context + if (results.isNotEmpty()) "\nTool results so far:\n$results\nContinue." else ""
-            val res = transport.execute(GeminiRequest(model, systemPrompt(), prompt, timeoutMs = 60_000, temperature = 0.3f))
+            val closingNote = if (round == maxRounds && results.isNotEmpty()) {
+                "\nTool results so far:\n$results\nThis is your final turn — answer the person directly now using what you gathered, with \"calls\": []."
+            } else if (results.isNotEmpty()) {
+                "\nTool results so far:\n$results\nContinue."
+            } else ""
+            val prompt = context + closingNote
+            val res = transport.execute(
+                GeminiRequest(model, systemPrompt(), prompt, jsonOutput = true, timeoutMs = 60_000, temperature = 0.3f)
+            )
             if (res !is AiResult.Success) {
                 return AssistantMessage(false, res.describeFailure() ?: "The assistant couldn't answer just now.", activity, actions, error = true, retryable = res.isRetryable())
             }
@@ -196,10 +209,27 @@ class AssistantEngine(
             }
             // Writes alone finish the turn — the model already said what it was doing.
             if (!needsAnotherRound && say.isNotBlank()) break
-            if (round == maxRounds && say.isBlank()) say = "I've gathered what I found above."
+            if (round == maxRounds && needsAnotherRound) {
+                // One final synthesis pass without further tool calls so gathered read results are never dropped.
+                val finalPrompt = context + "\nTool results so far:\n$results\nTool calls are closed. Reply to the person now with \"calls\": []."
+                val finalRes = transport.execute(
+                    GeminiRequest(model, systemPrompt(), finalPrompt, jsonOutput = true, timeoutMs = 60_000, temperature = 0.3f)
+                )
+                if (finalRes is AiResult.Success) {
+                    val finalTurn = AssistantProtocol.parse(finalRes.value)
+                    if (finalTurn.say.isNotBlank()) say = finalTurn.say
+                }
+                if (say.isBlank()) say = "I've gathered what I found above."
+            }
         }
         val cleaned = if (scope.faith) FaithGuard.clean(say) else say
-        return AssistantMessage(false, cleaned.ifBlank { if (actions.isNotEmpty()) "Done." else "I'm not sure how to help with that — could you say a bit more?" }, activity, actions)
+        return AssistantMessage(
+            fromUser = false,
+            text = cleaned.ifBlank { if (actions.isNotEmpty()) "Done." else "I'm not sure how to help with that — could you say a bit more?" },
+            activity = activity,
+            actions = actions,
+            provider = com.craftflowtechnologies.meetingmind.ai.cloud.DeepSeek.lastProvider
+        )
     }
 }
 

@@ -146,8 +146,15 @@ internal fun MarkdownBlock(
 
 /** Markdown shown formatted, read-only — for previews. */
 @Composable
-internal fun MarkdownPreview(items: List<NoteBlock>, serif: Boolean = false) {
+fun MarkdownPreview(items: List<NoteBlock>, serif: Boolean = false) {
     Column { items.forEachIndexed { i, item -> MarkdownItem(item, items, i, serif, onTap = {}) } }
+}
+
+/** Parses and renders raw Markdown read-only across AI preview sheets. */
+@Composable
+fun MarkdownTextPreview(markdown: String, modifier: Modifier = Modifier, serif: Boolean = false) {
+    val items = remember(markdown) { MarkdownImport.parse(markdown, "preview") }
+    Column(modifier) { items.forEachIndexed { i, item -> MarkdownItem(item, items, i, serif, onTap = {}) } }
 }
 
 /** One heading, paragraph, list item, table or picture inside a Markdown block, read-only. */

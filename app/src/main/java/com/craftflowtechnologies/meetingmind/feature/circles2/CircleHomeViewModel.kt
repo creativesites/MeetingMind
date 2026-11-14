@@ -50,7 +50,7 @@ import com.craftflowtechnologies.meetingmind.core.circles2.fold
 
 /** A post as the feed shows it: [mine] is true even for my anonymous posts (known only on this phone). */
 @Immutable
-data class FeedPost(val post: Post, val mine: Boolean, val prayedByMe: Boolean)
+data class FeedPost(val post: Post, val mine: Boolean, val prayedByMe: Boolean, val myReaction: ReactionKind? = null)
 
 @Immutable
 data class CircleHomeUiState(
@@ -86,6 +86,7 @@ data class ComposerState(
     /** Photos already uploaded for this post. */
     val attachments: List<MediaAttachment> = emptyList(),
     val sending: Boolean = false,
+    val uploading: Boolean = false,
     val error: String? = null,
     /** Set when "Turn into testimony" starts a draft from an answered request. */
     val fromAnswered: Boolean = false
@@ -122,6 +123,7 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
 
     val composer = MutableStateFlow(ComposerState())
     val invite = MutableStateFlow(InviteUiState())
+    val myReactions = MutableStateFlow<Map<String, ReactionKind>>(emptyMap())
 
     init { viewModelScope.launch { myUid.value = repo.uid().okOrNull } }
 
@@ -145,7 +147,7 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     private val extras: Flow<Extras> = combine(eventsState, adminData) { e, a -> Extras(e.valueOr(emptyList()), a) }
 
     val state: StateFlow<CircleHomeUiState> = combine(
-        circleState, membersState, postsState, extras, combine(myUid, prayed, mine, sentPending) { u, p, m, s -> Quad(u, p, m, s) }
+        circleState, membersState, postsState, extras, combine(myUid, prayed, mine, sentPending, myReactions) { u, p, m, s, r -> UserData(u, p, m, s, r) }
     ) { c, ms, ps, ex, q ->
         val members = ms.valueOr(emptyList())
         val circle = (c as? DataState.Ready)?.value
@@ -156,7 +158,7 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
             circle = circle,
             me = members.firstOrNull { it.uid == q.uid },
             members = members,
-            posts = ps.valueOr(emptyList()).map { FeedPost(it, mine = (q.uid != null && it.authorUid == q.uid) || it.id in q.mine, prayedByMe = it.id in q.prayed) },
+            posts = ps.valueOr(emptyList()).map { FeedPost(it, mine = (q.uid != null && it.authorUid == q.uid) || it.id in q.mine, prayedByMe = it.id in q.prayed, myReaction = q.reactions[it.id]) },
             pending = ex.admin.pending,
             joinRequests = ex.admin.requests,
             events = ex.events,
@@ -167,7 +169,7 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CircleHomeUiState())
 
-    private data class Quad(val uid: String?, val prayed: Set<String>, val mine: Set<String>, val pending: Int)
+    private data class UserData(val uid: String?, val prayed: Set<String>, val mine: Set<String>, val pending: Int, val reactions: Map<String, ReactionKind>)
     private data class AdminData(val pending: List<PendingPost>, val requests: List<JoinRequest>)
     private data class Extras(val events: List<CircleEvent>, val admin: AdminData)
 
@@ -179,23 +181,42 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
         val circle = state.value.circle
         // Free-form is always on: it is not one of the circle's listed kinds.
         if (circle != null && type != PostType.Note && type !in circle.settings.allowedTypes) return
-        composer.value = ComposerState(type = type)
+        composer.update { current ->
+            if (current.open) {
+                current.copy(
+                    type = type,
+                    anonymous = if (type == PostType.Prayer) current.anonymous else false,
+                    error = null
+                )
+            } else {
+                ComposerState(type = type)
+            }
+        }
     }
     fun closeComposer() { composer.value = ComposerState() }
 
     /** A photo, video or document for the post being written. Opens a free-form composer when none is open. */
     fun addPhoto(file: PickedFile) {
         if (!composer.value.open) openComposer(PostType.Note)
+        if (composer.value.attachments.size >= 4) {
+            composer.update { it.copy(error = "A post can have at most 4 attachments.") }
+            return
+        }
         viewModelScope.launch {
             val kind = when {
                 file.mime.startsWith("video/") -> MediaKind.Video
                 file.mime == "application/pdf" || file.name.orEmpty().endsWith(".pdf", ignoreCase = true) || file.mime.startsWith("application/") -> MediaKind.File
                 else -> MediaKind.Image
             }
-            repo.uploadAttachment(circleId, kind, file.bytes, file.mime, file.name, file.durationMs).fold(
-                onOk = { a -> composer.update { it.copy(attachments = it.attachments + a, error = null) } },
-                onErr = { f -> composer.update { it.copy(error = f.message) } }
-            )
+            composer.update { it.copy(uploading = true, error = null) }
+            try {
+                repo.uploadAttachment(circleId, kind, file.bytes, file.mime, file.name, file.durationMs).fold(
+                    onOk = { a -> composer.update { it.copy(attachments = it.attachments + a, uploading = false, error = null) } },
+                    onErr = { f -> composer.update { it.copy(uploading = false, error = f.message) } }
+                )
+            } finally {
+                composer.update { it.copy(uploading = false) }
+            }
         }
     }
     fun removePhoto(a: MediaAttachment) { composer.update { it.copy(attachments = it.attachments.filter { x -> x.path != a.path }) } }
@@ -270,7 +291,12 @@ class CircleHomeViewModel(val circleId: String, private val repo: CirclesReposit
     }
 
     fun react(post: Post, kind: ReactionKind?) {
-        viewModelScope.launch { repo.api.react(circleId, post.id, kind).failureOrNull?.let(::fail) }
+        val current = myReactions.value[post.id]
+        val target = if (kind == null || current == kind) null else kind
+        myReactions.update { currentMap ->
+            if (target == null) currentMap - post.id else currentMap + (post.id to target)
+        }
+        viewModelScope.launch { repo.api.react(circleId, post.id, target).failureOrNull?.let(::fail) }
     }
 
     fun markAnswered(post: Post, onDone: (Post) -> Unit = {}) {

@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.notes.editor
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -37,19 +38,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlock
 import com.craftflowtechnologies.meetingmind.core.notes.PasteTool
+import com.craftflowtechnologies.meetingmind.core.ui.mm.AiCopyButton
+import com.craftflowtechnologies.meetingmind.core.ui.mm.AiRecoveryBanner
+import com.craftflowtechnologies.meetingmind.core.ui.mm.AiThinkingSkeleton
 import com.craftflowtechnologies.meetingmind.ui.theme.Accent
 import com.craftflowtechnologies.meetingmind.ui.theme.AccentWash
-import com.craftflowtechnologies.meetingmind.ui.theme.Danger
 import com.craftflowtechnologies.meetingmind.ui.theme.Ink
 import com.craftflowtechnologies.meetingmind.ui.theme.InkMuted
 import com.craftflowtechnologies.meetingmind.ui.theme.InkSecondary
 import com.craftflowtechnologies.meetingmind.ui.theme.Line
+import com.craftflowtechnologies.meetingmind.ui.theme.MMSize
 import com.craftflowtechnologies.meetingmind.ui.theme.OnInk
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceBase
 import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
@@ -59,12 +68,20 @@ import com.craftflowtechnologies.meetingmind.ui.theme.SurfaceSunk
 internal fun MarkdownFooter(block: NoteBlock, canStepBack: Boolean, onTools: () -> Unit, onStepBack: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         block.payload[NoteBlock.PAYLOAD_PASTE_SOURCE]?.let { Text("From $it", fontSize = 12.sp, color = InkMuted) }
-        Row(Modifier.clip(RoundedCornerShape(50)).background(AccentWash).clickable(onClick = onTools).padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.heightIn(min = 32.dp).clip(RoundedCornerShape(50)).background(AccentWash)
+                .clickable(role = Role.Button, onClick = onTools).padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(5.dp))
             Text("AI tools", fontSize = 12.5.sp, color = Accent, fontWeight = FontWeight.SemiBold)
         }
-        if (canStepBack) Row(Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onStepBack).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (canStepBack) Row(
+            Modifier.heightIn(min = 32.dp).clip(RoundedCornerShape(50))
+                .clickable(role = Role.Button, onClick = onStepBack).padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, tint = InkSecondary, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(4.dp))
             Text("Step back", fontSize = 12.5.sp, color = InkSecondary)
@@ -83,10 +100,20 @@ internal fun PasteToolsSheet(
     onAccept: (replace: Boolean) -> Unit,
     onStepBack: () -> Unit,
     onOriginal: () -> Unit,
+    onCancel: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SurfaceBase) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding().verticalScroll(rememberScrollState())) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .animateContentSize()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 20.dp)
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(com.craftflowtechnologies.meetingmind.ui.icons.AiMark, contentDescription = null, tint = Accent, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
@@ -96,15 +123,23 @@ internal fun PasteToolsSheet(
             Text("$words words" + (block?.payload?.get(NoteBlock.PAYLOAD_PASTE_SOURCE)?.let { " · from $it" } ?: ""), fontSize = 12.5.sp, color = InkMuted, modifier = Modifier.padding(top = 2.dp))
 
             when {
-                state.busy -> Row(Modifier.fillMaxWidth().padding(vertical = 36.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(20.dp), color = Accent, strokeWidth = 2.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Text(state.progress ?: "Working…", color = InkSecondary, fontSize = 14.sp)
+                state.busy -> {
+                    AiThinkingSkeleton(
+                        label = state.progress ?: "Working…",
+                        modifier = Modifier.padding(top = 16.dp),
+                        onStop = onCancel
+                    )
                 }
                 state.result != null -> Preview(state, block?.content?.text.orEmpty(), onAccept)
                 else -> Unit
             }
-            state.error?.let { Text(it, color = Danger, fontSize = 13.sp, modifier = Modifier.padding(top = 14.dp)) }
+            state.error?.let { err ->
+                AiRecoveryBanner(
+                    message = err,
+                    modifier = Modifier.padding(top = 14.dp),
+                    onRetry = state.tool?.let { tool -> { onRun(tool) } }
+                )
+            }
 
             if (!state.busy) {
                 if (state.result == null) {
@@ -118,21 +153,41 @@ internal fun PasteToolsSheet(
                 PasteTool.Group.entries.forEach { group ->
                     Text(group.title, fontSize = 12.sp, color = InkMuted, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
                     if (group == PasteTool.Group.PRESET) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PasteTool.entries.filter { it.group == group }.forEach { t ->
-                                Surface(onClick = { onRun(t) }, shape = RoundedCornerShape(16.dp), color = if (state.tool == t) AccentWash else SurfaceSunk, border = BorderStroke(1.dp, if (state.tool == t) Accent else Line), modifier = Modifier.width(150.dp)) {
-                                    Column(Modifier.padding(12.dp)) {
-                                        Text(t.label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                                        Text(t.hint, fontSize = 12.sp, color = InkSecondary, lineHeight = 16.sp)
+                        val presets = PasteTool.entries.filter { it.group == group }
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            presets.chunked(2).forEach { rowTools ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    rowTools.forEach { t ->
+                                        val selected = state.tool == t
+                                        Surface(
+                                            onClick = { onRun(t) },
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = if (selected) AccentWash else SurfaceSunk,
+                                            border = BorderStroke(1.dp, if (selected) Accent else Line),
+                                            modifier = Modifier.weight(1f).semantics { role = Role.Button }
+                                        ) {
+                                            Column(Modifier.padding(12.dp)) {
+                                                Text(t.label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                                                Text(t.hint, fontSize = 12.sp, color = InkSecondary, lineHeight = 16.sp)
+                                            }
+                                        }
                                     }
+                                    if (rowTools.size == 1) Spacer(Modifier.weight(1f))
                                 }
                             }
                         }
                     } else {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             PasteTool.entries.filter { it.group == group }.forEach { t ->
-                                Surface(onClick = { onRun(t) }, shape = RoundedCornerShape(50), color = if (state.tool == t) AccentWash else SurfaceSunk, border = BorderStroke(1.dp, Line)) {
-                                    Text(t.label, fontSize = 13.sp, color = if (state.tool == t) Accent else Ink, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp))
+                                val selected = state.tool == t
+                                Surface(
+                                    onClick = { onRun(t) },
+                                    shape = RoundedCornerShape(50),
+                                    color = if (selected) AccentWash else SurfaceSunk,
+                                    border = BorderStroke(1.dp, if (selected) Accent else Line),
+                                    modifier = Modifier.semantics { role = Role.Button }
+                                ) {
+                                    Text(t.label, fontSize = 13.sp, color = if (selected) Accent else Ink, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
                                 }
                             }
                         }
@@ -146,40 +201,71 @@ internal fun PasteToolsSheet(
 @Composable
 private fun Preview(state: NoteEditorViewModel.PasteToolState, before: String, onAccept: (Boolean) -> Unit) {
     var showBefore by remember { mutableStateOf(false) }
+    var applying by remember(state.result) { mutableStateOf(false) }
     val below = state.tool?.output == PasteTool.Output.BELOW
-    Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(false to "After", true to "Before").forEach { (b, label) ->
-            Surface(onClick = { showBefore = b }, shape = RoundedCornerShape(50), color = if (showBefore == b) Ink else SurfaceSunk) {
-                Text(label, fontSize = 13.sp, color = if (showBefore == b) OnInk else InkSecondary, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp))
-            }
-        }
-        state.provider?.let { Text("by $it", fontSize = 12.sp, color = InkMuted, modifier = Modifier.align(Alignment.CenterVertically)) }
-    }
     val shown = if (showBefore) before else state.result.orEmpty()
     val delta = state.result.orEmpty().length - before.length
-    Surface(shape = RoundedCornerShape(14.dp), color = SurfaceSunk, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(max = 380.dp)) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp)) {
-            val items = remember(shown) { com.craftflowtechnologies.meetingmind.core.notes.MarkdownImport.parse(shown, "preview") }
-            MarkdownPreview(items)
+
+    Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
+        Row(
+            Modifier.fillMaxWidth().padding(top = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            listOf(false to "After", true to "Before").forEach { (b, label) ->
+                Surface(
+                    onClick = { showBefore = b },
+                    shape = RoundedCornerShape(50),
+                    color = if (showBefore == b) Ink else SurfaceSunk,
+                    modifier = Modifier.semantics { role = Role.RadioButton }
+                ) {
+                    Text(label, fontSize = 13.sp, color = if (showBefore == b) OnInk else InkSecondary, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                }
+            }
+            state.provider?.let { Text("by $it", fontSize = 12.sp, color = InkMuted, modifier = Modifier.weight(1f)) }
+                ?: Spacer(Modifier.weight(1f))
+            AiCopyButton(text = shown)
         }
-    }
-    if (!below && before.isNotEmpty()) Text(
-        if (delta < 0) "${-delta * 100 / before.length}% shorter" else if (delta > 0) "${delta * 100 / before.length}% longer" else "Same length",
-        fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 6.dp)
-    )
-    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (!below) Surface(onClick = { onAccept(false) }, shape = RoundedCornerShape(50), color = SurfaceBase, border = BorderStroke(1.dp, Line), modifier = Modifier.weight(1f)) {
-            Text("Add below", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 13.dp))
+        Surface(shape = RoundedCornerShape(14.dp), color = SurfaceSunk, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(max = 380.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp)) {
+                MarkdownTextPreview(shown)
+            }
         }
-        Surface(onClick = { onAccept(true) }, shape = RoundedCornerShape(50), color = Ink, modifier = Modifier.weight(1f)) {
-            Text(if (below) "Add below" else "Use this", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = OnInk, textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 13.dp))
+        if (!below && before.isNotEmpty()) Text(
+            if (delta < 0) "${-delta * 100 / before.length}% shorter" else if (delta > 0) "${delta * 100 / before.length}% longer" else "Same length",
+            fontSize = 12.sp, color = InkMuted, modifier = Modifier.padding(top = 6.dp)
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (!below) Surface(
+                onClick = { if (!applying) { applying = true; onAccept(false) } },
+                enabled = !applying,
+                shape = RoundedCornerShape(50),
+                color = SurfaceBase,
+                border = BorderStroke(1.dp, Line),
+                modifier = Modifier.weight(1f).heightIn(min = MMSize.minTouch).semantics { role = Role.Button }
+            ) {
+                Text("Add below", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (applying) InkMuted else Ink, textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 13.dp))
+            }
+            Surface(
+                onClick = { if (!applying) { applying = true; onAccept(true) } },
+                enabled = !applying,
+                shape = RoundedCornerShape(50),
+                color = if (applying) InkMuted else Ink,
+                modifier = Modifier.weight(1f).heightIn(min = MMSize.minTouch).semantics { role = Role.Button }
+            ) {
+                Text(if (below) "Add below" else "Use this", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = OnInk, textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 13.dp))
+            }
         }
     }
 }
 
 @Composable
 private fun QuietAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Row(Modifier.clip(RoundedCornerShape(50)).background(SurfaceSunk).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.heightIn(min = 38.dp).clip(RoundedCornerShape(50)).background(SurfaceSunk)
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Icon(icon, contentDescription = null, tint = InkSecondary, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(6.dp))
         Text(label, fontSize = 13.sp, color = Ink)

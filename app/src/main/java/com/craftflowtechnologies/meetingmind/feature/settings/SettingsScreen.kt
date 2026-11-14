@@ -252,6 +252,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setNotePolishMode(mode: com.craftflowtechnologies.meetingmind.core.model.NotePolishMode) {
+        viewModelScope.launch {
+            userPrefs.setNotePolishMode(mode)
+        }
+    }
+
     fun setProcessingProfile(profile: com.craftflowtechnologies.meetingmind.core.model.ProcessingProfile) {
         viewModelScope.launch {
             userPrefs.setProcessingProfile(profile)
@@ -787,6 +793,16 @@ private fun SettingBody(id: SettingId, env: SettingsEnv) {
                         com.craftflowtechnologies.meetingmind.core.model.TranscriptCleanupMode.AGGRESSIVE -> "The most polished transcript. May change wording more."
                     },
                     mode == m, { vm.setTranscriptCleanupMode(m) }, "settings_cleanup_mode_${m.name.lowercase()}"
+                )
+            }
+        }
+        SettingId.NOTE_POLISH -> SettingsChoiceBlock("Note formatting & AI polish") {
+            val mode = prefs.notePolishMode
+            com.craftflowtechnologies.meetingmind.core.model.NotePolishMode.entries.forEach { m ->
+                SettingsRadioRow(
+                    m.displayName,
+                    m.description,
+                    mode == m, { vm.setNotePolishMode(m) }, "settings_note_polish_${m.name.lowercase()}"
                 )
             }
         }

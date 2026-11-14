@@ -1,6 +1,12 @@
 package com.craftflowtechnologies.meetingmind.feature.learning
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +25,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -53,11 +60,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.craftflowtechnologies.meetingmind.core.companion.CompanionForm
@@ -203,8 +214,12 @@ fun LearnHomeContent(
                 )
             }
         },
-        hero = if (activeTab == LearnTab.TODAY) {
-            {
+        hero = {
+            AnimatedVisibility(
+                visible = activeTab == LearnTab.TODAY,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
                 CompanionBriefHero(
                     dailyBrief = dailyBrief,
                     hasSessions = sessions.isNotEmpty(),
@@ -213,7 +228,7 @@ fun LearnHomeContent(
                     onRecordLecture = actions.onRecordLecture
                 )
             }
-        } else null,
+        },
         sections = {
             when (activeTab) {
                 LearnTab.TODAY -> {
@@ -287,6 +302,7 @@ private fun LearnTabSegmentedControl(
     modifier: Modifier = Modifier
 ) {
     val c = MM.colors
+    val haptic = LocalHapticFeedback.current
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = MM.radius.pill,
@@ -315,7 +331,10 @@ private fun LearnTabSegmentedControl(
                         .selectable(
                             selected = isSel,
                             role = Role.RadioButton,
-                            onClick = { onSelectTab(tab) }
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onSelectTab(tab)
+                            }
                         )
                         .testTag("learn_tab_${tab.name.lowercase()}")
                 ) {
@@ -455,7 +474,7 @@ private fun CompanionBriefHero(
 private fun LearnQuickActions(actions: LearnHomeActions) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+        horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
     ) {
         LearnQuickAction(
             label = "Lecture",
@@ -496,12 +515,16 @@ private fun LearnQuickAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     Column(
         modifier = modifier
             .clip(MM.radius.card)
             .background(MM.colors.surface)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(vertical = MM.space.m),
+            .clickable(role = Role.Button, onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            })
+            .padding(vertical = MM.space.m, horizontal = MM.space.xs),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(MM.space.xs)
     ) {
@@ -521,7 +544,8 @@ private fun LearnQuickAction(
             text = label,
             style = MM.type.caption,
             color = MM.colors.ink,
-            maxLines = 1,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
     }
@@ -675,7 +699,9 @@ private fun HighYieldWeakSection(
                         Text(
                             text = concept.name,
                             style = MM.type.bodyStrong,
-                            color = MM.colors.ink
+                            color = MM.colors.ink,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     Text(
@@ -914,6 +940,10 @@ private fun CoursesSection(
                     if (course.noteCount == 0) 0.15f
                     else (course.sessionCount.toFloat() / (course.noteCount * 2).coerceAtLeast(1)).coerceIn(0.15f, 1f)
                 }
+                val animatedProgress by animateFloatAsState(
+                    targetValue = progressFraction,
+                    label = "course_mastery_progress"
+                )
 
                 MMCard(
                     modifier = Modifier.clickable { onOpenCourse(course.notebook.id) },
@@ -1004,7 +1034,7 @@ private fun CoursesSection(
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth(progressFraction)
+                                        .fillMaxWidth(animatedProgress)
                                         .fillMaxHeight()
                                         .clip(MM.radius.pill)
                                         .background(MM.colors.accent)
@@ -1145,7 +1175,13 @@ private fun ExamPrepOverviewSection(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MM.space.xs)) {
-                            Text(goal.title, style = MM.type.bodyStrong, color = MM.colors.ink)
+                            Text(
+                                text = goal.title,
+                                style = MM.type.bodyStrong,
+                                color = MM.colors.ink,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                             Text(
                                 "Format: ${goal.examFormat} · ${goal.dailyMinutesTarget} min/day",
                                 style = MM.type.caption,
@@ -1248,7 +1284,8 @@ private fun CreateCourseDialog(
                     onValueChange = { courseName = it },
                     label = { Text("Course Name (e.g. Calculus II)") },
                     modifier = Modifier.fillMaxWidth().testTag("course_name_input"),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
                 )
 
                 OutlinedTextField(
@@ -1256,7 +1293,8 @@ private fun CreateCourseDialog(
                     onValueChange = { courseCode = it },
                     label = { Text("Course Code (e.g. MATH 201)") },
                     modifier = Modifier.fillMaxWidth().testTag("course_code_input"),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
                 )
 
                 ExposedDropdownMenuBox(
@@ -1296,6 +1334,7 @@ private fun CreateCourseDialog(
                         onConfirm(courseName.trim(), courseCode.trim(), selectedDomain)
                     }
                 },
+                enabled = courseName.isNotBlank(),
                 modifier = Modifier.testTag("course_dialog_confirm")
             )
         },

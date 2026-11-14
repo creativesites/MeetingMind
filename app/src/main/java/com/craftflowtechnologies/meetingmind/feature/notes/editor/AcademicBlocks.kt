@@ -1364,16 +1364,19 @@ enum class CalloutKind(val key: String, val label: String) {
     PITFALL("PITFALL", "Common Pitfall"),
     WORKED_EXAMPLE("WORKED_EXAMPLE", "Worked Example"),
     OBJECTIVE("OBJECTIVE", "Learning Objective"),
-    ENRICHMENT("ENRICHMENT", "Study Enrichment");
+    ENRICHMENT("ENRICHMENT", "Study Enrichment"),
+    KEY_TAKEAWAY("KEY_TAKEAWAY", "Key Takeaway"),
+    APPLICATION("APPLICATION", "Application"),
+    DECISION("DECISION", "Decision");
 
     fun accentColor(): Color = when (this) {
         DEFINITION -> LearningFixedColors.DefinitionAccent
         THEOREM -> LearningFixedColors.TheoremAccent
         FORMULA -> LearningFixedColors.FormulaAccent
-        EXAM_TIP -> LearningFixedColors.ExamTipAccent
+        EXAM_TIP, KEY_TAKEAWAY -> LearningFixedColors.ExamTipAccent
         PITFALL -> LearningFixedColors.PitfallAccent
-        WORKED_EXAMPLE -> LearningFixedColors.WorkedExampleAccent
-        OBJECTIVE -> LearningFixedColors.ObjectiveAccent
+        WORKED_EXAMPLE, APPLICATION -> LearningFixedColors.WorkedExampleAccent
+        OBJECTIVE, DECISION -> LearningFixedColors.ObjectiveAccent
         ENRICHMENT -> LearningFixedColors.EnrichmentAccent
     }
 
@@ -1381,10 +1384,10 @@ enum class CalloutKind(val key: String, val label: String) {
         DEFINITION -> Icons.Filled.MenuBook
         THEOREM -> Icons.Filled.School
         FORMULA -> Icons.Filled.Functions
-        EXAM_TIP -> Icons.Filled.Lightbulb
+        EXAM_TIP, KEY_TAKEAWAY -> Icons.Filled.Lightbulb
         PITFALL -> Icons.Filled.Warning
-        WORKED_EXAMPLE -> Icons.Filled.CheckCircle
-        OBJECTIVE -> Icons.Rounded.Flag
+        WORKED_EXAMPLE, DECISION -> Icons.Filled.CheckCircle
+        OBJECTIVE, APPLICATION -> Icons.Rounded.Flag
         ENRICHMENT -> AiMark
     }
 

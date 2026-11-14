@@ -96,7 +96,7 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
                     MMCard {
                         leaders.forEachIndexed { idx, m ->
                             if (idx > 0) HorizontalDivider(color = MM.colors.line)
-                            MemberRow(m, me, actions)
+                            MemberRow(circle.id, m, me, actions)
                         }
                     }
                 }
@@ -107,7 +107,7 @@ fun MembersTab(state: CircleHomeUiState, actions: MemberActions, modifier: Modif
                     MMCard {
                         regulars.forEachIndexed { idx, m ->
                             if (idx > 0) HorizontalDivider(color = MM.colors.line)
-                            MemberRow(m, me, actions)
+                            MemberRow(circle.id, m, me, actions)
                         }
                     }
                 }
@@ -132,7 +132,7 @@ private fun JoinRequestRow(r: JoinRequest, actions: MemberActions) {
 }
 
 @Composable
-private fun MemberRow(m: Member, me: Member?, actions: MemberActions) {
+private fun MemberRow(circleId: String, m: Member, me: Member?, actions: MemberActions) {
     var menu by remember { mutableStateOf(false) }
     val isMe = m.uid == me?.uid
     // Same rules as the Worker: owners manage roles; admins remove plain members; nobody removes the owner.
@@ -141,7 +141,6 @@ private fun MemberRow(m: Member, me: Member?, actions: MemberActions) {
     // A title is a label such as "Pastor". It sits beside the role, which is what sets permissions.
     val subtitle = listOfNotNull(m.title, m.role.label).joinToString(" · ")
     val canEditTitle = me?.role?.isAdmin == true
-    val online = isMe || m.lastReadAt > 0L || m.role == Role.Owner
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -150,7 +149,7 @@ private fun MemberRow(m: Member, me: Member?, actions: MemberActions) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(MM.space.m)
     ) {
-        InitialsAvatar(m.displayName, size = 44.dp, online = online)
+        MemberAvatar(circleId, m.uid, m.displayName, m.avatarVersion, size = 44.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -25,6 +24,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleSettings
 import com.craftflowtechnologies.meetingmind.core.circles2.Member
@@ -68,9 +68,12 @@ fun CircleSettingsContent(
     var reactions by remember(circle.settings) { mutableStateOf(circle.settings.reactions) }
     var guidelines by remember(circle.settings) { mutableStateOf(circle.settings.guidelines) }
     var confirmLeave by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val pickCover = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri: android.net.Uri? ->
-        if (uri != null) readPicked(ctx, uri)?.let(onCover)
+        if (uri != null) {
+            scope.launch { readPickedAsync(ctx, uri)?.let(onCover) }
+        }
     }
     val changed = admin && (name.trim() != circle.name || vocab.trim() != circle.vocab || types != circle.settings.allowedTypes ||
         description.trim() != circle.description || joinApproval != circle.settings.joinApproval || approval != circle.settings.prayerApproval || who != circle.settings.whoCanInvite || reactions != circle.settings.reactions || guidelines != circle.settings.guidelines)
@@ -94,7 +97,7 @@ fun CircleSettingsContent(
                     Box(
                         Modifier
                             .size(72.dp)
-                            .clip(RoundedCornerShape(18.dp))
+                            .clip(MM.radius.card)
                             .background(Brush.linearGradient(listOf(CirclesPalette.CoverStart, CirclesPalette.Accent)))
                     ) {
                         if (circle.coverPath != null) {
@@ -132,7 +135,7 @@ fun CircleSettingsContent(
                 }
                 LinearProgressIndicator(
                     progress = { (circle.memberCount / 50f).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(8.dp).clip(RoundedCornerShape(999.dp)),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(8.dp).clip(MM.radius.pill),
                     color = CirclesPalette.Accent,
                     trackColor = MM.colors.surfaceSunk
                 )
@@ -193,7 +196,7 @@ fun CircleSettingsContent(
                 AccountSection(account, onLink, onSwitch, onDismissConflict)
             }
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = MM.radius.card,
                 color = CirclesPalette.RoseBg,
                 border = BorderStroke(1.dp, CirclesPalette.RoseInk.copy(alpha = 0.25f)),
                 modifier = Modifier.fillMaxWidth().clickable { confirmLeave = true }

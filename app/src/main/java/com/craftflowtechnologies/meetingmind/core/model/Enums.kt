@@ -173,3 +173,24 @@ enum class ProcessingProfile(
             entries.firstOrNull { it.name == name } ?: OFFLINE
     }
 }
+
+/**
+ * How recordings are turned into structured, formatted notes once transcription finishes.
+ *
+ * Driven by user settings so someone can choose between keeping only the recording card &
+ * transcript, generating structured workflow blocks, or running an additional AI polish pass
+ * for richer headings, callouts, lists, and readability.
+ */
+enum class NotePolishMode(val displayName: String, val description: String) {
+    /** Only attach the recording card and transcript; do not auto-generate note sections. */
+    OFF("Transcript only", "Keep only the recording card and transcript; don't auto-write note sections."),
+    /** Build structured workflow sections and proper note blocks from extraction and summary. */
+    STANDARD("Structured", "Automatically format transcripts into structured note sections and blocks."),
+    /** Build structured sections plus an AI polish pass for richer formatting, callouts, and clarity. */
+    DEEP("Polished", "Structured sections plus an AI polish pass for clarity, callouts, and rich formatting.");
+
+    companion object {
+        fun fromNameOrDefault(name: String?): NotePolishMode =
+            entries.firstOrNull { it.name == name } ?: DEEP
+    }
+}

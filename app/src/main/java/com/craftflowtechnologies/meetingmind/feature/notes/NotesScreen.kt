@@ -476,6 +476,7 @@ fun NotesScreen(
         onApplyOrganized = null,
         onShowSource = { p -> p.noteId?.let { aiSheetOpen = false; onOpenNote(it) } },
         onCancel = { viewModel.cancelAi(aiJob.id) },
+        onRetry = { viewModel.runAi(aiJob.tool, aiJob.question) },
         onClose = { aiSheetOpen = false },
         onDiscard = { aiSheetOpen = false; viewModel.dismissAi(aiJob.id) }
     )

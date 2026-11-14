@@ -1,6 +1,13 @@
 # Status
 
-Updated: 2026-11-13. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+Updated: 2026-11-14. **Shipping branch: `release/1.0-paid-launch`** (Head: see `git log -1`).
+
+## Post-Transcription Structured Note Formatting & AI Polish (2026-11-14)
+- **Pipeline Dispatch Fix (`MeetingProcessingPipeline`):** Replaced `Workflows.faith`-only gating with `writeStructuredNoteSections(...)` so `SERMON`, `LECTURE`/`RESEARCH` (previously dead code), and all other `RecordingType`s populate structured `NoteBlock`s on transcription completion.
+- **Settings-Driven Note Polish (`NotePolishMode`):** Added `NotePolishMode` (`OFF` / `STANDARD` / `DEEP`, defaulting to `DEEP`) in `Enums.kt`, `UserPreferences.kt`, `SettingsRegistry.kt`, and `SettingsScreen.kt`.
+- **AI Polish & General Note Builders:** Created `NotePolishEngine` (workflow-aware Markdown -> `NoteBlock`s with `PAYLOAD_START_MS` timestamp matching) and `RecordingNoteBuilder`; upgraded `SermonNoteBuilder`, `LectureNoteBuilder`, `LearningAiEngine` (offline `fallbackModel` + `SubjectDomain.detect`), and `CalloutKind` (`KEY_TAKEAWAY`, `APPLICATION`, `DECISION`).
+- **Editor & Navigation Polish:** Added `NoteEditorViewModel.polishWholeNote()` + `NoteAiMenu` action, live block refresh in `NoteEditorViewModel` when background processing finishes, and direct navigation to the polished note for Sermon/Lecture completions in `MainActivity`.
+- **Tests & Verification:** Added `PostTranscriptionNoteFormattingTest`. Per the remote-only Gradle mandate, no `./gradlew` commands were executed locally; ready for remote runner verification.
 
 ## Learning Vertical Crash Fixes, Polish & Feature Upgrades (2026-11-13, CTO session)
 - **Fatal Crash Fixes:**

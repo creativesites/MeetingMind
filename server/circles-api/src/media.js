@@ -14,8 +14,8 @@ export const MEDIA = {
   file: { mimes: ["application/pdf"], max: 25 * MB },
 };
 export const MEDIA_RATE = { limit: 60, ttl: 3600 };
-/** Kinds a post may carry. Chat takes every kind in MEDIA; a post is a photo or a video. */
-const POST_KINDS = ["image", "video"];
+/** Kinds a post may carry. Chat takes every kind in MEDIA; a post is a photo, video or file. */
+const POST_KINDS = ["image", "video", "file"];
 /** A profile photo: one per user, shared by all their circles. Small enough to send as one raw PUT. */
 export const AVATAR = { mimes: ["image/jpeg", "image/png", "image/webp"], max: 2 * MB };
 export const AVATAR_RATE = { limit: 20, ttl: 3600 };
@@ -215,9 +215,11 @@ export async function checkPostAttachments(ctx, circleId, list) {
     if (!head) throw notFound("That photo");
     const meta = head.customMetadata || {};
     if (meta.uploader !== ctx.uid) throw notMine("That photo");
-    if (!POST_KINDS.includes(meta.kind)) throw bad("Posts can only include photos or videos.");
+    if (!POST_KINDS.includes(meta.kind)) throw bad("Posts can only include photos, videos, or PDFs.");
     const item = { path: a.path, kind: meta.kind, mime: head.httpMetadata?.contentType, bytes: head.size, w: a.w ?? null, h: a.h ?? null };
     if (meta.kind === "video") item.durationMs = optDuration(a.durationMs);
+    const name = optName(a.name);
+    if (name != null) item.name = name;
     out.push(item);
   }
   return out;

@@ -1,13 +1,17 @@
 package com.craftflowtechnologies.meetingmind.ai.learning
 
+import com.craftflowtechnologies.meetingmind.ai.notes.NotePolishEngine
 import com.craftflowtechnologies.meetingmind.core.common.Formatters
 import com.craftflowtechnologies.meetingmind.core.learning.SpokenNotationNormalizer
 import com.craftflowtechnologies.meetingmind.core.learning.SubjectDomain
 import com.craftflowtechnologies.meetingmind.core.model.BlockSource
+import com.craftflowtechnologies.meetingmind.core.model.MeetingSummary
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlock
 import com.craftflowtechnologies.meetingmind.core.model.NoteBlockType
+import com.craftflowtechnologies.meetingmind.core.model.Speaker
 import com.craftflowtechnologies.meetingmind.core.model.TranscriptSegment
 import com.craftflowtechnologies.meetingmind.core.notes.RichText
+import com.craftflowtechnologies.meetingmind.core.notes.TranscriptBlocks
 import com.craftflowtechnologies.meetingmind.core.repository.NoteRepository
 import com.craftflowtechnologies.meetingmind.core.work.Mark
 import com.craftflowtechnologies.meetingmind.core.work.MarkKind
@@ -20,13 +24,19 @@ object LectureNoteBuilder {
         val endKeys: Set<String>
     )
 
+    const val KEY_TRANSCRIPT = "lecture_transcript"
+    const val KEY_POLISHED = NotePolishEngine.KEY_POLISHED
+
     fun build(
         noteId: String,
         meetingId: String,
         segments: List<TranscriptSegment>,
         domain: SubjectDomain,
         synthesis: LectureSynthesis?,
-        marks: List<Mark>
+        marks: List<Mark>,
+        summary: MeetingSummary? = null,
+        speakers: List<Speaker> = emptyList(),
+        polishedBlocks: List<NoteBlock> = emptyList()
     ): GeneratedLecture {
         val blocks = mutableListOf<NoteBlock>()
         val keys = mutableSetOf<String>()
@@ -178,10 +188,15 @@ object LectureNoteBuilder {
                                 id = newId(),
                                 noteId = noteId,
                                 position = blocks.size,
-                                type = tmpl.bodyType,
+                                type = NoteBlockType.CALLOUT,
                                 source = BlockSource.AI,
-                                content = RichText.plain("${concept.name}: ${concept.definition}"),
-                                sectionKey = tmpl.key
+                                content = RichText.plain(SpokenNotationNormalizer.normalize(concept.definition, domain)),
+                                sectionKey = tmpl.key,
+                                payload = mapOf(
+                                    NoteBlock.PAYLOAD_CALLOUT_KIND to "DEFINITION",
+                                    NoteBlock.PAYLOAD_CALLOUT_TITLE to concept.name,
+                                    NoteBlock.PAYLOAD_MEETING_ID to meetingId
+                                )
                             )
                         )
                         if (!concept.formulaLatex.isNullOrBlank()) {
@@ -197,6 +212,21 @@ object LectureNoteBuilder {
                                 )
                             )
                         }
+                    }
+                } else if (summary != null && summary.topics.isNotEmpty()) {
+                    summary.topics.filter { it.isNotBlank() }.forEach { topic ->
+                        blocks.add(
+                            NoteBlock(
+                                id = newId(),
+                                noteId = noteId,
+                                position = blocks.size,
+                                type = NoteBlockType.BULLET,
+                                source = BlockSource.AI,
+                                content = RichText.plain(SpokenNotationNormalizer.normalize(topic.trim(), domain)),
+                                sectionKey = tmpl.key,
+                                payload = mapOf(NoteBlock.PAYLOAD_MEETING_ID to meetingId)
+                            )
+                        )
                     }
                 } else {
                     // Offline fallback: extract key terms from vocabularyHints present in segments
@@ -245,23 +275,70 @@ object LectureNoteBuilder {
                     )
                 )
             } else {
-                // Other sections (e.g. worked examples, derivations)
-                val normalizedSummary = SpokenNotationNormalizer.normalize(
-                    synthesis?.summary?.takeIf { it.isNotBlank() } ?: segments.take(4).joinToString(" ") { it.text },
-                    domain
-                )
-                blocks.add(
-                    NoteBlock(
-                        id = newId(),
-                        noteId = noteId,
-                        position = blocks.size,
-                        type = tmpl.bodyType,
-                        source = BlockSource.AI,
-                        content = RichText.plain(normalizedSummary.take(400)),
-                        sectionKey = tmpl.key
+                // Other sections (e.g. overview, worked examples, derivations)
+                val overviewText = synthesis?.summary?.takeIf { it.isNotBlank() }
+                    ?: summary?.summary?.takeIf { it.isNotBlank() }
+                if (overviewText != null) {
+                    val normalizedSummary = SpokenNotationNormalizer.normalize(overviewText, domain)
+                    blocks.add(
+                        NoteBlock(
+                            id = newId(),
+                            noteId = noteId,
+                            position = blocks.size,
+                            type = tmpl.bodyType,
+                            source = BlockSource.AI,
+                            content = RichText.plain(normalizedSummary),
+                            sectionKey = tmpl.key,
+                            payload = mapOf(NoteBlock.PAYLOAD_MEETING_ID to meetingId)
+                        )
                     )
-                )
+                }
             }
+        }
+
+        // 4. Optional AI-polished study notes (in DEEP mode)
+        if (polishedBlocks.isNotEmpty()) {
+            keys.add(KEY_POLISHED)
+            blocks.add(
+                NoteBlock(
+                    id = newId(),
+                    noteId = noteId,
+                    position = blocks.size,
+                    type = NoteBlockType.DIVIDER,
+                    source = BlockSource.TRANSCRIPT,
+                    sectionKey = KEY_POLISHED
+                )
+            )
+            blocks.addAll(polishedBlocks.map { it.copy(noteId = noteId, sectionKey = KEY_POLISHED) })
+        }
+
+        // 5. Structured lecture transcript at the end
+        val transcript = TranscriptBlocks.build(noteId, meetingId, segments, speakers, sectionKey = KEY_TRANSCRIPT)
+        if (transcript.isNotEmpty()) {
+            keys.add(KEY_TRANSCRIPT)
+            endKeys.add(KEY_TRANSCRIPT)
+            blocks.add(
+                NoteBlock(
+                    id = newId(),
+                    noteId = noteId,
+                    position = blocks.size,
+                    type = NoteBlockType.DIVIDER,
+                    source = BlockSource.TRANSCRIPT,
+                    sectionKey = KEY_TRANSCRIPT
+                )
+            )
+            blocks.add(
+                NoteBlock(
+                    id = newId(),
+                    noteId = noteId,
+                    position = blocks.size,
+                    type = NoteBlockType.HEADING_2,
+                    source = BlockSource.AI,
+                    content = RichText.plain("Transcript"),
+                    sectionKey = KEY_TRANSCRIPT
+                )
+            )
+            blocks.addAll(transcript)
         }
 
         return GeneratedLecture(blocks, keys, endKeys)

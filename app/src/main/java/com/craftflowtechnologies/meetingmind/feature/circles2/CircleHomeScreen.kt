@@ -3,7 +3,6 @@ package com.craftflowtechnologies.meetingmind.feature.circles2
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
@@ -25,8 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.craftflowtechnologies.meetingmind.core.circles2.Circles2
 import com.craftflowtechnologies.meetingmind.core.create.CreateChatCard
@@ -94,6 +93,7 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     var showSearch by remember { mutableStateOf(false) }
     val eventRsvps by home.eventRsvps.collectAsState()
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val now = remember(state.posts, chatState.messages) { System.currentTimeMillis() }
 
     LaunchedEffect(home) { home.messages.collect { snackbar.showSnackbar(it) } }
@@ -140,7 +140,8 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             onMemberClick = { idOrName ->
                 activeMemberInfo = state.members.firstOrNull { it.uid == idOrName || it.displayName.equals(idOrName, ignoreCase = true) }
                     ?: Member(uid = idOrName, displayName = idOrName, role = com.craftflowtechnologies.meetingmind.core.circles2.Role.Member)
-            }
+            },
+            onPhotoRefused = { msg -> scope.launch { snackbar.showSnackbar(msg) } }
         )
         val chatActions = ChatActions(
             onDraft = chat::setDraft, onSend = chat::send, onReply = chat::startReply, onCancelReply = chat::cancelReply,
@@ -175,19 +176,36 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
     // ---- sheets and dialogs ----
     if (showTypes && circle != null) PostTypeSheet(circle, state.isAdmin, onPick = { showTypes = false; home.openComposer(it) }, onDismiss = { showTypes = false })
     if (composer.open && circle != null) ComposerSheet(
-        circle, composer, home::setBody, home::setVerse, home::setAnonymous, home::submitPost, home::closeComposer,
-        home::removePhoto, onTypeChange = home::openComposer, onPhoto = home::addPhoto
+        circle = circle,
+        state = composer,
+        onBody = home::setBody,
+        onVerse = home::setVerse,
+        onAnonymous = home::setAnonymous,
+        onSend = home::submitPost,
+        onDismiss = home::closeComposer,
+        onRemovePhoto = home::removePhoto,
+        onTypeChange = home::openComposer,
+        onPhoto = home::addPhoto,
+        onPhotoRefused = { scope.launch { snackbar.showSnackbar("That file couldn't be read or is too large.") } },
+        uploading = composer.uploading
     )
     val threadPost = thread?.let { t -> state.posts.firstOrNull { it.post.id == t.postId }?.post }
     if (thread != null) ThreadSheet(
-        threadPost, thread, state.myUid, state.canModerate, now,
+        post = threadPost,
+        thread = thread,
+        myUid = state.myUid,
+        isAdmin = state.canModerate,
+        now = now,
         onSend = { home.comment(thread!!.postId, it) },
         onDeleteComment = { home.deleteComment(thread!!.postId, it.id) },
         onDismiss = home::closeThread,
         onMemberClick = { idOrName ->
             activeMemberInfo = state.members.firstOrNull { it.uid == idOrName || it.displayName.equals(idOrName, ignoreCase = true) }
                 ?: Member(uid = idOrName, displayName = idOrName, role = com.craftflowtechnologies.meetingmind.core.circles2.Role.Member)
-        }
+        },
+        circleId = circle?.id,
+        members = state.members,
+        isWorkOrLearning = circle?.let { it.isWork || it.settings.space == "learning" } ?: false
     )
     activeMemberInfo?.let { m ->
         MemberInfoSheet(
@@ -195,14 +213,15 @@ fun CircleHomeScreen(circleId: String, onBack: () -> Unit) {
             isMe = m.uid == state.myUid,
             me = state.me,
             onDismiss = { activeMemberInfo = null },
-            onMessage = {
+            onMessage = { _ ->
                 activeMemberInfo = null
                 tab = HomeTab.Chat
                 chat.setDraft("@${m.displayName} ")
             },
-            onSetTitle = { titling = it; activeMemberInfo = null },
+            onSetTitle = { targetMember -> titling = targetMember; activeMemberInfo = null },
             onSetRole = { mem, role -> home.setRole(mem, role); activeMemberInfo = null },
-            onRemove = { mem -> home.remove(mem); activeMemberInfo = null }
+            onRemove = { mem -> home.remove(mem); activeMemberInfo = null },
+            circleId = circle?.id
         )
     }
     activeVerse?.let { ref ->
@@ -317,40 +336,16 @@ fun CircleHomeContent(
                     )
                     when (tab) {
                         HomeTab.Feed -> FeedTab(state, now, feed, Modifier.weight(1f))
-                        HomeTab.Chat -> ChatTab(chat, draft, now, chatActions, Modifier.weight(1f))
+                        HomeTab.Chat -> ChatTab(
+                            chat,
+                            draft,
+                            now,
+                            chatActions,
+                            Modifier.weight(1f),
+                            isFaith = circle?.let { !it.isWork && it.settings.space != "learning" } ?: true
+                        )
                         HomeTab.Members -> MembersTab(state, members, Modifier.weight(1f))
                     }
-                }
-            }
-        }
-        val canPost = circle != null && circle.settings.allowedTypes.any { !it.adminOnly || state.isAdmin }
-        if (tab == HomeTab.Feed && canPost) {
-            Surface(
-                onClick = feed.onNewPost,
-                shape = RoundedCornerShape(999.dp),
-                color = CirclesPalette.Accent,
-                shadowElevation = 6.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(bottom = 20.dp, end = 20.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        Icons.Rounded.Add,
-                        contentDescription = "New post",
-                        tint = CirclesPalette.White,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        "New post",
-                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
-                        color = CirclesPalette.White
-                    )
                 }
             }
         }
@@ -387,7 +382,7 @@ fun CircleSearchSheet(
     CircleSheet(onDismiss) {
         Text(
             "Search in ${state.circle?.name ?: "Circle"}",
-            style = MM.type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+            style = MM.type.title.copy(fontWeight = FontWeight.Bold),
             color = MM.colors.ink
         )
         CircleField(

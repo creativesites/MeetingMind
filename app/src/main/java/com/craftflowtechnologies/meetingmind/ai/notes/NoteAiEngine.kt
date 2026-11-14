@@ -162,7 +162,8 @@ class NoteAiEngine(
 
     private fun ids(array: JSONArray?, aliases: Map<String, SourcePassage>): List<String> = buildList {
         for (j in 0 until (array?.length() ?: 0)) {
-            val id = array!!.optString(j).trim()
+            val rawId = array!!.optString(j).trim().removePrefix("[").removeSuffix("]").trim()
+            val id = if (rawId in aliases) rawId else rawId.lowercase()
             if (id in aliases && id !in this) add(id)
         }
     }
@@ -192,10 +193,15 @@ class NoteAiEngine(
         }
 
         fun extractJsonObject(raw: String): JSONObject? {
-            val start = raw.indexOf('{')
-            val end = raw.lastIndexOf('}')
+            val cleaned = raw.trim()
+                .removePrefix("```json")
+                .removePrefix("```")
+                .removeSuffix("```")
+                .trim()
+            val start = cleaned.indexOf('{')
+            val end = cleaned.lastIndexOf('}')
             if (start < 0 || end <= start) return null
-            return try { JSONObject(raw.substring(start, end + 1)) } catch (e: JSONException) { null }
+            return try { JSONObject(cleaned.substring(start, end + 1)) } catch (e: JSONException) { null }
         }
     }
 }

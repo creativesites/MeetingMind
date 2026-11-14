@@ -1,5 +1,6 @@
 package com.craftflowtechnologies.meetingmind.feature.circles2
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -9,7 +10,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Person
@@ -32,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,9 +43,10 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import android.net.Uri
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import com.craftflowtechnologies.meetingmind.core.scripture.PassageResult
 import com.craftflowtechnologies.meetingmind.core.scripture.ScriptureReference
@@ -53,6 +56,7 @@ import com.craftflowtechnologies.meetingmind.feature.scripture.rememberPassage
 import com.craftflowtechnologies.meetingmind.core.circles2.MediaAttachment
 import com.craftflowtechnologies.meetingmind.core.circles2.Circle
 import com.craftflowtechnologies.meetingmind.core.circles2.CircleEvent
+import com.craftflowtechnologies.meetingmind.core.circles2.Member
 import com.craftflowtechnologies.meetingmind.core.circles2.PendingPost
 import com.craftflowtechnologies.meetingmind.core.circles2.Post
 import com.craftflowtechnologies.meetingmind.core.circles2.PostType
@@ -101,18 +105,49 @@ class FeedActions(
     /** Opens scripture passage reader bottom sheet. */
     val onOpenVerse: (ScriptureReference) -> Unit = {},
     /** Opens member profile info sheet. */
-    val onMemberClick: (String) -> Unit = {}
+    val onMemberClick: (String) -> Unit = {},
+    /** Called when an attachment couldn't be read or is refused. */
+    val onPhotoRefused: (String) -> Unit = {}
 ) { companion object { val None = FeedActions() } }
 
 @Composable
 fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
-        if (uri != null) readPicked(context, uri)?.let { actions.onPhoto(it) }
+        if (uri != null) {
+            scope.launch {
+                val f = readPickedAsync(context, uri)
+                if (f != null) {
+                    if (f.name.orEmpty().endsWith(".mov", ignoreCase = true) ||
+                        f.name.orEmpty().endsWith(".3gp", ignoreCase = true) ||
+                        f.mime.contains("quicktime") ||
+                        f.mime.contains("3gpp")
+                    ) {
+                        actions.onPhotoRefused("MOV and 3GPP formats are not supported yet. Please select an MP4 or WebM video.")
+                    } else {
+                        actions.onPhoto(f)
+                    }
+                } else {
+                    actions.onPhotoRefused("That file couldn't be read or is too large.")
+                }
+            }
+        }
     }
     val circle = state.circle ?: return
     val canPost = circle.settings.allowedTypes.any { !it.adminOnly || state.isAdmin }
-    val sharedMedia = remember(state.posts) { state.posts.flatMap { it.post.attachments }.take(6) }
+    val allMedia = remember(state.posts) { state.posts.flatMap { it.post.attachments } }
+    var showSharedMediaSheet by remember { mutableStateOf(false) }
+    var selectedFilter by rememberSaveable { mutableStateOf("All") }
+
+    val filteredPosts = remember(state.posts, selectedFilter) {
+        when (selectedFilter) {
+            "All" -> state.posts
+            "Media" -> state.posts.filter { it.post.attachments.isNotEmpty() }
+            else -> state.posts.filter { it.post.type.name == selectedFilter }
+        }
+    }
+
     LazyColumn(
         modifier, contentPadding = PaddingValues(start = MM.space.l, end = MM.space.l, top = MM.space.s, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(MM.space.m)
@@ -121,50 +156,97 @@ fun FeedTab(state: CircleHomeUiState, now: Long, actions: FeedActions, modifier:
         item { CircleHero(circle, state, actions) }
         item { ComposerCard(circle, state, actions, onPhotoClick = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }) }
         item { EventsSection(state.events, now, actions.onOpenEvent, if (state.canModerate) actions.onNewEvent else null) }
-        if (sharedMedia.isNotEmpty()) {
-            item { SharedMediaSection(circle.id, sharedMedia) }
+        if (allMedia.isNotEmpty()) {
+            item { SharedMediaSection(circle.id, allMedia, onSeeAll = { showSharedMediaSheet = true }) }
         }
-        if (state.isAdmin && state.pending.isNotEmpty()) {
-            item { SectionHeader("Waiting for approval", count = state.pending.size) }
-            items(state.pending, key = { "p_" + it.id }) { PendingCard(it, actions) }
-            item { SectionHeader("Shared") }
-        } else if (!state.isAdmin && state.myPendingCount > 0) {
-            item { StatusLine(StatusKind.Info, "Your request is with the admins. It will appear here once approved.") }
+        item {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(MM.space.s)
+            ) {
+                MMChip("All", selected = selectedFilter == "All", onClick = { selectedFilter = "All" })
+                MMChip("Media", selected = selectedFilter == "Media", onClick = { selectedFilter = "Media" })
+                circle.settings.allowedTypes.forEach { type ->
+                    MMChip(
+                        type.label,
+                        selected = selectedFilter == type.name,
+                        onClick = { selectedFilter = type.name }
+                    )
+                }
+            }
         }
-        if (state.posts.isEmpty()) {
+        if (selectedFilter == "All") {
+            if (state.isAdmin && state.pending.isNotEmpty()) {
+                item { SectionHeader("Waiting for approval", count = state.pending.size) }
+                items(state.pending, key = { "p_" + it.id }) { PendingCard(it, actions) }
+                item { SectionHeader("Shared") }
+            } else if (!state.isAdmin && state.myPendingCount > 0) {
+                item { StatusLine(StatusKind.Info, "Your request is with the admins. It will appear here once approved.") }
+            }
+        }
+        if (filteredPosts.isEmpty()) {
             item {
                 EmptyState(
-                    title = "Nothing shared yet",
-                    body = if (circle.isWork) "Share tasks, decisions, briefs and updates. Only members of this team can see it."
+                    title = if (selectedFilter == "All") "Nothing shared yet" else "No posts found",
+                    body = if (selectedFilter != "All") "No posts match the \"${selectedFilter}\" filter."
+                    else if (circle.isWork) "Share tasks, decisions, briefs and updates. Only members of this team can see it."
                     else "Share a prayer request, a testimony or a word of encouragement. Only members of this ${circle.groupWord.lowercase()} can see it.",
-                    action = if (canPost) { { PrimaryButton("New post", actions.onNewPost, leadingIcon = Icons.Rounded.Add) } } else null
+                    action = if (canPost && selectedFilter == "All") { { PrimaryButton("New post", actions.onNewPost, leadingIcon = Icons.Rounded.Add) } } else null
                 )
             }
         } else {
             // The pinned post leads the feed; it is not repeated below.
-            state.posts.firstOrNull { it.post.id == state.pinnedPostId }?.let { pinned ->
-                item { SectionHeader("Pinned") }
-                item { PostCard(pinned, circle, state.isAdmin, now, actions, pinned = true, canModerate = state.canModerate) }
+            val pinnedPost = filteredPosts.firstOrNull { it.post.id == state.pinnedPostId }
+            if (pinnedPost != null) {
+                item(key = "section_pinned") { SectionHeader("Pinned") }
+                item(key = "pinned_" + pinnedPost.post.id) {
+                    PostCard(
+                        pinnedPost,
+                        circle,
+                        state.isAdmin,
+                        now,
+                        actions,
+                        pinned = true,
+                        canModerate = state.canModerate,
+                        members = state.members,
+                        modifier = Modifier.animateItem()
+                    )
+                }
             }
-            items(state.posts.filter { it.post.id != state.pinnedPostId }, key = { it.post.id }) { PostCard(it, circle, state.isAdmin, now, actions, canModerate = state.canModerate) }
+            items(filteredPosts.filter { it.post.id != state.pinnedPostId }, key = { it.post.id }) {
+                PostCard(
+                    it,
+                    circle,
+                    state.isAdmin,
+                    now,
+                    actions,
+                    canModerate = state.canModerate,
+                    members = state.members,
+                    modifier = Modifier.animateItem()
+                )
+            }
         }
+    }
+
+    if (showSharedMediaSheet) {
+        SharedMediaSheet(circle.id, allMedia, onDismiss = { showSharedMediaSheet = false })
     }
 }
 
-/** The top of the Circle home (`circle_home.html`): cover photo, overlapping member avatars, `#5B5BD6` rounded lower banner, description, and action buttons. */
+/** The top of the Circle home (`circle_home.html`): cover photo, overlapping member avatars, rounded lower banner, description, and action buttons. */
 @Composable
 private fun CircleHero(circle: Circle, state: CircleHomeUiState, actions: FeedActions) {
     val canInvite = state.me != null && (state.isAdmin || circle.settings.whoCanInvite == WhoCanInvite.Members)
     Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = CirclesPalette.Accent,
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
+        shape = MM.radius.card,
+        color = MM.colors.accent,
+        modifier = Modifier.fillMaxWidth().clip(MM.radius.card)
     ) {
         Column {
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(176.dp)
+                    .height(160.dp)
                     .background(
                         Brush.linearGradient(
                             listOf(CirclesPalette.CoverStart, CirclesPalette.Accent, CirclesPalette.CoverEnd)
@@ -175,68 +257,66 @@ private fun CircleHero(circle: Circle, state: CircleHomeUiState, actions: FeedAc
                     MediaImage(circle.id, circle.coverPath, Modifier.fillMaxSize(), "Cover photo for ${circle.name}")
                 }
                 Row(
-                    modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
+                    modifier = Modifier.align(Alignment.BottomStart).padding(MM.space.m),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy((-8).dp)
                 ) {
-                    state.members.take(5).forEachIndexed { idx, m ->
-                        InitialsAvatar(m.displayName, size = 34.dp, online = idx < 2)
+                    state.members.take(5).forEach { m ->
+                        MemberAvatar(circle.id, m.uid, m.displayName, m.avatarVersion, size = 34.dp)
                     }
                     if (state.members.size > 5) {
-                        Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.6f), modifier = Modifier.size(34.dp)) {
+                        Surface(shape = MM.radius.pill, color = Color.Black.copy(alpha = 0.6f), modifier = Modifier.size(34.dp)) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text("+${state.members.size - 5}", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = CirclesPalette.White)
+                                Text("+${state.members.size - 5}", style = MM.type.caption.copy(fontWeight = FontWeight.Bold), color = Color.White)
                             }
                         }
                     }
                 }
             }
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(circle.name, style = MM.type.title.copy(fontSize = 22.sp, fontWeight = FontWeight.Bold), color = CirclesPalette.White)
-                Text(
-                    "${circle.groupWord} · ${state.members.size} ${if (state.members.size == 1) "member" else "members"}",
-                    style = MM.type.secondary, color = CirclesPalette.White.copy(alpha = 0.8f)
-                )
+            Column(
+                Modifier.padding(horizontal = MM.space.l, vertical = MM.space.m),
+                verticalArrangement = Arrangement.spacedBy(MM.space.s)
+            ) {
                 if (circle.description.isNotBlank()) {
-                    Text(circle.description, style = MM.type.body, color = CirclesPalette.White.copy(alpha = 0.9f))
+                    Text(circle.description, style = MM.type.body, color = Color.White.copy(alpha = 0.95f))
                 }
                 Row(
-                    Modifier.fillMaxWidth().padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MM.space.s),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = CirclesPalette.White,
+                        shape = MM.radius.pill,
+                        color = Color.White,
                         modifier = Modifier.weight(1f).clickable(onClick = actions.onOpenChat)
                     ) {
                         Row(
-                            Modifier.padding(vertical = 12.dp, horizontal = 16.dp),
+                            Modifier.padding(vertical = MM.space.m, horizontal = MM.space.m),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 "Open conversation",
                                 style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
-                                color = CirclesPalette.Accent
+                                color = MM.colors.accent
                             )
-                            Spacer(Modifier.width(4.dp))
-                            Icon(Icons.Rounded.ChevronRight, null, tint = CirclesPalette.Accent, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(MM.space.xs))
+                            Icon(Icons.Rounded.ChevronRight, null, tint = MM.colors.accent, modifier = Modifier.size(18.dp))
                         }
                     }
                     if (canInvite) {
                         Surface(
-                            shape = RoundedCornerShape(999.dp),
-                            color = CirclesPalette.White.copy(alpha = 0.18f),
+                            shape = MM.radius.pill,
+                            color = Color.White.copy(alpha = 0.18f),
                             modifier = Modifier.clickable(onClick = actions.onInvite)
                         ) {
                             Row(
-                                Modifier.padding(vertical = 12.dp, horizontal = 16.dp),
+                                Modifier.padding(vertical = MM.space.m, horizontal = MM.space.m),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(MM.space.xs)
                             ) {
-                                Icon(Icons.Rounded.PersonAdd, null, tint = CirclesPalette.White, modifier = Modifier.size(16.dp))
-                                Text("Invite", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.White)
+                                Icon(Icons.Rounded.PersonAdd, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Text("Invite", style = MM.type.bodyStrong.copy(fontWeight = FontWeight.SemiBold), color = Color.White)
                             }
                         }
                     }
@@ -253,7 +333,7 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
     val myName = state.me?.displayName?.ifBlank { "You" } ?: "You"
     MMCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MM.space.m)) {
-            InitialsAvatar(myName, size = 38.dp)
+            MemberAvatar(circle.id, state.myUid, myName, state.me?.avatarVersion, size = 38.dp)
             Text(
                 if (circle.isWork) "Share an update, task or decision with ${circle.name}…"
                 else "Share anything with ${circle.name}…",
@@ -282,7 +362,7 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    shape = CircleShape,
+                    shape = MM.radius.pill,
                     color = c.surfaceSunk,
                     modifier = Modifier.size(36.dp).clickable(onClick = onPhotoClick)
                 ) {
@@ -292,7 +372,7 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
                 }
                 if (state.canModerate) {
                     Surface(
-                        shape = CircleShape,
+                        shape = MM.radius.pill,
                         color = c.surfaceSunk,
                         modifier = Modifier.size(36.dp).clickable(onClick = actions.onNewEvent)
                     ) {
@@ -303,14 +383,14 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
                 }
             }
             Surface(
-                shape = RoundedCornerShape(999.dp),
+                shape = MM.radius.pill,
                 color = CirclesPalette.Accent,
                 modifier = Modifier.clickable { actions.onStartPost(PostType.Note) }
             ) {
                 Text(
                     "Post",
-                    style = MM.type.bodyStrong.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
-                    color = CirclesPalette.White,
+                    style = MM.type.bodyStrong.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
                 )
             }
@@ -319,17 +399,60 @@ private fun ComposerCard(circle: Circle, state: CircleHomeUiState, actions: Feed
 }
 
 @Composable
-private fun SharedMediaSection(circleId: String, media: List<MediaAttachment>) {
+private fun SharedMediaSection(circleId: String, media: List<MediaAttachment>, onSeeAll: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(MM.space.s)) {
-        SectionHeader("Shared media", count = media.size)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SectionHeader("Shared media", count = media.size)
+            if (media.size > 3) {
+                TextAction("See all (${media.size})", onSeeAll)
+            }
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             media.take(3).forEach { a ->
                 AttachmentTile(
                     circleId = circleId,
                     a = a,
-                    modifier = Modifier.weight(1f).height(96.dp).clip(RoundedCornerShape(14.dp)),
+                    modifier = Modifier.weight(1f).height(96.dp).clip(MM.radius.card),
                     contentDescription = if (a.isVideo) "Shared video" else "Shared photo"
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun SharedMediaSheet(circleId: String, media: List<MediaAttachment>, onDismiss: () -> Unit) {
+    CircleSheet(onDismiss) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Shared media (${media.size})", style = MM.type.title, color = MM.colors.ink)
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Rounded.Close, "Close", tint = MM.colors.inkSecondary)
+            }
+        }
+        LazyColumn(
+            Modifier.fillMaxWidth().heightIn(max = 480.dp),
+            verticalArrangement = Arrangement.spacedBy(MM.space.s)
+        ) {
+            items(media.chunked(2)) { pair ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MM.space.s)) {
+                    pair.forEach { a ->
+                        AttachmentTile(
+                            circleId = circleId,
+                            a = a,
+                            modifier = Modifier.weight(1f).height(140.dp).clip(MM.radius.card),
+                            contentDescription = if (a.isVideo) "Shared video" else "Shared photo"
+                        )
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
             }
         }
     }
@@ -350,28 +473,48 @@ private fun PendingCard(p: PendingPost, actions: FeedActions) {
 }
 
 @Composable
-fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, actions: FeedActions, pinned: Boolean = false, canModerate: Boolean = isAdmin) {
+fun PostCard(
+    item: FeedPost,
+    circle: Circle,
+    isAdmin: Boolean,
+    now: Long,
+    actions: FeedActions,
+    pinned: Boolean = false,
+    canModerate: Boolean = isAdmin,
+    members: List<Member> = emptyList(),
+    modifier: Modifier = Modifier
+) {
     val post = item.post
     val c = MM.colors
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(false) }
+    var hasOverflow by remember { mutableStateOf(false) }
     val who = when {
         post.anonymous -> "Anonymous"
         item.mine -> "You"
         else -> post.authorName ?: "Member"
     }
-    MMCard {
+    val authorVersion = remember(post.authorUid, members) {
+        members.firstOrNull { it.uid == post.authorUid }?.avatarVersion
+    }
+    MMCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (post.anonymous) {
                 Surface(shape = MM.radius.pill, color = c.surfaceSunk, modifier = Modifier.size(MMSize.minTouch)) {
                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Person, null, tint = c.inkMuted) }
                 }
-            } else InitialsAvatar(
-                who,
-                size = 42.dp,
-                modifier = Modifier.clickable { actions.onMemberClick(post.authorUid ?: who) }
-            )
+            } else {
+                MemberAvatar(
+                    circleId = circle.id,
+                    uid = post.authorUid,
+                    name = who,
+                    avatarVersion = authorVersion,
+                    size = 42.dp,
+                    modifier = Modifier.clickable { actions.onMemberClick(post.authorUid ?: who) }
+                )
+            }
             Spacer(Modifier.width(MM.space.m))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -415,7 +558,7 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
         }
         if (post.type == PostType.Task) {
             Surface(
-                shape = RoundedCornerShape(999.dp),
+                shape = MM.radius.pill,
                 color = if (post.answered) CirclesPalette.GreenBg else CirclesPalette.AccentSoft,
                 modifier = Modifier.padding(top = MM.space.s)
             ) {
@@ -433,17 +576,41 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
                 }
             }
         } else if (post.type == PostType.Decision) {
-            Surface(shape = RoundedCornerShape(999.dp), color = CirclesPalette.RoseBg, modifier = Modifier.padding(top = MM.space.s)) {
+            Surface(shape = MM.radius.pill, color = CirclesPalette.RoseBg, modifier = Modifier.padding(top = MM.space.s)) {
                 Text("Decision record 📋", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.RoseInk, modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs))
             }
         } else if (post.answered) {
-            Surface(shape = RoundedCornerShape(999.dp), color = CirclesPalette.GreenBg, modifier = Modifier.padding(top = MM.space.s)) {
+            Surface(shape = MM.radius.pill, color = CirclesPalette.GreenBg, modifier = Modifier.padding(top = MM.space.s)) {
                 Text("Answered 🎉", style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold), color = CirclesPalette.GreenInk, modifier = Modifier.padding(horizontal = MM.space.m, vertical = MM.space.xs))
             }
         }
         SelectionContainer {
             Column {
-                if (post.body.isNotBlank()) Text(post.body, style = MM.type.body, color = c.ink, modifier = Modifier.padding(top = MM.space.m))
+                if (post.body.isNotBlank()) {
+                    Text(
+                        post.body,
+                        style = MM.type.body,
+                        color = c.ink,
+                        maxLines = if (expanded) Int.MAX_VALUE else 6,
+                        overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { textLayoutResult ->
+                            if (!expanded && textLayoutResult.hasVisualOverflow) {
+                                hasOverflow = true
+                            }
+                        },
+                        modifier = Modifier.padding(top = MM.space.m)
+                    )
+                    if (hasOverflow || expanded) {
+                        Text(
+                            if (expanded) "Show less" else "Read more",
+                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                            color = c.accent,
+                            modifier = Modifier
+                                .clickable { expanded = !expanded }
+                                .padding(top = MM.space.xs)
+                        )
+                    }
+                }
                 post.verseRef?.let {
                     PostVerseCard(it, actions.onOpenVerse)
                 }
@@ -455,7 +622,7 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
                 AttachmentTile(
                     circleId = circle.id,
                     a = a,
-                    modifier = Modifier.padding(top = MM.space.s).fillMaxWidth().heightIn(min = 140.dp, max = 260.dp).clip(RoundedCornerShape(16.dp)),
+                    modifier = Modifier.padding(top = MM.space.s).fillMaxWidth().heightIn(min = 140.dp, max = 260.dp).clip(MM.radius.card),
                     contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
                 )
             } else {
@@ -466,7 +633,7 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
                                 AttachmentTile(
                                     circleId = circle.id,
                                     a = a,
-                                    modifier = Modifier.weight(1f).height(140.dp).clip(RoundedCornerShape(14.dp)),
+                                    modifier = Modifier.weight(1f).height(140.dp).clip(MM.radius.card),
                                     contentDescription = if (a.isVideo) "Video from $who" else "Photo from $who"
                                 )
                             }
@@ -482,16 +649,47 @@ fun PostCard(item: FeedPost, circle: Circle, isAdmin: Boolean, now: Long, action
             } else {
                 circle.settings.reactions.forEach { k ->
                     val n = post.counts.reactions[k] ?: 0
+                    val isMyReaction = item.myReaction == k
+                    val targetBg = when {
+                        isMyReaction -> c.accentWash
+                        n > 0 -> CirclesPalette.AccentSoft
+                        else -> c.surfaceSunk
+                    }
+                    val targetBorder = when {
+                        isMyReaction -> c.accent
+                        n > 0 -> CirclesPalette.Accent.copy(alpha = 0.25f)
+                        else -> c.line
+                    }
+                    val targetText = when {
+                        isMyReaction -> c.accent
+                        n > 0 -> CirclesPalette.AccentDeep
+                        else -> c.inkSecondary
+                    }
+                    val animatedBg by animateColorAsState(
+                        targetValue = targetBg,
+                        animationSpec = MM.motion.quick(),
+                        label = "reactionBg"
+                    )
+                    val animatedBorder by animateColorAsState(
+                        targetValue = targetBorder,
+                        animationSpec = MM.motion.quick(),
+                        label = "reactionBorder"
+                    )
+                    val animatedText by animateColorAsState(
+                        targetValue = targetText,
+                        animationSpec = MM.motion.quick(),
+                        label = "reactionText"
+                    )
                     Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = if (n > 0) CirclesPalette.AccentSoft else c.surfaceSunk,
-                        border = BorderStroke(1.dp, if (n > 0) CirclesPalette.Accent.copy(alpha = 0.25f) else c.line),
+                        shape = MM.radius.pill,
+                        color = animatedBg,
+                        border = BorderStroke(1.dp, animatedBorder),
                         modifier = Modifier.clickable { actions.onReact(post, k) }
                     ) {
                         Text(
                             if (n > 0) "${k.emoji} $n" else k.emoji,
-                            style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                            color = if (n > 0) CirclesPalette.AccentDeep else c.inkSecondary,
+                            style = MM.type.caption.copy(fontWeight = if (isMyReaction) FontWeight.Bold else FontWeight.SemiBold),
+                            color = animatedText,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
@@ -534,7 +732,7 @@ private fun PrayButton(count: Int, prayed: Boolean, onClick: () -> Unit) {
     val label = (if (prayed) "I prayed" else "I prayed for this") + (if (count > 0) " · $count" else "")
     if (prayed) {
         Surface(
-            shape = RoundedCornerShape(999.dp),
+            shape = MM.radius.pill,
             color = CirclesPalette.AccentSoft,
             border = BorderStroke(1.dp, CirclesPalette.Accent.copy(alpha = 0.3f))
         ) {
@@ -544,7 +742,7 @@ private fun PrayButton(count: Int, prayed: Boolean, onClick: () -> Unit) {
             ) {
                 Icon(Icons.Rounded.Check, null, tint = CirclesPalette.AccentDeep, modifier = Modifier.size(MMSize.iconSmall))
                 Spacer(Modifier.width(MM.space.xs))
-                Text(label, style = MM.type.bodyStrong.copy(fontSize = 13.sp), color = CirclesPalette.AccentDeep)
+                Text(label, style = MM.type.bodyStrong, color = CirclesPalette.AccentDeep)
             }
         }
     } else SecondaryButton(label, onClick)
@@ -564,13 +762,13 @@ fun PostVerseCard(
     val passageResult = ref?.let { rememberPassage(it) }
 
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = MM.radius.card,
         color = CirclesPalette.WarmBg,
         border = BorderStroke(1.dp, CirclesPalette.WarmBorder),
         modifier = modifier
             .fillMaxWidth()
             .padding(top = MM.space.s)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(MM.radius.card)
             .clickable(enabled = ref != null) { ref?.let(onOpenVerse) }
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
@@ -588,14 +786,14 @@ fun PostVerseCard(
                     )
                     Text(
                         ref?.display() ?: verseRef,
-                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp),
+                        style = MM.type.bodyStrong.copy(fontWeight = FontWeight.Bold),
                         color = CirclesPalette.WarmInk
                     )
                 }
                 (passageResult as? PassageResult.Found)?.let { found ->
                     Text(
                         found.passage.versionAbbreviation,
-                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
                         color = CirclesPalette.WarmInk.copy(alpha = 0.8f)
                     )
                 }
@@ -605,14 +803,14 @@ fun PostVerseCard(
                 is PassageResult.Found -> {
                     Text(
                         "“${passageResult.passage.text.trim().trim('“', '”')}”",
-                        style = MM.type.scripture.copy(fontSize = 14.sp, lineHeight = 21.sp),
+                        style = MM.type.scripture,
                         color = MM.colors.ink,
                         modifier = Modifier.padding(top = 8.dp)
                     )
                     if (passageResult.passage.attribution.isNotBlank()) {
                         Text(
                             passageResult.passage.attribution,
-                            style = MM.type.caption.copy(fontSize = 10.5.sp),
+                            style = MM.type.caption,
                             color = MM.colors.inkMuted,
                             modifier = Modifier.padding(top = 4.dp)
                         )
@@ -639,7 +837,7 @@ fun PostVerseCard(
                 ) {
                     Text(
                         "Read chapter →",
-                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+                        style = MM.type.caption.copy(fontWeight = FontWeight.SemiBold),
                         color = CirclesPalette.WarmInk
                     )
                 }
